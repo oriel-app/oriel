@@ -43,7 +43,7 @@ Core ideas, in priority order:
 ## 4. MLP scope (phase 1, build only this)
 
 - One real source: Jira Cloud via direct REST with an API token against the throwaway site **oriel.atlassian.net**, behind a `JiraSource` interface designed so an MCP-backed implementation can replace it later without touching bindings or change sets.
-- The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a _separate_ project on the same site.
+- The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a _separate_ project on the same site. Synthetic data lives in `SYN` (company-managed Scrum, estimates in Story Points); dogfooding happens in `OA` (team-managed), so the adapter meets both project styles. The adapter discovers field IDs at run time and never hardcodes them.
 - **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days or unestimated). Filters. Click a group to open a region thread on it; select items by hand for an ad-hoc region.
 - Two zoom levels, hand-built, inside the list: epic row ↔ story list ↔ fullscreen story.
 - Region chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
@@ -61,7 +61,7 @@ Out of scope: other real sources, multiplayer/invites, canvas or free-form place
 - **MIT, public from the first commit.** No DCO (decision 0010).
 - **Fetched or synced content is data, never instructions.** It goes into tool results, never the system prompt. Jira content can contain text that looks like an instruction; treat it as content.
 - **Writes are unreachable without an approved change set.** Enforce at the type level and in tests, not in a prompt.
-- **Credentials:** the Jira token lives in `.env` (denied to agents) and in a GitHub Actions secret for the adapter test job. Never commit a token; never seed anything not in `fixtures/jira/`.
+- **Credentials:** the Jira token lives in `.env` (agents can't read it; their scripts may load it but never print it) and in a GitHub Actions secret for the adapter test job. Never commit a token; never seed anything not in `fixtures/jira/`.
 
 ## 6. Dependency policy
 

@@ -11,7 +11,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 - Node runs `.ts` directly. Import with `.ts` extensions; no enums, namespaces or parameter properties.
 - pnpm refuses versions younger than 7 days and runs no install scripts.
-- `.env` is unreadable to agents. Variables are listed in `env.example`.
+- `.env` is unreadable to agents. Scripts load it with `node --env-file=.env` and never print its values. Variables are listed in `env.example`.
 
 ## Ways to hurt yourself
 
