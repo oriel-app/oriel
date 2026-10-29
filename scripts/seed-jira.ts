@@ -238,7 +238,7 @@ export function dryRun(fixture: JiraFixture): string[] {
 type Response = { status: number; body: unknown };
 type Call = (request: Request) => Promise<Response>;
 
-function client(env: JiraEnv): Call {
+export function client(env: JiraEnv): Call {
   const auth = `Basic ${Buffer.from(`${env.email}:${env.token}`).toString("base64")}`;
   return async (request) => {
     for (let attempt = 1; ; attempt++) {
@@ -331,7 +331,7 @@ const transitionsShape = object({
   transitions: array(object({ id: string, to: object({ name: string }) })),
 });
 
-async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
+export async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
   const project = fixture.project.key;
   const projectRequest = get(`${api}/project/${project}`);
   const found = await call(projectRequest);
@@ -422,7 +422,7 @@ async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
   return { pointsField: estimation.fieldId, issueTypes };
 }
 
-async function seed(fixture: JiraFixture, call: Call): Promise<void> {
+export async function seed(fixture: JiraFixture, call: Call): Promise<void> {
   const project = fixture.project.key;
   const found = await discover(fixture, call);
   const created = new Set<string>();
