@@ -5,3 +5,4 @@ dist/
 .env.*
 secrets/
 .claude/worktrees/
+shots/
