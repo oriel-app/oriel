@@ -8,7 +8,7 @@ Adds: none
 
 - `packages/bindings` emits the per-region `.d.ts` and the guest stubs as text from one description. Every ID passes core's strict key check and is written with `JSON.stringify`. No source text is emitted.
 - Before each run, the host typechecks the script with the `typescript` package's own `tsc`. It runs under `process.execPath` in a fresh private temp directory, with an empty environment, `noResolve`, `types: []` and an explicit file list, and its errors are read from `--pretty false`. So `typescript` ships with Oriel, not only in development. This amends 0009 ("dev-only") and SPEC §6 ("the TypeScript compiler API").
-- The script is never joined into module source.
+- The script is never joined into module source. This amends 0006, which joined the script and stubs into one entry file.
   - The host strips its types with Node's `stripTypeScriptTypes`, keeping positions, and refuses the script unless it compiles as an async function body.
   - The guest's entry module is the shim alone. The shim receives the stripped body as data and builds the function with the same constructor.
 
