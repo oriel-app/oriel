@@ -1,0 +1,19 @@
+[
+  {
+    "kind": "setEpic",
+    "key": "SYN-88",
+    "epic": "SYN-3",
+    "at": "2026-10-01T11:00:00.000Z"
+  },
+  {
+    "kind": "setSummary",
+    "key": "SYN-16",
+    "summary": "Ask for vehicle height and length when booking a car or van",
+    "at": "2026-10-01T14:00:00.000Z"
+  },
+  {
+    "kind": "delete",
+    "key": "SYN-27",
+    "at": "2026-10-02T11:00:00.000Z"
+  }
+]

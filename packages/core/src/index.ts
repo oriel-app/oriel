@@ -1,4 +1,5 @@
 export * from "./changeset.ts";
+export * from "./fixture.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";
 export * from "./jira.ts";

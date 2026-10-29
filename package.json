@@ -8,6 +8,7 @@
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
     "github": "node scripts/github.ts",
+    "seed:jira": "node scripts/seed-jira.ts",
     "test": "node --test"
   },
   "devDependencies": {
