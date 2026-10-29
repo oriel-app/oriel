@@ -33,7 +33,7 @@ export function message(
 }
 
 // Cassettes that never record: a plain fetch, for tests that don't replay.
-export const uncommitted = (fetch: Fetch): Cassettes => ({ fetch, commit: () => {} });
+export const uncommitted = (fetch: Fetch): Cassettes => ({ fetch, commit: () => null });
 
 // The text of a Messages API response.
 export async function textOf(response: Response): Promise<string> {

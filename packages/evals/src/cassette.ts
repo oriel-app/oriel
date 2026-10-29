@@ -1,7 +1,13 @@
 // Record and replay for model calls. A cassette is one Messages API exchange,
 // stored as `<key>.json`, where the key is a hash of the request's method, URL
 // and body. Headers are neither stored nor hashed, so no API key can land in a
-// cassette and a replay needs none. Cassettes live under `tests/cassettes/`.
+// cassette and a replay needs none.
+//
+// Cassettes live in `tests/cassettes/<case>/<model>+<judge>/`, one set per
+// pair of model under test and judge, so a round with other models never
+// touches the set CI replays. Commit cassettes with the code that recorded
+// them: any change to what the system under test sends changes their keys, and
+// CI replays only what is committed.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -20,21 +26,32 @@ export function cassetteKey(request: Cassette["request"]): string {
   return createHash("sha256").update(canonicalJson(request)).digest("hex");
 }
 
+// Names that are safe as one path segment.
+const segment = (name: string) => name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.*$/, "_");
+
+// One case's cassettes for one model under test and one judge.
+export function cassetteDir(root: URL, caseId: string, model: string, judge: string): URL {
+  return new URL(`${segment(caseId)}/${segment(model)}+${segment(judge)}/`, root);
+}
+
 // One case's cassettes, in their own directory. Replay reads them and never
 // touches the network. Record calls `live` for every request and keeps each
 // successful exchange in memory; a failed one is passed through unrecorded,
 // so a rate limit never becomes a fixture. `commit` then replaces the
 // directory's cassettes with exactly the kept ones. Call it only once the case
 // has finished without error, so a case that fails partway keeps its last good
-// recording. In replay, `commit` does nothing.
+// recording. It also refuses, and says why, when a response went unrecorded:
+// that case wouldn't replay. In replay, `commit` does nothing.
 export type CassetteOptions =
   | { mode: "replay"; dir: URL }
   | { mode: "record"; dir: URL; live: Fetch };
 
-export type Cassettes = { fetch: Fetch; commit: () => void };
+// `commit` returns why it saved nothing, or null once saved (or in replay).
+export type Cassettes = { fetch: Fetch; commit: () => string | null };
 
 export function cassettes(options: CassetteOptions): Cassettes {
   const kept = new Map<string, Cassette>();
+  const unrecorded: number[] = [];
   const fetch: Fetch = async (input, init) => {
     const request = new Request(input, init);
     if (!isMessagesRequest(request))
@@ -53,7 +70,10 @@ export function cassettes(options: CassetteOptions): Cassettes {
       body: text,
       signal: request.signal,
     });
-    if (!response.ok) return response;
+    if (!response.ok) {
+      unrecorded.push(response.status);
+      return response;
+    }
     const body = await response.text();
     const json = response.headers.get("content-type")?.includes("application/json") ?? false;
     const stored: Cassette = {
@@ -64,15 +84,21 @@ export function cassettes(options: CassetteOptions): Cassettes {
     return respond(stored.response);
   };
   const commit = () => {
-    if (options.mode === "replay") return;
-    if (!kept.size && !existsSync(options.dir)) return;
+    if (options.mode === "replay") return null;
+    if (unrecorded.length) {
+      const statuses = unrecorded.map((s) => `HTTP ${s}`).join(", ");
+      return `not recorded: ${unrecorded.length} response(s) failed (${statuses}), so this case wouldn't replay; its earlier cassettes stay`;
+    }
+    if (!kept.size && !existsSync(options.dir)) return null;
     mkdirSync(options.dir, { recursive: true });
+    // New files first, then prune: a failed write leaves a superset, not nothing.
+    for (const [key, stored] of kept)
+      writeFileSync(new URL(`${key}.json`, options.dir), `${JSON.stringify(stored, null, 2)}\n`);
     for (const name of readdirSync(options.dir)) {
       if (name.endsWith(".json") && !kept.has(name.slice(0, -".json".length)))
         rmSync(new URL(name, options.dir));
     }
-    for (const [key, stored] of kept)
-      writeFileSync(new URL(`${key}.json`, options.dir), `${JSON.stringify(stored, null, 2)}\n`);
+    return null;
   };
   return { fetch, commit };
 }

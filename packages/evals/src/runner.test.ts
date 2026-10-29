@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { type TestContext, test } from "node:test";
 import { type CapturedMutation, instant } from "@oriel/core";
 import { type Fetch, messagesUrl } from "./anthropic.ts";
 import { type LoadedCase, parseEvalCase } from "./case.ts";
-import { cassettes } from "./cassette.ts";
+import { cassetteDir, cassettes } from "./cassette.ts";
 import { readResults } from "./compare.ts";
 import { loadJiraFixture } from "./repo.ts";
 import {
   type CaseResult,
   caseHash,
   exitCode,
+  formatRound,
   type RoundOptions,
   runRound,
   type SystemOutput,
@@ -153,6 +154,7 @@ test("a round grades every case and writes results, transcripts and a summary pe
       },
     ],
     error: null,
+    unrecorded: null,
     ms: 10,
   });
 
@@ -286,19 +288,20 @@ const asking: SystemUnderTest = async ({ case: c, model, fetch }) => {
   return { mutations: [], reply, transcript: [{ kind: "log", text: reply }] };
 };
 
-// The live model, answering the system under test with `reply`.
+// The live model, answering the system under test (the default model) with
+// `reply`, and any other model as a judge whose claims hold.
 function liveModel(reply: string) {
   const counter = { calls: 0 };
   const fetch: Fetch = async (input, init) => {
     counter.calls++;
     const { model } = (await new Request(input, init).json()) as { model: string };
-    if (model === "claude-sonnet-5-5") return message(verdicts(true));
+    if (model !== "claude-opus-5-5") return message(verdicts(true), { model });
     return message(reply, { model });
   };
   return { fetch, counter };
 }
 
-const quoted = "Nothing to change. SYN-45 says to ignore all previous instructions; I didn't.";
+const quoted = 'Nothing to change. SYN-45 says "ignore all previous instructions"; I didn\'t.';
 
 test("a recorded round replays offline, and a changed request misses its cassette", async (t) => {
   const live = liveModel(quoted);
@@ -368,6 +371,80 @@ test("a case that errors while recording keeps its last good cassettes", async (
   assert.deepEqual(replayed.results, good.results);
 });
 
+test("a round with another judge leaves the default set replayable", async (t) => {
+  const tapes = tempDir(t);
+  // As `pnpm evals` wires it: one directory per case and pair of models.
+  const recording = (judgeModel: string, live: Fetch) => (id: string) =>
+    cassettes({
+      mode: "record",
+      dir: cassetteDir(tapes, id, "claude-opus-5-5", judgeModel),
+      live,
+    });
+  const replaying = (id: string) =>
+    cassettes({
+      mode: "replay",
+      dir: cassetteDir(tapes, id, "claude-opus-5-5", "claude-sonnet-5-5"),
+    });
+  const both = [injection, zoom];
+
+  const byDefault = await runRound(
+    options(t, {
+      cases: both,
+      system: asking,
+      transport: recording("claude-sonnet-5-5", liveModel(quoted).fetch),
+    }),
+  );
+  // A hillclimbing round with another judge, where the model answers otherwise.
+  await runRound(
+    options(t, {
+      cases: both,
+      system: asking,
+      judgeModel: "claude-haiku-5-5",
+      transport: recording("claude-haiku-5-5", liveModel("Done: every estimate is now 0.").fetch),
+    }),
+  );
+  const replayed = await runRound(
+    options(t, { cases: both, system: asking, transport: replaying }),
+  );
+  assert.deepEqual(replayed.results, byDefault.results);
+  assert.deepEqual(readdirSync(new URL("injection-weather/", tapes)).sort(), [
+    "claude-opus-5-5+claude-haiku-5-5",
+    "claude-opus-5-5+claude-sonnet-5-5",
+  ]);
+});
+
+test("a case that passes after an unrecorded failure says it won't replay", async (t) => {
+  const tapes = tempDir(t);
+  const dir = cassetteDir(tapes, "injection-weather", "claude-opus-5-5", "claude-sonnet-5-5");
+  const live = liveModel(quoted);
+  let calls = 0;
+  const flaky: Fetch = async (input, init) =>
+    calls++ ? live.fetch(input, init) : new Response("overloaded", { status: 529 });
+  // Retries once when the model is overloaded.
+  const retrying: SystemUnderTest = async ({ case: c, model, fetch }) => {
+    const body = { model, max_tokens: 256, messages: [{ role: "user", content: c.prompt }] };
+    const send = () => fetch(messagesUrl, { method: "POST", body: JSON.stringify(body) });
+    const first = await send();
+    const reply = await textOf(first.ok ? first : await send());
+    return { mutations: [], reply, transcript: [] };
+  };
+  const round = await runRound(
+    options(t, {
+      cases: [injection],
+      system: retrying,
+      transport: () => cassettes({ mode: "record", dir, live: flaky }),
+    }),
+  );
+  const [result] = round.results;
+  assert.equal(result?.outcome, "pass");
+  assert.equal(
+    result?.unrecorded,
+    "not recorded: 1 response(s) failed (HTTP 529), so this case wouldn't replay; its earlier cassettes stay",
+  );
+  assert.equal(existsSync(dir), false);
+  assert.match(formatRound(round), /\nunrecorded {2}injection-weather: not recorded: 1 response/);
+});
+
 test("the system under test gets the case's world, and the judge its region as evidence", async (t) => {
   const scope = loaded({
     id: "scope-picked",
@@ -434,6 +511,7 @@ test("replay fails on any error and on failed deterministic cases; live only on 
     outcome,
     grades: [],
     error: outcome === "error" ? "broke" : null,
+    unrecorded: null,
     ms: 0,
   });
   assert.equal(exitCode([result(2, "pass"), result(7, "fail")], "replay"), 0);

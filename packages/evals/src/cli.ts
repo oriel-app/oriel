@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
 import { anthropicFetch, anthropicKey, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
-import { cassettes } from "./cassette.ts";
+import { cassetteDir, cassettes } from "./cassette.ts";
 import { compareRounds, formatComparison, readResults } from "./compare.ts";
 import { cassettesDir, casesDir, envFile, loadJiraFixture, repoRoot, roundsDir } from "./repo.ts";
 import { exitCode, formatRound, runRound } from "./runner.ts";
@@ -114,7 +114,7 @@ async function main(command: Command): Promise<number> {
     model: command.model,
     judgeModel: command.judge,
     transport: (caseId) => {
-      const dir = new URL(`${caseId}/`, cassettesDir);
+      const dir = cassetteDir(cassettesDir, caseId, command.model, command.judge);
       return live ? cassettes({ mode: "record", dir, live }) : cassettes({ mode: "replay", dir });
     },
     out: new URL(`${id}/`, roundsDir),

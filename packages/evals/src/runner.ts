@@ -77,6 +77,9 @@ export const caseResult = object({
   outcome: union(literal("pass"), literal("fail"), literal("error")),
   grades: array(object({ grader: graderName, pass: boolean, detail: string })),
   error: nullable(string),
+  // Why a case that finished in a live round saved no cassettes, so it won't
+  // replay; null otherwise.
+  unrecorded: nullable(string),
   ms: number,
 });
 export type CaseResult = Infer<typeof caseResult>;
@@ -141,6 +144,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
   let output: SystemOutput | null = null;
   let grades: Grade[] = [];
   let error: string | null = null;
+  let unrecorded: string | null = null;
   try {
     const raw: unknown = await options.system({
       case: evalCase,
@@ -162,7 +166,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
     grades = await grade(loaded, output, options, judged.fetch);
     const both = shared(await tested.models(), await judged.models());
     if (both) throw new Error(`the judge and the system under test both ran ${both}`);
-    tape.commit();
+    unrecorded = tape.commit();
   } catch (caught) {
     // Never empty: an error is an error even when it says nothing.
     const said = caught instanceof Error ? caught.message : String(caught);
@@ -178,6 +182,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
     outcome,
     grades,
     error,
+    unrecorded,
     ms,
   };
   const transcript = {
@@ -309,6 +314,7 @@ export function formatRound(round: Round): string {
     return `${s.padEnd(5)}  ${formatRate(r)}${extra}`;
   });
   for (const r of round.results) {
+    if (r.unrecorded) lines.push(`unrecorded  ${r.id}: ${r.unrecorded}`);
     if (r.outcome === "pass") continue;
     const why = r.error ?? r.grades.find((g) => !g.pass)?.detail ?? "";
     lines.push(`${r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`);

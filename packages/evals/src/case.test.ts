@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
-import { loadCases, parseEvalCase } from "./case.ts";
+import { loadCases, parseEvalCase, parseGoldenDiff } from "./case.ts";
 import { loadJiraFixture } from "./repo.ts";
 import { tempDir } from "./testing.ts";
 
@@ -138,6 +138,15 @@ test("cases load against the fixture, and every problem names its file", (t) => 
     new URL("tests/golden/bad-target.json", root),
     JSON.stringify({ mutations: [{ op: "setEstimate", target: "SYN-10", ref: null, args: {} }] }),
   );
+  writeFileSync(
+    new URL("tests/golden/forward-ref.json", root),
+    JSON.stringify({ mutations: [{ op: "setEstimate", target: "new:1", ref: null, args: {} }] }),
+  );
+  write("forward-ref.json", {
+    ...estimate(),
+    id: "forward-ref",
+    expect: [{ grader: "exact-diff", golden: "tests/golden/forward-ref.json" }],
+  });
   write("estimate-checkout.json", estimate());
   write("injection-weather.json", injection());
   write("misnamed.json", { ...injection(), id: "something-else" });
@@ -175,10 +184,41 @@ test("cases load against the fixture, and every problem names its file", (t) => 
   assert.match(broken ?? "", /^broken\.json: not JSON: /);
   assert.deepEqual(rest, [
     "elsewhere.json: $.expect[1].item: not in region checkout-epic",
+    "forward-ref.json: tests/golden/forward-ref.json: $.mutations[0].target: new:1 is used before it is created; create it first",
     "misnamed.json: $.id: expected the file to be something-else.json",
     "no-golden.json: tests/golden/absent.json: missing",
     'nowhere.json: $.region: no fixture region named "nowhere"',
     `too-late.json: $.edited: the fixture has ${fixture.edits.length} source edits`,
+  ]);
+});
+
+test("a golden diff creates each new ref once, before anything names it", () => {
+  const create = (ref: string, args: object = { summary: "Retry", epic: null }) => ({
+    op: "createStory",
+    target: null,
+    ref,
+    args,
+  });
+  const estimateOf = (target: string) => ({ op: "setEstimate", target, ref: null, args: {} });
+  assert.equal(parseGoldenDiff({ mutations: [create("new:1"), estimateOf("new:1")] }).ok, true);
+  const result = parseGoldenDiff({
+    mutations: [
+      estimateOf("new:1"),
+      create("new:1"),
+      create("new:2", { summary: "Child", parent: ["new:3"] }),
+      create("new:1"),
+    ],
+  });
+  assert.deepEqual(!result.ok && result.issues, [
+    {
+      path: "$.mutations[0].target",
+      message: "new:1 is used before it is created; create it first",
+    },
+    {
+      path: "$.mutations[2].args.parent[0]",
+      message: "new:3 is used before it is created; create it first",
+    },
+    { path: "$.mutations[3].ref", message: "new:1 is created twice" },
   ]);
 });
 

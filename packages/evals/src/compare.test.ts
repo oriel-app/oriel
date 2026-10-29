@@ -41,6 +41,7 @@ const result = (
   outcome,
   grades: [],
   error: outcome === "error" ? "judge: HTTP 529: overloaded" : null,
+  unrecorded: null,
   ms: 0,
 });
 

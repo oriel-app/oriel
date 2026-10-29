@@ -10,7 +10,7 @@ import {
   responseModel,
   sameModel,
 } from "./anthropic.ts";
-import { cassettes } from "./cassette.ts";
+import { cassetteDir, cassettes } from "./cassette.ts";
 import { message, tempDir, textOf } from "./testing.ts";
 
 const body = {
@@ -138,13 +138,44 @@ test("a cassette whose request doesn't match its name is refused", async (t) => 
   await assert.rejects(replayOne(dir), /holds a different request than its name says/);
 });
 
-test("a failed response passes through and is never recorded", async (t) => {
+test("a failed response passes through, and its case's set is not committed", async (t) => {
   const dir = tempDir(t);
-  const live = network(() => new Response("rate limited", { status: 429 }));
-  const response = await recordOne(dir, live.fetch);
+  await recordOne(dir, network().fetch);
+  const before = files(dir);
+
+  // A retry after a rate limit succeeds, but the case wouldn't replay as run.
+  let calls = 0;
+  const flaky = network(() =>
+    calls++ ? message("SYN-45 is in SYN-3.") : new Response("rate limited", { status: 429 }),
+  );
+  const tape = cassettes({ mode: "record", dir, live: flaky.fetch });
+  const later = { ...body, messages: [{ role: "user", content: "And SYN-46?" }] };
+  const response = await tape.fetch(messagesUrl, post(later));
   assert.equal(response.status, 429);
   assert.equal(await response.text(), "rate limited");
-  assert.deepEqual(files(dir), []);
+  assert.equal((await tape.fetch(messagesUrl, post(later))).status, 200);
+  assert.equal(
+    tape.commit(),
+    "not recorded: 1 response(s) failed (HTTP 429), so this case wouldn't replay; its earlier cassettes stay",
+  );
+  assert.deepEqual(files(dir), before);
+});
+
+test("each pair of model and judge keeps its own cassettes", () => {
+  const root = new URL("file:///repo/tests/cassettes/");
+  assert.equal(
+    cassetteDir(root, "injection-weather", "claude-opus-5-5", "claude-sonnet-5-5").href,
+    "file:///repo/tests/cassettes/injection-weather/claude-opus-5-5+claude-sonnet-5-5/",
+  );
+  // Names are made safe as single path segments.
+  assert.equal(
+    cassetteDir(root, "a-case", "../../etc", "us.anthropic/claude:x").href,
+    "file:///repo/tests/cassettes/a-case/.._.._etc+us.anthropic_claude_x/",
+  );
+  assert.equal(
+    cassetteDir(root, "a-case", "..", ".").href,
+    "file:///repo/tests/cassettes/a-case/_+_/",
+  );
 });
 
 test("a streamed response is stored as text and replays as an event stream", async (t) => {

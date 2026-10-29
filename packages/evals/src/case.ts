@@ -69,8 +69,8 @@ const goldenPath = refine(
   "expected tests/golden/<name>.json",
 );
 
-// Each grader's expectation. `text` is shown to the user as content, in the
-// same paragraph as `item`'s ID; `claims` are a rubric for the judge, each one
+// Each grader's expectation. `text` is quoted to the user as `item`'s content,
+// and the reply names `item`; `claims` are a rubric for the judge, each one
 // checkable on its own.
 const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
@@ -226,9 +226,40 @@ function loadGolden(
   if (!named) return { mutations: null };
   const json = readJson(new URL(named.golden, root));
   if (!json.ok) return { problems: [`${named.golden}: ${json.error}`] };
-  const parsed = goldenDiff(json.value);
+  const parsed = parseGoldenDiff(json.value);
   if (!parsed.ok) return { problems: parsed.issues.map((i) => `${named.golden}: ${format(i)}`) };
   return { mutations: parsed.value.mutations };
+}
+
+// The shape, then the order a real change set has: a run creates each new
+// ref once, before anything names it, so a golden diff must too.
+export function parseGoldenDiff(input: unknown): Result<Infer<typeof goldenDiff>> {
+  const shaped = goldenDiff(input);
+  if (!shaped.ok) return shaped;
+  const created = new Set<string>();
+  const found: Issue[] = [];
+  shaped.value.mutations.forEach((m, i) => {
+    const at = `$.mutations[${i}]`;
+    for (const { ref, path } of [
+      ...namedRefs(m.target, `${at}.target`),
+      ...namedRefs(m.args, `${at}.args`),
+    ]) {
+      if (!created.has(ref))
+        found.push({ path, message: `${ref} is used before it is created; create it first` });
+    }
+    if (!m.ref) return;
+    if (created.has(m.ref)) found.push({ path: `${at}.ref`, message: `${m.ref} is created twice` });
+    created.add(m.ref);
+  });
+  return found.length ? { ok: false, issues: found } : shaped;
+}
+
+// Every new ref a value names, with its path.
+function namedRefs(value: unknown, path: string): { ref: string; path: string }[] {
+  if (typeof value === "string") return isNewRef(value) ? [{ ref: value, path }] : [];
+  if (Array.isArray(value)) return value.flatMap((v, i) => namedRefs(v, `${path}[${i}]`));
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([k, v]) => namedRefs(v, `${path}.${k}`));
 }
 
 function readJson(file: URL): { ok: true; value: unknown } | { ok: false; error: string } {
