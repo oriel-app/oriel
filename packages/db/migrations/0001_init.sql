@@ -115,13 +115,14 @@ create table run_reads (
   primary key (run_id, seq)
 ) strict;
 
--- run_id is null for a revert, which no run produced.
+-- run_id is null for a revert, which no run produced. A change set's hash is
+-- derived from its mutation rows whenever it is needed, never stored, so an
+-- edit can't leave a stale hash matching an old approval.
 create table change_sets (
   id text primary key,
   workspace_id text not null references workspaces (id),
   thread_id text not null references threads (id),
   run_id text references runs (id),
-  hash text not null,
   revert_of text references change_sets (id),
   created_at text not null
 ) strict;
@@ -148,8 +149,23 @@ create table mutations (
   check ((status = 'applied') = (applied is not null))
 ) strict;
 
--- Every decision is kept. The highest seq counts, and only while its hash
--- matches the change set's.
+-- Only the token's hash is stored, so a copy of the database holds no live
+-- links. A change set has at most one live link: minting a new one revokes the
+-- old. A link expires 7 days after created_at (SPEC §7), worked out at check
+-- time.
+create table review_links (
+  token_hash text primary key,
+  workspace_id text not null references workspaces (id),
+  change_set_id text not null references change_sets (id),
+  created_at text not null,
+  revoked_at text
+) strict;
+
+create unique index review_links_one_live on review_links (change_set_id) where revoked_at is null;
+
+-- Every decision is kept, with the hash of the change set the person reviewed.
+-- The highest seq counts, and only while that hash still matches the hash
+-- derived from the mutation rows. A review-link decision names its link.
 create table decisions (
   id text primary key,
   workspace_id text not null references workspaces (id),
@@ -157,25 +173,13 @@ create table decisions (
   seq integer not null,
   kind text not null check (kind in ('approved', 'rejected')),
   via text not null check (via in ('thread', 'review-link')),
+  review_link text references review_links (token_hash),
   by_name text not null,
   hash text not null,
   at text not null,
-  unique (change_set_id, seq)
+  unique (change_set_id, seq),
+  check ((via = 'review-link') = (review_link is not null))
 ) strict;
-
--- Only the token's hash is stored, so a copy of the database holds no live
--- links. A change set has at most one live link: minting a new one revokes the
--- old.
-create table review_links (
-  token_hash text primary key,
-  workspace_id text not null references workspaces (id),
-  change_set_id text not null references change_sets (id),
-  created_at text not null,
-  expires_at text not null,
-  revoked_at text
-) strict;
-
-create unique index review_links_one_live on review_links (change_set_id) where revoked_at is null;
 
 create table telemetry_events (
   id text primary key,

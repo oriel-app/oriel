@@ -10,6 +10,7 @@ import {
   parseItemId,
   refine,
   type SourceKind,
+  sourceKinds,
   string,
   type SyncPage,
   type Ulid,
@@ -34,13 +35,19 @@ const sourceRow = object({
 const versionRow = object({ version: nullable(number) });
 const existsRow = object({ found: number });
 
-// Case- and accent-folded, so "cafe" finds "Café". Only Latin combining marks
-// are dropped, so Japanese voicing marks survive.
+// Case- and accent-folded: NFKD, then the Combining Diacritical Marks block
+// (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й" folds to
+// "и", and Japanese voicing marks, which sit outside the block, survive.
+const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
 const fold = (text: string) =>
-  text
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLocaleLowerCase("en");
+  text.normalize("NFKD").replace(diacritics, "").toLocaleLowerCase("en");
+
+// The model writes search queries, and synced content can steer it, so search
+// work is bounded.
+const maxQueryChars = 256;
+const maxTerms = 8;
+const maxResults = 50;
+const sourcePrefix = new RegExp(`^(${sourceKinds.join("|")}):`);
 
 export type IndexStore = ReturnType<typeof indexStore>;
 
@@ -68,7 +75,8 @@ export function indexStore(db: DatabaseSync) {
   );
   const saveSource = db.prepare(`
     insert into sources (workspace_id, kind, cursor, synced_at) values (?, ?, ?, ?)
-    on conflict (workspace_id, kind) do update set cursor = excluded.cursor, synced_at = excluded.synced_at`);
+    on conflict (workspace_id, kind) do update set
+      cursor = coalesce(excluded.cursor, sources.cursor), synced_at = excluded.synced_at`);
   const insertSnapshot = db.prepare(
     "insert into snapshots (workspace_id, version, source, taken_at) values (?, ?, ?, ?)",
   );
@@ -110,14 +118,18 @@ export function indexStore(db: DatabaseSync) {
       };
     });
 
-  // Pages are checked the way reads check rows, so one bad record can't break
-  // the window later.
-  const check = (source: SourceKind, page: SyncPage) => {
+  // Pages are checked the way reads check rows, attrs included after a JSON
+  // round trip, so one bad record can't break the window later.
+  const check = <A>(source: SourceKind, attrs: Validator<A>, page: SyncPage) => {
     for (const r of page.records) {
-      if (parseItemId(r.id)?.source !== source)
+      if (parseItemId(r.id)?.source !== source) {
         throw new Error(`${JSON.stringify(r.id)} is not a ${source} item ID`);
+      }
       if (!isInstant(r.updatedAt)) throw new Error(`${r.id}: updatedAt is not a canonical instant`);
       if (!r.stableId) throw new Error(`${r.id}: empty stable ID`);
+      const parsed = attrs(JSON.parse(JSON.stringify(r.attrs) ?? "null"), "$.attrs");
+      if (!parsed.ok)
+        throw new Error(`${r.id}: attrs don't match: ${JSON.stringify(parsed.issues)}`);
     }
   };
 
@@ -133,17 +145,17 @@ export function indexStore(db: DatabaseSync) {
       return live(workspaceId, source, attrs);
     },
 
-    // Opens a sync of one source. Each page commits on its own; `finish` takes
-    // the snapshot version if anything changed, records the cursor and the
-    // finish time, and returns the version the index is at. A crash mid-sync
-    // leaves pages tagged with an unclaimed version, which the next sync
-    // reclaims.
-    beginSync(workspaceId: Ulid, source: SourceKind, now: Instant) {
+    // Opens a sync of one source; `attrs` is that source's shape. Each page
+    // commits on its own. `finish` takes the snapshot version if anything
+    // changed, records the cursor (null keeps the stored one) and the finish
+    // time, and returns the version the index is at. A crash partway leaves
+    // pages tagged with an unclaimed version, which the next sync reclaims.
+    beginSync<A>(workspaceId: Ulid, source: SourceKind, attrs: Validator<A>, now: Instant) {
       const version = snapshot(workspaceId) + 1;
       return {
         version,
         apply(page: SyncPage): void {
-          check(source, page);
+          check(source, attrs, page);
           transaction(db, () => {
             for (const r of page.records) {
               retireHandle.run(now, version, workspaceId, r.id, r.stableId);
@@ -163,7 +175,7 @@ export function indexStore(db: DatabaseSync) {
               tombstone.run(now, version, workspaceId, source, stableId);
           });
         },
-        finish(cursor: string, finishedAt: Instant): number {
+        finish(cursor: string | null, finishedAt: Instant): number {
           return transaction(db, () => {
             saveSource.run(workspaceId, source, cursor, finishedAt);
             const changed = existsRow(changedIn.get(workspaceId, source, version));
@@ -176,13 +188,20 @@ export function indexStore(db: DatabaseSync) {
     },
 
     // The escape hatch, across every source. Every term must appear in the
-    // item's key or title. An exact key comes first, then titles starting with
-    // the first term, then the most recently updated.
+    // item's key or title; a "jira:" prefix on a term is ignored, so a full
+    // item ID works as a query. An exact key comes first, then titles starting
+    // with the first term, then the most recently updated. At most 256
+    // characters, 8 distinct terms and 50 results.
     search(workspaceId: Ulid, query: string, limit: number): IndexRecord<SourceKind, unknown>[] {
-      const terms = fold(query).split(/\s+/).filter(Boolean);
+      const bounded = fold(query.slice(0, maxQueryChars));
+      const terms = [...new Set(bounded.split(/\s+/).filter(Boolean))]
+        .slice(0, maxTerms)
+        .map((term) => term.replace(sourcePrefix, ""))
+        .filter(Boolean);
       const first = terms[0];
+      const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
       if (!first) return [];
-      const whole = fold(query.trim());
+      const whole = bounded.trim().replace(sourcePrefix, "");
       return live(workspaceId, null, unknown)
         .map((record) => {
           const key = fold(parseItemId(record.id)?.key ?? "");
@@ -196,7 +215,7 @@ export function indexStore(db: DatabaseSync) {
             Number(b.title.startsWith(first)) - Number(a.title.startsWith(first)) ||
             b.record.updatedAt.localeCompare(a.record.updatedAt),
         )
-        .slice(0, limit)
+        .slice(0, count)
         .map(({ record }) => record);
     },
 

@@ -10,13 +10,15 @@ export type Instant = string & { readonly __brand: "Instant" };
 
 // Keys reach generated code (the region's `.d.ts` and guest stubs), so each
 // source's key shape is strict.
+export const sourceKinds: readonly SourceKind[] = ["jira"];
+
 const keyShapes: Record<SourceKind, RegExp> = {
   jira: /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/,
 };
 
 export function parseItemId(id: string): { source: SourceKind; key: string } | null {
   const at = id.indexOf(":");
-  const source = (Object.keys(keyShapes) as SourceKind[]).find((kind) => kind === id.slice(0, at));
+  const source = sourceKinds.find((kind) => kind === id.slice(0, at));
   const key = id.slice(at + 1);
   if (!source || !keyShapes[source].test(key)) return null;
   return { source, key };

@@ -63,7 +63,7 @@ test("mutation status is one of pending, applied, failed", () => {
   db.exec(`
     insert into regions values ('r1', '${workspaceId}', '{"kind":"picked"}', 0, '${now}');
     insert into threads values ('t1', '${workspaceId}', 'r1', '${now}');
-    insert into change_sets values ('c1', '${workspaceId}', 't1', null, 'h', null, '${now}');
+    insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');
   `);
   const insert = db.prepare(
     "insert into mutations (id, workspace_id, change_set_id, seq, op, args, status) values (?, ?, 'c1', ?, 'setEstimate', '{}', ?)",
@@ -78,7 +78,7 @@ function withChangeSet() {
   db.exec(`
     insert into regions values ('r1', '${workspaceId}', '{"kind":"picked"}', 0, '${now}');
     insert into threads values ('t1', '${workspaceId}', 'r1', '${now}');
-    insert into change_sets values ('c1', '${workspaceId}', 't1', null, 'h', null, '${now}');
+    insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');
   `);
   return { db, workspaceId };
 }
@@ -121,9 +121,27 @@ test("decisions are ordered by seq, never by timestamp", () => {
 test("a change set has at most one live review link", () => {
   const { db, workspaceId } = withChangeSet();
   const insert = db.prepare(
-    "insert into review_links (token_hash, workspace_id, change_set_id, created_at, expires_at, revoked_at) values (?, ?, 'c1', ?, ?, ?)",
+    "insert into review_links (token_hash, workspace_id, change_set_id, created_at, revoked_at) values (?, ?, 'c1', ?, ?)",
   );
-  insert.run("h1", workspaceId, now, now, now);
-  insert.run("h2", workspaceId, now, now, null);
-  assert.throws(() => insert.run("h3", workspaceId, now, now, null), /UNIQUE/);
+  insert.run("h1", workspaceId, now, now);
+  insert.run("h2", workspaceId, now, null);
+  assert.throws(() => insert.run("h3", workspaceId, now, null), /UNIQUE/);
+});
+
+test("a review-link decision names a real link, and a thread decision names none", () => {
+  const { db, workspaceId } = withChangeSet();
+  db.prepare(
+    "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values ('h1', ?, 'c1', ?)",
+  ).run(workspaceId, now);
+  const insert = db.prepare(
+    "insert into decisions (id, workspace_id, change_set_id, seq, kind, via, review_link, by_name, hash, at) values (?, ?, 'c1', ?, 'approved', ?, ?, 'pm', 'h', ?)",
+  );
+  insert.run("d1", workspaceId, 1, "review-link", "h1", now);
+  insert.run("d2", workspaceId, 2, "thread", null, now);
+  assert.throws(() => insert.run("d3", workspaceId, 3, "review-link", null, now), /CHECK/);
+  assert.throws(() => insert.run("d4", workspaceId, 4, "thread", "h1", now), /CHECK/);
+  assert.throws(
+    () => insert.run("d5", workspaceId, 5, "review-link", "forged", now),
+    /FOREIGN KEY/,
+  );
 });

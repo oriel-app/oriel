@@ -29,7 +29,7 @@ function fresh() {
     pages: { records: IndexRecord<"jira">[]; gone?: string[] }[],
     now: Instant = t1,
   ) => {
-    const run = index.beginSync(workspaceId, "jira", now);
+    const run = index.beginSync(workspaceId, "jira", attrs, now);
     for (const p of pages) run.apply({ records: p.records, gone: p.gone ?? [], cursor: "c" });
     return run.finish("c", now);
   };
@@ -81,7 +81,7 @@ test("a sync that changes nothing keeps the version", () => {
 test("the sync time moves only when a sync finishes", () => {
   const { index, workspaceId, sync } = fresh();
   sync([{ records: [record("10001", "SYN-1", "A")] }], t0);
-  const run = index.beginSync(workspaceId, "jira", t1);
+  const run = index.beginSync(workspaceId, "jira", attrs, t1);
   run.apply({ records: [record("10002", "SYN-2", "B")], gone: [], cursor: "c" });
   assert.equal(index.source(workspaceId, "jira")?.syncedAt, t0);
   run.finish("c", t1);
@@ -90,7 +90,7 @@ test("the sync time moves only when a sync finishes", () => {
 
 test("a sync that crashed partway is reclaimed by the next one", () => {
   const { index, workspaceId, sync } = fresh();
-  const crashed = index.beginSync(workspaceId, "jira", t0);
+  const crashed = index.beginSync(workspaceId, "jira", attrs, t0);
   crashed.apply({ records: [record("10001", "SYN-1", "A")], gone: [], cursor: "c" });
   assert.equal(index.snapshot(workspaceId), 0);
   assert.equal(sync([{ records: [record("10001", "SYN-1", "A")] }]), 1);
@@ -130,7 +130,7 @@ test("a recreated project reusing a key retires the old item instead of jamming 
 
 test("malformed pages are refused before they reach the index", () => {
   const { index, workspaceId } = fresh();
-  const run = index.beginSync(workspaceId, "jira", t0);
+  const run = index.beginSync(workspaceId, "jira", attrs, t0);
   const bad = [
     { ...record("1", "SYN-1", "x"), id: "slack:C1" },
     { ...record("1", "SYN-1", "x"), id: "jira:syn 1" },
@@ -191,4 +191,54 @@ test("attrs that don't match the caller's shape are an error, not a silent cast"
     () => index.records(workspaceId, "jira", object({ points: number })),
     /attrs don't match/,
   );
+});
+
+test("attrs are checked on write, so one bad record can't blank the window", () => {
+  const { index, workspaceId, ids, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "ok", 3)] }]);
+  const run = index.beginSync(workspaceId, "jira", attrs, t1);
+  const bad = {
+    ...record("2", "SYN-2", "bad"),
+    attrs: { points: "5" },
+  } as unknown as IndexRecord<"jira">;
+  assert.throws(() => run.apply({ records: [bad], gone: [], cursor: "c" }), /attrs don't match/);
+  assert.deepEqual(ids(), ["jira:SYN-1"]);
+});
+
+test("search finds an item by its full item ID", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "First"), record("2", "SYN-10", "Tenth")] }]);
+  assert.deepEqual(
+    index.search(workspaceId, "jira:SYN-1", 1).map((r) => r.id),
+    ["jira:SYN-1"],
+  );
+  assert.deepEqual(index.search(workspaceId, "jira:", 10), []);
+});
+
+test("search work is bounded however the query is built", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([
+    {
+      records: Array.from({ length: 60 }, (_, i) =>
+        record(`${i + 1}`, `SYN-${i + 1}`, `Story ${i}`),
+      ),
+    },
+  ]);
+  assert.equal(index.search(workspaceId, "story ".repeat(1_000_000), 10).length, 10);
+  assert.equal(index.search(workspaceId, "story", Infinity).length, 50);
+  assert.equal(index.search(workspaceId, "story", -5).length, 1);
+  assert.equal(index.search(workspaceId, "story", Number.NaN).length, 1);
+  const manyTerms = Array.from({ length: 20 }, (_, i) => `t${i}`).join(" ");
+  assert.deepEqual(index.search(workspaceId, `story ${manyTerms}`, 10), []);
+});
+
+test("a first sync with no pages still counts as a sync", () => {
+  const { index, workspaceId } = fresh();
+  const run = index.beginSync(workspaceId, "jira", attrs, t1);
+  assert.equal(run.finish(null, t1), 0);
+  assert.deepEqual(index.source(workspaceId, "jira"), { cursor: null, syncedAt: t1 });
+  const next = index.beginSync(workspaceId, "jira", attrs, t1);
+  next.finish("c2", t1);
+  index.beginSync(workspaceId, "jira", attrs, t1).finish(null, t1);
+  assert.equal(index.source(workspaceId, "jira")?.cursor, "c2");
 });

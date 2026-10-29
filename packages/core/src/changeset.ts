@@ -39,8 +39,8 @@ export type Decision = {
   via: "thread" | "review-link";
   // The approver's typed name on a review link; the user in a thread.
   by: string;
-  // The change set's hash at decision time. An edit changes the hash, which
-  // voids the approval.
+  // The hash of the change set as the person reviewed it. An edit changes the
+  // change set's hash, which voids the approval.
   hash: string;
   at: Instant;
 };
@@ -57,7 +57,8 @@ export type ChangeSet = {
   // Null for a revert, which no run produced.
   runId: Ulid | null;
   mutations: MutationRecord[];
-  // Hash of the mutations' ops, targets and args.
+  // Hash of the mutations' ops, targets and args. Derived from the mutation
+  // rows each time, never stored.
   hash: string;
   decision: Decision | null;
   // Set when this change set reverts another.
@@ -68,6 +69,9 @@ export type ChangeSet = {
 // One plain-language line per mutation: what it will do, with before and after.
 export type Diff = {
   changeSetId: Ulid;
+  // The change set's hash at the moment this diff was built. A decision
+  // carries it back, so a person approves exactly what they saw.
+  hash: string;
   lines: {
     mutationId: Ulid;
     sentence: string;
@@ -101,9 +105,17 @@ export interface ChangeSets {
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
   edit(id: Ulid, patch: ChangeSetPatch): Promise<ChangeSet>;
-  decide(id: Ulid, kind: Decision["kind"], approver: Approver): Promise<ChangeSet>;
-  // Writes only under an approval whose hash matches; replays exactly the
-  // captured arguments in `seq` order; resumable after a crash.
+  // `reviewed` is the hash from the diff the person saw. The decision is
+  // refused if the change set has changed since.
+  decide(
+    id: Ulid,
+    kind: Decision["kind"],
+    approver: Approver,
+    reviewed: string,
+  ): Promise<ChangeSet>;
+  // Writes only under an approval whose hash matches the hash derived from the
+  // mutation rows it is about to send. Replays exactly the captured arguments,
+  // in `seq` order, and can resume after a crash.
   apply(id: Ulid): Promise<ApplyReport>;
   // A new change set of reverse mutations, approved like any other, or the
   // conflicts that stop it: fields the source changed since apply.
