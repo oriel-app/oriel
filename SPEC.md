@@ -139,7 +139,7 @@ Test mechanics:
 - `.claude/agents/reviewer.md`: tools Read, Grep, Glob only; reviews a diff against this spec and the glossary; skips style.
 - `.claude/settings.json`, committed: PostToolUse formatter on the edited file; Stop hook `pnpm typecheck 1>&2 || exit 2`, with a loop guard (after one blocked stop, the next goes through); edits to `fixtures/**`, `tests/golden/**`, `.github/workflows/**`, `docs/decisions/**` ask the maintainer first (CODEOWNERS and branch protection are the real lock); deny Read on `.env*` and `secrets/**`.
 - `.github/`: `ci.yml` (typecheck, lint, unit, deterministic evals, dependency-allowlist check, symlink check, build); `PULL_REQUEST_TEMPLATE.md` (problem, fix, evidence block with command output or screenshot, "CI/tests/fixtures/deps changed? y/n", model and harness line); `CODEOWNERS`: `@vibdev` owns `tests/**`, `fixtures/**`, `.github/**`, `packages/sandbox/**`, `docs/decisions/**`.
-- Branch protection on `main`: required CI, no agent merges. Conventional commits `type(scope): summary`. Branch names ≤ 3 hyphenated words, no prefixes.
+- Branch protection on `main`: required CI that nobody can bypass. A separate rule requires code-owner review; the maintainer may bypass it on PRs, because GitHub won't let an author approve their own PR and agents push as the maintainer. No agent merges. Conventional commits `type(scope): summary`. Branch names ≤ 3 hyphenated words, no prefixes.
 - `LICENSE` MIT. `CONTRIBUTING.md`, two lines: the human who runs an agent owns what it submits; contributors confirm no employer claim on the contribution.
 - `docs/user/` (shipped-product voice), `docs/internals/`, `docs/decisions/`.
 - `SPEC.md` = this file.
