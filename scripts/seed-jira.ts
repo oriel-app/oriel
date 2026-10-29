@@ -4,7 +4,7 @@
 // deleted. The fixture's changes are applied last. Field IDs are discovered
 // at run time. It refuses unless SYN exists, is company-managed and holds no
 // issues, and it deletes only what this run created.
-// Usage: pnpm seed:jira [--dry-run]
+// Usage: pnpm seed:jira [--dry-run | --preflight]
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -435,8 +435,8 @@ async function seed(fixture: JiraFixture, call: Call): Promise<void> {
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.some((arg) => arg !== "--dry-run")) {
-    console.error("usage: pnpm seed:jira [--dry-run]");
+  if (args.length > 1 || args.some((arg) => arg !== "--dry-run" && arg !== "--preflight")) {
+    console.error("usage: pnpm seed:jira [--dry-run | --preflight]");
     process.exit(1);
   }
   const fixture = loadJiraFixture();
@@ -451,7 +451,16 @@ if (import.meta.main) {
     process.exit(1);
   }
   try {
-    await seed(fixture, client(env));
+    // --preflight runs only the read-only checks against the live site and
+    // writes nothing, so a run can be validated before it creates anything.
+    if (args.includes("--preflight")) {
+      const found = await discover(fixture, client(env));
+      console.log(
+        `preflight ok: estimation field ${found.pointsField}, issue types ${Object.keys(found.issueTypes).join(", ")}, assignee settable: ${found.unassign}`,
+      );
+    } else {
+      await seed(fixture, client(env));
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
