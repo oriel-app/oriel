@@ -29,6 +29,8 @@ export type MutationRecord<K extends SourceKind = SourceKind> = {
   // Written the moment the source answers, so a retried replay skips it.
   applied: (WriteResult<K> & { at: Instant }) | null;
   error: string | null;
+  // On a reverse mutation, the mutation it undoes.
+  reverts: Ulid | null;
 };
 
 export type Decision = {
@@ -52,7 +54,8 @@ export type ChangeSet = {
   id: Ulid;
   workspaceId: Ulid;
   threadId: Ulid;
-  runId: Ulid;
+  // Null for a revert, which no run produced.
+  runId: Ulid | null;
   mutations: MutationRecord[];
   // Hash of the mutations' ops, targets and args.
   hash: string;
@@ -105,8 +108,9 @@ export interface ChangeSets {
   // A new change set of reverse mutations, approved like any other, or the
   // conflicts that stop it: fields the source changed since apply.
   revert(id: Ulid): Promise<ChangeSet | { conflicts: Conflict[] }>;
-  // Creates or returns the live link. It dies after 7 days, on revoke, or once
-  // the change set is decided.
+  // Mints a new link and revokes any earlier one: only the token's hash is
+  // stored, so a link can't be shown twice. It dies after 7 days, on revoke, or
+  // once the change set is decided.
   reviewLink(id: Ulid): Promise<URL>;
   revokeReviewLink(id: Ulid): Promise<void>;
   // What the review page shows; null for a dead or unknown token.

@@ -80,7 +80,7 @@ Concretely:
 - **UI:** minimal-dependency. Prefer TanStack libraries over a React-centric stack; the renderer is an ADR — pick the smallest maintained option and justify it. No bundler in phase 1 (tsc emit + native ESM + import maps); adding one is an ADR.
 - **Schema and types:** hand-written TypeScript types per source plus a small in-house validator at the boundary. Generate the per-region `.d.ts` with the TypeScript compiler API directly, no wrapper library.
 - **Evals:** an in-house runner (JSON cases, run, grade, report). No eval framework dependency.
-- **Migrations:** numbered SQL files applied by an in-house runner. The Postgres driver is allowed.
+- **Storage:** Node's built-in SQLite (decision 0011), with numbered SQL migrations applied by an in-house runner. A Postgres driver stays allowed if multi-tenant hosting ever needs it.
 - **Model access:** the Anthropic SDK is allowed (maintained by the vendor); raw HTTP is also acceptable.
 
 Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains a package without a matching ADR in `docs/decisions/`. No unmaintained packages, ever; we go Rust for a component before pulling in a dead one.
