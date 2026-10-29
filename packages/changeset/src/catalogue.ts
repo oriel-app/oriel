@@ -23,6 +23,14 @@ export type OpSpec = {
   args: Validator<unknown>;
   // A create has no target and may give its item a NewRef.
   creates: boolean;
+  // Sending it twice leaves the source as sending it once does, so a failed
+  // attempt may be retried. Anything else that failed may have landed and is
+  // never sent again.
+  idempotent: boolean;
+  // Exists only as the reverse of another op; a run can't capture it.
+  revertOnly: boolean;
+  // The item IDs among its arguments, which must be in the run's region.
+  refs(args: unknown): string[];
   // The fields a diff shows, with the values this op sets. Keys are field
   // names as the source's reader and writer report them.
   after(args: unknown): FieldValues;
@@ -37,6 +45,10 @@ export type Catalogue = {
   name: string;
   // The field holding an item's title, read for every line.
   titleField: string;
+  // The field holding an item's last update time. Every write result's
+  // `after` carries it, except a delete's. Field conflict checks skip it;
+  // reverting a create checks only it.
+  updatedField: string;
   ops: Readonly<Record<string, OpSpec>>;
 };
 
@@ -46,6 +58,9 @@ export type Catalogue = {
 export function op<T>(spec: {
   args: Validator<T>;
   creates?: boolean;
+  idempotent?: boolean;
+  revertOnly?: boolean;
+  refs?(args: T): string[];
   after(args: T): FieldValues;
   describe(args: T, context: LineContext): Promise<string> | string;
   undo(args: T, applied: WriteResult): Undo;
@@ -58,6 +73,9 @@ export function op<T>(spec: {
   return {
     args: spec.args,
     creates: spec.creates ?? false,
+    idempotent: spec.idempotent ?? false,
+    revertOnly: spec.revertOnly ?? false,
+    refs: (args) => spec.refs?.(parse(args)) ?? [],
     after: (args) => spec.after(parse(args)),
     describe: async (args, context) => spec.describe(parse(args), context),
     undo: (args, applied) => spec.undo(parse(args), applied),

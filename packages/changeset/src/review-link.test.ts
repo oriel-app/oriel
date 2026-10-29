@@ -17,7 +17,7 @@ const tokenOf = (url: URL): string => url.pathname.split("/").at(-1) ?? "";
 
 async function linked() {
   const context = setup();
-  const set = await context.changeSets.capture(context.run, [estimate("jira:SYN-2", 5)]);
+  const set = await context.changeSets.capture(context.run, [estimate("jira:SYN-21", 5)]);
   const url = await context.changeSets.reviewLink(set.id);
   const byLink = (by: string, hash = set.hash) =>
     context.changeSets.decide(
@@ -36,7 +36,7 @@ test("a review link opens the diff and records the approver's typed name with it
   assert.equal(opened?.changeSet.id, set.id);
   assert.equal(
     opened?.diff.lines[0]?.sentence,
-    "Change the estimate of “Retry failed card payments” (SYN-2) from 3 points to 5 points.",
+    "Change the estimate of “Update the payment declined error message” (SYN-21) from 2 points to 5 points.",
   );
   const decided = await changeSets.decide(
     set.id,
@@ -51,7 +51,7 @@ test("a review link opens the diff and records the approver's typed name with it
 
 test("a token minted for another change set is refused", async () => {
   const { changeSets, run, token, db } = await linked();
-  const other = await changeSets.capture(run, [estimate("jira:SYN-3", 2)]);
+  const other = await changeSets.capture(run, [estimate("jira:SYN-117", 2)]);
   const diff = await changeSets.diff(other.id);
   await assert.rejects(
     changeSets.decide(

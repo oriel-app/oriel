@@ -1,15 +1,17 @@
-// Test support: Jira in memory over a snapshot the tests write, and a fresh
-// database per test. The writer reports fields the way jira.ts names them.
+// Test support: Jira in memory over the SYN fixture, and a fresh database per
+// test. The writer reports fields the way jira.ts names them.
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Approved,
   type ChangeSets,
   type FieldValues,
+  fixtureSnapshot,
   type Instant,
   instant,
   type ItemId,
   isItemId,
   isJiraOp,
+  type JiraFixture,
   jiraOps,
   parseItemId,
   type RunRef,
@@ -21,6 +23,7 @@ import {
   type WriteResult,
 } from "@oriel/core";
 import { ensureWorkspace, loadMigrations, migrate, open } from "@oriel/db";
+import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSets, type Reader } from "./change-sets.ts";
 
 export type MemoryIssue = {
@@ -32,6 +35,7 @@ export type MemoryIssue = {
   accountId: string | null;
   epic: ItemId<"jira"> | null;
   links: { linkId: string; url: string; title: string }[];
+  updated: Instant;
 };
 
 export type MemorySnapshot = {
@@ -40,47 +44,43 @@ export type MemorySnapshot = {
   issues: MemoryIssue[];
 };
 
-export function snapshot(): MemorySnapshot {
+// New issues and links start here, above every key and link ID the fixture has.
+const firstNewIssue = 900;
+const firstNewLink = 90001;
+
+let loaded: JiraFixture | null = null;
+const fixture = (): JiraFixture => {
+  loaded ??= loadJiraFixture();
+  return loaded;
+};
+
+// Jira as the SYN fixture leaves it after all its source edits: SYN-16
+// renamed, SYN-88 moved to SYN-3, SYN-27 deleted.
+export function fixtureJira(): MemorySnapshot {
+  const syn = fixture();
+  const { records, content } = fixtureSnapshot(
+    syn,
+    "https://oriel.atlassian.net",
+    syn.edits.length,
+  );
   return {
-    project: "SYN",
-    people: [
-      { accountId: "acc-ana", name: "Ana Lima" },
-      { accountId: "acc-bo", name: "Bo Chen" },
-    ],
-    issues: [
-      {
-        key: "SYN-1",
-        id: "10001",
-        summary: "Checkout reliability",
-        description: "",
-        points: null,
-        accountId: null,
-        epic: null,
-        links: [],
-      },
-      {
-        key: "SYN-2",
-        id: "10002",
-        summary: "Retry failed card payments",
-        description: "Retry once after a soft decline.",
-        points: 3,
-        accountId: "acc-ana",
-        epic: "jira:SYN-1",
-        links: [],
-      },
-      {
-        key: "SYN-3",
-        id: "10003",
-        summary: "Show a receipt after checkout",
-        description: "",
-        points: null,
-        accountId: null,
-        epic: "jira:SYN-1",
-        links: [
-          { linkId: "20001", url: "https://docs.example.com/receipts", title: "Receipt spec" },
-        ],
-      },
-    ],
+    project: syn.project.key,
+    people: syn.people.map((p) => ({ accountId: p.id, name: p.displayName })),
+    issues: records.map((record) => {
+      const c = content.get(record.id);
+      if (!c) throw new Error(`no content for ${record.id}`);
+      return {
+        key: parseItemId(record.id)?.key ?? record.id,
+        id: record.stableId,
+        summary: c.summary,
+        description: c.description,
+        points: c.points,
+        accountId: c.assignee?.accountId ?? null,
+        epic: c.epic,
+        links: c.links.map((link) => ({ ...link })),
+        updated: record.updatedAt,
+      };
+    }),
   };
 }
 
@@ -88,13 +88,26 @@ type Request = WriteRequest<"jira">;
 
 export type MemoryJira = ReturnType<typeof memoryJira>;
 
-export function memoryJira(start: MemorySnapshot) {
+// Every write and every touch from outside moves the clock one second on from
+// `clock`, and stamps the item's `updated` with it.
+export function memoryJira(start: MemorySnapshot, clock: Instant) {
   const issues = new Map(start.issues.map((issue) => [issue.key, structuredClone(issue)]));
+  for (const issue of issues.values()) {
+    const number = Number(issue.key.slice(issue.key.lastIndexOf("-") + 1));
+    if (number >= firstNewIssue) throw new RangeError(`fixture key ${issue.key} is too high`);
+    for (const link of issue.links)
+      if (Number(link.linkId) >= firstNewLink)
+        throw new RangeError(`link ${link.linkId} is too high`);
+  }
   const people = new Map(start.people.map((p) => [p.accountId, p.name]));
-  let nextIssue = 100;
-  let nextLink = 30001;
+  const hidden = new Set<string>();
+  let nextIssue = firstNewIssue;
+  let nextLink = firstNewLink;
+  let ticks = 0;
   // Every request a writer received, in order, including ones that then failed.
   const calls: Request[] = [];
+  // Keys of the issues writes created, in order.
+  const created: string[] = [];
   const hooks: {
     // Runs before a request lands; a promise that never settles is a crash.
     before?: (request: Request, call: number) => Promise<void> | void;
@@ -103,9 +116,14 @@ export function memoryJira(start: MemorySnapshot) {
     read?: (id: ItemId) => Promise<void> | void;
   } = {};
 
+  const tick = (): Instant => {
+    ticks += 1;
+    return instant(new Date(Date.parse(clock) + ticks * 1000));
+  };
   const find = (id: string): MemoryIssue | null => {
     const parsed = parseItemId(id);
-    return parsed?.source === "jira" ? (issues.get(parsed.key) ?? null) : null;
+    if (parsed?.source !== "jira" || hidden.has(parsed.key)) return null;
+    return issues.get(parsed.key) ?? null;
   };
   const values = (issue: MemoryIssue): Record<string, unknown> => ({
     summary: issue.summary,
@@ -113,6 +131,7 @@ export function memoryJira(start: MemorySnapshot) {
     points: issue.points,
     accountId: issue.accountId,
     epic: issue.epic,
+    updated: issue.updated,
     ...Object.fromEntries(
       issue.links.map((l) => [`link:${l.linkId}`, { url: l.url, title: l.title }]),
     ),
@@ -122,34 +141,39 @@ export function memoryJira(start: MemorySnapshot) {
     return Object.fromEntries(fields.map((f) => [f, Object.hasOwn(all, f) ? all[f] : null]));
   };
   const handle = (issue: MemoryIssue) => ({ id: `jira:${issue.key}` as const, stableId: issue.id });
+  const parsed = <T>(result: { ok: true; value: T } | { ok: false }): T => {
+    if (!result.ok) throw new Error("400: bad arguments");
+    return result.value;
+  };
 
   const land = (request: Request): WriteResult<"jira"> => {
     if (!isJiraOp(request.op)) throw new Error(`unknown op ${request.op}`);
     if (request.op === "createStory") {
-      const args = jiraOps.createStory(request.args);
-      if (!args.ok) throw new Error("bad createStory arguments");
+      const args = parsed(jiraOps.createStory(request.args));
       const issue: MemoryIssue = {
         key: `${start.project}-${nextIssue}`,
-        id: String(10000 + nextIssue),
-        summary: args.value.summary,
-        description: args.value.description ?? "",
-        points: args.value.points ?? null,
+        id: String(20000 + nextIssue),
+        summary: args.summary,
+        description: args.description ?? "",
+        points: args.points ?? null,
         accountId: null,
-        epic: args.value.epic !== null && isItemId(args.value.epic) ? args.value.epic : null,
+        epic: args.epic !== null && isItemId(args.epic) ? args.epic : null,
         links: [],
+        updated: tick(),
       };
       nextIssue += 1;
       issues.set(issue.key, issue);
+      created.push(issue.key);
       return {
         item: handle(issue),
         before: {},
-        after: pick(issue, ["summary", "description", "points", "epic"]),
+        after: pick(issue, ["summary", "description", "points", "epic", "updated"]),
       };
     }
     const issue = request.target === null ? null : find(request.target);
     if (!issue)
       throw new Error(
-        `Issue does not exist or you do not have permission to see it: ${request.target}`,
+        `404: Issue does not exist or you do not have permission to see it: ${request.target}`,
       );
     const set = <F extends "summary" | "description" | "points" | "accountId">(
       field: F,
@@ -157,45 +181,38 @@ export function memoryJira(start: MemorySnapshot) {
     ) => {
       const before = pick(issue, [field]);
       issue[field] = value;
-      return { item: handle(issue), before, after: pick(issue, [field]) };
+      issue.updated = tick();
+      return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };
     };
     switch (request.op) {
-      case "setSummary": {
-        const a = jiraOps.setSummary(request.args);
-        if (!a.ok) throw new Error("bad arguments");
-        return set("summary", a.value.summary);
-      }
-      case "setDescription": {
-        const a = jiraOps.setDescription(request.args);
-        if (!a.ok) throw new Error("bad arguments");
-        return set("description", a.value.description);
-      }
-      case "setEstimate": {
-        const a = jiraOps.setEstimate(request.args);
-        if (!a.ok) throw new Error("bad arguments");
-        return set("points", a.value.points);
-      }
-      case "setAssignee": {
-        const a = jiraOps.setAssignee(request.args);
-        if (!a.ok) throw new Error("bad arguments");
-        return set("accountId", a.value.accountId);
-      }
+      case "setSummary":
+        return set("summary", parsed(jiraOps.setSummary(request.args)).summary);
+      case "setDescription":
+        return set("description", parsed(jiraOps.setDescription(request.args)).description);
+      case "setEstimate":
+        return set("points", parsed(jiraOps.setEstimate(request.args)).points);
+      case "setAssignee":
+        return set("accountId", parsed(jiraOps.setAssignee(request.args)).accountId);
       case "addLink": {
-        const a = jiraOps.addLink(request.args);
-        if (!a.ok) throw new Error("bad arguments");
+        const args = parsed(jiraOps.addLink(request.args));
         const field = `link:${nextLink}`;
-        issue.links.push({ linkId: String(nextLink), url: a.value.url, title: a.value.title });
+        issue.links.push({ linkId: String(nextLink), url: args.url, title: args.title });
         nextLink += 1;
-        return { item: handle(issue), before: { [field]: null }, after: pick(issue, [field]) };
+        issue.updated = tick();
+        return {
+          item: handle(issue),
+          before: { [field]: null },
+          after: pick(issue, [field, "updated"]),
+        };
       }
       case "removeLink": {
-        const a = jiraOps.removeLink(request.args);
-        if (!a.ok) throw new Error("bad arguments");
-        const field = `link:${a.value.linkId}`;
+        const { linkId } = parsed(jiraOps.removeLink(request.args));
+        const field = `link:${linkId}`;
         const before = pick(issue, [field]);
-        if (before[field] === null) throw new Error(`no link ${a.value.linkId}`);
-        issue.links = issue.links.filter((l) => l.linkId !== a.value.linkId);
-        return { item: handle(issue), before, after: { [field]: null } };
+        if (before[field] === null) throw new Error(`404: no link ${linkId}`);
+        issue.links = issue.links.filter((l) => l.linkId !== linkId);
+        issue.updated = tick();
+        return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };
       }
       case "deleteItem": {
         const before = values(issue);
@@ -233,10 +250,18 @@ export function memoryJira(start: MemorySnapshot) {
     person: async (accountId) => people.get(accountId) ?? null,
   };
 
+  const touch = (key: string): MemoryIssue => {
+    const issue = issues.get(key);
+    if (!issue) throw new Error(`no issue ${key}`);
+    issue.updated = tick();
+    return issue;
+  };
+
   return {
     writer,
     reader,
     calls,
+    created,
     hooks,
     issue: (key: string): MemoryIssue | null => structuredClone(issues.get(key) ?? null),
     // An edit someone makes directly in Jira, outside Oriel.
@@ -244,17 +269,41 @@ export function memoryJira(start: MemorySnapshot) {
       key: string,
       change: Partial<Pick<MemoryIssue, "summary" | "description" | "points" | "accountId">>,
     ) {
-      const issue = issues.get(key);
-      if (!issue) throw new Error(`no issue ${key}`);
-      Object.assign(issue, change);
+      Object.assign(touch(key), change);
+    },
+    // A teammate's comment: it changes no field Oriel writes, only `updated`.
+    comment(key: string) {
+      touch(key);
+    },
+    // The item can't be seen (deleted, moved or forbidden), then can again.
+    hide(key: string) {
+      hidden.add(key);
+    },
+    show(key: string) {
+      hidden.delete(key);
     },
   };
 }
 
 export const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9, 0, 0)));
 
-// A fresh in-memory database with a workspace, region, thread and run, Jira in
-// memory, and a clock the test moves by hand.
+// The thread's region: hand-picked stories that cover the fixture's mess, with
+// SYN-27, which the fixture's edits delete. SYN-2 and SYN-14 are outside it.
+export const regionKeys = [
+  "SYN-1",
+  "SYN-3",
+  "SYN-8",
+  "SYN-13",
+  "SYN-21",
+  "SYN-27",
+  "SYN-31",
+  "SYN-88",
+  "SYN-103",
+  "SYN-117",
+];
+
+// A fresh in-memory database with a workspace, a region, a thread and a run,
+// Jira in memory, and a clock the test moves by hand.
 export function setup() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
@@ -267,6 +316,13 @@ export function setup() {
   db.prepare(
     "insert into regions (id, workspace_id, origin, snapshot, created_at) values (?, ?, ?, 1, ?)",
   ).run(regionId, workspaceId, JSON.stringify({ kind: "picked" }), t0);
+  const base = new Map(fixture().issues.map((issue) => [issue.key, issue.id]));
+  const member = db.prepare(`
+    insert into region_items (workspace_id, region_id, seq, source, stable_id, item_id)
+    values (?, ?, ?, 'jira', ?, ?)`);
+  regionKeys.forEach((key, i) =>
+    member.run(workspaceId, regionId, i + 1, base.get(key) ?? "", `jira:${key}`),
+  );
   db.prepare(
     "insert into threads (id, workspace_id, region_id, created_at) values (?, ?, ?, ?)",
   ).run(threadId, workspaceId, regionId, t0);
@@ -280,7 +336,7 @@ export function setup() {
     t0,
   );
 
-  const jira = memoryJira(snapshot());
+  const jira = memoryJira(fixtureJira(), t0);
   let now: Instant = t0;
   const events: TelemetryEvent[] = [];
   // Another instance over the same database, as after a restart.
@@ -321,4 +377,10 @@ export function nth<T>(list: readonly T[], index: number): T {
 
 export function count(db: DatabaseSync, table: "change_sets" | "decisions"): number {
   return Number(db.prepare(`select count(*) as n from ${table}`).get()?.n);
+}
+
+// What a diff last recorded as shown for a mutation.
+export function preview(db: DatabaseSync, mutationId: Ulid): unknown {
+  const row = db.prepare("select preview from mutations where id = ?").get(mutationId);
+  return typeof row?.preview === "string" ? JSON.parse(row.preview) : null;
 }

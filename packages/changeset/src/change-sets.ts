@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type ApplyReport,
   type Approved,
   type Approver,
   array,
@@ -40,20 +41,12 @@ import { transaction } from "@oriel/db";
 import type { Catalogue, OpSpec, Subject } from "./catalogue.ts";
 import { sameValue, sha256 } from "./hash.ts";
 import { jiraCatalogue } from "./jira.ts";
-import {
-  newRefValue,
-  store,
-  targetValue,
-  ulidValue,
-  writeResult,
-  type LinkRow,
-  type NewMutation,
-} from "./store.ts";
+import { newRefValue, store, targetValue, ulidValue, writeResult, type LinkRow } from "./store.ts";
 
 // The read side a diff needs: values as they are now in the source.
 export type Reader<K extends SourceKind = SourceKind> = {
   // Field names as in the source's catalogue (see jira.ts); "gone" when the
-  // item no longer exists.
+  // item no longer exists or can't be seen.
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
   // A person's display name for a diff line; null when unknown.
   person(accountId: string): Promise<string | null>;
@@ -92,6 +85,9 @@ const catalogues: Record<SourceKind, Catalogue> = { jira: jiraCatalogue };
 const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 const tokenShape = /^[A-Za-z0-9_-]{43}$/;
 const maxErrorChars = 500;
+// The preview of a line whose item was gone when the diff was shown. No
+// catalogue field starts with "$".
+const goneMark = "$gone";
 
 // Boundary validators for what callers pass in. Each is typed against core's
 // contract, so the two can't drift.
@@ -117,6 +113,7 @@ const approverValue: Validator<Approver> = union(
 );
 
 type Draft = CapturedMutation;
+type Checked = Draft & { kind: SourceKind; spec: OpSpec };
 
 function invalid(what: string, issues: Issue[]): ChangeSetError {
   return new ChangeSetError(
@@ -138,30 +135,40 @@ function text(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function catalogueOf(item: ItemId): Catalogue {
+  const kind = parseItemId(item)?.source;
+  if (!kind) throw new Error(`not an item ID: ${item}`);
+  return catalogues[kind];
+}
+
 // The one place an `Approved` value is made (decision 0003). Callers mint right
 // before `writer.apply`, from rows whose hash the latest approval matches.
 function mint<K extends SourceKind>(request: WriteRequest<K>): Approved<WriteRequest<K>> {
   return Object.freeze(request) as Approved<WriteRequest<K>>;
 }
 
-// The source a mutation writes to: its target's, or, for a create or a new
-// item, the one source whose catalogue has the op.
-function sourceOf(op: string, target: string | null): SourceKind | null {
-  const parsed = target === null || isNewRef(target) ? null : parseItemId(target);
-  if (parsed) return parsed.source;
-  const owners = sourceKinds.filter((kind) => Object.hasOwn(catalogues[kind].ops, op));
+// The source a mutation writes to: its target's; for a new item, that of the
+// create naming it; for a create, the one source whose catalogue has the op.
+function kindOf(m: Draft, all: readonly Draft[]): SourceKind | null {
+  if (m.target !== null && !isNewRef(m.target)) return parseItemId(m.target)?.source ?? null;
+  if (m.target !== null) {
+    const ref = m.target;
+    const create = all.find((c) => c.ref === ref);
+    return create && create.target === null ? kindOf(create, all) : null;
+  }
+  const owners = sourceKinds.filter((kind) => Object.hasOwn(catalogues[kind].ops, m.op));
   return owners.length === 1 ? (owners[0] ?? null) : null;
 }
 
-function specOf(op: string, target: string | null): { kind: SourceKind; spec: OpSpec } | null {
-  const kind = sourceOf(op, target);
-  if (kind === null || !Object.hasOwn(catalogues[kind].ops, op)) return null;
-  const spec = catalogues[kind].ops[op];
+function specFor(m: Draft, all: readonly Draft[]): { kind: SourceKind; spec: OpSpec } | null {
+  const kind = kindOf(m, all);
+  if (kind === null || !Object.hasOwn(catalogues[kind].ops, m.op)) return null;
+  const spec = catalogues[kind].ops[m.op];
   return spec ? { kind, spec } : null;
 }
 
-function mustSpec(m: { op: string; target: string | null }): { kind: SourceKind; spec: OpSpec } {
-  const found = specOf(m.op, m.target);
+function mustSpec(m: Draft, all: readonly Draft[]): { kind: SourceKind; spec: OpSpec } {
+  const found = specFor(m, all);
   if (!found) throw new Error(`no catalogue has the op ${m.op} for ${m.target ?? "a new item"}`);
   return found;
 }
@@ -170,11 +177,16 @@ function mustSpec(m: { op: string; target: string | null }): { kind: SourceKind;
 // names a new item, each name once, and a target may name only an item that an
 // earlier create in the same change set names. Returns the validated arguments,
 // which are what gets stored and replayed.
-function check(drafts: readonly Draft[]): Draft[] {
+function check(drafts: readonly Draft[]): Checked[] {
   const named = new Set<NewRef>();
   return drafts.map((m, i) => {
     const where = `mutation ${i + 1} (${m.op})`;
-    const found = specOf(m.op, m.target);
+    if (m.target !== null && isNewRef(m.target) && !named.has(m.target))
+      throw new ChangeSetError(
+        "invalid",
+        `${where}: ${m.target} isn't created by an earlier mutation`,
+      );
+    const found = specFor(m, drafts);
     if (!found) throw new ChangeSetError("invalid", `${where}: not an operation Oriel can make`);
     const { spec } = found;
     if (spec.creates && m.target !== null)
@@ -183,11 +195,6 @@ function check(drafts: readonly Draft[]): Draft[] {
       throw new ChangeSetError("invalid", `${where}: needs an item to change`);
     if (!spec.creates && m.ref !== null)
       throw new ChangeSetError("invalid", `${where}: only a create can name a new item`);
-    if (m.target !== null && isNewRef(m.target) && !named.has(m.target))
-      throw new ChangeSetError(
-        "invalid",
-        `${where}: ${m.target} isn't created by an earlier mutation`,
-      );
     if (m.ref !== null) {
       if (named.has(m.ref))
         throw new ChangeSetError("invalid", `${where}: ${m.ref} is named twice`);
@@ -195,16 +202,42 @@ function check(drafts: readonly Draft[]): Draft[] {
     }
     const args = spec.args(m.args, "$.args");
     if (!args.ok) throw invalid(where, args.issues);
-    return { ...m, args: JSON.parse(JSON.stringify(args.value) ?? "null") };
+    return {
+      op: m.op,
+      target: m.target,
+      ref: m.ref,
+      args: JSON.parse(JSON.stringify(args.value) ?? "null"),
+      ...found,
+    };
   });
 }
 
+// What in these mutations lies outside the region: a target (when `targets`),
+// or an item ID among the arguments. A NewRef target was checked by `check`.
+// Arguments are replayed exactly, so a NewRef among them could never resolve
+// and is refused as well.
+function outsideRegion(
+  checked: readonly { m: Checked; seq: number }[],
+  region: ReadonlySet<string>,
+  targets: boolean,
+): string | null {
+  for (const { m, seq } of checked) {
+    const where = `mutation ${seq} (${m.op})`;
+    if (targets && m.target !== null && !isNewRef(m.target) && !region.has(m.target))
+      return `${where}: ${key(m.target)} isn't in this thread's region`;
+    const stray = m.spec.refs(m.args).find((id) => !region.has(id));
+    if (stray !== undefined) return `${where}: ${key(stray)} isn't in this thread's region`;
+  }
+  return null;
+}
+
 function conflictText(conflicts: readonly Conflict[]): string {
-  const parts = conflicts.map((c) =>
-    c.field === "item"
-      ? `${key(c.target)} is no longer there`
-      : `${key(c.target)}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`,
-  );
+  const parts = conflicts.map((c) => {
+    if (c.field === "item") return `${key(c.target)} is no longer there`;
+    if (c.field === catalogueOf(c.target).updatedField)
+      return `${key(c.target)} was touched since Oriel created it`;
+    return `${key(c.target)}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`;
+  });
   return `Changed in the source since it was applied, so nothing was overwritten: ${parts.join("; ")}.`;
 }
 
@@ -214,6 +247,8 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   // Change sets this instance is applying; a second apply is refused until the
   // first returns, so no mutation is sent twice at once.
   const applying = new Set<string>();
+  // Mutations whose write is in flight; an edit can't touch them.
+  const sending = new Set<Ulid>();
 
   const at = (): { now: Instant; ms: number } => {
     const now = deps.now();
@@ -256,8 +291,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
   // Lines for the rows of `set` as loaded, so `set.hash` is the hash of exactly
   // what is rendered. Applied lines show what the source reported; pending
-  // ones read live values, carried forward through earlier lines.
-  const render = async (set: ChangeSet): Promise<Diff> => {
+  // ones read live values, carried forward through earlier lines. Also returns
+  // the mutations whose item was gone.
+  const render = async (set: ChangeSet): Promise<{ diff: Diff; gone: Set<Ulid> }> => {
     const creates = new Map<string, MutationRecord>();
     for (const m of set.mutations) if (m.ref !== null) creates.set(m.ref, m);
     const itemOf = (m: MutationRecord): ItemId | null => {
@@ -271,7 +307,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     for (const m of set.mutations) {
       const item = itemOf(m);
       if (item === null) continue;
-      const { kind, spec } = mustSpec(m);
+      const { kind, spec } = mustSpec(m, set.mutations);
       const entry = wanted.get(item) ?? { kind, fields: new Set([catalogues[kind].titleField]) };
       if (m.status !== "applied")
         for (const field of Object.keys(spec.after(m.args))) entry.fields.add(field);
@@ -296,8 +332,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     // Field values per item (or new item's ref) as earlier lines leave them.
     const state = new Map<string, Record<string, unknown>>();
     const lines: Diff["lines"] = [];
+    const gone = new Set<Ulid>();
     for (const m of set.mutations) {
-      const { kind, spec } = mustSpec(m);
+      const { kind, spec } = mustSpec(m, set.mutations);
       const catalogue = catalogues[kind];
       const context = (subject: Subject, before: FieldValues) => ({
         subject,
@@ -315,7 +352,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           text(after[catalogue.titleField]) ??
           text(before[catalogue.titleField]);
         const subject: Subject = m.target === null ? null : { kind: "item", id: item, title: name };
-        const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+        const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+          (f) => f !== catalogue.updatedField,
+        );
         lines.push({
           mutationId: m.id,
           sentence: await spec.describe(m.args, context(subject, before)),
@@ -335,6 +374,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       if (item !== null) {
         const now = live.get(item);
         if (now === undefined || now === "gone") {
+          gone.add(m.id);
           lines.push({
             mutationId: m.id,
             sentence: `${key(item)} is no longer in ${catalogue.name}, so this change can't be made.`,
@@ -359,20 +399,25 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const carry = item ?? m.target ?? m.ref;
       if (carry !== null) state.set(carry, { ...values, ...after });
     }
-    return { changeSetId: set.id, hash: set.hash, lines };
+    return { diff: { changeSetId: set.id, hash: set.hash, lines }, gone };
   };
 
-  // Records what the diff showed against each pending mutation, unless the
-  // rows changed while it was being rendered.
-  const keepPreview = (set: ChangeSet, diff: Diff): void =>
+  // Records what the diff showed against each pending mutation, so apply can
+  // tell what the person saw: the before values, or that the item was gone.
+  // Only until the change set is decided, and only if its rows didn't change
+  // while the diff was being rendered.
+  const keepPreview = (set: ChangeSet, rendered: { diff: Diff; gone: Set<Ulid> }): void =>
     transaction(db, () => {
-      if (rows.load(set.id)?.hash !== set.hash) return;
+      const now = rows.load(set.id);
+      if (!now || now.hash !== set.hash || now.decision !== null) return;
       const pending = new Set(set.mutations.filter((m) => m.status !== "applied").map((m) => m.id));
-      for (const line of diff.lines) {
+      for (const line of rendered.diff.lines) {
         if (!pending.has(line.mutationId)) continue;
         rows.setPreview(
           line.mutationId,
-          Object.fromEntries(line.fields.map((f) => [f.name, f.before])),
+          rendered.gone.has(line.mutationId)
+            ? { [goneMark]: true }
+            : Object.fromEntries(line.fields.map((f) => [f.name, f.before])),
         );
       }
     });
@@ -380,23 +425,25 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   const diff = async (set: ChangeSet): Promise<Diff> => {
     const rendered = await render(set);
     keepPreview(set, rendered);
-    return rendered;
+    return rendered.diff;
   };
 
-  // Conflicts between the source now and what each listed field was left at
-  // after apply: per item and field, the last applied mutation's `after`.
-  // A gone item is one conflict on its field "item", against the last mutation
-  // that touched it.
+  // Conflicts between the source now and what each field was left at after
+  // apply: per item and field, the last applied mutation's `after`. The update
+  // time is skipped, since any write moves it. A gone item is one conflict on
+  // its field "item", against the last mutation that touched it.
   const conflictsWith = async (applied: readonly MutationRecord[]): Promise<Conflict[]> => {
     type Expected = { last: Ulid; fields: Map<string, { value: unknown; mutationId: Ulid }> };
     const expected = new Map<ItemId, Expected>();
     for (const m of applied) {
       if (!m.applied) continue;
-      const entry = expected.get(m.applied.item.id) ?? { last: m.id, fields: new Map() };
+      const item = m.applied.item.id;
+      const skip = catalogueOf(item).updatedField;
+      const entry = expected.get(item) ?? { last: m.id, fields: new Map() };
       entry.last = m.id;
       for (const [field, value] of Object.entries(m.applied.after))
-        entry.fields.set(field, { value, mutationId: m.id });
-      expected.set(m.applied.item.id, entry);
+        if (field !== skip) entry.fields.set(field, { value, mutationId: m.id });
+      expected.set(item, entry);
     }
     const conflicts: Conflict[] = [];
     for (const [item, { last, fields }] of expected) {
@@ -422,6 +469,50 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return conflicts;
   };
 
+  // An item a change set created may be deleted only if nobody touched it
+  // since: its update time must still be the one the last of `onItem` (that
+  // change set's applied mutations on it, in seq order) recorded. A missing
+  // update time is a conflict too.
+  const touched = async (
+    item: ItemId,
+    onItem: readonly MutationRecord[],
+  ): Promise<Conflict | null> => {
+    const last = onItem.at(-1);
+    if (!last?.applied) throw new Error(`no applied mutation on ${item}`);
+    const kind = parseItemId(item)?.source;
+    if (!kind) throw new Error(`not an item ID: ${item}`);
+    const field = catalogues[kind].updatedField;
+    const expected = last.applied.after[field];
+    const current = await deps.sources[kind].writer.current(item, [field]);
+    if (current === "gone")
+      return {
+        mutationId: last.id,
+        target: item,
+        field: "item",
+        expected: "present",
+        actual: "gone",
+      };
+    const actual = Object.hasOwn(current, field) ? current[field] : null;
+    if (typeof expected === "string" && sameValue(actual, expected)) return null;
+    return { mutationId: last.id, target: item, field, expected: expected ?? null, actual };
+  };
+
+  // Rechecks, just before a reverse mutation is sent, the mutation it undoes:
+  // the source may have changed since the revert was built.
+  const recheck = async (reverts: Ulid): Promise<Conflict[]> => {
+    const original = rows.mutation(reverts);
+    if (!original?.applied)
+      throw new Error(`reverse mutation undoes ${reverts}, which isn't applied`);
+    const originalSet = mustLoad(original.changeSetId);
+    if (!mustSpec(original, originalSet.mutations).spec.creates) return conflictsWith([original]);
+    const item = original.applied.item.id;
+    const conflict = await touched(
+      item,
+      originalSet.mutations.filter((m) => m.applied?.item.id === item),
+    );
+    return conflict ? [conflict] : [];
+  };
+
   // Where a mutation writes: its target, or the item an earlier create in the
   // same change set made, as that create's stored result says.
   const resolve = (
@@ -443,17 +534,15 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return { set, m: set.mutations.find((r) => r.id === mutationId) ?? null };
   };
 
-  const applyOnce = async (id: string) => {
+  // Sends pending mutations in seq order and stops at the first failure, so a
+  // retry can't land a later mutation before an earlier one.
+  const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
-    const report = {
-      changeSetId: first.id,
-      applied: [] as Ulid[],
-      skipped: [] as Ulid[],
-      failed: [] as { mutationId: Ulid; error: string }[],
-    };
-    const fail = (mutationId: Ulid, error: string) => {
+    const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
+    const stop = (mutationId: Ulid, error: string): ApplyReport => {
       rows.markFailed(mutationId, error);
       report.failed.push({ mutationId, error });
+      return report;
     };
 
     for (const { id: mutationId } of first.mutations) {
@@ -464,15 +553,21 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
-      // A reverse mutation rechecks the mutation it undoes: the source may
-      // have changed since the revert was built.
+      const { kind, spec } = mustSpec(m, set.mutations);
+      // A create or a link that failed may have landed; it is never sent twice.
+      if (m.status === "failed" && !spec.idempotent) {
+        report.failed.push({ mutationId, error: m.error ?? "it failed earlier" });
+        return report;
+      }
+      if (m.preview?.[goneMark] === true) {
+        return stop(
+          mutationId,
+          `${key(m.target ?? "the new item")} was gone when reviewed, so this wasn't sent. Remove it from the change set to continue.`,
+        );
+      }
       if (m.reverts) {
-        const original = rows.mutation(m.reverts);
-        const conflicts = original ? await conflictsWith([original]) : [];
-        if (conflicts.length) {
-          fail(mutationId, conflictText(conflicts));
-          continue;
-        }
+        const conflicts = await recheck(m.reverts);
+        if (conflicts.length) return stop(mutationId, conflictText(conflicts));
         ({ set, m } = approved(id, mutationId));
         if (!m) continue;
       }
@@ -480,28 +575,30 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       // From the check above to the write nothing awaits, so the rows whose
       // hash matched the approval are the rows sent.
       const where = resolve(m, set);
-      if ("failed" in where) {
-        fail(mutationId, where.failed);
-        continue;
-      }
-      const { kind } = mustSpec(m);
+      if ("failed" in where) return stop(mutationId, where.failed);
       const request = mint({ mutationId: m.id, op: m.op, target: where.target, args: m.args });
-      let result: unknown;
+      const uncertain = spec.idempotent
+        ? ""
+        : ` It may have been made in ${catalogues[kind].name}: check, then remove it from the change set to continue.`;
+      sending.add(mutationId);
       try {
-        result = await deps.sources[kind].writer.apply(request);
-      } catch (error) {
-        fail(mutationId, message(error));
-        continue;
+        let result: unknown;
+        try {
+          result = await deps.sources[kind].writer.apply(request);
+        } catch (error) {
+          return stop(mutationId, `${message(error)}${uncertain}`);
+        }
+        const checked = writeResult(result);
+        if (!checked.ok) {
+          return stop(
+            mutationId,
+            `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${uncertain}`,
+          );
+        }
+        rows.markApplied(mutationId, { ...checked.value, at: deps.now() });
+      } finally {
+        sending.delete(mutationId);
       }
-      const checked = writeResult(result);
-      if (!checked.ok) {
-        fail(
-          mutationId,
-          `the source answered in a shape Oriel can't read, so the change may have been made: ${JSON.stringify(checked.issues)}`,
-        );
-        continue;
-      }
-      rows.markApplied(mutationId, { ...checked.value, at: deps.now() });
       report.applied.push(mutationId);
     }
 
@@ -526,6 +623,27 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return url;
   };
 
+  const insertAll = (
+    set: { id: Ulid; workspaceId: Ulid; threadId: Ulid; runId: Ulid | null; revertOf: Ulid | null },
+    mutations: readonly (Draft & { reverts: Ulid | null })[],
+  ): void => {
+    const { now, ms } = at();
+    transaction(db, () => {
+      rows.insertChangeSet({ ...set, createdAt: now });
+      mutations.forEach((m, i) =>
+        rows.insertMutation(set.workspaceId, set.id, {
+          id: ulid(ms),
+          seq: i + 1,
+          op: m.op,
+          target: m.target,
+          ref: m.ref,
+          args: m.args,
+          reverts: m.reverts,
+        }),
+      );
+    });
+  };
+
   return {
     async capture(run, mutations) {
       const owner = runRef(run, "$.run");
@@ -536,27 +654,30 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         throw new ChangeSetError("invalid", "a change set needs at least one mutation");
       if (!rows.runExists(owner.value))
         throw new ChangeSetError("not-found", `no run ${owner.value.id} in that thread`);
-      const drafts = check(parsed.value);
-      const { now, ms } = at();
-      const id = ulid(ms);
-      transaction(db, () => {
-        rows.insertChangeSet({
+      const checked = check(parsed.value);
+      const revertOnly = checked.findIndex((m) => m.spec.revertOnly);
+      if (revertOnly >= 0)
+        throw new ChangeSetError(
+          "invalid",
+          `mutation ${revertOnly + 1} (${checked[revertOnly]?.op}): exists only to revert a change, so a run can't ask for it`,
+        );
+      const outside = outsideRegion(
+        checked.map((m, i) => ({ m, seq: i + 1 })),
+        rows.regionItems(owner.value.threadId),
+        true,
+      );
+      if (outside) throw new ChangeSetError("refused", outside);
+      const id = ulid(at().ms);
+      insertAll(
+        {
           id,
           workspaceId: owner.value.workspaceId,
           threadId: owner.value.threadId,
           runId: owner.value.id,
           revertOf: null,
-          createdAt: now,
-        });
-        drafts.forEach((m, i) =>
-          rows.insertMutation(owner.value.workspaceId, id, {
-            ...m,
-            id: ulid(ms),
-            seq: i + 1,
-            reverts: null,
-          }),
-        );
-      });
+        },
+        checked.map((m) => ({ ...m, reverts: null })),
+      );
       return mustLoad(id);
     },
 
@@ -580,6 +701,11 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
               "refused",
               `mutation ${m.seq} is already applied and can't be edited`,
             );
+          if (sending.has(m.id))
+            throw new ChangeSetError(
+              "refused",
+              `mutation ${m.seq} is being applied right now and can't be edited`,
+            );
           if (remove.has(mutationId) && changes.has(mutationId))
             throw new ChangeSetError("invalid", `mutation ${m.seq} is both removed and changed`);
         }
@@ -592,10 +718,16 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         const checked = check(
           kept.map((m) => ({ ...m, args: changes.has(m.id) ? changes.get(m.id) : m.args })),
         );
-        for (const mutationId of remove) rows.remove(current.id, mutationId);
-        kept.forEach((m, i) => {
-          if (changes.has(m.id)) rows.setArgs(current.id, m.id, checked[i]?.args);
+        // Targets don't change in an edit, and a revert's may be items it
+        // created, so only the edited arguments are held to the region.
+        const edited = kept.flatMap((row, i) => {
+          const m = checked[i];
+          return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
         });
+        const outside = outsideRegion(edited, rows.regionItems(current.threadId), false);
+        if (outside) throw new ChangeSetError("refused", outside);
+        for (const mutationId of remove) rows.remove(current.id, mutationId);
+        for (const { id: mutationId, m } of edited) rows.setArgs(current.id, mutationId, m.args);
         return current;
       });
       deps.emit({
@@ -674,25 +806,40 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const applied = set.mutations.filter((m) => m.applied !== null);
       if (applied.length === 0)
         throw new ChangeSetError("not-revertible", "nothing in this change set has been applied");
-      const undo = [...applied].reverse().map((m) => {
-        if (!m.applied) throw new Error("unreachable: filtered to applied mutations");
-        const { spec } = mustSpec(m);
-        const step = spec.undo(m.args, m.applied);
+
+      // Items this change set created. Everything it did to one is undone by
+      // deleting it, once.
+      const created = new Map<ItemId, MutationRecord>();
+      for (const m of applied)
+        if (m.applied && mustSpec(m, set.mutations).spec.creates) created.set(m.applied.item.id, m);
+      const undo: (Draft & { reverts: Ulid })[] = [];
+      for (const m of [...applied].reverse()) {
+        if (!m.applied) continue;
+        const item = m.applied.item.id;
+        const create = created.get(item);
+        if (create && create !== m) continue;
+        const step = mustSpec(m, set.mutations).spec.undo(m.args, m.applied);
         if ("refused" in step)
           throw new ChangeSetError(
             "not-revertible",
             `mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`,
           );
-        return {
-          reverts: m.id,
-          op: step.op,
-          target: m.applied.item.id,
-          ref: null,
-          args: step.args,
-        };
-      });
+        undo.push({ reverts: m.id, op: step.op, target: item, ref: null, args: step.args });
+      }
 
-      const conflicts = await conflictsWith(applied);
+      const conflicts: Conflict[] = [];
+      for (const item of created.keys()) {
+        const conflict = await touched(
+          item,
+          applied.filter((m) => m.applied?.item.id === item),
+        );
+        if (conflict) conflicts.push(conflict);
+      }
+      conflicts.push(
+        ...(await conflictsWith(
+          applied.filter((m) => m.applied && !created.has(m.applied.item.id)),
+        )),
+      );
       if (conflicts.length) {
         deps.emit({
           name: "changeset.reverted",
@@ -704,27 +851,18 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         return { conflicts };
       }
 
-      const drafts = check(undo);
-      const { now, ms } = at();
-      const reverseId = ulid(ms);
-      transaction(db, () => {
-        rows.insertChangeSet({
+      const checked = check(undo);
+      const reverseId = ulid(at().ms);
+      insertAll(
+        {
           id: reverseId,
           workspaceId: set.workspaceId,
           threadId: set.threadId,
           runId: null,
           revertOf: set.id,
-          createdAt: now,
-        });
-        drafts.forEach((m, i) =>
-          rows.insertMutation(set.workspaceId, reverseId, {
-            ...m,
-            id: ulid(ms),
-            seq: i + 1,
-            reverts: undo[i]?.reverts ?? null,
-          } satisfies NewMutation),
-        );
-      });
+        },
+        checked.map((m, i) => ({ ...m, reverts: undo[i]?.reverts ?? null })),
+      );
       deps.emit({
         name: "changeset.reverted",
         at: deps.now(),
@@ -752,6 +890,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       rows.revokeLinks(set.id, at().now);
     },
 
+    // The review route (not built yet) must send `Referrer-Policy: no-referrer`
+    // and `Cache-Control: no-store`, and must not call this on the GET a link
+    // unfurler makes: it reads the source and records previews.
     async openReview(token) {
       const link = liveLink(token);
       if (!link) return null;

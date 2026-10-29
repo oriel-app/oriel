@@ -133,6 +133,9 @@ export function store(db: DatabaseSync) {
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
+  const selectRegionItems = db.prepare(`
+    select ri.item_id from threads t join region_items ri on ri.region_id = t.region_id
+    where t.id = ?`);
   const insertChangeSet = db.prepare(`
     insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at)
     values (?, ?, ?, ?, ?, ?)`);
@@ -149,7 +152,7 @@ export function store(db: DatabaseSync) {
     "update mutations set preview = ? where id = ? and status != 'applied'",
   );
   const updateApplied = db.prepare(
-    "update mutations set status = 'applied', applied = ?, error = null where id = ?",
+    "update mutations set status = 'applied', applied = ?, error = null where id = ? and status != 'applied'",
   );
   const updateFailed = db.prepare(
     "update mutations set status = 'failed', error = ? where id = ? and status != 'applied'",
@@ -232,6 +235,11 @@ export function store(db: DatabaseSync) {
       );
     },
 
+    // The item IDs of a thread's region, as handles at the region's creation.
+    regionItems(threadId: Ulid): Set<string> {
+      return new Set(selectRegionItems.all(threadId).map((row) => String(row.item_id)));
+    },
+
     insertChangeSet(set: {
       id: Ulid;
       workspaceId: Ulid;
@@ -276,8 +284,14 @@ export function store(db: DatabaseSync) {
       updatePreview.run(JSON.stringify(preview), mutationId);
     },
 
+    // Throws if no pending or failed row took the result: the write landed,
+    // but its row was removed or applied meanwhile.
     markApplied(mutationId: Ulid, applied: Infer<typeof appliedValue>): void {
-      updateApplied.run(JSON.stringify(applied), mutationId);
+      const { changes } = updateApplied.run(JSON.stringify(applied), mutationId);
+      if (Number(changes) !== 1)
+        throw new Error(
+          `mutation ${mutationId} landed in the source, but its row changed meanwhile`,
+        );
     },
 
     markFailed(mutationId: Ulid, error: string): void {

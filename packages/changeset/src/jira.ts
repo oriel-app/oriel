@@ -12,7 +12,9 @@ import { type Catalogue, type LineContext, op, type Subject, type Undo } from ".
 // reader and writer (their `current`, `before` and `after`):
 // - `summary`, `description` ("" when empty), `points`, `epic` (an item ID)
 //   and `accountId` (the assignee);
-// - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed.
+// - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed;
+// - `updated`: the item's last update time, an instant. Every `after` carries
+//   it except deleteItem's, and `current(id, ["updated"])` returns it.
 // A set op's one argument key is the field it sets, so its revert restores
 // `applied.before[key]`.
 
@@ -43,12 +45,17 @@ function estimate(points: unknown): string {
   return points === 1 ? "1 point" : `${points} points`;
 }
 
-function host(url: string): string {
+// Where a link goes: the host of a web address, or else the whole URL, so a
+// `javascript:` link can't pass for the host it names.
+function destination(url: string): string {
   try {
-    return new URL(url).host || quoted(url);
+    const parsed = new URL(url);
+    if ((parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.host)
+      return parsed.host;
   } catch {
-    return quoted(url);
+    // Not a URL at all; shown whole below.
   }
+  return `“${url}”`;
 }
 
 async function who(context: LineContext, accountId: string): Promise<string> {
@@ -73,10 +80,12 @@ function restore<T>(name: string, field: string, validator: Validator<T>) {
 export const jiraCatalogue: Catalogue = {
   name: "Jira",
   titleField: "summary",
+  updatedField: "updated",
   ops: {
     createStory: op({
       args: jiraOps.createStory,
       creates: true,
+      refs: (a) => (a.epic === null ? [] : [a.epic]),
       after: (a) => ({
         summary: a.summary,
         ...(a.description === undefined ? {} : { description: a.description }),
@@ -99,12 +108,14 @@ export const jiraCatalogue: Catalogue = {
     }),
     setSummary: op({
       args: jiraOps.setSummary,
+      idempotent: true,
       after: (a) => ({ summary: a.summary }),
       describe: (a, context) => `Rename ${named(context.subject)} to ${quoted(a.summary)}.`,
       undo: restore("setSummary", "summary", jiraOps.setSummary),
     }),
     setDescription: op({
       args: jiraOps.setDescription,
+      idempotent: true,
       after: (a) => ({ description: a.description }),
       describe: (a, context) => {
         const was = context.before.description;
@@ -118,6 +129,7 @@ export const jiraCatalogue: Catalogue = {
     }),
     setEstimate: op({
       args: jiraOps.setEstimate,
+      idempotent: true,
       after: (a) => ({ points: a.points }),
       describe: (a, context) => {
         const was = context.before.points;
@@ -133,6 +145,7 @@ export const jiraCatalogue: Catalogue = {
     }),
     setAssignee: op({
       args: jiraOps.setAssignee,
+      idempotent: true,
       after: (a) => ({ accountId: a.accountId }),
       describe: async (a, context) => {
         const was = context.before.accountId;
@@ -148,9 +161,10 @@ export const jiraCatalogue: Catalogue = {
     }),
     addLink: op({
       args: jiraOps.addLink,
-      after: (a) => ({ link: { url: a.url, title: a.title } }),
+      // Jira names the link when it adds it; until then it is `link:new`.
+      after: (a) => ({ "link:new": { url: a.url, title: a.title } }),
       describe: (a, context) =>
-        `Add the link ${quoted(a.title)} (${host(a.url)}) to ${named(context.subject)}.`,
+        `Add the link ${quoted(a.title)} (${destination(a.url)}) to ${named(context.subject)}.`,
       undo: (_a, applied) => {
         const field = linkField(applied.after);
         if (field === null) return { refused: "Jira didn't report which link it added" };
@@ -159,6 +173,7 @@ export const jiraCatalogue: Catalogue = {
     }),
     removeLink: op({
       args: jiraOps.removeLink,
+      revertOnly: true,
       after: (a) => ({ [`link:${a.linkId}`]: null }),
       describe: (a, context) => {
         const link = context.before[`link:${a.linkId}`];
@@ -177,6 +192,7 @@ export const jiraCatalogue: Catalogue = {
     }),
     deleteItem: op({
       args: jiraOps.deleteItem,
+      revertOnly: true,
       after: () => ({}),
       describe: (_a, context) => `Delete ${named(context.subject)} from Jira.`,
       undo: () => ({ refused: "a deleted item can't be restored by a revert" }),
