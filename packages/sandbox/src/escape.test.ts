@@ -116,7 +116,7 @@ test("files: write", async () => {
 test("files: node:module require", () =>
   mustFail(
     `const { createRequire } = await import("node:module");
-     return JSON.stringify(createRequire(import.meta.url)(${JSON.stringify(secretJson)}));`,
+     return JSON.stringify(createRequire("file:///require-base.js")(${JSON.stringify(secretJson)}));`,
     notCapable,
   ));
 
@@ -144,8 +144,9 @@ test("subprocess: node:child_process", () =>
 
 test("FFI", () => mustFail(`return Deno.dlopen("libc.so.6", {});`, notCapable));
 
-// Deno loads a literal specifier's module before the script runs, outside
-// `--deny-read`; the import map is what stops these.
+// The script becomes a function at run time, so even a literal specifier in it
+// is a run-time import: the import map refuses `file:`, and read permission
+// would too (deno.test.ts shows Deno's own behavior).
 test("import(): a literal file path, as JSON", () =>
   mustFail(
     `return JSON.stringify(await import(${JSON.stringify(secretJson)}, { with: { type: "json" } }));`,
@@ -168,16 +169,29 @@ test("import(): a computed file: URL", () =>
     /no-imports|NotCapable|Requires read access/,
   ));
 
-test("import: a static import that breaks out of the script's function", async () => {
-  const result = await run(
-    `});\nimport secret from ${JSON.stringify(secretJson)} with { type: "json" };\nconsole.log(JSON.stringify(secret));\nawait __oriel.main(async () => {`,
-  );
+// A static import would be loaded before anything runs, outside
+// `--deny-read`. The script can't hold one: it is compiled on the host as a
+// function body and refused before Deno starts.
+async function refusedBeforeDeno(script: string) {
+  const result = await run(script);
   assert.ok(!JSON.stringify(result).includes(canary), "the canary got out");
   assert.equal(result.outcome, "threw");
-  const error = errorOf(result.transcript.at(-1));
-  assert.equal(error.phase, "typecheck");
-  assert.match(error.message, noImports);
-});
+  assert.equal(errorOf(result.transcript.at(-1)).phase, "typecheck");
+  assert.equal(result.coldStartMs, null);
+}
+
+test("import: a static import at the top of the script", () =>
+  refusedBeforeDeno(
+    `import secret from ${JSON.stringify(secretJson)} with { type: "json" };\nreturn secret;`,
+  ));
+
+test("import: a static import that closes the script's function first", () =>
+  refusedBeforeDeno(
+    `});\nimport secret from ${JSON.stringify(secretJson)} with { type: "json" };\nconsole.log(JSON.stringify(secret));\n(async () => {`,
+  ));
+
+test("import: an export that closes the script's function first", () =>
+  refusedBeforeDeno(`});\nexport * from ${JSON.stringify(secretTs)};\n(async () => {`));
 
 test("import(): a literal https: URL", () =>
   mustFail(`return await import("https://deno.land/std/version.ts");`, noRemote));
@@ -270,6 +284,50 @@ test("an output flood to stderr", async () => {
   const result = await run(`for (;;) Deno.stderr.writeSync(new Uint8Array(1 << 16).fill(120));`);
   assert.equal(result.outcome, "limit");
   assert.match(errorOf(result.transcript.at(-1)).message, /more than \d+ bytes to stderr/);
+});
+
+test("an output flood of empty log lines", async () => {
+  const result = await run(`for (;;) console.log();`, { maxConsoleBytes: 10_000 });
+  assert.equal(result.outcome, "limit");
+  // Each empty line costs its newline: 10,000 fit, then the cap.
+  assert.equal(result.transcript.length, 10_001);
+});
+
+test("an output flood of empty log lines written straight to stdout", async () => {
+  const result = await run(
+    `const lines = new TextEncoder().encode('{"kind":"log","text":""}\\n'.repeat(1_000));\nfor (;;) Deno.stdout.writeSync(lines);`,
+    { maxConsoleBytes: 10_000 },
+  );
+  assert.equal(result.outcome, "limit");
+  assert.match(errorOf(result.transcript.at(-1)).message, /console output passed 10000 bytes/);
+});
+
+test("disk: the Cache API can't fill the disk", () =>
+  mustFail(
+    `const cache = await caches.open("flood");
+     for (let i = 0; i < 64; i++) await cache.put("http://x/" + i, new Response(new Uint8Array(16 << 20)));
+     return "wrote 1 GB";`,
+    /cache storage directory/,
+  ));
+
+// The host's own JSON.stringify is recursive; a value this deep would
+// overflow it in the host process.
+const deepLine = (prefix: string, suffix: string) =>
+  `const deep = "[".repeat(100_000) + "]".repeat(100_000);\nDeno.stdout.writeSync(new TextEncoder().encode('${prefix}' + deep + '${suffix}\\n'));\nawait new Promise(() => {});`;
+
+test("a deeply nested return value", async () => {
+  const result = await run(deepLine('{"kind":"done","value":', "}"));
+  assert.equal(result.outcome, "threw");
+  assert.match(errorOf(result.transcript.at(-1)).message, /nests deeper than 64 levels/);
+});
+
+test("deeply nested write arguments", async () => {
+  const result = await run(
+    deepLine('{"kind":"write","fn":"jira.setEstimate","args":', ',"ref":null}'),
+  );
+  assert.equal(result.outcome, "threw");
+  assert.equal(result.mutations.length, 0);
+  assert.match(errorOf(result.transcript.at(-1)).message, /nests deeper than 64 levels/);
 });
 
 test("a memory flood on the V8 heap", async () => {

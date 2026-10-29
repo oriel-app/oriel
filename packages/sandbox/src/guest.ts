@@ -1,21 +1,24 @@
-// The guest half of the protocol. Each run's entry file is this runtime, then
-// the bindings shim, then the agent's script as the body of an async function,
-// so the script can `await` reads and `return` its result.
+// The guest half of the protocol. A run's entry module is this runtime, then
+// the bindings shim: trusted code only. The agent's script never becomes module
+// source. The host sends it, already stripped of types, as the first line on
+// stdin, a JSON string, and the runtime makes it an async function with the
+// AsyncFunction constructor. Its replies to reads follow on the same stream.
 //
-// The shim's contract: it runs after the runtime and reaches the host only
-// through `__oriel`:
-// - `__oriel.read(fn, args)` sends a read and resolves with the host's reply;
-// - `__oriel.write(fn, args, creates)` queues a write and never waits. When
-//   `creates` is true it names the new item `new:N` and returns that ref.
+// The shim's contract:
+// - It must put the bindings on `globalThis`. The script's function runs in
+//   global scope and can't see the entry module's own declarations.
+// - It reaches the host only through `__oriel`, which the script can't see:
+//   - `__oriel.read(fn, args)` sends a read and resolves with the host's reply;
+//   - `__oriel.write(fn, args, creates)` queues a write and never waits. When
+//     `creates` is true, it names the new item `new:N` and returns that ref.
 //
-// Nothing here is a boundary: the agent's script shares the isolate and can
-// forge any line. The host parses every line with `guestMessage`.
+// Nothing here is a boundary: the script shares the isolate and can write any
+// line it likes. The host parses every line with `guestMessage`.
 import type { NewRef } from "@oriel/core";
 
 export type GuestApi = {
   read(fn: string, args: readonly unknown[]): Promise<unknown>;
   write(fn: string, args: readonly unknown[], creates: boolean): NewRef | null;
-  main(body: () => Promise<unknown>): Promise<void>;
 };
 
 export type GuestConfig = {
@@ -30,8 +33,7 @@ export type GuestConfig = {
 
 type Sink = { writeSync(bytes: Uint8Array): number };
 
-// The few `Deno` members the runtime uses, captured before the script can
-// replace them.
+// The few `Deno` members the runtime uses, captured before the script runs.
 type GuestDeno = {
   stdin: { readable: ReadableStream<Uint8Array> };
   stdout: Sink;
@@ -54,17 +56,23 @@ type Waiter = { resolve(value: unknown): void; reject(message: string): void };
 
 // Serialized into the entry file with `toString()`: it must not close over
 // anything outside its own body.
-export function guest(deno: GuestDeno, scope: GuestScope, config: GuestConfig): GuestApi {
+export function guest(
+  deno: GuestDeno,
+  scope: GuestScope,
+  config: GuestConfig,
+): GuestApi & { start(): void } {
   const encoder = new TextEncoder();
   const stringify = JSON.stringify;
   const parse = JSON.parse;
   const exit = deno.exit;
   const inspect = deno.inspect;
   const { stdin, stdout, stderr } = deno;
+  const AsyncFunction = (async () => {}).constructor as new (
+    body: string,
+  ) => () => Promise<unknown>;
   const pending = new Map<number, Waiter>();
   let nextId = 1;
   let nextRef = 1;
-  let listening = false;
   let finished = false;
 
   const writeAll = (sink: Sink, bytes: Uint8Array): void => {
@@ -103,23 +111,45 @@ export function guest(deno: GuestDeno, scope: GuestScope, config: GuestConfig): 
   scope.console.error = log;
   scope.console.debug = log;
 
-  // Replies come back on stdin, one JSON object per line, in any order.
+  const runScript = async (js: unknown): Promise<void> => {
+    let value: unknown;
+    try {
+      if (typeof js !== "string") throw new TypeError("the host sent no script");
+      value = await new AsyncFunction(js)();
+    } catch (error) {
+      return threw(error);
+    }
+    try {
+      return finish(stringify({ kind: "done", value: value === undefined ? null : value }));
+    } catch (error) {
+      return threw(new TypeError(`the return value can't be sent as JSON: ${describe(error)}`));
+    }
+  };
+
+  // Stdin: the script first, then replies to reads, one JSON value per line,
+  // in any order.
   const listen = async (): Promise<void> => {
     const reader = stdin.readable.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
+    let first = true;
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) return;
       buffered += decoder.decode(chunk.value, { stream: true });
       for (let end = buffered.indexOf("\n"); end >= 0; end = buffered.indexOf("\n")) {
-        const reply = parse(buffered.slice(0, end));
+        const message = parse(buffered.slice(0, end));
         buffered = buffered.slice(end + 1);
-        const waiter = pending.get(reply.id);
+        if (first) {
+          first = false;
+          void runScript(message);
+          continue;
+        }
+        const waiter = pending.get(message.id);
         if (!waiter) continue;
-        pending.delete(reply.id);
-        if (reply.ok) waiter.resolve(reply.value);
-        else waiter.reject(String(reply.error));
+        pending.delete(message.id);
+        if (message.ok) waiter.resolve(message.value);
+        else waiter.reject(String(message.error));
       }
     }
   };
@@ -140,10 +170,6 @@ export function guest(deno: GuestDeno, scope: GuestScope, config: GuestConfig): 
       }),
     );
     sendLine(line);
-    if (!listening) {
-      listening = true;
-      void listen();
-    }
     return reply;
   };
 
@@ -153,71 +179,42 @@ export function guest(deno: GuestDeno, scope: GuestScope, config: GuestConfig): 
     return ref;
   };
 
-  const main = async (body: () => Promise<unknown>): Promise<void> => {
-    let value: unknown;
-    try {
-      value = await body();
-    } catch (error) {
-      return threw(error);
-    }
-    try {
-      return finish(stringify({ kind: "done", value: value === undefined ? null : value }));
-    } catch (error) {
-      return threw(new TypeError(`the return value can't be sent as JSON: ${describe(error)}`));
-    }
-  };
-
-  return Object.freeze({ read, write, main });
+  return Object.freeze({ read, write, start: () => void listen() });
 }
 
-// The entry file, and the line the script starts on, for mapping positions in
-// errors back to the script.
-export function entrySource(
-  shim: string,
-  script: string,
-  config: GuestConfig,
-): { source: string; scriptLine: number } {
-  const head = [
+// The entry module: the runtime, the shim, then the call that waits for the
+// script. The script itself is never part of it.
+export function entrySource(shim: string, config: GuestConfig): string {
+  return [
     `const __oriel = (${guest.toString()})(Deno, globalThis, ${JSON.stringify(config)});`,
     shim,
-    "await __oriel.main(async () => {",
+    "__oriel.start();",
     "",
   ].join("\n");
-  return { source: `${head}${script}\n});\n`, scriptLine: head.split("\n").length };
 }
 
-// Rewrites positions in the entry file to the agent's script (`script.ts`) or,
-// outside it, to `<bindings>`, so errors point at lines the agent wrote.
-// Also drops terminal colours and the run's temporary paths.
-export function sanitize(
-  text: string,
-  entry: { url: string; path: string; dir: string },
-  scriptLine: number,
-): string {
-  const position = new RegExp(
-    `(?:${escape(entry.url)}|${escape(entry.path)}):(\\d+)(?::(\\d+))?`,
-    "g",
-  );
+// Error text from the guest, made readable for the agent: positions in the
+// script become `script.ts:line:column`, positions in the entry module
+// `<bindings>`, the run's directory `<sandbox>`, and terminal colors go.
+export function sanitize(text: string, entry: { url: string; path: string; dir: string }): string {
+  const inEntry = new RegExp(`(?:${escape(entry.url)}|${escape(entry.path)})(?::\\d+){0,2}`, "g");
   return (
     text
-      .replace(colours, "")
-      .replace(position, (_, line: string, column: string | undefined) => {
-        const at = Number(line) - scriptLine + 1;
-        const where = at >= 1 ? `script.ts:${at}` : "<bindings>";
-        return column === undefined || at < 1 ? where : `${where}:${column}`;
-      })
-      // Code frames: "121 | const = 2;", padded so the caret line still lines up.
-      .replace(/^( *)(\d+) \|/gm, (frame, pad: string, line: string) => {
-        const at = Number(line) - scriptLine + 1;
-        return at >= 1 ? `${String(at).padStart(pad.length + line.length)} |` : frame;
-      })
-      .replaceAll(entry.url, "script.ts")
-      .replaceAll(entry.path, "script.ts")
+      .replace(colors, "")
+      // A frame in the script reads "eval at <anonymous> (<entry>:5:9),
+      // <anonymous>:7:3". The AsyncFunction constructor puts two lines before
+      // the body.
+      .replace(
+        /eval at [^\n]*?, <anonymous>:(\d+):(\d+)/g,
+        (_, line: string, column: string) => `script.ts:${Number(line) - 2}:${column}`,
+      )
+      .replace(/\bat eval \((script\.ts:\d+:\d+)\)/g, "at $1")
+      .replace(inEntry, "<bindings>")
       .replaceAll(entry.dir, "<sandbox>")
   );
 }
 
-// ANSI colour codes: ESC, "[", parameters, "m".
-const colours = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+// ANSI color codes: ESC, "[", parameters, "m".
+const colors = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

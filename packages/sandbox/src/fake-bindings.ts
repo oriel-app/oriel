@@ -12,20 +12,24 @@ export const stories = [
   { id: "jira:SYN-3", summary: "Résumé ✨ 見積もり", points: 5 },
 ];
 
+// The script runs in global scope, so the shim puts its bindings there.
 const shim = `
-const jira = {
-  listStories: () => __oriel.read("jira.listStories", []),
-  getStory: (id: string) => __oriel.read("jira.getStory", [id]),
-  setEstimate: (id: string, points: number): void => {
-    __oriel.write("jira.setEstimate", [id, points], false);
-  },
-  createStory: (fields: { summary: string }) => __oriel.write("jira.createStory", [fields], true),
-  fail: () => __oriel.read("jira.fail", []),
-  first: () => __oriel.read("jira.first", []),
-  second: () => __oriel.read("jira.second", []),
-  hold: () => __oriel.read("jira.hold", []),
-};
-const search = (query: string) => __oriel.read("search", [query]);
+Object.assign(globalThis, {
+  jira: Object.freeze({
+    listStories: () => __oriel.read("jira.listStories", []),
+    getStory: (id: string) => __oriel.read("jira.getStory", [id]),
+    setEstimate: (id: string, points: number): void => {
+      __oriel.write("jira.setEstimate", [id, points], false);
+    },
+    createStory: (fields: { summary: string }) =>
+      __oriel.write("jira.createStory", [fields], true),
+    fail: () => __oriel.read("jira.fail", []),
+    first: () => __oriel.read("jira.first", []),
+    second: () => __oriel.read("jira.second", []),
+    hold: () => __oriel.read("jira.hold", []),
+  }),
+  search: (query: string) => __oriel.read("search", [query]),
+});
 `;
 
 const dts = `declare const jira: {

@@ -31,10 +31,11 @@ export function denoArgs(run: { entry: string; importMap: string; heapMb: number
 }
 
 // `--deny-read` doesn't cover the module graph: Deno loads every import whose
-// specifier is a literal, static or dynamic, before the script runs and
-// without asking for read permission. A literal `import("/any/file.json", {
-// with: { type: "json" } })` would read any JSON file on the machine. This map
-// sends every `file:` specifier but the entry's own to a scheme Deno refuses.
+// specifier is a literal in module source, static or dynamic, before anything
+// runs and without asking for read permission (see deno.test.ts). The script
+// never becomes module source, so only the runtime and the shim could do this.
+// As a second line, this map sends every `file:` specifier but the entry's own
+// to a scheme Deno refuses.
 export function importMap(entryUrl: string): string {
   return JSON.stringify({ imports: { "file:///": "no-imports:/", [entryUrl]: entryUrl } });
 }

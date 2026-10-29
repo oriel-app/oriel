@@ -174,12 +174,36 @@ test("a return value that isn't JSON is an error, not a crash", async () => {
   assert.match(errorOf(result.transcript.at(-1)).message, /can't be sent as JSON/);
 });
 
-test("a syntax error is a typecheck error at the script's line", async () => {
+test("a syntax error is a typecheck error, and Deno never starts", async () => {
   const { result } = await go(`const ok = 1;\nconst = 2;`);
   assert.equal(result.outcome, "threw");
   const error = errorOf(result.transcript.at(-1));
   assert.equal(error.phase, "typecheck");
-  assert.match(error.message, /script\.ts:2/);
+  assert.match(error.message, /the script doesn't parse: Unexpected token `=`/);
+  assert.equal(result.coldStartMs, null);
+});
+
+test("TypeScript that doesn't erase is a typecheck error", async () => {
+  const { result } = await go(`enum Size { S, M }\nreturn Size.M;`);
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "typecheck");
+  assert.match(error.message, /enum is not supported/);
+});
+
+test("types are erased, and positions stay the script's own", async () => {
+  const { result } = await go(
+    `type Story = { id: string; points: number | null };\nconst all = (await jira.listStories()) as Story[];\nconst first = <T,>(items: T[]): T | undefined => items[0];\nif (all.length) throw new Error(String(first(all)?.id));`,
+  );
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "runtime");
+  assert.match(error.message, /^Error: jira:SYN-1\n\s+at script\.ts:4:23/);
+});
+
+test("a script that closes its function is refused before Deno starts", async () => {
+  const { result } = await go(`return 1;\n});\nconsole.log("outside");\n(async () => {`);
+  assert.equal(result.outcome, "threw");
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "typecheck");
   assert.equal(result.coldStartMs, null);
 });
 

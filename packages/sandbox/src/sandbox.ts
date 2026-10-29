@@ -21,6 +21,7 @@ import {
   type Sandbox,
   type TranscriptEntry,
 } from "@oriel/core";
+import { compileScript } from "./compile.ts";
 import { denoArgs, denoEnv, findDeno, importMap } from "./deno.ts";
 import { entrySource, sanitize } from "./guest.ts";
 import { watchMemory } from "./memory.ts";
@@ -68,8 +69,13 @@ const hints = {
   console: "Log less; return data instead of printing it.",
   stdout: "Use console.log for output and return the result; don't write to stdout directly.",
   imports: "Imports aren't available in the sandbox; use the bindings.",
-  load: "The script didn't load. Fix the error at the script.ts line shown; imports aren't available, only the bindings.",
+  compile:
+    "The script is the body of an async function: use await and return, no imports or exports, and only TypeScript that erases (no enums or namespaces).",
 };
+
+// Guest values nested deeper than this are refused: the host's own
+// JSON.stringify is recursive, and a deep enough value would overflow it.
+const maxDepth = 64;
 
 type Ending = { outcome: RunResult["outcome"]; last: TranscriptEntry };
 
@@ -88,35 +94,45 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   ): Promise<SandboxRunResult> {
     signal.throwIfAborted();
     const started = now();
+    // A script that is too big or doesn't compile never reaches Deno.
+    const refuse = (last: TranscriptEntry, outcome: "limit" | "threw") =>
+      finished(
+        { reads: [], mutations: [], transcript: [last], outcome },
+        now() - started,
+        null,
+        log,
+      );
     const scriptBytes = Buffer.byteLength(script);
     if (scriptBytes > limits.maxScriptBytes) {
-      const last = errorEntry(
-        "limit",
-        `the script is ${scriptBytes} bytes; the limit is ${limits.maxScriptBytes}`,
-        [],
-        hints.script,
-      );
-      const result = { reads: [], mutations: [], transcript: [last], outcome: "limit" as const };
-      return finished(result, now() - started, null, log);
+      const text = `the script is ${scriptBytes} bytes; the limit is ${limits.maxScriptBytes}`;
+      return refuse(errorEntry("limit", text, [], hints.script), "limit");
     }
+    const compiled = compileScript(script);
+    if (!compiled.ok)
+      return refuse(errorEntry("typecheck", compiled.message, [], hints.compile), "threw");
+
     const dir = await realpath(await mkdtemp(join(options.tmpDir ?? tmpdir(), "oriel-run-")));
     try {
       const work = join(dir, "work");
       await mkdir(work);
+      // Cache API and localStorage data, which no permission gates, would go
+      // under location_data. Read-only, those writes fail instead of filling
+      // the disk. (A read-only DENO_DIR would also do it, but costs about
+      // 180 ms of cold start.)
+      const denoDir = join(dir, "deno");
+      await mkdir(denoDir);
+      await mkdir(join(denoDir, "location_data"), { mode: 0o500 });
       const entryPath = join(dir, "entry.ts");
       const entryUrl = pathToFileURL(entryPath).href;
-      const { source, scriptLine } = entrySource(bindings.shim, script, {
-        ready,
-        deadlineMs: guestDeadline(limits.wallMs),
-        deadlineExit,
-      });
-      await writeFile(entryPath, source);
+      const config = { ready, deadlineMs: guestDeadline(limits.wallMs), deadlineExit };
+      await writeFile(entryPath, entrySource(bindings.shim, config));
       await writeFile(join(dir, "imports.json"), importMap(entryUrl));
-      const clean = (text: string) =>
-        sanitize(text, { url: entryUrl, path: entryPath, dir }, scriptLine);
+      const clean = (text: string) => sanitize(text, { url: entryUrl, path: entryPath, dir });
       return await supervise({
+        js: compiled.js,
         dir,
         work,
+        denoDir,
         entryPath,
         clean,
         started,
@@ -131,8 +147,10 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   }
 
   function supervise(job: {
+    js: string;
     dir: string;
     work: string;
+    denoDir: string;
     entryPath: string;
     clean: (text: string) => string;
     started: number;
@@ -147,8 +165,11 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       const child = spawn(
         deno,
         denoArgs({ entry: job.entryPath, importMap: join(job.dir, "imports.json"), heapMb }),
-        { cwd: job.work, env: denoEnv(join(job.dir, "deno")), stdio: ["pipe", "pipe", "pipe"] },
+        { cwd: job.work, env: denoEnv(job.denoDir), stdio: ["pipe", "pipe", "pipe"] },
       );
+      child.stdin.on("error", () => {});
+      // The script travels as data: the first line on stdin, a JSON string.
+      child.stdin.write(`${JSON.stringify(job.js)}\n`);
 
       const reads: (ProxiedRead | undefined)[] = [];
       const mutations: CapturedMutation[] = [];
@@ -265,7 +286,8 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
             return;
           }
           case "log": {
-            const bytes = Buffer.byteLength(message.text);
+            // Its newline counts too, so even empty lines run into the cap.
+            const bytes = Buffer.byteLength(message.text) + 1;
             if (consoleBytes + bytes > limits.maxConsoleBytes) {
               const text = `console output passed ${limits.maxConsoleBytes} bytes`;
               end("limit", fail("limit", text, hints.console));
@@ -309,12 +331,16 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           ),
         );
 
-      const onLine = (bytes: Buffer) => {
+      const handleLine = (bytes: Buffer) => {
         let raw: unknown;
         try {
           raw = JSON.parse(bytes.toString("utf8"));
         } catch {
           malformed("it isn't JSON");
+          return;
+        }
+        if (nestsDeeper(raw, maxDepth)) {
+          malformed(`it nests deeper than ${maxDepth} levels`);
           return;
         }
         const parsed = guestMessage(raw);
@@ -329,6 +355,14 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
             ? `a ${JSON.stringify(kind).slice(0, 40)} message with the wrong shape`
             : "it has no known kind",
         );
+      };
+      // Runs inside a stream listener, where a throw would take the host down.
+      const onLine = (bytes: Buffer) => {
+        try {
+          handleLine(bytes);
+        } catch (error) {
+          end("threw", fail("runtime", `the host couldn't handle a line: ${errorText(error)}`));
+        }
       };
 
       const lineCap = Math.max(options.maxLineBytes ?? MB, limits.maxResultBytes + 1024);
@@ -357,7 +391,6 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         coldStartMs = now() - spawnedAt;
         stderr = stderr.slice(0, at) + stderr.slice(at + ready.length);
       });
-      child.stdin.on("error", () => {});
 
       // How a process that ended on its own, without `done` or `threw`, ended.
       const exited = (code: number | null, killedBy: NodeJS.Signals | null): Ending => {
@@ -369,8 +402,10 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           return { outcome: "limit", last: fail("limit", message, hints.memory) };
         }
         if (coldStartMs === null) {
-          const message = text || `Deno exited (${code ?? killedBy}) before the script started`;
-          return { outcome: "threw", last: fail("typecheck", message, hints.load) };
+          // The entry module (runtime and shim) didn't load: not the script's
+          // doing, since the script was compiled on the host.
+          const message = `the sandbox didn't start (${code ?? killedBy})${text ? `:\n${text}` : ""}`;
+          return { outcome: "threw", last: fail("runtime", message) };
         }
         const how = code === null ? `signal ${killedBy}` : `exit code ${code}`;
         const message = `the script stopped before returning (${how})${text ? `:\n${text}` : ""}`;
@@ -473,6 +508,19 @@ function splitLines(cap: number, onLine: (line: Buffer) => void, oversize: () =>
     },
     pending: () => size,
   };
+}
+
+// Whether arrays and objects in `value` nest deeper than `max`. Iterative, so
+// a hostile value can't overflow the stack here either.
+function nestsDeeper(value: unknown, max: number): boolean {
+  const stack: [unknown, number][] = [[value, 0]];
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    const [item, depth] = next;
+    if (typeof item !== "object" || item === null) continue;
+    if (depth >= max) return true;
+    for (const child of Object.values(item)) stack.push([child, depth + 1]);
+  }
+  return false;
 }
 
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
