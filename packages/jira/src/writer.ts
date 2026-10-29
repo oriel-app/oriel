@@ -67,6 +67,7 @@ const valuesIssue = issue(
     issuetype: indexFieldShape.issuetype,
     parent: indexFieldShape.parent,
     assignee: indexFieldShape.assignee,
+    updated: indexFieldShape.updated,
     description: optional(unknown),
   }),
 );
@@ -118,10 +119,12 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     key: string,
     names: readonly string[],
   ): Promise<{ key: string; stableId: string; values: FieldValues } | "gone"> => {
-    const unknownName = names.find((name) => !isIssueField(name) && !name.startsWith("link:"));
+    const unknownName = names.find(
+      (name) => !isIssueField(name) && name !== "updated" && !name.startsWith("link:"),
+    );
     if (unknownName !== undefined) throw new RangeError(`not a Jira field: ${unknownName}`);
     const points = names.includes("points") ? await pointsField(projectOf(key)) : undefined;
-    const fields = ["summary", "description", "issuetype", "parent", "assignee"];
+    const fields = ["summary", "description", "issuetype", "parent", "assignee", "updated"];
     const request: JiraRequest = {
       method: "GET",
       path: `${api}/issue/${key}?fields=${[...fields, ...(points ? [points] : [])].join(",")}`,
@@ -141,6 +144,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     };
     const entries = await Promise.all(
       names.map(async (name): Promise<[string, unknown]> => {
+        if (name === "updated") return [name, found.fields.updated];
         if (isIssueField(name)) return [name, read[name]()];
         return [name, await link(found.key, name.slice("link:".length))];
       }),
@@ -169,10 +173,12 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   // Once Jira has accepted a write, the change set must hear about it, so a
   // failed read afterwards leaves `after` empty instead of throwing. Revert's
-  // conflict check then has nothing to match, and stops.
+  // conflict check then has nothing to match, and stops. `after` also carries
+  // the item's `updated`, which tells revert whether anyone has touched an
+  // item Oriel created since Oriel last wrote to it.
   const afterwards = async (key: string, stableId: string, names: readonly string[]) => {
     try {
-      const after = await existing(itemId("jira", key), names);
+      const after = await existing(itemId("jira", key), [...names, "updated"]);
       return {
         item: { id: itemId("jira", after.key), stableId: after.stableId },
         after: after.values,

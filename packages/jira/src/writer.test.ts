@@ -22,6 +22,9 @@ import { jiraWriter } from "./writer.ts";
 const approve = (request: WriteRequest<"jira">) =>
   request as Parameters<SourceWriter<"jira">["apply"]>[0];
 
+// The fake's update time after its nth accepted write.
+const at = (n: number) => new Date(Date.UTC(2026, 9, 29, 9, 0, n)).toISOString();
+
 let seq = 0;
 const request = (op: string, target: ItemId<"jira"> | null, args: unknown) =>
   approve({ mutationId: ulid(0, new Uint8Array(10).fill(seq++ % 256)), op, target, args });
@@ -110,9 +113,18 @@ function fakeSite() {
     return { status: 405, body: null };
   };
 
+  // Each accepted write moves the issue's `updated` on a second, as Jira does.
+  let clock = 0;
   const transport: Transport = async (req) => {
     calls.push(structuredClone(req));
-    return structuredClone(answer(req));
+    const response = answer(req);
+    if (req.method !== "GET" && response.status < 300) {
+      const written = /\/issue\/([A-Z]+-\d+)/.exec(req.path)?.[1];
+      const made = (response.body as { key?: string } | null)?.key;
+      const issue = issues.get(written ?? made ?? "");
+      if (issue) issue.fields.updated = at(++clock).replace("Z", "+0000");
+    }
+    return structuredClone(response);
   };
   const writes = () => calls.filter((c) => c.method !== "GET");
   return { transport, calls, writes, issues };
@@ -128,25 +140,25 @@ test("each edit reads before, sends one call, and reads after", async () => {
   assert.deepEqual(await w.apply(request("setSummary", "jira:SYN-12", { summary: "Retry once" })), {
     item,
     before: { summary: "Retry a declined card" },
-    after: { summary: "Retry once" },
+    after: { summary: "Retry once", updated: at(1) },
   });
   assert.deepEqual(
     await w.apply(request("setDescription", "jira:SYN-12", { description: "New.\n\nText." })),
     {
       item,
       before: { description: "First paragraph.\n\nSecond." },
-      after: { description: "New.\n\nText." },
+      after: { description: "New.\n\nText.", updated: at(2) },
     },
   );
   assert.deepEqual(await w.apply(request("setEstimate", "jira:SYN-12", { points: null })), {
     item,
     before: { points: 3 },
-    after: { points: null },
+    after: { points: null, updated: at(3) },
   });
   assert.deepEqual(await w.apply(request("setAssignee", "jira:SYN-12", { accountId: null })), {
     item,
     before: { assignee: "acc-amara" },
-    after: { assignee: null },
+    after: { assignee: null, updated: at(4) },
   });
   assert.deepEqual(jira.writes(), [
     {
@@ -183,6 +195,7 @@ test("createStory goes under its epic with the board's points field, and deleteI
       description: "Say why.\nThen offer a retry.",
       points: 2,
       epic: "jira:SYN-1",
+      updated: at(1),
     },
   });
   assert.deepEqual(jira.writes()[0]?.body, {
@@ -219,12 +232,11 @@ test("addLink reports the new link by ID, and removeLink undoes it", async () =>
     }),
   );
   assert.deepEqual(added.before, { "link:10100": null });
-  assert.deepEqual(added.after, {
-    "link:10100": { url: "https://runbook.example.com/retry", title: "Runbook" },
-  });
+  const link = { url: "https://runbook.example.com/retry", title: "Runbook" };
+  assert.deepEqual(added.after, { "link:10100": link, updated: at(1) });
   const removed = await w.apply(request("removeLink", "jira:SYN-12", { linkId: "10100" }));
-  assert.deepEqual(removed.before, added.after);
-  assert.deepEqual(removed.after, { "link:10100": null });
+  assert.deepEqual(removed.before, { "link:10100": link });
+  assert.deepEqual(removed.after, { "link:10100": null, updated: at(2) });
   assert.deepEqual(
     jira.writes().map((c) => `${c.method} ${c.path}`),
     [
@@ -299,6 +311,9 @@ test("arguments and targets are checked before anything is written", async () =>
 
 test("current reads the named fields, and a gone item is gone", async () => {
   const w = writer(fakeSite().transport);
+  assert.deepEqual(await w.current("jira:SYN-12", ["updated"]), {
+    updated: "2026-10-01T11:00:00.000Z",
+  });
   assert.deepEqual(
     await w.current("jira:SYN-12", [
       "summary",
