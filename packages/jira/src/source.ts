@@ -40,12 +40,12 @@ import {
   rawField,
   time,
 } from "./rest.ts";
-import type { Transport } from "./transport.ts";
+import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
 export type JiraSource = Source<"jira", JiraAttrs, JiraContent>;
 
 export type JiraSourceOptions = {
-  transport: Transport;
+  transport: ReadTransport;
   // Where item URLs point, such as "https://oriel.atlassian.net".
   site: string;
   // The project keys to index.
@@ -60,6 +60,9 @@ const maxPage = 100;
 // where an hour repeats when clocks go back. Each incremental sync reaches
 // back this far; records it reads again change nothing in the index.
 const overlapMs = 60 * 60 * 1000;
+// With the zone unknown, dates are written in UTC, which Jira may read in a
+// zone up to 12 hours behind, so the overlap grows to cover that too.
+const unknownZoneOverlapMs = 14 * 60 * 60 * 1000;
 const readConcurrency = 4;
 
 const searchPage = object({
@@ -82,14 +85,16 @@ const remoteLinks = array(
 
 export function jiraSource(options: JiraSourceOptions): JiraSource {
   const { transport, log } = options;
-  const site = options.site.replace(/\/$/, "");
+  const site = siteOrigin(options.site);
   const projects = [...new Set(options.projects)];
   if (!projects.length || projects.some((key) => !projectKey.test(key)))
     throw new RangeError("expected one or more project keys, like SYN");
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize ?? maxPage), 1), maxPage);
 
   // Rediscovered at the start of each sync, so a board's new estimate field
-  // takes effect on the next one. A failed discovery isn't kept.
+  // applies to the issues the next sync lists. Changing the field doesn't touch
+  // `updated`, so other issues keep their old points until a full sweep. A
+  // failed discovery isn't kept.
   let discovered: Promise<Map<string, string>> | null = null;
   const pointsFields = (fresh: boolean) => {
     if (fresh || !discovered)
@@ -123,11 +128,14 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     };
   };
 
-  const timeZone = async () => {
+  // Where an incremental sync starts: the cursor less the overlap, in the zone
+  // Jira reads JQL dates in.
+  const windowFrom = async (since: Instant) => {
     const { timeZone } = await call(transport, { method: "GET", path: `${api}/myself` }, myself);
-    if (timeZone && validZone(timeZone)) return timeZone;
-    log("jira: no usable time zone on the account, so JQL dates are read as UTC");
-    return "UTC";
+    const known = timeZone !== undefined && validZone(timeZone);
+    if (!known) log("jira: no usable time zone on the account, so JQL dates are written in UTC");
+    const from = new Date(Date.parse(since) - (known ? overlapMs : unknownZoneOverlapMs));
+    return ` AND updated >= "${jqlDate(from, known ? timeZone : "UTC")}"`;
   };
 
   const readOne = async (
@@ -200,9 +208,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       const since = cursor !== null && isInstant(cursor) ? cursor : null;
       const points = await pointsFields(true);
       const scope = `project in (${projects.map((key) => `"${key}"`).join(", ")})`;
-      const window = since
-        ? ` AND updated >= "${jqlDate(new Date(Date.parse(since) - overlapMs), await timeZone())}"`
-        : "";
+      const window = since ? await windowFrom(since) : "";
       const jql = `${scope}${window} ORDER BY updated ASC, key ASC`;
       const fields = fieldList(points);
       let latest: Instant | null = since;
@@ -213,7 +219,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
           transport,
           {
             method: "POST",
-            path: `${api}/search/jql`,
+            path: searchPath,
             body: { jql, fields, maxResults: pageSize, ...(token ? { nextPageToken: token } : {}) },
           },
           searchPage,

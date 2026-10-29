@@ -1,7 +1,7 @@
 // Recorded REST exchanges, replayed in tests and evals so they run without the
 // network. `scripts/record-jira.ts` records them from the live SYN.
 import { array, type Infer, literal, number, object, string, union, unknown } from "@oriel/core";
-import type { JiraRequest, Transport } from "./transport.ts";
+import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 
 export const exchange = object({
   request: object({
@@ -33,7 +33,10 @@ export function replay(exchanges: readonly Exchange[]): Transport {
 }
 
 // Passes requests through and keeps each exchange.
-export function recording(inner: Transport, into: Exchange[]): Transport {
+export function recording<R extends JiraRequest>(
+  inner: (request: R) => Promise<JiraResponse>,
+  into: Exchange[],
+): (request: R) => Promise<JiraResponse> {
   return async (request) => {
     const response = await inner(request);
     into.push(structuredClone({ request: { body: null, ...request }, response }));

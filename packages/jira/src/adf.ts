@@ -3,7 +3,8 @@
 import { array, type Infer, object, optional, record, string, unknown } from "@oriel/core";
 
 // Plain text as a document: blank lines split paragraphs and single newlines
-// become hard breaks. `adfToText` reads it back unchanged.
+// become hard breaks. `adfToText` reads it back unchanged, except that a run
+// of blank lines comes back as one.
 export function textToAdf(text: string) {
   return {
     type: "doc",

@@ -21,7 +21,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import { failure, type JiraRequest, type Transport } from "./transport.ts";
+import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";
 
@@ -140,9 +140,9 @@ export function attrsOf(fields: IndexFields, points: unknown): JiraAttrs {
 }
 
 // Sends a request, refuses anything but a 2xx, and validates the body.
-export async function call<T>(
-  transport: Transport,
-  request: JiraRequest,
+export async function call<T, R extends JiraRequest>(
+  transport: (request: R) => Promise<JiraResponse>,
+  request: R,
   shape: Validator<T>,
 ): Promise<T> {
   const response = await transport(request);
@@ -173,7 +173,7 @@ const boardConfig = object({
 // counts issues or estimates in time has no points field; time fields are
 // system fields, not custom ones.
 export async function discoverPoints(
-  transport: Transport,
+  transport: ReadTransport,
   projects: readonly string[],
   log: Log,
 ): Promise<Map<string, string>> {

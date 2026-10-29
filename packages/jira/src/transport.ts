@@ -1,7 +1,8 @@
-// The seam between Jira's REST shapes and how they are fetched. The source and
-// the writer only ever call a `Transport`. `restTransport` sends requests over
-// HTTPS behind a `Credential`; a cassette replays recorded ones; an MCP-backed
-// implementation could answer the same requests without touching either.
+// The seam between Jira's REST shapes and how they are fetched. The source only
+// ever calls a `ReadTransport`, and the writer a `Transport`. `restTransport`
+// sends requests over HTTPS behind a `Credential`; a cassette replays recorded
+// ones; an MCP-backed implementation could answer the same requests without
+// touching either. Only `@oriel/jira/writer` exports `restTransport`.
 import { setTimeout as wait } from "node:timers/promises";
 import type { Credential } from "@oriel/core";
 
@@ -13,6 +14,13 @@ export type JiraRequest = {
 };
 export type JiraResponse = { status: number; body: unknown };
 export type Transport = (request: JiraRequest) => Promise<JiraResponse>;
+
+// What the read side sends: GETs, and the search Jira only takes as a POST.
+export const searchPath = "/rest/api/3/search/jql";
+export type ReadRequest =
+  | { method: "GET"; path: string }
+  | { method: "POST"; path: typeof searchPath; body: unknown };
+export type ReadTransport = (request: ReadRequest) => Promise<JiraResponse>;
 
 // An Atlassian account's email and API token. The token stays in the closure.
 export function basicAuth(email: string, token: string): Credential {
@@ -32,12 +40,18 @@ export type RestOptions = {
 
 const maxAttempts = 5;
 
-export function restTransport(options: RestOptions): Transport {
-  const site = URL.canParse(options.site) ? new URL(options.site) : null;
-  if (site?.protocol !== "https:" || site.origin !== options.site.replace(/\/$/, ""))
+// A site as an https origin with no trailing slash, or a RangeError.
+export function siteOrigin(site: string): string {
+  const url = URL.canParse(site) ? new URL(site) : null;
+  if (url?.protocol !== "https:" || url.origin !== site.replace(/\/$/, ""))
     throw new RangeError(
       "the Jira site must be an https origin, like https://example.atlassian.net",
     );
+  return url.origin;
+}
+
+export function restTransport(options: RestOptions): Transport {
+  const site = new URL(siteOrigin(options.site));
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
   const timeoutMs = options.timeoutMs ?? 30_000;
@@ -69,6 +83,21 @@ export function restTransport(options: RestOptions): Transport {
       }
       return { status: response.status, body: parse(await response.text()) };
     }
+  };
+}
+
+// The read side's transport over HTTPS.
+export function readTransport(options: RestOptions): ReadTransport {
+  return readOnly(restTransport(options));
+}
+
+// Checks the method at run time too, so a cast can't send a write through it.
+export function readOnly(inner: Transport): ReadTransport {
+  return async (request: JiraRequest) => {
+    const search = request.method === "POST" && request.path === searchPath;
+    if (request.method !== "GET" && !search)
+      throw new Error(`refusing a write on the read side: ${request.method} ${request.path}`);
+    return inner(request);
   };
 }
 

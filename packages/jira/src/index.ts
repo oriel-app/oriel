@@ -10,7 +10,9 @@ export {
   basicAuth,
   type JiraRequest,
   type JiraResponse,
+  type ReadRequest,
+  type ReadTransport,
   type RestOptions,
-  restTransport,
-  type Transport,
+  readOnly,
+  readTransport,
 } from "./transport.ts";

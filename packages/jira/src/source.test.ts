@@ -145,6 +145,22 @@ test("a cursor lists what changed since, an hour back, in the account's time zon
   assert.equal(jqlDate(new Date("2026-12-31T23:30:00.000Z"), "UTC"), "2026-12-31 23:30");
 });
 
+test("with the account's zone unknown, a cursor reaches back far enough for any zone", async () => {
+  const { transport, calls } = fakeJira({
+    ...discovery(),
+    "GET /rest/api/3/myself": ok({ accountId: "acc-me" }),
+    [search]: pages([]),
+  });
+  const { log, lines } = logged();
+  const source = jiraSource({ transport, site, projects: ["SYN"], log });
+  await listAll(source, "2026-10-01T23:00:00.000Z");
+  assert.equal(
+    searches(calls)[0]?.jql,
+    'project in ("SYN") AND updated >= "2026-10-01 09:00" ORDER BY updated ASC, key ASC',
+  );
+  assert.ok(lines.some((line) => line.message.includes("no usable time zone")));
+});
+
 test("only a standard issue's parent is its epic", async () => {
   const { transport } = fakeJira({
     ...discovery(),

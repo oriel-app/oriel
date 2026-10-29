@@ -45,6 +45,9 @@ import {
 } from "./rest.ts";
 import { failure, type JiraRequest, type Transport } from "./transport.ts";
 
+// Only this entry hands out a transport that can write.
+export { restTransport, type Transport } from "./transport.ts";
+
 export type JiraWriterOptions = {
   transport: Transport;
   // Where a story with no epic is created.
@@ -164,6 +167,25 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return found;
   };
 
+  // Once Jira has accepted a write, the change set must hear about it, so a
+  // failed read afterwards leaves `after` empty instead of throwing. Revert's
+  // conflict check then has nothing to match, and stops.
+  const afterwards = async (key: string, stableId: string, names: readonly string[]) => {
+    try {
+      const after = await existing(itemId("jira", key), names);
+      return {
+        item: { id: itemId("jira", after.key), stableId: after.stableId },
+        after: after.values,
+      };
+    } catch (error) {
+      log("jira: wrote, but couldn't read the result back", {
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { item: { id: itemId("jira", key), stableId }, after: {} };
+    }
+  };
+
   // Reads before, sends, reads after.
   const edit = async (
     target: ItemId<"jira"> | null,
@@ -172,12 +194,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   ): Promise<WriteResult<"jira">> => {
     const before = await existing(target, names);
     await send(await request(before.key, before.values));
-    const after = await existing(itemId("jira", before.key), names);
-    return {
-      item: { id: itemId("jira", after.key), stableId: after.stableId },
-      before: before.values,
-      after: after.values,
-    };
+    return { before: before.values, ...(await afterwards(before.key, before.stableId, names)) };
   };
 
   const put = (key: string, fields: Record<string, unknown>): JiraRequest => ({
@@ -203,17 +220,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const response = await send({ method: "POST", path: `${api}/issue`, body: { fields } });
     const made = created(response.body);
     if (!made.ok) throw new Error("createStory: Jira's answer had no issue ID and key");
-    const after = await existing(itemId("jira", made.value.key), [
-      "summary",
-      "description",
-      "points",
-      "epic",
-    ]);
-    return {
-      item: { id: itemId("jira", after.key), stableId: after.stableId },
-      before: {},
-      after: after.values,
-    };
+    const names = ["summary", "description", "points", "epic"];
+    return { before: {}, ...(await afterwards(made.value.key, made.value.id, names)) };
   };
 
   const storyTypes = new Map<string, Promise<string>>();
@@ -297,12 +305,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const made = createdLink(response.body);
     if (!made.ok) throw new Error("addLink: Jira's answer had no link ID");
     const name = linkField(String(made.value.id));
-    const after = await existing(itemId("jira", before.key), [name]);
-    return {
-      item: { id: itemId("jira", after.key), stableId: after.stableId },
-      before: { [name]: null },
-      after: after.values,
-    };
+    return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 
   const deleteItem = async (target: ItemId<"jira"> | null): Promise<WriteResult<"jira">> => {

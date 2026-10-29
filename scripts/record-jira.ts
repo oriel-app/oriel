@@ -2,16 +2,16 @@
 // packages/jira/test-data/, as cassettes the Jira source's tests replay:
 // `sync.json` is a full listing and `read.json` reads every frozen region's
 // items. Only reads are sent (GETs and the search POST), only to the
-// throwaway site. People are replaced with numbered placeholders, and emails,
-// avatars, time zones and locales are dropped, so no real person's details are
-// committed.
+// throwaway site. People are replaced with numbered placeholders (mentions
+// included), emails, avatars, time zones and locales are dropped, and times are
+// moved to UTC, so no real person's details are committed.
 // Usage: pnpm record:jira
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ItemId, JiraFixture } from "../packages/core/src/index.ts";
 import { type Exchange, recording } from "../packages/jira/src/cassette.ts";
 import { type JiraSourceOptions, jiraSource } from "../packages/jira/src/source.ts";
-import { basicAuth, restTransport, type Transport } from "../packages/jira/src/transport.ts";
+import { basicAuth, type ReadTransport, readTransport } from "../packages/jira/src/transport.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 import { jiraEnv } from "./seed-jira.ts";
 
@@ -19,7 +19,7 @@ export const testData = new URL("../packages/jira/test-data/", import.meta.url);
 
 // What both the recording and the replaying source are built with, so their
 // requests match.
-export const recordedSource = (transport: Transport): JiraSourceOptions => ({
+export const recordedSource = (transport: ReadTransport): JiraSourceOptions => ({
   transport,
   site: "https://oriel.atlassian.net",
   projects: ["SYN"],
@@ -31,35 +31,51 @@ export const recordedReads = (fixture: JiraFixture): ItemId<"jira">[] => [
   ...new Set(fixture.regions.flatMap((region) => region.items)),
 ];
 
-export function readOnly(inner: Transport): Transport {
-  return async (request) => {
-    const search = request.method === "POST" && request.path === "/rest/api/3/search/jql";
-    if (request.method !== "GET" && !search)
-      throw new Error(`refusing to record a write: ${request.method} ${request.path}`);
-    return inner(request);
-  };
-}
-
 const dropped = new Set(["emailAddress", "avatarUrls", "timeZone", "locale"]);
+// Jira writes times in the account's offset, such as 2026-10-29T09:00:00.000+0100.
+const zoned = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})([+-]\d{2})(\d{2})$/;
 
-// Each person (any object with an accountId) becomes a placeholder, the same
-// one wherever they appear.
+// Each person (any object with an accountId, a mention, or a bare
+// userAccountId) becomes a placeholder, the same one wherever they appear.
+// Times keep Jira's format but move to UTC, which hides the account's zone.
 export function scrub(value: unknown, people = new Map<string, string>()): unknown {
+  const person = (accountId: string) => {
+    const placeholder = people.get(accountId) ?? `person-${people.size + 1}`;
+    people.set(accountId, placeholder);
+    return placeholder;
+  };
+  const name = (placeholder: string) => `Person ${placeholder.slice(7)}`;
+  if (typeof value === "string") {
+    const match = zoned.exec(value);
+    if (!match) return value;
+    const [, local = "", hours = "", minutes = ""] = match;
+    return new Date(`${local}${hours}:${minutes}`).toISOString().replace("Z", "+0000");
+  }
   if (Array.isArray(value)) return value.map((item) => scrub(item, people));
   if (typeof value !== "object" || value === null) return value;
   const entries = Object.entries(value);
   const accountId = entries.find(([key]) => key === "accountId")?.[1];
   if (typeof accountId === "string") {
-    const placeholder = people.get(accountId) ?? `person-${people.size + 1}`;
-    people.set(accountId, placeholder);
-    return { accountId: placeholder, displayName: `Person ${placeholder.slice(7)}`, active: true };
+    const placeholder = person(accountId);
+    return { accountId: placeholder, displayName: name(placeholder), active: true };
+  }
+  if ("type" in value && value.type === "mention" && "attrs" in value) {
+    const attrs = value.attrs;
+    const id = typeof attrs === "object" && attrs !== null && "id" in attrs ? attrs.id : null;
+    const placeholder = person(typeof id === "string" ? id : "unknown");
+    return { type: "mention", attrs: { id: placeholder, text: `@${name(placeholder)}` } };
   }
   return Object.fromEntries(
-    entries.filter(([key]) => !dropped.has(key)).map(([key, item]) => [key, scrub(item, people)]),
+    entries
+      .filter(([key]) => !dropped.has(key))
+      .map(([key, item]) => [
+        key,
+        key === "userAccountId" && typeof item === "string" ? person(item) : scrub(item, people),
+      ]),
   );
 }
 
-export async function record(transport: Transport, fixture: JiraFixture) {
+export async function record(transport: ReadTransport, fixture: JiraFixture) {
   const people = new Map<string, string>();
   const save = (name: string, exchanges: Exchange[]) => {
     const scrubbed = exchanges.map((exchange) => ({
@@ -92,7 +108,7 @@ if (import.meta.main) {
   try {
     mkdirSync(testData, { recursive: true });
     const credential = basicAuth(env.email, env.token);
-    await record(readOnly(restTransport({ site: env.site, credential })), loadJiraFixture());
+    await record(readTransport({ site: env.site, credential }), loadJiraFixture());
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

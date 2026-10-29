@@ -18,6 +18,7 @@ import { jiraWriter } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
 // production. These tests cover the REST mapping, not the approval gate.
+// scripts/check-repo.ts allows this cast only in an adapter's writer test.
 const approve = (request: WriteRequest<"jira">) =>
   request as Parameters<SourceWriter<"jira">["apply"]>[0];
 
@@ -235,6 +236,47 @@ test("addLink reports the new link by ID, and removeLink undoes it", async () =>
     w.apply(request("removeLink", "jira:SYN-12", { linkId: "10100" })),
     /has no link 10100/,
   );
+});
+
+test("once Jira accepts a write, its result comes back even if reading it back fails", async () => {
+  const jira = fakeSite();
+  let wrote = false;
+  const transport: Transport = async (req) => {
+    if (wrote && req.method === "GET") return { status: 502, body: "Bad gateway" };
+    const response = await jira.transport(req);
+    if (req.method !== "GET") wrote = true;
+    return response;
+  };
+  const w = writer(transport);
+  const made = await w.apply(
+    request("createStory", null, {
+      summary: "Offline pass",
+      description: "",
+      points: null,
+      epic: null,
+    }),
+  );
+  assert.deepEqual(made, {
+    item: { id: "jira:SYN-125", stableId: "10125" },
+    before: {},
+    after: {},
+  });
+  wrote = false;
+  assert.deepEqual(await w.apply(request("setSummary", "jira:SYN-12", { summary: "Retry once" })), {
+    item: { id: "jira:SYN-12", stableId: "10012" },
+    before: { summary: "Retry a declined card" },
+    after: {},
+  });
+  wrote = false;
+  const linked = await w.apply(
+    request("addLink", "jira:SYN-12", { url: "https://runbook.example.com/r", title: "Runbook" }),
+  );
+  assert.deepEqual(linked, {
+    item: { id: "jira:SYN-12", stableId: "10012" },
+    before: { "link:10100": null },
+    after: {},
+  });
+  assert.equal(jira.writes().length, 3);
 });
 
 test("arguments and targets are checked before anything is written", async () => {

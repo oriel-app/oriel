@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Exchange, recording, replay } from "./cassette.ts";
-import { basicAuth, restTransport } from "./transport.ts";
+import { basicAuth, readOnly, restTransport, type Transport } from "./transport.ts";
 
 const site = "https://oriel.atlassian.net";
 
@@ -110,4 +110,23 @@ test("a cassette replays what was recorded and refuses anything else", async () 
     replayed({ method: "POST", path: "/rest/api/3/search/jql", body: { jql: "b" } }),
     /not in the cassette/,
   );
+});
+
+test("the read side sends only reads, even through a cast", async () => {
+  const sent: string[] = [];
+  const read = readOnly(async (request) => {
+    sent.push(`${request.method} ${request.path}`);
+    return { status: 200, body: null };
+  });
+  const transport = read as Transport;
+  await transport({ method: "GET", path: "/rest/api/3/myself" });
+  await transport({ method: "POST", path: "/rest/api/3/search/jql", body: {} });
+  for (const write of [
+    { method: "POST" as const, path: "/rest/api/3/issue" },
+    { method: "POST" as const, path: "/rest/api/3/search/jql/../../issue" },
+    { method: "PUT" as const, path: "/rest/api/3/issue/SYN-1" },
+    { method: "DELETE" as const, path: "/rest/api/3/issue/SYN-1" },
+  ])
+    await assert.rejects(transport(write), /refusing a write on the read side/);
+  assert.deepEqual(sent, ["GET /rest/api/3/myself", "POST /rest/api/3/search/jql"]);
 });

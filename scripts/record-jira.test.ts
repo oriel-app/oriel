@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readOnly, scrub } from "./record-jira.ts";
+import { scrub } from "./record-jira.ts";
 
 test("people become placeholders, the same one everywhere, with no email, avatar or zone", () => {
   const amara = {
@@ -36,19 +36,31 @@ test("people become placeholders, the same one everywhere, with no email, avatar
     assert.ok(!JSON.stringify(scrubbed).includes(secret), secret);
 });
 
-test("the recorder sends only reads", async () => {
-  const sent: string[] = [];
-  const transport = readOnly(async (request) => {
-    sent.push(`${request.method} ${request.path}`);
-    return { status: 200, body: null };
+test("mentions, bare account IDs and zone offsets are scrubbed too", () => {
+  const people = new Map<string, string>();
+  const scrubbed = scrub(
+    {
+      created: "2026-10-29T09:30:00.000+0100",
+      due: "2026-10-29",
+      location: { userAccountId: "712020:real-id" },
+      body: {
+        type: "doc",
+        content: [
+          { type: "mention", attrs: { id: "712020:other", text: "@Real Other", accessLevel: "" } },
+        ],
+      },
+    },
+    people,
+  );
+  assert.deepEqual(scrubbed, {
+    created: "2026-10-29T08:30:00.000+0000",
+    due: "2026-10-29",
+    location: { userAccountId: "person-1" },
+    body: {
+      type: "doc",
+      content: [{ type: "mention", attrs: { id: "person-2", text: "@Person 2" } }],
+    },
   });
-  await transport({ method: "GET", path: "/rest/api/3/myself" });
-  await transport({ method: "POST", path: "/rest/api/3/search/jql", body: {} });
-  for (const write of [
-    { method: "POST" as const, path: "/rest/api/3/issue" },
-    { method: "PUT" as const, path: "/rest/api/3/issue/SYN-1" },
-    { method: "DELETE" as const, path: "/rest/api/3/issue/SYN-1" },
-  ])
-    await assert.rejects(transport(write), /refusing to record a write/);
-  assert.deepEqual(sent, ["GET /rest/api/3/myself", "POST /rest/api/3/search/jql"]);
+  for (const secret of ["real-id", "other", "Real", "+0100"])
+    assert.ok(!JSON.stringify(scrubbed).includes(secret), secret);
 });
