@@ -71,14 +71,14 @@ We minimize dependencies. Agents maintain this repo around the clock; every depe
 2. **a protocol standard** we must interoperate with, or
 3. **a database driver**.
 
-Dev-only tooling (formatter, test runner) may be used if maintained and not shipped, but prefer platform built-ins (`node:test`, `node --test`, Node's native TypeScript type stripping).
+Dev-only tooling (formatter, test runner) may be used if maintained and not shipped, but prefer platform built-ins (`node:test`, `node --test`, Node's native TypeScript type stripping). TypeScript also ships, to typecheck scripts before a run (decision 0016).
 
 Concretely:
 
 - **Build the canvas ourselves** (`packages/canvas`): pan/zoom transform, culling, hit testing, shape model, keyboard and pointer gestures (mouse, trackpad, touch), inline text editing, undo across zoom levels, HiDPI rendering. Budget the last four; they are where libraries earned their keep.
 - **Do not build the isolate.** The sandbox is a maintained runtime binary run as a subprocess with explicit permissions (no network, no filesystem, no env) — an OS-level boundary with no library dependency that runs TypeScript directly — or, if we go Rust for the host, V8 embedded through the Deno team's crates. Either way it stays behind `run(script, bindings) → { reads, mutations, transcript }`. Pick with an ADR.
 - **UI:** minimal-dependency. Prefer TanStack libraries over a React-centric stack; the renderer is an ADR — pick the smallest maintained option and justify it. No bundler in phase 1 (tsc emit + native ESM + import maps); adding one is an ADR.
-- **Schema and types:** hand-written TypeScript types per source plus a small in-house validator at the boundary. Generate the per-region `.d.ts` with the TypeScript compiler API directly, no wrapper library.
+- **Schema and types:** hand-written TypeScript types per source plus a small in-house validator at the boundary. Generate the per-region `.d.ts` as text from one description, every ID checked against a strict key shape, no wrapper library (decision 0016).
 - **Evals:** an in-house runner (JSON cases, run, grade, report). No eval framework dependency.
 - **Storage:** Node's built-in SQLite (decision 0011), with numbered SQL migrations applied by an in-house runner. A Postgres driver stays allowed if multi-tenant hosting ever needs it.
 - **Model access:** the Anthropic SDK is allowed (maintained by the vendor); raw HTTP is also acceptable.
