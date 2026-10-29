@@ -37,10 +37,23 @@ Use \`pnpm check\`.
 \`ignored\`
 `;
 
-const adr = "Adds `oxlint` and `@oxlint/*`.";
+const adr = "# 0009 Toolchain\n\nAdds: `oxlint` `@oxlint/*`\n";
+const clean = { claudeLink: "AGENTS.md", lockfile, agentsMd, decisions: [adr] };
 
-test("lockedPackages reads names from the packages section only", () => {
-  assert.deepEqual(lockedPackages(lockfile), ["@oxlint/binding-darwin-arm64", "oxlint"]);
+test("lockedPackages reads keys from the packages section only", () => {
+  assert.deepEqual(lockedPackages(lockfile), [
+    "@oxlint/binding-darwin-arm64@1.89.0",
+    "oxlint@1.89.0",
+  ]);
+});
+
+test("lockedPackages reads CRLF lockfiles and every packages block", () => {
+  const second = "---\npackages:\n\n  pnpm@12.14.0:\n    resolution: {}\n";
+  assert.deepEqual(lockedPackages(`${lockfile}${second}`.replaceAll("\n", "\r\n")), [
+    "@oxlint/binding-darwin-arm64@1.89.0",
+    "oxlint@1.89.0",
+    "pnpm@12.14.0",
+  ]);
 });
 
 test("allowlist reads backticked entries under Dependencies only", () => {
@@ -48,33 +61,41 @@ test("allowlist reads backticked entries under Dependencies only", () => {
 });
 
 test("a clean repo has no problems", () => {
-  assert.deepEqual(problems({ claudeLink: "AGENTS.md", lockfile, agentsMd, decisions: [adr] }), []);
+  assert.deepEqual(problems(clean), []);
 });
 
 test("a package missing from the allowlist is reported", () => {
-  const found = problems({
-    claudeLink: "AGENTS.md",
-    lockfile,
-    agentsMd: "## Dependencies\n`oxlint`\n",
-    decisions: [adr],
-  });
-  assert.deepEqual(found, [
+  assert.deepEqual(problems({ ...clean, agentsMd: "## Dependencies\n`oxlint`\n" }), [
     "@oxlint/binding-darwin-arm64: not on the AGENTS.md dependency allowlist",
   ]);
 });
 
-test("an allowlisted package with no ADR is reported once per entry", () => {
-  const found = problems({
-    claudeLink: "AGENTS.md",
-    lockfile,
-    agentsMd,
-    decisions: ["Adds `oxlint`."],
-  });
-  assert.deepEqual(found, ["@oxlint/*: no ADR in docs/decisions/ names it"]);
+test("only an ADR's Adds line approves a package, not a passing mention", () => {
+  const mention = "Rejected: `@oxlint/*`.\n\nAdds: `oxlint`\n";
+  assert.deepEqual(problems({ ...clean, decisions: [mention] }), [
+    "@oxlint/*: no ADR lists it on an `Adds:` line",
+  ]);
+});
+
+test("a package from a git or tarball URL is reported", () => {
+  const evil = lockfile.replace(
+    "oxlint@1.89.0:",
+    "oxlint@https://codeload.github.com/evil/oxlint/tar.gz/abc:",
+  );
+  assert.deepEqual(problems({ ...clean, lockfile: evil }), [
+    "oxlint@https://codeload.github.com/evil/oxlint/tar.gz/abc: not from the npm registry",
+  ]);
+});
+
+test("a lockfile that declares dependencies but parses to nothing is reported", () => {
+  const unreadable = lockfile.replace("packages:", "pkgs:");
+  assert.deepEqual(problems({ ...clean, lockfile: unreadable }), [
+    "pnpm-lock.yaml: declares dependencies but no packages could be read",
+  ]);
 });
 
 test("CLAUDE.md must link to exactly AGENTS.md", () => {
-  const found = problems({ claudeLink: "AGENTS.md\n", lockfile, agentsMd, decisions: [adr] });
+  const found = problems({ ...clean, claudeLink: "AGENTS.md\n" });
   assert.equal(found.length, 1);
   assert.match(found[0] ?? "", /CLAUDE\.md must be a symlink/);
 });

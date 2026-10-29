@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "export PATH=\"${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims:$PATH\"; cd \"$CLAUDE_PROJECT_DIR\" && pnpm -s format >/dev/null 2>&1 || true"
+            "command": "export PATH=\"${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims:$PATH\"; f=$(node -e 'process.stdout.write(JSON.parse(require(\"fs\").readFileSync(0, \"utf8\")).tool_input?.file_path ?? \"\")' 2>/dev/null); case \"$f\" in \"$CLAUDE_PROJECT_DIR\"/*) cd \"$CLAUDE_PROJECT_DIR\" && pnpm -s exec oxfmt --no-error-on-unmatched-pattern \"$f\" >/dev/null 2>&1 ;; esac; exit 0"
           }
         ]
       }

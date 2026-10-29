@@ -3,3 +3,5 @@
 /.github/ @vibdev
 /packages/sandbox/ @vibdev
 /docs/decisions/ @vibdev
+/AGENTS.md @vibdev
+/scripts/check-repo.ts @vibdev

@@ -8,6 +8,6 @@ Accepted 2026-10-28.
 
 **Enforcement.**
 
-- Every package in `pnpm-lock.yaml`, transitive included, must match an entry on the AGENTS.md allowlist, and that entry must be named in an ADR. `scripts/check-repo.ts` checks this in `pnpm check` and in CI.
+- Every package in `pnpm-lock.yaml`, transitive included, must come from the npm registry, match an entry on the AGENTS.md allowlist, and appear on an ADR's `Adds:` line. Mentioning a package elsewhere in an ADR, for example as rejected, doesn't count. `scripts/check-repo.ts` checks all of this in `pnpm check` and in CI. ADRs and AGENTS.md are maintainer-owned.
 - pnpm refuses versions younger than 7 days (`minimumReleaseAge`) and runs no install scripts.
 - GitHub Actions are pinned by commit hash.

@@ -28,6 +28,6 @@ A change to items, threads or change sets is checked against: the window list un
 
 ## Dependencies
 
-The allowlist. Each entry must be named in an ADR.
+The allowlist. Each entry must also be on an ADR's Adds line.
 
 `typescript` `@typescript/*` `@types/node` `undici-types` `oxlint` `@oxlint/*` `oxfmt` `@oxfmt/*` `tinypool`

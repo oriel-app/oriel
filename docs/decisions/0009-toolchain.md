@@ -2,6 +2,8 @@
 
 Accepted 2026-10-28.
 
+Adds: `typescript` `@typescript/*` `@types/node` `undici-types` `oxlint` `@oxlint/*` `oxfmt` `@oxfmt/*` `tinypool`
+
 **Decision.**
 
 - Node 26 LTS and pnpm 12, pinned in `mise.toml`.
