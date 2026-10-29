@@ -33,10 +33,11 @@ export const epicGrouping: Grouping<JiraRecord> = {
   label: "Epic",
   group(records) {
     const sorted = records.toSorted(byKey);
-    const items = sorted.filter((record) => !isEpic(record));
-    const byEpic = Map.groupBy(items, (item) => item.attrs.epic);
-    const anchors = sorted.filter((record) => isEpic(record) || byEpic.has(record.id));
+    const named = new Set(sorted.map((record) => record.attrs.epic));
+    const anchors = sorted.filter((record) => isEpic(record) || named.has(record.id));
     const anchored = new Set(ids(anchors));
+    const items = sorted.filter((record) => !anchored.has(record.id));
+    const byEpic = Map.groupBy(items, (item) => item.attrs.epic);
     const clusters: Cluster[] = anchors.map((epic) => ({
       key: epic.stableId,
       label: epic.title,

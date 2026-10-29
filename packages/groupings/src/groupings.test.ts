@@ -48,8 +48,10 @@ const rules: Record<string, Rule> = {
 
 // What's wrong with a grouping's derived clusters: a rule we can't check, an
 // item shown that the rule is false of, or one the rule fits that's left out.
+// A cluster's anchor isn't one of the grouping's items, so rules skip anchors.
 function ruleProblems(clusters: Cluster[], index: readonly JiraRecord[], now: Instant): string[] {
   const problems: string[] = [];
+  const anchors = new Set(clusters.map((cluster) => cluster.anchor));
   for (const cluster of clusters) {
     if (cluster.origin === "source") continue;
     const rule = rules[cluster.origin.derived];
@@ -59,6 +61,7 @@ function ruleProblems(clusters: Cluster[], index: readonly JiraRecord[], now: In
     }
     const shown = new Set(cluster.itemIds);
     for (const record of index) {
+      if (anchors.has(record.id)) continue;
       const holds = rule(record, now, index);
       if (shown.has(record.id) && !holds) problems.push(`${cluster.key}: shows ${record.id}`);
       if (!shown.has(record.id) && holds) problems.push(`${cluster.key}: leaves out ${record.id}`);
@@ -303,12 +306,18 @@ test("an item the source names as an epic anchors a cluster, whatever its type",
   const story = current.find((record) => record.id === "jira:SYN-88");
   const other = current.find((record) => record.id === "jira:SYN-10");
   assert.ok(story && other);
-  const records = [story, { ...other, attrs: { ...other.attrs, epic: story.id } }];
-  const clusters = epicGrouping.group(records, last);
-  assert.deepEqual(clusters.find((cluster) => cluster.anchor === story.id)?.itemIds, [
-    "jira:SYN-10",
-  ]);
-  assert.deepEqual(ruleProblems(clusters, records, last), []);
+  const child = { ...other, attrs: { ...other.attrs, epic: story.id } };
+  // Whether the story names an epic of its own or not, it's an anchor, never an item.
+  for (const epic of [null, "jira:SYN-3"] as const) {
+    const records: JiraRecord[] = [{ ...story, attrs: { ...story.attrs, epic } }, child];
+    const clusters = epicGrouping.group(records, last);
+    assert.deepEqual(clusters.find((cluster) => cluster.anchor === story.id)?.itemIds, [child.id]);
+    assert.deepEqual(ruleProblems(clusters, records, last), []);
+    for (const place of placement(clusters, records)) {
+      const anchor: boolean = place.id === story.id;
+      assert.deepEqual(place, { id: place.id, items: anchor ? 0 : 1, anchors: anchor ? 1 : 0 });
+    }
+  }
 });
 
 test("one cluster per assignee by name, then the unassigned, with epics as items", () => {
