@@ -38,7 +38,46 @@ Use \`pnpm check\`.
 `;
 
 const adr = "# 0009 Toolchain\n\nAdds: `oxlint` `@oxlint/*`\n";
-const clean = { claudeLink: "AGENTS.md", lockfile, agentsMd, decisions: [adr] };
+const clean = {
+  claudeLink: "AGENTS.md",
+  lockfile,
+  agentsMd,
+  decisions: [adr],
+  sources: [
+    { path: "packages/changeset/src/approve.ts", text: "return cs as Approved<ChangeSet>;" },
+  ],
+};
+
+test("naming Approved outside core and changeset is reported, aliases included", () => {
+  const sneaky = [
+    {
+      path: "packages/thread/src/loop.ts",
+      text: "w.apply(m as unknown as Approved<WriteRequest>)",
+    },
+    {
+      path: "packages/bindings/src/x.ts",
+      text: 'import { type Approved as Ok } from "@oriel/core";',
+    },
+    { path: "packages/core/src/changeset.ts", text: "export type Approved<T> = Readonly<T>;" },
+  ];
+  assert.deepEqual(problems({ ...clean, sources: [...clean.sources, ...sneaky] }), [
+    "packages/thread/src/loop.ts: names Approved outside packages/core and packages/changeset (decision 0003)",
+    "packages/bindings/src/x.ts: names Approved outside packages/core and packages/changeset (decision 0003)",
+  ]);
+});
+
+test("importing an adapter's writer outside changeset is reported", () => {
+  const sources = [
+    {
+      path: "packages/changeset/src/apply.ts",
+      text: 'import { writer } from "@oriel/jira/writer";',
+    },
+    { path: "packages/sandbox/src/host.ts", text: "import { writer } from '@oriel/jira/writer';" },
+  ];
+  assert.deepEqual(problems({ ...clean, sources }), [
+    "packages/sandbox/src/host.ts: imports a source writer outside packages/changeset (decision 0003)",
+  ]);
+});
 
 test("lockedPackages reads keys from the packages section only", () => {
   assert.deepEqual(lockedPackages(lockfile), [
