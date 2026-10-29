@@ -1,8 +1,9 @@
 // The synthetic Jira project, SYN, as frozen fixtures: a base state, ordered
-// `changes` applied after it, and frozen regions. CI, evals and the window
-// render from it, and `pnpm seed:jira` recreates it on the throwaway site.
-// Fixtures are the source of truth. `fixtureSnapshot` is the one mapping from
-// fixtures to index records and content, shared by sources and tests.
+// `edits` made directly in the source after it, and frozen regions. CI, evals
+// and the window render from it, and `pnpm seed:jira` recreates it on the
+// throwaway site. Fixtures are the source of truth. `fixtureSnapshot` is the
+// one mapping from fixtures to index records and content, shared by sources
+// and tests.
 import { isInstant, type ItemId, itemId, parseItemId } from "./ids.ts";
 import type { JiraAttrs, JiraContent } from "./jira.ts";
 import type { IndexRecord } from "./source.ts";
@@ -63,40 +64,57 @@ export const fixtureIssue = object({
   updatedAt: utc,
 });
 
-export const fixtureChange = union(
+// An edit someone made directly in the source, not an Oriel change set.
+export const fixtureEdit = union(
   object({ kind: literal("setEpic"), key: issueKey, epic: issueKey, at: utc }),
   object({ kind: literal("setSummary"), key: issueKey, summary: string, at: utc }),
   object({ kind: literal("delete"), key: issueKey, at: utc }),
 );
 
-// Item IDs snapshotted against the base state, as a region would be.
-export const fixtureRegion = object({ name: string, items: array(jiraItemId) });
+// Item IDs snapshotted against the base state, as a region would be, with the
+// same origin as core's `Region`. For the epic grouping, `cluster` is the
+// epic's stable ID and `anchor` its item ID.
+export const fixtureRegion = object({
+  name: string,
+  origin: union(
+    object({
+      kind: literal("group"),
+      grouping: string,
+      cluster: string,
+      anchor: nullable(jiraItemId),
+    }),
+    object({ kind: literal("picked") }),
+  ),
+  items: array(jiraItemId),
+});
 
 export const jiraFixture = object({
   project: fixtureProject,
   people: array(fixturePerson),
   issues: array(fixtureIssue),
-  changes: array(fixtureChange),
+  edits: array(fixtureEdit),
   regions: array(fixtureRegion),
 });
 
 export type FixturePerson = Infer<typeof fixturePerson>;
 export type FixtureIssue = Infer<typeof fixtureIssue>;
-export type FixtureChange = Infer<typeof fixtureChange>;
+export type FixtureEdit = Infer<typeof fixtureEdit>;
 export type FixtureRegion = Infer<typeof fixtureRegion>;
 export type JiraFixture = Infer<typeof jiraFixture>;
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
-export const jiraFixtureParts = ["project", "people", "issues", "changes", "regions"] as const;
+export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
 
 // Jira's limit on a summary, in characters.
 const maxSummary = 255;
+const badSummary = (summary: string) => !summary.trim() || [...summary].length > maxSummary;
 
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 
 // Shape first, then what shapes can't say: references resolve, keys are
 // unique and ascending, epics precede their children (the seed creates in key
-// order), and each change applies to the state the earlier ones left.
+// order), each edit applies to the state the earlier ones left, and an epic
+// region holds its epic and that epic's children.
 export function parseJiraFixture(input: unknown): Result<JiraFixture> {
   const shaped = jiraFixture(input);
   if (!shaped.ok) return shaped;
@@ -132,7 +150,7 @@ function consistency(fixture: JiraFixture): Issue[] {
       problem(`${at}.status.category`, "one status name, one category");
     categories.set(issue.status.name, category);
 
-    if (!issue.summary.trim() || [...issue.summary].length > maxSummary)
+    if (badSummary(issue.summary))
       problem(`${at}.summary`, `expected 1 to ${maxSummary} characters`);
     if (issue.issueType === "Epic" && issue.epic !== null)
       problem(`${at}.epic`, "an epic has no epic");
@@ -168,30 +186,32 @@ function consistency(fixture: JiraFixture): Issue[] {
     (max, issue) => (issue.updatedAt > max ? issue.updatedAt : max),
     "",
   );
-  fixture.changes.forEach((change, i) => {
-    const at = `$.changes[${i}]`;
-    if (change.at < latest) problem(`${at}.at`, "changes come after the base and each other");
-    latest = change.at;
-    const issue = live.get(change.key);
+  fixture.edits.forEach((edit, i) => {
+    const at = `$.edits[${i}]`;
+    if (edit.at < latest) problem(`${at}.at`, "edits come after the base and each other");
+    latest = edit.at;
+    const issue = live.get(edit.key);
     if (!issue) {
       problem(`${at}.key`, "no such issue at this point");
       return;
     }
-    if (change.kind === "setEpic") {
+    if (edit.kind === "setEpic") {
       if (issue.issueType === "Epic") problem(`${at}.key`, "an epic has no epic");
-      if (live.get(change.epic)?.issueType !== "Epic") problem(`${at}.epic`, "expected an epic");
-      if (issue.epic === change.epic) problem(`${at}.epic`, "already in this epic");
+      if (live.get(edit.epic)?.issueType !== "Epic") problem(`${at}.epic`, "expected an epic");
+      if (issue.epic === edit.epic) problem(`${at}.epic`, "already in this epic");
     }
-    if (change.kind === "setSummary" && change.summary === issue.summary)
+    if (edit.kind === "setSummary" && badSummary(edit.summary))
+      problem(`${at}.summary`, `expected 1 to ${maxSummary} characters`);
+    if (edit.kind === "setSummary" && edit.summary === issue.summary)
       problem(`${at}.summary`, "unchanged");
-    if (change.kind === "delete" && [...live.values()].some((child) => child.epic === change.key))
+    if (edit.kind === "delete" && [...live.values()].some((child) => child.epic === edit.key))
       problem(`${at}.key`, "deleting an epic that still has children");
-    const next = applyChange(issue, change);
+    const next = applyEdit(issue, edit);
     if (!next) {
-      live.delete(change.key);
+      live.delete(edit.key);
       return;
     }
-    live.set(change.key, next);
+    live.set(edit.key, next);
   });
 
   const regionNames = new Set<string>();
@@ -205,33 +225,46 @@ function consistency(fixture: JiraFixture): Issue[] {
     region.items.forEach((id, j) => {
       if (!byKey.has(parseItemId(id)?.key ?? "")) problem(`${at}.items[${j}]`, "not in the base");
     });
+    const { origin } = region;
+    if (origin.kind !== "group" || origin.grouping !== "epic") return;
+    const epic = byKey.get(parseItemId(origin.anchor ?? "")?.key ?? "");
+    if (epic?.issueType !== "Epic") {
+      problem(`${at}.origin.anchor`, "expected an epic in the base");
+      return;
+    }
+    if (origin.cluster !== epic.id)
+      problem(`${at}.origin.cluster`, "expected the epic's stable ID");
+    const members = [epic, ...fixture.issues.filter((issue) => issue.epic === epic.key)];
+    const expected = new Set(members.map((issue) => `jira:${issue.key}`));
+    if (expected.size !== region.items.length || region.items.some((id) => !expected.has(id)))
+      problem(`${at}.items`, "expected the epic and its children in the base");
   });
   return found;
 }
 
-function applyChange(issue: FixtureIssue, change: FixtureChange): FixtureIssue | null {
-  if (change.kind === "delete") return null;
-  if (change.kind === "setEpic") return { ...issue, epic: change.epic, updatedAt: change.at };
-  return { ...issue, summary: change.summary, updatedAt: change.at };
+function applyEdit(issue: FixtureIssue, edit: FixtureEdit): FixtureIssue | null {
+  if (edit.kind === "delete") return null;
+  if (edit.kind === "setEpic") return { ...issue, epic: edit.epic, updatedAt: edit.at };
+  return { ...issue, summary: edit.summary, updatedAt: edit.at };
 }
 
-// The issues after the first `applied` changes (0 is the base state), in key
-// order, with the stable IDs the changes deleted.
-export function applyChanges(
+// The issues after the first `edited` source edits (0 is the base state), in
+// key order, with the stable IDs those edits deleted.
+export function applySourceEdits(
   fixture: JiraFixture,
-  applied: number,
+  edited: number,
 ): { issues: FixtureIssue[]; gone: string[] } {
   const live = new Map(fixture.issues.map((issue) => [issue.key, issue]));
   const gone: string[] = [];
-  for (const change of fixture.changes.slice(0, applied)) {
-    const issue = live.get(change.key);
-    if (!issue) throw new RangeError(`change to a missing issue: ${change.key}`);
-    const next = applyChange(issue, change);
+  for (const edit of fixture.edits.slice(0, edited)) {
+    const issue = live.get(edit.key);
+    if (!issue) throw new RangeError(`edit to a missing issue: ${edit.key}`);
+    const next = applyEdit(issue, edit);
     if (next) {
-      live.set(change.key, next);
+      live.set(edit.key, next);
       continue;
     }
-    live.delete(change.key);
+    live.delete(edit.key);
     gone.push(issue.id);
   }
   return { issues: [...live.values()], gone };
@@ -240,20 +273,20 @@ export function applyChanges(
 export type FixtureSnapshot = {
   records: IndexRecord<"jira", JiraAttrs>[];
   content: Map<ItemId<"jira">, JiraContent>;
-  // Stable IDs the applied changes deleted.
+  // Stable IDs the applied edits deleted.
   gone: string[];
 };
 
 // Pure. `site` is the origin item URLs point at, such as
-// "https://oriel.atlassian.net"; `applied` is how many changes to apply.
+// "https://oriel.atlassian.net"; `edited` is how many source edits to apply.
 export function fixtureSnapshot(
   fixture: JiraFixture,
   site: string,
-  applied: number,
+  edited: number,
 ): FixtureSnapshot {
   const people = new Map(fixture.people.map((person) => [person.id, person]));
   const name = (id: string) => people.get(id)?.displayName ?? id;
-  const { issues, gone } = applyChanges(fixture, applied);
+  const { issues, gone } = applySourceEdits(fixture, edited);
   const records: IndexRecord<"jira", JiraAttrs>[] = [];
   const content = new Map<ItemId<"jira">, JiraContent>();
   for (const issue of issues) {

@@ -42,23 +42,25 @@ test("issues are created in key order, gaps included, so live keys match", () =>
   }
 });
 
-test("only issues this plan created are deleted, and changes come last, in order", () => {
+test("only issues this plan created are deleted, and source edits come last, in order", () => {
   const created = new Set<string>();
   for (const step of steps) {
     if (step.kind === "create" || step.kind === "placeholder") created.add(step.key);
     if (step.kind === "delete") assert.ok(created.has(step.key), step.key);
   }
-  const tail = steps.slice(-fixture.changes.length);
+  const tail = steps.slice(-fixture.edits.length);
   assert.deepEqual(
     tail.map((s) => [s.kind, s.key]),
-    fixture.changes.map((c) => [c.kind === "delete" ? "delete" : "edit", c.key]),
+    fixture.edits.map((e) => [e.kind === "delete" ? "delete" : "edit", e.key]),
   );
 });
 
-test("assignees are not seeded; each assigned issue gets a note instead", () => {
-  const assigned = fixture.issues.filter((issue) => issue.assignee !== null);
-  const notes = steps.filter((s) => s.kind === "comment" && s.body.startsWith("Seeded unassigned"));
-  assert.equal(notes.length, assigned.length);
+test("only fixture content is seeded, and every issue is created unassigned", () => {
+  const comments = steps.filter((s) => s.kind === "comment").map((s) => s.body);
+  assert.deepEqual(
+    comments,
+    fixture.issues.flatMap((issue) => issue.comments.map((comment) => comment.body)),
+  );
   const creates = dryRun(fixture).filter(
     (line) => line.startsWith("POST /rest/api/3/issue {") && !line.includes("Placeholder for"),
   );

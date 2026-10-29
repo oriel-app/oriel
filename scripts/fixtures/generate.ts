@@ -4,7 +4,7 @@
 // estimates, assignees, times) from a fixed time base, and decides the order
 // issues were created in. Regenerating is byte-identical.
 // Usage: node scripts/fixtures/generate.ts
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import {
   type FixtureIssue,
   jiraFixtureParts,
@@ -13,7 +13,7 @@ import {
 import { fixtureDir } from "./load.ts";
 
 const seed = 0x5f3759df;
-// Every time in the fixture is at or before this, except the changes after it.
+// Every time in the fixture is at or before this, except the edits after it.
 const timeBase = Date.UTC(2026, 9, 1, 9, 0, 0);
 const minute = 60_000;
 const hour = 60 * minute;
@@ -687,9 +687,9 @@ const epics = [
   offline,
 ];
 
-// After the base: one story moves epic, one summary is edited, one story is
-// deleted. Times are hours after the time base.
-const changes: (
+// Edits made directly in the source after the base: one story moves epic, one
+// summary is edited, one story is deleted. Times are hours after the time base.
+const edits: (
   | { kind: "setEpic"; ref: string; epic: string; hours: number }
   | { kind: "setSummary"; ref: string; summary: string; hours: number }
   | { kind: "delete"; ref: string; hours: number }
@@ -906,30 +906,37 @@ export function generate(): Map<string, string> {
     };
   });
 
-  const fixtureChanges = changes.map(({ ref, hours, ...change }) => ({
-    ...change,
+  const fixtureEdits = edits.map(({ ref, hours, ...edit }) => ({
+    ...edit,
     key: key(ref),
-    ...("epic" in change ? { epic: key(change.epic) } : {}),
+    ...("epic" in edit ? { epic: key(edit.epic) } : {}),
     at: new Date(timeBase + hours * hour).toISOString(),
   }));
 
   const keyNumber = (k: string) => Number(k.slice(k.indexOf("-") + 1));
+  const inKeyOrder = (keys: string[]) =>
+    keys.toSorted((a, b) => keyNumber(a) - keyNumber(b)).map((k) => `jira:${k}`);
   const fixtureRegions = regions.map((region) => {
-    const keys = region.epic
-      ? [region.epic, ...issues.filter((issue) => issue.epic === key(region.epic ?? ""))]
-      : (region.refs ?? []);
-    const items = keys
-      .map((member) => (typeof member === "string" ? key(member) : member.key))
-      .toSorted((a, b) => keyNumber(a) - keyNumber(b))
-      .map((k) => `jira:${k}`);
-    return { name: region.name, items };
+    if (!region.epic) {
+      const items = inKeyOrder((region.refs ?? []).map(key));
+      return { name: region.name, origin: { kind: "picked" }, items };
+    }
+    const epic = key(region.epic);
+    const children = issues.filter((issue) => issue.epic === epic).map((issue) => issue.key);
+    const origin = {
+      kind: "group",
+      grouping: "epic",
+      cluster: issues.find((issue) => issue.key === epic)?.id,
+      anchor: `jira:${epic}`,
+    };
+    return { name: region.name, origin, items: inKeyOrder([epic, ...children]) };
   });
 
   const result = parseJiraFixture({
     project: { key: "SYN", product: "Ferrowick" },
     people,
     issues,
-    changes: fixtureChanges,
+    edits: fixtureEdits,
     regions: fixtureRegions,
   });
   if (!result.ok) {
@@ -978,6 +985,10 @@ function pickPoints(name: keyof typeof scales, random: Rng): number | null {
 }
 
 if (import.meta.main) {
+  // The generator owns the directory: a part it no longer writes is removed.
+  const files = generate();
   mkdirSync(fixtureDir, { recursive: true });
-  for (const [file, text] of generate()) writeFileSync(new URL(file, fixtureDir), text);
+  for (const stale of readdirSync(fixtureDir).filter((f) => f.endsWith(".json") && !files.has(f)))
+    rmSync(new URL(stale, fixtureDir));
+  for (const [file, text] of files) writeFileSync(new URL(file, fixtureDir), text);
 }

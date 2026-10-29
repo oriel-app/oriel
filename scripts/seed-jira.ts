@@ -1,7 +1,7 @@
 // Recreates SYN on the throwaway site from fixtures/jira, which stay the
 // source of truth. Issues are created in key order so live keys match fixture
 // keys; a key the fixtures skip gets a placeholder that is created, then
-// deleted. The fixture's changes are applied last. Field IDs are discovered
+// deleted. The fixture's source edits are applied last. Field IDs are discovered
 // at run time. It refuses unless SYN exists, is company-managed and holds no
 // issues, and it deletes only what this run created.
 // Usage: pnpm seed:jira [--dry-run | --preflight]
@@ -9,13 +9,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
-import type { FixtureIssue, FixturePerson, JiraFixture } from "../packages/core/src/fixture.ts";
+import type { FixtureIssue, JiraFixture } from "../packages/core/src/fixture.ts";
 import {
   array,
   boolean,
   number,
   object,
   optional,
+  record,
   string,
   unknown,
   type Validator,
@@ -50,17 +51,11 @@ export type Step =
   | { kind: "edit"; key: string; fields: { summary: string } | { parent: string } }
   | { kind: "delete"; key: string };
 
-// Assignees aren't seeded: the site has one real user. Each issue says so.
-export function assigneeNote(person: FixturePerson): string {
-  const inactive = person.active ? "" : " (inactive)";
-  return `Seeded unassigned: the site has one real user. In the fixtures, this issue is assigned to ${person.displayName}${inactive}.`;
-}
-
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 
-// Pure: what the seed will do, in order.
+// Pure: what the seed will do, in order. Only what is in the fixtures is
+// seeded (SPEC §5).
 export function plan(fixture: JiraFixture): Step[] {
-  const people = new Map(fixture.people.map((person) => [person.id, person]));
   const byNumber = new Map(fixture.issues.map((issue) => [keyNumber(issue.key), issue]));
   const last = Math.max(0, ...byNumber.keys());
   const steps: Step[] = [];
@@ -73,18 +68,16 @@ export function plan(fixture: JiraFixture): Step[] {
     }
     steps.push({ kind: "create", key, issue });
     for (const comment of issue.comments) steps.push({ kind: "comment", key, body: comment.body });
-    const assignee = issue.assignee === null ? undefined : people.get(issue.assignee);
-    if (assignee) steps.push({ kind: "comment", key, body: assigneeNote(assignee) });
     for (const link of issue.links)
       steps.push({ kind: "link", key, url: link.url, title: link.title });
     steps.push({ kind: "status", key, status: issue.status.name });
   }
-  for (const change of fixture.changes) {
-    if (change.kind === "setEpic")
-      steps.push({ kind: "edit", key: change.key, fields: { parent: change.epic } });
-    if (change.kind === "setSummary")
-      steps.push({ kind: "edit", key: change.key, fields: { summary: change.summary } });
-    if (change.kind === "delete") steps.push({ kind: "delete", key: change.key });
+  for (const edit of fixture.edits) {
+    if (edit.kind === "setEpic")
+      steps.push({ kind: "edit", key: edit.key, fields: { parent: edit.epic } });
+    if (edit.kind === "setSummary")
+      steps.push({ kind: "edit", key: edit.key, fields: { summary: edit.summary } });
+    if (edit.kind === "delete") steps.push({ kind: "delete", key: edit.key });
   }
   return steps;
 }
@@ -109,13 +102,7 @@ export function adf(text: string) {
 }
 
 // What discovery found. In a dry run each value is a <placeholder>.
-export type Discovered = {
-  pointsField: string;
-  issueTypes: Record<string, string>;
-  // The create screen has the assignee field, so issues can be created
-  // unassigned rather than take the project's default assignee.
-  unassign: boolean;
-};
+export type Discovered = { pointsField: string; issueTypes: Record<string, string> };
 
 export type Request = { method: "GET" | "POST" | "PUT" | "DELETE"; path: string; body?: unknown };
 
@@ -139,16 +126,20 @@ export function request(
   switch (step.kind) {
     case "create": {
       const { issue: fixture } = step;
+      // Always unassigned: the site has one real user, so the fixture's
+      // people can't be assigned. Assignees stay in the fixtures only; besides
+      // them, the live copy differs only where Jira sets values itself
+      // (comment authors and times, updatedAt, link IDs).
       const fields: Record<string, unknown> = {
         project: { key: project },
         issuetype: { id: typeId(found, fixture.issueType) },
         summary: fixture.summary,
         labels: fixture.labels,
+        assignee: null,
       };
       if (fixture.description) fields.description = adf(fixture.description);
       if (fixture.epic !== null) fields.parent = { key: fixture.epic };
       if (fixture.points !== null) fields[found.pointsField] = fixture.points;
-      if (found.unassign) fields.assignee = null;
       return { method: "POST", path: `${api}/issue`, body: { fields } };
     }
     case "placeholder":
@@ -219,7 +210,6 @@ export function dryRun(fixture: JiraFixture): string[] {
   const found: Discovered = {
     pointsField: "<Story Points field>",
     issueTypes: Object.fromEntries(typesUsed(fixture).map((name) => [name, `<${name} type>`])),
-    unassign: true,
   };
   const steps = plan(fixture).map((step) => {
     const line = describe(request(project, step, found));
@@ -230,12 +220,14 @@ export function dryRun(fixture: JiraFixture): string[] {
   return [
     "Dry run: nothing is sent and .env is not read. <...> is found at run time.",
     `GET ${api}/project/${project}: refuse unless it exists and is company-managed`,
+    `GET ${permissionsPath(project)}: refuse unless every one is held`,
+    `GET ${api}/configuration: refuse unless issue linking is on and unassigned issues are allowed`,
     `POST ${api}/search/jql {"jql":"project = ${project}","maxResults":1,"fields":["id"]}: refuse unless it has no issues`,
     `GET ${api}/project/${project}/statuses: refuse unless every fixture status exists`,
     `GET /rest/agile/1.0/board?projectKeyOrId=${project}&type=scrum: the board`,
     "GET /rest/agile/1.0/board/<board>/configuration: its estimation field must be Story Points",
     `GET ${api}/issue/createmeta/${project}/issuetypes: issue type IDs`,
-    `GET ${api}/issue/createmeta/${project}/issuetypes/<type>?maxResults=200: create screen fields, per type`,
+    `GET ${api}/issue/createmeta/${project}/issuetypes/<type>?maxResults=200: per type, refuse unless the create screen has every field sent`,
     ...steps,
   ];
 }
@@ -292,7 +284,27 @@ async function send<T>(call: Call, request: Request, shape: Validator<T>): Promi
 
 const get = (path: string): Request => ({ method: "GET", path });
 
+// Project permissions the run needs. Remote links need Browse projects and
+// Link issues; creating an issue unassigned needs Assign issues.
+const permissions = [
+  "BROWSE_PROJECTS",
+  "CREATE_ISSUES",
+  "EDIT_ISSUES",
+  "DELETE_ISSUES",
+  "TRANSITION_ISSUES",
+  "ADD_COMMENTS",
+  "LINK_ISSUES",
+  "ASSIGN_ISSUES",
+];
+const permissionsPath = (project: string) =>
+  `${api}/mypermissions?projectKey=${project}&permissions=${permissions.join(",")}`;
+
 const projectShape = object({ key: string, style: string });
+const permissionsShape = object({ permissions: record(object({ havePermission: boolean })) });
+const configurationShape = object({
+  issueLinkingEnabled: boolean,
+  unassignedIssuesAllowed: boolean,
+});
 const searchShape = object({ issues: array(unknown) });
 const statusesShape = array(object({ name: string, statuses: array(object({ name: string })) }));
 const boardsShape = object({ values: array(object({ id: number })) });
@@ -325,6 +337,16 @@ async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
   if (found.status === 404) throw new Error(`refusing: project ${project} doesn't exist`);
   const info = accept(projectRequest, found, projectShape);
   if (info.style !== "classic") throw new Error(`refusing: ${project} isn't company-managed`);
+
+  const held = await send(call, get(permissionsPath(project)), permissionsShape);
+  const missing = permissions.filter((key) => !held.permissions[key]?.havePermission);
+  if (missing.length) throw new Error(`refusing: missing permissions ${missing.join(", ")}`);
+
+  const settings = await send(call, get(`${api}/configuration`), configurationShape);
+  if (!settings.unassignedIssuesAllowed)
+    throw new Error("refusing: the site doesn't allow unassigned issues");
+  if (!settings.issueLinkingEnabled && fixture.issues.some((issue) => issue.links.length))
+    throw new Error("refusing: issue linking is off, so remote links can't be added");
 
   const search = await send(
     call,
@@ -366,7 +388,7 @@ async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
     issueTypesShape,
   );
   const issueTypes: Record<string, string> = {};
-  let unassign = true;
+  // Transitions and edit screens can't be checked before issues exist.
   for (const name of typesUsed(fixture)) {
     const type = types.issueTypes.find((entry) => entry.name === name);
     if (!type) throw new Error(`refusing: no issue type ${name} in ${project}`);
@@ -377,6 +399,9 @@ async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
       createFieldsShape,
     );
     const ids = new Set(screen.fields.map((field) => field.fieldId));
+    // Creates always send labels and assignee, and description when there is one.
+    for (const field of ["labels", "description", "assignee"])
+      if (!ids.has(field)) throw new Error(`refusing: ${field} isn't on the ${name} create screen`);
     const ofType = fixture.issues.filter((issue) => issue.issueType === name);
     if (ofType.some((issue) => issue.points !== null) && !ids.has(estimation.fieldId))
       throw new Error(`refusing: Story Points isn't on the ${name} create screen`);
@@ -392,16 +417,13 @@ async function discover(fixture: JiraFixture, call: Call): Promise<Discovered> {
       throw new Error(
         `refusing: ${name} requires fields the fixtures don't have: ${unset.map((field) => field.name).join(", ")}`,
       );
-    unassign &&= ids.has("assignee");
   }
-  return { pointsField: estimation.fieldId, issueTypes, unassign };
+  return { pointsField: estimation.fieldId, issueTypes };
 }
 
 async function seed(fixture: JiraFixture, call: Call): Promise<void> {
   const project = fixture.project.key;
   const found = await discover(fixture, call);
-  if (!found.unassign)
-    console.log("note: assignee isn't on a create screen; issues get the default");
   const created = new Set<string>();
   for (const step of plan(fixture)) {
     if (step.kind === "status") {
@@ -456,7 +478,7 @@ if (import.meta.main) {
     if (args.includes("--preflight")) {
       const found = await discover(fixture, client(env));
       console.log(
-        `preflight ok: estimation field ${found.pointsField}, issue types ${Object.keys(found.issueTypes).join(", ")}, assignee settable: ${found.unassign}`,
+        `preflight ok: estimation field ${found.pointsField}, issue types ${Object.keys(found.issueTypes).join(", ")}`,
       );
     } else {
       await seed(fixture, client(env));

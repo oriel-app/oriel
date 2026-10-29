@@ -1,6 +1,12 @@
 [
   {
     "name": "boarding-epic",
+    "origin": {
+      "kind": "group",
+      "grouping": "epic",
+      "cluster": "10002",
+      "anchor": "jira:SYN-2"
+    },
     "items": [
       "jira:SYN-2",
       "jira:SYN-13",
@@ -19,6 +25,12 @@
   },
   {
     "name": "checkout-epic",
+    "origin": {
+      "kind": "group",
+      "grouping": "epic",
+      "cluster": "10001",
+      "anchor": "jira:SYN-1"
+    },
     "items": [
       "jira:SYN-1",
       "jira:SYN-10",
@@ -39,6 +51,12 @@
   },
   {
     "name": "weather-epic",
+    "origin": {
+      "kind": "group",
+      "grouping": "epic",
+      "cluster": "10003",
+      "anchor": "jira:SYN-3"
+    },
     "items": [
       "jira:SYN-3",
       "jira:SYN-26",
@@ -55,6 +73,9 @@
   },
   {
     "name": "picked",
+    "origin": {
+      "kind": "picked"
+    },
     "items": [
       "jira:SYN-13",
       "jira:SYN-27",

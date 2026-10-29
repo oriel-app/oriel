@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-  applyChanges,
+  applySourceEdits,
   type FixtureIssue,
   fixtureSnapshot,
 } from "../../packages/core/src/fixture.ts";
@@ -12,7 +12,7 @@ import { fixtureDir, loadJiraFixture } from "./load.ts";
 // Throws, failing every test here, if the committed fixtures don't validate.
 const fixture = loadJiraFixture();
 const base = fixture.issues;
-const changed = applyChanges(fixture, fixture.changes.length).issues;
+const edited = applySourceEdits(fixture, fixture.edits.length).issues;
 const epics = base.filter((issue) => issue.issueType === "Epic");
 const childrenOf = (issues: FixtureIssue[], epic: string) =>
   issues.filter((issue) => issue.epic === epic);
@@ -53,10 +53,10 @@ test("mess: a half-estimated epic", () => {
   assert.ok(half);
 });
 
-test("mess: an epic with zero stories, before and after the changes", () => {
+test("mess: an epic with zero stories, before and after the edits", () => {
   assert.ok(
     epics.some(
-      (epic) => !childrenOf(base, epic.key).length && !childrenOf(changed, epic.key).length,
+      (epic) => !childrenOf(base, epic.key).length && !childrenOf(edited, epic.key).length,
     ),
   );
 });
@@ -70,22 +70,22 @@ test("mess: an epic with forty stories", () => {
   );
 });
 
-test("mess: a story moved between epics, by a change", () => {
-  const moves = fixture.changes.filter((change) => change.kind === "setEpic");
+test("mess: a story moved between epics, by a source edit", () => {
+  const moves = fixture.edits.filter((edit) => edit.kind === "setEpic");
   const moved = moves.find((move) => {
     const before = byKey.get(move.key);
     return before?.issueType === "Story" && before.epic !== null && before.epic !== move.epic;
   });
   assert.ok(moved);
-  const after = changed.find((issue) => issue.key === moved.key);
+  const after = edited.find((issue) => issue.key === moved.key);
   assert.equal(after?.epic, moved.epic);
 });
 
-test("changes: a summary edit and a deletion", () => {
-  const edit = fixture.changes.find((change) => change.kind === "setSummary");
+test("source edits: a summary edit and a deletion", () => {
+  const edit = fixture.edits.find((e) => e.kind === "setSummary");
   assert.ok(edit);
-  assert.equal(changed.find((issue) => issue.key === edit.key)?.summary, edit.summary);
-  assert.ok(fixture.changes.some((change) => change.kind === "delete"));
+  assert.equal(edited.find((issue) => issue.key === edit.key)?.summary, edit.summary);
+  assert.ok(fixture.edits.some((e) => e.kind === "delete"));
 });
 
 test("mess: emoji titles", () => {
@@ -117,13 +117,19 @@ test("mess: the injection story", () => {
   assert.equal(injection?.issueType, "Story");
 });
 
+test("frozen regions: epic groups anchored on their epic, and a hand-picked one", () => {
+  const origins = fixture.regions.map((region) => region.origin);
+  assert.ok(origins.some((o) => o.kind === "group" && o.grouping === "epic" && o.anchor));
+  assert.ok(origins.some((o) => o.kind === "picked"));
+});
+
 test("mess: a deleted story referenced by a frozen region", () => {
-  const deleted = fixture.changes.filter((change) => change.kind === "delete");
-  const story = deleted.find((change) => byKey.get(change.key)?.issueType === "Story");
+  const deleted = fixture.edits.filter((edit) => edit.kind === "delete");
+  const story = deleted.find((edit) => byKey.get(edit.key)?.issueType === "Story");
   assert.ok(story);
   assert.ok(fixture.regions.some((region) => region.items.includes(`jira:${story.key}`)));
-  assert.ok(!changed.some((issue) => issue.key === story.key));
-  const snapshot = fixtureSnapshot(fixture, "https://oriel.atlassian.net", fixture.changes.length);
+  assert.ok(!edited.some((issue) => issue.key === story.key));
+  const snapshot = fixtureSnapshot(fixture, "https://oriel.atlassian.net", fixture.edits.length);
   assert.ok(snapshot.gone.includes(byKey.get(story.key)?.id ?? ""));
   assert.ok(!snapshot.content.has(`jira:${story.key}`));
 });
