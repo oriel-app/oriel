@@ -33,6 +33,15 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/changeset:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/db':
+        specifier: workspace:*
+        version: link:../db
+
   packages/core: {}
 
   packages/db:
