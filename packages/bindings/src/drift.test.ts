@@ -5,9 +5,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
-import { describe, type Fn, scopeOf } from "./describe.ts";
-import { guestEntry, stubs } from "./shim.ts";
-import { fixture, fixtureReader, fixtureRegion, runGuest, snapshotAfter } from "./testing.ts";
+import { describe, type Fn, globals, scopeOf } from "./describe.ts";
+import { stubs } from "./shim.ts";
+import {
+  fixture,
+  fixtureReader,
+  fixtureRegion,
+  issueTypes,
+  pickedWithEpic,
+  runGuest,
+  snapshotAfter,
+} from "./testing.ts";
 import { compile, typecheck } from "./typecheck.ts";
 
 const reader = fixtureReader(snapshotAfter(fixture.edits.length));
@@ -45,20 +53,33 @@ async function checkStubs(dts: string, fns: readonly Fn[]) {
   return checked.kind === "checked" ? checked.diagnostics : [];
 }
 
-for (const name of ["boarding-epic", "picked"]) {
+const regions = [
+  ["boarding-epic", fixtureRegion("boarding-epic")],
+  ["picked", fixtureRegion("picked")],
+  ["picked with an epic", pickedWithEpic()],
+] as const;
+
+for (const [name, region] of regions) {
   test(`${name}: the stubs typecheck against the declarations`, async () => {
-    const region = fixtureRegion(name);
-    const bindings = bindingsFor(region, { reader });
-    const fns = describe(scopeOf(region));
-    assert.ok(bindings.shim.endsWith(stubs(fns)), "the shim ends with these stubs");
+    const bindings = bindingsFor(region, { reader, issueTypes });
+    const fns = describe(scopeOf(region, issueTypes));
+    const start = `__oriel.start({ ${globals.join(", ")} });\n`;
+    assert.ok(bindings.shim.endsWith(stubs(fns) + start), "the shim ends with these stubs");
     assert.deepEqual(await checkStubs(bindings.dts, fns), []);
   });
 }
 
+test("every function lives under a name the guest hands the script, and each name is used", () => {
+  for (const [, region] of regions) {
+    const homes = new Set(describe(scopeOf(region, issueTypes)).map((fn) => fn.space ?? fn.name));
+    assert.deepEqual(homes, new Set(globals));
+  }
+});
+
 test("the stub check catches a missing, extra, renamed or mis-kinded stub", async () => {
   const region = fixtureRegion("boarding-epic");
-  const { dts } = bindingsFor(region, { reader });
-  const fns = describe(scopeOf(region));
+  const { dts } = bindingsFor(region, { reader, issueTypes });
+  const fns = describe(scopeOf(region, issueTypes));
   const write = fns.find((fn) => fn.name === "setSummary");
   assert.ok(write);
   // Each drift, and the diagnostic codes it must produce.
@@ -116,7 +137,7 @@ return {
 
 test("a sample script typechecks against an epic region's declarations and runs through the stubs", async () => {
   const region = fixtureRegion("boarding-epic");
-  const bindings = bindingsFor(region, { reader });
+  const bindings = bindingsFor(region, { reader, issueTypes });
   assert.equal(await typecheck(epicScript, bindings.dts), null);
 
   const run = await runGuest(bindings, epicScript);
@@ -175,43 +196,70 @@ test("a sample script typechecks against an epic region's declarations and runs 
 
 const pickedScript = `
 const items = await jira.listItems();
-const ref = jira.createStory({ summary: "Split the refund flow", epic: "jira:SYN-13" });
+const ref = jira.createStory({ summary: "Split the refund flow" });
 jira.setAssignee(ref, null);
 jira.setSummary("jira:SYN-80", "Refunds: one flow");
 try {
   await jira.getItem("jira:SYN-1" as RegionId);
 } catch (error) {
-  console.warn((error as Error).message);
+  console.error(error);
 }
 return items.map((item) => (item.gone ? item.reason : item.id));
 `;
 
 test("a sample script typechecks against a picked region's declarations and runs through the stubs", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
   assert.equal(await typecheck(pickedScript, bindings.dts), null);
 
   const run = await runGuest(bindings, pickedScript);
   assert.equal(run.stderr, "");
   assert.deepEqual(run.rejected, []);
   assert.deepEqual(run.logs, [
-    `jira.getItem: "jira:SYN-1" isn't in this region; use search() to look outside it`,
+    `Error: jira.getItem: "jira:SYN-1" isn't in this region; use search() to look outside it`,
   ]);
   assert.deepEqual(run.outcome, {
     kind: "done",
     value: ["jira:SYN-13", "deleted", "jira:SYN-80", "jira:SYN-103", "jira:SYN-104"],
   });
   assert.deepEqual(
-    run.mutations.map((m) => [m.op, m.target, m.ref]),
+    run.mutations.map((m) => [m.op, m.target, m.ref, m.args]),
     [
-      ["createStory", null, "new:1"],
-      ["setAssignee", "new:1", null],
-      ["setSummary", "jira:SYN-80", null],
+      ["createStory", null, "new:1", { summary: "Split the refund flow", epic: null }],
+      ["setAssignee", "new:1", null, { accountId: null }],
+      ["setSummary", "jira:SYN-80", null, { summary: "Refunds: one flow" }],
     ],
   );
 });
 
+test("a new story's epic is typed: only the region's epics, where it has any", async () => {
+  const picked = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const withEpic = bindingsFor(pickedWithEpic(), { reader, issueTypes });
+  const into = (epic: string) => `jira.createStory({ summary: "A", epic: "${epic}" });`;
+  assert.equal(await typecheck(into("jira:SYN-1"), withEpic.dts), null);
+  assert.match((await typecheck(into("jira:SYN-13"), withEpic.dts))?.message ?? "", /TS2322/);
+  assert.match((await typecheck(into("jira:SYN-1"), picked.dts))?.message ?? "", /TS2353/);
+});
+
+test("logged errors, maps and sets show what they hold, within bounds", async () => {
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const script = `
+console.log(new Map([["jira:SYN-13", 3]]), new Set(["a"]), { error: new RangeError("deep") });
+console.log("x".repeat(5000));
+return null;
+`;
+  const run = await runGuest(bindings, script);
+  assert.deepEqual(
+    run.logs.map((log) => log.slice(0, 80)),
+    [
+      `{"Map(1)":[["jira:SYN-13",3]]} {"Set(1)":["a"]} {"error":"RangeError: deep"}`,
+      "x".repeat(80),
+    ],
+  );
+  assert.equal(run.logs[1]?.length, 4001);
+});
+
 test("the guest reports a throw, and the host refuses a write the types would have caught", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
   const script = `
 jira.setEstimate("jira:SYN-1" as RegionId, 1);
 const item = await jira.getItem("jira:SYN-13");
@@ -224,13 +272,4 @@ return 1;
   ]);
   assert.equal(run.outcome?.kind, "threw", "read results are frozen");
   assert.match(run.outcome?.kind === "threw" ? run.outcome.message : "", /read only|read-only/);
-});
-
-test("guestEntry says which entry line holds the script's first line", () => {
-  const { shim } = bindingsFor(fixtureRegion("picked"), { reader });
-  for (const prefix of [shim, "const a = 1;", "const a = 1;\n"]) {
-    const { source, firstLine } = guestEntry(prefix, "first();\nsecond();");
-    const lines = source.split("\n");
-    assert.deepEqual(lines.slice(firstLine - 1, firstLine + 1), ["first();", "second();"]);
-  }
 });

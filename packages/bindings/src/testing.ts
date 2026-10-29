@@ -1,6 +1,6 @@
-// Test helpers: regions and a reader built from the frozen SYN fixtures, and a
-// small guest host that runs a script's entry under Node and speaks the guest
-// protocol, as the sandbox will under Deno.
+// Test helpers: regions, issue types and a reader built from the frozen SYN
+// fixtures, and a small guest host that runs the shim under Node and speaks
+// the guest protocol, as the sandbox will under Deno.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
@@ -20,11 +20,16 @@ import {
   ulid,
 } from "@oriel/core";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { Reader } from "./describe.ts";
-import { guestEntry } from "./shim.ts";
+import type { IssueTypes, Reader } from "./describe.ts";
+import { guestStart } from "./shim.ts";
 
 export const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
+
+// Every fixture item's issue type, as the index would give it.
+export const issueTypes: IssueTypes = new Map(
+  fixture.issues.map((issue) => [`jira:${issue.key}`, issue.issueType]),
+);
 
 // The source as the base state left it (0) or after the first `edited` source
 // edits.
@@ -45,6 +50,13 @@ export function fixtureRegion(name: string): Region {
     snapshot: 1,
     createdAt: instant(new Date("2026-10-01T00:00:00.000Z")),
   };
+}
+
+// The picked fixture region plus one epic, SYN-1, picked by hand: a region
+// with an epic but no anchor.
+export function pickedWithEpic(): Region {
+  const region = fixtureRegion("picked");
+  return { ...region, items: [...region.items, { id: "jira:SYN-1", stableId: "10001" }] };
 }
 
 // Every term must appear in the item's key or title.
@@ -94,14 +106,20 @@ export type GuestRun = {
   stderr: string;
 };
 
-// Runs the script's entry in a Node child with an empty environment, answering
-// reads with `bindings.read` and capturing writes with `bindings.capture`.
+// Runs the shim in a Node child with an empty environment, sends the script
+// as reply 0, answers reads with `bindings.read` and captures writes with
+// `bindings.capture`. A script `guestStart` refuses never starts a child.
 export async function runGuest(bindings: Bindings, script: string): Promise<GuestRun> {
-  const { source } = guestEntry(bindings.shim, script);
-  const child = spawn(process.execPath, ["--input-type=module-typescript", "--eval", source], {
-    env: {},
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const start = guestStart(script);
+  if (!start.ok) throw new Error(start.error.message);
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module-typescript", "--eval", bindings.shim],
+    {
+      env: {},
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
   const exited = once(child, "close");
   const run: GuestRun = {
     mutations: [],
@@ -115,6 +133,7 @@ export async function runGuest(bindings: Bindings, script: string): Promise<Gues
   // A reply can lose the race with the guest's exit; that is not a failure.
   child.stdin.on("error", () => {});
   const reply = (line: object) => child.stdin.write(`${JSON.stringify(line)}\n`);
+  reply(start.reply);
   const replies: Promise<unknown>[] = [];
   for await (const line of createInterface({ input: child.stdout })) {
     const parsed = guestMessage(JSON.parse(line));

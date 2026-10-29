@@ -60,15 +60,26 @@ function signature(fn: Fn): string {
   return `${fn.name}(${params}): ${fn.creates ? "NewRef" : "void"}`;
 }
 
+// `type Name =` then one `| "id"` line per ID.
+function union(name: string, ids: readonly string[]): string[] {
+  if (!ids.length) return [`type ${name} = never;`];
+  return [
+    `type ${name} =`,
+    ...ids.map((id, i) => `  | ${JSON.stringify(id)}${i === ids.length - 1 ? ";" : ""}`),
+  ];
+}
+
 export function declarations(scope: Scope, fns: readonly Fn[]): string {
-  const ids = scope.ids.map(
-    (id, i) => `  | ${JSON.stringify(id)}${i === scope.ids.length - 1 ? ";" : ""}`,
-  );
+  // Where createStory may put a story, when the region offers a choice.
+  const epics =
+    scope.anchor === null && scope.epics.length
+      ? ["/** This region's epics: where a new story can go. */", ...union("EpicId", scope.epics)]
+      : [];
   return [
     ...header,
     "/** The items in this region. */",
-    ids.length ? "type RegionId =" : "type RegionId = never;",
-    ...ids,
+    ...union("RegionId", scope.ids),
+    ...epics,
     ...types,
     "declare const jira: {",
     ...fns

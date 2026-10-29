@@ -6,7 +6,7 @@ import {
   type NewRef,
   type Region,
 } from "@oriel/core";
-import { describe, type Fn, pathOf, type Reader, scopeOf } from "./describe.ts";
+import { describe, type Fn, type IssueTypes, pathOf, type Reader, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { shimFor } from "./shim.ts";
 
@@ -23,9 +23,13 @@ const defined = (args: object) =>
 // A region's bindings for one run. Reads proxy to `reader`. Writes are
 // captured, never sent: a write must target a region item or a story an
 // earlier create in this run made, and its arguments must pass the op
-// catalogue.
-export function bindingsFor(region: Region, options: { reader: Reader }): Bindings {
-  const scope = scopeOf(region);
+// catalogue. `issueTypes` holds each region item's issue type from the index;
+// only epics can parent a new story.
+export function bindingsFor(
+  region: Region,
+  options: { reader: Reader; issueTypes: IssueTypes },
+): Bindings {
+  const scope = scopeOf(region, options.issueTypes);
   const fns = describe(scope);
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);

@@ -28,9 +28,21 @@ export type Reader = {
   search(query: string, limit: number): Promise<readonly IndexRecord[]>;
 };
 
-// A region as the module sees it: its IDs, sorted, and the item it was opened
-// on, if any.
-export type Scope = { ids: readonly ItemId<"jira">[]; anchor: ItemId<"jira"> | null };
+// The names the script sees, in the order the guest passes them to it. Each
+// function lives in one: a namespace, or a global function of that name.
+export const globals = ["jira", "search"] as const;
+
+// Each region item's issue type, as the index has it (`JiraAttrs.issueType`).
+// Only epics can parent a new story.
+export type IssueTypes = ReadonlyMap<string, string>;
+
+// A region as the module sees it: its IDs, sorted; the item it was opened on,
+// if any; and the epics a new story may go in.
+export type Scope = {
+  ids: readonly ItemId<"jira">[];
+  anchor: ItemId<"jira"> | null;
+  epics: readonly ItemId<"jira">[];
+};
 
 const isJiraId = (id: string): id is ItemId<"jira"> => parseItemId(id)?.source === "jira";
 
@@ -50,18 +62,20 @@ function byKey(a: ItemId<"jira">, b: ItemId<"jira">): number {
 }
 
 // IDs reach generated code, so each must have its source's strict key shape.
-export function scopeOf(region: Region): Scope {
+export function scopeOf(region: Region, issueTypes: IssueTypes): Scope {
   const ids: ItemId<"jira">[] = [];
   for (const { id } of region.items) {
     if (!isJiraId(id)) throw new RangeError(`not a Jira item ID: ${JSON.stringify(id)}`);
     if (!ids.includes(id)) ids.push(id);
   }
   ids.sort(byKey);
-  if (region.origin.kind !== "group" || region.origin.anchor === null) return { ids, anchor: null };
+  if (region.origin.kind !== "group" || region.origin.anchor === null)
+    return { ids, anchor: null, epics: ids.filter((id) => issueTypes.get(id) === "Epic") };
   const { anchor } = region.origin;
   const member = ids.find((id) => id === anchor);
   if (!member) throw new RangeError(`the region's anchor ${anchor} isn't one of its items`);
-  return { ids, anchor: member };
+  // A new story in a region opened on an epic always goes in that epic.
+  return { ids, anchor: member, epics: [member] };
 }
 
 // Per-run host state.
@@ -305,43 +319,63 @@ const searchFn = read({
   },
 });
 
+// A new story's fields: each one's validator and its type as the agent sees
+// it, under the same keys. A field is optional exactly when its validator
+// takes undefined, so the declared `?` follows the validator.
+const storyKeys = ["summary", "description", "points"] as const;
 const storyFields = {
   summary: string,
   description: optional(string),
   points: optional(nullable(number)),
+} satisfies Record<(typeof storyKeys)[number], Validator<unknown>>;
+const storyTypes: Record<(typeof storyKeys)[number], string> = {
+  summary: "string",
+  description: "string",
+  points: "number | null",
 };
-const storyType = "summary: string; description?: string; points?: number | null";
+const epicField = optional(nullable(string));
 
-function createStory(epic: ItemId<"jira"> | null): WriteFn {
+const field = (key: string, check: Validator<unknown>, type: string) =>
+  `${key}${check(undefined).ok ? "?" : ""}: ${type}`;
+
+function storyType(withEpic: boolean): string {
+  const fields = storyKeys.map((key) => field(key, storyFields[key], storyTypes[key]));
+  if (withEpic) fields.push(field("epic", epicField, "EpicId | null"));
+  return `{ ${fields.join("; ")} }`;
+}
+
+// In a region opened on an epic, a new story goes in that epic. Elsewhere it
+// may go in one of the region's epics, by issue type at bind time, or in
+// none; a region without epics doesn't offer the choice.
+function createStory(scope: Scope): WriteFn {
   const doc = "Returns its ref, which later writes in this run can target.";
-  if (epic)
+  const { anchor, epics } = scope;
+  if (anchor)
     return write({
       space: "jira",
       name: "createStory",
       doc: `Create a story in this region's epic. ${doc}`,
       op: "createStory",
       creates: true,
-      params: [param("story", `{ ${storyType} }`, object(storyFields))],
+      params: [param("story", storyType(false), object(storyFields))],
       // The epic is bound, whatever the guest sent.
-      build: ([story]) => ({ target: null, args: { ...story, epic } }),
+      build: ([story]) => ({ target: null, args: { ...story, epic: anchor } }),
     });
   return write({
     space: "jira",
     name: "createStory",
-    doc: `Create a story, in an epic from this region or in none. ${doc}`,
+    doc: epics.length
+      ? `Create a story in one of this region's epics, or in none. ${doc}`
+      : `Create a story. This region holds no epic, so it goes in none. ${doc}`,
     op: "createStory",
     creates: true,
     params: [
-      param(
-        "story",
-        `{ ${storyType}; epic?: RegionId | null }`,
-        object({ ...storyFields, epic: optional(nullable(string)) }),
-      ),
+      param("story", storyType(epics.length > 0), object({ ...storyFields, epic: epicField })),
     ],
-    build: ([story], host) => {
+    build: ([story]) => {
       const parent = story.epic ?? null;
-      if (parent !== null && !host.has(parent))
-        throw new RangeError(`epic ${JSON.stringify(parent)} isn't in this region`);
+      if (parent !== null && !epics.some((epic) => epic === parent))
+        throw new RangeError(`${JSON.stringify(parent)} isn't an epic in this region`);
       return { target: null, args: { ...story, epic: parent } };
     },
   });
@@ -408,7 +442,7 @@ export function describe(scope: Scope): Fn[] {
     ...(epic ? [getEpic(epic), listStories(epic)] : []),
     getItem,
     listItems,
-    createStory(epic),
+    createStory(scope),
     setSummary,
     setDescription,
     setEstimate,

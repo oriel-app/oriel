@@ -2,13 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Region } from "@oriel/core";
 import { bindingsFor } from "./bindings.ts";
-import { fixture, fixtureReader, fixtureRegion, movingReader, snapshotAfter } from "./testing.ts";
+import {
+  fixture,
+  fixtureReader,
+  fixtureRegion,
+  issueTypes,
+  movingReader,
+  pickedWithEpic,
+  snapshotAfter,
+} from "./testing.ts";
 
 const base = fixtureReader(snapshotAfter(0));
 // After every source edit: SYN-88 moved to SYN-3's epic, SYN-27 deleted.
 const edited = fixtureReader(snapshotAfter(fixture.edits.length));
-const boarding = () => bindingsFor(fixtureRegion("boarding-epic"), { reader: base });
-const picked = () => bindingsFor(fixtureRegion("picked"), { reader: base });
+const boarding = () => bindingsFor(fixtureRegion("boarding-epic"), { reader: base, issueTypes });
+const picked = () => bindingsFor(fixtureRegion("picked"), { reader: base, issueTypes });
 
 const summary = (key: string) => fixture.issues.find((issue) => issue.key === key)?.summary;
 
@@ -91,19 +99,46 @@ test("a refused create still uses its ref, so later refs keep their numbers", ()
   assert.equal(bindings.capture("jira.setEstimate", ["new:2", 1], null).target, "new:2");
 });
 
-test("in a picked region, a create's epic must be a region item or none", () => {
-  const bindings = picked();
+test("without an anchor, a create's epic must be one of the region's epics, or none", () => {
+  const bindings = bindingsFor(pickedWithEpic(), { reader: base, issueTypes });
   const inside = bindings.capture(
     "jira.createStory",
-    [{ summary: "A", epic: "jira:SYN-13" }],
+    [{ summary: "A", epic: "jira:SYN-1" }],
     "new:1",
   );
-  assert.deepEqual(inside.args, { summary: "A", epic: "jira:SYN-13" });
+  assert.deepEqual(inside.args, { summary: "A", epic: "jira:SYN-1" });
   const loose = bindings.capture("jira.createStory", [{ summary: "B", points: 2 }], "new:2");
   assert.deepEqual(loose.args, { summary: "B", points: 2, epic: null });
+  // A story in the region, and an epic outside it.
+  for (const [ref, epic] of [
+    ["new:3", "jira:SYN-13"],
+    ["new:4", "jira:SYN-2"],
+  ] as const)
+    assert.throws(
+      () => bindings.capture("jira.createStory", [{ summary: "C", epic }], ref),
+      new RegExp(`"${epic}" isn't an epic in this region`),
+    );
+  assert.match(bindings.dts, /^type EpicId =\n {2}\| "jira:SYN-1";$/m);
+  assert.match(bindings.dts, /createStory\(story: \{ [^}]*; epic\?: EpicId \| null \}\): NewRef;/);
+});
+
+test("a region holding no epic doesn't offer one to a new story", () => {
+  const bindings = picked();
+  assert.doesNotMatch(bindings.dts, /EpicId|epic\?/);
+  assert.match(bindings.dts, /This region holds no epic/);
+  const loose = bindings.capture("jira.createStory", [{ summary: "B" }], "new:1");
+  assert.deepEqual(loose.args, { summary: "B", epic: null });
   assert.throws(
-    () => bindings.capture("jira.createStory", [{ summary: "C", epic: "jira:SYN-1" }], "new:3"),
-    /epic "jira:SYN-1" isn't in this region/,
+    () => bindings.capture("jira.createStory", [{ summary: "C", epic: "jira:SYN-13" }], "new:2"),
+    /"jira:SYN-13" isn't an epic in this region/,
+  );
+});
+
+test("a new story's declared fields follow their validators", () => {
+  const { dts } = boarding();
+  assert.match(
+    dts,
+    /createStory\(story: \{ summary: string; description\?: string; points\?: number \| null \}\): NewRef;/,
   );
 });
 
@@ -134,7 +169,7 @@ test("reads proxy live, and only search() reaches outside the region", async () 
 });
 
 test("a deleted item reads as a tombstone, not a throw (eval 4)", async () => {
-  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader: edited });
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader: edited, issueTypes });
   const { value } = await bindings.read("jira.listStories", []);
   const views = value as { id: string; gone: boolean; reason?: string }[];
   assert.deepEqual(
@@ -146,7 +181,7 @@ test("a deleted item reads as a tombstone, not a throw (eval 4)", async () => {
 
 test("listStories is the region's items but its epic, even one that moved epic since", async () => {
   const region = fixtureRegion("checkout-epic");
-  const bindings = bindingsFor(region, { reader: edited });
+  const bindings = bindingsFor(region, { reader: edited, issueTypes });
   const { value } = await bindings.read("jira.listStories", []);
   const views = value as { id: string; epic: string | null }[];
   const stories = region.items.map((item) => item.id).filter((id) => id !== "jira:SYN-1");
@@ -156,7 +191,7 @@ test("listStories is the region's items but its epic, even one that moved epic s
 
 test("an item that moved project is followed and keeps its region handle", async () => {
   const reader = movingReader(base, "jira:SYN-13", "jira:FER-7");
-  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader });
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader, issueTypes });
   const { value } = await bindings.read("jira.getItem", ["jira:SYN-13"]);
   const view = value as { id: string; gone: boolean; summary: string };
   assert.deepEqual([view.id, view.gone, view.summary], ["jira:SYN-13", false, summary("SYN-13")]);
@@ -168,15 +203,15 @@ test("a region with a malformed ID, or an anchor it doesn't hold, is refused", (
     ...region,
     items: [...region.items, { id: 'jira:SYN-1" | string', stableId: "1" }],
   };
-  assert.throws(() => bindingsFor(evil, { reader: base }), /not a Jira item ID/);
+  assert.throws(() => bindingsFor(evil, { reader: base, issueTypes }), /not a Jira item ID/);
   const lower: Region = { ...region, items: [{ id: "jira:syn-1", stableId: "1" }] };
-  assert.throws(() => bindingsFor(lower, { reader: base }), /not a Jira item ID/);
+  assert.throws(() => bindingsFor(lower, { reader: base, issueTypes }), /not a Jira item ID/);
   const unanchored: Region = {
     ...region,
     items: region.items.filter((item) => item.id !== "jira:SYN-2"),
   };
   assert.throws(
-    () => bindingsFor(unanchored, { reader: base }),
+    () => bindingsFor(unanchored, { reader: base, issueTypes }),
     /anchor jira:SYN-2 isn't one of its items/,
   );
 });

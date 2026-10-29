@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RunError } from "@oriel/core";
-import { wrap } from "./shim.ts";
+import { guestStart, wrap } from "./shim.ts";
 
 export type Diagnostic = {
   // Null for a diagnostic about no file in particular.
@@ -135,10 +135,10 @@ export async function compile(
   }
 }
 
-// Declares what `wrap` calls, outside the agent's declarations.
-const runtimeDts = "declare const __oriel: { run(body: () => Promise<unknown>): void };\n";
-
 const shown = 20;
+
+// Line breaks as tsc counts them.
+const lineCount = (text: string) => text.split(/\r\n|[\n\r\u2028\u2029]/).length;
 
 function where(d: Diagnostic, scriptLines: number): string {
   if (d.file === null) return "tsc";
@@ -148,14 +148,20 @@ function where(d: Diagnostic, scriptLines: number): string {
 }
 
 // Type errors come back as a RunError the agent can fix its script from; a
-// clean script gives null.
+// clean script gives null. The script must first pass the same compile step
+// the run does (`guestStart`), so it can't typecheck as anything but the
+// body of an async function, and tsc then checks that same text, wrapped the
+// same way.
 export async function typecheck(
   script: string,
   dts: string,
   options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<RunError | null> {
+  options.signal?.throwIfAborted();
+  const start = guestStart(script);
+  if (!start.ok) return start.error;
   const checked = await compile(
-    { "region.d.ts": dts, "runtime.d.ts": runtimeDts, "script.ts": wrap(script) },
+    { "region.d.ts": dts, "script.ts": wrap(script) },
     {
       timeoutMs: options.timeoutMs ?? 10_000,
       ...(options.signal ? { signal: options.signal } : {}),
@@ -164,7 +170,7 @@ export async function typecheck(
   if (checked.kind === "limit") return { phase: "limit", message: checked.message, logs: [] };
   const { diagnostics } = checked;
   if (!diagnostics.length) return null;
-  const scriptLines = script.split("\n").length;
+  const scriptLines = lineCount(script);
   const lines = diagnostics
     .slice(0, shown)
     .map((d) => `${where(d, scriptLines)}: ${d.text} (TS${d.code})`);

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Region } from "@oriel/core";
 import { bindingsFor } from "./bindings.ts";
-import { fixture, fixtureReader, fixtureRegion, snapshotAfter } from "./testing.ts";
+import { fixture, fixtureReader, fixtureRegion, issueTypes, snapshotAfter } from "./testing.ts";
 
 const reader = fixtureReader(snapshotAfter(0));
 const anyId = /jira:[A-Z][A-Z0-9_]*-[0-9]+/g;
@@ -36,7 +36,7 @@ const shuffled = (region: Region): Region => ({
 for (const frozen of fixture.regions) {
   test(`eval 1: ${frozen.name} exposes exactly its IDs`, async () => {
     const region = fixtureRegion(frozen.name);
-    const bindings = bindingsFor(region, { reader });
+    const bindings = bindingsFor(region, { reader, issueTypes });
     const ids = new Set<string>(frozen.items);
 
     // The declarations: RegionId is exactly R, and no other ID appears.
@@ -61,7 +61,7 @@ for (const frozen of fixture.regions) {
     for (const text of sourceText) assert.ok(!bindings.dts.includes(text), text);
 
     // Byte-stable, whatever order the region lists its items in.
-    const again = bindingsFor(shuffled(region), { reader });
+    const again = bindingsFor(shuffled(region), { reader, issueTypes });
     assert.equal(again.dts, bindings.dts);
     assert.equal(again.shim, bindings.shim);
   });
@@ -69,7 +69,7 @@ for (const frozen of fixture.regions) {
 
 test("eval 1: IDs are in project-then-number order", () => {
   const region = fixtureRegion("boarding-epic");
-  const ids = regionIdUnion(bindingsFor(region, { reader }).dts);
+  const ids = regionIdUnion(bindingsFor(region, { reader, issueTypes }).dts);
   const numbers = ids.map((id) => Number(id.slice(id.lastIndexOf("-") + 1)));
   assert.deepEqual(
     numbers,

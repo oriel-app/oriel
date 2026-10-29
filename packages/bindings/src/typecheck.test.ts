@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
-import { fixtureReader, fixtureRegion, snapshotAfter } from "./testing.ts";
+import { fixtureReader, fixtureRegion, issueTypes, snapshotAfter } from "./testing.ts";
 import { parseOutput, typecheck } from "./typecheck.ts";
 
 const { dts } = bindingsFor(fixtureRegion("boarding-epic"), {
   reader: fixtureReader(snapshotAfter(0)),
+  issueTypes,
 });
 
 test("a clean script passes", async () => {
@@ -54,6 +55,16 @@ test("the types refuse search results, revert-only ops and edits to read results
   );
 });
 
+test("lines count as tsc counts them, a U+2028 in a string included", async () => {
+  const separator = String.fromCharCode(0x2028);
+  const script = `const s = "a${separator}b";\nconst n: number = s;\nconst m: number = "x";`;
+  const error = await typecheck(script, dts);
+  assert.deepEqual(error?.message.split("\n").slice(1), [
+    "line 3:7: Type 'string' is not assignable to type 'number'. (TS2322)",
+    "line 4:7: Type 'string' is not assignable to type 'number'. (TS2322)",
+  ]);
+});
+
 test("a script can't make the typecheck read other files", async () => {
   const dir = await mkdtemp(join(tmpdir(), "oriel-typecheck-test-"));
   try {
@@ -81,14 +92,18 @@ test("a script can't make the typecheck read other files", async () => {
       "line 5 TS2591",
       "line 6 TS2304",
     ]);
-    // Closing the wrapper early puts an import at the top level; still unread.
+    // Closing the function early to put an import at the top level never
+    // reaches tsc: the compile step refuses it first.
     const breakout = [
-      "});",
+      "}",
       `import "${join(dir, "other.ts")}";`,
       "LEAKED;",
-      "__oriel.run(async () => {",
+      "async function again() {",
     ].join("\n");
-    assert.deepEqual(await codes(breakout), ["line 2 TS2882", "line 3 TS2304"]);
+    assert.match(
+      (await typecheck(breakout, dts))?.message ?? "",
+      /^The script doesn't compile as the body of an async function/,
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
