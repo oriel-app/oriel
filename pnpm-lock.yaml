@@ -21,6 +21,14 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/core: {}
+
+  packages/db:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@oxfmt/binding-android-arm-eabi@0.74.0':
