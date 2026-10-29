@@ -240,8 +240,8 @@ function outsideRegion(
 }
 
 // Conflicts in plain words, for the thread and the review page. An `expected`
-// of undefined means the source never reported the value, so Oriel can't tell
-// whether anyone changed it.
+// of undefined means Oriel is missing a value it recorded at apply (before or
+// after), so it can't revert that field safely.
 export function explainConflicts(conflicts: readonly Conflict[]): string {
   const parts = conflicts.map((c) => {
     const item = key(c.target);
@@ -252,7 +252,7 @@ export function explainConflicts(conflicts: readonly Conflict[]): string {
         ? `Oriel never learned when ${item} was last updated, so it can't tell whether anyone touched it`
         : `${item} was touched since Oriel created it`;
     if (c.expected === undefined)
-      return `${catalogue.name} didn't report ${item}'s ${c.field} after the change, so Oriel can't tell whether anyone changed it`;
+      return `Oriel is missing ${item}'s ${c.field} from when this was applied, so it can't revert it safely`;
     return `${item}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`;
   });
   return `Stopped, so nothing was overwritten: ${parts.join("; ")}.`;
@@ -452,10 +452,11 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
   // Conflicts between the source now and what each field was left at after
   // apply: per item and field, the last applied mutation's `after`. The update
-  // time is skipped, since any write moves it. A set op whose `after` lacks the
-  // field it set is a conflict (expected undefined): Oriel can't tell whether
-  // anyone changed it. A gone item is one conflict on its field "item",
-  // against the last mutation that touched it.
+  // time is skipped, since any write moves it. A set op whose `before` or
+  // `after` lacks the field it set is a conflict (expected undefined), as is
+  // one recorded in place without sending: Oriel either can't tell whether
+  // anyone changed it or can't put it back. A gone item is one conflict on
+  // its field "item", against the last mutation that touched it.
   const conflictsWith = async (applied: readonly MutationRecord[]): Promise<Conflict[]> => {
     type Expected = { last: Ulid; fields: Map<string, { value: unknown; mutationId: Ulid }> };
     const expected = new Map<ItemId, Expected>();
@@ -466,11 +467,14 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const entry = expected.get(item) ?? { last: m.id, fields: new Map() };
       entry.last = m.id;
       const spec = Object.hasOwn(catalogue.ops, m.op) ? catalogue.ops[m.op] : undefined;
-      if (spec?.idempotent)
-        for (const field of Object.keys(spec.after(m.args)))
-          entry.fields.set(field, { value: undefined, mutationId: m.id });
-      for (const [field, value] of Object.entries(m.applied.after))
-        if (field !== catalogue.updatedField) entry.fields.set(field, { value, mutationId: m.id });
+      const writes = new Set(spec?.idempotent ? Object.keys(spec.after(m.args)) : []);
+      for (const field of writes) entry.fields.set(field, { value: undefined, mutationId: m.id });
+      for (const [field, value] of Object.entries(m.applied.after)) {
+        if (field === catalogue.updatedField) continue;
+        // Without the earlier value too, a revert couldn't put the field back.
+        if (writes.has(field) && !Object.hasOwn(m.applied.before, field)) continue;
+        entry.fields.set(field, { value, mutationId: m.id });
+      }
       expected.set(item, entry);
     }
     const conflicts: Conflict[] = [];
@@ -575,7 +579,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
   // A set op whose value is already in place, as when an earlier send landed
   // but its answer was lost: the result to record without sending, or null.
-  // `before` is what the diff showed.
+  // Its `before` leaves the field out. Oriel can't know whether the value is
+  // its own write or someone else's, so a revert can't put it back, and
+  // reports a conflict rather than overwrite.
   const inPlace = async (
     m: MutationRecord,
     set: ChangeSet,
@@ -592,12 +598,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       return null;
     const stableId = stableIdFor(m, set, target);
     if (stableId === null) return null;
-    const shown = m.preview ?? {};
     return {
       item: { id: target, stableId },
-      before: Object.fromEntries(
-        fields.map((f) => [f, Object.hasOwn(shown, f) ? shown[f] : current[f]]),
-      ),
+      before: {},
       after: Object.fromEntries(
         [...fields, updated].filter((f) => Object.hasOwn(current, f)).map((f) => [f, current[f]]),
       ),
@@ -606,11 +609,12 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   };
 
   // Sends unapplied mutations in seq order and stops at the first failure, so
-  // a retry can't land a later mutation before an earlier one. A stop before
-  // sending leaves the row pending, to be checked again next time; a failed
-  // send marks it failed. A create or link that may have landed is never sent
-  // twice: it is marked failed before it is sent, and only its recorded result
-  // clears that, so even a crash mid-send leaves it blocked.
+  // a retry can't land a later mutation before an earlier one. Every write is
+  // marked sent (failed, until its result is recorded) before it goes out, so
+  // a crash mid-send leaves that on record. A stop before sending leaves the
+  // row as it was, to be checked again next time. A sent set op is retried,
+  // since it is idempotent and one already in place is recorded without
+  // sending; a sent create or link is never sent again.
   const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
@@ -633,18 +637,25 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
+      const seen = m.status;
       const { kind, spec } = mustSpec(m, set.mutations);
-      const uncertain = `It may have been made in ${catalogues[kind].name}: check, then remove it from the change set to continue.`;
+      const source = catalogues[kind].name;
+      const uncertain = `It may have been made in ${source}: check, then remove it from the change set to continue.`;
       if (m.status === "failed" && !spec.idempotent) {
         report.failed.push({ mutationId, error: m.error ?? uncertain });
         return report;
       }
-      if (m.preview?.[goneMark] === true) {
+      // Approval refuses both of these already; apply checks again anyway.
+      if (m.preview === null)
+        return halt(
+          mutationId,
+          "This hasn't been shown in a diff since the last edit, so it wasn't sent. Review the diff, then approve it.",
+        );
+      if (m.preview[goneMark] === true)
         return halt(
           mutationId,
           `${key(m.target ?? "the new item")} was gone when reviewed, so this wasn't sent. Remove it from the change set to continue.`,
         );
-      }
       let where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
       if (spec.idempotent && where.target !== null) {
@@ -665,12 +676,27 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       // Every await is behind us: from this check to the write nothing awaits,
       // so the rows whose hash matched the approval are the rows sent.
       ({ set, m } = approved(id, mutationId));
-      if (!m || m.status === "applied") continue;
+      if (!m) continue;
+      if (m.status === "applied") {
+        report.skipped.push(mutationId);
+        continue;
+      }
       where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
       const request = mint({ mutationId: m.id, op: m.op, target: where.target, args: m.args });
-      if (!spec.idempotent) rows.markFailed(mutationId, uncertain);
-      const sent = { status: spec.idempotent ? m.status : ("failed" as const), args: m.args };
+      const mark = spec.idempotent
+        ? `Sent to ${source}, with no answer recorded yet. Retry apply: Oriel checks whether it landed before sending it again.`
+        : uncertain;
+      // Only from the status this pass began with: if another apply sent it
+      // meanwhile, its send isn't repeated and its mark isn't reset.
+      if (!rows.markSent(mutationId, seen, mark)) {
+        report.failed.push({
+          mutationId,
+          error: "Another apply is sending this change right now, so it wasn't sent again.",
+        });
+        return report;
+      }
+      const sent = { status: "failed" as const, args: m.args };
       const unsure = spec.idempotent ? "" : ` ${uncertain}`;
       sending.add(mutationId);
       try {
@@ -825,16 +851,20 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         if (outside) throw new ChangeSetError("refused", outside);
         for (const mutationId of remove) rows.remove(current.id, mutationId);
         for (const { id: mutationId, m } of edited) rows.setArgs(current.id, mutationId, m.args);
-        // What any earlier diff showed no longer stands for these rows.
-        rows.clearPreviews(current.id);
-        return current;
+        // An edit that changes nothing changes nothing: the approval and what
+        // the diff showed both stand. Otherwise the earlier diff no longer
+        // stands for these rows, and the new hash voids the approval.
+        const unchanged = mustLoad(current.id).hash === current.hash;
+        if (!unchanged) rows.clearPreviews(current.id);
+        return { current, unchanged };
       });
-      deps.emit({
-        name: "changeset.edited",
-        at: deps.now(),
-        workspaceId: changed.workspaceId,
-        changeSetId: changed.id,
-      });
+      if (!changed.unchanged)
+        deps.emit({
+          name: "changeset.edited",
+          at: deps.now(),
+          workspaceId: changed.current.workspaceId,
+          changeSetId: changed.current.id,
+        });
       return mustLoad(id);
     },
 
@@ -864,12 +894,19 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           );
         }
         // An approval needs a diff shown since the last edit for every row it
-        // will send, so apply knows what the person saw.
-        const unseen = current.mutations.find((m) => m.status !== "applied" && m.preview === null);
+        // will send, and none of them shown as gone.
+        const open = current.mutations.filter((m) => m.status !== "applied");
+        const unseen = open.find((m) => m.preview === null);
+        const gone = open.find((m) => m.preview?.[goneMark] === true);
         if (decision.value === "approved" && unseen)
           throw new ChangeSetError(
             "refused",
             `mutation ${unseen.seq} hasn't been shown in a diff since the last edit; review the diff, then approve`,
+          );
+        if (decision.value === "approved" && gone)
+          throw new ChangeSetError(
+            "refused",
+            `${key(gone.target ?? "the new item")} couldn't be read when this was reviewed: remove that change, or edit it to review it again`,
           );
         rows.insertDecision({
           id: ulid(ms),
@@ -908,21 +945,25 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       }
     },
 
-    // Reverses what has been applied. A partly applied change set loses its
-    // unapplied rows in the same transaction, so nothing more of it can land;
-    // that voids its approval.
+    // Reverses what has been applied. Refused while any unapplied row was sent,
+    // since it may have landed and a revert would leave it behind. A partly
+    // applied change set loses its unsent rows in the same transaction, so
+    // nothing more of it can land; that voids its approval.
     async revert(id) {
       const busy = () =>
         new ChangeSetError("busy", "this change set is being applied; revert it once that ends");
-      const set = mustLoad(id);
-      const unsure = set.mutations.find(
-        (m) => m.status === "failed" && !mustSpec(m, set.mutations).spec.idempotent,
-      );
-      if (unsure)
-        throw new ChangeSetError(
+      const sentUnapplied = (current: ChangeSet): ChangeSetError | null => {
+        const m = current.mutations.find((r) => r.status === "failed");
+        if (!m) return null;
+        const source = catalogues[mustSpec(m, current.mutations).kind].name;
+        return new ChangeSetError(
           "not-revertible",
-          `mutation ${unsure.seq} (${unsure.op}) may have been made in the source: check, then remove it from the change set before reverting`,
+          `mutation ${m.seq} (${m.op}) was sent and may have landed: retry apply first, or check ${source} and remove it`,
         );
+      };
+      const set = mustLoad(id);
+      const unsent = sentUnapplied(set);
+      if (unsent) throw unsent;
       const applied = set.mutations.filter((m) => m.applied !== null);
       if (applied.length === 0)
         throw new ChangeSetError("not-revertible", "nothing in this change set has been applied");
@@ -932,21 +973,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const created = new Map<ItemId, MutationRecord>();
       for (const m of applied)
         if (m.applied && mustSpec(m, set.mutations).spec.creates) created.set(m.applied.item.id, m);
-      const undo: (Draft & { reverts: Ulid })[] = [];
-      for (const m of [...applied].reverse()) {
-        if (!m.applied) continue;
-        const item = m.applied.item.id;
-        const create = created.get(item);
-        if (create && create !== m) continue;
-        const step = mustSpec(m, set.mutations).spec.undo(m.args, m.applied);
-        if ("refused" in step)
-          throw new ChangeSetError(
-            "not-revertible",
-            `mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`,
-          );
-        undo.push({ reverts: m.id, op: step.op, target: item, ref: null, args: step.args });
-      }
 
+      // Conflicts first: a value Oriel never learned is reported here, not
+      // turned into a reverse it can't build.
       const conflicts: Conflict[] = [];
       for (const item of created.keys()) {
         const conflict = await touched(
@@ -971,14 +1000,30 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         return { conflicts };
       }
 
+      const undo: (Draft & { reverts: Ulid })[] = [];
+      for (const m of [...applied].reverse()) {
+        if (!m.applied) continue;
+        const item = m.applied.item.id;
+        const create = created.get(item);
+        if (create && create !== m) continue;
+        const step = mustSpec(m, set.mutations).spec.undo(m.args, m.applied);
+        if ("refused" in step)
+          throw new ChangeSetError(
+            "not-revertible",
+            `mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`,
+          );
+        undo.push({ reverts: m.id, op: step.op, target: item, ref: null, args: step.args });
+      }
       const checked = check(undo);
       const reverseId = ulid(at().ms);
       transaction(db, () => {
-        // Nothing may have landed or started since the plan was made.
+        // Nothing may have been sent, landed or started since the plan was made.
         const now = mustLoad(set.id);
         const appliedNow = now.mutations.filter((m) => m.applied !== null).map((m) => m.id);
         if (applying.has(set.id) || appliedNow.join() !== applied.map((m) => m.id).join())
           throw busy();
+        const sentNow = sentUnapplied(now);
+        if (sentNow) throw sentNow;
         insertAll(
           {
             id: reverseId,

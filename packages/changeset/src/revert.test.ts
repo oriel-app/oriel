@@ -314,9 +314,11 @@ test("a change set can't be reverted while it is being applied", async () => {
     estimate("jira:SYN-117", 2),
   ]);
   await approve(changeSets, set.id);
+  // Apply pauses before sending SYN-117, so nothing of it is marked sent.
   const reached = Promise.withResolvers<void>();
-  jira.hooks.before = (_request, call) => {
-    if (call !== 2) return;
+  jira.hooks.read = (id) => {
+    if (id !== "jira:SYN-117") return;
+    jira.hooks.read = undefined;
     reached.resolve();
     return new Promise<void>(() => {});
   };
@@ -327,27 +329,73 @@ test("a change set can't be reverted while it is being applied", async () => {
   assert.equal(count(db, "change_sets"), changeSetCount);
 });
 
-test("reverting a partly applied change set drops what didn't land, so it can't land later", async () => {
+test("a set op that landed without an answer blocks revert, so the revert can't leave it behind", async () => {
   const { changeSets, run, jira, db } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
     estimate("jira:SYN-117", 2),
   ]);
-  const [landed, stuck] = [nth(set.mutations, 0).id, nth(set.mutations, 1).id];
+  const second = nth(set.mutations, 1).id;
   await approve(changeSets, set.id);
-  jira.hooks.before = (_request, call) => {
-    if (call === 2) throw new Error("503: Jira is busy");
+  // The second lands, then its answer is lost.
+  jira.hooks.after = (_request, call) => {
+    if (call === 2) throw new Error("timed out");
   };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  assert.equal(jira.issue("SYN-117")?.points, 2);
+  const changeSetCount = count(db, "change_sets");
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /retry apply first, or check Jira and remove it/,
+  });
+  assert.equal(count(db, "change_sets"), changeSetCount);
+  assert.equal(status(db, second), "failed");
+
+  // A later stop before sending doesn't erase that it was sent.
+  const shown = db.prepare("select preview from mutations where id = ?").get(second)?.preview;
+  db.prepare("update mutations set preview = null where id = ?").run(second);
+  const stopped = await changeSets.apply(set.id);
+  assert.deepEqual(stopped.applied, []);
+  assert.equal(status(db, second), "failed");
+  await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
+  db.prepare("update mutations set preview = ? where id = ?").run(shown ?? null, second);
+
+  // Retrying apply finds the value in place and records it without sending.
+  const writes = jira.calls.length;
+  const retry = await changeSets.apply(set.id);
+  assert.deepEqual(retry.applied, [second]);
+  assert.equal(jira.calls.length, writes);
+  // Oriel never learned what SYN-117 held before, so it won't guess.
+  const result = await changeSets.revert(set.id);
+  assert.ok("conflicts" in result);
+  assert.deepEqual(
+    result.conflicts.map((c) => [c.mutationId, c.target, c.field, c.expected]),
+    [[second, "jira:SYN-117", "points", undefined]],
+  );
+  assert.deepEqual([jira.issue("SYN-21")?.points, jira.issue("SYN-117")?.points], [5, 2]);
+});
+
+test("reverting a partly applied change set drops what wasn't sent, so it can't land later", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-117", 2),
+  ]);
+  const [landed, unsent] = [nth(set.mutations, 0).id, nth(set.mutations, 1).id];
+  await approve(changeSets, set.id);
+  // Apply stops before sending the second.
+  db.prepare("update mutations set preview = null where id = ?").run(unsent);
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [landed]);
-  jira.hooks.before = undefined;
+  assert.equal(status(db, unsent), "pending");
 
   const back = await reverse(changeSets, set.id);
   assert.deepEqual(
     back.mutations.map((m) => [m.op, m.target, m.args, m.reverts]),
     [["setEstimate", "jira:SYN-21", { points: 2 }, landed]],
   );
-  assert.equal(status(db, stuck), undefined);
+  assert.equal(status(db, unsent), undefined);
   await assert.rejects(changeSets.apply(set.id), { code: "not-approved" });
   assert.equal(jira.issue("SYN-117")?.points, null);
 });
@@ -358,15 +406,14 @@ test("a revert built while more of the change set lands is refused", async () =>
     estimate("jira:SYN-21", 5),
     estimate("jira:SYN-117", 2),
   ]);
+  const unsent = nth(set.mutations, 1).id;
   await approve(changeSets, set.id);
-  jira.hooks.before = (_request, call) => {
-    if (call === 2) throw new Error("503: Jira is busy");
-  };
+  db.prepare("update mutations set preview = null where id = ?").run(unsent);
   await changeSets.apply(set.id);
-  jira.hooks.before = undefined;
   // While the revert reads Jira, a retry lands the rest.
   jira.hooks.read = async () => {
     jira.hooks.read = undefined;
+    db.prepare("update mutations set preview = '{\"points\":null}' where id = ?").run(unsent);
     await changeSets.apply(set.id);
   };
   const changeSetCount = count(db, "change_sets");
@@ -391,7 +438,88 @@ test("a change set with a create that may have landed can't be reverted until th
     if (call === 2) throw new Error("timed out");
   };
   await changeSets.apply(set.id);
+  // A conflict elsewhere doesn't hide the write that may have landed.
+  jira.edit("SYN-21", { points: 8 });
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /retry apply first, or check Jira and remove it/,
+  });
+});
+
+test("a set op being sent when the process died blocks revert", async () => {
+  const { changeSets, instance, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-117", 2),
+  ]);
+  await approve(changeSets, set.id);
+  const reached = Promise.withResolvers<void>();
+  jira.hooks.after = (_request, call) => {
+    if (call !== 2) return;
+    reached.resolve();
+    return new Promise<void>(() => {});
+  };
+  void changeSets.apply(set.id);
+  await reached.promise;
+  jira.hooks.after = undefined;
+
+  const changeSetCount = count(db, "change_sets");
+  await assert.rejects(instance().revert(set.id), {
+    code: "not-revertible",
+    message: /retry apply first/,
+  });
+  assert.equal(count(db, "change_sets"), changeSetCount);
+  assert.equal(jira.issue("SYN-117")?.points, 2);
+});
+
+test("a send another instance starts while the revert is being built blocks it", async () => {
+  const { changeSets, instance, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-117", 2),
+  ]);
+  const unsent = nth(set.mutations, 1).id;
+  await approve(changeSets, set.id);
+  const shown = db.prepare("select preview from mutations where id = ?").get(unsent)?.preview;
+  db.prepare("update mutations set preview = null where id = ?").run(unsent);
+  await changeSets.apply(set.id);
+  db.prepare("update mutations set preview = ? where id = ?").run(shown ?? null, unsent);
+
+  // While the revert reads Jira, another instance starts sending the rest.
+  const elsewhere = instance();
+  const sending = Promise.withResolvers<void>();
+  jira.hooks.read = async () => {
+    jira.hooks.read = undefined;
+    jira.hooks.before = () => {
+      sending.resolve();
+      return new Promise<void>(() => {});
+    };
+    void elsewhere.apply(set.id);
+    await sending.promise;
+  };
+  const changeSetCount = count(db, "change_sets");
   await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
+  assert.equal(count(db, "change_sets"), changeSetCount);
+  assert.equal(status(db, unsent), "failed");
+});
+
+test("a value a teammate set to the same thing before apply isn't overwritten by a revert", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // After approval, a teammate sets the estimate Oriel was about to set.
+  jira.edit("SYN-21", { points: 5 });
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, [mutationId]);
+  assert.deepEqual(jira.calls, []);
+
+  const result = await changeSets.revert(set.id);
+  assert.ok("conflicts" in result);
+  assert.deepEqual(result.conflicts, [
+    { mutationId, target: "jira:SYN-21", field: "points", expected: undefined, actual: 5 },
+  ]);
+  assert.equal(jira.issue("SYN-21")?.points, 5);
 });
 
 test("a reverse mutation stopped before sending is checked again next time", async () => {
@@ -443,7 +571,7 @@ test("conflicts read in plain words, including what Oriel never learned", () => 
     "Stopped, so nothing was overwritten: " +
       "Oriel never learned when SYN-900 was last updated, so it can't tell whether anyone touched it; " +
       "SYN-900 was touched since Oriel created it; " +
-      "Jira didn't report SYN-900's points after the change, so Oriel can't tell whether anyone changed it; " +
+      "Oriel is missing SYN-900's points from when this was applied, so it can't revert it safely; " +
       "SYN-900's points is now 8, not 5; " +
       "SYN-900 is no longer there.",
   );

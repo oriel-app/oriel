@@ -88,7 +88,7 @@ const linkRow = object({
 });
 const nextRow = object({ next: number });
 const stableIdRow = object({ stable_id: string });
-const memberRow = object({ source: string, stable_id: string });
+const memberRow = object({ source: string, stable_id: string, item_id: string });
 const foundRow = object({ found: number });
 
 export type LinkRow = Infer<typeof linkRow>;
@@ -138,7 +138,7 @@ export function store(db: DatabaseSync) {
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
   const selectRegionMembers = db.prepare(`
-    select ri.source, ri.stable_id from threads t join region_items ri on ri.region_id = t.region_id
+    select ri.source, ri.stable_id, ri.item_id from threads t join region_items ri on ri.region_id = t.region_id
     where t.id = ?`);
   // The item a handle names now: the live one, or else the latest tombstone.
   const selectStableId = db.prepare(`
@@ -168,8 +168,11 @@ export function store(db: DatabaseSync) {
   const updateFailed = db.prepare(
     "update mutations set status = 'failed', error = ? where id = ? and status != 'applied'",
   );
+  const updateSent = db.prepare(
+    "update mutations set status = 'failed', error = ? where id = ? and status = ?",
+  );
   const updateStopped = db.prepare(
-    "update mutations set status = 'pending', error = ? where id = ? and status != 'applied'",
+    "update mutations set error = ? where id = ? and status != 'applied'",
   );
   const insertDecision = db.prepare(`
     insert into decisions (id, workspace_id, change_set_id, seq, kind, via, review_link, by_name, hash, at)
@@ -260,18 +263,20 @@ export function store(db: DatabaseSync) {
     stableId: stableIdOf,
 
     // Whether a handle names an item of the thread's region. Membership is by
-    // stable ID (decision 0004): a moved item stays in under its new handle,
-    // and a handle reused by another item doesn't bring that item in.
+    // stable ID (decision 0004). A handle resolves through the index first, so
+    // one reused by another item names that item and is refused. A handle no
+    // index row has, such as a moved item's old one, falls back to the handle
+    // the region was created with.
     inRegion(threadId: Ulid, workspaceId: Ulid): (handle: string) => boolean {
-      const members = new Set(
-        selectRegionMembers.all(threadId).map((raw) => {
-          const row = parse(memberRow, raw, "region_items");
-          return `${row.source}\u0000${row.stable_id}`;
-        }),
-      );
+      const rows = selectRegionMembers
+        .all(threadId)
+        .map((raw) => parse(memberRow, raw, "region_items"));
+      const members = new Set(rows.map((row) => `${row.source}\u0000${row.stable_id}`));
+      const created = new Map(rows.map((row) => [row.item_id, row.stable_id]));
       return (handle) => {
         const source = parseItemId(handle)?.source;
-        const stableId = stableIdOf(workspaceId, handle);
+        if (!source) return false;
+        const stableId = stableIdOf(workspaceId, handle) ?? created.get(handle) ?? null;
         return stableId !== null && members.has(`${source}\u0000${stableId}`);
       };
     },
@@ -350,7 +355,15 @@ export function store(db: DatabaseSync) {
       updateFailed.run(error, mutationId);
     },
 
-    // Apply stopped before sending this mutation; the next apply checks it again.
+    // Records, before a write goes out, that it was sent: until its result is
+    // recorded, it may have landed. Only from the status the caller saw, so
+    // another apply's mark is never overwritten; false if the row moved on.
+    markSent(mutationId: Ulid, from: MutationStatus, error: string): boolean {
+      return Number(updateSent.run(error, mutationId, from).changes) === 1;
+    },
+
+    // Apply stopped before sending this mutation. The status stays as it was, so
+    // a row an earlier pass sent keeps that mark; the next apply checks again.
     markStopped(mutationId: Ulid, error: string): void {
       updateStopped.run(error, mutationId);
     },
