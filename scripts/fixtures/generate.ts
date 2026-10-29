@@ -4,7 +4,9 @@
 // estimates, assignees, times) from a fixed time base, and decides the order
 // issues were created in. Regenerating is byte-identical.
 // Usage: node scripts/fixtures/generate.ts
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   type FixtureIssue,
   jiraFixtureParts,
@@ -986,9 +988,15 @@ function pickPoints(name: keyof typeof scales, random: Rng): number | null {
 
 if (import.meta.main) {
   // The generator owns the directory: a part it no longer writes is removed.
+  // Only names shaped like its own parts are touched, joined as plain paths
+  // (a URL would read a backslash as a separator), and never through a symlink.
   const files = generate();
-  mkdirSync(fixtureDir, { recursive: true });
-  for (const stale of readdirSync(fixtureDir).filter((f) => f.endsWith(".json") && !files.has(f)))
-    rmSync(new URL(stale, fixtureDir));
-  for (const [file, text] of files) writeFileSync(new URL(file, fixtureDir), text);
+  const dir = fileURLToPath(fixtureDir);
+  mkdirSync(dir, { recursive: true });
+  if (lstatSync(dir).isSymbolicLink())
+    throw new Error(`${dir} is a symlink; refusing to write through it`);
+  for (const stale of readdirSync(dir).filter((f) => /^[a-z]+\.json$/.test(f) && !files.has(f))) {
+    rmSync(join(dir, stale));
+  }
+  for (const [file, text] of files) writeFileSync(join(dir, file), text);
 }
