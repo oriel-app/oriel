@@ -107,7 +107,12 @@ const __oriel = (() => {
     return shown.length > 4000 ? shown.slice(0, 4000) + "…" : shown;
   };
   const log = (...values) => send({ kind: "log", text: values.map(show).join(" ") });
-  globalThis.console = Object.freeze({ log, info: log, warn: log, error: log, debug: log });
+  // These five methods become log messages and can't be replaced or removed.
+  // The object stays extensible: Deno's node: modules add to it as they load.
+  const logger = {};
+  for (const name of ["log", "info", "warn", "error", "debug"])
+    Object.defineProperty(logger, name, { value: log, enumerable: true, writable: false, configurable: false });
+  globalThis.console = logger;
   const run = async (bindings, body) => {
     try {
       const script = new AsyncFunction(...Object.keys(bindings), body);
@@ -185,14 +190,58 @@ const refuse = (detail: string): { ok: false; error: RunError } => ({
 const firstLine = (error: unknown) =>
   (error instanceof Error ? `${error.name}: ${error.message}` : String(error)).split("\n")[0] ?? "";
 
+// Bounds checked before the stripper sees a script. Node's stripper (SWC in
+// WebAssembly) runs out of stack near 1,000 nested brackets, and then fails
+// for the rest of its thread.
+export const maxScriptBytes = 64 * 1024;
+export const maxNesting = 256;
+
+// The deepest bracket nesting, counting every (, [ and { and their closers,
+// strings and comments included. Rough on purpose: a bracket inside a string
+// counts too, so it can over-refuse, rarely.
+export function nesting(script: string): number {
+  let depth = 0;
+  let deepest = 0;
+  for (const char of script) {
+    if (char === "(" || char === "[" || char === "{") deepest = Math.max(deepest, ++depth);
+    else if (char === ")" || char === "]" || char === "}") depth -= 1;
+  }
+  return deepest;
+}
+
 // What the sandbox sends the guest first, as reply 0, or why the script can't
 // run. Types are stripped (positions kept), then the body is compiled once,
 // here, without running it, exactly as the guest will compile it. A function
 // body can't hold an import or export declaration, and parses on its own, so
 // the script can't close it early.
+//
+// Run it, and `typecheck`, off the host's main thread, in a worker the host
+// replaces after any failure: the bounds here stop deep brackets, but other
+// deep expressions (a thousand chained arrows) can still leave the stripper
+// failing for the rest of its thread.
 export function guestStart(
   script: string,
 ): { ok: true; reply: HostReply } | { ok: false; error: RunError } {
+  const bytes = Buffer.byteLength(script, "utf8");
+  if (bytes > maxScriptBytes)
+    return {
+      ok: false,
+      error: {
+        phase: "limit",
+        message: `The script is ${bytes} bytes; the most is ${maxScriptBytes}.`,
+        logs: [],
+      },
+    };
+  if (nesting(script) > maxNesting)
+    return {
+      ok: false,
+      error: {
+        phase: "typecheck",
+        message: `The script nests brackets more than ${maxNesting} deep.`,
+        hint: "Flatten it: name intermediate values instead of nesting expressions.",
+        logs: [],
+      },
+    };
   const wrapped = wrap(script);
   let stripped: string;
   try {

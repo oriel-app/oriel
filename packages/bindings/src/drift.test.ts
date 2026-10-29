@@ -240,6 +240,36 @@ test("a new story's epic is typed: only the region's epics, where it has any", a
   assert.match((await typecheck(into("jira:SYN-1"), picked.dts))?.message ?? "", /TS2353/);
 });
 
+test("console takes new properties, but its log methods can't be replaced", async () => {
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const script = `
+const open = console as unknown as Record<string, unknown>;
+open._stdout = "added";
+const attempt = (change: () => void) => {
+  try {
+    change();
+    return "changed";
+  } catch {
+    return "refused";
+  }
+};
+const tries = ["log", "error"].flatMap((name) => [
+  attempt(() => { open[name] = () => {}; }),
+  attempt(() => { Object.defineProperty(console, name, { value: () => {} }); }),
+  attempt(() => { delete open[name]; }),
+]);
+console.log("still ours");
+return { added: open._stdout, extensible: Object.isExtensible(console), tries };
+`;
+  const run = await runGuest(bindings, script);
+  assert.equal(run.stderr, "");
+  assert.deepEqual(run.logs, ["still ours"]);
+  assert.deepEqual(run.outcome, {
+    kind: "done",
+    value: { added: "added", extensible: true, tries: Array(6).fill("refused") },
+  });
+});
+
 test("logged errors, maps and sets show what they hold, within bounds", async () => {
   const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
   const script = `

@@ -151,7 +151,8 @@ function where(d: Diagnostic, scriptLines: number): string {
 // clean script gives null. The script must first pass the same compile step
 // the run does (`guestStart`), so it can't typecheck as anything but the
 // body of an async function, and tsc then checks that same text, wrapped the
-// same way.
+// same way. Like `guestStart`, run it off the host's main thread, in a worker
+// replaced after any failure.
 export async function typecheck(
   script: string,
   dts: string,

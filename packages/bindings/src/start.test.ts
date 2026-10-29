@@ -3,9 +3,11 @@
 // never starts, the typecheck refuses exactly what the compile step refuses,
 // and runtime lines map back to the script.
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { test } from "node:test";
+import { Worker } from "node:worker_threads";
 import { bindingsFor } from "./bindings.ts";
-import { guestStart, scriptLineOffset } from "./shim.ts";
+import { guestStart, maxNesting, maxScriptBytes, nesting, scriptLineOffset } from "./shim.ts";
 import { fixtureReader, fixtureRegion, issueTypes, runGuest, snapshotAfter } from "./testing.ts";
 import { typecheck } from "./typecheck.ts";
 
@@ -79,4 +81,49 @@ test("the typecheck may be stricter on syntax a function body allows, never loos
   const script = "<!-- a comment to a browser\nreturn 1;";
   assert.equal(guestStart(script).ok, true);
   assert.equal((await typecheck(script, bindings.dts))?.phase, "typecheck");
+});
+
+const parens = (depth: number) => `return ${"(".repeat(depth)}1${")".repeat(depth)};`;
+
+test("bracket nesting is counted roughly: every bracket, strings included", () => {
+  assert.equal(nesting("f(a[0], { b: [1] });"), 3);
+  assert.equal(nesting('const s = "((((";'), 4);
+  assert.equal(nesting(parens(maxNesting)), maxNesting);
+});
+
+test("nesting deeper than the bound is refused; at the bound it compiles", async () => {
+  assert.equal(guestStart(parens(maxNesting)).ok, true);
+  const deep = guestStart(parens(maxNesting + 1));
+  assert.deepEqual(deep.ok ? null : [deep.error.phase, deep.error.message], [
+    "typecheck",
+    `The script nests brackets more than ${maxNesting} deep.`,
+  ]);
+  assert.deepEqual(
+    await typecheck(parens(maxNesting + 1), bindings.dts),
+    deep.ok ? null : deep.error,
+  );
+});
+
+test("a script over the size bound is refused as a limit", () => {
+  const big = guestStart(`// ${"x".repeat(maxScriptBytes)}`);
+  assert.equal(big.ok ? null : big.error.phase, "limit");
+});
+
+// Deep enough to overflow the stripper and leave it failing in its thread, so
+// it runs in a worker: had it reached the stripper, the second call would fail.
+test("deep nesting never reaches the stripper, and its thread stays well", async () => {
+  const shim = new URL("./shim.ts", import.meta.url).href;
+  const source = [
+    'import { parentPort } from "node:worker_threads";',
+    `import { guestStart } from ${JSON.stringify(shim)};`,
+    'const deep = guestStart("(".repeat(8000) + "1" + ")".repeat(8000));',
+    'const after = guestStart("const a: number = 1;\\nreturn a;");',
+    "parentPort.postMessage({ deep: deep.ok ? null : deep.error.message, after: after.ok });",
+  ].join("\n");
+  const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(source)}`));
+  const [result] = await once(worker, "message");
+  assert.deepEqual(result, {
+    deep: `The script nests brackets more than ${maxNesting} deep.`,
+    after: true,
+  });
 });
