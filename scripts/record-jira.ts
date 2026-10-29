@@ -59,7 +59,7 @@ export function scrub(value: unknown, people = new Map<string, string>()): unkno
   );
 }
 
-async function record(transport: Transport, fixture: JiraFixture) {
+export async function record(transport: Transport, fixture: JiraFixture) {
   const people = new Map<string, string>();
   const save = (name: string, exchanges: Exchange[]) => {
     const scrubbed = exchanges.map((exchange) => ({
