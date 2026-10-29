@@ -1,6 +1,7 @@
-// Repo invariants: CLAUDE.md is a symlink to AGENTS.md, and every locked
-// package comes from the npm registry, is on the AGENTS.md allowlist, and is
-// listed on an ADR's `Adds:` line.
+// Repo invariants: CLAUDE.md is a symlink to AGENTS.md; every locked package
+// comes from the npm registry, is on the AGENTS.md allowlist, and is listed on
+// an ADR's `Adds:` line; and outside packages/changeset, no code names
+// `Approved` (core defines it) or imports an adapter's `./writer`.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 
 // `name@version` keys from every top-level `packages:` block.
@@ -41,8 +42,20 @@ export function problems(repo: {
   lockfile: string;
   agentsMd: string;
   decisions: string[];
+  sources: { path: string; text: string }[];
 }): string[] {
   const found = new Set<string>();
+  for (const { path, text } of repo.sources) {
+    if (path.startsWith("packages/changeset/")) continue;
+    if (!path.startsWith("packages/core/") && /\bApproved\b/.test(text)) {
+      found.add(
+        `${path}: names Approved outside packages/core and packages/changeset (decision 0003)`,
+      );
+    }
+    if (/["']@oriel\/[^"']+\/writer["']/.test(text)) {
+      found.add(`${path}: imports a source writer outside packages/changeset (decision 0003)`);
+    }
+  }
   if (repo.claudeLink !== "AGENTS.md") {
     found.add(
       `CLAUDE.md must be a symlink to exactly "AGENTS.md", got ${JSON.stringify(repo.claudeLink)}`,
@@ -87,6 +100,9 @@ if (import.meta.main) {
     decisions: readdirSync("docs/decisions")
       .filter((f) => f.endsWith(".md"))
       .map((f) => readFileSync(`docs/decisions/${f}`, "utf8")),
+    sources: readdirSync("packages", { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts") && !f.split("/").includes("node_modules"))
+      .map((f) => ({ path: `packages/${f}`, text: readFileSync(`packages/${f}`, "utf8") })),
   });
   for (const p of found) console.error(p);
   process.exitCode = found.length ? 1 : 0;
