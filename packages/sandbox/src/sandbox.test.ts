@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { Bindings, RunError, RunLimits, TranscriptEntry } from "@oriel/core";
 import { fakeBindings, stories } from "./fake-bindings.ts";
@@ -112,7 +115,7 @@ test("console output becomes log lines in the transcript", async () => {
     return 1;
   `);
   assert.deepEqual(result.transcript, [
-    { kind: "log", text: "counted { stories: 3 }" },
+    { kind: "log", text: 'counted {"stories":3}' },
     { kind: "log", text: "and warned" },
     { kind: "return", value: 1 },
   ]);
@@ -171,7 +174,7 @@ test("a rejection nobody awaited ends the run", async () => {
 test("a return value that isn't JSON is an error, not a crash", async () => {
   const { result } = await go(`return 10n;`);
   assert.equal(result.outcome, "threw");
-  assert.match(errorOf(result.transcript.at(-1)).message, /can't be sent as JSON/);
+  assert.match(errorOf(result.transcript.at(-1)).message, /Do not know how to serialize a BigInt/);
 });
 
 test("a syntax error is a typecheck error, and Deno never starts", async () => {
@@ -179,7 +182,10 @@ test("a syntax error is a typecheck error, and Deno never starts", async () => {
   assert.equal(result.outcome, "threw");
   const error = errorOf(result.transcript.at(-1));
   assert.equal(error.phase, "typecheck");
-  assert.match(error.message, /the script doesn't parse: Unexpected token `=`/);
+  assert.match(
+    error.message,
+    /^The script doesn't compile as the body of an async function: .*Unexpected token/,
+  );
   assert.equal(result.coldStartMs, null);
 });
 
@@ -231,6 +237,37 @@ test("a ref can only be created once", async () => {
   assert.equal(result.outcome, "threw");
   assert.equal(result.mutations.length, 1);
   assert.match(errorOf(result.transcript.at(-1)).message, /new:1 was already created/);
+});
+
+test("the entry file is the shim alone, and the script reaches the guest as data", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "oriel-entry-"));
+  const controller = new AbortController();
+  let entry = "";
+  const bindings = fakeBindings(() => {
+    const [run = ""] = readdirSync(tmp);
+    entry = readFileSync(join(tmp, run, "entry.ts"), "utf8");
+    controller.abort(new Error("seen"));
+  });
+  const running = createSandbox({ now: () => 0, tmpDir: tmp }).run(
+    `const marker = "script-marker-93f1";\nawait jira.hold();`,
+    bindings,
+    { limits, signal: controller.signal, log: () => {} },
+  );
+  await assert.rejects(running, /seen/);
+  rmSync(tmp, { recursive: true, force: true });
+  assert.equal(entry, bindings.shim);
+  assert.ok(!entry.includes("script-marker-93f1"));
+});
+
+test("a guest that ends without done or threw is a runtime error", async () => {
+  // The guest can't even describe this error, so it never reports it.
+  const { result } = await go(
+    `const error = new Error("hidden");\nObject.defineProperty(error, "stack", { get() { throw new Error("no stack"); } });\nthrow error;`,
+  );
+  assert.equal(result.outcome, "threw");
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "runtime");
+  assert.match(error.message, /stopped before returning \(exit code 1\)/);
 });
 
 test("exiting before returning is a runtime error", async () => {

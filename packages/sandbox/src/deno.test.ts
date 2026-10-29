@@ -1,7 +1,7 @@
 // What Deno itself does with imports under decision 0006's flags alone: no
 // import map, no host. These pin down why the script is sent as data, never as
 // module source. If one starts failing after a Deno upgrade, Deno's behavior
-// changed: re-read deno.ts and compile.ts before changing anything.
+// changed: re-read deno.ts, compiler.ts and start.ts before changing anything.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";

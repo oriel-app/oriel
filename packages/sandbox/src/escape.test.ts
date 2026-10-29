@@ -2,6 +2,7 @@
 // fail. Never weaken one in the PR that changes the sandbox.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -328,6 +329,28 @@ test("deeply nested write arguments", async () => {
   assert.equal(result.outcome, "threw");
   assert.equal(result.mutations.length, 0);
   assert.match(errorOf(result.transcript.at(-1)).message, /nests deeper than 64 levels/);
+});
+
+// Error text is the guest's. A pattern that backtracks on it would hold the
+// host's event loop, and with it the wall-time kill and the memory watchdog.
+test("an error message shaped to make the host's error cleanup slow", async () => {
+  const result = await run(`throw "eval at ".repeat(120_000);`);
+  assert.equal(result.outcome, "threw");
+  assert.ok(errorOf(result.transcript.at(-1)).message.length <= 4_001);
+});
+
+// Node's type stripper is SWC built as WebAssembly. A deep enough script
+// overflows its stack and breaks it for the rest of the isolate.
+test("a script nested deep enough to break the type stripper can't break later runs", async () => {
+  const deep = `return ${"(".repeat(8_000)}1${")".repeat(8_000)};`;
+  for (let i = 0; i < 3; i++) {
+    const result = await run(deep);
+    assert.equal(errorOf(result.transcript.at(-1)).phase, "typecheck");
+  }
+  const result = await run(`const n: number = 2;\nreturn n;`);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: 2 }]);
+  // The host's own stripper, which loads its `.ts` files, is untouched.
+  assert.doesNotThrow(() => stripTypeScriptTypes("const n: number = 2;", { mode: "strip" }));
 });
 
 test("a memory flood on the V8 heap", async () => {

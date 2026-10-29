@@ -12,6 +12,7 @@ import {
   type CapturedMutation,
   type GuestMessage,
   guestMessage,
+  type HostReply,
   type Log,
   type NewRef,
   type ProxiedRead,
@@ -21,10 +22,11 @@ import {
   type Sandbox,
   type TranscriptEntry,
 } from "@oriel/core";
-import { compileScript } from "./compile.ts";
+import { createCompiler } from "./compiler.ts";
 import { denoArgs, denoEnv, findDeno, importMap } from "./deno.ts";
-import { entrySource, sanitize } from "./guest.ts";
+import { sanitize } from "./errors.ts";
 import { watchMemory } from "./memory.ts";
+import { scriptLineOffset } from "./start.ts";
 
 export type SandboxOptions = {
   // The Deno binary. Default: the one on PATH (mise.toml pins it).
@@ -44,8 +46,10 @@ export type SandboxOptions = {
   now?: () => number;
 };
 
-// `coldStartMs`: from spawning Deno to the first line of guest code running,
-// or null when the script never started. Eval #6 reads it.
+// `coldStartMs`: from spawning Deno to the guest's first line, or null when
+// none came. That is the cold start plus whatever the script does before its
+// first read, write, log or return. The shim writes nothing at start, so the
+// host can't time Deno's startup alone. Eval #6 reads it.
 export type SandboxRunResult = RunResult & { coldStartMs: number | null };
 
 type RunOptions = { limits: RunLimits; signal: AbortSignal; log: Log };
@@ -55,8 +59,6 @@ export interface DenoSandbox extends Sandbox {
 }
 
 const MB = 1024 * 1024;
-const ready = "\u0000ready\n";
-const deadlineExit = 124;
 const logTail = 20;
 
 const hints = {
@@ -69,8 +71,6 @@ const hints = {
   console: "Log less; return data instead of printing it.",
   stdout: "Use console.log for output and return the result; don't write to stdout directly.",
   imports: "Imports aren't available in the sandbox; use the bindings.",
-  compile:
-    "The script is the body of an async function: use await and return, no imports or exports, and only TypeScript that erases (no enums or namespaces).",
 };
 
 // Guest values nested deeper than this are refused: the host's own
@@ -86,6 +86,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   const memoryPollMs = options.memoryPollMs ?? 50;
   const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
   const now = options.now ?? (() => performance.now());
+  const compiler = createCompiler();
 
   async function run(
     script: string,
@@ -107,9 +108,15 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       const text = `the script is ${scriptBytes} bytes; the limit is ${limits.maxScriptBytes}`;
       return refuse(errorEntry("limit", text, [], hints.script), "limit");
     }
-    const compiled = compileScript(script);
-    if (!compiled.ok)
-      return refuse(errorEntry("typecheck", compiled.message, [], hints.compile), "threw");
+    // The typecheck, then the reply that starts the guest: in a worker, see
+    // compiler.ts.
+    const prepared = await compiler.prepare({
+      script,
+      dts: bindings.dts,
+      timeoutMs: limits.wallMs,
+    });
+    signal.throwIfAborted();
+    if (!prepared.ok) return refuse({ kind: "error", error: prepared.error }, "threw");
 
     const dir = await realpath(await mkdtemp(join(options.tmpDir ?? tmpdir(), "oriel-run-")));
     try {
@@ -122,14 +129,16 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       const denoDir = join(dir, "deno");
       await mkdir(denoDir);
       await mkdir(join(denoDir, "location_data"), { mode: 0o500 });
+      // The entry file is the shim alone. The script never becomes module
+      // source: it goes to the guest as data, in reply 0.
       const entryPath = join(dir, "entry.ts");
       const entryUrl = pathToFileURL(entryPath).href;
-      const config = { ready, deadlineMs: guestDeadline(limits.wallMs), deadlineExit };
-      await writeFile(entryPath, entrySource(bindings.shim, config));
+      await writeFile(entryPath, bindings.shim);
       await writeFile(join(dir, "imports.json"), importMap(entryUrl));
-      const clean = (text: string) => sanitize(text, { url: entryUrl, path: entryPath, dir });
+      const clean = (text: string) =>
+        sanitize(text, { url: entryUrl, path: entryPath, dir }, scriptLineOffset);
       return await supervise({
-        js: compiled.js,
+        start: prepared.reply,
         dir,
         work,
         denoDir,
@@ -147,7 +156,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   }
 
   function supervise(job: {
-    js: string;
+    start: HostReply;
     dir: string;
     work: string;
     denoDir: string;
@@ -168,8 +177,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         { cwd: job.work, env: denoEnv(job.denoDir), stdio: ["pipe", "pipe", "pipe"] },
       );
       child.stdin.on("error", () => {});
-      // The script travels as data: the first line on stdin, a JSON string.
-      child.stdin.write(`${JSON.stringify(job.js)}\n`);
+      child.stdin.write(`${JSON.stringify(job.start)}\n`);
 
       const reads: (ProxiedRead | undefined)[] = [];
       const mutations: CapturedMutation[] = [];
@@ -314,7 +322,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               "threw",
               fail(
                 "runtime",
-                clip(clean(message.message)),
+                clean(message.message),
                 message.message.includes('"no-imports"') ? hints.imports : undefined,
               ),
             );
@@ -373,6 +381,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         ),
       );
       child.stdout.on("data", (chunk: Buffer) => {
+        coldStartMs ??= now() - spawnedAt;
         if (!ending) lines.push(chunk, () => ending !== null);
       });
 
@@ -385,27 +394,15 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           return;
         }
         stderr += chunk;
-        if (coldStartMs !== null) return;
-        const at = stderr.indexOf(ready);
-        if (at < 0) return;
-        coldStartMs = now() - spawnedAt;
-        stderr = stderr.slice(0, at) + stderr.slice(at + ready.length);
       });
 
-      // How a process that ended on its own, without `done` or `threw`, ended.
+      // A guest that ended on its own without `done` or `threw`: out of
+      // memory, or a runtime error, whatever its exit code.
       const exited = (code: number | null, killedBy: NodeJS.Signals | null): Ending => {
-        const full = clean(stderr).trim();
-        const text = clip(full);
-        if (code === deadlineExit) return { outcome: "timeout", last: wallError() };
-        if (/out of memory|reached heap limit/i.test(full)) {
+        const text = clean(stderr.trim());
+        if (/out of memory|reached heap limit/i.test(stderr)) {
           const message = `the script ran out of memory (the heap limit is ${heapMb} MB)`;
           return { outcome: "limit", last: fail("limit", message, hints.memory) };
-        }
-        if (coldStartMs === null) {
-          // The entry module (runtime and shim) didn't load: not the script's
-          // doing, since the script was compiled on the host.
-          const message = `the sandbox didn't start (${code ?? killedBy})${text ? `:\n${text}` : ""}`;
-          return { outcome: "threw", last: fail("runtime", message) };
         }
         const how = code === null ? `signal ${killedBy}` : `exit code ${code}`;
         const message = `the script stopped before returning (${how})${text ? `:\n${text}` : ""}`;
@@ -476,12 +473,6 @@ function errorEntry(
   return { kind: "error", error };
 }
 
-// The guest's own deadline lands a little before the host's kill, so a
-// script waiting on a promise ends cleanly; a busy loop is killed.
-function guestDeadline(wallMs: number): number {
-  return Math.max(0, wallMs - Math.min(250, Math.floor(wallMs / 4)));
-}
-
 // Splits a byte stream on "\n" without ever buffering more than `cap` bytes of
 // one line.
 function splitLines(cap: number, onLine: (line: Buffer) => void, oversize: () => void) {
@@ -526,6 +517,3 @@ function nestsDeeper(value: unknown, max: number): boolean {
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-// Error text from the guest reaches the agent; keep it to a readable size.
-const clip = (text: string, max = 4_000) => (text.length > max ? `${text.slice(0, max)}…` : text);
