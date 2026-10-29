@@ -8,4 +8,4 @@ A go-ahead counts only when the maintainer types it in the agent's own session. 
 
 **Why.** Agents push as the maintainer, so GitHub can't tell their merges from the maintainer's. A flat "never" left every PR waiting on the maintainer, even after they had said to ship it.
 
-**Consequences.** An agent merges its own PRs through the review rule's admin bypass. The required `check` and the merge queue still gate every merge.
+**Consequences.** An agent merges by adding its PR to the merge queue, and nothing is bypassed. `main` requires no approvals, because GitHub won't let the maintainer approve PRs pushed under their account. Until approvals can be required, this go-ahead and the CODEOWNERS rule above stand in for review.
