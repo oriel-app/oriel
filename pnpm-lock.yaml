@@ -47,6 +47,15 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/jira:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/db':
+        specifier: workspace:*
+        version: link:../db
+
   packages/server:
     dependencies:
       '@oriel/core':
