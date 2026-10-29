@@ -37,9 +37,6 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
-      '@oriel/web':
-        specifier: workspace:*
-        version: link:../web
 
   packages/server:
     dependencies:
@@ -55,6 +52,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@oriel/groupings':
+        specifier: workspace:*
+        version: link:../groupings
       preact:
         specifier: 11.0.1
         version: 11.0.1

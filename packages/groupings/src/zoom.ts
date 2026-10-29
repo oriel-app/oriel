@@ -10,7 +10,7 @@ import {
   type SourceKind,
   type ZoomLevel,
 } from "@oriel/core";
-import type { ClusterRow, ItemRow, ItemView } from "@oriel/web/view";
+import type { ClusterRow, ItemRow, ItemView } from "./view.ts";
 import type { JiraRecord } from "./groupings.ts";
 
 const day = 86_400_000;
