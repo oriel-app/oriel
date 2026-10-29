@@ -18,6 +18,8 @@ const tokenOf = (url: URL): string => url.pathname.split("/").at(-1) ?? "";
 async function linked() {
   const context = setup();
   const set = await context.changeSets.capture(context.run, [estimate("jira:SYN-21", 5)]);
+  // Shown once, so each refusal below is about the link, not a missing diff.
+  await context.changeSets.diff(set.id);
   const url = await context.changeSets.reviewLink(set.id);
   const byLink = (by: string, hash = set.hash) =>
     context.changeSets.decide(

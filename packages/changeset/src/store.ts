@@ -10,6 +10,7 @@ import {
   isNewRef,
   isUlid,
   literal,
+  parseItemId,
   type MutationRecord,
   type MutationStatus,
   type NewRef,
@@ -86,9 +87,12 @@ const linkRow = object({
   revoked_at: nullable(instantValue),
 });
 const nextRow = object({ next: number });
+const stableIdRow = object({ stable_id: string });
+const memberRow = object({ source: string, stable_id: string });
 const foundRow = object({ found: number });
 
 export type LinkRow = Infer<typeof linkRow>;
+export type AppliedValue = Infer<typeof appliedValue>;
 
 function parse<T>(validator: Validator<T>, raw: unknown, what: string): T {
   const result = validator(raw);
@@ -133,9 +137,13 @@ export function store(db: DatabaseSync) {
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
-  const selectRegionItems = db.prepare(`
-    select ri.item_id from threads t join region_items ri on ri.region_id = t.region_id
+  const selectRegionMembers = db.prepare(`
+    select ri.source, ri.stable_id from threads t join region_items ri on ri.region_id = t.region_id
     where t.id = ?`);
+  // The item a handle names now: the live one, or else the latest tombstone.
+  const selectStableId = db.prepare(`
+    select stable_id from items where workspace_id = ? and source = ? and item_id = ?
+    order by gone_at is not null, gone_at desc limit 1`);
   const insertChangeSet = db.prepare(`
     insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at)
     values (?, ?, ?, ?, ?, ?)`);
@@ -151,11 +159,17 @@ export function store(db: DatabaseSync) {
   const updatePreview = db.prepare(
     "update mutations set preview = ? where id = ? and status != 'applied'",
   );
-  const updateApplied = db.prepare(
-    "update mutations set status = 'applied', applied = ?, error = null where id = ? and status != 'applied'",
+  const clearPreviews = db.prepare(
+    "update mutations set preview = null where change_set_id = ? and status != 'applied'",
   );
+  const updateApplied = db.prepare(`
+    update mutations set status = 'applied', applied = ?, error = null
+    where id = ? and status = ? and args = ?`);
   const updateFailed = db.prepare(
     "update mutations set status = 'failed', error = ? where id = ? and status != 'applied'",
+  );
+  const updateStopped = db.prepare(
+    "update mutations set status = 'pending', error = ? where id = ? and status != 'applied'",
   );
   const insertDecision = db.prepare(`
     insert into decisions (id, workspace_id, change_set_id, seq, kind, via, review_link, by_name, hash, at)
@@ -169,6 +183,14 @@ export function store(db: DatabaseSync) {
   const insertLink = db.prepare(
     "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values (?, ?, ?, ?)",
   );
+
+  // The stable ID of the item a handle names in the index, or null.
+  const stableIdOf = (workspaceId: Ulid, handle: string): string | null => {
+    const source = parseItemId(handle)?.source;
+    if (!source) return null;
+    const raw = selectStableId.get(workspaceId, source, handle);
+    return raw ? parse(stableIdRow, raw, "items").stable_id : null;
+  };
 
   const toMutation = (raw: unknown): MutationRecord => {
     const row = parse(mutationRow, raw, "mutations");
@@ -235,9 +257,23 @@ export function store(db: DatabaseSync) {
       );
     },
 
-    // The item IDs of a thread's region, as handles at the region's creation.
-    regionItems(threadId: Ulid): Set<string> {
-      return new Set(selectRegionItems.all(threadId).map((row) => String(row.item_id)));
+    stableId: stableIdOf,
+
+    // Whether a handle names an item of the thread's region. Membership is by
+    // stable ID (decision 0004): a moved item stays in under its new handle,
+    // and a handle reused by another item doesn't bring that item in.
+    inRegion(threadId: Ulid, workspaceId: Ulid): (handle: string) => boolean {
+      const members = new Set(
+        selectRegionMembers.all(threadId).map((raw) => {
+          const row = parse(memberRow, raw, "region_items");
+          return `${row.source}\u0000${row.stable_id}`;
+        }),
+      );
+      return (handle) => {
+        const source = parseItemId(handle)?.source;
+        const stableId = stableIdOf(workspaceId, handle);
+        return stableId !== null && members.has(`${source}\u0000${stableId}`);
+      };
     },
 
     insertChangeSet(set: {
@@ -284,18 +320,39 @@ export function store(db: DatabaseSync) {
       updatePreview.run(JSON.stringify(preview), mutationId);
     },
 
-    // Throws if no pending or failed row took the result: the write landed,
-    // but its row was removed or applied meanwhile.
-    markApplied(mutationId: Ulid, applied: Infer<typeof appliedValue>): void {
-      const { changes } = updateApplied.run(JSON.stringify(applied), mutationId);
+    // After an edit, every unapplied row needs a fresh diff before approval.
+    clearPreviews(changeSetId: Ulid): void {
+      clearPreviews.run(changeSetId);
+    },
+
+    // Records a result only on the row as it was sent: same status, same
+    // arguments. Throws otherwise, since the write landed but its row was
+    // removed, edited or applied meanwhile.
+    markApplied(
+      mutationId: Ulid,
+      sent: { status: MutationStatus; args: unknown },
+      applied: Infer<typeof appliedValue>,
+    ): void {
+      const { changes } = updateApplied.run(
+        JSON.stringify(applied),
+        mutationId,
+        sent.status,
+        JSON.stringify(sent.args),
+      );
       if (Number(changes) !== 1)
         throw new Error(
           `mutation ${mutationId} landed in the source, but its row changed meanwhile`,
         );
     },
 
+    // A write that failed, or that may have landed: it was sent.
     markFailed(mutationId: Ulid, error: string): void {
       updateFailed.run(error, mutationId);
+    },
+
+    // Apply stopped before sending this mutation; the next apply checks it again.
+    markStopped(mutationId: Ulid, error: string): void {
+      updateStopped.run(error, mutationId);
     },
 
     insertDecision(d: {

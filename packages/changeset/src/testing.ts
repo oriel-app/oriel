@@ -6,6 +6,7 @@ import {
   type ChangeSets,
   type FieldValues,
   fixtureSnapshot,
+  type IndexRecord,
   type Instant,
   instant,
   type ItemId,
@@ -19,10 +20,11 @@ import {
   type TelemetryEvent,
   type Ulid,
   ulid,
+  unknown,
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
-import { ensureWorkspace, loadMigrations, migrate, open } from "@oriel/db";
+import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSets, type Reader } from "./change-sets.ts";
 
@@ -54,15 +56,13 @@ const fixture = (): JiraFixture => {
   return loaded;
 };
 
+const site = "https://oriel.atlassian.net";
+
 // Jira as the SYN fixture leaves it after all its source edits: SYN-16
 // renamed, SYN-88 moved to SYN-3, SYN-27 deleted.
 export function fixtureJira(): MemorySnapshot {
   const syn = fixture();
-  const { records, content } = fixtureSnapshot(
-    syn,
-    "https://oriel.atlassian.net",
-    syn.edits.length,
-  );
+  const { records, content } = fixtureSnapshot(syn, site, syn.edits.length);
   return {
     project: syn.project.key,
     people: syn.people.map((p) => ({ accountId: p.id, name: p.displayName })),
@@ -275,6 +275,12 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     comment(key: string) {
       touch(key);
     },
+    // A teammate retitles a remote link.
+    retitleLink(key: string, linkId: string, title: string) {
+      const found = touch(key).links.find((l) => l.linkId === linkId);
+      if (!found) throw new Error(`no link ${linkId} on ${key}`);
+      found.title = title;
+    },
     // The item can't be seen (deleted, moved or forbidden), then can again.
     hide(key: string) {
       hidden.add(key);
@@ -336,6 +342,19 @@ export function setup() {
     t0,
   );
 
+  // The index, synced as the sync worker would: the base state, then the
+  // fixture's source edits, which tombstone SYN-27.
+  const syn = fixture();
+  const index = indexStore(db);
+  const indexPage = (records: IndexRecord[], gone: string[] = []) => {
+    const sync = index.beginSync(workspaceId, "jira", unknown, t0);
+    sync.apply({ records, gone, cursor: "c" });
+    sync.finish("c", t0);
+  };
+  indexPage(fixtureSnapshot(syn, site, 0).records);
+  const synced = fixtureSnapshot(syn, site, syn.edits.length);
+  indexPage(synced.records, synced.gone);
+
   const jira = memoryJira(fixtureJira(), t0);
   let now: Instant = t0;
   const events: TelemetryEvent[] = [];
@@ -357,6 +376,14 @@ export function setup() {
     workspaceId: workspaceId as Ulid,
     changeSets: instance(),
     instance,
+    // A later sync page, such as a move or a reused key.
+    indexPage,
+    // An item's index record after the fixture's edits.
+    indexed(key: string): IndexRecord {
+      const record = synced.records.find((r) => r.id === `jira:${key}`);
+      if (!record) throw new Error(`no record for ${key}`);
+      return record;
+    },
     advance(byMs: number) {
       now = instant(new Date(Date.parse(now) + byMs));
     },
@@ -377,6 +404,10 @@ export function nth<T>(list: readonly T[], index: number): T {
 
 export function count(db: DatabaseSync, table: "change_sets" | "decisions"): number {
   return Number(db.prepare(`select count(*) as n from ${table}`).get()?.n);
+}
+
+export function status(db: DatabaseSync, mutationId: Ulid): unknown {
+  return db.prepare("select status from mutations where id = ?").get(mutationId)?.status;
 }
 
 // What a diff last recorded as shown for a mutation.

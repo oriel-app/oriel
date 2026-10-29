@@ -41,7 +41,15 @@ import { transaction } from "@oriel/db";
 import type { Catalogue, OpSpec, Subject } from "./catalogue.ts";
 import { sameValue, sha256 } from "./hash.ts";
 import { jiraCatalogue } from "./jira.ts";
-import { newRefValue, store, targetValue, ulidValue, writeResult, type LinkRow } from "./store.ts";
+import {
+  newRefValue,
+  store,
+  targetValue,
+  ulidValue,
+  writeResult,
+  type AppliedValue,
+  type LinkRow,
+} from "./store.ts";
 
 // The read side a diff needs: values as they are now in the source.
 export type Reader<K extends SourceKind = SourceKind> = {
@@ -213,32 +221,41 @@ function check(drafts: readonly Draft[]): Checked[] {
 }
 
 // What in these mutations lies outside the region: a target (when `targets`),
-// or an item ID among the arguments. A NewRef target was checked by `check`.
-// Arguments are replayed exactly, so a NewRef among them could never resolve
-// and is refused as well.
+// or an item ID among the arguments. `member` decides by stable ID. A NewRef
+// target was checked by `check`. Arguments are replayed exactly, so a NewRef
+// among them could never resolve and is refused as well.
 function outsideRegion(
   checked: readonly { m: Checked; seq: number }[],
-  region: ReadonlySet<string>,
+  member: (handle: string) => boolean,
   targets: boolean,
 ): string | null {
   for (const { m, seq } of checked) {
     const where = `mutation ${seq} (${m.op})`;
-    if (targets && m.target !== null && !isNewRef(m.target) && !region.has(m.target))
+    if (targets && m.target !== null && !isNewRef(m.target) && !member(m.target))
       return `${where}: ${key(m.target)} isn't in this thread's region`;
-    const stray = m.spec.refs(m.args).find((id) => !region.has(id));
+    const stray = m.spec.refs(m.args).find((id) => !member(id));
     if (stray !== undefined) return `${where}: ${key(stray)} isn't in this thread's region`;
   }
   return null;
 }
 
-function conflictText(conflicts: readonly Conflict[]): string {
+// Conflicts in plain words, for the thread and the review page. An `expected`
+// of undefined means the source never reported the value, so Oriel can't tell
+// whether anyone changed it.
+export function explainConflicts(conflicts: readonly Conflict[]): string {
   const parts = conflicts.map((c) => {
-    if (c.field === "item") return `${key(c.target)} is no longer there`;
-    if (c.field === catalogueOf(c.target).updatedField)
-      return `${key(c.target)} was touched since Oriel created it`;
-    return `${key(c.target)}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`;
+    const item = key(c.target);
+    const catalogue = catalogueOf(c.target);
+    if (c.field === "item") return `${item} is no longer there`;
+    if (c.field === catalogue.updatedField)
+      return c.expected === undefined || c.expected === null
+        ? `Oriel never learned when ${item} was last updated, so it can't tell whether anyone touched it`
+        : `${item} was touched since Oriel created it`;
+    if (c.expected === undefined)
+      return `${catalogue.name} didn't report ${item}'s ${c.field} after the change, so Oriel can't tell whether anyone changed it`;
+    return `${item}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`;
   });
-  return `Changed in the source since it was applied, so nothing was overwritten: ${parts.join("; ")}.`;
+  return `Stopped, so nothing was overwritten: ${parts.join("; ")}.`;
 }
 
 export function changeSets(deps: ChangeSetDeps): ChangeSets {
@@ -402,17 +419,22 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return { diff: { changeSetId: set.id, hash: set.hash, lines }, gone };
   };
 
-  // Records what the diff showed against each pending mutation, so apply can
-  // tell what the person saw: the before values, or that the item was gone.
-  // Only until the change set is decided, and only if its rows didn't change
-  // while the diff was being rendered.
+  // Records what the diff showed against each unapplied mutation, so approval
+  // can require that a diff was shown since the last edit and apply can tell
+  // what the person saw. Not while the change set is approved (a rejection
+  // reopens it), and not if its rows changed while the diff was rendering. A
+  // line once shown as gone stays gone until the next edit, so a later render
+  // can't hide that from whoever approves.
   const keepPreview = (set: ChangeSet, rendered: { diff: Diff; gone: Set<Ulid> }): void =>
     transaction(db, () => {
       const now = rows.load(set.id);
-      if (!now || now.hash !== set.hash || now.decision !== null) return;
-      const pending = new Set(set.mutations.filter((m) => m.status !== "applied").map((m) => m.id));
+      if (!now || now.hash !== set.hash || now.decision?.kind === "approved") return;
+      const open = new Map(
+        now.mutations.filter((m) => m.status !== "applied").map((m) => [m.id, m.preview]),
+      );
       for (const line of rendered.diff.lines) {
-        if (!pending.has(line.mutationId)) continue;
+        if (!open.has(line.mutationId)) continue;
+        if (open.get(line.mutationId)?.[goneMark] === true) continue;
         rows.setPreview(
           line.mutationId,
           rendered.gone.has(line.mutationId)
@@ -430,19 +452,25 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
   // Conflicts between the source now and what each field was left at after
   // apply: per item and field, the last applied mutation's `after`. The update
-  // time is skipped, since any write moves it. A gone item is one conflict on
-  // its field "item", against the last mutation that touched it.
+  // time is skipped, since any write moves it. A set op whose `after` lacks the
+  // field it set is a conflict (expected undefined): Oriel can't tell whether
+  // anyone changed it. A gone item is one conflict on its field "item",
+  // against the last mutation that touched it.
   const conflictsWith = async (applied: readonly MutationRecord[]): Promise<Conflict[]> => {
     type Expected = { last: Ulid; fields: Map<string, { value: unknown; mutationId: Ulid }> };
     const expected = new Map<ItemId, Expected>();
     for (const m of applied) {
       if (!m.applied) continue;
       const item = m.applied.item.id;
-      const skip = catalogueOf(item).updatedField;
+      const catalogue = catalogueOf(item);
       const entry = expected.get(item) ?? { last: m.id, fields: new Map() };
       entry.last = m.id;
+      const spec = Object.hasOwn(catalogue.ops, m.op) ? catalogue.ops[m.op] : undefined;
+      if (spec?.idempotent)
+        for (const field of Object.keys(spec.after(m.args)))
+          entry.fields.set(field, { value: undefined, mutationId: m.id });
       for (const [field, value] of Object.entries(m.applied.after))
-        if (field !== skip) entry.fields.set(field, { value, mutationId: m.id });
+        if (field !== catalogue.updatedField) entry.fields.set(field, { value, mutationId: m.id });
       expected.set(item, entry);
     }
     const conflicts: Conflict[] = [];
@@ -462,7 +490,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       }
       for (const [field, { value, mutationId }] of fields) {
         const actual = Object.hasOwn(current, field) ? current[field] : null;
-        if (!sameValue(actual, value))
+        if (value === undefined || !sameValue(actual, value))
           conflicts.push({ mutationId, target: item, field, expected: value, actual });
       }
     }
@@ -472,7 +500,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   // An item a change set created may be deleted only if nobody touched it
   // since: its update time must still be the one the last of `onItem` (that
   // change set's applied mutations on it, in seq order) recorded. A missing
-  // update time is a conflict too.
+  // update time is a conflict too, with `expected` undefined or null.
   const touched = async (
     item: ItemId,
     onItem: readonly MutationRecord[],
@@ -494,7 +522,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       };
     const actual = Object.hasOwn(current, field) ? current[field] : null;
     if (typeof expected === "string" && sameValue(actual, expected)) return null;
-    return { mutationId: last.id, target: item, field, expected: expected ?? null, actual };
+    return { mutationId: last.id, target: item, field, expected, actual };
   };
 
   // Rechecks, just before a reverse mutation is sent, the mutation it undoes:
@@ -534,12 +562,64 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return { set, m: set.mutations.find((r) => r.id === mutationId) ?? null };
   };
 
-  // Sends pending mutations in seq order and stops at the first failure, so a
-  // retry can't land a later mutation before an earlier one.
+  // The stable ID of the item a mutation writes to: from the result that made
+  // it or that the mutation undoes, or else from the index.
+  const stableIdFor = (m: MutationRecord, set: ChangeSet, target: ItemId): string | null => {
+    if (m.target !== null && isNewRef(m.target)) {
+      const ref = m.target;
+      return set.mutations.find((c) => c.ref === ref)?.applied?.item.stableId ?? null;
+    }
+    if (m.reverts) return rows.mutation(m.reverts)?.applied?.item.stableId ?? null;
+    return rows.stableId(set.workspaceId, target);
+  };
+
+  // A set op whose value is already in place, as when an earlier send landed
+  // but its answer was lost: the result to record without sending, or null.
+  // `before` is what the diff showed.
+  const inPlace = async (
+    m: MutationRecord,
+    set: ChangeSet,
+    kind: SourceKind,
+    spec: OpSpec,
+    target: ItemId,
+  ): Promise<AppliedValue | null> => {
+    const after = spec.after(m.args);
+    const fields = Object.keys(after);
+    const updated = catalogues[kind].updatedField;
+    const current = await deps.sources[kind].writer.current(target, [...fields, updated]);
+    if (current === "gone") return null;
+    if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
+      return null;
+    const stableId = stableIdFor(m, set, target);
+    if (stableId === null) return null;
+    const shown = m.preview ?? {};
+    return {
+      item: { id: target, stableId },
+      before: Object.fromEntries(
+        fields.map((f) => [f, Object.hasOwn(shown, f) ? shown[f] : current[f]]),
+      ),
+      after: Object.fromEntries(
+        [...fields, updated].filter((f) => Object.hasOwn(current, f)).map((f) => [f, current[f]]),
+      ),
+      at: deps.now(),
+    };
+  };
+
+  // Sends unapplied mutations in seq order and stops at the first failure, so
+  // a retry can't land a later mutation before an earlier one. A stop before
+  // sending leaves the row pending, to be checked again next time; a failed
+  // send marks it failed. A create or link that may have landed is never sent
+  // twice: it is marked failed before it is sent, and only its recorded result
+  // clears that, so even a crash mid-send leaves it blocked.
   const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
-    const stop = (mutationId: Ulid, error: string): ApplyReport => {
+    const halt = (mutationId: Ulid, error: string): ApplyReport => {
+      rows.markStopped(mutationId, error);
+      report.failed.push({ mutationId, error });
+      return report;
+    };
+    const fail = (mutationId: Ulid, error: string): ApplyReport => {
       rows.markFailed(mutationId, error);
       report.failed.push({ mutationId, error });
       return report;
@@ -554,48 +634,60 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         continue;
       }
       const { kind, spec } = mustSpec(m, set.mutations);
-      // A create or a link that failed may have landed; it is never sent twice.
+      const uncertain = `It may have been made in ${catalogues[kind].name}: check, then remove it from the change set to continue.`;
       if (m.status === "failed" && !spec.idempotent) {
-        report.failed.push({ mutationId, error: m.error ?? "it failed earlier" });
+        report.failed.push({ mutationId, error: m.error ?? uncertain });
         return report;
       }
       if (m.preview?.[goneMark] === true) {
-        return stop(
+        return halt(
           mutationId,
           `${key(m.target ?? "the new item")} was gone when reviewed, so this wasn't sent. Remove it from the change set to continue.`,
         );
       }
+      let where = resolve(m, set);
+      if ("failed" in where) return halt(mutationId, where.failed);
+      if (spec.idempotent && where.target !== null) {
+        const result = await inPlace(m, set, kind, spec, where.target);
+        if (result) {
+          ({ m } = approved(id, mutationId));
+          if (!m) continue;
+          rows.markApplied(mutationId, m, result);
+          report.applied.push(mutationId);
+          continue;
+        }
+      }
       if (m.reverts) {
         const conflicts = await recheck(m.reverts);
-        if (conflicts.length) return stop(mutationId, conflictText(conflicts));
-        ({ set, m } = approved(id, mutationId));
-        if (!m) continue;
+        if (conflicts.length) return halt(mutationId, explainConflicts(conflicts));
       }
 
-      // From the check above to the write nothing awaits, so the rows whose
-      // hash matched the approval are the rows sent.
-      const where = resolve(m, set);
-      if ("failed" in where) return stop(mutationId, where.failed);
+      // Every await is behind us: from this check to the write nothing awaits,
+      // so the rows whose hash matched the approval are the rows sent.
+      ({ set, m } = approved(id, mutationId));
+      if (!m || m.status === "applied") continue;
+      where = resolve(m, set);
+      if ("failed" in where) return halt(mutationId, where.failed);
       const request = mint({ mutationId: m.id, op: m.op, target: where.target, args: m.args });
-      const uncertain = spec.idempotent
-        ? ""
-        : ` It may have been made in ${catalogues[kind].name}: check, then remove it from the change set to continue.`;
+      if (!spec.idempotent) rows.markFailed(mutationId, uncertain);
+      const sent = { status: spec.idempotent ? m.status : ("failed" as const), args: m.args };
+      const unsure = spec.idempotent ? "" : ` ${uncertain}`;
       sending.add(mutationId);
       try {
         let result: unknown;
         try {
           result = await deps.sources[kind].writer.apply(request);
         } catch (error) {
-          return stop(mutationId, `${message(error)}${uncertain}`);
+          return fail(mutationId, `${message(error).replace(/\.$/, "")}.${unsure}`);
         }
         const checked = writeResult(result);
         if (!checked.ok) {
-          return stop(
+          return fail(
             mutationId,
-            `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${uncertain}`,
+            `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${unsure}`,
           );
         }
-        rows.markApplied(mutationId, { ...checked.value, at: deps.now() });
+        rows.markApplied(mutationId, sent, { ...checked.value, at: deps.now() });
       } finally {
         sending.delete(mutationId);
       }
@@ -623,25 +715,24 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return url;
   };
 
+  // Inserts a change set and its mutations; the caller holds the transaction.
   const insertAll = (
     set: { id: Ulid; workspaceId: Ulid; threadId: Ulid; runId: Ulid | null; revertOf: Ulid | null },
     mutations: readonly (Draft & { reverts: Ulid | null })[],
   ): void => {
     const { now, ms } = at();
-    transaction(db, () => {
-      rows.insertChangeSet({ ...set, createdAt: now });
-      mutations.forEach((m, i) =>
-        rows.insertMutation(set.workspaceId, set.id, {
-          id: ulid(ms),
-          seq: i + 1,
-          op: m.op,
-          target: m.target,
-          ref: m.ref,
-          args: m.args,
-          reverts: m.reverts,
-        }),
-      );
-    });
+    rows.insertChangeSet({ ...set, createdAt: now });
+    mutations.forEach((m, i) =>
+      rows.insertMutation(set.workspaceId, set.id, {
+        id: ulid(ms),
+        seq: i + 1,
+        op: m.op,
+        target: m.target,
+        ref: m.ref,
+        args: m.args,
+        reverts: m.reverts,
+      }),
+    );
   };
 
   return {
@@ -663,20 +754,22 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
         );
       const outside = outsideRegion(
         checked.map((m, i) => ({ m, seq: i + 1 })),
-        rows.regionItems(owner.value.threadId),
+        rows.inRegion(owner.value.threadId, owner.value.workspaceId),
         true,
       );
       if (outside) throw new ChangeSetError("refused", outside);
       const id = ulid(at().ms);
-      insertAll(
-        {
-          id,
-          workspaceId: owner.value.workspaceId,
-          threadId: owner.value.threadId,
-          runId: owner.value.id,
-          revertOf: null,
-        },
-        checked.map((m) => ({ ...m, reverts: null })),
+      transaction(db, () =>
+        insertAll(
+          {
+            id,
+            workspaceId: owner.value.workspaceId,
+            threadId: owner.value.threadId,
+            runId: owner.value.id,
+            revertOf: null,
+          },
+          checked.map((m) => ({ ...m, reverts: null })),
+        ),
       );
       return mustLoad(id);
     },
@@ -724,10 +817,16 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           const m = checked[i];
           return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
         });
-        const outside = outsideRegion(edited, rows.regionItems(current.threadId), false);
+        const outside = outsideRegion(
+          edited,
+          rows.inRegion(current.threadId, current.workspaceId),
+          false,
+        );
         if (outside) throw new ChangeSetError("refused", outside);
         for (const mutationId of remove) rows.remove(current.id, mutationId);
         for (const { id: mutationId, m } of edited) rows.setArgs(current.id, mutationId, m.args);
+        // What any earlier diff showed no longer stands for these rows.
+        rows.clearPreviews(current.id);
         return current;
       });
       deps.emit({
@@ -764,6 +863,14 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
             "this change set changed after you reviewed it; review the new diff",
           );
         }
+        // An approval needs a diff shown since the last edit for every row it
+        // will send, so apply knows what the person saw.
+        const unseen = current.mutations.find((m) => m.status !== "applied" && m.preview === null);
+        if (decision.value === "approved" && unseen)
+          throw new ChangeSetError(
+            "refused",
+            `mutation ${unseen.seq} hasn't been shown in a diff since the last edit; review the diff, then approve`,
+          );
         rows.insertDecision({
           id: ulid(ms),
           workspaceId: current.workspaceId,
@@ -801,8 +908,21 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       }
     },
 
+    // Reverses what has been applied. A partly applied change set loses its
+    // unapplied rows in the same transaction, so nothing more of it can land;
+    // that voids its approval.
     async revert(id) {
+      const busy = () =>
+        new ChangeSetError("busy", "this change set is being applied; revert it once that ends");
       const set = mustLoad(id);
+      const unsure = set.mutations.find(
+        (m) => m.status === "failed" && !mustSpec(m, set.mutations).spec.idempotent,
+      );
+      if (unsure)
+        throw new ChangeSetError(
+          "not-revertible",
+          `mutation ${unsure.seq} (${unsure.op}) may have been made in the source: check, then remove it from the change set before reverting`,
+        );
       const applied = set.mutations.filter((m) => m.applied !== null);
       if (applied.length === 0)
         throw new ChangeSetError("not-revertible", "nothing in this change set has been applied");
@@ -853,16 +973,24 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
       const checked = check(undo);
       const reverseId = ulid(at().ms);
-      insertAll(
-        {
-          id: reverseId,
-          workspaceId: set.workspaceId,
-          threadId: set.threadId,
-          runId: null,
-          revertOf: set.id,
-        },
-        checked.map((m, i) => ({ ...m, reverts: undo[i]?.reverts ?? null })),
-      );
+      transaction(db, () => {
+        // Nothing may have landed or started since the plan was made.
+        const now = mustLoad(set.id);
+        const appliedNow = now.mutations.filter((m) => m.applied !== null).map((m) => m.id);
+        if (applying.has(set.id) || appliedNow.join() !== applied.map((m) => m.id).join())
+          throw busy();
+        insertAll(
+          {
+            id: reverseId,
+            workspaceId: set.workspaceId,
+            threadId: set.threadId,
+            runId: null,
+            revertOf: set.id,
+          },
+          checked.map((m, i) => ({ ...m, reverts: undo[i]?.reverts ?? null })),
+        );
+        for (const m of now.mutations) if (m.applied === null) rows.remove(now.id, m.id);
+      });
       deps.emit({
         name: "changeset.reverted",
         at: deps.now(),
