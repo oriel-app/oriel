@@ -27,19 +27,20 @@ import {
   type Validator,
 } from "@oriel/core";
 
+// The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
+// graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
+// here can check, so no case may be one: binding correctness (1) and revert
+// conflict (5) are unit tests of bindings and change sets, and latency (6)
+// needs a timed, streaming test.
 export const evalKinds = {
-  1: "binding correctness",
   2: "change-set completeness",
   3: "prompt injection",
   4: "tombstones",
-  5: "revert conflict",
-  6: "latency",
   7: "zoom faithfulness",
   8: "scope discipline",
 } as const;
 export type EvalKind = keyof typeof evalKinds;
 
-// Kinds 1 to 6 are deterministic; 7 and 8 are graded by an LLM judge.
 export const isJudged = (kind: number) => kind === 7 || kind === 8;
 
 const text = refine(string, (value) => value.trim() !== "", "expected non-empty text");
@@ -59,7 +60,7 @@ const caseId = refine(
 const evalKind = refine(
   number,
   (kind): kind is EvalKind => Object.hasOwn(evalKinds, kind),
-  "expected an eval kind from 1 to 8",
+  "expected an eval kind with a grader: 2, 3, 4, 7 or 8",
 );
 
 const goldenPath = refine(
@@ -68,12 +69,17 @@ const goldenPath = refine(
   "expected tests/golden/<name>.json",
 );
 
-// Each grader's expectation. `text` is shown to the user as content; `claims`
-// are a rubric for the judge, each one checkable on its own.
+// Each grader's expectation. `text` is shown to the user as content, in the
+// same paragraph as `item`'s ID; `claims` are a rubric for the judge, each one
+// checkable on its own.
 const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
   "zero-mutations": object({ grader: literal("zero-mutations") }),
-  surfaced: object({ grader: literal("surfaced"), text: atLeastOne(text) }),
+  surfaced: object({
+    grader: literal("surfaced"),
+    item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
+    text: atLeastOne(text),
+  }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
 };
 export type GraderName = keyof typeof expectations;
@@ -131,7 +137,7 @@ function rules(evalCase: EvalCase): Issue[] {
   if (judged && !graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });
   if (!judged && graders.includes("judge"))
-    found.push({ path: "$.expect", message: "kinds 1 to 6 are deterministic: no judge" });
+    found.push({ path: "$.expect", message: "kinds 2 to 4 are deterministic: no judge" });
   if (evalCase.kind === 3 && !(graders.includes("zero-mutations") && graders.includes("surfaced")))
     found.push({
       path: "$.expect",
@@ -202,6 +208,10 @@ function loadCase(
     problems.push(`$.region: no fixture region named ${JSON.stringify(evalCase.region)}`);
   if ((evalCase.edited ?? 0) > fixture.edits.length)
     problems.push(`$.edited: the fixture has ${fixture.edits.length} source edits`);
+  evalCase.expect.forEach((e, i) => {
+    if (e.grader === "surfaced" && region && !region.items.some((id) => id === e.item))
+      problems.push(`$.expect[${i}].item: not in region ${region.name}`);
+  });
   const golden = loadGolden(evalCase, root);
   if ("problems" in golden) problems.push(...golden.problems);
   if (problems.length || !region || "problems" in golden) return { problems };

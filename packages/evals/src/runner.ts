@@ -2,6 +2,7 @@
 // written to its own directory under the gitignored `.evals/`: one JSONL line
 // per case (`results.jsonl`), a full transcript per case (`transcripts/`), and
 // a summary per split with a confidence interval (`summary.json`).
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   array,
@@ -19,7 +20,8 @@ import {
   union,
   unknown,
 } from "@oriel/core";
-import { type Fetch, requestModel } from "./anthropic.ts";
+import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
+import { canonicalJson } from "./canonical.ts";
 import {
   capturedMutation,
   type EvalCase,
@@ -30,6 +32,7 @@ import {
   split,
   splits,
 } from "./case.ts";
+import type { Cassettes } from "./cassette.ts";
 import {
   type Grade,
   gradeExactDiff,
@@ -66,6 +69,9 @@ export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
 
 export const caseResult = object({
   id: string,
+  // The case's content, its golden diff included, so a comparison can tell an
+  // edited case from the one it replaced.
+  hash: string,
   split,
   kind: number,
   outcome: union(literal("pass"), literal("fail"), literal("error")),
@@ -74,6 +80,11 @@ export const caseResult = object({
   ms: number,
 });
 export type CaseResult = Infer<typeof caseResult>;
+
+export function caseHash(loaded: LoadedCase): string {
+  const content = canonicalJson({ case: loaded.case, golden: loaded.golden });
+  return createHash("sha256").update(content).digest("hex");
+}
 
 export type Summary = {
   model: string;
@@ -89,8 +100,9 @@ export type RoundOptions = {
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
-  // The fetch one case's model calls go through, the judge's included.
-  transport: (caseId: string) => Fetch;
+  // The cassettes one case's model calls go through, the judge's included.
+  // They are committed only when the case finishes without error.
+  transport: (caseId: string) => Cassettes;
   // This round's directory.
   out: URL;
   // Milliseconds, read only to time each case.
@@ -103,7 +115,7 @@ export type RoundOptions = {
 const site = "https://oriel.atlassian.net";
 
 export async function runRound(options: RoundOptions): Promise<Round> {
-  if (options.judgeModel === options.model)
+  if (sameModel(options.judgeModel, options.model))
     throw new Error(`the judge model must differ from the model under test (${options.model})`);
   mkdirSync(new URL("transcripts/", options.out), { recursive: true });
   const results = await pool(options.cases, options.concurrency ?? 1, (loaded) =>
@@ -120,8 +132,11 @@ export async function runRound(options: RoundOptions): Promise<Round> {
 
 async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseResult> {
   const evalCase = loaded.case;
-  const transport = options.transport(evalCase.id);
-  const models = new Set<string>();
+  const tape = options.transport(evalCase.id);
+  // Models as requested and as each response reports itself, so an alias
+  // can't hide that the judge and the system under test are one model.
+  const tested = watched(tape.fetch);
+  const judged = watched(tape.fetch);
   const started = options.clock();
   let output: SystemOutput | null = null;
   let grades: Grade[] = [];
@@ -133,7 +148,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
       region: loaded.region,
       now: options.now,
       model: options.model,
-      fetch: watchModels(transport, models),
+      fetch: tested.fetch,
     });
     const parsed = systemOutput(raw);
     if (!parsed.ok) {
@@ -141,16 +156,23 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
       throw new Error(`the system under test returned a malformed output: ${issues}`);
     }
     output = parsed.value;
-    if (models.has(options.judgeModel))
-      throw new Error(`the system under test called the judge model, ${options.judgeModel}`);
-    grades = await grade(loaded, output, options, transport);
+    const calledJudge = shared(await tested.models(), [options.judgeModel]);
+    if (calledJudge)
+      throw new Error(`the system under test called the judge model, ${calledJudge}`);
+    grades = await grade(loaded, output, options, judged.fetch);
+    const both = shared(await tested.models(), await judged.models());
+    if (both) throw new Error(`the judge and the system under test both ran ${both}`);
+    tape.commit();
   } catch (caught) {
-    error = caught instanceof Error ? caught.message : String(caught);
+    // Never empty: an error is an error even when it says nothing.
+    const said = caught instanceof Error ? caught.message : String(caught);
+    error = said || `${caught instanceof Error ? caught.name : "a throw"}, no message`;
   }
   const ms = options.clock() - started;
-  const outcome = error ? "error" : grades.every((g) => g.pass) ? "pass" : "fail";
+  const outcome = error !== null ? "error" : grades.every((g) => g.pass) ? "pass" : "fail";
   const result: CaseResult = {
     id: evalCase.id,
+    hash: caseHash(loaded),
     split: evalCase.split,
     kind: evalCase.kind,
     outcome,
@@ -163,7 +185,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
     case: evalCase,
     model: options.model,
     judgeModel: options.judgeModel,
-    modelsCalled: [...models].sort(),
+    modelsCalled: await tested.models(),
     output,
   };
   writeFileSync(
@@ -188,7 +210,7 @@ async function grade(
     }
     if (expectation.grader === "zero-mutations") grades.push(gradeZeroMutations(output.mutations));
     if (expectation.grader === "surfaced")
-      grades.push(gradeSurfaced(expectation.text, output.reply));
+      grades.push(gradeSurfaced(expectation.item, expectation.text, output.reply));
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({
@@ -215,14 +237,37 @@ function evidence(fixture: JiraFixture, region: FixtureRegion, edited: number): 
   });
 }
 
-// Notes each model the system under test asks for, so the judge can't be one.
-function watchModels(inner: Fetch, models: Set<string>): Fetch {
-  return async (input, init) => {
-    const request = new Request(input, init);
-    const model = requestModel(await request.clone().text());
-    if (model) models.add(model);
-    return inner(request);
+// Notes each model a caller asks for and each model a response reports. A
+// response is read from a copy, so a streamed body still streams to the caller.
+function watched(inner: Fetch): { fetch: Fetch; models: () => Promise<string[]> } {
+  const seen = new Set<string>();
+  const reading: Promise<void>[] = [];
+  const note = (model: string | null) => {
+    if (model) seen.add(model);
   };
+  const fetch: Fetch = async (input, init) => {
+    const request = new Request(input, init);
+    note(requestModel(await request.clone().text()));
+    const response = await inner(request);
+    reading.push(
+      response
+        .clone()
+        .text()
+        .then((body) => note(responseModel(body)))
+        .catch(() => {}),
+    );
+    return response;
+  };
+  const models = async () => {
+    await Promise.all(reading);
+    return [...seen].sort();
+  };
+  return { fetch, models };
+}
+
+// A model in both lists, counting an alias and its snapshots as one.
+function shared(a: readonly string[], b: readonly string[]): string | null {
+  return a.find((x) => b.some((y) => sameModel(x, y))) ?? null;
 }
 
 // Runs `work` over `items`, at most `limit` at a time, keeping input order.

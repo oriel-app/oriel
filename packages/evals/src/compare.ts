@@ -8,10 +8,10 @@ import { formatRate, type Rate, signTest, wilson } from "./stats.ts";
 
 export type SplitComparison = {
   split: Split;
-  // Only cases in both rounds, in the same split, are compared.
+  // Only cases paired across the rounds are compared.
   baseline: Rate;
   candidate: Rate;
-  // Cases that went from not passing to passing, and back.
+  // Cases that went from failing to passing, and back.
   fixed: string[];
   broken: string[];
   p: number;
@@ -20,8 +20,11 @@ export type SplitComparison = {
 
 export type Comparison = {
   splits: SplitComparison[];
-  // Case IDs only one round has, or that changed split.
+  // Case IDs only one round has, or whose split or content changed.
   unpaired: string[];
+  // Case IDs that errored in either round: an error says nothing about the
+  // change, only about the pipeline or the network.
+  errored: string[];
   keep: boolean;
 };
 
@@ -33,14 +36,22 @@ export function compareRounds(
 ): Comparison {
   const before = new Map(baseline.map((r) => [r.id, r]));
   const after = new Map(candidate.map((r) => [r.id, r]));
-  const pairs = [...after.values()].flatMap((r) => {
+  const matched = [...after.values()].flatMap((r) => {
     const b = before.get(r.id);
-    return b && b.split === r.split ? [{ id: r.id, split: r.split, was: b, now: r }] : [];
+    return b && b.split === r.split && b.hash === r.hash
+      ? [{ id: r.id, split: r.split, was: b, now: r }]
+      : [];
   });
-  const paired = new Set(pairs.map((p) => p.id));
+  const isPaired = new Set(matched.map((p) => p.id));
   const unpaired = [...new Set([...before.keys(), ...after.keys()])]
-    .filter((id) => !paired.has(id))
+    .filter((id) => !isPaired.has(id))
     .sort();
+  const broke = (r: CaseResult) => r.outcome === "error";
+  const errored = matched
+    .filter((p) => broke(p.was) || broke(p.now))
+    .map((p) => p.id)
+    .sort();
+  const pairs = matched.filter((p) => !broke(p.was) && !broke(p.now));
   const passes = (r: CaseResult) => r.outcome === "pass";
   const compared = splits.map((s): SplitComparison => {
     const own = pairs.filter((p) => p.split === s);
@@ -57,7 +68,7 @@ export function compareRounds(
       improved: fixed.length > broken.length && p <= alpha,
     };
   });
-  return { splits: compared, unpaired, keep: compared.every((c) => c.improved) };
+  return { splits: compared, unpaired, errored, keep: compared.every((c) => c.improved) };
 }
 
 export function formatComparison(comparison: Comparison): string {
@@ -71,7 +82,9 @@ export function formatComparison(comparison: Comparison): string {
     ].join("  "),
   );
   if (comparison.unpaired.length)
-    lines.push(`not compared (in one round only): ${comparison.unpaired.join(", ")}`);
+    lines.push(`not compared (new, gone or edited): ${comparison.unpaired.join(", ")}`);
+  if (comparison.errored.length)
+    lines.push(`not compared (errored in a round): ${comparison.errored.join(", ")}`);
   const noisy = comparison.splits.filter((c) => !c.improved).map((c) => c.split);
   lines.push(
     comparison.keep

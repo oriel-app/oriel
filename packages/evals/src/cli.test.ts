@@ -48,8 +48,10 @@ test("replay and compare take what they need and nothing else", () => {
   }
 });
 
-test("the judge can't be the model under test", () => {
-  assert.deepEqual(parseCommand(["--judge", defaults.model]), {
-    error: "the judge model must differ from the model under test",
-  });
+test("the judge can't be the model under test, by any of its names", () => {
+  for (const judge of [defaults.model, `${defaults.model}-20261001`]) {
+    assert.deepEqual(parseCommand(["--judge", judge]), {
+      error: "the judge model must differ from the model under test",
+    });
+  }
 });

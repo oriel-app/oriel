@@ -3,9 +3,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
-import { anthropicFetch, anthropicKey } from "./anthropic.ts";
+import { anthropicFetch, anthropicKey, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
-import { cassetteFetch } from "./cassette.ts";
+import { cassettes } from "./cassette.ts";
 import { compareRounds, formatComparison, readResults } from "./compare.ts";
 import { cassettesDir, casesDir, envFile, loadJiraFixture, repoRoot, roundsDir } from "./repo.ts";
 import { exitCode, formatRound, runRound } from "./runner.ts";
@@ -53,7 +53,8 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   const [verb, ...rest] = positionals;
   const model = values.model ?? defaults.model;
   const judge = values.judge ?? defaults.judge;
-  if (judge === model) return { error: "the judge model must differ from the model under test" };
+  if (sameModel(judge, model))
+    return { error: "the judge model must differ from the model under test" };
   if (verb === undefined && (values.baseline === undefined || isUlid(values.baseline)))
     return { command: "live", model, judge, baseline: values.baseline ?? null };
   if (verb === "replay" && rest.length === 0 && values.baseline === undefined)
@@ -114,9 +115,7 @@ async function main(command: Command): Promise<number> {
     judgeModel: command.judge,
     transport: (caseId) => {
       const dir = new URL(`${caseId}/`, cassettesDir);
-      return live
-        ? cassetteFetch({ mode: "record", dir, live })
-        : cassetteFetch({ mode: "replay", dir });
+      return live ? cassettes({ mode: "record", dir, live }) : cassettes({ mode: "replay", dir });
     },
     out: new URL(`${id}/`, roundsDir),
     clock: () => performance.now(),

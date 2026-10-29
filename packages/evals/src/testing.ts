@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { pathToFileURL } from "node:url";
-import { messagesResponse } from "./anthropic.ts";
+import { type Fetch, messagesResponse } from "./anthropic.ts";
+import type { Cassettes } from "./cassette.ts";
 
 // A fresh directory, removed when the test ends.
 export function tempDir(t: TestContext): URL {
@@ -14,18 +15,25 @@ export function tempDir(t: TestContext): URL {
   return pathToFileURL(`${path}/`);
 }
 
-// A Messages API response holding one text block.
-export function message(text: string, stop = "end_turn"): Response {
+// A Messages API response holding one text block, from the judge's model
+// unless another is named.
+export function message(
+  text: string,
+  { model = "claude-sonnet-5-5", stop = "end_turn" }: { model?: string; stop?: string } = {},
+): Response {
   return Response.json({
     id: "msg_test",
     type: "message",
     role: "assistant",
-    model: "claude-sonnet-5-5",
+    model,
     content: [{ type: "text", text }],
     stop_reason: stop,
     usage: { input_tokens: 1, output_tokens: 1 },
   });
 }
+
+// Cassettes that never record: a plain fetch, for tests that don't replay.
+export const uncommitted = (fetch: Fetch): Cassettes => ({ fetch, commit: () => {} });
 
 // The text of a Messages API response.
 export async function textOf(response: Response): Promise<string> {

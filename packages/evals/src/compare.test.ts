@@ -28,13 +28,19 @@ test("the sign test gives the binomial tail, and stays finite for large counts",
   assert.ok(large > 0 && large < 1e-5, String(large));
 });
 
-const result = (id: string, split: Split, pass: boolean): CaseResult => ({
+const result = (
+  id: string,
+  split: Split,
+  pass: boolean,
+  outcome: CaseResult["outcome"] = pass ? "pass" : "fail",
+): CaseResult => ({
   id,
+  hash: `hash of ${id}`,
   split,
   kind: 2,
-  outcome: pass ? "pass" : "fail",
+  outcome,
   grades: [],
-  error: null,
+  error: outcome === "error" ? "judge: HTTP 529: overloaded" : null,
   ms: 0,
 });
 
@@ -82,26 +88,42 @@ test("a change that fixes as many cases as it breaks is noise", () => {
   assert.equal(traded.keep, false);
 });
 
-test("only cases in both rounds and the same split are compared", () => {
-  const baseline = [...round(no(5), no(5)), result("retired", "train", true)];
+test("only cases in both rounds, in the same split and unedited, are compared", () => {
+  const baseline = [...round(no(6), no(6)), result("retired", "train", true)];
   const candidate = [
-    ...round(yes(5), yes(5)).filter((r) => r.id !== "test-4"),
+    ...round(yes(6), yes(6)).filter((r) => r.id !== "test-4" && r.id !== "train-5"),
     result("test-4", "train", true),
+    { ...result("train-5", "train", true), hash: "an edited case" },
     result("brand-new", "test", true),
   ];
   const compared = compareRounds(baseline, candidate);
-  assert.deepEqual(compared.unpaired, ["brand-new", "retired", "test-4"]);
+  assert.deepEqual(compared.unpaired, ["brand-new", "retired", "test-4", "train-5"]);
   assert.deepEqual(
     compared.splits.map((s) => [s.split, s.baseline.cases, s.candidate.passed]),
     [
       ["train", 5, 5],
-      ["test", 4, 4],
+      ["test", 5, 5],
     ],
   );
-  // Four fixed cases are still within noise: p = 1/16.
-  assert.equal(compared.keep, false);
+  assert.equal(compared.keep, true);
   assert.match(
     formatComparison(compared),
-    /not compared \(in one round only\): brand-new, retired, test-4/,
+    /not compared \(new, gone or edited\): brand-new, retired, test-4, train-5/,
+  );
+});
+
+test("a case that errored in either round is left out, so an outage can't look like a fix", () => {
+  // The baseline lost five train cases to judge outages; the candidate didn't.
+  const baseline = [
+    ...no(5).map((_, i) => result(`train-${i}`, "train", false, "error")),
+    ...round([], no(5)),
+  ];
+  const outage = compareRounds(baseline, round(yes(5), yes(5)));
+  assert.deepEqual(outage.errored, ["train-0", "train-1", "train-2", "train-3", "train-4"]);
+  assert.deepEqual(outage.splits[0]?.baseline.cases, 0);
+  assert.equal(outage.keep, false);
+  assert.match(
+    formatComparison(outage),
+    /not compared \(errored in a round\): train-0, train-1, train-2, train-3, train-4\nrevert: train did not improve/,
   );
 });
