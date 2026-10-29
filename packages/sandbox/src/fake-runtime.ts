@@ -48,10 +48,12 @@ export function runtime(deno: GuestDeno, scope: { console: unknown }): FakeRunti
   };
   const log = (...values: unknown[]): void =>
     send({ kind: "log", text: values.map(show).join(" ") });
-  // Patched in place. Replacing `console` with a frozen object, as the real
-  // shim does, makes Deno's node compatibility fail on every `node:` import,
-  // and the escape tests are there to reach Deno's permission checks.
-  Object.assign(scope.console as object, { log, info: log, warn: log, error: log, debug: log });
+  // As the real shim does: five log methods that can't be replaced, on an
+  // object that stays extensible, since Deno's node: modules add to it.
+  const logger = {};
+  for (const name of ["log", "info", "warn", "error", "debug"])
+    Object.defineProperty(logger, name, { value: log, enumerable: true });
+  scope.console = logger;
 
   const listen = (): void => {
     const reader = deno.stdin.readable.getReader();

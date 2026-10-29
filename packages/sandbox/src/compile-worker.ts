@@ -1,9 +1,10 @@
 // The compiler's worker thread (see compiler.ts): one script in, the reply
 // that starts the guest, or why it can't start, out.
 import { parentPort } from "node:worker_threads";
-import { guestStart, type Started, typecheck } from "./start.ts";
+import { guestStart, typecheck } from "@oriel/bindings";
 
 export type CompileRequest = { script: string; dts: string; timeoutMs: number };
+export type Started = ReturnType<typeof guestStart>;
 
 async function prepare({ script, dts, timeoutMs }: CompileRequest): Promise<Started> {
   const refused = await typecheck(script, dts, { timeoutMs });

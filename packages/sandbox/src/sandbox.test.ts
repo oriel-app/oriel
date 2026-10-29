@@ -227,9 +227,11 @@ test("a write the bindings refuse ends the run", async () => {
 });
 
 test("a ref can only be created once", async () => {
+  // Past the typecheck the way a hostile script would: through globalThis.
   const { result } = await go(`
+    const g = globalThis as any;
     const send = (message: unknown) =>
-      Deno.stdout.writeSync(new TextEncoder().encode(JSON.stringify(message) + "\\n"));
+      g.Deno.stdout.writeSync(new g.TextEncoder().encode(JSON.stringify(message) + "\\n"));
     send({ kind: "write", fn: "jira.createStory", args: [{ summary: "a" }], ref: "new:1" });
     send({ kind: "write", fn: "jira.createStory", args: [{ summary: "b" }], ref: "new:1" });
     return null;
@@ -271,7 +273,7 @@ test("a guest that ends without done or threw is a runtime error", async () => {
 });
 
 test("exiting before returning is a runtime error", async () => {
-  const { result } = await go(`Deno.exit(0);`);
+  const { result } = await go(`(globalThis as any).Deno.exit(0);`);
   assert.equal(result.outcome, "threw");
   assert.match(
     errorOf(result.transcript.at(-1)).message,

@@ -5,8 +5,7 @@
 // `.ts` files included. So a worker that refused a script, failed or ran long
 // is thrown away, and the next script gets a fresh one.
 import { Worker } from "node:worker_threads";
-import type { CompileRequest } from "./compile-worker.ts";
-import type { Started } from "./start.ts";
+import type { CompileRequest, Started } from "./compile-worker.ts";
 
 export type Compiler = { prepare(request: CompileRequest): Promise<Started> };
 

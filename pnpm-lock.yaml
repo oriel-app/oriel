@@ -67,6 +67,9 @@ importers:
 
   packages/sandbox:
     dependencies:
+      '@oriel/bindings':
+        specifier: workspace:*
+        version: link:../bindings
       '@oriel/core':
         specifier: workspace:*
         version: link:../core

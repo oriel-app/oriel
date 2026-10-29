@@ -22,11 +22,11 @@ import {
   type Sandbox,
   type TranscriptEntry,
 } from "@oriel/core";
+import { scriptLineOffset } from "@oriel/bindings";
 import { createCompiler } from "./compiler.ts";
 import { denoArgs, denoEnv, findDeno, importMap } from "./deno.ts";
 import { sanitize } from "./errors.ts";
 import { watchMemory } from "./memory.ts";
-import { scriptLineOffset } from "./start.ts";
 
 export type SandboxOptions = {
   // The Deno binary. Default: the one on PATH (mise.toml pins it).

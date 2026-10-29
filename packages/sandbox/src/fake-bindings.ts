@@ -32,13 +32,25 @@ const search = (query: string) => __oriel.read("search", [query]);
 __oriel.start({ jira, search });
 `;
 
+// What the typecheck holds scripts to, shaped like the real declarations.
 const dts = `declare const jira: {
   listStories(): Promise<{ id: string; summary: string; points: number | null }[]>;
   getStory(id: string): Promise<{ id: string; summary: string; points: number | null }>;
   setEstimate(id: string, points: number): void;
   createStory(fields: { summary: string }): \`new:\${number}\`;
+  fail(): Promise<never>;
+  first(): Promise<string>;
+  second(): Promise<string>;
+  hold(): Promise<never>;
 };
 declare function search(query: string): Promise<unknown[]>;
+declare const console: {
+  log(...values: unknown[]): void;
+  info(...values: unknown[]): void;
+  warn(...values: unknown[]): void;
+  error(...values: unknown[]): void;
+  debug(...values: unknown[]): void;
+};
 `;
 
 const inRegion = new Set(stories.map((story) => story.id));

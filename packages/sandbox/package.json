@@ -9,6 +9,7 @@
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"
   },
   "dependencies": {
+    "@oriel/bindings": "workspace:*",
     "@oriel/core": "workspace:*"
   }
 }

@@ -1,5 +1,10 @@
 // Escape tests (decision 0006): each tries a way out of the guest and must
 // fail. Never weaken one in the PR that changes the sandbox.
+//
+// They run the production shim and typecheck. The typecheck isn't a
+// boundary, so each script gets past it the way a hostile one would: Deno's
+// own APIs untyped, through globalThis, and `// @ts-ignore` above a literal
+// import. What stops them is Deno's permissions and the import map.
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
@@ -7,8 +12,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import type { RunLimits, TranscriptEntry } from "@oriel/core";
-import { fakeBindings } from "./fake-bindings.ts";
+import { regionBindings } from "./real-bindings.ts";
 import { createSandbox, type SandboxOptions, type SandboxRunResult } from "./sandbox.ts";
+
+const untyped =
+  "const { Deno, fetch, Worker, URL, Blob, Response, caches, TextEncoder } = globalThis as any;\n";
 
 // Files the guest must never see. The canary is only ever in their contents.
 const canary = "canary-7f3a9c";
@@ -38,7 +46,7 @@ async function run(
   caps: Partial<RunLimits> = {},
   box = sandbox,
 ): Promise<SandboxRunResult> {
-  return box.run(script, fakeBindings(), {
+  return box.run(untyped + script, regionBindings(), {
     limits: { ...limits, ...caps },
     signal: new AbortController().signal,
     log: () => {},
@@ -88,7 +96,8 @@ test("network: listening", () => mustFail(`return Deno.listen({ port: 0 });`, no
 
 test("network: node:net", () =>
   mustFail(
-    `const net = await import("node:net");
+    `// @ts-ignore
+     const net = await import("node:net");
      return await new Promise((resolve, reject) => {
        const socket = net.connect(8787, "127.0.0.1", () => resolve("connected"));
        socket.on("error", reject);
@@ -101,7 +110,8 @@ test("files: Deno read", () =>
 
 test("files: node:fs read", () =>
   mustFail(
-    `const fs = await import("node:fs");
+    `// @ts-ignore
+     const fs = await import("node:fs");
      return fs.readFileSync(${JSON.stringify(secretTxt)}, "utf8");`,
     notCapable,
   ));
@@ -116,7 +126,8 @@ test("files: write", async () => {
 
 test("files: node:module require", () =>
   mustFail(
-    `const { createRequire } = await import("node:module");
+    `// @ts-ignore
+     const { createRequire } = await import("node:module");
      return JSON.stringify(createRequire("file:///require-base.js")(${JSON.stringify(secretJson)}));`,
     notCapable,
   ));
@@ -126,7 +137,7 @@ test("env: one variable", () => mustFail(`return Deno.env.get("HOME");`, notCapa
 test("env: all of it", () => mustFail(`return JSON.stringify(Deno.env.toObject());`, notCapable));
 
 test("env: node:process", () =>
-  mustFail(`return (await import("node:process")).default.env.HOME;`, notCapable));
+  mustFail(`// @ts-ignore\nreturn (await import("node:process")).default.env.HOME;`, notCapable));
 
 test("os information", () => mustFail(`return Deno.hostname();`, notCapable));
 
@@ -138,7 +149,8 @@ test("subprocess: Deno.Command", () =>
 
 test("subprocess: node:child_process", () =>
   mustFail(
-    `const { execSync } = await import("node:child_process");
+    `// @ts-ignore
+     const { execSync } = await import("node:child_process");
      return String(execSync("echo hi"));`,
     notCapable,
   ));
@@ -150,16 +162,16 @@ test("FFI", () => mustFail(`return Deno.dlopen("libc.so.6", {});`, notCapable));
 // would too (deno.test.ts shows Deno's own behavior).
 test("import(): a literal file path, as JSON", () =>
   mustFail(
-    `return JSON.stringify(await import(${JSON.stringify(secretJson)}, { with: { type: "json" } }));`,
+    `// @ts-ignore\nreturn JSON.stringify(await import(${JSON.stringify(secretJson)}, { with: { type: "json" } }));`,
     noImports,
   ));
 
 test("import(): a literal file: URL", () =>
-  mustFail(`return JSON.stringify(await import("file://${secretTs}"));`, noImports));
+  mustFail(`// @ts-ignore\nreturn JSON.stringify(await import("file://${secretTs}"));`, noImports));
 
 test("import(): a literal relative path", () =>
   mustFail(
-    `return JSON.stringify(await import("${"../".repeat(24)}${secretTs.slice(1)}"));`,
+    `// @ts-ignore\nreturn JSON.stringify(await import("${"../".repeat(24)}${secretTs.slice(1)}"));`,
     noImports,
   ));
 
@@ -195,7 +207,7 @@ test("import: an export that closes the script's function first", () =>
   refusedBeforeDeno(`});\nexport * from ${JSON.stringify(secretTs)};\n(async () => {`));
 
 test("import(): a literal https: URL", () =>
-  mustFail(`return await import("https://deno.land/std/version.ts");`, noRemote));
+  mustFail(`// @ts-ignore\nreturn await import("https://deno.land/std/version.ts");`, noRemote));
 
 test("import(): a computed https: URL", () =>
   mustFail(
@@ -204,8 +216,8 @@ test("import(): a computed https: URL", () =>
   ));
 
 test("import(): jsr: and npm: packages", async () => {
-  await mustFail(`return await import("jsr:@std/path");`, noRemote);
-  await mustFail(`return await import("npm:left-pad");`, /--no-npm/);
+  await mustFail(`// @ts-ignore\nreturn await import("jsr:@std/path");`, noRemote);
+  await mustFail(`// @ts-ignore\nreturn await import("npm:left-pad");`, /--no-npm/);
 });
 
 test("Function constructor: reading a file", () =>
@@ -228,7 +240,8 @@ test("Function constructor: an import the static scan can't see", () =>
 
 test("indirect eval: an import", () =>
   mustFail(
-    `return JSON.stringify(await (0, eval)("import(" + ${JSON.stringify(JSON.stringify(secretJson))} + ", { with: { type: 'json' } })"));`,
+    `const indirect = eval;
+     return JSON.stringify(await indirect("import(" + ${JSON.stringify(JSON.stringify(secretJson))} + ", { with: { type: 'json' } })"));`,
     /no-imports|NotCapable|Requires read access/,
   ));
 
@@ -238,8 +251,8 @@ test("a worker inherits the denials", () =>
      const worker = new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })), { type: "module" });
      try {
        return await new Promise((resolve, reject) => {
-         worker.onmessage = (event) => resolve(event.data);
-         worker.onerror = (event) => {
+         worker.onmessage = (event: any) => resolve(event.data);
+         worker.onerror = (event: any) => {
            event.preventDefault();
            reject(new Error(event.message));
          };
@@ -340,18 +353,26 @@ test("an error message shaped to make the host's error cleanup slow", async () =
 });
 
 // Node's type stripper is SWC built as WebAssembly. A deep enough script
-// overflows its stack and breaks it for the rest of the isolate.
-test("a script nested deep enough to break the type stripper can't break later runs", async () => {
-  const deep = `return ${"(".repeat(8_000)}1${")".repeat(8_000)};`;
+// overflows its stack and can break it for the rest of its thread. Deep
+// brackets are refused before it runs; other deep shapes reach it, so it runs
+// in a worker that is replaced after any refusal.
+async function strippingSurvives(deep: string) {
   for (let i = 0; i < 3; i++) {
     const result = await run(deep);
+    assert.equal(result.outcome, "threw");
     assert.equal(errorOf(result.transcript.at(-1)).phase, "typecheck");
   }
   const result = await run(`const n: number = 2;\nreturn n;`);
   assert.deepEqual(result.transcript, [{ kind: "return", value: 2 }]);
   // The host's own stripper, which loads its `.ts` files, is untouched.
   assert.doesNotThrow(() => stripTypeScriptTypes("const n: number = 2;", { mode: "strip" }));
-});
+}
+
+test("deeply nested brackets can't break the type stripper", () =>
+  strippingSurvives(`return ${"(".repeat(8_000)}1${")".repeat(8_000)};`));
+
+test("chained arrows that overflow the type stripper can't break later runs", () =>
+  strippingSurvives(`return ${"a=>".repeat(1_500)}1;`));
 
 test("a memory flood on the V8 heap", async () => {
   const result = await run(
