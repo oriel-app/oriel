@@ -194,10 +194,11 @@ export function indexStore(db: DatabaseSync) {
     // characters, 8 distinct terms and 50 results.
     search(workspaceId: Ulid, query: string, limit: number): IndexRecord<SourceKind, unknown>[] {
       const bounded = fold(query.slice(0, maxQueryChars));
-      const terms = [...new Set(bounded.split(/\s+/).filter(Boolean))]
-        .slice(0, maxTerms)
+      const stripped = bounded
+        .split(/\s+/)
         .map((term) => term.replace(sourcePrefix, ""))
         .filter(Boolean);
+      const terms = [...new Set(stripped)].slice(0, maxTerms);
       const first = terms[0];
       const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
       if (!first) return [];

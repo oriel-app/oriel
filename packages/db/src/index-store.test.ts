@@ -205,9 +205,17 @@ test("attrs are checked on write, so one bad record can't blank the window", () 
   assert.deepEqual(ids(), ["jira:SYN-1"]);
 });
 
-test("search finds an item by its full item ID", () => {
+test("search finds an item by its full item ID, ahead of newer near-misses", () => {
   const { index, workspaceId, sync } = fresh();
-  sync([{ records: [record("1", "SYN-1", "First"), record("2", "SYN-10", "Tenth")] }]);
+  const later = instant(new Date(Date.UTC(2026, 9, 30)));
+  sync([
+    {
+      records: [
+        record("1", "SYN-1", "First"),
+        { ...record("2", "SYN-10", "Tenth"), updatedAt: later },
+      ],
+    },
+  ]);
   assert.deepEqual(
     index.search(workspaceId, "jira:SYN-1", 1).map((r) => r.id),
     ["jira:SYN-1"],
@@ -228,8 +236,21 @@ test("search work is bounded however the query is built", () => {
   assert.equal(index.search(workspaceId, "story", Infinity).length, 50);
   assert.equal(index.search(workspaceId, "story", -5).length, 1);
   assert.equal(index.search(workspaceId, "story", Number.NaN).length, 1);
-  const manyTerms = Array.from({ length: 20 }, (_, i) => `t${i}`).join(" ");
-  assert.deepEqual(index.search(workspaceId, `story ${manyTerms}`, 10), []);
+});
+
+test("only the first 8 distinct terms count, after prefixes are stripped", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "a b c d e f g h")] }]);
+  assert.equal(index.search(workspaceId, "a b c d e f g h nomatch", 10).length, 1);
+  assert.equal(index.search(workspaceId, "jira:a a b c d e f g nomatch", 10).length, 0);
+  assert.equal(index.search(workspaceId, "a b c d e f g nomatch", 10).length, 0);
+});
+
+test("only the first 256 characters of a query count", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "Story")] }]);
+  assert.equal(index.search(workspaceId, `story${" ".repeat(300)}nomatch`, 10).length, 1);
+  assert.equal(index.search(workspaceId, `story${" ".repeat(100)}nomatch`, 10).length, 0);
 });
 
 test("a first sync with no pages still counts as a sync", () => {

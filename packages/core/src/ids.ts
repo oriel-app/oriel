@@ -3,14 +3,15 @@
 // ID, kept beside it. Internal records use ULIDs. Time is canonical UTC
 // ISO-8601 with milliseconds, so instants sort as strings.
 
-export type SourceKind = "jira";
+// Adding a source here makes `keyShapes` below require its key shape.
+export const sourceKinds = ["jira"] as const;
+export type SourceKind = (typeof sourceKinds)[number];
 export type ItemId<K extends SourceKind = SourceKind> = `${K}:${string}`;
 export type Ulid = string & { readonly __brand: "Ulid" };
 export type Instant = string & { readonly __brand: "Instant" };
 
 // Keys reach generated code (the region's `.d.ts` and guest stubs), so each
 // source's key shape is strict.
-export const sourceKinds: readonly SourceKind[] = ["jira"];
 
 const keyShapes: Record<SourceKind, RegExp> = {
   jira: /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/,

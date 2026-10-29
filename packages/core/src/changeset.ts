@@ -45,7 +45,8 @@ export type Decision = {
   at: Instant;
 };
 
-// A review-link approver must present the link's live token.
+// A review-link approver presents a live token minted for this same change set,
+// and a non-empty typed name.
 export type Approver =
   | { via: "thread"; by: string }
   | { via: "review-link"; token: string; by: string };
@@ -57,8 +58,8 @@ export type ChangeSet = {
   // Null for a revert, which no run produced.
   runId: Ulid | null;
   mutations: MutationRecord[];
-  // Hash of the mutations' ops, targets and args. Derived from the mutation
-  // rows each time, never stored.
+  // Hash of the mutations' seq, op, target, ref and args. Derived from the
+  // mutation rows each time, never stored.
   hash: string;
   decision: Decision | null;
   // Set when this change set reverts another.
@@ -69,8 +70,9 @@ export type ChangeSet = {
 // One plain-language line per mutation: what it will do, with before and after.
 export type Diff = {
   changeSetId: Ulid;
-  // The change set's hash at the moment this diff was built. A decision
-  // carries it back, so a person approves exactly what they saw.
+  // The hash of the same mutation rows these lines were built from, not a
+  // fresh read. A decision carries it back, so a person approves exactly what
+  // they saw.
   hash: string;
   lines: {
     mutationId: Ulid;

@@ -158,14 +158,16 @@ create table review_links (
   workspace_id text not null references workspaces (id),
   change_set_id text not null references change_sets (id),
   created_at text not null,
-  revoked_at text
+  revoked_at text,
+  unique (token_hash, change_set_id)
 ) strict;
 
 create unique index review_links_one_live on review_links (change_set_id) where revoked_at is null;
 
 -- Every decision is kept, with the hash of the change set the person reviewed.
 -- The highest seq counts, and only while that hash still matches the hash
--- derived from the mutation rows. A review-link decision names its link.
+-- derived from the mutation rows. A review-link decision names a link for the
+-- same change set and a typed name.
 create table decisions (
   id text primary key,
   workspace_id text not null references workspaces (id),
@@ -173,12 +175,14 @@ create table decisions (
   seq integer not null,
   kind text not null check (kind in ('approved', 'rejected')),
   via text not null check (via in ('thread', 'review-link')),
-  review_link text references review_links (token_hash),
+  review_link text,
   by_name text not null,
   hash text not null,
   at text not null,
   unique (change_set_id, seq),
-  check ((via = 'review-link') = (review_link is not null))
+  check ((via = 'review-link') = (review_link is not null)),
+  check (via = 'thread' or length(trim(by_name)) > 0),
+  foreign key (review_link, change_set_id) references review_links (token_hash, change_set_id)
 ) strict;
 
 create table telemetry_events (
