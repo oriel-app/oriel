@@ -43,3 +43,9 @@ test("a request that changes state needs this server's Origin", () => {
     null,
   );
 });
+
+test("on port 80 the browser's portless Host and Origin are accepted", () => {
+  assert.equal(refusal("GET", { host: "127.0.0.1" }, 80), null);
+  assert.equal(refusal("POST", { host: "localhost", origin: "http://localhost" }, 80), null);
+  assert.notEqual(refusal("GET", { host: "127.0.0.1" }, 4310), null);
+});

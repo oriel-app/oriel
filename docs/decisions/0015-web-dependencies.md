@@ -7,7 +7,7 @@ Adds: `preact` `playwright-core`
 **Decision.**
 
 - `preact`, shipped with `packages/web`: the renderer decision 0007 chose. The server serves its ES modules (`preact`, `preact/hooks`, `preact/jsx-runtime`) at fixed paths through an import map.
-- `playwright-core`, dev-only: `pnpm shots` (`scripts/shots.ts`) drives the installed Chrome (`channel: "chrome"`) and writes screenshots of the window to a gitignored `shots/`. It is a tool, not a test, and stays out of `pnpm check` and CI.
+- `playwright-core`, dev-only: `pnpm shots` (`scripts/shots.ts`) drives the installed Chrome (`channel: "chrome"`) and writes screenshots of the window to a gitignored `shots/`. It is a tool, not a test: `pnpm check` and CI typecheck `scripts/shots.ts` against its types but never run it.
 
 **Why.**
 

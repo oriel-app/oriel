@@ -8,8 +8,10 @@
 
 const safeMethods = new Set(["GET", "HEAD"]);
 
+// Browsers leave the port out of Host and Origin when it is 80.
 export function ownHosts(port: number): string[] {
-  return [`127.0.0.1:${port}`, `localhost:${port}`];
+  const suffix = port === 80 ? "" : `:${port}`;
+  return [`127.0.0.1${suffix}`, `localhost${suffix}`];
 }
 
 // Why the request is refused, or null if it may go on.

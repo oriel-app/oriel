@@ -101,7 +101,7 @@ if (import.meta.main) {
       .filter((f) => f.endsWith(".md"))
       .map((f) => readFileSync(`docs/decisions/${f}`, "utf8")),
     sources: readdirSync("packages", { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts") && !f.split("/").includes("node_modules"))
+      .filter((f) => /\.tsx?$/.test(f) && !f.split("/").includes("node_modules"))
       .map((f) => ({ path: `packages/${f}`, text: readFileSync(`packages/${f}`, "utf8") })),
   });
   for (const p of found) console.error(p);

@@ -194,8 +194,9 @@ const isOpen = (record: JiraRecord) => record.attrs.status.category !== "done";
 const daysBefore = (now: Instant, record: JiraRecord) =>
   (Date.parse(now) - Date.parse(record.updatedAt)) / 86_400_000;
 
-// Stand-ins for the three phase 1 groupings. Epics are clusters, not items, so
-// only "epic" looks at them.
+// Stand-ins for the three phase 1 groupings. Every rule shown must be true of
+// what it groups: "stuck" names the issue types it covers, and items whose epic
+// isn't in the index get their own derived cluster rather than "No epic".
 export const sampleGroupings: Record<GroupingId, Grouping<JiraRecord>> = {
   epic: {
     id: "epic",
@@ -211,25 +212,40 @@ export const sampleGroupings: Record<GroupingId, Grouping<JiraRecord>> = {
         itemIds: items.filter((item) => item.attrs.epic === epic.id).map((item) => item.id),
         origin: "source",
       }));
-      const loose = items.filter((item) => item.attrs.epic === null || !known.has(item.attrs.epic));
-      if (loose.length === 0) return clusters;
-      return [
-        ...clusters,
-        {
+      const none = items.filter((item) => item.attrs.epic === null);
+      const outside = items.filter(
+        (item) => item.attrs.epic !== null && !known.has(item.attrs.epic),
+      );
+      const extra: Cluster[] = [];
+      if (none.length) {
+        extra.push({
           key: "no-epic",
           label: "No epic",
           anchor: null,
-          itemIds: loose.map((item) => item.id),
+          itemIds: none.map((item) => item.id),
           origin: "source",
-        },
-      ];
+        });
+      }
+      if (outside.length) {
+        extra.push({
+          key: "epic-outside",
+          label: "Epic outside this window",
+          anchor: null,
+          itemIds: outside.map((item) => item.id),
+          origin: {
+            derived:
+              "Has an epic in Jira that isn't in the index: deleted, moved or in another project",
+          },
+        });
+      }
+      return [...clusters, ...extra];
     },
   },
   assignee: {
     id: "assignee",
     label: "Assignee",
     group(records) {
-      const items = records.filter((record) => !isEpic(record));
+      const items = records;
       const names = new Map<string, string>();
       for (const item of items) {
         if (item.attrs.assignee) names.set(item.attrs.assignee.accountId, item.attrs.assignee.name);
@@ -270,14 +286,16 @@ export const sampleGroupings: Record<GroupingId, Grouping<JiraRecord>> = {
           label: "No update in 14 days",
           anchor: null,
           itemIds: open.filter((item) => daysBefore(now, item) >= 14).map((item) => item.id),
-          origin: { derived: "Not done, and last updated 14 or more days ago" },
+          origin: {
+            derived: "Stories, tasks and bugs not done and last updated 14 or more days ago",
+          },
         },
         {
           key: "unestimated",
           label: "Unestimated",
           anchor: null,
           itemIds: open.filter((item) => item.attrs.points === null).map((item) => item.id),
-          origin: { derived: "Not done, and no story points" },
+          origin: { derived: "Stories, tasks and bugs not done and with no story points" },
         },
       ];
     },
