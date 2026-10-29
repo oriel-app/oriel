@@ -4,3 +4,4 @@ dist/
 .env
 .env.*
 secrets/
+.claude/worktrees/
