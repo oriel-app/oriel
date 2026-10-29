@@ -1,0 +1,66 @@
+[
+  {
+    "name": "boarding-epic",
+    "items": [
+      "jira:SYN-2",
+      "jira:SYN-13",
+      "jira:SYN-19",
+      "jira:SYN-27",
+      "jira:SYN-30",
+      "jira:SYN-35",
+      "jira:SYN-52",
+      "jira:SYN-58",
+      "jira:SYN-59",
+      "jira:SYN-68",
+      "jira:SYN-90",
+      "jira:SYN-91",
+      "jira:SYN-105"
+    ]
+  },
+  {
+    "name": "checkout-epic",
+    "items": [
+      "jira:SYN-1",
+      "jira:SYN-10",
+      "jira:SYN-21",
+      "jira:SYN-23",
+      "jira:SYN-41",
+      "jira:SYN-57",
+      "jira:SYN-74",
+      "jira:SYN-86",
+      "jira:SYN-87",
+      "jira:SYN-88",
+      "jira:SYN-92",
+      "jira:SYN-98",
+      "jira:SYN-99",
+      "jira:SYN-104",
+      "jira:SYN-111"
+    ]
+  },
+  {
+    "name": "weather-epic",
+    "items": [
+      "jira:SYN-3",
+      "jira:SYN-26",
+      "jira:SYN-29",
+      "jira:SYN-45",
+      "jira:SYN-47",
+      "jira:SYN-54",
+      "jira:SYN-61",
+      "jira:SYN-84",
+      "jira:SYN-85",
+      "jira:SYN-102",
+      "jira:SYN-117"
+    ]
+  },
+  {
+    "name": "picked",
+    "items": [
+      "jira:SYN-13",
+      "jira:SYN-27",
+      "jira:SYN-80",
+      "jira:SYN-103",
+      "jira:SYN-104"
+    ]
+  }
+]

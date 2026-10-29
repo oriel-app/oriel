@@ -1,0 +1,47 @@
+[
+  {
+    "id": "amara",
+    "displayName": "Amara Okafor",
+    "active": true
+  },
+  {
+    "id": "bastian",
+    "displayName": "Bastian Holm",
+    "active": true
+  },
+  {
+    "id": "yuting",
+    "displayName": "Chen Yuting",
+    "active": true
+  },
+  {
+    "id": "dara",
+    "displayName": "Dara Nikolaidis",
+    "active": true
+  },
+  {
+    "id": "esme",
+    "displayName": "Esme Whitlock",
+    "active": true
+  },
+  {
+    "id": "farid",
+    "displayName": "Farid Haddad",
+    "active": true
+  },
+  {
+    "id": "ines",
+    "displayName": "Ines Carvalho",
+    "active": true
+  },
+  {
+    "id": "greta",
+    "displayName": "Greta Lindqvist",
+    "active": false
+  },
+  {
+    "id": "hiro",
+    "displayName": "Hiro Tanabe",
+    "active": false
+  }
+]
