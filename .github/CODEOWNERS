@@ -1,0 +1,5 @@
+/tests/ @vibdev
+/fixtures/ @vibdev
+/.github/ @vibdev
+/packages/sandbox/ @vibdev
+/docs/decisions/ @vibdev

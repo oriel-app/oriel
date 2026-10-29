@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "ask": [
+      "Edit(/fixtures/**)",
+      "Edit(/tests/golden/**)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/docs/decisions/**)"
+    ],
+    "deny": ["Read(.env*)", "Read(secrets/**)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims:$PATH\"; cd \"$CLAUDE_PROJECT_DIR\" && pnpm -s format >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims:$PATH\"; grep -qE '\"stop_hook_active\": ?true' && exit 0; command -v pnpm >/dev/null || { echo 'pnpm not on PATH; typecheck skipped' >&2; exit 0; }; cd \"$CLAUDE_PROJECT_DIR\" && pnpm -s typecheck 1>&2 || exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

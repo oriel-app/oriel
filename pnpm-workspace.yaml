@@ -1,0 +1,5 @@
+packages:
+  - packages/*
+
+# Refuse any package version published less than 7 days ago (minutes).
+minimumReleaseAge: 10080

@@ -43,7 +43,7 @@ Core ideas, in priority order:
 ## 4. MLP scope (phase 1, build only this)
 
 - One real source: Jira Cloud via direct REST with an API token against the throwaway site **oriel.atlassian.net**, behind a `JiraSource` interface designed so an MCP-backed implementation can replace it later without touching bindings or change sets.
-- The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a *separate* project on the same site.
+- The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a _separate_ project on the same site.
 - **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days or unestimated). Filters. Click a group to open a region thread on it; select items by hand for an ad-hoc region.
 - Two zoom levels, hand-built, inside the list: epic row ↔ story list ↔ fullscreen story.
 - Region chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
