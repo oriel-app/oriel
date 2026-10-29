@@ -25,7 +25,7 @@ function view(grouping: GroupingId, keys: string[]): WindowView {
     clusters: keys.map(cluster),
     items: 0,
     asOf: "2026-10-29T09:00:00.000Z",
-    sample: true,
+    fixture: true,
   };
 }
 

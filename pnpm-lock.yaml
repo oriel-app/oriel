@@ -32,11 +32,23 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/groupings:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/web':
+        specifier: workspace:*
+        version: link:../web
+
   packages/server:
     dependencies:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+      '@oriel/groupings':
+        specifier: workspace:*
+        version: link:../groupings
       '@oriel/web':
         specifier: workspace:*
         version: link:../web

@@ -25,12 +25,25 @@ export type ItemRow = {
   idleDays: number;
 };
 
+// One item, as the "item" zoom level shows it: the fullscreen story. It holds
+// what the index keeps; the description and comments are read live.
+export type ItemView = ItemRow & {
+  // The source's name, such as "Jira", and the item's page there.
+  source: string;
+  url: string;
+  labels: string[];
+  // `title` is null when the epic isn't in the index.
+  epic: { id: string; key: string; title: string | null } | null;
+  updatedAt: string;
+};
+
 // One cluster, as the "cluster" zoom level shows it: an epic row.
 export type ClusterRow = {
   key: string;
   label: string;
-  // "source": the source has this structure (a Jira epic). "derived": Oriel
-  // made it up, and `rule` says how. The window shows which.
+  // "source": the source has this structure (a Jira epic), and `source` is its
+  // name. "derived": Oriel made it up, and `rule` says how. The window shows
+  // which.
   origin: { kind: "source"; source: string } | { kind: "derived"; rule: string };
   // The item the cluster hangs off (the epic), if any.
   anchor: ItemRow | null;
@@ -50,6 +63,6 @@ export type WindowView = {
   items: number;
   // The instant the window was built for. Derived rules count days back from it.
   asOf: string;
-  // True while the server shows a hand-written sample instead of the index.
-  sample: boolean;
+  // True while the server shows the synthetic fixtures instead of the index.
+  fixture: boolean;
 };

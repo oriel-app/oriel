@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@oriel/core": "workspace:*",
+    "@oriel/groupings": "workspace:*",
     "@oriel/web": "workspace:*"
   }
 }

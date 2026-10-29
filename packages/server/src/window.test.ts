@@ -9,8 +9,8 @@ import {
   instant,
   itemId,
 } from "@oriel/core";
-import { sampleGroupings, sampleNow, sampleRecords } from "./sample.ts";
-import { windowView } from "./window.ts";
+import { fixtureIndex } from "./fixture.ts";
+import { groupings, windowView } from "./window.ts";
 
 type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 
@@ -157,21 +157,29 @@ test("an ID the index lacks is skipped, and an item in two clusters counts once"
   );
 });
 
-test("the window says when it is the sample, and the instant it was built for", () => {
+test("the window says when it shows the fixtures, and the instant it was built for", () => {
   const view = windowView("epic", fixed([]), records, now, true);
-  assert.equal(view.sample, true);
+  assert.equal(view.fixture, true);
   assert.equal(view.asOf, now);
 });
 
-// The sample is temporary; this checks it still renders through every grouping.
-test("every sample grouping yields clusters of known items", () => {
-  const known = new Set(sampleRecords.map((record) => record.id));
+test("the fixtures are served after every source edit, as of their last one", () => {
+  const { records: indexed, now: asOf } = fixtureIndex();
+  assert.equal(asOf, "2026-10-02T11:00:00.000Z");
+  // SYN-27 was deleted, and SYN-88 moved to the weather epic.
+  assert.equal(
+    indexed.some((record) => record.id === "jira:SYN-27"),
+    false,
+  );
+  assert.equal(indexed.find((record) => record.id === "jira:SYN-88")?.attrs.epic, "jira:SYN-3");
   for (const id of ["epic", "assignee", "stuck"] as const) {
-    const clusters = sampleGroupings[id].group(sampleRecords, sampleNow);
-    assert.ok(clusters.length > 0, id);
-    for (const cluster of clusters) {
-      for (const item of cluster.itemIds) assert.ok(known.has(item), `${id}: ${item}`);
-      if (id === "stuck") assert.notEqual(cluster.origin, "source");
+    assert.equal(groupings[id].id, id);
+    const view = windowView(id, groupings[id], indexed, asOf, true);
+    assert.ok(view.clusters.length > 0, id);
+    for (const { row } of view.clusters) {
+      const expected = id === "stuck" ? "derived" : "source";
+      assert.equal(row.origin.kind, expected, `${id}: ${row.label}`);
+      if (row.origin.kind === "source") assert.equal(row.origin.source, "Jira");
     }
   }
 });
