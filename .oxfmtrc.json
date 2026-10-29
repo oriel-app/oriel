@@ -1,3 +1,9 @@
 {
-  "ignorePatterns": ["fixtures/**", "tests/golden/**", "packages/*/test-data/**", "pnpm-lock.yaml"]
+  "ignorePatterns": [
+    "fixtures/**",
+    "tests/golden/**",
+    "packages/*/test-data/**",
+    "tests/cassettes/**",
+    "pnpm-lock.yaml"
+  ]
 }

@@ -6,3 +6,4 @@ dist/
 secrets/
 .claude/worktrees/
 shots/
+.evals/

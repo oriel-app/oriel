@@ -10,6 +10,7 @@
     "github": "node scripts/github.ts",
     "seed:jira": "node scripts/seed-jira.ts",
     "record:jira": "node scripts/record-jira.ts",
+    "evals": "node packages/evals/src/cli.ts",
     "test": "node --test",
     "dev": "pnpm --filter @oriel/web build && node packages/server/src/main.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts"
