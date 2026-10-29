@@ -34,7 +34,8 @@ export type SandboxOptions = {
   // V8's old-space cap, in MB.
   heapMb?: number;
   // The whole process's resident memory cap, in MB, sampled every
-  // `memoryPollMs`. It also covers what the heap cap can't see.
+  // `memoryPollMs` (see memory.ts). It also covers what the heap cap can't
+  // see.
   maxRssMb?: number;
   memoryPollMs?: number;
   // The longest guest line the host will buffer. It is raised to fit
@@ -44,6 +45,8 @@ export type SandboxOptions = {
   tmpDir?: string;
   // Milliseconds from an arbitrary origin; only differences are used.
   now?: () => number;
+  // The host's user ID. Default: the process's.
+  uid?: number;
 };
 
 // `coldStartMs`: from spawning Deno to the guest's first line, or null when
@@ -80,6 +83,12 @@ const maxDepth = 64;
 type Ending = { outcome: RunResult["outcome"]; last: TranscriptEntry };
 
 export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
+  // Root ignores file modes, so the read-only location_data below would not
+  // hold, and the Cache API could fill the disk.
+  if ((options.uid ?? process.getuid?.()) === 0)
+    throw new Error(
+      "The sandbox host refuses to run as root: run it as an unprivileged user (in a container, set USER).",
+    );
   const deno = options.deno ?? findDeno();
   const heapMb = options.heapMb ?? 128;
   const maxRssMb = options.maxRssMb ?? 512;
@@ -122,10 +131,11 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     try {
       const work = join(dir, "work");
       await mkdir(work);
-      // Cache API and localStorage data, which no permission gates, would go
-      // under location_data. Read-only, those writes fail instead of filling
-      // the disk. (A read-only DENO_DIR would also do it, but costs about
-      // 180 ms of cold start.)
+      // An addition to decision 0006 (see 0017): Cache API and localStorage
+      // data, which no permission gates, would go under location_data.
+      // Read-only, those writes fail instead of filling the disk. Root
+      // ignores the mode, hence the uid check in createSandbox. (A read-only
+      // DENO_DIR would also do it, but costs about 180 ms of cold start.)
       const denoDir = join(dir, "deno");
       await mkdir(denoDir);
       await mkdir(join(denoDir, "location_data"), { mode: 0o500 });
@@ -198,14 +208,21 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         ending = { outcome, last };
         child.kill("SIGKILL");
       };
-      const wallError = () =>
-        fail(
-          "limit",
-          `the run passed its wall time of ${limits.wallMs} ms and was stopped`,
-          hints.wall,
-        );
-
-      const wall = setTimeout(() => end("timeout", wallError()), limits.wallMs);
+      // An addition to decision 0006 (see 0017): there is no in-guest
+      // deadline. The host kills the process at the wall-time cap and reports
+      // it itself, as a clean "limit" error that names the cap.
+      const wall = setTimeout(
+        () =>
+          end(
+            "timeout",
+            fail(
+              "limit",
+              `the run passed its wall time of ${limits.wallMs} ms and was stopped`,
+              hints.wall,
+            ),
+          ),
+        limits.wallMs,
+      );
       const stopWatching =
         child.pid === undefined
           ? () => {}

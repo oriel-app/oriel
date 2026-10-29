@@ -30,7 +30,8 @@ export function denoArgs(run: { entry: string; importMap: string; heapMb: number
   ];
 }
 
-// `--deny-read` doesn't cover the module graph: Deno loads every import whose
+// An addition to decision 0006 (see 0017). `--deny-read` doesn't cover the
+// module graph: Deno loads every import whose
 // specifier is a literal in module source, static or dynamic, before anything
 // runs and without asking for read permission (see deno.test.ts). The script
 // never becomes module source, so only the runtime and the shim could do this.
@@ -40,8 +41,10 @@ export function importMap(entryUrl: string): string {
   return JSON.stringify({ imports: { "file:///": "no-imports:/", [entryUrl]: entryUrl } });
 }
 
-// The child's whole environment. Deno's update check would otherwise call the
-// network from the CLI itself (not the guest) once per fresh `DENO_DIR`.
+// The child's whole environment. `DENO_NO_UPDATE_CHECK` is an addition to
+// decision 0006, which allows only `DENO_DIR` (see 0017): without it, the Deno
+// CLI itself (not the guest) calls the network for its update check once per
+// fresh `DENO_DIR`, so once per run.
 export function denoEnv(denoDir: string): Record<string, string> {
   return { DENO_DIR: denoDir, DENO_NO_UPDATE_CHECK: "1" };
 }

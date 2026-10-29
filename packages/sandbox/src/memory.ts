@@ -1,6 +1,8 @@
-// The heap cap (`--max-old-space-size`) doesn't bound memory outside the V8
-// heap: array buffers, WebAssembly memories and each worker's own heap. So
-// the host also samples the process's resident memory and stops it when over.
+// An addition to decision 0006 (see 0017). The heap cap
+// (`--max-old-space-size`) doesn't bound memory outside the V8 heap: array
+// buffers, WebAssembly memories and each worker's own heap. So the host also
+// samples the process's resident memory and stops it when over. Sampling
+// can overshoot the cap by whatever the guest allocates in one interval.
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 

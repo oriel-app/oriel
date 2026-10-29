@@ -321,6 +321,27 @@ test("the result cap stops the run", async () => {
   );
 });
 
+test("the wall-time kill comes back as a clean limit error that names the cap", async () => {
+  const { result } = await go(`for (;;) {}`, { wallMs: 1_000 });
+  assert.equal(result.outcome, "timeout");
+  assert.deepEqual(result.transcript, [
+    {
+      kind: "error",
+      error: {
+        phase: "limit",
+        message: "the run passed its wall time of 1000 ms and was stopped",
+        hint: "Look for a loop that never ends or a promise that never settles, and do less per run.",
+        logs: [],
+      },
+    },
+  ]);
+});
+
+test("the host refuses to run as root", () => {
+  assert.throws(() => createSandbox({ uid: 0 }), /refuses to run as root/);
+  assert.doesNotThrow(() => createSandbox({ uid: 1000 }));
+});
+
 test("the console cap stops the run and keeps the lines before it", async () => {
   const { result } = await go(`console.log("12345");\nconsole.log("123456");\nreturn 1;`, {
     maxConsoleBytes: 10,
