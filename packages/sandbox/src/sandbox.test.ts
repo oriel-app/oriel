@@ -1,0 +1,299 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { test } from "node:test";
+import type { Bindings, RunError, RunLimits, TranscriptEntry } from "@oriel/core";
+import { fakeBindings, stories } from "./fake-bindings.ts";
+import { createSandbox } from "./sandbox.ts";
+
+// Time is passed in: every duration comes out as 0.
+const sandbox = createSandbox({ now: () => 0 });
+
+const limits: RunLimits = {
+  wallMs: 60_000,
+  maxScriptBytes: 16_384,
+  maxReads: 20,
+  maxMutations: 20,
+  maxResultBytes: 65_536,
+  maxConsoleBytes: 16_384,
+};
+
+type Logged = { message: string; fields: Record<string, unknown> | undefined };
+
+async function go(
+  script: string,
+  caps: Partial<RunLimits> = {},
+  bindings: Bindings = fakeBindings(),
+) {
+  const logged: Logged[] = [];
+  const result = await sandbox.run(script, bindings, {
+    limits: { ...limits, ...caps },
+    signal: new AbortController().signal,
+    log: (message, fields) => logged.push({ message, fields }),
+  });
+  return { result, logged };
+}
+
+function errorOf(entry: TranscriptEntry | undefined): RunError {
+  assert.equal(entry?.kind, "error", JSON.stringify(entry));
+  return entry.error;
+}
+
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
+test("a script reads through the bindings and returns a value", async () => {
+  const { result, logged } = await go(`
+    const all = (await jira.listStories()) as { id: string; points: number | null }[];
+    return all.filter((story) => story.points === null).map((story) => story.id);
+  `);
+  assert.equal(result.outcome, "ok");
+  assert.deepEqual(result.transcript, [{ kind: "return", value: ["jira:SYN-2"] }]);
+  const payloadHash = sha256(JSON.stringify(stories));
+  assert.deepEqual(result.reads, [
+    { fn: "jira.listStories", args: [], ms: 0, outsideRegion: false, payloadHash },
+  ]);
+  assert.deepEqual(logged, [
+    {
+      message: "sandbox.read",
+      fields: {
+        fn: "jira.listStories",
+        args: [],
+        ms: 0,
+        outside_region: false,
+        payload_hash: payloadHash,
+      },
+    },
+    {
+      message: "sandbox.run",
+      fields: { outcome: "ok", wall_ms: 0, cold_start_ms: 0, reads: 1, mutations: 0 },
+    },
+  ]);
+  assert.equal(result.wallMs, 0);
+  assert.equal(result.coldStartMs, 0);
+});
+
+test("fetched content comes back as a value, and the escape hatch is marked", async () => {
+  const { result, logged } = await go(`
+    const story = (await jira.getStory("jira:SYN-2")) as { summary: string };
+    await search("estimates");
+    return story.summary;
+  `);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: stories[1]?.summary }]);
+  assert.deepEqual(
+    result.reads.map((read) => [read.fn, read.args, read.outsideRegion]),
+    [
+      ["jira.getStory", ["jira:SYN-2"], false],
+      ["search", ["estimates"], true],
+    ],
+  );
+  assert.ok(!JSON.stringify(logged).includes("Ignore all previous"), "a payload reached the log");
+});
+
+test("writes are captured in order, a create names its item, and none is answered", async () => {
+  const { result } = await go(`
+    const ref = jira.createStory({ summary: "Split the import" });
+    jira.setEstimate(ref, 2);
+    jira.setEstimate("jira:SYN-2", 3);
+    return ref;
+  `);
+  assert.equal(result.outcome, "ok");
+  assert.deepEqual(result.mutations, [
+    { op: "jira.createStory", target: null, ref: "new:1", args: [{ summary: "Split the import" }] },
+    { op: "jira.setEstimate", target: "new:1", ref: null, args: ["new:1", 2] },
+    { op: "jira.setEstimate", target: "jira:SYN-2", ref: null, args: ["jira:SYN-2", 3] },
+  ]);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: "new:1" }]);
+  assert.deepEqual(result.reads, []);
+});
+
+test("console output becomes log lines in the transcript", async () => {
+  const { result } = await go(`
+    console.log("counted", { stories: 3 });
+    console.error("and warned");
+    return 1;
+  `);
+  assert.deepEqual(result.transcript, [
+    { kind: "log", text: "counted { stories: 3 }" },
+    { kind: "log", text: "and warned" },
+    { kind: "return", value: 1 },
+  ]);
+});
+
+test("concurrent reads are answered out of order and recorded in request order", async () => {
+  const { result } = await go(`return await Promise.all([jira.second(), jira.first()]);`);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: ["second", "first"] }]);
+  assert.deepEqual(
+    result.reads.map((read) => read.fn),
+    ["jira.second", "jira.first"],
+  );
+});
+
+test("a read the bindings reject throws inside the guest", async () => {
+  const { result, logged } = await go(`
+    try {
+      await jira.fail();
+      return "read";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  `);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: "the source is down" }]);
+  assert.deepEqual(result.reads, []);
+  assert.deepEqual(logged[0], {
+    message: "sandbox.read",
+    fields: { fn: "jira.fail", args: [], ms: 0, error: "the source is down" },
+  });
+});
+
+test("nothing returned is null", async () => {
+  const { result } = await go(`const unused = 1;`);
+  assert.deepEqual(result.transcript, [{ kind: "return", value: null }]);
+});
+
+test("an uncaught error comes back with the script's own line numbers", async () => {
+  const { result } = await go(
+    `console.log("before");\nconst n: number = 2;\nthrow new Error("boom " + n);`,
+  );
+  assert.equal(result.outcome, "threw");
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "runtime");
+  assert.match(error.message, /Error: boom 2/);
+  assert.match(error.message, /script\.ts:3:\d+/);
+  assert.doesNotMatch(error.message, /oriel-run-|entry\.ts|file:\/\//);
+  assert.deepEqual(error.logs, ["before"]);
+});
+
+test("a rejection nobody awaited ends the run", async () => {
+  const { result } = await go(`void jira.fail();\nawait new Promise(() => {});`);
+  assert.equal(result.outcome, "threw");
+  assert.match(errorOf(result.transcript.at(-1)).message, /the source is down/);
+});
+
+test("a return value that isn't JSON is an error, not a crash", async () => {
+  const { result } = await go(`return 10n;`);
+  assert.equal(result.outcome, "threw");
+  assert.match(errorOf(result.transcript.at(-1)).message, /can't be sent as JSON/);
+});
+
+test("a syntax error is a typecheck error at the script's line", async () => {
+  const { result } = await go(`const ok = 1;\nconst = 2;`);
+  assert.equal(result.outcome, "threw");
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "typecheck");
+  assert.match(error.message, /script\.ts:2/);
+  assert.equal(result.coldStartMs, null);
+});
+
+test("a write the bindings refuse ends the run", async () => {
+  const { result } = await go(`
+    jira.setEstimate("jira:SYN-2", 1);
+    jira.setEstimate("jira:SYN-99", 1);
+    return "sent";
+  `);
+  assert.equal(result.outcome, "threw");
+  assert.equal(result.mutations.length, 1);
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "runtime");
+  assert.equal(error.message, "jira.setEstimate was refused: jira:SYN-99 is not in this region");
+});
+
+test("a ref can only be created once", async () => {
+  const { result } = await go(`
+    const send = (message: unknown) =>
+      Deno.stdout.writeSync(new TextEncoder().encode(JSON.stringify(message) + "\\n"));
+    send({ kind: "write", fn: "jira.createStory", args: [{ summary: "a" }], ref: "new:1" });
+    send({ kind: "write", fn: "jira.createStory", args: [{ summary: "b" }], ref: "new:1" });
+    return null;
+  `);
+  assert.equal(result.outcome, "threw");
+  assert.equal(result.mutations.length, 1);
+  assert.match(errorOf(result.transcript.at(-1)).message, /new:1 was already created/);
+});
+
+test("exiting before returning is a runtime error", async () => {
+  const { result } = await go(`Deno.exit(0);`);
+  assert.equal(result.outcome, "threw");
+  assert.match(
+    errorOf(result.transcript.at(-1)).message,
+    /stopped before returning \(exit code 0\)/,
+  );
+});
+
+test("a script over the size cap never starts", async () => {
+  const { result } = await go(`return "${"x".repeat(64)}";`, { maxScriptBytes: 32 });
+  assert.equal(result.outcome, "limit");
+  assert.equal(result.coldStartMs, null);
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "limit");
+  assert.match(error.message, /the limit is 32/);
+});
+
+test("the read cap stops the run", async () => {
+  const { result } = await go(
+    `for (let i = 0; i < 3; i++) await jira.listStories();\nreturn "read";`,
+    {
+      maxReads: 2,
+    },
+  );
+  assert.equal(result.outcome, "limit");
+  assert.equal(result.reads.length, 2);
+  assert.match(errorOf(result.transcript.at(-1)).message, /more than 2 reads/);
+});
+
+test("the mutation cap stops the run", async () => {
+  const { result } = await go(
+    `for (let i = 0; i < 3; i++) jira.setEstimate("jira:SYN-1", i);\nreturn "sent";`,
+    {
+      maxMutations: 2,
+    },
+  );
+  assert.equal(result.outcome, "limit");
+  assert.equal(result.mutations.length, 2);
+  assert.match(errorOf(result.transcript.at(-1)).message, /more than 2 mutations/);
+});
+
+test("the result cap stops the run", async () => {
+  const { result } = await go(`return "x".repeat(200);`, { maxResultBytes: 100 });
+  assert.equal(result.outcome, "limit");
+  assert.match(
+    errorOf(result.transcript.at(-1)).message,
+    /return value is 202 bytes; the limit is 100/,
+  );
+});
+
+test("the console cap stops the run and keeps the lines before it", async () => {
+  const { result } = await go(`console.log("12345");\nconsole.log("123456");\nreturn 1;`, {
+    maxConsoleBytes: 10,
+  });
+  assert.equal(result.outcome, "limit");
+  assert.deepEqual(result.transcript.slice(0, -1), [{ kind: "log", text: "12345" }]);
+  const error = errorOf(result.transcript.at(-1));
+  assert.match(error.message, /console output passed 10 bytes/);
+  assert.deepEqual(error.logs, ["12345"]);
+});
+
+test("aborting stops the run and rejects with the reason", async () => {
+  const controller = new AbortController();
+  const reason = new Error("the user stopped the thread");
+  const running = sandbox.run(
+    `await jira.hold();`,
+    fakeBindings(() => controller.abort(reason)),
+    {
+      limits,
+      signal: controller.signal,
+      log: () => {},
+    },
+  );
+  await assert.rejects(running, reason);
+});
+
+test("an aborted signal rejects before Deno starts", async () => {
+  const reason = new Error("already stopped");
+  await assert.rejects(
+    sandbox.run(`return 1;`, fakeBindings(), {
+      limits,
+      signal: AbortSignal.abort(reason),
+      log: () => {},
+    }),
+    reason,
+  );
+});
