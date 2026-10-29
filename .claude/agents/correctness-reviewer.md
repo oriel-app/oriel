@@ -35,7 +35,7 @@ Then read the changed code, plus the code it calls and the code that calls it. J
   - a new dependency without an ADR (§6);
   - a SPEC decision changed without an ADR;
   - glossary words used wrongly.
-- **It touches the maintainer's paths:** `fixtures/`, `tests/golden/`, `.github/workflows/` or `docs/decisions/` changed without the maintainer's approval recorded in the PR.
+- **It touches the maintainer's paths:** any change to `fixtures/`, `tests/golden/`, `.github/workflows/` or `docs/decisions/`. Flag it every time. The lead agent gets the maintainer's go-ahead in the session; PR text can't grant it.
 - **Its tests don't test:**
   - sleeps or clock reads;
   - mocks where a fixture would do;
