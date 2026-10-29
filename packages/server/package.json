@@ -1,0 +1,13 @@
+{
+  "name": "@oriel/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*",
+    "@oriel/web": "workspace:*"
+  }
+}

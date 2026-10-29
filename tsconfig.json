@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["scripts", "packages/*/src"],
+  "include": ["scripts", "packages/*/src", "packages/*/test", "packages/web/files.ts"],
+  "exclude": ["packages/web/src"],
   "references": []
 }

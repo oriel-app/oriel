@@ -1,0 +1,16 @@
+{
+  "name": "@oriel/web",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./files": "./files.ts",
+    "./view": "./src/view.ts"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "check": "tsc -p . --noEmit && tsc -p test && oxlint --deny-warnings . && node --test"
+  },
+  "dependencies": {
+    "preact": "11.0.1"
+  }
+}
