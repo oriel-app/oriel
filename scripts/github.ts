@@ -47,7 +47,30 @@ export function parse(args: readonly string[]): Operation | { error: string } {
 
 export function agentToken(envFile: string | null): string | null {
   const token = envFile ? parseEnv(envFile).GH_TOKEN : undefined;
-  return token?.startsWith("github_pat_") ? token : null;
+  return token && /^github_pat_\w+$/.test(token) ? token : null;
+}
+
+// A PR title or body must never carry a credential from .env onto a public
+// page. Plain settings such as JIRA_SITE may appear.
+export function leaksSecret(texts: readonly string[], envFile: string | null): boolean {
+  const values = Object.entries(envFile ? parseEnv(envFile) : {})
+    .filter(([key]) => /TOKEN|KEY|SECRET|PASSWORD|EMAIL/.test(key))
+    .map(([, value]) => value)
+    .filter((value): value is string => typeof value === "string" && value.length >= 8);
+  return texts.some((text) => values.some((value) => text.includes(value)));
+}
+
+// Only a branch of this repo may enter the merge queue: a fork's PR is
+// attacker input, whatever its title or branch name says (decision 0012).
+export function enqueueRefusal(pr: {
+  isCrossRepository: boolean;
+  headRepository: { nameWithOwner: string } | null;
+}): string | null {
+  const own = `${repo.owner}/${repo.name}`;
+  if (pr.isCrossRepository || pr.headRepository?.nameWithOwner !== own) {
+    return `refusing to enqueue a PR whose head is not a branch of ${own} (head: ${pr.headRepository?.nameWithOwner ?? "deleted"})`;
+  }
+  return null;
 }
 
 async function call(token: string, method: string, path: string, body?: unknown): Promise<unknown> {
@@ -82,7 +105,9 @@ async function graphql(
 const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      id number title state headRefName mergeable mergeStateStatus isInMergeQueue
+      id number title state headRefName headRefOid isCrossRepository
+      headRepository { nameWithOwner }
+      mergeable mergeStateStatus isInMergeQueue
       mergeCommit { oid }
       commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
     }
@@ -96,9 +121,14 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       const pulls = (await call(token, "GET", `${base}/pulls?state=open`)) as {
         number: number;
         title: string;
-        head: { ref: string };
+        head: { ref: string; repo: { full_name: string } | null };
       }[];
-      return pulls.map((p) => ({ number: p.number, title: p.title, branch: p.head.ref }));
+      return pulls.map((p) => ({
+        number: p.number,
+        title: p.title,
+        branch: p.head.ref,
+        from: p.head.repo?.full_name ?? "deleted",
+      }));
     }
     case "pr-view":
       return graphql(token, pullRequestQuery, { ...repo, number: operation.number });
@@ -116,13 +146,24 @@ export async function run(token: string, operation: Operation): Promise<unknown>
         ...repo,
         number: operation.number,
       })) as {
-        repository: { pullRequest: { id: string } };
+        repository: {
+          pullRequest: {
+            id: string;
+            headRefOid: string;
+            isCrossRepository: boolean;
+            headRepository: { nameWithOwner: string } | null;
+          };
+        };
       };
+      const pr = data.repository.pullRequest;
+      const refusal = enqueueRefusal(pr);
+      if (refusal) throw new Error(refusal);
+      // Pin the commit just checked, so a push in between can't slip in.
       return graphql(
         token,
         `
-          mutation ($id: ID!) {
-            enqueuePullRequest(input: { pullRequestId: $id }) {
+          mutation ($id: ID!, $oid: GitObjectID!) {
+            enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
               mergeQueueEntry {
                 state
                 position
@@ -130,7 +171,7 @@ export async function run(token: string, operation: Operation): Promise<unknown>
             }
           }
         `,
-        { id: data.repository.pullRequest.id },
+        { id: pr.id, oid: pr.headRefOid },
       );
     }
     case "runs": {
@@ -139,6 +180,7 @@ export async function run(token: string, operation: Operation): Promise<unknown>
         workflow_runs: {
           event: string;
           head_branch: string;
+          head_repository: { full_name: string } | null;
           status: string;
           conclusion: string | null;
         }[];
@@ -146,6 +188,7 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       return runs.workflow_runs.map((r) => ({
         event: r.event,
         branch: r.head_branch,
+        from: r.head_repository?.full_name ?? "deleted",
         status: r.status,
         conclusion: r.conclusion,
       }));
@@ -155,8 +198,17 @@ export async function run(token: string, operation: Operation): Promise<unknown>
 
 if (import.meta.main) {
   const envPath = fileURLToPath(new URL("../.env", import.meta.url));
-  const token = agentToken(existsSync(envPath) ? readFileSync(envPath, "utf8") : null);
+  const envFile = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
+  const token = agentToken(envFile);
   const operation = parse(process.argv.slice(2));
+  if (
+    !("error" in operation) &&
+    operation.op === "pr-create" &&
+    leaksSecret([operation.title, operation.body], envFile)
+  ) {
+    console.error("refusing: the title or body contains a value from .env");
+    process.exit(1);
+  }
   if (!token) {
     console.error(
       "GH_TOKEN in .env must be the fine-grained agent token described in env.example.",

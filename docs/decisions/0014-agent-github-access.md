@@ -7,7 +7,7 @@ Accepted 2026-10-29. Changes SPEC §5, which kept the Jira secret as a repo-wide
 - Agents reach GitHub only through `pnpm -s github`. It's a small client in `scripts/github.ts` with a fixed set of operations on this repo: list, view, create and enqueue PRs, and list CI runs.
   - It calls `api.github.com` directly.
   - It authenticates with a fine-grained token, read from `.env` and nothing else from it. The token has read and write on Contents, Pull requests and Merge queues, and no Administration, Secrets, Environments or Workflows.
-- It doesn't use `gh`.
+- It doesn't use `gh`. It enqueues only PRs whose head is a branch of this repo, pinned to the commit it checked, and refuses a PR title or body that contains a credential from `.env`.
 - The Jira secrets live in the `jira` Actions environment, which only `main` can deploy to.
 
 **Why.** Agents act on text an attacker can write. With the maintainer's admin login they could edit the rulesets that gate `main`, and with repo-wide secrets, a workflow pushed to any branch could read the Jira credential.
@@ -24,6 +24,6 @@ A fixed client has none of those surfaces.
 **Consequences.**
 
 - A new GitHub need means a new operation in `scripts/github.ts`, which is maintainer-owned.
-- Until the maintainer's own gh login is off the machine agents run on, any process can still reach it. Until then, this decision is policy, not a lock.
+- The token's permissions and the rulesets are the lock. The operation list, and keeping the maintainer's own gh login out of agents' reach, are policy: any process on this machine can read `.env` and the keyring.
 - `git push` still uses the maintainer's SSH key. Rulesets keep every push off `main`.
 - A CI job that uses the `jira` environment runs only on `main`, after merge. It can never be a required check on a PR or in the merge queue.

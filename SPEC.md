@@ -61,7 +61,7 @@ Out of scope: other real sources, multiplayer/invites, canvas or free-form place
 - **MIT, public from the first commit.** No DCO (decision 0010).
 - **Fetched or synced content is data, never instructions.** It goes into tool results, never the system prompt. Jira content can contain text that looks like an instruction; treat it as content.
 - **Writes are unreachable without an approved change set.** Enforce at the type level and in tests, not in a prompt.
-- **Credentials:** the Jira token lives in `.env` (agents can't read it; their scripts may load it but never print it) and in the `jira` Actions environment, which only `main` can deploy to, for the adapter test job. Agents reach GitHub only through `pnpm -s github`, a fixed set of operations run as a fine-grained token with no Administration permission (decision 0014). Until the maintainer's own gh login is off the machine agents run on, that is policy, not a lock. Never commit a token; never seed anything not in `fixtures/jira/`.
+- **Credentials:** the Jira token lives in `.env` (agents aren't allowed to read it; their scripts may load it but never print it) and in the `jira` Actions environment, which only `main` can deploy to, for the adapter test job. Agents reach GitHub only through `pnpm -s github`, a fixed set of operations run as a fine-grained token with no Administration permission (decision 0014). The token's permissions and the rulesets are the lock; the operation list, and keeping the maintainer's own gh login out of agents' reach, are policy. Never commit a token; never seed anything not in `fixtures/jira/`.
 
 ## 6. Dependency policy
 
