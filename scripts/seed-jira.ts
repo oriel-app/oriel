@@ -128,8 +128,9 @@ export function request(
       const { issue: fixture } = step;
       // Always unassigned: the site has one real user, so the fixture's
       // people can't be assigned. Assignees stay in the fixtures only; besides
-      // them, the live copy differs only where Jira sets values itself
-      // (comment authors and times, updatedAt, link IDs).
+      // them, the live copy differs only where Jira sets values itself:
+      // issue stable IDs (so region clusters too), comment authors and times,
+      // updatedAt and link IDs. Live tests match on keys, not stable IDs.
       const fields: Record<string, unknown> = {
         project: { key: project },
         issuetype: { id: typeId(found, fixture.issueType) },

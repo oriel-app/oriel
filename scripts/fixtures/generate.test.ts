@@ -20,7 +20,9 @@ const byKey = new Map(base.map((issue) => [issue.key, issue]));
 
 test("regenerating the fixtures is byte-identical", () => {
   const generated = generate();
-  assert.deepEqual(readdirSync(fixtureDir).toSorted(), [...generated.keys()].toSorted());
+  // Dotfiles such as Finder's .DS_Store aren't fixtures.
+  const committed = readdirSync(fixtureDir).filter((name) => !name.startsWith("."));
+  assert.deepEqual(committed.toSorted(), [...generated.keys()].toSorted());
   for (const [file, text] of generated) {
     const committed = readFileSync(new URL(file, fixtureDir));
     assert.ok(committed.equals(Buffer.from(text, "utf8")), `${file} differs from the generator`);

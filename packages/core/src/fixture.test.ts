@@ -120,6 +120,17 @@ test("an epic region holds exactly its epic and that epic's children", () => {
   const wrong = input();
   wrong.regions[0] = region("SYN-1", ["jira:SYN-1", "jira:SYN-3", "jira:SYN-5"]);
   assert.deepEqual(paths(wrong), ["$.regions[0].origin.cluster"]);
+  // Same size, wrong member: only the membership check catches it.
+  const swapped = input();
+  swapped.regions[0] = region("10001", ["jira:SYN-1", "jira:SYN-3", "jira:SYN-2"]);
+  assert.deepEqual(paths(swapped), ["$.regions[0].items"]);
+  const notEpic = input();
+  notEpic.regions[0] = {
+    name: "first-epic",
+    origin: { kind: "group", grouping: "epic", cluster: "10003", anchor: "jira:SYN-3" },
+    items: ["jira:SYN-3"],
+  };
+  assert.deepEqual(paths(notEpic), ["$.regions[0].origin.anchor"]);
 });
 
 test("source edits apply in order and report what they deleted", () => {

@@ -5,6 +5,8 @@ import type { IndexRecord } from "./source.ts";
 // by Oriel, in which case `derived` says how, and the UI shows it. `anchor` is
 // the item the cluster hangs off, if any (the epic itself).
 export type Cluster = {
+  // Stable across syncs. The "epic" grouping keys each cluster by the epic's
+  // stable ID; frozen fixture regions depend on that.
   key: string;
   label: string;
   anchor: ItemId | null;
