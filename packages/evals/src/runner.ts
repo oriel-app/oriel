@@ -323,7 +323,8 @@ function summarize(results: readonly CaseResult[], options: RoundOptions): Summa
   };
 }
 
-export function formatRound(round: Round): string {
+// `failing`: the IDs of cases marked as known failures of the agent.
+export function formatRound(round: Round, failing: ReadonlySet<string> = new Set()): string {
   const lines = splits.map((s) => {
     const r = round.summary.splits[s];
     const extra = r.errored ? `, ${r.errored} errored` : "";
@@ -331,20 +332,34 @@ export function formatRound(round: Round): string {
   });
   for (const r of round.results) {
     if (r.unrecorded) lines.push(`unrecorded  ${r.id}: ${r.unrecorded}`);
-    if (r.outcome === "pass") continue;
+    const known = failing.has(r.id);
+    if (r.outcome === "pass") {
+      if (known) lines.push(`pass  ${r.id}: it's marked failing; remove the mark`);
+      continue;
+    }
     const why = r.error ?? r.grades.find((g) => !g.pass)?.detail ?? "";
-    lines.push(`${r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`);
+    const label = known && r.outcome === "fail" ? "fail (known)" : r.outcome;
+    lines.push(`${label}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`);
   }
   return lines.join("\n");
 }
 
 // CI replays to guard the pipeline, not the model's judgement (SPEC §8): any
 // error fails, and so does a failed deterministic case; a failed judged case
-// does not. A live round fails only on errors.
-export function exitCode(results: readonly CaseResult[], mode: "live" | "replay"): number {
-  const broken = results.some(
-    (r) =>
-      r.outcome === "error" || (mode === "replay" && r.outcome === "fail" && !isJudged(r.kind)),
-  );
+// does not. A case in `failing` is a known failure of the agent: failing
+// doesn't fail a replay, but passing does, so the mark goes once the agent
+// does better and can't hide a later regression. A live round fails only on
+// errors.
+export function exitCode(
+  results: readonly CaseResult[],
+  mode: "live" | "replay",
+  failing: ReadonlySet<string> = new Set(),
+): number {
+  const broken = results.some((r) => {
+    if (r.outcome === "error") return true;
+    if (mode === "live") return false;
+    if (failing.has(r.id)) return r.outcome === "pass";
+    return r.outcome === "fail" && !isJudged(r.kind);
+  });
   return broken ? 1 : 0;
 }

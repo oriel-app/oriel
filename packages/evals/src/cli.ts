@@ -124,11 +124,12 @@ async function main(command: Command): Promise<number> {
     now: evalNow,
     concurrency: live ? 4 : 1,
   });
+  const failing = new Set(cases.flatMap((c) => (c.case.failing ? [c.case.id] : [])));
   console.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
-  console.log(formatRound(round));
+  console.log(formatRound(round, failing));
   console.log(`results: .evals/${id}/`);
   if (baseline) console.log(formatComparison(compareRounds(readResults(baseline), round.results)));
-  return exitCode(round.results, command.command);
+  return exitCode(round.results, command.command, failing);
 }
 
 if (import.meta.main) {

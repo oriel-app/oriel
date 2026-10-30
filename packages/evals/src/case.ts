@@ -133,6 +133,9 @@ const evalCaseShape = object({
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
   // approved. It is checked and listed, never run.
   waiting: optional(text),
+  // What the agent gets wrong here, as a live round found it: a known
+  // failure, which doesn't fail CI's replay until the case passes.
+  failing: optional(text),
   prompt: text,
   expect: atLeastOne(expectation),
 });
@@ -154,6 +157,8 @@ function rules(evalCase: EvalCase): Issue[] {
   files.forEach((file, i) => {
     if (files.indexOf(file) !== i) found.push({ path: `$.files[${i}]`, message: "listed twice" });
   });
+  if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
+    found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
   graders.forEach((grader, i) => {
     if (graders.indexOf(grader) !== i)
