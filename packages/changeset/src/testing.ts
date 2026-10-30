@@ -11,6 +11,7 @@ import {
   type ItemId,
   parseItemId,
   type RunRef,
+  SourceRefused,
   type SourceWriter,
   type TelemetryEvent,
   type Ulid,
@@ -92,7 +93,9 @@ type Request = WriteRequest<"jira">;
 export type MemoryJira = ReturnType<typeof memoryJira>;
 
 // Every write and every touch from outside moves the clock one second on from
-// `clock`, and stamps the item's `updated` with it.
+// `clock`, and stamps the item's `updated` with it. A write that never
+// reaches the issue (it is gone, names another item, or its arguments are
+// bad) changes nothing and says so, as the Jira writer does.
 export function memoryJira(start: MemorySnapshot, clock: Instant) {
   const issues = new Map(start.issues.map((issue) => [issue.key, structuredClone(issue)]));
   for (const issue of issues.values()) {
@@ -147,8 +150,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     return Object.fromEntries(fields.map((f) => [f, Object.hasOwn(all, f) ? all[f] : null]));
   };
   const handle = (issue: MemoryIssue) => ({ id: `jira:${issue.key}` as const, stableId: issue.id });
+  const unsent = (message: string) => new SourceRefused(message, { sent: false });
   const parsed = <T>(result: { ok: true; value: T } | { ok: false }): T => {
-    if (!result.ok) throw new Error("400: bad arguments");
+    if (!result.ok) throw unsent("bad arguments");
     return result.value;
   };
 
@@ -180,13 +184,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
       };
     }
     const issue = request.target === null ? null : find(request.target);
-    if (!issue)
-      throw new Error(
-        `404: Issue does not exist or you do not have permission to see it: ${request.target}`,
-      );
+    if (!issue) throw unsent(`${request.target} is gone from Jira`);
     // As the Jira writer does: a handle that names another item now is refused.
     if (issue.id !== request.expectedStableId)
-      throw new Error(`${request.target} names another item now (stable ID ${issue.id})`);
+      throw unsent(`${request.target} names another item now (stable ID ${issue.id})`);
     const set = <F extends "summary" | "description" | "points" | "accountId">(
       property: F,
       value: MemoryIssue[F],
@@ -223,7 +224,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
         const { linkId } = parsed(jiraOps.removeLink.args(request.args));
         const field = `link:${linkId}`;
         const before = pick(issue, [field]);
-        if (before[field] === null) throw new Error(`404: no link ${linkId}`);
+        if (before[field] === null) throw unsent(`removeLink: no link ${linkId}`);
         issue.links = issue.links.filter((l) => l.linkId !== linkId);
         issue.updated = tick();
         return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };

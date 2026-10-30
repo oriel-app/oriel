@@ -20,7 +20,7 @@ import {
   site,
 } from "./fake-jira.ts";
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
-import { jiraWriter } from "./writer.ts";
+import { jiraWriter, restTransport } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
 // production. These tests cover the REST mapping, not the approval gate.
@@ -402,21 +402,85 @@ test("a write Jira refuses fails with Jira's own message, as a refusal", async (
   );
 });
 
-test("a write Jira breaks on, or a read before it that fails, isn't a refusal", async () => {
+test("a write Jira breaks on may have landed, so it isn't a refusal", async () => {
   const jira = fakeSite();
   const broken: Transport = async (req) =>
     req.method === "PUT" ? { status: 503, body: "Unavailable" } : jira.transport(req);
-  // A 5xx to the write itself may have landed.
   await assert.rejects(
     writer(broken).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
     (error) => !(error instanceof SourceRefused) && /PUT \S+: 503/.test(String(error)),
   );
-  // Only the write's own answer is a refusal; a 4xx to a read isn't one.
+});
+
+// Refused, and never sent: what change sets keep unsent, to send again.
+const unsent = (pattern: RegExp) => (error: unknown) =>
+  error instanceof SourceRefused && !error.sent && pattern.test(error.message);
+
+test("anything that fails before the write goes out sent nothing", async () => {
+  const jira = fakeSite();
+  // The read before the write.
   const unread: Transport = async (req) =>
-    req.method === "GET" ? { status: 403, body: { errorMessages: ["No."] } } : jira.transport(req);
+    req.method === "GET" ? { status: 500, body: { errorMessages: ["No."] } } : jira.transport(req);
   await assert.rejects(
     writer(unread).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
-    (error) => !(error instanceof SourceRefused),
+    unsent(/^GET \/rest\/api\/3\/issue\/SYN-12: 500 No\.$/),
   );
-  assert.equal(jira.writes().length, 0);
+  // The writer's own checks: a link that isn't there, a board with no points
+  // field, a project with no Story type, a request it can't check.
+  await assert.rejects(
+    writer(jira.transport).apply(request("removeLink", "jira:SYN-12", { linkId: "10999" })),
+    unsent(/SYN-12 has no link 10999/),
+  );
+  const noBoard: Transport = async (req) =>
+    req.path.startsWith("/rest/agile/1.0/board?")
+      ? ok({ maxResults: 50, startAt: 0, total: 0, isLast: true, values: [] })
+      : jira.transport(req);
+  await assert.rejects(
+    writer(noBoard).apply(request("setEstimate", "jira:SYN-12", { points: 5 })),
+    unsent(/board has no points field/),
+  );
+  const noStory: Transport = async (req) =>
+    req.path.endsWith("/issuetypes") ? ok({ issueTypes: [] }) : jira.transport(req);
+  await assert.rejects(
+    writer(noStory).apply(request("createStory", null, { summary: "x", epic: null })),
+    unsent(/has no Story issue type/),
+  );
+  await assert.rejects(
+    writer(jira.transport).apply(request("setSummary", "jira:SYN-12", { summary: "x" }, null)),
+    unsent(/no stable ID to check/),
+  );
+  assert.deepEqual(jira.writes(), []);
+});
+
+test("a write whose credentials fail never goes out, and the failure names no secret", async () => {
+  const jira = fakeSite();
+  // The read before the write is signed; the write itself can't be.
+  let signed = 0;
+  const credential = {
+    headers: async () => {
+      signed += 1;
+      if (signed > 1) throw new Error("token abc123 has expired");
+      return { Authorization: "Basic x" };
+    },
+  };
+  const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+    const path = new URL(String(url)).pathname + new URL(String(url)).search;
+    const answer = await jira.transport({
+      method: (init?.method ?? "GET") as JiraRequest["method"],
+      path,
+      ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+    });
+    return new Response(JSON.stringify(answer.body), { status: answer.status });
+  };
+  const signedWriter = jiraWriter({
+    transport: restTransport({ site, credential, fetch }),
+    project: "SYN",
+    log: () => {},
+  });
+  await assert.rejects(
+    signedWriter.apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
+    (error) => unsent(/credentials/)(error) && !String(error).includes("abc123"),
+  );
+  assert.equal(signed, 2);
+  assert.deepEqual(jira.writes(), []);
 });

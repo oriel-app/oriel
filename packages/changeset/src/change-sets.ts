@@ -1026,11 +1026,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           result = await writerOf(kind).apply(request);
         } catch (error) {
           const said = `${message(error).replace(/\.$/, "")}.`;
-          // The source answered and changed nothing: the row is unsent again,
-          // unless an earlier send of it went unchecked and may still be there.
+          // Nothing landed: the source changed nothing, or the write was never
+          // sent. The row is unsent again, unless an earlier send of it went
+          // unchecked and may still be there.
           if (error instanceof SourceRefused) {
-            rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", said);
-            report.failed.push({ mutationId, error: said });
+            const why = error.sent ? said : `${notSent}${said}`;
+            rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", why);
+            report.failed.push({ mutationId, error: why });
             return report;
           }
           return fail(mutationId, `${said}${unsure}`);
@@ -1486,13 +1488,34 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 const unheard =
   /^(?:fetch failed|The operation was aborted due to timeout|This operation was aborted)\.?(?: ([\s\S]*))?$/;
 
+// How apply stores a write that was never sent: a read or a check before it
+// failed.
+const notSent = "Nothing was sent: ";
+// A request and how the source answered it, as the writer reports one.
+const answer =
+  /^(GET|PUT|POST|DELETE) \S+: (?:(\d{3})|unexpected response \([^)]*\))\.?(?: ([\s\S]*))?$/;
+
+// Why a write that was never sent failed, as a person reads it.
+function plainUnsent(why: string): string {
+  if (unheard.test(why))
+    return "Oriel couldn't reach the source before sending this, so nothing was sent.";
+  const read = answer.exec(why);
+  if (read?.[1] !== "GET") return `${notSent}${why}`;
+  const [, , status, said = ""] = read;
+  const first = "Oriel couldn't read the item before sending this, so nothing was sent";
+  if (status === undefined) return `${first}: the source answered in a shape Oriel can't read.`;
+  return said.trim() ? `${first}: ${said.trim()}` : `${first} (the source answered ${status}).`;
+}
+
 // A reason a change stopped, as a person reads it. A source's answer, as
 // apply stores it ("PUT /rest/…: 400 What it said."), loses its request line
 // and status code and keeps what the source said; a send that got no answer
-// says so; a send's mark (when it was sent, and its nonce) is Oriel's
-// bookkeeping and goes. Oriel's own reasons are already plain.
+// says so; a write never sent says so, and why; a send's mark (when it was
+// sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
+// are already plain.
 export function plainError(error: string): string {
   const bare = error.replace(sendMark, "");
+  if (bare.startsWith(notSent)) return plainUnsent(bare.slice(notSent.length));
   const lost = unheard.exec(bare);
   if (lost) return ["Oriel sent this and didn't hear back.", lost[1]].filter(Boolean).join(" ");
   const answered = /^(?:GET|PUT|POST|DELETE) \S+: (\d{3})\.?(?: ([\s\S]*))?$/.exec(bare);

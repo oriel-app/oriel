@@ -29,7 +29,9 @@ const removable = (steps: NextStep[]) =>
 function refuseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   jira.hooks.before = (_request, n) => {
     if (n === call)
-      throw new SourceRefused("PUT /rest/api/3/issue/SYN-3: 400 SYN-3 can't be changed right now");
+      throw new SourceRefused("PUT /rest/api/3/issue/SYN-3: 400 SYN-3 can't be changed right now", {
+        sent: true,
+      });
   };
 }
 
@@ -305,6 +307,49 @@ test("a reason a change stopped reads as plain words, from the forms apply store
     ),
     "Sent to Jira, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.",
   );
+  // A write never sent says so, and why, without the request line.
+  assert.equal(
+    plainError("Nothing was sent: GET /rest/api/3/issue/SYN-9: 403 You can't see SYN-9."),
+    "Oriel couldn't read the item before sending this, so nothing was sent: You can't see SYN-9.",
+  );
+  assert.equal(
+    plainError("Nothing was sent: GET /rest/api/3/issue/SYN-9: 500."),
+    "Oriel couldn't read the item before sending this, so nothing was sent (the source answered 500).",
+  );
+  assert.equal(
+    plainError(
+      "Nothing was sent: GET /rest/api/3/issue/SYN-9: unexpected response ($.key: expected a string).",
+    ),
+    "Oriel couldn't read the item before sending this, so nothing was sent: the source answered in a shape Oriel can't read.",
+  );
+  assert.equal(
+    plainError("Nothing was sent: fetch failed."),
+    "Oriel couldn't reach the source before sending this, so nothing was sent.",
+  );
+  assert.equal(
+    plainError("Nothing was sent: SYN's board has no points field to estimate in."),
+    "Nothing was sent: SYN's board has no points field to estimate in.",
+  );
   const own = "SYN-99 was removed from the group after this was captured, so it wasn't sent.";
   assert.equal(plainError(own), own);
+});
+
+test("a write never sent, because a read before it failed, is unsent and says so", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-3", 3)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // SYN-3 can't be seen by the time apply reads it.
+  jira.hide("SYN-3");
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  const row = (await changeSets.get(set.id))?.mutations[0];
+  assert.equal(row?.status, "pending");
+  assert.equal(plainError(row?.error ?? ""), "Nothing was sent: jira:SYN-3 is gone from Jira.");
+  // Nothing may have landed, so it can still be rejected, and no warning.
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["retry", "reject"]);
+  assert.equal(
+    db.prepare("select status from mutations where id = ?").get(mutationId)?.status,
+    "pending",
+  );
 });

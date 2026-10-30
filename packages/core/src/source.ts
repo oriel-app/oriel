@@ -152,13 +152,17 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
 }
 
-// What `apply` throws when the source answered the write itself and made no
-// change, as Jira does with a 4xx: nothing landed, so it can be sent again.
-// Anything else thrown once the write went out may mean it landed.
+// What `apply` throws when nothing was sent or changed: the write never went
+// out (a read before it, or building the request, failed), or the source
+// answered it and made no change, as Jira does with a 4xx. Nothing landed,
+// so it can be sent again. `sent` says which. Anything else `apply` throws
+// may mean the write landed.
 export class SourceRefused extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly sent: boolean;
+  constructor(message: string, options: { sent: boolean; cause?: unknown }) {
+    super(message, { cause: options.cause });
     this.name = "SourceRefused";
+    this.sent = options.sent;
   }
 }
 

@@ -42,7 +42,7 @@ import {
   projectOf,
   rawField,
 } from "./rest.ts";
-import { failure, type JiraRequest, type Transport } from "./transport.ts";
+import { failure, type JiraRequest, type JiraResponse, type Transport } from "./transport.ts";
 
 // Only this entry hands out a transport that can write.
 export { restTransport, type Transport } from "./transport.ts";
@@ -56,6 +56,7 @@ export type JiraWriterOptions = {
 
 // A write's target: an item's handle and the stable ID it must have.
 type Target = { id: ItemId<"jira">; stableId: string } | null;
+type Send = (request: JiraRequest) => Promise<JiraResponse>;
 
 const issueFields = ["summary", "description", "points", "assignee", "epic"] as const;
 type IssueField = (typeof issueFields)[number];
@@ -91,14 +92,22 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   const { transport, log } = options;
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
 
-  // Each write is one request. A 4xx to it is Jira refusing it, having made
-  // no change; any other failure may have landed.
-  const send = async (request: JiraRequest) => {
-    const response = await transport(request);
-    if (response.status >= 400 && response.status <= 499)
-      throw new SourceRefused(failure(request, response).message);
-    if (response.status < 200 || response.status > 299) throw failure(request, response);
-    return response;
+  // Each write is one request, its `send`. A 4xx to it is Jira refusing it,
+  // having made no change; any other failure of it may have landed. Each
+  // apply gets its own, which notes when the write went out: anything that
+  // fails before then (a read, a check, the request's credentials) sent
+  // nothing.
+  const sender = () => {
+    const state = { sent: false };
+    const send: Send = async (request) => {
+      state.sent = true;
+      const response = await transport(request);
+      if (response.status >= 400 && response.status <= 499)
+        throw new SourceRefused(failure(request, response).message, { sent: true });
+      if (response.status < 200 || response.status > 299) throw failure(request, response);
+      return response;
+    };
+    return { send, state };
   };
 
   const pointsFields = new Map<string, Promise<string | undefined>>();
@@ -203,6 +212,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   // Reads before, sends, reads after.
   const edit = async (
+    send: Send,
     target: Target,
     names: readonly string[],
     request: (key: string, before: FieldValues) => Promise<JiraRequest>,
@@ -218,7 +228,10 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     body: { fields },
   });
 
-  const createStory = async (args: JiraArgs<"createStory">): Promise<WriteResult<"jira">> => {
+  const createStory = async (
+    send: Send,
+    args: JiraArgs<"createStory">,
+  ): Promise<WriteResult<"jira">> => {
     const epic = args.epic === null ? null : parseItemId(args.epic);
     if (args.epic !== null && epic?.source !== "jira")
       throw new Error("createStory: epic must be a Jira item ID, like jira:SYN-1");
@@ -257,51 +270,57 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return found;
   };
 
-  const write = (op: JiraOp, target: Target, args: unknown): Promise<WriteResult<"jira">> => {
+  const write = (
+    send: Send,
+    op: JiraOp,
+    target: Target,
+    args: unknown,
+  ): Promise<WriteResult<"jira">> => {
     switch (op) {
       case "createStory":
-        return createStory(valid(jiraOps.createStory.args, args, op));
+        return createStory(send, valid(jiraOps.createStory.args, args, op));
       case "setSummary": {
         const { summary } = valid(jiraOps.setSummary.args, args, op);
-        return edit(target, ["summary"], async (key) => put(key, { summary }));
+        return edit(send, target, ["summary"], async (key) => put(key, { summary }));
       }
       case "setDescription": {
         const { description } = valid(jiraOps.setDescription.args, args, op);
-        return edit(target, ["description"], async (key) =>
+        return edit(send, target, ["description"], async (key) =>
           put(key, { description: textToAdf(description) }),
         );
       }
       case "setEstimate": {
         const { points } = valid(jiraOps.setEstimate.args, args, op);
-        return edit(target, ["points"], async (key) =>
+        return edit(send, target, ["points"], async (key) =>
           put(key, { [await requirePoints(projectOf(key))]: points }),
         );
       }
       case "setAssignee": {
         const { accountId } = valid(jiraOps.setAssignee.args, args, op);
-        return edit(target, ["assignee"], async (key) => ({
+        return edit(send, target, ["assignee"], async (key) => ({
           method: "PUT",
           path: `${api}/issue/${key}/assignee`,
           body: { accountId },
         }));
       }
       case "addLink":
-        return addLink(target, valid(jiraOps.addLink.args, args, op));
+        return addLink(send, target, valid(jiraOps.addLink.args, args, op));
       case "removeLink": {
         const { linkId } = valid(jiraOps.removeLink.args, args, op);
         const name = linkField(linkId);
-        return edit(target, [name], async (key, before) => {
+        return edit(send, target, [name], async (key, before) => {
           if (before[name] === null) throw new Error(`removeLink: ${key} has no link ${linkId}`);
           return { method: "DELETE", path: `${api}/issue/${key}/remotelink/${linkId}` };
         });
       }
       case "deleteItem":
         valid(jiraOps.deleteItem.args, args, op);
-        return deleteItem(target);
+        return deleteItem(send, target);
     }
   };
 
   const addLink = async (
+    send: Send,
     target: Target,
     { url, title }: JiraArgs<"addLink">,
   ): Promise<WriteResult<"jira">> => {
@@ -317,7 +336,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 
-  const deleteItem = async (target: Target): Promise<WriteResult<"jira">> => {
+  const deleteItem = async (send: Send, target: Target): Promise<WriteResult<"jira">> => {
     const before = await existing(target, issueFields);
     await send({ method: "DELETE", path: `${api}/issue/${before.key}` });
     return {
@@ -330,16 +349,23 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   return {
     kind: "jira",
     // A target must come with the stable ID it is expected to have, and a
-    // create with none.
+    // create with none. A failure before the write went out sent nothing.
     apply: async ({ op, target, expectedStableId, args }) => {
-      if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
-      if (target === null) {
-        if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
-        return write(op, null, args);
+      const { send, state } = sender();
+      try {
+        if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
+        if (target === null) {
+          if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
+          return await write(send, op, null, args);
+        }
+        if (expectedStableId === null)
+          throw new Error(`${op}: no stable ID to check ${target} against`);
+        return await write(send, op, { id: target, stableId: expectedStableId }, args);
+      } catch (error) {
+        if (state.sent || error instanceof SourceRefused) throw error;
+        const said = error instanceof Error ? error.message : String(error);
+        throw new SourceRefused(said, { sent: false, cause: error });
       }
-      if (expectedStableId === null)
-        throw new Error(`${op}: no stable ID to check ${target} against`);
-      return write(op, { id: target, stableId: expectedStableId }, args);
     },
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
