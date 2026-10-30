@@ -309,8 +309,10 @@ function Origin({ origin }: { origin: ClusterRow["origin"] }) {
   );
 }
 
+// Points only where an item has an estimate: a cluster of files has none to
+// sum, which isn't zero.
 function ClusterPoints({ row }: { row: ClusterRow }) {
-  const estimated = row.count - row.unestimated;
+  const { estimated } = row;
   const unestimated = row.unestimated > 0 && (
     <span class="unestimated">{row.unestimated} unestimated</span>
   );

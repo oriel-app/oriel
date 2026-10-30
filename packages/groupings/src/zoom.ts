@@ -92,6 +92,7 @@ export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<Clu
         anchor: anchor ? itemRow(anchor, now, sources) : null,
         count: items.length,
         points: items.reduce((sum, item) => sum + (item.facets.estimate ?? 0), 0),
+        estimated: items.filter((item) => typeof item.facets.estimate === "number").length,
         // Only an item whose source estimates can lack an estimate.
         unestimated: items.filter((item) => item.facets.estimate === null).length,
         status,

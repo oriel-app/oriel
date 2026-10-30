@@ -12,6 +12,7 @@ function cluster(key: string): ClusterView {
       anchor: null,
       count: 0,
       points: 0,
+      estimated: 0,
       unestimated: 0,
       status: { todo: 0, "in-progress": 0, done: 0 },
     },
