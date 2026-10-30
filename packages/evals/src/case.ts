@@ -133,9 +133,10 @@ const evalCaseShape = object({
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
   // approved. It is checked and listed, never run.
   waiting: optional(text),
-  // What the agent gets wrong here, as a live round found it: a known
-  // failure, which doesn't fail CI's replay until the case passes.
-  failing: optional(text),
+  // What the agent gets wrong here, as a live round found it: the one grader
+  // it fails, and why. Failing that grader alone doesn't fail CI's replay;
+  // failing any other, or passing, does.
+  failing: optional(object({ grader: graderName, why: text })),
   prompt: text,
   expect: atLeastOne(expectation),
 });
@@ -160,6 +161,8 @@ function rules(evalCase: EvalCase): Issue[] {
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
     found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
+  if (evalCase.failing && !graders.includes(evalCase.failing.grader))
+    found.push({ path: "$.failing.grader", message: "the case expects nothing of that grader" });
   graders.forEach((grader, i) => {
     if (graders.indexOf(grader) !== i)
       found.push({ path: `$.expect[${i}].grader`, message: "one expectation per grader" });

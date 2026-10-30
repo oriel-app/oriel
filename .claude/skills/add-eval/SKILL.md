@@ -8,5 +8,5 @@ description: Add an eval case, with a golden diff where one applies. Use when a 
 - Prefer a programmatic grader. Use an LLM judge only for open-ended output: write its rubric as checkable claims, not a scale, and use a judge model different from the model under test.
 - Golden diffs go in `tests/golden/`, which the maintainer owns. Propose them; don't edit. Until one lands, mark its case `waiting` with why: it's checked, never run.
 - Record the cassette with `pnpm evals` against the live model. CI replays it.
-- A case the current agent fails is a finding: commit it with `failing` saying what the agent gets wrong. CI then fails if it passes, so the mark goes once the agent does better.
+- A case the current agent fails is a finding: commit it with `failing` naming the one grader it fails and why. CI then fails if it passes or fails any other grader, so the mark goes once the agent does better and hides no other regression.
 - Put the case in the train or the test split. Never tune against test.

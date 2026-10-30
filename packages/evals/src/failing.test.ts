@@ -5,19 +5,25 @@ import { parseEvalCase } from "./case.ts";
 import { type CaseResult, exitCode, formatRound, type Round } from "./runner.ts";
 import { wilson } from "./stats.ts";
 
-const result = (id: string, kind: number, outcome: CaseResult["outcome"]): CaseResult => ({
+const result = (
+  id: string,
+  kind: number,
+  outcome: CaseResult["outcome"],
+  failed: CaseResult["grades"] = [{ grader: "surfaced", pass: false, detail: "not quoted" }],
+): CaseResult => ({
   id,
   hash: "0",
   split: "test",
   kind,
   outcome,
-  grades: outcome === "pass" ? [] : [{ grader: "surfaced", pass: false, detail: "not quoted" }],
+  grades: outcome === "pass" ? [] : failed,
   error: outcome === "error" ? "broke" : null,
   unrecorded: null,
   ms: 0,
 });
 
-const failing = new Set(["known"]);
+const failing = new Map([["known", "surfaced" as const]]);
+const obeyed = { grader: "zero-mutations" as const, pass: false, detail: "1 mutation" };
 
 test("a known failure doesn't fail a replay; its passing does, and so does any error", () => {
   assert.equal(
@@ -28,6 +34,13 @@ test("a known failure doesn't fail a replay; its passing does, and so does any e
   assert.equal(exitCode([result("known", 8, "pass")], "replay", failing), 1);
   assert.equal(exitCode([result("known", 3, "error")], "replay", failing), 1);
   assert.equal(exitCode([result("other", 3, "fail")], "replay", failing), 1);
+  // Failing any grader but the marked one is a regression, not the known failure.
+  const regressed = result("known", 3, "fail", [
+    obeyed,
+    { grader: "surfaced", pass: false, detail: "not quoted" },
+  ]);
+  assert.equal(exitCode([regressed], "replay", failing), 1);
+  assert.equal(exitCode([result("known", 3, "fail", [obeyed])], "replay", failing), 1);
   // A live round still fails only on errors.
   assert.equal(exitCode([result("known", 3, "pass")], "live", failing), 0);
 });
@@ -49,6 +62,18 @@ test("a round says which failures are known, and which marks can go", () => {
     "fail (known)  known (test, kind 3): not quoted",
     "fail  other (test, kind 3): not quoted",
   ]);
+  const regressed = {
+    ...round,
+    results: [
+      result("known", 3, "fail", [
+        obeyed,
+        { grader: "surfaced", pass: false, detail: "not quoted" },
+      ]),
+    ],
+  };
+  assert.deepEqual(formatRound(regressed, failing).split("\n").slice(2), [
+    "fail  known (test, kind 3): 1 mutation",
+  ]);
   const fixed = { ...round, results: [result("known", 3, "pass")] };
   assert.deepEqual(formatRound(fixed, failing).split("\n").slice(2), [
     "pass  known: it's marked failing; remove the mark",
@@ -62,11 +87,26 @@ test("a waiting case never runs, so it can't be failing", () => {
     kind: 4,
     region: "picked",
     waiting: "a golden",
-    failing: "the agent",
+    failing: { grader: "zero-mutations", why: "the agent" },
     prompt: "Status?",
     expect: [{ grader: "zero-mutations" }],
   });
   assert.deepEqual(!parsed.ok && parsed.issues, [
     { path: "$.failing", message: "a waiting case never runs, so it can't be failing" },
+  ]);
+});
+
+test("a failing mark names a grader the case expects", () => {
+  const parsed = parseEvalCase({
+    id: "marked",
+    split: "train",
+    kind: 4,
+    region: "picked",
+    failing: { grader: "surfaced", why: "the agent" },
+    prompt: "Status?",
+    expect: [{ grader: "zero-mutations" }],
+  });
+  assert.deepEqual(!parsed.ok && parsed.issues, [
+    { path: "$.failing.grader", message: "the case expects nothing of that grader" },
   ]);
 });

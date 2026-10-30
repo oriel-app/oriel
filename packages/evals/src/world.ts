@@ -32,7 +32,6 @@ import { type FixtureRegion, fixtureSnapshot, jiraNamespace, type JiraFixture } 
 import {
   buildFolder,
   diskDependent,
-  fileTitle,
   type FolderFixture,
 } from "../../../scripts/fixtures/folder.ts";
 
@@ -138,7 +137,8 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
         const path = paths.get(result.id);
-        const named = path === undefined ? {} : { path, title: fileTitle(path) };
+        // A file read gives its title; a gone one has only the path it had.
+        const named = path === undefined ? {} : { path };
         if (result.status === "ok") return { id: result.id, ...named, ...result.content };
         if (result.status === "gone" && result.reason === "deleted")
           return { id: result.id, ...named, deleted: true };

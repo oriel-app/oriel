@@ -520,3 +520,27 @@ test("replay fails on any error and on failed deterministic cases; live only on 
   assert.equal(exitCode([result(3, "fail")], "live"), 0);
   assert.equal(exitCode([result(3, "error")], "live"), 1);
 });
+
+test("the judge sees what the agent's searches found, and nothing else of its transcript", async (t) => {
+  const search = {
+    kind: "search",
+    runId: "01M66FK4VDBF4JCB1G93QVQRAF",
+    hits: [{ id: "jira:SYN-99", title: "Save a card for next time" }],
+  };
+  const answered: SystemUnderTest = async () => ({
+    mutations: [],
+    reply: "A search shows SYN-99, outside this group, covers saving a card.",
+    transcript: [{ kind: "log", text: "searched" }, search],
+  });
+  const bodies: { messages: { content: string }[] }[] = [];
+  const watching: Fetch = async (input, init) => {
+    bodies.push((await new Request(input, init).json()) as (typeof bodies)[number]);
+    return judge(true)(input, init);
+  };
+  await runRound(
+    options(t, { cases: [zoom], system: answered, transport: () => uncommitted(watching) }),
+  );
+  const content = bodies[0]?.messages[0]?.content ?? "";
+  const document = JSON.parse(content.split("\n\nClaims:\n")[0] ?? "");
+  assert.deepEqual(document.searches, [search]);
+});

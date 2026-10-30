@@ -122,7 +122,7 @@ test("search reaches both sources, files at a fixed location, never a twin the d
   }
 });
 
-test("the judge's evidence: items as their sources hold them, files by path and title, the gone ones said", async (t) => {
+test("the judge's evidence: items as their sources hold them, files by path, the gone ones said", async (t) => {
   const { evidence } = await world(t, {
     region: regionNamed("picked"),
     files: ["plans/q3-launch-notes.md", "meeting-notes.md"],
@@ -135,7 +135,6 @@ test("the judge's evidence: items as their sources hold them, files by path and 
   assert.deepEqual(items[5], {
     id: fileId("plans/q3-launch-notes.md"),
     path: "plans/q3-launch-notes.md",
-    title: "q3-launch-notes",
     deleted: true,
   });
   assert.deepEqual(Object.keys(items[6] ?? {}), ["id", "path", "title", "text", "note"]);

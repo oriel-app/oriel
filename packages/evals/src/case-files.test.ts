@@ -162,10 +162,11 @@ test("a round names a file by its title, and the judge gets files as evidence", 
     region: Record<string, unknown>[];
   };
   assert.deepEqual(
-    region.map((item) => [item["title"], item["deleted"] ?? false]),
+    region.map((item) => [item["path"], item["title"], item["deleted"] ?? false]),
     [
-      ["meeting-notes", false],
-      ["q3-launch-notes", true],
+      ["meeting-notes.md", "meeting-notes", false],
+      // A gone file has only the path it had: no title it no longer has.
+      ["plans/q3-launch-notes.md", undefined, true],
     ],
   );
 });

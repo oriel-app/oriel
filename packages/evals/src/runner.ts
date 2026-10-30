@@ -24,6 +24,7 @@ import { canonicalJson } from "./canonical.ts";
 import {
   capturedMutation,
   type EvalCase,
+  type GraderName,
   graderName,
   isJudged,
   type LoadedCase,
@@ -88,8 +89,11 @@ export const caseResult = object({
 });
 export type CaseResult = Infer<typeof caseResult>;
 
+// A case's `waiting` and `failing` marks are notes about the agent, not the
+// case, so marking or unmarking it still compares with the round before.
 export function caseHash(loaded: LoadedCase): string {
-  const content = canonicalJson({ case: loaded.case, golden: loaded.golden });
+  const { waiting: _waiting, failing: _failing, ...graded } = loaded.case;
+  const content = canonicalJson({ case: graded, golden: loaded.golden });
   return createHash("sha256").update(content).digest("hex");
 }
 
@@ -230,6 +234,7 @@ async function grade(
           claims: expectation.claims,
           prompt: loaded.case.prompt,
           region: await evidence(loaded, options),
+          searches: searchesOf(output.transcript),
           reply: output.reply,
           model: options.judgeModel,
           fetch: transport,
@@ -238,6 +243,16 @@ async function grade(
     }
   }
   return grades;
+}
+
+// What the agent's searches found, run by run, so the judge can tell reach
+// that searched from reach that didn't.
+function searchesOf(transcript: readonly unknown[]): unknown[] {
+  return transcript.flatMap((event) =>
+    typeof event === "object" && event !== null && "kind" in event && event.kind === "search"
+      ? [event]
+      : [],
+  );
 }
 
 // The region's items as their sources hold them once the case's edits are
@@ -323,8 +338,20 @@ function summarize(results: readonly CaseResult[], options: RoundOptions): Summa
   };
 }
 
-// `failing`: the IDs of cases marked as known failures of the agent.
-export function formatRound(round: Round, failing: ReadonlySet<string> = new Set()): string {
+// Cases marked `failing`, by ID: the grader each is known to fail.
+export type Failing = ReadonlyMap<string, GraderName>;
+
+// A known failure fails the marked grader and no other.
+function knownFailure(r: CaseResult, failing: Failing): boolean {
+  const marked = failing.get(r.id);
+  return (
+    marked !== undefined &&
+    r.outcome === "fail" &&
+    r.grades.every((g) => g.pass || g.grader === marked)
+  );
+}
+
+export function formatRound(round: Round, failing: Failing = new Map()): string {
   const lines = splits.map((s) => {
     const r = round.summary.splits[s];
     const extra = r.errored ? `, ${r.errored} errored` : "";
@@ -332,33 +359,36 @@ export function formatRound(round: Round, failing: ReadonlySet<string> = new Set
   });
   for (const r of round.results) {
     if (r.unrecorded) lines.push(`unrecorded  ${r.id}: ${r.unrecorded}`);
-    const known = failing.has(r.id);
     if (r.outcome === "pass") {
-      if (known) lines.push(`pass  ${r.id}: it's marked failing; remove the mark`);
+      if (failing.has(r.id)) lines.push(`pass  ${r.id}: it's marked failing; remove the mark`);
       continue;
     }
-    const why = r.error ?? r.grades.find((g) => !g.pass)?.detail ?? "";
-    const label = known && r.outcome === "fail" ? "fail (known)" : r.outcome;
-    lines.push(`${label}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`);
+    const known = knownFailure(r, failing);
+    // Past a known failure, name what else broke.
+    const marked = known ? undefined : failing.get(r.id);
+    const why = r.error ?? r.grades.find((g) => !g.pass && g.grader !== marked)?.detail ?? "";
+    lines.push(
+      `${known ? "fail (known)" : r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`,
+    );
   }
   return lines.join("\n");
 }
 
 // CI replays to guard the pipeline, not the model's judgement (SPEC §8): any
 // error fails, and so does a failed deterministic case; a failed judged case
-// does not. A case in `failing` is a known failure of the agent: failing
-// doesn't fail a replay, but passing does, so the mark goes once the agent
-// does better and can't hide a later regression. A live round fails only on
-// errors.
+// does not. A case in `failing` is a known failure of one grader: failing
+// that grader alone doesn't fail a replay, but failing another or passing
+// does, so the mark goes once the agent does better and can't hide a
+// different regression. A live round fails only on errors.
 export function exitCode(
   results: readonly CaseResult[],
   mode: "live" | "replay",
-  failing: ReadonlySet<string> = new Set(),
+  failing: Failing = new Map(),
 ): number {
   const broken = results.some((r) => {
     if (r.outcome === "error") return true;
     if (mode === "live") return false;
-    if (failing.has(r.id)) return r.outcome === "pass";
+    if (failing.has(r.id)) return !knownFailure(r, failing);
     return r.outcome === "fail" && !isJudged(r.kind);
   });
   return broken ? 1 : 0;
