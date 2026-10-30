@@ -150,6 +150,13 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   apply(request: Approved<WriteRequest<K>>): Promise<WriteResult<K>>;
   // Current values, for revert's conflict check.
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
+  // Current values, with the stable ID of the item the handle names now, so
+  // a caller can tell its item from one that took the handle since. "gone"
+  // when the item can't be read, which tells nothing about what it holds.
+  read(
+    id: ItemId<K>,
+    fields: readonly string[],
+  ): Promise<{ stableId: string; values: FieldValues } | "gone">;
 }
 
 // What `apply` throws when nothing was sent or changed: the write never went

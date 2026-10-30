@@ -180,7 +180,7 @@ export function store(db: DatabaseSync) {
     "update mutations set preview = ? where id = ? and status != 'applied'",
   );
   const clearPreviews = db.prepare(
-    "update mutations set preview = null where change_set_id = ? and status != 'applied'",
+    "update mutations set preview = null where change_set_id = ? and status = 'pending'",
   );
   const updateApplied = db.prepare(`
     update mutations set status = 'applied', applied = ?, error = null
@@ -381,7 +381,9 @@ export function store(db: DatabaseSync) {
       updatePreview.run(JSON.stringify(preview), mutationId);
     },
 
-    // After an edit, every unapplied row needs a fresh diff before approval.
+    // After an edit, every unsent row needs a fresh diff before approval. A
+    // sent row keeps what the diff showed when it was approved: its source
+    // may hold the change by now, so a fresh read can't show what was there.
     clearPreviews(changeSetId: Ulid): void {
       clearPreviews.run(changeSetId);
     },

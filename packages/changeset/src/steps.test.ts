@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { type CapturedMutation, type NextStep, SourceRefused, type Ulid } from "@oriel/core";
 import { groupStore } from "@oriel/db";
 import { plainError, sendLeaseMs } from "./change-sets.ts";
-import { approve, nth, setup } from "./testing.ts";
+import { approve, nth, preview, setup, status } from "./testing.ts";
 
 const estimate = (target: string, points: number): CapturedMutation => ({
   op: "setEstimate",
@@ -540,4 +540,73 @@ test("a write never sent, because a read before it failed, is unsent and says so
     db.prepare("select status from mutations where id = ?").get(mutationId)?.status,
     "pending",
   );
+});
+
+test("a sent change Oriel can't check stays may-have-landed: an item it can't read", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-3", 3)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  // SYN-3 can't be read now (deleted, moved, or a 403): it may hold the
+  // change or not, so the row stays sent, and isn't sent again.
+  jira.hide("SYN-3");
+  const report = await changeSets.apply(set.id);
+  assert.match(nth(report.failed, 0).error, /couldn't tell whether SYN-3 already holds this/);
+  assert.equal(status(db, mutationId), "failed");
+  assert.equal(jira.calls.length, 1);
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["retry", "dismiss"]);
+  assert.deepEqual((await changeSets.dismiss(set.id)).warnings, [
+    "This may already be in Jira: check SYN-3",
+  ]);
+});
+
+test("a sent change Oriel can't check stays may-have-landed: a key another item took", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // The write lands and its answer is lost; then another item takes SYN-21,
+  // holding the same estimate. That isn't Oriel's write in place.
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  jira.reuse("SYN-21", "99999");
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  assert.match(nth(report.failed, 0).error, /couldn't tell whether SYN-21 already holds this/);
+  assert.equal(status(db, mutationId), "failed");
+  assert.equal(jira.calls.length, 1);
+  assert.ok(!kinds(await changeSets.nextSteps(set.id)).includes("reject"));
+});
+
+test("a change sent with no answer shows what it was approved from, not what landed", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const was = jira.issue("SYN-3")?.points ?? null;
+  assert.notEqual(was, 8);
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 8),
+    estimate("jira:SYN-8", 1),
+  ]);
+  const [, sent, rest] = set.mutations.map((m) => m.id) as [Ulid, Ulid, Ulid];
+  await approve(changeSets, set.id);
+  // SYN-3's write lands; its answer doesn't.
+  jira.hooks.after = (_request, n) => {
+    if (n === 2) throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  assert.equal(jira.issue("SYN-3")?.points, 8);
+  const line = async () => nth((await changeSets.diff(set.id)).lines, 1);
+  assert.deepEqual((await line()).fields, [{ name: "points", before: was, after: 8 }]);
+  assert.doesNotMatch((await line()).sentence, /from 8 points to 8 points/);
+  // Neither a later diff nor an edit replaces what it was approved from.
+  await changeSets.edit(set.id, { remove: [rest] });
+  await changeSets.diff(set.id);
+  assert.deepEqual(preview(db, sent), { points: was });
+  assert.deepEqual((await line()).fields, [{ name: "points", before: was, after: 8 }]);
 });

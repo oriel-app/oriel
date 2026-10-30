@@ -534,7 +534,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         values = state.get(m.target) ?? {};
         subject = { kind: "new", ref: m.target, title: text(values[catalogue.titleField]) };
       }
-      const before = Object.fromEntries(Object.keys(after).map((f) => [f, values[f] ?? null]));
+      // A row sent with no answer may have landed, so the source may hold
+      // its value already: it shows what the person approved it from.
+      const shown = m.status === "failed" && m.preview?.[goneMark] !== true ? m.preview : null;
+      const before = Object.fromEntries(
+        Object.keys(after).map((f) => [f, (shown ? shown[f] : values[f]) ?? null]),
+      );
       lines.push({
         mutationId: m.id,
         sentence: await spec.describe(m.args, context(subject, before)),
@@ -551,13 +556,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // before values, or that the item couldn't be read. Approval requires a diff
   // since the last edit and none of its lines gone; a later render that reads
   // the item again replaces a gone line. Not while the change set is approved
-  // (a rejection reopens it), and not if its rows changed while the diff was
-  // rendering.
+  // (a rejection reopens it), not if its rows changed while the diff was
+  // rendering, and not over a sent row's: that stays what it was approved
+  // from, since what landed may show now.
   const keepPreview = (set: ChangeSet, rendered: { diff: Diff; gone: Set<Ulid> }): void =>
     transaction(db, () => {
       const now = rows.load(set.id);
       if (!now || now.hash !== set.hash || now.decision?.kind === "approved") return;
-      const open = new Set(now.mutations.filter((m) => m.status !== "applied").map((m) => m.id));
+      const open = new Set(
+        now.mutations
+          .filter((m) => m.status === "pending" || (m.status === "failed" && m.preview === null))
+          .map((m) => m.id),
+      );
       for (const line of rendered.diff.lines) {
         if (!open.has(line.mutationId)) continue;
         rows.setPreview(
@@ -732,27 +742,30 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return `${key(target)} was removed from the group after this was captured, so it wasn't sent.`;
   };
 
-  // A set op whose value is already in place, as when an earlier send landed
-  // but its answer was lost: the result to record without sending, or null.
-  // Its `before` leaves the field out. Oriel can't know whether the value is
-  // its own write or someone else's, so a revert can't put it back, and
-  // reports a conflict rather than overwrite.
+  // Whether a set op's value is already in place, as when an earlier send
+  // landed but its answer was lost: the result to record without sending;
+  // "absent" when its own item was read and holds something else; "unknown"
+  // when Oriel couldn't tell (the item can't be read, or its handle names
+  // another item now, or Oriel doesn't know which item it should be). The
+  // result's `before` leaves the field out. Oriel can't know whether the
+  // value is its own write or someone else's, so a revert can't put it back.
   const inPlace = async (
     m: MutationRecord,
     set: ChangeSet,
     kind: SourceKind,
     spec: OpSpec,
     target: ItemId,
-  ): Promise<AppliedValue | null> => {
+  ): Promise<AppliedValue | "absent" | "unknown"> => {
     const after = spec.after(m.args);
     const fields = Object.keys(after);
     const updated = catalogueFor(specs, kind).updatedField;
-    const current = await writerOf(kind).current(target, [...fields, updated]);
-    if (current === "gone") return null;
-    if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
-      return null;
     const stableId = stableIdFor(m, set, target);
-    if (stableId === null) return null;
+    if (stableId === null) return "unknown";
+    const found = await writerOf(kind).read(target, [...fields, updated]);
+    if (found === "gone" || found.stableId !== stableId) return "unknown";
+    const current = found.values;
+    if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
+      return "absent";
     return {
       item: { id: target, stableId },
       before: {},
@@ -844,13 +857,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // Where apply would send a row now, or why it wouldn't, short of reading
   // the source. Apply checks each row with this before sending it, and its
   // guard checks the first unapplied one. A set op sent before may have
-  // landed: apply first checks whether it is in place, and records it if so,
-  // whatever the group or region holds now; only once `inPlaceChecked` do
-  // those stop it, and it is unsent again.
+  // landed: apply first checks whether it is in place (`checked`), and
+  // records it if so, whatever the group or region holds now. Only then do
+  // those stop it; and it is unsent again only if it was found absent.
   const sendPlan = (
     m: MutationRecord,
     set: ChangeSet,
-    inPlaceChecked = false,
+    checked: "no" | "absent" | "unknown" = "no",
   ): { refusal: Refusal } | { target: ItemId | null; stableId: string | null } => {
     const { kind, spec } = mustSpec(specs, m, set.mutations);
     if (!hasWriter(kind))
@@ -868,7 +881,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         code: "refused" as const,
         message,
         stop: m.id,
-        ...(sentBefore && inPlaceChecked ? { unsent: true as const } : {}),
+        ...(sentBefore && checked === "absent" ? { unsent: true as const } : {}),
       },
     });
     // Arguments stored before the source's catalogue tightened may no longer
@@ -887,7 +900,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     if ("failed" in where) return stop(where.failed);
     // The writer refuses a target whose handle names another item by now.
     const stableId = where.target === null ? null : stableIdFor(m, set, where.target);
-    if (sentBefore && spec.idempotent && where.target !== null && !inPlaceChecked)
+    if (sentBefore && spec.idempotent && where.target !== null && checked === "no")
       return { target: where.target, stableId };
     if (where.target !== null && stableId === null)
       return stop(
@@ -1033,11 +1046,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
   // Dismiss: ends a change set that started landing, or may have. One that
   // nothing landed from is rejected instead.
-  const dismissRefusal = (set: ChangeSet): Refusal | null => {
+  // A set already rejected or dismissed is "done": dismissing it again
+  // changes nothing, and it isn't offered.
+  const dismissRefusal = (set: ChangeSet): Refusal | "done" | null => {
     const refused = (message: string): Refusal => ({ code: "refused", message });
     return (
       busy(set) ??
-      decided(set) ??
+      (set.decision?.kind === "rejected" ? "done" : null) ??
       (set.mutations.every((m) => m.status === "applied")
         ? refused("every change in this change set has applied; nothing is left to dismiss")
         : null) ??
@@ -1093,6 +1108,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const step = mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied);
       if ("refused" in step)
         return refused(`mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`);
+      // What it would put back must pass the catalogue as it is now.
+      const kind = parseItemId(m.applied.item.id)?.source;
+      const back =
+        kind && hasOp(specs, kind, step.op) ? catalogueFor(specs, kind).ops[step.op] : undefined;
+      if (!back?.args(step.args).ok)
+        return refused(
+          `mutation ${m.seq} (${m.op}) can't be reverted: what it would put back is no longer a valid change`,
+        );
     }
     return null;
   };
@@ -1184,18 +1207,26 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let plan = sendPlan(m, set);
       if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
       const writes = Object.keys(spec.after(m.args));
-      // A write that already landed is recorded. Once checked, an earlier
-      // send of it is known not to be in place.
-      const checkedFirst = spec.idempotent && plan.target !== null;
+      // A write that already landed is recorded. Found absent from its own
+      // item, an earlier send of it is known not to have landed; if Oriel
+      // couldn't tell, it may have, so it isn't sent again.
+      let inPlaceFound: "no" | "absent" | "unknown" = "no";
       if (spec.idempotent && plan.target !== null) {
         const result = await inPlace(m, set, kind, spec, plan.target);
-        if (result) {
+        if (typeof result === "object") {
           ({ m } = approved(id, mutationId));
           if (!m) continue;
           rows.markApplied(mutationId, m, result);
           report.applied.push(mutationId);
           continue;
         }
+        inPlaceFound = result;
+        if (wasSent && result === "unknown")
+          return stopAt(mutationId, {
+            code: "refused",
+            message: `Oriel couldn't tell whether ${key(plan.target)} already holds this: it can't be read, or names another item now. It may already be in ${source}, so it wasn't sent again.`,
+            stop: mutationId,
+          });
       }
       if (m.reverts) {
         const conflicts = await recheck(m.reverts);
@@ -1215,7 +1246,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
-      plan = sendPlan(m, set, checkedFirst);
+      plan = sendPlan(m, set, inPlaceFound);
       if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
       const request = mint({
         mutationId: m.id,
@@ -1251,7 +1282,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         // unchecked and may still be there.
         if (error instanceof SourceRefused) {
           const why = error.sent ? said : `${notSent}${said}`;
-          rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", why);
+          rows.markRefused(
+            mutationId,
+            wasSent && inPlaceFound !== "absent" ? "failed" : "pending",
+            why,
+          );
           report.failed.push({ mutationId, error: why });
           return report;
         }
@@ -1599,8 +1634,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     async dismiss(id) {
       const result = transaction(db, () => {
         const current = mustLoad(id);
-        if (current.decision?.kind === "rejected") return { set: current, dismissed: false };
         const refusal = dismissRefusal(current);
+        if (refusal === "done") return { set: current, dismissed: false };
         if (refusal) refuse(refusal);
         const { now, ms } = at();
         rows.insertDecision({

@@ -269,6 +269,11 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
       return result;
     },
     current,
+    async read(id, fields) {
+      await hooks.read?.(id);
+      const issue = find(id);
+      return issue ? { stableId: issue.id, values: pick(issue, fields) } : "gone";
+    },
   };
 
   const reader: FieldReader<"jira"> = {
@@ -307,6 +312,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
       const found = touch(key).links.find((l) => l.linkId === linkId);
       if (!found) throw new Error(`no link ${linkId} on ${key}`);
       found.title = title;
+    },
+    // Another item takes the key: what it holds stays, its stable ID doesn't.
+    reuse(key: string, stableId: string) {
+      touch(key).id = stableId;
     },
     // The item can't be seen (deleted, moved or forbidden), then can again.
     hide(key: string) {

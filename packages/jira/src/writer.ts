@@ -371,5 +371,9 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;
     },
+    read: async (id, fields) => {
+      const found = await values(keyOf(id), fields);
+      return found === "gone" ? "gone" : { stableId: found.stableId, values: found.values };
+    },
   };
 }

@@ -132,6 +132,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const writer: SourceWriter<"jira"> = {
     kind: "jira",
     current: jira.writer.current,
+    read: jira.writer.read,
     apply(request) {
       const row = rows.mutation(request.mutationId);
       const set = row ? rows.load(row.changeSetId) : null;
