@@ -371,6 +371,7 @@ export function fixtureSnapshot(
       description: issue.description,
       comments,
       links: issue.links.map((link) => ({ ...link })),
+      title: issue.summary,
       text: jiraText({ summary: issue.summary, description: issue.description, comments }),
     });
   }

@@ -177,6 +177,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
           url: link.object.url,
           title: link.object.title ?? link.object.url,
         })),
+        title: summary,
         text: jiraText({ summary, description, comments }),
       },
     };

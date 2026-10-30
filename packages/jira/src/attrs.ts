@@ -48,8 +48,9 @@ export type JiraContent = {
   description: string;
   comments: { author: string; body: string; at: Instant }[];
   links: { linkId: string; url: string; title: string }[];
-  // The summary, description and comments as one plain text, which is what
-  // any item's read returns.
+  // What any item's read returns: the summary as the title, and the summary,
+  // description and comments as one plain text.
+  title: string;
   text: string;
 };
 
@@ -85,6 +86,7 @@ export const jiraContent = object({
     }),
   ),
   links: array(object({ linkId: string, url: string, title: string })),
+  title: string,
   text: string,
 }) satisfies Validator<JiraContent>;
 

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { type ItemId, itemId } from "@oriel/core";
-import { buildFolder, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { buildFolder, fileTitle, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { replacedNote, tooLarge } from "./open.ts";
 import { folderSource } from "./source.ts";
 import { folderA, keptLog } from "./testing.ts";
@@ -111,8 +111,11 @@ test("reads give each listed file's text and refuse every path the walk skipped"
     assert.equal(result.status, "ok", path);
     if (result.status !== "ok") continue;
     const file = fixture.files.find((f) => f.path.normalize("NFC") === path.normalize("NFC"));
+    // A file's title is its name, as the walk found it.
+    const title = fileTitle(path);
+    assert.equal(result.content.title, title, path);
     if (path === "exports/full-export.md")
-      assert.deepEqual(result.content, tooLarge(BigInt(maxFileBytes + 1)));
+      assert.deepEqual(result.content, { title, ...tooLarge(BigInt(maxFileBytes + 1)) });
     else if (file?.latin1 !== undefined) {
       assert.equal(result.content.note, replacedNote);
       assert.equal(
@@ -120,7 +123,7 @@ test("reads give each listed file's text and refuse every path the walk skipped"
         new TextDecoder().decode(Buffer.from(file.latin1, "latin1")),
       );
       assert.match(result.content.text, /Caf� menu/);
-    } else assert.deepEqual(result.content, { text: file?.text, note: null }, path);
+    } else assert.deepEqual(result.content, { title, text: file?.text, note: null }, path);
   }
 });
 

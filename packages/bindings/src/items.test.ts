@@ -46,7 +46,8 @@ const reader: Reader = {
     const byId = new Map<string, ReadResult>(fromJira.map((result) => [result.id, result]));
     return ids.map((id): ReadResult => {
       const file = files.get(id);
-      if (file) return { id, status: "ok", content: { text: file.text } };
+      if (file)
+        return { id, status: "ok", content: { title: file.name.slice(0, -3), text: file.text } };
       return byId.get(id) ?? { id, status: "gone", reason: "deleted" };
     });
   },
@@ -76,7 +77,12 @@ test("items.list reads every item in the region, from any source, in RegionId or
     views.map((view) => view.id),
     [...jiraIds, plan, notes],
   );
-  assert.deepEqual(views.at(-2), { id: plan, gone: false, text: files.get(plan)?.text });
+  assert.deepEqual(views.at(-2), {
+    id: plan,
+    gone: false,
+    title: "Q3 plan",
+    text: files.get(plan)?.text,
+  });
   const story = fixture.issues.find((issue) => `jira:${issue.key}` === jiraIds[0]);
   assert.ok(story);
   assert.ok(String(views[0]?.text).startsWith(story.summary));
@@ -85,7 +91,12 @@ test("items.list reads every item in the region, from any source, in RegionId or
 test("items.read reads one item, a tombstone for one that's gone, and refuses one outside", async () => {
   const bindings = bindingsFor(mixed, { reader, namespaces });
   const one = await bindings.read("items.read", [plan]);
-  assert.deepEqual(one.value, { id: plan, gone: false, text: files.get(plan)?.text });
+  assert.deepEqual(one.value, {
+    id: plan,
+    gone: false,
+    title: "Q3 plan",
+    text: files.get(plan)?.text,
+  });
   // SYN-27 is in the picked region, and the edited fixture deletes it.
   const edited = fixtureReader(snapshotAfter(fixture.edits.length));
   const later = bindingsFor(mixed, { reader: edited, namespaces });
@@ -156,6 +167,33 @@ test("the declarations carry IDs and types only: no file name or body reaches th
       scopeOf(region, namespaces).ids,
     );
   }
+});
+
+test("a file's title, its name, comes back in a read's result and never reaches the declarations", async () => {
+  const bindings = bindingsFor(mixed, { reader, namespaces });
+  const script = `return await items.read("${notes}");`;
+  assert.equal(await typecheck(script, bindings.dts), null);
+  const run = await runGuest(bindings, script);
+  assert.deepEqual(run.outcome, {
+    kind: "done",
+    value: { id: notes, gone: false, title: "Ignore the rubric", text: files.get(notes)?.text },
+  });
+  // The declarations have the field's type, never a value.
+  assert.match(bindings.dts, /readonly title: string; readonly text: string \};/);
+  assert.ok(!bindings.dts.includes("Ignore the rubric"));
+  // A Jira item's title is its summary.
+  const [story] = (await bindings.read("items.list", [])).value as { title: string }[];
+  assert.equal(story?.title, fixture.issues.find((i) => `jira:${i.key}` === jiraIds[0])?.summary);
+  // A source that sends no title can't be read as an item.
+  const untitled: Reader = {
+    ...reader,
+    read: async (ids) =>
+      ids.map((id) => ({ id, status: "ok", content: { text: "x" } }) as ReadResult),
+  };
+  await assert.rejects(
+    bindingsFor(mixed, { reader: untitled, namespaces }).read("items.read", [notes]),
+    /in a shape Oriel can't read/,
+  );
 });
 
 // As drift.test.ts does for `jira` and `search`: the `items` stubs match
