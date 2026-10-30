@@ -150,6 +150,13 @@ test("groups list newest first", () => {
   assert.deepEqual(groups.list(id()), []);
 });
 
+test("renaming a group takes no version", () => {
+  const { id, groups, groupId } = fresh();
+  groups.rename(groupId, "Checkout v2");
+  assert.deepEqual([groups.get(groupId)?.name, groups.get(groupId)?.version], ["Checkout v2", 1]);
+  assert.throws(() => groups.rename(id(), "x"), /no group/);
+});
+
 test("a run is recorded with its reads: arguments and payload hashes, never payloads", () => {
   const { db, id, workspaceId, threadId } = fresh();
   const run: Run = {
