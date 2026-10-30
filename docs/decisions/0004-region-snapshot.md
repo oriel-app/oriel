@@ -1,6 +1,6 @@
 # 0004 Region snapshot, not live camera
 
-Accepted 2026-10-28.
+Accepted 2026-10-28. Amended by 0018: a thread follows its group, so its region is a versioned snapshot that grows when the user allows items in, never because the camera moved.
 
 **Decision.** A thread is pinned to the set of item IDs captured when it was created, not to whatever is on screen.
 

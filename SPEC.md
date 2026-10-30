@@ -8,18 +8,18 @@ This file is the spec. Keep it current: when a decision here changes, change it 
 
 ## 1. What Oriel is
 
-An agentic workspace for product and engineering managers. Think "bring your own harness", but the user's "repo" is Jira (later Confluence, Slack, calendar), not a filesystem.
+An agentic workspace for product and engineering managers. Think "bring your own harness", but the user's "repo" is whatever they curate into groups, not a filesystem: Jira or Linear issues, a Slack thread, a Google Doc, a markdown file on disk, a note a teammate shares. Oriel is not opinionated about what goes into a group.
 
 The problem is the on-ramp, not capability. PMs already have MCP into their systems and still don't start, because every current tool opens with a terminal, a blank prompt, a permission dialog and a git branch. Oriel's answer is **point, don't prompt**: the user points at things in a window that shows their spread-out spaces together, asks about what they're pointing at, and gets a PR-like review of anything the agent wants to change. The first five minutes are the product.
 
 Core ideas, in priority order:
 
-0. **The window.** Everything from every connected source in one place, grouped the way the PM thinks (by epic, project, person, "stuck"), with a thread one click away from any group. In phase 1 the window is a grouped list; the canvas (phase 2) is a second layout for the same window, not a different product.
-1. **Region-scoped chat.** A thread is pinned to a region: a set of item IDs snapshotted at creation, never the live camera. The agent gets a typed TypeScript module whose functions are partially applied over the region's IDs (`jira.listStories()` already has `epicKey` bound) and writes code against it in a sandbox. No long tool lists.
+0. **The window.** Everything from every connected source in one place, where the user curates items into groups. Groupings (by epic, project, person, "stuck") are lenses for finding things, and a cluster becomes a group in one click. A thread is one click away from any group. In phase 1 the window is a grouped list; the canvas (phase 2) is a second layout for the same window, not a different product.
+1. **Group-scoped chat.** A thread is pinned to a group, never the live camera. Its region is a versioned snapshot of the group: an item the user allows into the group later reaches the group's open threads as a new version, with a visible marker in the chat, never silently. The agent gets a typed TypeScript module whose functions are partially applied over the region's IDs (`jira.listStories()` already has `epicKey` bound; `items.read()` works for any item) and writes code against it in a sandbox. No long tool lists.
 2. **Change sets, not writes.** In the sandbox, reads proxy live; writes are captured (create story, update description, set estimate). The user sees a diff, approves, we replay. No approve, no write, ever. Every applied change set stores its reverse diff and is revertible. Every change set has a shareable review link that opens the diff and an approve button; this is how Oriel reaches Slack, Teams and email without a bot.
 3. **Thread states:** working / done (change set applied) / handed off (assignee changed or external link attached) / dropped (auto after 7 days idle). The inbox is these threads.
 4. **Semantic zoom.** Epic card ↔ story list ↔ fullscreen story. A zoomed-out view is a generated summary, so trust at the coarse level is the central product risk. Flag any place you invent a hierarchy or summary the source doesn't have.
-5. **Right rail:** one generated summary per region with "open in Jira" links and a stale marker when the index lags.
+5. **Right rail:** one generated summary per region with links that open each item in its source, and a stale marker when the index lags.
 6. **Escape hatch:** `search()` reaches the rest of the window (anything indexed outside the region). Results are read-only and render as a distinct block in the transcript.
 7. **Canvas** is phase 2, and we build it ourselves (see §6).
 
@@ -27,33 +27,35 @@ Core ideas, in priority order:
 
 - **you**: the agent reading this and changing Oriel. **we / maintainer**: @vibdev.
 - **user**: the PM/EM using Oriel. **agent**: the model Oriel runs inside a thread (may also be you, in tests).
-- **source**: an external system (Jira). **item**: one record from a source, addressed by a source-qualified ID (`jira:ORL-12`).
-- **region**: a snapshotted set of item IDs. **thread**: a region + chat + change sets.
+- **source**: anything that provides items: a tracker (Jira, Linear), a chat thread, a document, a folder of files, a shared note. Only some sources can be written to. **item**: one record from a source, addressed by a source-qualified ID (`jira:ORL-12`), with a title, a location, an update time and its content as text. Source-specific fields stay in the source's adapter.
+- **group**: a user-curated set of items from any source. It grows as the user allows items in. **region**: a versioned snapshot of a group's item IDs; a run uses one version. **thread**: a group + chat + change sets.
 - **binding**: a function partially applied over region IDs. **change set**: captured mutations awaiting approval; each **mutation** has a status and, once applied, an external ID.
-- **grouping**: a function from items to clusters. Jira's epic tree is one grouping, not the model. **zoom level**: a renderer plus optional summarizer for a grouping.
+- **grouping**: a function from items to clusters, a lens for finding items to put in a group. Jira's epic tree is one grouping, not the model. **zoom level**: a renderer plus optional summarizer for a grouping.
 - **snapshot**: a versioned read of a source into the index. **run**: one sandbox execution within a thread.
 
 ## 3. Phases
 
 - **Phase 0 — repo setup** (§10). Done first, as its own PR, so every later agent inherits it.
-- **Phase 1 — the engine and the window, no canvas.** Jira sync → the window as a grouped list → region from a selected group or hand-picked IDs → generated per-region `.d.ts` → sandbox run with read proxy and write capture → change-set diff, approve, replay, revert, review link → inbox with four states → right-rail summary → eval harness. First internal slice can be a CLI; the pilot deliverable is the window page.
-- **After the first end-to-end slice:** add a synthetic flat source (Slack-like channel, ~200 messages, threads, no hierarchy) to prove `Source`, `Grouping` and `ZoomLevel` are separate interfaces.
+- **Phase 1 — the engine and the window, no canvas.** Jira and folder sync → the window as a grouped list → a group from a cluster or hand-picked items → a thread on the group → generated per-region `.d.ts` → sandbox run with read proxy and write capture → change-set diff, approve, replay, revert, review link → inbox with four states → right-rail summary → eval harness. The pilot deliverable is the window page.
+- **The first end-to-end slice has two sources,** Jira and a local folder of markdown files, so no Jira shape leaks into core, groupings or bindings. A synthetic chat channel (~200 messages, threads, no hierarchy) follows, for conversation-shaped content.
 - **Phase 2 — canvas** (own implementation) and a local-first client layer. Only if phase 1 feels magical to pilot PMs rather than like a Jira filter with extra steps.
 
 ## 4. MLP scope (phase 1, build only this)
 
-- One real source: Jira Cloud via direct REST with an API token against the throwaway site **oriel.atlassian.net**, behind a `JiraSource` interface designed so an MCP-backed implementation can replace it later without touching bindings or change sets.
+- Two sources:
+  - Jira Cloud via direct REST with an API token against the throwaway site **oriel.atlassian.net**, behind a `JiraSource` interface designed so an MCP-backed implementation can replace it later without touching bindings or change sets.
+  - A local folder of markdown files, read-only, limited to the folder the user picks (decision 0019).
 - The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a _separate_ project on the same site. Synthetic data lives in `SYN` (company-managed Scrum, estimates in Story Points); dogfooding happens in `OA` (team-managed), so the adapter meets both project styles. The adapter discovers field IDs at run time and never hardcodes them.
-- **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days or unestimated). Filters. Click a group to open a region thread on it; select items by hand for an ad-hoc region.
+- **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days or unestimated). Filters. Turn a cluster into a group in one click, or pick items by hand into a new or existing group; open a thread on any group.
 - Two zoom levels, hand-built, inside the list: epic row ↔ story list ↔ fullscreen story.
-- Region chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
+- Group chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
 - Inbox with the four states. Right-rail summary with stale marker.
 - **Onboarding budget:** connect Jira → see your epics → ask one question → approve one change in under five minutes, with the word "token" appearing at most once. Measured, not aspired to.
 - Eval harness (§8).
 
 Where it runs: localhost first, dogfooded with mock PM personas against the maintainer's own Jira and model credentials. Once it feels good, each pilot PM gets one maintainer-run instance (e.g. Fly.io), single workspace, reached through a secret link rather than a login.
 
-Out of scope: other real sources, multiplayer/invites, canvas or free-form placement, browser automation, desktop app, hosted keys, login, billing, Slack or any chat-platform bot.
+Out of scope: real sources beyond Jira and a local folder, sharing notes between users, multiplayer/invites, canvas or free-form placement, browser automation, desktop app, hosted keys, login, billing, Slack or any chat-platform bot.
 
 ## 5. Hard constraints
 
