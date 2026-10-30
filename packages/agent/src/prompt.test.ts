@@ -130,3 +130,22 @@ test("history: a round the user's next message followed is closed too", () => {
   );
   assert.equal(shape(messages)[3]?.[1], roundClosed);
 });
+
+test("history: an assistant message with no text is absent, so it doesn't stand in for a reply", () => {
+  const messages = threadMessages(
+    [
+      asked,
+      { role: "run", runId, summary: "Returned: []", at: t0 },
+      { role: "assistant", text: "", at: t0 },
+      { role: "assistant", text: "  \n", at: t0 },
+    ],
+    "And now?",
+  );
+  assert.deepEqual(shape(messages), [
+    ["user", "What changed?"],
+    ["assistant", "", `history_1: ${stand}`],
+    ["tool", "history_1: Returned: []"],
+    ["assistant", roundClosed],
+    ["user", "And now?"],
+  ]);
+});

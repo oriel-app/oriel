@@ -70,6 +70,8 @@ export const roundClosed = "Noted.";
 // result: the call is the run's own script when the history kept it, else a
 // stand-in script that is only a comment. Markers before the first user
 // message are dropped: the region the tool declares is already the latest.
+// An assistant message with no text is treated as absent: it would send
+// nothing, so it can't close a round.
 export function threadMessages(history: readonly ChatMessage[], text: string): ModelMessage[] {
   const messages: ModelMessage[] = [];
   let pending: { calls: ToolCall[]; results: ToolResult[] } | null = null;
@@ -85,6 +87,7 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
     pending = null;
   };
   history.forEach((message, i) => {
+    if (message.role === "assistant" && !message.text.trim()) return;
     if (message.role === "user" || message.role === "assistant") {
       flush(message.role);
       messages.push(

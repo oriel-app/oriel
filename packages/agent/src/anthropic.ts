@@ -74,7 +74,8 @@ function toApi(messages: readonly ModelMessage[]): ApiMessage[] {
     if (message.role === "user")
       return [{ role: "user", content: [{ type: "text", text: message.text }] }];
     if (message.role === "tool") return [{ role: "user", content: message.results.map(result) }];
-    const content: Block[] = message.text ? [{ type: "text", text: message.text }] : [];
+    // The API refuses a text block that is empty or only whitespace.
+    const content: Block[] = message.text.trim() ? [{ type: "text", text: message.text }] : [];
     for (const call of message.calls)
       content.push({ type: "tool_use", id: call.id, name: call.name, input: call.input });
     return content.length ? [{ role: "assistant", content }] : [];
@@ -238,8 +239,8 @@ async function* readResponse(
   const calls: ToolCall[] = [];
   ordered.forEach(({ block, json }, i) => {
     if (block.type === "fallback" || (i < boundary && block.type !== "text")) return;
-    // The API refuses an empty text block on the way back.
-    if (block.type === "text" && !text(block.text)) return;
+    // The API refuses an empty or whitespace-only text block on the way back.
+    if (block.type === "text" && !text(block.text).trim()) return;
     if (block.type === "tool_use") {
       if (typeof block.id !== "string" || typeof block.name !== "string")
         throw malformed("a tool call has no ID or name");

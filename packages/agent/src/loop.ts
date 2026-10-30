@@ -267,7 +267,11 @@ async function* turn(
         break;
       }
       if (end.stop === "max-tokens") {
-        yield failed("The model's reply was cut off before it finished.");
+        // A provider sends the smaller of its own ceiling and the bound, so
+        // output that reached the bound was cut off by the thread's budget.
+        yield end.usage.outputTokens >= maxOutputTokens
+          ? tokenLimit()
+          : failed("The model's reply was cut off before it finished.");
         break;
       }
       if (end.stop === "other") {
@@ -275,8 +279,12 @@ async function* turn(
         break;
       }
       if (!calls.length) break;
-      if (total() >= limits.maxTokensPerThread) {
-        yield tokenLimit();
+      // A run whose result no response could read would act for nothing: no
+      // reads, no record, no change set.
+      if (room(nextInput) < minResponseTokens) {
+        yield limit(
+          `This thread ran out of its budget of ${limits.maxTokensPerThread} tokens before the agent could act on the request.`,
+        );
         break;
       }
       results = [];

@@ -272,6 +272,9 @@ test("the turn cap: a thread at its limit refuses the message before the model s
   assert.equal(model.conversations.length, 0);
 });
 
+const outOfBudget = (tokens: number) =>
+  `This thread ran out of its budget of ${tokens} tokens before the agent could act on the request.`;
+
 test("the token cap: a response that reaches it runs nothing more", async () => {
   const { turn, records } = harness([{ scripts: [unestimated], usage: tokens(9_000, 1_000) }], {
     limits: { maxTokensPerThread: 10_000 },
@@ -279,13 +282,64 @@ test("the token cap: a response that reaches it runs nothing more", async () => 
   const events = await turn({ region: weather });
 
   assert.deepEqual(events, [
+    { kind: "limit", reason: outOfBudget(10_000) },
+    { kind: "done", usage: { inputTokens: 9_000, outputTokens: 1_000 } },
+  ]);
+  assert.deepEqual(records.runs, []);
+});
+
+test("the token cap: a call no response could read the result of doesn't run, so it proposes nothing", async () => {
+  const { turn, model, records } = harness(
+    [
+      {
+        scripts: [`jira.setEstimate("jira:SYN-26", 3);\nreturn "proposed";`],
+        usage: tokens(6_000, 500),
+      },
+      { text: ["Never asked for."] },
+    ],
+    { limits: { maxTokensPerThread: 15_000 } },
+  );
+  const events = await turn({ region: weather, text: "Estimate SYN-26 at 3." });
+
+  // 15000 - 6500 used - 6500 the next request would send again = 2000 left:
+  // too little to read the run's result, so the run never starts.
+  assert.deepEqual(events, [
+    { kind: "limit", reason: outOfBudget(15_000) },
+    { kind: "done", usage: { inputTokens: 6_000, outputTokens: 500 } },
+  ]);
+  assert.deepEqual(records.runs, []);
+  assert.deepEqual(records.changeSets, []);
+  assert.equal(model.unplayed(), 1);
+});
+
+test("the token cap: a reply the budget cut off is a limit, and one the provider's own ceiling cut off an error", async () => {
+  // The response may use all 10000; its output reaching that bound means the
+  // thread's budget, not the provider's own ceiling, cut it off.
+  const budget = harness(
+    [{ text: ["Two stor"], stop: "max-tokens", usage: tokens(2_000, 10_000) }],
+    { limits: { maxTokensPerThread: 10_000 } },
+  );
+  const cutByBudget = await budget.turn({ region: weather });
+  assert.deepEqual(budget.model.conversations[0]?.maxOutputTokens, [10_000]);
+
+  // Here it stopped well short of the bound, at the provider's ceiling.
+  const ceiling = harness(
+    [{ text: ["Two stor"], stop: "max-tokens", usage: tokens(2_000, 4_000) }],
+    { limits: { maxTokensPerThread: 1_000_000 } },
+  );
+  const cutByCeiling = await ceiling.turn({ region: weather });
+
+  assert.deepEqual(only(cutByBudget, "limit"), [
     {
       kind: "limit",
       reason: "This thread has reached its budget of 10000 tokens, so the agent stopped.",
     },
-    { kind: "done", usage: { inputTokens: 9_000, outputTokens: 1_000 } },
   ]);
-  assert.deepEqual(records.runs, []);
+  assert.deepEqual(only(cutByBudget, "error"), []);
+  assert.deepEqual(only(cutByCeiling, "limit"), []);
+  assert.deepEqual(only(cutByCeiling, "error"), [
+    { kind: "error", message: "The model's reply was cut off before it finished." },
+  ]);
 });
 
 test("the token cap counts what the thread's earlier turns spent, and asks for nothing it can't fit", async () => {
@@ -300,7 +354,7 @@ test("the token cap counts what the thread's earlier turns spent, and asks for n
 });
 
 test("the token cap bounds each response by what's left after the input it already knows of", async () => {
-  const { turn, model } = harness(
+  const { turn, model, records } = harness(
     [
       { scripts: [unestimated], usage: tokens(4_000, 1_000) },
       { scripts: [unestimated], usage: tokens(6_000, 500) },
@@ -312,17 +366,13 @@ test("the token cap bounds each response by what's left after the input it alrea
 
   // 20000 - 2000 spent = 18000 for the first. Then 20000 - 2000 - 5000 used -
   // 5000 the next request sends again = 8000. Then 20000 - 2000 - 11500 -
-  // 6500 = 0: too little, so the turn stops before asking.
+  // 6500 = 0: no response could read the second run's result, so that run
+  // never starts and the turn stops.
   assert.deepEqual(model.conversations[0]?.maxOutputTokens, [18_000, 8_000]);
   assert.equal(model.unplayed(), 1);
-  assert.deepEqual(kinds(events), [
-    "run.started",
-    "run.finished",
-    "run.started",
-    "run.finished",
-    "limit",
-    "done",
-  ]);
+  assert.deepEqual(kinds(events), ["run.started", "run.finished", "limit", "done"]);
+  assert.deepEqual(only(events, "limit"), [{ kind: "limit", reason: outOfBudget(20_000) }]);
+  assert.equal(records.runs.length, 1);
   assert.deepEqual(events.at(-1), {
     kind: "done",
     usage: { inputTokens: 10_000, outputTokens: 1_500 },
