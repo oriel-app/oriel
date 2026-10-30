@@ -7,7 +7,9 @@
 // in memory; the other is read-only, as Oriel is without credentials. Before
 // any screenshot they get groups and threads, with runs, change sets, a
 // search and a marker, through the same JSON routes the window uses.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "playwright-core";
 import { instant } from "../packages/core/src/ids.ts";
@@ -97,6 +99,27 @@ await post(`/api/groups/${group.id}/add`, { items: ["jira:SYN-3"] });
 const readOnlyGroup = await post<{ id: string }>("/api/groups", checkout, readOnly);
 const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyGroup.id);
 
+// A folder of notes beside Jira, and a group that mixes both.
+const notes = join(realpathSync(mkdtempSync(join(tmpdir(), "oriel-shots-"))), "Launch notes");
+const note = (name: string, body: string) => {
+  mkdirSync(dirname(join(notes, name)), { recursive: true });
+  writeFileSync(join(notes, name), body);
+};
+note("Launch plan.md", "# Launch plan\n\nPhone wallets first, then saved cards.");
+note("Customer interviews.md", "Five PMs; three asked for saved cards before anything else.");
+note("research/Competitor checkout teardown.md", "How three checkouts handle a declined card.");
+await post("/api/folder", { path: notes });
+const files = server.app
+  .window("epic")
+  .clusters.flatMap((c) => c.list)
+  .filter((row) => row.id.startsWith("folder:"));
+const mixed = await post<{ id: string }>("/api/groups", {
+  kind: "picked",
+  name: "Saved cards launch",
+  items: ["jira:SYN-23", "jira:SYN-99", "jira:SYN-104", ...files.map((file) => file.id)],
+});
+const mixedThread = await ask("What's in here?", server, mixed.id);
+
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
 }
@@ -161,6 +184,28 @@ const scenes: Scene[] = [
     name: "group",
     path: `/groups/${group.id}`,
     act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "group-mixed",
+    path: `/groups/${mixed.id}`,
+    act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "thread-mixed",
+    path: `/threads/${mixedThread}`,
+    act: async (page) => {
+      await page.locator(".run summary").first().click();
+      await page.locator(".run[open] .output").first().waitFor();
+    },
+  },
+  {
+    name: "folder-add",
+    path: "/?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.getByRole("button", { name: "Use another folder" }).click();
+      await page.locator(".folder-form input").fill("~/notes/launch");
+    },
   },
   {
     name: "thread",
@@ -240,6 +285,7 @@ try {
   await browser.close();
   await server.close();
   await readOnly.close();
+  rmSync(dirname(notes), { recursive: true, force: true });
 }
 
 for (const problem of problems) console.error(problem);
