@@ -134,15 +134,27 @@ importers:
 
   packages/server:
     dependencies:
+      '@oriel/bindings':
+        specifier: workspace:*
+        version: link:../bindings
+      '@oriel/changeset':
+        specifier: workspace:*
+        version: link:../changeset
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+      '@oriel/db':
+        specifier: workspace:*
+        version: link:../db
       '@oriel/groupings':
         specifier: workspace:*
         version: link:../groupings
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@oriel/web':
         specifier: workspace:*
         version: link:../web

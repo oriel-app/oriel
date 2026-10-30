@@ -7,3 +7,4 @@ secrets/
 .claude/worktrees/
 shots/
 .evals/
+.oriel/

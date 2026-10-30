@@ -1,0 +1,211 @@
+// Runs threads' turns: one at a time per thread. Each event a turn emits is
+// stored in the thread's chat as it arrives and passed to whoever watches
+// the thread, so a turn outlives the page that started it, and a page that
+// reconnects picks up from the last entry it saw. Stopping is explicit.
+import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
+import type { Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
+import { type Agent, agentEvent, type AgentEvent, type ChatMessage } from "./agent.ts";
+
+export type ThreadEvent =
+  | { type: "message"; message: Message }
+  | { type: "status"; running: boolean };
+
+export class ThreadBusy extends Error {
+  constructor() {
+    super("The agent is still answering; stop it or wait for it to finish.");
+    this.name = "ThreadBusy";
+  }
+}
+
+export type TurnDeps = {
+  threads: ThreadStore;
+  groups: GroupStore;
+  agent: Agent;
+  emit: (event: TelemetryEvent) => void;
+  now: () => Instant;
+  newId: () => Ulid;
+  log: Log;
+};
+
+const maxSummaryChars = 2_000;
+
+// A run as history keeps it: how it ended and what it returned or why it
+// failed, cut short.
+function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): string {
+  const { result } = event;
+  const last = result.transcript.at(-1);
+  const detail =
+    last?.kind === "return"
+      ? `returned ${JSON.stringify(last.value) ?? "undefined"}`
+      : last?.kind === "error"
+        ? `failed: ${last.error.message}`
+        : "returned nothing";
+  const captured = result.mutations.length ? `; captured ${result.mutations.length} changes` : "";
+  const text = `${result.outcome}; ${detail}${captured}`;
+  return text.length > maxSummaryChars ? `${text.slice(0, maxSummaryChars - 1)}…` : text;
+}
+
+// The chat as the agent's history: the user's messages, its own replies
+// joined up, each run's summary, and markers naming items by ID only.
+export function history(
+  messages: readonly Message[],
+  markerText: (from: number, to: number) => string,
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const message of messages) {
+    if (message.role === "user") {
+      out.push({ role: "user", text: message.text, at: message.at });
+      continue;
+    }
+    if (message.role === "marker") {
+      out.push({ role: "marker", text: markerText(message.from, message.to), at: message.at });
+      continue;
+    }
+    const event = agentEvent(message.event);
+    if (!event.ok) continue;
+    const last = out.at(-1);
+    if (event.value.kind === "text") {
+      if (last?.role === "assistant") last.text += event.value.text;
+      else out.push({ role: "assistant", text: event.value.text, at: message.at });
+    }
+    if (event.value.kind === "run.finished")
+      out.push({
+        role: "run",
+        runId: event.value.runId,
+        summary: runSummary(event.value),
+        at: message.at,
+      });
+  }
+  return out;
+}
+
+export type Turns = ReturnType<typeof turns>;
+
+export function turns(deps: TurnDeps) {
+  const { threads, groups } = deps;
+  const running = new Map<Ulid, { controller: AbortController; done: Promise<void> }>();
+  const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
+
+  const publish = (threadId: Ulid, event: ThreadEvent) => {
+    for (const watcher of watchers.get(threadId) ?? []) watcher(event);
+  };
+  // Passes on the chat entry just stored at `seq`.
+  const published = (threadId: Ulid, seq: number) => {
+    const message = threads.messages(threadId, seq - 1).find((m) => m.seq === seq);
+    if (message) publish(threadId, { type: "message", message });
+  };
+
+  // What a marker tells the agent: the items added and removed, by ID.
+  const markerText = (groupId: Ulid) => (from: number, to: number) => {
+    const changes = groups.changes(groupId, from).filter((change) => change.version <= to);
+    const added = changes.flatMap((change) => change.added.map((m) => m.id));
+    const removed = changes.flatMap((change) => change.removed.map((m) => m.id));
+    return [
+      added.length ? `added ${added.join(", ")}` : "",
+      removed.length ? `removed ${removed.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+  };
+
+  const record = (threadId: Ulid, event: AgentEvent) => {
+    const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
+    published(threadId, seq);
+    if (event.kind === "search") {
+      const thread = threads.get(threadId, deps.now());
+      if (thread)
+        deps.emit({
+          name: "escape-hatch.used",
+          at: deps.now(),
+          workspaceId: thread.workspaceId,
+          threadId,
+          runId: event.runId,
+        });
+    }
+  };
+
+  const run = async (thread: Thread, text: string, seq: number, signal: AbortSignal) => {
+    const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
+    try {
+      const region = groups.region(thread.groupId, thread.regionVersion);
+      if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's group`);
+      const before = threads.messages(thread.id).filter((message) => message.seq < seq);
+      const input = {
+        thread,
+        region,
+        history: history(before, markerText(thread.groupId)),
+        text,
+      };
+      for await (const event of deps.agent.turn(input, { signal, log })) {
+        record(thread.id, event);
+        if (signal.aborted) break;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log("turn: failed", { error: message });
+      record(thread.id, {
+        kind: "error",
+        message: signal.aborted ? "Stopped." : `The agent stopped with an error: ${message}`,
+      });
+    }
+  };
+
+  return {
+    running: (threadId: Ulid): boolean => running.has(threadId),
+
+    // Calls `listener` with each new chat entry and status change until the
+    // returned function is called.
+    watch(threadId: Ulid, listener: (event: ThreadEvent) => void): () => void {
+      const set = watchers.get(threadId) ?? new Set();
+      set.add(listener);
+      watchers.set(threadId, set);
+      return () => {
+        set.delete(listener);
+        if (set.size === 0) watchers.delete(threadId);
+      };
+    },
+
+    // Threads that moved to a newer version of their group: their markers.
+    moved(moves: readonly Move[]): void {
+      for (const move of moves) published(move.threadId, move.seq);
+    },
+
+    // The user's message, and a turn to answer it, which runs on after this
+    // returns. A settled thread catches up with its group first.
+    say(threadId: Ulid, text: string): { seq: number } {
+      if (running.has(threadId)) throw new ThreadBusy();
+      const now = deps.now();
+      const said = threads.say(
+        threadId,
+        text,
+        { marker: deps.newId(), message: deps.newId() },
+        now,
+      );
+      if (said.move) published(threadId, said.move.seq);
+      published(threadId, said.seq);
+      const thread = threads.get(threadId, now);
+      if (!thread) throw new RangeError(`no thread ${threadId}`);
+      deps.emit({ name: "question.asked", at: now, workspaceId: thread.workspaceId, threadId });
+      const controller = new AbortController();
+      const done = run(thread, text, said.seq, controller.signal).finally(() => {
+        running.delete(threadId);
+        publish(threadId, { type: "status", running: false });
+      });
+      running.set(threadId, { controller, done });
+      publish(threadId, { type: "status", running: true });
+      return { seq: said.seq };
+    },
+
+    // Stops the thread's turn, if one is running.
+    stop(threadId: Ulid): boolean {
+      const turn = running.get(threadId);
+      turn?.controller.abort(new Error("Stopped."));
+      return turn !== undefined;
+    },
+
+    // Resolves once no turn is running: for shutdown, and for tests.
+    async settled(): Promise<void> {
+      while (running.size) await Promise.all([...running.values()].map((turn) => turn.done));
+    },
+  };
+}

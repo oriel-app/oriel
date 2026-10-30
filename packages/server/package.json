@@ -7,9 +7,13 @@
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"
   },
   "dependencies": {
+    "@oriel/bindings": "workspace:*",
+    "@oriel/changeset": "workspace:*",
     "@oriel/core": "workspace:*",
+    "@oriel/db": "workspace:*",
     "@oriel/groupings": "workspace:*",
     "@oriel/jira": "workspace:*",
+    "@oriel/sandbox": "workspace:*",
     "@oriel/web": "workspace:*"
   }
 }
