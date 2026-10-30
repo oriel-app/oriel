@@ -28,6 +28,7 @@ function input(text: string, items: string[]): TurnInput {
       origin: { kind: "picked" },
     },
     history: [],
+    spent: { inputTokens: 0, outputTokens: 0 },
     text,
   };
 }

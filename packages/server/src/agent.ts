@@ -49,7 +49,7 @@ export type TurnInput = {
   snapshot?: number;
   // Tokens earlier turns spent, summed from their `done` events, so the
   // thread's token cap covers the whole thread.
-  spent?: { inputTokens: number; outputTokens: number };
+  spent: { inputTokens: number; outputTokens: number };
 };
 
 export type ChatMessage =

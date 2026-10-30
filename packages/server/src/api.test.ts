@@ -455,3 +455,46 @@ test("a turn gets the index snapshot and what earlier turns spent", async (t) =>
   );
   assert.ok(inputs.every((input) => typeof input.snapshot === "number" && input.snapshot > 0));
 });
+
+// SPEC §9's cap is per thread: a stopped turn's usage, and a failed one's,
+// count toward the next turn's.
+test("what stopped and failed turns spent counts toward the next turn", async (t) => {
+  const inputs: Parameters<Agent["turn"]>[0][] = [];
+  let turn = 0;
+  const agent: Agent = {
+    async *turn(input, { signal }) {
+      inputs.push(input);
+      turn += 1;
+      if (turn === 1) {
+        // Stopped partway: its done carries the usage so far.
+        await new Promise((resolve) => signal.addEventListener("abort", resolve));
+        yield { kind: "done", usage: { inputTokens: 7, outputTokens: 1 } };
+        return;
+      }
+      if (turn === 2) {
+        yield { kind: "error", message: "the model refused" };
+        yield { kind: "done", usage: { inputTokens: 5, outputTokens: 2 } };
+        return;
+      }
+      yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
+    },
+  };
+  const app = await group(t, { agent: () => agent });
+  const { id } = json<{ id: string }>(
+    await app.post(`/api/groups/${app.groupId}/threads`, { text: "One" }),
+  );
+  await app.post(`/api/threads/${id}/stop`);
+  await app.app.settled();
+  for (const text of ["Two", "Three"]) {
+    await app.post(`/api/threads/${id}/messages`, { text });
+    await app.app.settled();
+  }
+  assert.deepEqual(
+    inputs.map((input) => input.spent),
+    [
+      { inputTokens: 0, outputTokens: 0 },
+      { inputTokens: 7, outputTokens: 1 },
+      { inputTokens: 12, outputTokens: 3 },
+    ],
+  );
+});
