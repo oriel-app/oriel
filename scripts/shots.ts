@@ -2,65 +2,100 @@
 // test. It drives the installed Chrome, downloads no browser, and writes PNGs
 // to the gitignored shots/. `pnpm shots` builds the web app first.
 //
-// The server runs on the SYN fixture in memory, with the scripted agent,
-// whose runs go to the real sandbox (Deno). Before any screenshot it makes a
-// group from a cluster and a thread on it with a run, a change set and a
-// search, through the same JSON routes the window uses.
+// The servers run on the SYN fixture in memory, with the scripted agent,
+// whose runs go to the real sandbox (Deno). One writes to SYN as a Jira site
+// in memory; the other is read-only, as Oriel is without credentials. Before
+// any screenshot they get groups and threads, with runs, change sets, a
+// search and a marker, through the same JSON routes the window uses.
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "playwright-core";
-import { serve } from "../packages/server/src/serve.ts";
+import { instant } from "../packages/core/src/ids.ts";
+import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
+import { type Serving, serve } from "../packages/server/src/serve.ts";
+import { loadJiraFixture } from "./fixtures/load.ts";
 
 type Grouping = "epic" | "assignee" | "stuck";
-type Scene = { name: string; path: string; act?(page: Page): Promise<void> };
+type Scene = { name: string; path: string; on?: Serving; act?(page: Page): Promise<void> };
 
 const out = new URL("../shots/", import.meta.url);
 mkdirSync(out, { recursive: true });
 
-const server = await serve(0);
-const origin = server.url.replace(/\/$/, "");
+const site = memorySite(loadJiraFixture(), instant(new Date()));
+const server = await serve(0, {
+  db: ":memory:",
+  jira: {
+    kind: "fixture",
+    writeTo: {
+      site: memorySiteOrigin,
+      credential: { headers: async () => ({}) },
+      project: "SYN",
+      fetch: site.fetch,
+    },
+  },
+});
+const readOnly = await serve(0);
 
-// A POST as the window sends it.
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const url = new URL(path, server.url);
-  const reply = await server.app.api(
+// A request as the window sends it.
+async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
+  const url = new URL(path, on.url);
+  const reply = await on.app.api(
     {
-      method: "POST",
+      method,
       url: url.pathname,
-      headers: { host: url.host, origin, "content-type": "application/json" },
-      body: async () => JSON.stringify(body),
+      headers: {
+        host: url.host,
+        origin: on.url.replace(/\/$/, ""),
+        "content-type": "application/json",
+      },
+      body: async () => JSON.stringify(body ?? {}),
     },
     url,
   );
   if (!reply || reply.status >= 300)
-    throw new Error(`POST ${path}: ${reply?.status} ${String(reply?.body)}`);
+    throw new Error(`${method} ${path}: ${reply?.status} ${String(reply?.body)}`);
   return JSON.parse(String(reply.body)) as T;
 }
+const post = <T>(path: string, body: unknown, on: Serving = server) =>
+  call<T>(on, "POST", path, body);
+const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
+  const view = await call<{ changeSets: { id: string }[] }>(on, "GET", `/api/threads/${threadId}`);
+  const id = view.changeSets[0]?.id;
+  if (!id) throw new Error("the scripted agent proposed no change set");
+  return id;
+};
+const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
 // SYN-1's epic cluster, keyed by the epic's stable ID.
-const group = await post<{ id: string }>("/api/groups", {
-  kind: "cluster",
-  grouping: "epic",
-  cluster: "10001",
-});
-const thread = await post<{ id: string }>(`/api/groups/${group.id}/threads`, {
-  text: "Which stories here still need estimates?",
-});
+const group = await post<{ id: string }>("/api/groups", checkout);
+const ask = async (text: string, on: Serving = server, groupId = group.id) => {
+  const opened = await post<{ id: string }>(`/api/groups/${groupId}/threads`, { text }, on);
+  await on.app.settled();
+  return opened.id;
+};
+const thread = await ask("Which stories here still need estimates?");
+await post(`/api/threads/${thread}/messages`, { text: "Find anything about weather" });
 await server.app.settled();
-await post(`/api/threads/${thread.id}/messages`, { text: "Find anything about weather" });
-await server.app.settled();
-const answered = await post<{ id: string }>(`/api/groups/${group.id}/threads`, {
-  text: "What's in here?",
-});
-await server.app.settled();
+const changeSet = await changeSetOf(server, thread);
+const link = await post<{ url: string }>(`/api/change-sets/${changeSet}/review-link`, {});
+
+// The same question, approved while Jira refuses one of the writes: the
+// change set applies partway and says where it stopped.
+const partial = await ask("Estimate what's missing");
+const partialSet = await changeSetOf(server, partial);
+site.refuse("SYN-99");
+const { hash } = await post<{ hash: string }>(`/api/change-sets/${partialSet}/diff`, {});
+await post(`/api/change-sets/${partialSet}/approve`, { hash });
+site.allow("SYN-99");
+
 // Answered, over items it needn't change: the user marks it done.
-await post(`/api/threads/${answered.id}/done`, {});
-const threadView = await (await fetch(new URL(`/api/threads/${thread.id}`, server.url))).json();
-const changeSet = (threadView as { changeSets: { id: string }[] }).changeSets[0];
-if (!changeSet) throw new Error("the scripted agent proposed no change set");
-const link = await post<{ url: string }>(`/api/change-sets/${changeSet.id}/review-link`, {});
-// A later change to the group shows in the thread as a marker.
+await post(`/api/threads/${await ask("What's in here?")}/done`, {});
+// A later change to the group shows in working threads as a marker.
 await post(`/api/groups/${group.id}/add`, { items: ["jira:SYN-3"] });
+
+// Without credentials: change sets can be reviewed and rejected only.
+const readOnlyGroup = await post<{ id: string }>("/api/groups", checkout, readOnly);
+const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyGroup.id);
 
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
@@ -129,7 +164,7 @@ const scenes: Scene[] = [
   },
   {
     name: "thread",
-    path: `/threads/${thread.id}`,
+    path: `/threads/${thread}`,
     act: async (page) => {
       await page.locator(".change-set .diff").waitFor();
       await page.locator(".search-block").waitFor();
@@ -137,12 +172,23 @@ const scenes: Scene[] = [
   },
   {
     name: "thread-run-open",
-    path: `/threads/${thread.id}`,
+    path: `/threads/${thread}`,
     act: async (page) => {
       await page.locator(".change-set .diff").waitFor();
       await page.locator(".run summary").first().click();
       await page.locator(".run[open] .code").first().waitFor();
     },
+  },
+  {
+    name: "thread-partial",
+    path: `/threads/${partial}`,
+    act: (page) => page.locator(".diff-line[data-stopped] .line-error").waitFor(),
+  },
+  {
+    name: "thread-read-only",
+    path: `/threads/${readOnlyThread}`,
+    on: readOnly,
+    act: (page) => page.locator(".read-only-note").waitFor(),
   },
   {
     name: "inbox",
@@ -181,7 +227,7 @@ try {
       });
       page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
       for (const scene of scenes) {
-        await page.goto(new URL(scene.path, server.url).href);
+        await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: true, animations: "disabled" });
@@ -193,6 +239,7 @@ try {
 } finally {
   await browser.close();
   await server.close();
+  await readOnly.close();
 }
 
 for (const problem of problems) console.error(problem);
