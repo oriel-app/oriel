@@ -907,6 +907,11 @@ a {
   background: var(--type-epic);
 }
 
+.type[data-type="doc"] {
+  border: 1.5px solid var(--text-faint);
+  background: none;
+}
+
 .title {
   overflow: hidden;
   text-overflow: ellipsis;

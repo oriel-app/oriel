@@ -36,12 +36,19 @@ export function Link(props: {
 // An item's key, linked to its source when the source gave an http(s) URL.
 export function ItemKey({ item }: { item: ItemRef }) {
   const href = safeHref(item.url);
-  if (!href) return <span class="key">{item.key}</span>;
+  const label = keyLabel(item);
+  if (!href) return <span class="key">{label}</span>;
   return (
     <a class="key source-link" href={href} target="_blank" rel="noopener noreferrer">
-      {item.key}
+      {label}
     </a>
   );
+}
+
+// What a person reads for an item's key. A file's key is a hash, which means
+// nothing to anyone, so it reads as what the item is; its title says which.
+export function keyLabel(item: { id: string; key: string }): string {
+  return item.id.startsWith("folder:") ? "File" : item.key;
 }
 
 export const stateNames: Record<ThreadStateId, string> = {

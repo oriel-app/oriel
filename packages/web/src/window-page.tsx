@@ -1,7 +1,7 @@
 // The window: clusters under a grouping, items to pick, and the user's
 // groups beside them. Controls stay out of the way until something is picked
 // or hovered.
-import { Assignee, Chevron, type Dispatch, Link, plural } from "./parts.tsx";
+import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural } from "./parts.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
@@ -371,19 +371,21 @@ function Items(props: {
 }
 
 function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; dispatch: Dispatch }) {
+  // Files carry no people or estimates (decision 0019).
+  const tracked = !item.id.startsWith("folder:");
   return (
     <li class={picked ? "item picked" : "item"}>
       <label class="pick">
         <input
           type="checkbox"
           checked={picked}
-          aria-label={`Pick ${item.key}`}
+          aria-label={`Pick ${item.title}`}
           onChange={() => dispatch({ type: "window", msg: { type: "itemToggled", id: item.id } })}
         />
       </label>
       <span class="key">
         <span class="type" data-type={item.type.toLowerCase()} title={item.type} />
-        {item.key}
+        {keyLabel(item)}
       </span>
       <span class="title" title={item.title}>
         {item.title}
@@ -391,9 +393,15 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       <span class="status" data-category={item.status?.category}>
         {item.status?.name}
       </span>
-      <Assignee name={item.assignee} />
-      <span class="points" title={item.points === null ? "Unestimated" : `${item.points} points`}>
-        {item.points ?? "–"}
+      {/* A file has no assignee or estimate to lack: those stay empty. */}
+      {tracked ? <Assignee name={item.assignee} /> : <span class="assignee" />}
+      <span
+        class="points"
+        title={
+          !tracked ? undefined : item.points === null ? "Unestimated" : `${item.points} points`
+        }
+      >
+        {tracked ? (item.points ?? "–") : ""}
       </span>
       <span
         class="idle"
