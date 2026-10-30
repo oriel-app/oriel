@@ -9,7 +9,10 @@
 // adapter itself, the composition root (packages/server), the eval harness
 // (packages/evals) and tests: other packages get a source's behaviour as
 // declarations typed by core (decision 0019). A writer import is refused by
-// both rules, wherever 0003 refuses it.
+// both rules, wherever 0003 refuses it. Packages reach each other only
+// through `@oriel/<name>` and its declared exports, never a relative path into
+// another package; a relative path into scripts/ (the fixture tooling) is
+// fine.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { sourceKinds } from "../packages/core/src/ids.ts";
@@ -80,6 +83,23 @@ function mayImportAdapter(path: string, kind: string, writer: boolean): boolean 
   return /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/.test(path);
 }
 
+// Relative specifiers in import syntax: `from "…"`, `import "…"` and
+// `import("…")`. Other strings that look like paths aren't imports.
+const relativeImports = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}\/[^"'\s]*)["']/g;
+
+// The other packages a file under packages/ imports by a relative path.
+export function crossPackageImports(path: string, text: string): string[] {
+  const own = /^packages\/([^/]+)\//.exec(path)?.[1];
+  if (!own) return [];
+  const found = new Set<string>();
+  for (const [, relative = ""] of text.matchAll(relativeImports)) {
+    const resolved = posix.normalize(posix.join(posix.dirname(path), relative));
+    const other = /^packages\/([^/]+)(?:\/|$)/.exec(resolved)?.[1];
+    if (other !== undefined && other !== own) found.add(other);
+  }
+  return [...found];
+}
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -119,6 +139,10 @@ export function problems(repo: {
           : `${path}: imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
       );
     }
+    for (const other of crossPackageImports(path, text))
+      found.add(
+        `${path}: imports packages/${other} by a relative path; packages reach each other only through @oriel/${other} and its exports`,
+      );
   }
   if (repo.claudeLink !== "AGENTS.md") {
     found.add(

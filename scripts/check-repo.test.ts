@@ -93,6 +93,7 @@ test("importing an adapter's writer anywhere but the file that builds writers is
     `packages/sandbox/src/host.ts: ${also}`,
     `packages/server/src/x.ts: ${where}`,
     `packages/server/src/x.ts: ${also}`,
+    "packages/server/src/x.ts: imports packages/jira by a relative path; packages reach each other only through @oriel/jira and its exports",
     `packages/jira/src/source.ts: ${where}`,
     `packages/jira/src/source.ts: ${also}`,
     `scripts/x.ts: ${where}`,
@@ -147,6 +148,37 @@ test("importing a source adapter outside its package, the server, evals and test
     `packages/changeset/src/x.ts: ${where("jira")}`,
     `packages/bindings/src/x.ts: ${where("folder")}`,
     `packages/sandbox/src/x.ts: ${where("jira")}`,
+    "packages/sandbox/src/x.ts: imports packages/jira by a relative path; packages reach each other only through @oriel/jira and its exports",
+  ]);
+});
+
+test("a package reaches another only through its package name, never a relative path", () => {
+  const sources = [
+    {
+      path: "packages/server/src/x.ts",
+      text: 'import { changeSetsOver } from "../../changeset/src/change-sets.ts";',
+    },
+    {
+      path: "packages/server/src/y.ts",
+      text: 'const engine = await import("../../changeset/src/change-sets.ts");',
+    },
+    { path: "packages/web/src/z.ts", text: 'export type { ItemRow } from "../../groupings";' },
+    // Allowed: the fixture tooling in scripts/, a file in the same package, a
+    // package by name, and a string that only looks like a path.
+    {
+      path: "packages/jira/src/x.test.ts",
+      text: 'import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";',
+    },
+    { path: "packages/jira/src/y.ts", text: 'import { jiraAttrs } from "../src/attrs.ts";' },
+    { path: "packages/server/src/w.ts", text: 'import { changeSets } from "@oriel/changeset";' },
+    { path: "packages/jira/src/v.test.ts", text: 'const linkId = "../../project/SYN";' },
+  ];
+  const where = (path: string, other: string) =>
+    `${path}: imports packages/${other} by a relative path; packages reach each other only through @oriel/${other} and its exports`;
+  assert.deepEqual(problems({ ...clean, sources }), [
+    where("packages/server/src/x.ts", "changeset"),
+    where("packages/server/src/y.ts", "changeset"),
+    where("packages/web/src/z.ts", "groupings"),
   ]);
 });
 
