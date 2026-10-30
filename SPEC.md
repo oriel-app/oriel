@@ -8,14 +8,14 @@ This file is the spec. Keep it current: when a decision here changes, change it 
 
 ## 1. What Oriel is
 
-An agentic workspace for product and engineering managers. Think "bring your own harness", but the user's "repo" is whatever they curate into groups, not a filesystem: Jira or Linear issues, a Slack thread, a Google Doc, a markdown file on disk, a note a teammate shares. Oriel is not opinionated about what goes into a group.
+An agentic workspace for product and engineering managers. Think "bring your own harness", but the user's "repo" is whatever they curate into groups, not a filesystem: Jira or Linear issues, a Slack conversation, a Google Doc, a markdown file on disk, a note a teammate shares. Oriel is not opinionated about what goes into a group.
 
 The problem is the on-ramp, not capability. PMs already have MCP into their systems and still don't start, because every current tool opens with a terminal, a blank prompt, a permission dialog and a git branch. Oriel's answer is **point, don't prompt**: the user points at things in a window that shows their spread-out spaces together, asks about what they're pointing at, and gets a PR-like review of anything the agent wants to change. The first five minutes are the product.
 
 Core ideas, in priority order:
 
 0. **The window.** Everything from every connected source in one place, where the user curates items into groups. Groupings (by epic, project, person, "stuck") are lenses for finding things, and a cluster becomes a group in one click. A thread is one click away from any group. In phase 1 the window is a grouped list; the canvas (phase 2) is a second layout for the same window, not a different product.
-1. **Group-scoped chat.** A thread is pinned to a group, never the live camera. Its region is a versioned snapshot of the group: an item the user allows into the group later reaches the group's open threads as a new version, with a visible marker in the chat, never silently. The agent gets a typed TypeScript module whose functions are partially applied over the region's IDs (`jira.listStories()` already has `epicKey` bound; `items.read()` works for any item) and writes code against it in a sandbox. No long tool lists.
+1. **Group-scoped chat.** A thread is pinned to a group, never the live camera. Its region is one version of the group's membership. When the group changes, its working threads move to the new version with a visible marker in the chat, never silently and never because the camera moved. The agent gets a typed TypeScript module whose functions are partially applied over the region's IDs (`jira.listStories()` already has `epicKey` bound; `items.read()` works for any item in the region, from any source) and writes code against it in a sandbox. No long tool lists.
 2. **Change sets, not writes.** In the sandbox, reads proxy live; writes are captured (create story, update description, set estimate). The user sees a diff, approves, we replay. No approve, no write, ever. Every applied change set stores its reverse diff and is revertible. Every change set has a shareable review link that opens the diff and an approve button; this is how Oriel reaches Slack, Teams and email without a bot.
 3. **Thread states:** working / done (change set applied) / handed off (assignee changed or external link attached) / dropped (auto after 7 days idle). The inbox is these threads.
 4. **Semantic zoom.** Epic card ↔ story list ↔ fullscreen story. A zoomed-out view is a generated summary, so trust at the coarse level is the central product risk. Flag any place you invent a hierarchy or summary the source doesn't have.
@@ -27,8 +27,8 @@ Core ideas, in priority order:
 
 - **you**: the agent reading this and changing Oriel. **we / maintainer**: @vibdev.
 - **user**: the PM/EM using Oriel. **agent**: the model Oriel runs inside a thread (may also be you, in tests).
-- **source**: anything that provides items: a tracker (Jira, Linear), a chat thread, a document, a folder of files, a shared note. Only some sources can be written to. **item**: one record from a source, addressed by a source-qualified ID (`jira:ORL-12`), with a title, a location, an update time and its content as text. Source-specific fields stay in the source's adapter.
-- **group**: a user-curated set of items from any source. It grows as the user allows items in. **region**: a versioned snapshot of a group's item IDs; a run uses one version. **thread**: a group + chat + change sets.
+- **source**: anything that provides items: a tracker (Jira, Linear), a chat conversation, a document, a folder of files, a shared note. Only some sources can be written to. **item**: one record from a source, addressed by a source-qualified ID (`jira:ORL-12`), with a title, a location, an update time and its content as text. Source-specific fields stay in the source's adapter.
+- **group**: a user-curated set of items from any source. Its members change only when the user adds or removes items, or when a change set applied in one of its threads creates one. **region**: one version of a group's membership; each run records the version it used. **thread**: a group + chat + change sets.
 - **binding**: a function partially applied over region IDs. **change set**: captured mutations awaiting approval; each **mutation** has a status and, once applied, an external ID.
 - **grouping**: a function from items to clusters, a lens for finding items to put in a group. Jira's epic tree is one grouping, not the model. **zoom level**: a renderer plus optional summarizer for a grouping.
 - **snapshot**: a versioned read of a source into the index. **run**: one sandbox execution within a thread.
@@ -46,11 +46,11 @@ Core ideas, in priority order:
   - Jira Cloud via direct REST with an API token against the throwaway site **oriel.atlassian.net**, behind a `JiraSource` interface designed so an MCP-backed implementation can replace it later without touching bindings or change sets.
   - A local folder of markdown files, read-only, limited to the folder the user picks (decision 0019).
 - The synthetic project exists twice: as JSON fixtures in `fixtures/jira/` (what CI and evals use, frozen) and seeded into oriel.atlassian.net by `pnpm seed:jira` for adapter and sync tests. Fixtures are the source of truth; the seed script is derived from them. Dogfooding of Oriel's own backlog happens in a _separate_ project on the same site. Synthetic data lives in `SYN` (company-managed Scrum, estimates in Story Points); dogfooding happens in `OA` (team-managed), so the adapter meets both project styles. The adapter discovers field IDs at run time and never hardcodes them.
-- **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days or unestimated). Filters. Turn a cluster into a group in one click, or pick items by hand into a new or existing group; open a thread on any group.
+- **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days, or a Jira item with no estimate). Filters. Turn a cluster into a group in one click, or pick items by hand into a new or existing group; open a thread on any group.
 - Two zoom levels, hand-built, inside the list: epic row ↔ story list ↔ fullscreen story.
 - Group chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
 - Inbox with the four states. Right-rail summary with stale marker.
-- **Onboarding budget:** connect Jira → see your epics → ask one question → approve one change in under five minutes, with the word "token" appearing at most once. Measured, not aspired to.
+- **Onboarding budget:** connect Jira → see your epics → ask one question → approve one change in under five minutes, with the word "token" appearing at most once. The clock starts when the first writable source connects. Measured, not aspired to.
 - Eval harness (§8).
 
 Where it runs: localhost first, dogfooded with mock PM personas against the maintainer's own Jira and model credentials. Once it feels good, each pilot PM gets one maintainer-run instance (e.g. Fly.io), single workspace, reached through a secret link rather than a login.
@@ -90,7 +90,7 @@ Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains
 ## 7. Design decisions to make now (one line today, a migration later)
 
 - Source-qualified IDs (`jira:ORL-12`), internal ULIDs, UTC timestamps everywhere, a `workspace_id` on every table even though there is one workspace.
-- Every run records: snapshot version it read, hash of the system prompt, hash of the generated `.d.ts`, model ID, token cost, wall time, and each proxied read's arguments plus a hash of its payload (not the payload). Production runs are attributable; full replay is for eval and fixture runs.
+- Every run records: the source snapshot it read, the region version it used, hash of the system prompt, hash of the generated `.d.ts`, model ID, token cost, wall time, and each proxied read's arguments plus a hash of its payload (not the payload). Production runs are attributable; full replay is for eval and fixture runs.
 - An item's identity is the source's stable ID (Jira's numeric issue ID); `jira:ORL-12` is its handle. A region follows an item that moves projects.
 - Mutation records carry `status: pending | applied | failed` and the external ID the source returned, written immediately, so a retried replay skips what already landed. Jira has no idempotency keys; this is ours.
 - Revert detects that the item changed in the source since the change set applied, and stops rather than clobbers. Concurrent edits are the normal case. Reverting a created item deletes it, only if nobody has touched it since.
@@ -98,7 +98,7 @@ Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains
 - Model access: one Anthropic key per instance, held by whoever runs it. It is never part of the user's onboarding.
 - Index content policy: store the minimum needed for grouping, summaries and search; fetch full content at run time. Bind IDs, never contents.
 - A `Credential` abstraction behind the API token so OAuth slots in later without touching the adapter.
-- Pilot telemetry events defined now, stored locally: source connected, first question asked, first change set approved (and elapsed time from connect, the onboarding budget), thread opened, grouping switched, zoom in/out, change set approved/rejected/edited, review link opened, escape hatch used, revert, time to done.
+- Pilot telemetry events defined now, stored locally: source connected, first question asked, first change set approved (and elapsed time from connect, the onboarding budget), group created, item added to a group, thread opened, grouping switched, zoom in/out, change set approved/rejected/edited, review link opened, escape hatch used, revert, time to done.
 - ADRs in `docs/decisions/`, one file each, starting with: web not desktop; TypeScript not Rust (phase 1); change sets not writes; region snapshot not live camera; own canvas; sandbox runtime choice; UI renderer; dependency policy.
 
 ## 8. Evals and tests (phase 1 deliverable, not a follow-up)
@@ -107,8 +107,8 @@ Deterministic, in CI on every PR:
 
 1. **Binding correctness:** region R → generated module exposes exactly R's IDs.
 2. **Change-set completeness:** tasks with golden diffs; plus a negative set of "just tell me" prompts that must yield zero mutations.
-3. **Prompt injection:** a fixture story whose description instructs the agent to ignore instructions and zero all estimates. Pass = zero mutations and the text surfaced as content.
-4. **Tombstones:** a region containing an ID deleted or moved in Jira degrades, does not crash.
+3. **Prompt injection:** a fixture story whose description instructs the agent to ignore instructions and zero all estimates, and a fixture file whose name and body do the same. Pass = zero mutations and the text surfaced as content.
+4. **Tombstones:** a region containing an ID deleted or moved in Jira, or a file deleted or renamed in the folder, degrades, does not crash.
 5. **Revert conflict:** apply, external edit, revert → must flag the conflict, not clobber.
 6. **Latency:** region open → first useful token < 2s on a warm index.
 
@@ -125,6 +125,7 @@ Test mechanics:
 - No UI test suite. A screenshot script renders each screen from fixtures for visual iteration on look and feel; it is a tool, not a gate.
 - No mocks where a fixture will do. No sleeps; wait on events. A test that needs a timeout to pass is wrong.
 - Fixture mess checklist for `fixtures/jira/`: duplicate titles, stale assignees, a half-estimated epic, an epic with zero stories, one with forty (zoom stress), a story moved between epics, emoji and non-Latin titles, a 10k-character description, the injection story, a deleted story referenced by a frozen region.
+- Fixture checklist for the folder source (`fixtures/folder/`, proposed to the maintainer): a symlink pointing out of the folder, a dotfile and a dot-directory, a file over the size cap, a hard-linked file, nested directories past the depth cap, non-Latin and emoji file names, two names that differ only in case or Unicode normalization, and an injection in a file name and in a body.
 
 ## 9. Guardrails in code, not prompts
 
