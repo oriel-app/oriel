@@ -458,7 +458,7 @@ test("the system under test gets the case's world, and the judge its region as e
   const system: SystemUnderTest = async (input) => {
     assert.equal(input.now, now);
     assert.equal(input.model, "claude-opus-5-5");
-    assert.equal(input.region.name, "picked");
+    assert.equal(input.region?.name, "picked");
     return { mutations: [], reply: "SYN-27 was deleted in Jira.", transcript: [] };
   };
   const bodies: { messages: { content: string }[] }[] = [];
@@ -476,7 +476,7 @@ test("the system under test gets the case's world, and the judge its region as e
   };
   assert.deepEqual(
     region.map((item) => item.id),
-    scope.region.items,
+    scope.region?.items,
   );
   assert.deepEqual(region[1], { id: "jira:SYN-27", deleted: true });
   assert.match(region[0]?.summary ?? "", /countdown to departure/);
@@ -519,4 +519,52 @@ test("replay fails on any error and on failed deterministic cases; live only on 
   assert.equal(exitCode([result(8, "error")], "replay"), 1);
   assert.equal(exitCode([result(3, "fail")], "live"), 0);
   assert.equal(exitCode([result(3, "error")], "live"), 1);
+});
+
+// A run that ran `reads` and found `hits`, as the agent reports it.
+const ran = (runId: string, reads: { fn: string; args: unknown[] }[], hits: unknown[]) => [
+  {
+    kind: "run.finished",
+    runId,
+    result: {
+      outcome: "ok",
+      reads: reads.map((r) => ({ ...r, ms: 1, status: "answered", outsideRegion: true })),
+      mutations: [],
+      transcript: [],
+    },
+  },
+  ...(hits.length ? [{ kind: "search", runId, hits }] : []),
+];
+
+test("the judge sees each search's queries and hits, a search that found nothing included", async (t) => {
+  const card = { id: "jira:SYN-99", title: "Save a card for next time" };
+  const answered: SystemUnderTest = async () => ({
+    mutations: [],
+    reply: "Nothing in this group covers it; a search found SYN-99.",
+    transcript: [
+      { kind: "text", text: "Searching." },
+      ...ran("run-1", [{ fn: "search", args: ["saved card payment"] }], []),
+      ...ran("run-2", [{ fn: "items.read", args: [["jira:SYN-45"]] }], []),
+      ...ran("run-3", [{ fn: "search", args: ["card"] }], [card]),
+    ],
+  });
+  const bodies: { messages: { content: string }[] }[] = [];
+  const watching: Fetch = async (input, init) => {
+    bodies.push((await new Request(input, init).json()) as (typeof bodies)[number]);
+    return judge(true)(input, init);
+  };
+  await runRound(
+    options(t, { cases: [zoom], system: answered, transport: () => uncommitted(watching) }),
+  );
+  const content = bodies[0]?.messages[0]?.content ?? "";
+  const document = JSON.parse(content.split("\n\nClaims:\n")[0] ?? "");
+  assert.deepEqual(document.searches, [
+    { queries: [["saved card payment"]], hits: [] },
+    { queries: [["card"]], hits: [card] },
+  ]);
+});
+
+test("a case's hash ignores its waiting and failing marks", () => {
+  const marked = loaded({ ...injectionInput, failing: { grader: "surfaced", why: "paraphrases" } });
+  assert.equal(caseHash(marked), caseHash(injection));
 });

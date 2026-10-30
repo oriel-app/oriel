@@ -81,10 +81,12 @@ export type SyncPage<K extends SourceKind = SourceKind, A = unknown> = {
   cursor: string | null;
 };
 
-// A live read. Every item's content has its text, so any item can be read
-// whatever its source; `C` is what else the source returns.
+// A live read. Every item's content has its title and its text, so any item
+// can be read and named whatever its source; `C` is what else the source
+// returns. Both are source content: they reach the model only in tool
+// results.
 export type ReadResult<K extends SourceKind = SourceKind, C = unknown> =
-  | { id: ItemId<K>; status: "ok"; content: { text: string } & C }
+  | { id: ItemId<K>; status: "ok"; content: { title: string; text: string } & C }
   | { id: ItemId<K>; status: "moved"; to: ItemId<K> }
   | { id: ItemId<K>; status: "gone"; reason: "deleted" | "forbidden" };
 

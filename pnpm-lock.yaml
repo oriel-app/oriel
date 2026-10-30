@@ -75,16 +75,24 @@ importers:
 
   packages/evals:
     dependencies:
-      '@oriel/core':
-        specifier: workspace:*
-        version: link:../core
-      '@oriel/jira':
-        specifier: workspace:*
-        version: link:../jira
-    devDependencies:
       '@oriel/agent':
         specifier: workspace:*
         version: link:../agent
+      '@oriel/bindings':
+        specifier: workspace:*
+        version: link:../bindings
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oriel/folder':
+        specifier: workspace:*
+        version: link:../folder
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
+      '@oriel/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
 
   packages/folder:
     dependencies:

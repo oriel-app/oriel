@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
+import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { anthropicFetch, anthropicKey, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
@@ -78,15 +79,15 @@ async function main(command: Command): Promise<number> {
     return 0;
   }
   const fixture = loadJiraFixture();
-  const { cases, problems } = loadCases(casesDir, fixture, repoRoot);
+  const folder = loadFolderFixture();
+  const { cases: loaded, problems } = loadCases(casesDir, fixture, repoRoot, folder);
   for (const problem of problems) console.error(problem);
   if (problems.length) return 1;
+  for (const { case: c } of loaded)
+    if (c.waiting) console.log(`waiting  ${c.id} (${c.split}, kind ${c.kind}): ${c.waiting}`);
+  const cases = loaded.filter((c) => c.case.waiting === undefined);
   if (!cases.length) {
-    console.log("no cases in packages/evals/cases/ yet; add one with the add-eval skill.");
-    return 0;
-  }
-  if (!system) {
-    console.log(`${cases.length} cases valid; no system under test yet (src/system.ts).`);
+    console.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
     return 0;
   }
   const baseline =
@@ -110,6 +111,7 @@ async function main(command: Command): Promise<number> {
   const round = await runRound({
     cases,
     fixture,
+    folder,
     system,
     model: command.model,
     judgeModel: command.judge,
@@ -122,11 +124,14 @@ async function main(command: Command): Promise<number> {
     now: evalNow,
     concurrency: live ? 4 : 1,
   });
+  const failing = new Map(
+    cases.flatMap((c) => (c.case.failing ? [[c.case.id, c.case.failing.grader] as const] : [])),
+  );
   console.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
-  console.log(formatRound(round));
+  console.log(formatRound(round, failing));
   console.log(`results: .evals/${id}/`);
   if (baseline) console.log(formatComparison(compareRounds(readResults(baseline), round.results)));
-  return exitCode(round.results, command.command);
+  return exitCode(round.results, command.command, failing);
 }
 
 if (import.meta.main) {

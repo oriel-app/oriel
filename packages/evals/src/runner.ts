@@ -17,12 +17,15 @@ import {
   union,
   unknown,
 } from "@oriel/core";
-import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
+import type { AgentEvent } from "@oriel/agent";
+import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
 import { canonicalJson } from "./canonical.ts";
 import {
   capturedMutation,
   type EvalCase,
+  type GraderName,
   graderName,
   isJudged,
   type LoadedCase,
@@ -39,6 +42,7 @@ import {
   gradeZeroMutations,
 } from "./graders.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
+import { buildWorld } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
@@ -46,7 +50,11 @@ import { formatRate, type Rate, wilson } from "./stats.ts";
 export type SystemInput = {
   case: EvalCase;
   fixture: JiraFixture;
-  region: FixtureRegion;
+  // The folder fixture; null when the round has none, and then no case holds
+  // files.
+  folder: FolderFixture | null;
+  // The Jira fixture region the case names, if any; its files are the case's.
+  region: FixtureRegion | null;
   // The eval clock: fixed, so prompts that depend on time still replay.
   now: Instant;
   model: string;
@@ -82,8 +90,11 @@ export const caseResult = object({
 });
 export type CaseResult = Infer<typeof caseResult>;
 
+// A case's `waiting` and `failing` marks are notes about the agent, not the
+// case, so marking or unmarking it still compares with the round before.
 export function caseHash(loaded: LoadedCase): string {
-  const content = canonicalJson({ case: loaded.case, golden: loaded.golden });
+  const { waiting: _waiting, failing: _failing, ...graded } = loaded.case;
+  const content = canonicalJson({ case: graded, golden: loaded.golden });
   return createHash("sha256").update(content).digest("hex");
 }
 
@@ -98,6 +109,8 @@ export type Round = { results: CaseResult[]; summary: Summary };
 export type RoundOptions = {
   cases: readonly LoadedCase[];
   fixture: JiraFixture;
+  // Absent: none, so no case may hold files.
+  folder?: FolderFixture | null;
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
@@ -111,9 +124,6 @@ export type RoundOptions = {
   now: Instant;
   concurrency?: number;
 };
-
-// Item URLs in the judge's evidence point here, as they do in the index.
-const site = "https://oriel.atlassian.net";
 
 export async function runRound(options: RoundOptions): Promise<Round> {
   if (sameModel(options.judgeModel, options.model))
@@ -147,6 +157,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
     const raw: unknown = await options.system({
       case: evalCase,
       fixture: options.fixture,
+      folder: options.folder ?? null,
       region: loaded.region,
       now: options.now,
       model: options.model,
@@ -212,14 +223,19 @@ async function grade(
       grades.push(gradeExactDiff(loaded.golden, output.mutations));
     }
     if (expectation.grader === "zero-mutations") grades.push(gradeZeroMutations(output.mutations));
-    if (expectation.grader === "surfaced")
-      grades.push(gradeSurfaced(expectation.item, expectation.text, output.reply));
+    if (expectation.grader === "surfaced") {
+      // A file is named by its title.
+      const named =
+        "item" in expectation ? expectation.item : { title: fileTitle(expectation.file) };
+      grades.push(gradeSurfaced(named, expectation.text, output.reply));
+    }
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({
           claims: expectation.claims,
           prompt: loaded.case.prompt,
-          region: evidence(options.fixture, loaded.region, loaded.case.edited ?? 0),
+          region: await evidence(loaded, options),
+          searches: searchesOf(output.transcript),
           reply: output.reply,
           model: options.judgeModel,
           fetch: transport,
@@ -230,14 +246,38 @@ async function grade(
   return grades;
 }
 
-// The region's items as the source holds them once the case's source edits
-// are applied; a deleted item says so.
-function evidence(fixture: JiraFixture, region: FixtureRegion, edited: number): unknown[] {
-  const { content } = fixtureSnapshot(fixture, site, edited);
-  return region.items.map((id) => {
-    const item = content.get(id);
-    return item ? { id, ...item } : { id, deleted: true };
+// Every run that searched: its queries and what they found, so the judge can
+// tell reach that searched from reach that didn't, and a search that found
+// nothing from none at all.
+function searchesOf(transcript: readonly unknown[]): unknown[] {
+  const events = transcript as readonly AgentEvent[];
+  return events.flatMap((event) => {
+    if (event.kind !== "run.finished") return [];
+    const queries = event.result.reads.filter((r) => r.fn === "search").map((r) => r.args);
+    if (!queries.length) return [];
+    const hits = events.flatMap((e) =>
+      e.kind === "search" && e.runId === event.runId ? e.hits : [],
+    );
+    return [{ queries, hits }];
   });
+}
+
+// The region's items as their sources hold them once the case's edits are
+// applied; an item that is gone says so.
+async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> {
+  const world = await buildWorld({
+    fixture: options.fixture,
+    folder: options.folder ?? null,
+    region: loaded.region,
+    files: loaded.case.files ?? [],
+    edited: loaded.case.edited ?? 0,
+    folderEdited: loaded.case.folderEdited ?? 0,
+  });
+  try {
+    return await world.evidence();
+  } finally {
+    world.close();
+  }
 }
 
 // Notes each model a caller asks for and each model a response reports. A
@@ -305,7 +345,20 @@ function summarize(results: readonly CaseResult[], options: RoundOptions): Summa
   };
 }
 
-export function formatRound(round: Round): string {
+// Cases marked `failing`, by ID: the grader each is known to fail.
+export type Failing = ReadonlyMap<string, GraderName>;
+
+// A known failure fails the marked grader and no other.
+function knownFailure(r: CaseResult, failing: Failing): boolean {
+  const marked = failing.get(r.id);
+  return (
+    marked !== undefined &&
+    r.outcome === "fail" &&
+    r.grades.every((g) => g.pass || g.grader === marked)
+  );
+}
+
+export function formatRound(round: Round, failing: Failing = new Map()): string {
   const lines = splits.map((s) => {
     const r = round.summary.splits[s];
     const extra = r.errored ? `, ${r.errored} errored` : "";
@@ -313,20 +366,39 @@ export function formatRound(round: Round): string {
   });
   for (const r of round.results) {
     if (r.unrecorded) lines.push(`unrecorded  ${r.id}: ${r.unrecorded}`);
-    if (r.outcome === "pass") continue;
-    const why = r.error ?? r.grades.find((g) => !g.pass)?.detail ?? "";
-    lines.push(`${r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`);
+    if (r.outcome === "pass") {
+      if (failing.has(r.id)) lines.push(`pass  ${r.id}: it's marked failing; remove the mark`);
+      continue;
+    }
+    const known = knownFailure(r, failing);
+    // Past a known failure, name what else broke.
+    const marked = known ? undefined : failing.get(r.id);
+    const why = r.error ?? r.grades.find((g) => !g.pass && g.grader !== marked)?.detail ?? "";
+    lines.push(
+      `${known ? "fail (known)" : r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`,
+    );
   }
   return lines.join("\n");
 }
 
 // CI replays to guard the pipeline, not the model's judgement (SPEC §8): any
 // error fails, and so does a failed deterministic case; a failed judged case
-// does not. A live round fails only on errors.
-export function exitCode(results: readonly CaseResult[], mode: "live" | "replay"): number {
-  const broken = results.some(
-    (r) =>
-      r.outcome === "error" || (mode === "replay" && r.outcome === "fail" && !isJudged(r.kind)),
-  );
+// does not. A case in `failing` is a known failure of one grader: failing
+// that grader alone doesn't fail a replay, but failing another or passing
+// does, so the mark goes once the agent does better and can't hide a
+// different regression. A live round fails only on errors.
+export function exitCode(
+  results: readonly CaseResult[],
+  mode: "live" | "replay",
+  failing: Failing = new Map(),
+): number {
+  const broken = results.some((r) => {
+    if (r.outcome === "error") return true;
+    if (mode === "live") return false;
+    // A judged case's verdict never fails CI, marked or not.
+    if (failing.has(r.id))
+      return r.outcome === "pass" || (!isJudged(r.kind) && !knownFailure(r, failing));
+    return r.outcome === "fail" && !isJudged(r.kind);
+  });
   return broken ? 1 : 0;
 }

@@ -125,7 +125,7 @@ Test mechanics:
 - No UI test suite. A screenshot script renders each screen from fixtures for visual iteration on look and feel; it is a tool, not a gate.
 - No mocks where a fixture will do. No sleeps; wait on events. A test that needs a timeout to pass is wrong.
 - Fixture mess checklist for `fixtures/jira/`: duplicate titles, stale assignees, a half-estimated epic, an epic with zero stories, one with forty (zoom stress), a story moved between epics, emoji and non-Latin titles, a 10k-character description, the injection story, a deleted story referenced by a frozen region.
-- Fixture checklist for the folder source (`fixtures/folder/`, proposed to the maintainer): a symlink pointing out of the folder, a dotfile and a dot-directory, a file over the size cap, a hard-linked file, nested directories past the depth cap, non-Latin and emoji file names, two names that differ only in case or Unicode normalization, and an injection in a file name and in a body.
+- Fixture checklist for the folder source (`fixtures/folder/`: a manifest, `tree.json`, that `scripts/fixtures/folder.ts` builds in a temporary directory, making the links there): a symlink pointing out of the folder, a dotfile and a dot-directory, a file over the size cap, a hard-linked file, nested directories past the depth cap, non-Latin and emoji file names, two names that differ only in case or Unicode normalization, and an injection in a file name and in a body.
 
 ## 9. Guardrails in code, not prompts
 

@@ -20,6 +20,9 @@ export type FolderRecord = IndexRecord<"folder", FolderAttrs>;
 
 // A file's content, read live.
 export type FolderContent = {
+  // The file's name without `.md`, in NFC, as the walk found it: data, like
+  // the text.
+  title: string;
   // The file's text, or for a file too large to read, a note saying so.
   text: string;
   // Oriel's words about how `text` was made, when it isn't simply the file's
@@ -33,6 +36,7 @@ export const folderAttrs: Validator<FolderAttrs> = object({});
 // What a read returns, checked where it is used: a reader may sit behind any
 // transport.
 export const folderContent = object({
+  title: string,
   text: string,
   note: nullable(string),
 }) satisfies Validator<FolderContent>;

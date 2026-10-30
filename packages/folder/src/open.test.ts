@@ -30,7 +30,10 @@ test("the file the walk saw opens as its text", async (t) => {
   const folder = tempFolder(t);
   folder.write("plan.md", "# Plan\n\nShip it.\n");
   const opened = await openEntry(await walked(folder.root, "plan"));
-  assert.deepEqual(opened, { status: "ok", content: { text: "# Plan\n\nShip it.\n", note: null } });
+  assert.deepEqual(opened, {
+    status: "ok",
+    content: { title: "plan", text: "# Plan\n\nShip it.\n", note: null },
+  });
 });
 
 test("a file replaced by a link after the walk is refused, wherever the link points", async (t) => {

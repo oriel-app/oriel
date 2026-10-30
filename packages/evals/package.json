@@ -10,10 +10,11 @@
     "evals:ci": "node src/cli.ts replay"
   },
   "dependencies": {
+    "@oriel/agent": "workspace:*",
+    "@oriel/bindings": "workspace:*",
     "@oriel/core": "workspace:*",
-    "@oriel/jira": "workspace:*"
-  },
-  "devDependencies": {
-    "@oriel/agent": "workspace:*"
+    "@oriel/folder": "workspace:*",
+    "@oriel/jira": "workspace:*",
+    "@oriel/sandbox": "workspace:*"
   }
 }

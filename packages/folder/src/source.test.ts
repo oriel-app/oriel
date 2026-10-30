@@ -206,7 +206,11 @@ test("injection text in a file name and in a body stays data, never in an ID", a
   // The name is the title, and the body the text, as written.
   assert.equal(record.title, name);
   const [read] = await source.read([record.id as ItemId<"folder">]);
-  assert.deepEqual(read, { id: record.id, status: "ok", content: { text: body, note: null } });
+  assert.deepEqual(read, {
+    id: record.id,
+    status: "ok",
+    content: { title: name, text: body, note: null },
+  });
 });
 
 test("another folder gives other IDs; the same folder ID and paths give the same ones", async (t) => {
@@ -353,10 +357,18 @@ test("read: text, replaced bytes noted, and anything missing a result, never a t
   ] as ItemId<"folder">[];
   const results = await source.read(ids);
   assert.deepEqual(results, [
-    { id: ids[0], status: "ok", content: { text: "# Plan\nShip it.\n", note: null } },
-    { id: ids[1], status: "ok", content: { text: "caf�", note: replacedNote } },
+    {
+      id: ids[0],
+      status: "ok",
+      content: { title: "plan", text: "# Plan\nShip it.\n", note: null },
+    },
+    { id: ids[1], status: "ok", content: { title: "latin1", text: "caf�", note: replacedNote } },
     ...ids.slice(2, 7).map((id) => ({ id, status: "gone", reason: "deleted" })),
-    { id: ids[0], status: "ok", content: { text: "# Plan\nShip it.\n", note: null } },
+    {
+      id: ids[0],
+      status: "ok",
+      content: { title: "plan", text: "# Plan\nShip it.\n", note: null },
+    },
   ]);
 });
 
