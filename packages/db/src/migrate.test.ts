@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { instant } from "@oriel/core";
+import { array, instant, object, string, type Ulid } from "@oriel/core";
+import { indexStore } from "./index-store.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 
@@ -133,4 +134,91 @@ test("0002 turns each region into a group at version 1, and keeps its threads an
   ]);
   assert.ok(!tables(db).includes("regions") && !tables(db).includes("region_items"));
   assert.deepEqual(db.prepare("pragma foreign_key_check").all(), []);
+});
+
+test("0002 rewrites the index's old Jira rows readably and starts every sync over", () => {
+  const db = open(":memory:");
+  const [first, ...rest] = loadMigrations();
+  assert.ok(first);
+  migrate(db, [first], now);
+  // As 0001's index kept them: everything Jira's in attrs.
+  const old = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      issueType: "Story",
+      status: { name: "In Review", category: "in-progress" },
+      epic: null,
+      assignee: null,
+      points: null,
+      labels: [],
+      ...fields,
+    });
+  const insert = db.prepare(
+    "insert into items values ('w1', 'jira', ?, ?, 'Title', 'https://x', ?, ?, 3, null)",
+  );
+  db.exec(`
+    insert into workspaces values ('w1', 'test', '${now}');
+    insert into sources values ('w1', 'jira', '2026-10-28T09:00:00.000Z', '${now}');
+  `);
+  insert.run(
+    "10001",
+    "jira:SYN-1",
+    now,
+    old({ issueType: "Epic", status: { name: "Done", category: "done" } }),
+  );
+  insert.run(
+    "10003",
+    "jira:SYN-3",
+    now,
+    old({
+      epic: "jira:SYN-1",
+      assignee: { accountId: "amara", name: "Amara Okafor" },
+      points: 3,
+      labels: ["payments"],
+    }),
+  );
+  // Its epic isn't in the index.
+  insert.run("10004", "jira:SYN-4", now, old({ epic: "jira:SYN-9" }));
+  migrate(db, [first, ...rest], now);
+
+  const attrs = object({ issueType: string, status: string, labels: array(string) });
+  const records = indexStore(db).records("w1" as Ulid, "jira", attrs);
+  assert.deepEqual(
+    records.map(({ id, facets, attrs }) => ({ id, facets, attrs })),
+    [
+      {
+        id: "jira:SYN-1",
+        facets: { people: [], state: "done", container: null, kind: "epic", estimate: null },
+        attrs: { issueType: "Epic", status: "Done", labels: [] },
+      },
+      {
+        id: "jira:SYN-3",
+        facets: {
+          people: [{ role: "assignee", id: "amara", name: "Amara Okafor" }],
+          state: "in-progress",
+          container: { id: "jira:SYN-1", stableId: "10001" },
+          kind: "story",
+          estimate: 3,
+        },
+        attrs: { issueType: "Story", status: "In Review", labels: ["payments"] },
+      },
+      {
+        id: "jira:SYN-4",
+        facets: {
+          people: [],
+          state: "in-progress",
+          container: { id: "jira:SYN-9", stableId: "" },
+          kind: "story",
+          estimate: null,
+        },
+        attrs: { issueType: "Story", status: "In Review", labels: [] },
+      },
+    ],
+  );
+  // The old attrs' shape is gone: a reader of the old shape would fail now.
+  assert.throws(
+    () =>
+      indexStore(db).records("w1" as Ulid, "jira", object({ status: object({ name: string }) })),
+    /attrs don't match/,
+  );
+  assert.deepEqual(indexStore(db).source("w1" as Ulid, "jira"), { cursor: null, syncedAt: now });
 });

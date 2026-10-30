@@ -6,9 +6,43 @@
 -- keep their meaning.
 
 -- An item's location is a URL, or a file: URL for a local file. Its facets
--- (people, state, container, links) are what groupings use across sources.
+-- (people, state, container, links, kind, estimate) are what groupings use
+-- across sources.
 alter table items rename column url to location;
 alter table items add column facets text not null default '{}' check (json_valid(facets));
+
+-- Jira rows 0001 wrote keep their fields in the old attrs. Derive the facets
+-- from them as far as they allow, and keep in attrs only Jira's own words. The
+-- old attrs held the epic by handle only, so its stable ID comes from the
+-- index; an epic the index doesn't have gets an empty one, which groupings
+-- show as an epic not in the index. A sub-task's kind can't be told from its
+-- name alone. Every SET reads the row as it was.
+update items set
+  facets = json_object(
+    'people', case when json_type(attrs, '$.assignee') = 'object'
+      then json_array(json_object(
+        'role', 'assignee',
+        'id', json_extract(attrs, '$.assignee.accountId'),
+        'name', json_extract(attrs, '$.assignee.name')))
+      else json('[]') end,
+    'state', json_extract(attrs, '$.status.category'),
+    'container', case when json_type(attrs, '$.epic') = 'text'
+      then json_object(
+        'id', json_extract(attrs, '$.epic'),
+        'stableId', coalesce(
+          (select epic.stable_id from items epic
+            where epic.workspace_id = items.workspace_id and epic.source = 'jira'
+              and epic.item_id = json_extract(items.attrs, '$.epic')
+            order by epic.gone_at is not null, epic.gone_at desc limit 1),
+          ''))
+      else json('null') end,
+    'kind', lower(json_extract(attrs, '$.issueType')),
+    'estimate', json_extract(attrs, '$.points')),
+  attrs = json_object(
+    'issueType', json_extract(attrs, '$.issueType'),
+    'status', json_extract(attrs, '$.status.name'),
+    'labels', json(coalesce(json_extract(attrs, '$.labels'), '[]')))
+where source = 'jira' and json_type(attrs, '$.status') = 'object';
 
 create table new_sources (
   workspace_id text not null references workspaces (id),
@@ -17,8 +51,10 @@ create table new_sources (
   synced_at text,
   primary key (workspace_id, kind)
 ) strict;
+-- Every cursor starts over, so the next sync of each source is a full one and
+-- rewrites every record in the new shape.
 insert into new_sources (workspace_id, kind, cursor, synced_at)
-  select workspace_id, kind, cursor, synced_at from sources;
+  select workspace_id, kind, null, synced_at from sources;
 drop table sources;
 alter table new_sources rename to sources;
 
