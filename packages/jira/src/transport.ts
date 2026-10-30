@@ -4,7 +4,7 @@
 // ones; an MCP-backed implementation could answer the same requests without
 // touching either. Only `@oriel/jira/writer` exports `restTransport`.
 import { setTimeout as wait } from "node:timers/promises";
-import type { Credential } from "@oriel/core";
+import { type Credential, SourceRefused } from "@oriel/core";
 
 export type JiraRequest = {
   method: "GET" | "POST" | "PUT" | "DELETE";
@@ -61,10 +61,18 @@ export function restTransport(options: RestOptions): Transport {
     const url = new URL(request.path, site);
     const hasBody = request.body !== undefined;
     for (let attempt = 1; ; attempt++) {
+      // Without its credentials the request never goes out. The credential's
+      // own message stays out of it, in case it names a secret.
+      const credentials = await options.credential.headers().catch((error: unknown) => {
+        throw new SourceRefused("Oriel couldn't get its credentials for Jira", {
+          sent: false,
+          cause: error,
+        });
+      });
       const response = await send(url, {
         method: request.method,
         headers: {
-          ...(await options.credential.headers()),
+          ...credentials,
           Accept: "application/json",
           ...(hasBody ? { "Content-Type": "application/json" } : {}),
         },

@@ -196,6 +196,10 @@ test("a created story whose update time the source never reported isn't deleted"
       const values = await jira.writer.current(id, fields);
       return values === "gone" ? values : without(values);
     },
+    read: async (id, fields) => {
+      const found = await jira.writer.read(id, fields);
+      return found === "gone" ? found : { ...found, values: without(found.values) };
+    },
   };
   const changeSets = instance(blind);
   const set = await changeSets.capture(run, [kiosk]);
@@ -279,6 +283,7 @@ test("a set op whose result didn't report the field it set can't be reverted bli
       };
     },
     current: jira.writer.current,
+    read: jira.writer.read,
   };
   const changeSets = instance(terse);
   const set = await changeSets.capture(run, [
@@ -347,7 +352,7 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   const changeSetCount = count(db, "change_sets");
   await assert.rejects(changeSets.revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first, or check Jira and remove it/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
   assert.equal(count(db, "change_sets"), changeSetCount);
   assert.equal(status(db, second), "failed");
@@ -355,10 +360,12 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   // A later stop before sending doesn't erase that it was sent.
   const shown = db.prepare("select preview from mutations where id = ?").get(second)?.preview;
   db.prepare("update mutations set preview = null where id = ?").run(second);
-  const stopped = await changeSets.apply(set.id);
-  assert.deepEqual(stopped.applied, []);
+  await assert.rejects(changeSets.apply(set.id), { code: "refused" });
   assert.equal(status(db, second), "failed");
-  await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /was sent and may have landed in Jira/,
+  });
   db.prepare("update mutations set preview = ? where id = ?").run(shown ?? null, second);
 
   // Retrying apply finds the value in place and records it without sending.
@@ -366,13 +373,13 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   const retry = await changeSets.apply(set.id);
   assert.deepEqual(retry.applied, [second]);
   assert.equal(jira.calls.length, writes);
-  // Oriel never learned what SYN-117 held before, so it won't guess.
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(
-    result.conflicts.map((c) => [c.mutationId, c.target, c.field, c.expected]),
-    [[second, "jira:SYN-117", "points", undefined]],
-  );
+  // Oriel never learned what SYN-117 held before, so it won't guess, and
+  // doesn't offer to.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /mutation 2 \(setEstimate\) can.t be reverted: Jira didn.t report the earlier points/,
+  });
   assert.deepEqual([jira.issue("SYN-21")?.points, jira.issue("SYN-117")?.points], [5, 2]);
 });
 
@@ -442,7 +449,7 @@ test("a change set with a create that may have landed can't be reverted until th
   jira.edit("SYN-21", { points: 8 });
   await assert.rejects(changeSets.revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first, or check Jira and remove it/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
 });
 
@@ -466,7 +473,7 @@ test("a set op being sent when the process died blocks revert", async () => {
   const changeSetCount = count(db, "change_sets");
   await assert.rejects(instance().revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
   assert.equal(count(db, "change_sets"), changeSetCount);
   assert.equal(jira.issue("SYN-117")?.points, 2);
@@ -498,7 +505,10 @@ test("a send another instance starts while the revert is being built blocks it",
     await sending.promise;
   };
   const changeSetCount = count(db, "change_sets");
-  await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /was sent and may have landed in Jira/,
+  });
   assert.equal(count(db, "change_sets"), changeSetCount);
   assert.equal(status(db, unsent), "failed");
 });
@@ -516,12 +526,10 @@ test("a field Oriel never learned stays unknown, even when a later row wrote it 
   jira.edit("SYN-21", { points: 5 });
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [first, second]);
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(
-    result.conflicts.map((c) => [c.mutationId, c.field, c.expected]),
-    [[first, "points", undefined]],
-  );
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /mutation 1 \(setEstimate\) can.t be reverted: Jira didn.t report the earlier points/,
+  });
   assert.equal(jira.issue("SYN-21")?.points, 8);
 });
 
@@ -553,11 +561,12 @@ test("a value a teammate set to the same thing before apply isn't overwritten by
   assert.deepEqual(report.applied, [mutationId]);
   assert.deepEqual(jira.calls, []);
 
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(result.conflicts, [
-    { mutationId, target: "jira:SYN-21", field: "points", expected: undefined, actual: 5 },
-  ]);
+  // Oriel can't tell the teammate's value from its own, so it won't revert.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /mutation 1 \(setEstimate\) can.t be reverted: Jira didn.t report the earlier points/,
+  });
   assert.equal(jira.issue("SYN-21")?.points, 5);
 });
 

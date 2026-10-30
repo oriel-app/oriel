@@ -16,14 +16,33 @@ export type Site = {
   // named in the page's import map. Only these files are served.
   vendor: ReadonlyMap<string, string>;
   window(grouping: GroupingId): WindowView;
+  // The JSON routes under /api/, past the guard; null for a path it doesn't
+  // have, which then 404s.
+  api?: (request: Request, url: URL) => Promise<Reply | null>;
 };
 
 export type Request = {
   method: string;
   url: string;
-  headers: { host?: string; origin?: string };
+  headers: {
+    host?: string;
+    origin?: string;
+    "content-type"?: string;
+    "last-event-id"?: string | string[];
+  };
+  // Reads the body, or null when it is longer than `limit` bytes. A route
+  // that takes no body never reads it.
+  body?: (limit: number) => Promise<string | null>;
 };
-export type Reply = { status: number; headers: Record<string, string>; body: string | Uint8Array };
+
+// A reply with a `stream` sends it after `body`, chunk by chunk, until it
+// ends or the client leaves, when its iterator's `return` is called.
+export type Reply = {
+  status: number;
+  headers: Record<string, string>;
+  body: string | Uint8Array;
+  stream?: AsyncIterable<string>;
+};
 
 const types: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
@@ -32,6 +51,40 @@ const types: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
 };
+
+// Every reply carries these. A review link's page relies on two of them: no
+// referrer, so its token never leaves in a Referer header, and no caching.
+export function securityHeaders(importMapHash: string): Record<string, string> {
+  return {
+    "cache-control": "no-store",
+    "content-security-policy": [
+      "default-src 'none'",
+      `script-src 'self' 'sha256-${importMapHash}'`,
+      "style-src 'self'",
+      "img-src 'self'",
+      "connect-src 'self'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+    ].join("; "),
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+  };
+}
+
+// The app's own pages: each is the same shell, which routes in the browser.
+const ulidPath = "[0-9A-HJKMNP-TV-Z]{26}";
+const pagePaths = [
+  /^\/$/,
+  /^\/inbox$/,
+  new RegExp(`^/groups/${ulidPath}$`),
+  new RegExp(`^/threads/${ulidPath}$`),
+];
+// A review link: the shell only. Its GET opens and decides nothing, because
+// chat apps unfurl links with GETs; the page asks with an explicit POST.
+const reviewPath = /^\/review\/[A-Za-z0-9_-]{1,64}$/;
 
 export function vendorPath(specifier: string): string {
   return `/vendor/${specifier}.js`;
@@ -57,24 +110,7 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
   const importMap = JSON.stringify({
     imports: Object.fromEntries([...site.vendor.keys()].map((s) => [s, vendorPath(s)])),
   });
-  const importMapHash = createHash("sha256").update(importMap).digest("base64");
-  const headers = {
-    "cache-control": "no-store",
-    "content-security-policy": [
-      "default-src 'none'",
-      `script-src 'self' 'sha256-${importMapHash}'`,
-      "style-src 'self'",
-      "img-src 'self'",
-      "connect-src 'self'",
-      "base-uri 'none'",
-      "form-action 'none'",
-      "frame-ancestors 'none'",
-    ].join("; "),
-    "cross-origin-opener-policy": "same-origin",
-    "cross-origin-resource-policy": "same-origin",
-    "referrer-policy": "no-referrer",
-    "x-content-type-options": "nosniff",
-  };
+  const headers = securityHeaders(createHash("sha256").update(importMap).digest("base64"));
   const reply = (
     status: number,
     type: string,
@@ -116,15 +152,22 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
   return async (request) => {
     const refused = refusal(request.method, request.headers, site.port);
     if (refused !== null) return plain(403, refused);
+    const url = URL.parse(request.url, "http://localhost");
+    if (url === null) return plain(400, "bad URL");
+    const path = url.pathname;
+    if (path.startsWith("/api/") && site.api) {
+      const answered = await site.api(request, url);
+      if (answered) return { ...answered, headers: { ...headers, ...answered.headers } };
+    }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return reply(405, "text/plain; charset=utf-8", "method not allowed\n", {
         allow: "GET, HEAD",
       });
     }
-    const url = URL.parse(request.url, "http://localhost");
-    if (url === null) return plain(400, "bad URL");
-    const path = url.pathname;
-    if (path === "/") return reply(200, "text/html; charset=utf-8", page);
+    if (pagePaths.some((pattern) => pattern.test(path)))
+      return reply(200, "text/html; charset=utf-8", page);
+    if (reviewPath.test(path))
+      return reply(200, "text/html; charset=utf-8", page, { "x-robots-tag": "noindex" });
     if (path === "/api/window") {
       const grouping = url.searchParams.get("grouping");
       if (!isGroupingId(grouping)) return plain(400, "grouping must be epic, assignee or stuck");

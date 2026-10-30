@@ -218,6 +218,7 @@ export function memoryRecords(newId: () => Ulid) {
           target: m.target,
           ref: m.ref,
           args: m.args,
+          version: 0,
           preview: null,
           status: "pending",
           applied: null,
@@ -234,6 +235,7 @@ export function memoryRecords(newId: () => Ulid) {
           decision: null,
           revertOf: null,
           createdAt: t0,
+          completedAt: null,
         };
         changeSets.push({ changeSet, mutations: [...mutations] });
         return changeSet;

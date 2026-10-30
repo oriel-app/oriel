@@ -42,8 +42,11 @@ export type ClusterRow = {
   // The item the cluster hangs off (the epic), if any.
   anchor: ItemRow | null;
   count: number;
-  // Story points of the estimated items, and how many items have none.
+  // Story points of the estimated items, how many items have an estimate,
+  // and how many could have one and don't. An item whose source doesn't
+  // estimate is neither.
   points: number;
+  estimated: number;
   unestimated: number;
   status: Record<StatusCategory, number>;
 };

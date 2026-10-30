@@ -86,6 +86,7 @@ test("the cluster zoom level counts and sums the cluster's items", () => {
       anchor: "SYN-1",
       count: 3,
       points: 8,
+      estimated: 2,
       unestimated: 1,
       status: { todo: 1, "in-progress": 1, done: 1 },
     },

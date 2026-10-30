@@ -31,6 +31,9 @@ export type MutationRecord<K extends SourceKind = SourceKind> = {
   error: string | null;
   // On a reverse mutation, the mutation it undoes.
   reverts: Ulid | null;
+  // Moves on with every write to the row: a conditional write compares the
+  // version it read. Not part of the change set's hash.
+  version: number;
 };
 
 export type Decision = {
@@ -65,7 +68,32 @@ export type ChangeSet = {
   // Set when this change set reverts another.
   revertOf: Ulid | null;
   createdAt: Instant;
+  // When its last change applied, whichever way it got there: an apply, an
+  // edit that left out the last unapplied change, or a revert that dropped
+  // the unsent ones. Null until then. A thread's "done" counts from this.
+  completedAt: Instant | null;
 };
+
+// What a person can do with a change set as it stands, and nothing the
+// engine would refuse. Derived from the change set, its reverts and the
+// writers configured; never stored.
+export type NextStep =
+  // Approve it as it stands, which applies it.
+  | { kind: "approve" }
+  // Part of it applied, then an edit voided the approval: approve the rest.
+  | { kind: "approve-rest" }
+  // Decline it before anything landed.
+  | { kind: "reject" }
+  // Leave these changes out, one at a time.
+  | { kind: "remove"; mutationIds: Ulid[] }
+  // Apply again from where it stopped, or for the first time.
+  | { kind: "retry" }
+  // A new change set that undoes what this one applied.
+  | { kind: "revert" }
+  // End a change set that started landing, or may have: what hasn't applied
+  // never will. Each warning names a change that may already be in its
+  // source, for the person to check.
+  | { kind: "dismiss"; warnings: string[] };
 
 // One plain-language line per mutation: what it will do, with before and after.
 export type Diff = {
@@ -104,6 +132,11 @@ export type Conflict = {
 
 export interface ChangeSets {
   capture(run: RunRef, mutations: readonly CapturedMutation[]): Promise<ChangeSet>;
+  // The change set as its rows are now, or null. Reads nothing from a source.
+  get(id: Ulid): Promise<ChangeSet | null>;
+  // A thread's change sets, oldest first: those its runs captured, and its
+  // reverts.
+  ofThread(threadId: Ulid): Promise<ChangeSet[]>;
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
   edit(id: Ulid, patch: ChangeSetPatch): Promise<ChangeSet>;
@@ -129,4 +162,23 @@ export interface ChangeSets {
   revokeReviewLink(id: Ulid): Promise<void>;
   // What the review page shows; null for a dead or unknown token.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
+  // Exactly what can be done with it now (`NextStep`): each step is an
+  // action whose own guard passes, so none offered is refused. Every message
+  // the engine shows a person names only these. Empty while it is applying.
+  nextSteps(id: Ulid): Promise<NextStep[]>;
+  // Whether this instance is applying it now. Until that ends, every action
+  // on it is refused as busy.
+  applying(id: Ulid): boolean;
+  // Ends a change set that started landing, or may have: its unapplied
+  // changes are rejected for good, and a revert covers exactly what applied.
+  // The warnings name any change that may already have landed. Dismissing
+  // twice changes nothing.
+  // In the thread by default; through a review link, as `decide` checks one.
+  // `reviewed`, when given, is the hash of the diff the person saw; a stale
+  // one is refused.
+  dismiss(
+    id: Ulid,
+    by?: Approver,
+    reviewed?: string,
+  ): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
 }

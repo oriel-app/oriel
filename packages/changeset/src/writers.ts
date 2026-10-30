@@ -16,6 +16,10 @@ export type WriterConfig = {
     credential: Credential;
     // Where a story with no epic is created.
     project: string;
+    // How requests reach the site: the global fetch unless given, as tests
+    // give one that answers from memory. The transport and the writer are
+    // still built here, never by the caller.
+    fetch?: typeof fetch;
   };
 } & { [K in Exclude<SourceKind, "jira">]?: never };
 
@@ -27,7 +31,11 @@ export function buildWriters(config: WriterConfig, log: Log): Writers {
   return jira
     ? {
         jira: jiraWriter({
-          transport: restTransport({ site: jira.site, credential: jira.credential }),
+          transport: restTransport({
+            site: jira.site,
+            credential: jira.credential,
+            ...(jira.fetch ? { fetch: jira.fetch } : {}),
+          }),
           project: jira.project,
           log,
         }),

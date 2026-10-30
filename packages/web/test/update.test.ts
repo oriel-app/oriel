@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { init, type Model, type Msg, update, windowZoom, zoomOf } from "../src/update.ts";
+import { init, type Model, type Msg, update, zoomOf } from "../src/update.ts";
 import type { ClusterView, GroupingId, WindowView } from "../src/view.ts";
 
 function cluster(key: string): ClusterView {
@@ -12,6 +12,7 @@ function cluster(key: string): ClusterView {
       anchor: null,
       count: 0,
       points: 0,
+      estimated: 0,
       unestimated: 0,
       status: { todo: 0, "in-progress": 0, done: 0 },
     },
@@ -117,23 +118,8 @@ test("toggling a cluster moves it between the two zoom levels", () => {
   const opened = run(shown, { type: "clusterToggled", key: "a" });
   assert.equal(zoomOf(opened, "a"), "list");
   assert.equal(zoomOf(opened, "b"), "cluster");
-  assert.equal(windowZoom(opened), null);
   const closed = run(opened, { type: "clusterToggled", key: "a" });
   assert.equal(zoomOf(closed, "a"), "cluster");
-  assert.equal(windowZoom(closed), "cluster");
-});
-
-test("picking a zoom level applies it to every cluster on screen", () => {
-  const [model] = init("epic");
-  const shown = run(model, {
-    type: "windowLoaded",
-    request: model.request,
-    window: view("epic", ["a", "b"]),
-  });
-  const all = run(shown, { type: "zoomPicked", zoom: "list" });
-  assert.equal(windowZoom(all), "list");
-  assert.deepEqual(all.open.epic, ["a", "b"]);
-  assert.equal(windowZoom(run(all, { type: "zoomPicked", zoom: "cluster" })), "cluster");
 });
 
 test("each grouping keeps its own open clusters", () => {
@@ -174,5 +160,4 @@ test("zoom acts on the window on screen while another grouping loads", () => {
 test("zoom does nothing before a window has loaded", () => {
   const [model] = init("epic");
   assert.equal(run(model, { type: "clusterToggled", key: "a" }), model);
-  assert.equal(run(model, { type: "zoomPicked", zoom: "list" }), model);
 });

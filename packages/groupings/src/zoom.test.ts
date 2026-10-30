@@ -32,6 +32,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
       anchor: "SYN-1",
       count: 13,
       points: 29,
+      estimated: 10,
       unestimated: 3,
       status: { todo: 4, "in-progress": 4, done: 5 },
     },

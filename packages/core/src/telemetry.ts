@@ -7,7 +7,8 @@ import type { ZoomId } from "./zoom.ts";
 // - first question asked: the earliest `question.asked`
 // - first change set approved, and the time since connect (the onboarding
 //   budget): the earliest approving `changeset.decided` minus `source.connected`
-// - time to done: from `thread.opened` to the thread's first `changeset.applied`
+// - time to done: from `thread.opened` to the thread's first
+//   `changeset.applied` or `thread.marked-done`, whichever came first
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
   // `size` is how many items it started with.
@@ -21,6 +22,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
     }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   | { name: "question.asked"; threadId: Ulid }
+  // The user marked the thread done, as one over read-only items needs.
+  | { name: "thread.marked-done"; threadId: Ulid }
   | { name: "grouping.switched"; grouping: string }
   | { name: "zoom.changed"; from: ZoomId; to: ZoomId }
   | { name: "changeset.edited"; changeSetId: Ulid }
@@ -31,6 +34,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       via: "thread" | "review-link";
     }
   | { name: "changeset.applied"; changeSetId: Ulid; threadId: Ulid }
+  // The rest of a change set that started landing, or may have, was dropped.
+  // Not a rejection: the person didn't decline it; the source stopped it.
+  | { name: "changeset.dismissed"; changeSetId: Ulid; via: "thread" | "review-link" }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
   | { name: "review-link.opened"; changeSetId: Ulid }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }

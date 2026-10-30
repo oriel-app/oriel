@@ -113,6 +113,9 @@ export function groupStore(db: DatabaseSync) {
   const selectChange = db.prepare(
     "select version, at, cause from group_changes where group_id = ? and version = ?",
   );
+  const selectByWorkspace = db.prepare(
+    "select id from groups where workspace_id = ? order by created_at desc, id desc",
+  );
   const selectChanges = db.prepare(
     "select version, at, cause from group_changes where group_id = ? and version > ? order by version",
   );
@@ -188,6 +191,21 @@ export function groupStore(db: DatabaseSync) {
 
   return {
     get,
+
+    // A group's name is the user's label for it, not part of its membership,
+    // so renaming takes no version.
+    rename(groupId: Ulid, name: string): void {
+      const { changes } = db.prepare("update groups set name = ? where id = ?").run(name, groupId);
+      if (Number(changes) !== 1) throw new RangeError(`no group ${groupId}`);
+    },
+
+    // A workspace's groups, newest first.
+    list(workspaceId: Ulid): Group[] {
+      return selectByWorkspace.all(workspaceId).map((raw) => {
+        const row = parse(object({ id: ulidValue }), raw, "groups row");
+        return mustGet(row.id);
+      });
+    },
 
     // A new group at version 1, holding `members`.
     create(

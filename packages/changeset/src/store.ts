@@ -58,6 +58,7 @@ const changeSetRow = object({
   run_id: nullable(ulidValue),
   revert_of: nullable(ulidValue),
   created_at: instantValue,
+  completed_at: nullable(instantValue),
 });
 const mutationRow = object({
   id: ulidValue,
@@ -72,6 +73,7 @@ const mutationRow = object({
   applied: nullable(string),
   error: nullable(string),
   reverts: nullable(ulidValue),
+  version: number,
 });
 const decisionRow = object({
   id: ulidValue,
@@ -121,19 +123,32 @@ export type Store = ReturnType<typeof store>;
 // and writes; the rules live in change-sets.ts.
 export function store(db: DatabaseSync) {
   const selectChangeSet = db.prepare(
-    "select id, workspace_id, thread_id, run_id, revert_of, created_at from change_sets where id = ?",
+    "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at from change_sets where id = ?",
   );
   const selectMutations = db.prepare(`
-    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts
+    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts,
+      version
     from mutations where change_set_id = ? order by seq`);
   const selectMutation = db.prepare(`
-    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts
+    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts,
+      version
     from mutations where id = ?`);
   const selectLatestDecision = db.prepare(`
     select id, kind, via, by_name, hash, at from decisions
     where change_set_id = ? order by seq desc limit 1`);
   const selectNextDecisionSeq = db.prepare(
     "select coalesce(max(seq), 0) + 1 as next from decisions where change_set_id = ?",
+  );
+  const markCompleted = db.prepare(`
+    update change_sets set completed_at = ?
+    where id = ? and completed_at is null
+      and not exists (select 1 from mutations where change_set_id = change_sets.id and status != 'applied')
+      and exists (select 1 from mutations where change_set_id = change_sets.id)`);
+  const selectOfThread = db.prepare(
+    "select id from change_sets where thread_id = ? order by created_at, rowid",
+  );
+  const selectRevertsOf = db.prepare(
+    "select id from change_sets where revert_of = ? order by created_at, rowid",
   );
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
@@ -158,30 +173,35 @@ export function store(db: DatabaseSync) {
   const insertMutation = db.prepare(`
     insert into mutations (id, workspace_id, change_set_id, seq, op, target, ref, args, status, reverts)
     values (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`);
-  const updateArgs = db.prepare(
-    "update mutations set args = ? where id = ? and change_set_id = ? and status != 'applied'",
-  );
+  // Every write to a mutation row moves its version on; the conditional ones
+  // write only over the version the caller read.
+  const updateArgs = db.prepare(`
+    update mutations set args = ?, version = version + 1
+    where id = ? and change_set_id = ? and status != 'applied'`);
   const deleteMutation = db.prepare(
     "delete from mutations where id = ? and change_set_id = ? and status != 'applied'",
   );
-  const updatePreview = db.prepare(
-    "update mutations set preview = ? where id = ? and status != 'applied'",
-  );
-  const clearPreviews = db.prepare(
-    "update mutations set preview = null where change_set_id = ? and status != 'applied'",
-  );
+  const updatePreview = db.prepare(`
+    update mutations set preview = ?, version = version + 1
+    where id = ? and status != 'applied'`);
+  const clearPreviews = db.prepare(`
+    update mutations set preview = null, version = version + 1
+    where change_set_id = ? and status = 'pending'`);
   const updateApplied = db.prepare(`
-    update mutations set status = 'applied', applied = ?, error = null
-    where id = ? and status = ? and args = ? and error is ?`);
-  const updateFailed = db.prepare(
-    "update mutations set status = 'failed', error = ? where id = ? and status != 'applied'",
-  );
-  const updateSent = db.prepare(
-    "update mutations set status = 'failed', error = ? where id = ? and status = ? and error is ?",
-  );
-  const updateStopped = db.prepare(
-    "update mutations set error = ? where id = ? and status != 'applied'",
-  );
+    update mutations set status = 'applied', applied = ?, error = null, version = version + 1
+    where id = ? and version = ? and status != 'applied'`);
+  const updateFailed = db.prepare(`
+    update mutations set status = 'failed', error = ?, version = version + 1
+    where id = ? and version = ? and status != 'applied'`);
+  const updateSent = db.prepare(`
+    update mutations set status = 'failed', error = ?, version = version + 1
+    where id = ? and version = ? and status != 'applied'`);
+  const updateRefused = db.prepare(`
+    update mutations set status = ?, error = ?, version = version + 1
+    where id = ? and version = ? and status != 'applied'`);
+  const updateStopped = db.prepare(`
+    update mutations set error = ?, version = version + 1
+    where id = ? and version = ? and status != 'applied'`);
   const insertDecision = db.prepare(`
     insert into decisions (id, workspace_id, change_set_id, seq, kind, via, review_link, by_name, hash, at)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -220,6 +240,7 @@ export function store(db: DatabaseSync) {
       applied: row.applied === null ? null : json(appliedValue, row.applied, "mutations.applied"),
       error: row.error,
       reverts: row.reverts,
+      version: row.version,
     };
   };
 
@@ -254,12 +275,27 @@ export function store(db: DatabaseSync) {
             : null,
         revertOf: row.revert_of,
         createdAt: row.created_at,
+        completedAt: row.completed_at,
       };
+    },
+
+    // The change sets that revert this one, oldest first.
+    revertsOf(changeSetId: Ulid): Ulid[] {
+      return selectRevertsOf
+        .all(changeSetId)
+        .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
     },
 
     mutation(id: Ulid): MutationRecord | null {
       const raw = selectMutation.get(id);
       return raw ? toMutation(raw) : null;
+    },
+
+    // A thread's change sets, oldest first.
+    ofThread(threadId: Ulid): Ulid[] {
+      return selectOfThread
+        .all(threadId)
+        .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
     },
 
     runExists(run: { id: Ulid; threadId: Ulid; workspaceId: Ulid }): boolean {
@@ -351,28 +387,23 @@ export function store(db: DatabaseSync) {
       updatePreview.run(JSON.stringify(preview), mutationId);
     },
 
-    // After an edit, every unapplied row needs a fresh diff before approval.
+    // After an edit, every unsent row needs a fresh diff before approval. A
+    // sent row keeps what the diff showed when it was approved: its source
+    // may hold the change by now, so a fresh read can't show what was there.
     clearPreviews(changeSetId: Ulid): void {
       clearPreviews.run(changeSetId);
     },
 
-    // Records a result only on the row as it was sent: same status, same
-    // arguments, same mark (a send's mark carries its own nonce, so of two
-    // instances that both sent a row only the last to mark it can record it).
-    // Throws otherwise, since the write landed but its row was removed,
-    // edited, applied or sent again meanwhile.
+    // Records a result only on the row as the caller read it (for a send, as
+    // marking it left it), so of two instances that both sent a row only the
+    // last to mark it can record it. Throws otherwise, since the write landed
+    // but its row was removed, edited, applied or sent again meanwhile.
     markApplied(
       mutationId: Ulid,
-      sent: { status: MutationStatus; args: unknown; error: string | null },
+      from: { version: number },
       applied: Infer<typeof appliedValue>,
     ): void {
-      const { changes } = updateApplied.run(
-        JSON.stringify(applied),
-        mutationId,
-        sent.status,
-        JSON.stringify(sent.args),
-        sent.error,
-      );
+      const { changes } = updateApplied.run(JSON.stringify(applied), mutationId, from.version);
       if (Number(changes) !== 1)
         throw new Error(
           `mutation ${mutationId} landed in the source, but its row changed meanwhile`,
@@ -380,26 +411,40 @@ export function store(db: DatabaseSync) {
     },
 
     // A write that failed, or that may have landed: it was sent.
-    markFailed(mutationId: Ulid, error: string): void {
-      updateFailed.run(error, mutationId);
+    markFailed(mutationId: Ulid, from: { version: number }, error: string): boolean {
+      return Number(updateFailed.run(error, mutationId, from.version).changes) === 1;
     },
 
     // Records, before a write goes out, that it was sent: until its result is
-    // recorded, it may have landed. Only from the row as the caller saw it
-    // (status and message), so another apply's mark is never overwritten;
-    // false if the row moved on. `mark` should be unique to this send.
-    markSent(
-      mutationId: Ulid,
-      from: { status: MutationStatus; error: string | null },
-      mark: string,
-    ): boolean {
-      return Number(updateSent.run(mark, mutationId, from.status, from.error).changes) === 1;
+    // recorded, it may have landed. Only from the row as the caller read it,
+    // so another apply's mark is never overwritten. The row's version after,
+    // which recording the result compares; null if the row moved on.
+    markSent(mutationId: Ulid, from: { version: number }, mark: string): number | null {
+      return Number(updateSent.run(mark, mutationId, from.version).changes) === 1
+        ? from.version + 1
+        : null;
     },
 
-    // Apply stopped before sending this mutation. The status stays as it was, so
-    // a row an earlier pass sent keeps that mark; the next apply checks again.
-    markStopped(mutationId: Ulid, error: string): void {
-      updateStopped.run(error, mutationId);
+    // Nothing of a send landed (the source answered it and changed nothing,
+    // or it was found absent): the row goes to the status the caller gives
+    // (unsent, unless an earlier send may be in place). Only from the row as
+    // the caller read it: if anything wrote to it since (another apply's
+    // send, say, which may have landed), it stays as that left it. False if
+    // so.
+    markRefused(
+      mutationId: Ulid,
+      from: { version: number },
+      status: MutationStatus,
+      error: string,
+    ): boolean {
+      return Number(updateRefused.run(status, error, mutationId, from.version).changes) === 1;
+    },
+
+    // Apply stopped before sending this mutation, and says why. The status
+    // stays as it was, so a row an earlier pass sent stays sent; the next
+    // apply checks again. Only over the row as the caller read it.
+    markStopped(mutationId: Ulid, from: { version: number }, error: string): boolean {
+      return Number(updateStopped.run(error, mutationId, from.version).changes) === 1;
     },
 
     insertDecision(d: {
@@ -435,6 +480,12 @@ export function store(db: DatabaseSync) {
 
     revokeLinks(changeSetId: Ulid, at: Instant): void {
       revokeLinks.run(at, changeSetId);
+    },
+
+    // Records when a change set's last change applied, once. True if this
+    // call recorded it.
+    markCompleted(changeSetId: Ulid, at: Instant): boolean {
+      return Number(markCompleted.run(at, changeSetId).changes) === 1;
     },
 
     insertLink(tokenHash: string, workspaceId: Ulid, changeSetId: Ulid, at: Instant): void {

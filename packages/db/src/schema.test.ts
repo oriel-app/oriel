@@ -71,7 +71,9 @@ function withThread() {
 
 test("mutation status is one of pending, applied, failed", () => {
   const { db, workspaceId } = withThread();
-  db.exec(`insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');`);
+  db.exec(
+    `insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at) values ('c1', '${workspaceId}', 't1', null, null, '${now}');`,
+  );
   const insert = db.prepare(
     "insert into mutations (id, workspace_id, change_set_id, seq, op, args, status) values (?, ?, 'c1', ?, 'setEstimate', '{}', ?)",
   );
@@ -82,7 +84,9 @@ test("mutation status is one of pending, applied, failed", () => {
 
 function withChangeSet() {
   const { db, workspaceId } = withThread();
-  db.exec(`insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');`);
+  db.exec(
+    `insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at) values ('c1', '${workspaceId}', 't1', null, null, '${now}');`,
+  );
   return { db, workspaceId };
 }
 
@@ -194,7 +198,9 @@ test("a change set has at most one live review link", () => {
 
 test("a review-link decision names its own change set's link and a typed name", () => {
   const { db, workspaceId } = withChangeSet();
-  db.exec(`insert into change_sets values ('c2', '${workspaceId}', 't1', null, null, '${now}');`);
+  db.exec(
+    `insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at) values ('c2', '${workspaceId}', 't1', null, null, '${now}');`,
+  );
   const link = db.prepare(
     "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values (?, ?, ?, ?)",
   );
