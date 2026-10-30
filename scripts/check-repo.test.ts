@@ -66,16 +66,40 @@ test("naming Approved outside core and changeset is reported, aliases included",
   ]);
 });
 
-test("importing an adapter's writer outside changeset is reported", () => {
+test("importing an adapter's writer outside changeset is reported, by any path", () => {
   const sources = [
     {
       path: "packages/changeset/src/apply.ts",
       text: 'import { writer } from "@oriel/jira/writer";',
     },
+    { path: "packages/jira/src/writer.test.ts", text: 'import { jiraWriter } from "./writer.ts";' },
     { path: "packages/sandbox/src/host.ts", text: "import { writer } from '@oriel/jira/writer';" },
+    { path: "packages/server/src/x.ts", text: 'import { w } from "../../jira/src/writer.ts";' },
+    { path: "packages/jira/src/source.ts", text: 'const w = await import("./writer.ts");' },
+    { path: "scripts/x.ts", text: 'import { w } from "../packages/jira/src/writer";' },
+  ];
+  const where = "imports a source writer outside packages/changeset (decision 0003)";
+  assert.deepEqual(problems({ ...clean, sources }), [
+    `packages/sandbox/src/host.ts: ${where}`,
+    `packages/server/src/x.ts: ${where}`,
+    `packages/jira/src/source.ts: ${where}`,
+    `scripts/x.ts: ${where}`,
+  ]);
+});
+
+test("naming SourceWriter, which can stand in for an approval in a cast, is reported", () => {
+  const sources = [
+    { path: "packages/core/src/source.ts", text: "export interface SourceWriter<K> {}" },
+    { path: "packages/changeset/src/apply.ts", text: "w: SourceWriter<K>" },
+    { path: "packages/jira/src/writer.ts", text: 'SourceWriter<"jira">' },
+    {
+      path: "packages/jira/src/writer.test.ts",
+      text: 'm as Parameters<SourceWriter<"jira">["apply"]>[0]',
+    },
+    { path: "packages/server/src/x.ts", text: 'm as Parameters<SourceWriter<"jira">["apply"]>[0]' },
   ];
   assert.deepEqual(problems({ ...clean, sources }), [
-    "packages/sandbox/src/host.ts: imports a source writer outside packages/changeset (decision 0003)",
+    "packages/server/src/x.ts: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)",
   ]);
 });
 

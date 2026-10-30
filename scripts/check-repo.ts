@@ -1,7 +1,9 @@
 // Repo invariants: CLAUDE.md is a symlink to AGENTS.md; every locked package
 // comes from the npm registry, is on the AGENTS.md allowlist, and is listed on
 // an ADR's `Adds:` line; and outside packages/changeset, no code names
-// `Approved` (core defines it) or imports an adapter's `./writer`.
+// `Approved` or `SourceWriter` (core defines them) or imports a writer by any
+// path. An adapter's own `src/writer.ts` and its test are the exceptions; the
+// test may stand in for an approval, which nothing else may.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 
 // `name@version` keys from every top-level `packages:` block.
@@ -47,12 +49,19 @@ export function problems(repo: {
   const found = new Set<string>();
   for (const { path, text } of repo.sources) {
     if (path.startsWith("packages/changeset/")) continue;
-    if (!path.startsWith("packages/core/") && /\bApproved\b/.test(text)) {
+    const core = path.startsWith("packages/core/");
+    const ownWriter = /^packages\/[^/]+\/src\/writer(\.test)?\.ts$/.test(path);
+    if (!core && /\bApproved\b/.test(text)) {
       found.add(
         `${path}: names Approved outside packages/core and packages/changeset (decision 0003)`,
       );
     }
-    if (/["']@oriel\/[^"']+\/writer["']/.test(text)) {
+    if (!core && !ownWriter && /\bSourceWriter\b/.test(text)) {
+      found.add(
+        `${path}: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)`,
+      );
+    }
+    if (!ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
       found.add(`${path}: imports a source writer outside packages/changeset (decision 0003)`);
     }
   }
@@ -100,9 +109,14 @@ if (import.meta.main) {
     decisions: readdirSync("docs/decisions")
       .filter((f) => f.endsWith(".md"))
       .map((f) => readFileSync(`docs/decisions/${f}`, "utf8")),
-    sources: readdirSync("packages", { recursive: true, encoding: "utf8" })
+    // This check and its test spell out what they catch, so neither is scanned.
+    sources: ["packages", "scripts"]
+      .flatMap((dir) =>
+        readdirSync(dir, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f}`),
+      )
       .filter((f) => /\.tsx?$/.test(f) && !f.split("/").includes("node_modules"))
-      .map((f) => ({ path: `packages/${f}`, text: readFileSync(`packages/${f}`, "utf8") })),
+      .filter((f) => !/^scripts\/check-repo(\.test)?\.ts$/.test(f))
+      .map((path) => ({ path, text: readFileSync(path, "utf8") })),
   });
   for (const p of found) console.error(p);
   process.exitCode = found.length ? 1 : 0;
