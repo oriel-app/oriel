@@ -556,7 +556,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         const set = await mustChangeSet(id);
         const diff = await changeSets.diff(set.id);
-        return json(200, views.diff(diff, set));
+        return json(200, views.diff(diff, set, changeSets.applying(set.id)));
       },
     },
     {
@@ -659,7 +659,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           throw new Refused(404, "This review link has expired, was revoked, or was already used.");
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
-          diff: views.diff(opened.diff, opened.changeSet),
+          diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),
         });
       },
     },

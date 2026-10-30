@@ -291,6 +291,9 @@ test("while a change set applies, nothing is offered for it and every action wai
   const set = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
   assert.equal(set?.applying, true);
   assert.deepEqual(set?.nextSteps, []);
+  // The write in flight is no stop: nothing says why it stopped, or to try again.
+  assert.deepEqual(set?.errors, []);
+  assert.ok((await app.diff()).lines.every((line) => line.error === null));
   const { hash } = await app.diff();
   for (const [action, body] of [
     ["apply", {}],

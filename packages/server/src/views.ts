@@ -126,8 +126,9 @@ export function changeSetView(
       by: set.decision.by,
       at: set.decision.at,
     },
+    // While it applies, a row's mark is a send in flight, not a stop.
     errors: set.mutations.flatMap((m) =>
-      m.status !== "applied" && m.error !== null
+      !applying && m.status !== "applied" && m.error !== null
         ? [{ mutationId: m.id, error: plainError(m.error), sent: m.status === "failed" }]
         : [],
     ),
@@ -398,7 +399,9 @@ export function views(deps: ViewDeps) {
       };
     },
 
-    diff(diff: Diff, set: ChangeSet): DiffView {
+    // While the change set applies, no line says why it stopped: a row's
+    // mark is a send in flight.
+    diff(diff: Diff, set: ChangeSet, applying: boolean): DiffView {
       const { byId } = lookup();
       const person = people();
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
@@ -408,7 +411,7 @@ export function views(deps: ViewDeps) {
         lines: diff.lines.map((line) => {
           const row = rows.get(line.mutationId);
           const applied = row?.status === "applied";
-          const error = !applied && row?.error ? plainError(row.error) : null;
+          const error = !applied && !applying && row?.error ? plainError(row.error) : null;
           return {
             mutationId: line.mutationId,
             sentence: line.sentence,
