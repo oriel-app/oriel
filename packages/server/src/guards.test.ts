@@ -5,7 +5,6 @@ import { test } from "node:test";
 import { type GroupMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
 import { ensureWorkspace, groupStore, loadMigrations, migrate, open, threadStore } from "@oriel/db";
 import type { ThreadView } from "@oriel/web/view";
-import { minResponseTokens } from "@oriel/agent";
 import type { Agent } from "./agent.ts";
 import { host, json, type Script, t0, testApp } from "./testing.ts";
 import { memberOf, views } from "./views.ts";
@@ -71,16 +70,13 @@ test("a thread that has spent its tokens takes no more, whatever the agent does"
       yield { kind: "done", usage: { inputTokens: 6, outputTokens: 5 } };
     },
   };
-  // What is left after this turn is less than the smallest useful response.
-  const app = await thread(t, {
-    agent: () => spending,
-    limits: { maxTokensPerThread: minResponseTokens + 10 },
-  });
+  // This agent never says it has reached a cap; the server holds it anyway.
+  const app = await thread(t, { agent: () => spending, limits: { maxTokensPerThread: 10 } });
   const refused = await app.say("Two");
   assert.equal(refused.status, 409);
   assert.match(
     json<{ error: string }>(refused).error,
-    /used its [0-9,]+ tokens\. Start a new thread on this group/,
+    /^This thread has used its 10 tokens\. Start a new thread on this group to keep going\.$/,
   );
   assert.equal((await app.view()).entries.at(-1)?.kind, "limit");
 });

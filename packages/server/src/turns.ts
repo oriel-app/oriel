@@ -3,7 +3,6 @@
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
-import { minResponseTokens } from "@oriel/agent";
 import type { Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
 import {
   type Agent,
@@ -45,20 +44,17 @@ function endedOnLimit(messages: readonly Message[]): boolean {
   });
 }
 
-// Why a thread can take no more questions, in plain words, or null. The
-// same rule as the agent's, so the two never disagree: it has asked as many
-// as a thread may; or its last turn ended on a cap; or what it has spent
-// leaves less than the smallest useful response.
+// Why a thread can take no more questions, in plain words, or null: it has
+// asked as many as a thread may; or its last turn ended on a cap, which the
+// agent decides; or, as a backstop whatever agent is plugged in, it has
+// spent all its tokens.
 export function capReached(messages: readonly Message[], caps: Caps): string | null {
   const next = "Start a new thread on this group to keep going.";
   const asked = messages.filter((m) => m.role === "user").length;
   if (asked >= caps.maxTurnsPerThread)
     return `This thread has had all ${caps.maxTurnsPerThread} of its questions. ${next}`;
   const used = spent(messages);
-  if (
-    endedOnLimit(messages) ||
-    used.inputTokens + used.outputTokens >= caps.maxTokensPerThread - minResponseTokens
-  )
+  if (endedOnLimit(messages) || used.inputTokens + used.outputTokens >= caps.maxTokensPerThread)
     return `This thread has used its ${caps.maxTokensPerThread.toLocaleString("en-US")} tokens. ${next}`;
   return null;
 }

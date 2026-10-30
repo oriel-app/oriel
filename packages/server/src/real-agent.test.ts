@@ -2,14 +2,7 @@
 // answers from a script instead of a model: one run, then a reply.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  agent,
-  minResponseTokens,
-  type ModelEvent,
-  type Provider,
-  runToolName,
-  type Usage,
-} from "@oriel/agent";
+import { agent, type ModelEvent, type Provider, runToolName, type Usage } from "@oriel/agent";
 import type { ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
@@ -69,9 +62,10 @@ const thread = async (app: Awaited<ReturnType<typeof testApp>>) => {
   return id;
 };
 
-test("a thread whose spend leaves less than a useful response takes no more, as the agent agrees", async (t) => {
-  // 10,000 tokens a thread; the first turn spends 6,000, which leaves less
-  // than the agent's smallest response.
+test("a thread whose spend leaves less than a useful response: the agent stops the next turn, then the server holds it", async (t) => {
+  // 10,000 tokens a thread; the first turn spends 6,000, which leaves the
+  // agent too little for a useful response. The server doesn't work that out:
+  // the agent does, and ends the next turn on its cap.
   const reply: ModelEvent[] = [
     { kind: "text", text: "Done." },
     { kind: "end", stop: "done", detail: null, model: "m", usage: spend(3000, 3000) },
@@ -81,8 +75,14 @@ test("a thread whose spend leaves less than a useful response takes no more, as 
     limits: { maxTokensPerThread: 10_000 },
   });
   const id = await thread(app);
-  assert.ok(6000 >= 10_000 - minResponseTokens);
-  const refused = await app.post(`/api/threads/${id}/messages`, { text: "Two" });
+  assert.equal((await app.post(`/api/threads/${id}/messages`, { text: "Two" })).status, 202);
+  await app.app.settled();
+  const stopped = json<ThreadView>(await app.get(`/api/threads/${id}`));
+  assert.deepEqual(
+    stopped.entries.slice(-3).map((e) => e.kind),
+    ["user", "limit", "done"],
+  );
+  const refused = await app.post(`/api/threads/${id}/messages`, { text: "Three" });
   assert.equal(refused.status, 409);
   const notice = /used its 10,000 tokens\. Start a new thread on this group/;
   assert.match(json<{ error: string }>(refused).error, notice);
@@ -90,9 +90,9 @@ test("a thread whose spend leaves less than a useful response takes no more, as 
   const last = after.entries.at(-1);
   assert.ok(last?.kind === "limit");
   assert.match(last.reason, notice);
-  assert.equal(after.entries.filter((e) => e.kind === "user").length, 1);
+  assert.equal(after.entries.filter((e) => e.kind === "user").length, 2);
   // Once is enough.
-  assert.equal((await app.post(`/api/threads/${id}/messages`, { text: "Three" })).status, 409);
+  assert.equal((await app.post(`/api/threads/${id}/messages`, { text: "Four" })).status, 409);
   assert.equal(
     json<ThreadView>(await app.get(`/api/threads/${id}`)).entries.length,
     after.entries.length,
@@ -123,7 +123,6 @@ test("a turn the agent ended on its token cap ends the thread's questions", asyn
   );
   // 5,000 of 12,000 spent: what's spent alone wouldn't stop the next turn,
   // but the turn ended on the agent's cap, so the server holds it too.
-  assert.ok(5000 < 12_000 - minResponseTokens);
   const refused = await app.post(`/api/threads/${id}/messages`, { text: "Two" });
   assert.equal(refused.status, 409);
   assert.match(json<{ error: string }>(refused).error, /Start a new thread on this group/);
