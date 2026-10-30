@@ -44,6 +44,7 @@ const writing = async () => {
 const server = (await writing()).serving;
 const refusing = await writing();
 const unanswered = await writing();
+const holding = await writing();
 const readOnly = await serve(0);
 
 // A request as the window sends it.
@@ -107,6 +108,20 @@ const stopAt = async (
 };
 const partial = await stopAt(refusing, "refuse");
 const unheard = await stopAt(unanswered, "loseAnswers");
+
+// Approving, with SYN-99's write held in flight until the shots are taken:
+// the change set says it is being applied, and offers nothing else.
+const inFlight = await (async () => {
+  const { site, serving } = holding;
+  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
+  const threadId = await ask("Estimate what's missing", serving, groupId);
+  const setId = await changeSetOf(serving, threadId);
+  const held = site.hold("SYN-99");
+  const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
+  const approving = post(`/api/change-sets/${setId}/approve`, { hash }, serving);
+  await held.reached;
+  return { threadId, release: held.release, approving };
+})();
 
 // Answered, over items it needn't change: the user marks it done.
 await post(`/api/threads/${await ask("What's in here?")}/done`, {});
@@ -230,6 +245,8 @@ const scenes: Scene[] = [
     path: `/threads/${thread}`,
     act: async (page) => {
       await page.locator(".change-set .diff").waitFor();
+      // Approving waits for the diff to be shown, and the thread to reload.
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
       await page.locator(".search-block").waitFor();
     },
   },
@@ -253,6 +270,12 @@ const scenes: Scene[] = [
     path: `/threads/${unheard}`,
     on: unanswered.serving,
     act: (page) => page.locator(".may-have-landed").waitFor(),
+  },
+  {
+    name: "thread-applying",
+    path: `/threads/${inFlight.threadId}`,
+    on: holding.serving,
+    act: (page) => page.locator(".change-set .applying").waitFor(),
   },
   {
     name: "thread-read-only",
@@ -311,6 +334,9 @@ try {
   await server.close();
   await refusing.serving.close();
   await unanswered.serving.close();
+  inFlight.release();
+  await inFlight.approving;
+  await holding.serving.close();
   await readOnly.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
