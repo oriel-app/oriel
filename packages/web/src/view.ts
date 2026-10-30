@@ -27,6 +27,10 @@ export type WindowView = {
   fixture: boolean;
 };
 
+// The folder of markdown files the user connected, read-only: its real path,
+// how many files the index has from it, and when it last synced.
+export type FolderView = { path: string; items: number; syncedAt: string | null };
+
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 

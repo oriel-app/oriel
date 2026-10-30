@@ -1,8 +1,10 @@
 // The composition root: where the adapters' declarations meet the packages
-// that use them. It opens the database, syncs Jira into the index, and wires
-// groupings, change sets, bindings, the sandbox and the agent into the JSON
-// routes. Only this file builds change sets, which hold the writers; thread
-// code gets `capture` and nothing else.
+// that use them. It opens the database, syncs Jira and the connected folder
+// into the index, and wires groupings, change sets, bindings, the sandbox and
+// the agent into the JSON routes. Only this file builds change sets, which
+// hold the writers; thread code gets `capture` and nothing else.
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { bindingsFor } from "@oriel/bindings";
 import { changeSets, explainConflicts, type WriterConfig } from "@oriel/changeset";
 import {
@@ -18,12 +20,16 @@ import {
   type ReadResult,
   type Region,
   type Sandbox,
+  type Source,
+  type SourceKind,
   type Ulid,
   ulid,
+  type Validator,
 } from "@oriel/core";
 import {
   ensureWorkspace,
   firstWorkspace,
+  folderStore,
   groupStore,
   indexStore,
   loadMigrations,
@@ -44,8 +50,9 @@ import {
   readTransport,
   syncSource,
 } from "@oriel/jira";
+import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
 import { createSandbox } from "@oriel/sandbox";
-import type { GroupingId, WindowView } from "@oriel/web/view";
+import type { FolderView, GroupingId, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { api } from "./api.ts";
@@ -158,23 +165,89 @@ export async function createApp(options: AppOptions): Promise<App> {
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
 
-  // One sync at a time.
+  // One sync at a time, of any source, through the generic sync worker.
   let syncing: Promise<unknown> = Promise.resolve();
-  const sync = (full: boolean) => {
-    syncing = syncing
+  const syncInto = <K extends SourceKind, A>(
+    from: Source<K, A>,
+    attrs: Validator<A>,
+    full: boolean,
+  ): Promise<unknown> => {
+    const run = syncing
       .catch(() => {})
-      .then(() =>
-        syncSource({ source, attrs: jiraAttrs, index, workspaceId, full, clock: now, log }),
-      );
-    return syncing;
+      .then(() => syncSource({ source: from, attrs, index, workspaceId, full, clock: now, log }));
+    syncing = run;
+    return run;
   };
+  const sync = (full: boolean) => syncInto(source, jiraAttrs, full);
   // The first sync of a source into this workspace connects it.
+  const connected = (kind: SourceKind) => {
+    emit({ name: "source.connected", at: now(), workspaceId, source: kind });
+  };
   const connecting = index.source(workspaceId, "jira") === null;
   await sync(fixture !== null || connecting);
-  if (connecting) emit({ name: "source.connected", at: now(), workspaceId, source: "jira" });
+  if (connecting) connected("jira");
   const caps = options.limits ?? limits;
 
-  const records = (): IndexRecord[] => index.records(workspaceId, "jira", jiraAttrs);
+  // The folder the user connected, read-only (decision 0019). Its stored path
+  // is the real path its pick resolved to, which every walk checks again.
+  const folders = folderStore(db);
+  const folderFrom = (stored: { id: Ulid; path: string }) => ({
+    ...stored,
+    source: folderSource({ folderId: stored.id, path: stored.path as FolderPath, log }),
+  });
+  const stored = folders.get(workspaceId);
+  let folder = stored && folderFrom(stored);
+  // A folder that can't be read now (an unmounted drive) leaves its items as
+  // they were, and says so.
+  const syncFolder = async (): Promise<string | null> => {
+    if (!folder) return "No folder is connected.";
+    try {
+      await syncInto(folder.source, folderAttrs, true);
+      return null;
+    } catch (error) {
+      log("folder sync failed", { error: error instanceof Error ? error.message : String(error) });
+      return "Oriel couldn't read the folder just now. Is it still there?";
+    }
+  };
+  if (folder) await syncFolder();
+
+  const records = (): IndexRecord[] => [
+    ...index.records(workspaceId, "jira", jiraAttrs),
+    ...index.records(workspaceId, "folder", folderAttrs),
+  ];
+  const folderView = (): FolderView | null =>
+    folder && {
+      path: folder.path,
+      items: index.records(workspaceId, "folder", folderAttrs).length,
+      syncedAt: index.source(workspaceId, "folder")?.syncedAt ?? null,
+    };
+  const connectFolder = async (
+    picked: string,
+  ): Promise<{ folder: FolderView } | { problem: string }> => {
+    const typed = picked.trim();
+    const path = typed === "~" || typed.startsWith("~/") ? join(homedir(), typed.slice(1)) : typed;
+    if (!isAbsolute(path)) return { problem: "Type the folder's full path, starting with / or ~." };
+    let real: FolderPath;
+    try {
+      real = await resolveFolder(path);
+    } catch (error) {
+      const file = error instanceof Error && error.message.includes("isn't a directory");
+      return {
+        problem: file
+          ? "That path is a file, not a folder."
+          : "There's no folder Oriel can read at that path.",
+      };
+    }
+    const first = index.source(workspaceId, "folder") === null;
+    const id = newId();
+    folders.connect(workspaceId, { id, path: real }, now());
+    folder = folderFrom({ id, path: real });
+    const problem = await syncFolder();
+    if (problem) return { problem };
+    if (first) connected("folder");
+    const view = folderView();
+    return view ? { folder: view } : { problem: "No folder is connected." };
+  };
   const people = () => {
     const names = new Map<string, string>();
     for (const record of records())
@@ -186,9 +259,14 @@ export async function createApp(options: AppOptions): Promise<App> {
   const reader: Reader = {
     async read(ids) {
       const jira = ids.filter((id): id is ItemId<"jira"> => parseItemId(id)?.source === "jira");
-      const read = new Map<string, ReadResult>(
-        (await source.read(jira)).map((result) => [result.id, result]),
+      const files = ids.filter(
+        (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
       );
+      const results: ReadResult[] = [
+        ...(jira.length ? await source.read(jira) : []),
+        ...(files.length && folder ? await folder.source.read(files) : []),
+      ];
+      const read = new Map<string, ReadResult>(results.map((result) => [result.id, result]));
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
@@ -313,15 +391,29 @@ export async function createApp(options: AppOptions): Promise<App> {
       newId,
       applied,
       explain: (conflicts) => explainConflicts(conflicts, specs),
+      folder: {
+        view: folderView,
+        connect: connectFolder,
+        sync: async () => {
+          const problem = await syncFolder();
+          const view = folderView();
+          return problem || !view
+            ? { problem: problem ?? "No folder is connected." }
+            : { folder: view };
+        },
+      },
       log,
     }),
     settled: () => conversation.settled(),
     telemetry: () => telemetry.list(workspaceId),
+    // Stops every turn, waits for the last sync, and closes the database.
+    // Closing twice does nothing more.
     async close() {
+      if (!db.isOpen) return;
       for (const summary of threads.list(workspaceId, now())) conversation.stop(summary.thread.id);
       await conversation.settled();
       await syncing.catch(() => {});
-      db.close();
+      if (db.isOpen) db.close();
     },
   };
 }

@@ -12,6 +12,7 @@
     "@oriel/changeset": "workspace:*",
     "@oriel/core": "workspace:*",
     "@oriel/db": "workspace:*",
+    "@oriel/folder": "workspace:*",
     "@oriel/groupings": "workspace:*",
     "@oriel/jira": "workspace:*",
     "@oriel/sandbox": "workspace:*",

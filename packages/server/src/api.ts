@@ -26,7 +26,7 @@ import {
   type Validator,
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
-import { type GroupingId, isGroupingId, type StreamEvent } from "@oriel/web/view";
+import { type FolderView, type GroupingId, isGroupingId, type StreamEvent } from "@oriel/web/view";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
@@ -51,6 +51,13 @@ export type ApiDeps = {
   applied(set: ChangeSet): Promise<void>;
   // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
+  // The connected folder: its state, connecting one by its typed path, and
+  // syncing it again. A refusal is a plain sentence.
+  folder: {
+    view(): FolderView | null;
+    connect(path: string): Promise<{ folder: FolderView } | { problem: string }>;
+    sync(): Promise<{ folder: FolderView } | { problem: string }>;
+  };
   log: Log;
 };
 
@@ -120,6 +127,13 @@ const reviewDecision = object({
   hash: string,
 });
 const emptyBody = object({});
+const folderBody = object({
+  path: refine(
+    string,
+    (path) => path.trim() !== "" && path.length <= 1024 && !path.includes("\0"),
+    "expected a folder path",
+  ),
+});
 const tinyBody = 256;
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
@@ -263,6 +277,34 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   };
 
   const routes: Route[] = [
+    {
+      method: "GET",
+      path: at("/folder"),
+      run: async () => json(200, { folder: deps.folder.view() }),
+    },
+    {
+      // Connects the folder whose path the user typed: there is no native
+      // picker on localhost. Only a directory is taken; its items sync into
+      // the index at once.
+      method: "POST",
+      path: at("/folder"),
+      async run(_, request) {
+        const { path } = await readJson(request, smallBody, folderBody);
+        const connected = await deps.folder.connect(path);
+        if ("problem" in connected) throw new Refused(400, connected.problem);
+        return json(200, connected);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/folder/sync"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        const synced = await deps.folder.sync();
+        if ("problem" in synced) throw new Refused(409, synced.problem);
+        return json(200, synced);
+      },
+    },
     {
       // What only the window knows happened. Two events, fixed fields.
       method: "POST",

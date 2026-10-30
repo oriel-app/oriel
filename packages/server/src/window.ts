@@ -6,12 +6,16 @@ import {
   listZoom,
   stuckGrouping,
 } from "@oriel/groupings";
+import { folderPresentation } from "@oriel/folder";
 import { jiraPresentation } from "@oriel/jira";
 import type { GroupingId, WindowView } from "@oriel/web/view";
 
 // How each connected source shows in the window. The server is where the
 // adapters' declarations meet the packages that use them.
-export const presentations: Presentations = { jira: jiraPresentation };
+export const presentations: Presentations = {
+  jira: jiraPresentation,
+  folder: folderPresentation,
+};
 
 export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,

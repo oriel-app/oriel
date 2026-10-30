@@ -86,6 +86,8 @@ export type TestOptions = {
   limits?: Partial<Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">>;
   // Change sets write to SYN in memory instead of being read-only.
   writes?: boolean;
+  // A database file, so a second app can open what the first left.
+  db?: string;
 };
 
 export type Logged = { message: string; fields: Record<string, unknown> };
@@ -100,7 +102,7 @@ export async function testApp(
   const site = options.writes ? memorySite(loadJiraFixture(), now()) : null;
   const logged: Logged[] = [];
   const app: App = await createApp({
-    db: ":memory:",
+    db: options.db ?? ":memory:",
     jira: site
       ? {
           kind: "fixture",

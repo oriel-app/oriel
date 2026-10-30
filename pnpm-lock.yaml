@@ -149,6 +149,9 @@ importers:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
+      '@oriel/folder':
+        specifier: workspace:*
+        version: link:../folder
       '@oriel/groupings':
         specifier: workspace:*
         version: link:../groupings
