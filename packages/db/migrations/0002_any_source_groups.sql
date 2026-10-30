@@ -112,21 +112,19 @@ insert into group_members (workspace_id, group_id, source, stable_id, item_id, a
   select workspace_id, region_id, source, stable_id, item_id, 1 from region_items;
 
 -- A thread follows its group and works in one version of it. Its state is
--- stored, since the user can mark a thread done; done_by says how it got
--- there, and is set exactly when it is done.
+-- still derived from these tables, never stored; only the user marking it
+-- done has no other record, so that is kept, as when it happened.
 create table new_threads (
   id text primary key,
   workspace_id text not null references workspaces (id),
   group_id text not null references groups (id),
   region_version integer not null,
-  state text not null check (state in ('working', 'done', 'handed-off', 'dropped')),
-  done_by text check (done_by in ('applied', 'marked')),
+  marked_done_at text,
   created_at text not null,
-  check ((state = 'done') = (done_by is not null)),
   foreign key (group_id, region_version) references group_changes (group_id, version)
 ) strict;
-insert into new_threads (id, workspace_id, group_id, region_version, state, created_at)
-  select id, workspace_id, region_id, 1, 'working', created_at from threads;
+insert into new_threads (id, workspace_id, group_id, region_version, created_at)
+  select id, workspace_id, region_id, 1, created_at from threads;
 drop table threads;
 alter table new_threads rename to threads;
 

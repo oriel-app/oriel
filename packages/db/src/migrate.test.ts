@@ -120,8 +120,8 @@ test("0002 turns each region into a group at version 1, and keeps its threads an
       { item_id: "jira:SYN-13", added_version: 1, removed_version: null },
     ],
   );
-  assert.deepEqual(all("select id, group_id, region_version, state, done_by from threads"), [
-    { id: "t1", group_id: "r1", region_version: 1, state: "working", done_by: null },
+  assert.deepEqual(all("select id, group_id, region_version, marked_done_at from threads"), [
+    { id: "t1", group_id: "r1", region_version: 1, marked_done_at: null },
   ]);
   assert.deepEqual(all("select id, region_version, cold_start_ms, outcome from runs"), [
     { id: "u1", region_version: 1, cold_start_ms: null, outcome: "ok" },

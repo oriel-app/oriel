@@ -352,8 +352,8 @@ export function setup() {
     t0,
   );
   db.prepare(`
-    insert into threads (id, workspace_id, group_id, region_version, state, created_at)
-    values (?, ?, ?, 1, 'working', ?)`).run(threadId, workspaceId, groupId, t0);
+    insert into threads (id, workspace_id, group_id, region_version, created_at)
+    values (?, ?, ?, 1, ?)`).run(threadId, workspaceId, groupId, t0);
   db.prepare(`
     insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
       dts_hash, model, input_tokens, output_tokens, wall_ms, outcome, started_at)

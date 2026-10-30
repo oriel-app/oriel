@@ -1,5 +1,6 @@
 // A thread: a group, a chat and change sets (decision 0018). It is pinned to
-// its group and works in one version of it, its region.
+// its group and works in one version of it, its region. Its state is derived
+// from what happened in it, never stored (packages/db derives it).
 import type { Instant, Ulid } from "./ids.ts";
 
 // Working until a change set applies or the user marks it done; handed off

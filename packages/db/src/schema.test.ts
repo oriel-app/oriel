@@ -64,7 +64,7 @@ function withThread() {
   db.exec(`
     insert into groups values ('g1', '${workspaceId}', 'Checkout', '{"kind":"picked"}', '${now}');
     insert into group_changes values ('${workspaceId}', 'g1', 1, '${now}', '{"kind":"user"}');
-    insert into threads values ('t1', '${workspaceId}', 'g1', 1, 'working', null, '${now}');
+    insert into threads values ('t1', '${workspaceId}', 'g1', 1, null, '${now}');
   `);
   return { db, workspaceId };
 }
@@ -86,19 +86,20 @@ function withChangeSet() {
   return { db, workspaceId };
 }
 
-test("a thread is in one of four states, and done_by is set exactly when it is done", () => {
-  const { db, workspaceId } = withThread();
-  const insert = db.prepare(
-    "insert into threads (id, workspace_id, group_id, region_version, state, done_by, created_at) values (?, ?, 'g1', 1, ?, ?, ?)",
-  );
-  insert.run("t2", workspaceId, "done", "marked", now);
-  insert.run("t3", workspaceId, "done", "applied", now);
-  insert.run("t4", workspaceId, "handed-off", null, now);
-  insert.run("t5", workspaceId, "dropped", null, now);
-  assert.throws(() => insert.run("t6", workspaceId, "stuck", null, now), /CHECK/);
-  assert.throws(() => insert.run("t7", workspaceId, "done", null, now), /CHECK/);
-  assert.throws(() => insert.run("t8", workspaceId, "working", "marked", now), /CHECK/);
-  assert.throws(() => insert.run("t9", workspaceId, "done", "guessed", now), /CHECK/);
+test("a thread's state isn't stored, only when the user marked it done", () => {
+  const { db } = withThread();
+  const columns = db
+    .prepare("pragma table_info(threads)")
+    .all()
+    .map((row) => String(row.name));
+  assert.deepEqual(columns, [
+    "id",
+    "workspace_id",
+    "group_id",
+    "region_version",
+    "marked_done_at",
+    "created_at",
+  ]);
 });
 
 test("a thread and a member name versions their group has", () => {
@@ -107,7 +108,7 @@ test("a thread and a member name versions their group has", () => {
     () =>
       db
         .prepare(
-          "insert into threads (id, workspace_id, group_id, region_version, state, created_at) values ('t2', ?, 'g1', 2, 'working', ?)",
+          "insert into threads (id, workspace_id, group_id, region_version, created_at) values ('t2', ?, 'g1', 2, ?)",
         )
         .run(workspaceId, now),
     /FOREIGN KEY/,
