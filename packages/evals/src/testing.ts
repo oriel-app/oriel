@@ -50,3 +50,60 @@ export const verdicts = (...holds: boolean[]) =>
       holds: h,
     })),
   });
+
+// A streamed Messages API response, as the API would send it: some text,
+// then a call to the agent's run tool when `script` is given.
+export function streamed(
+  { text, script }: { text: string; script?: string },
+  model = "claude-opus-5-5",
+): Response {
+  const usage = { input_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const events: object[] = [
+    {
+      type: "message_start",
+      message: { id: "msg_test", type: "message", role: "assistant", model, content: [], usage },
+    },
+    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+    { type: "content_block_stop", index: 0 },
+  ];
+  if (script !== undefined)
+    events.push(
+      {
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", id: "toolu_test", name: "run", input: {} },
+      },
+      {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: JSON.stringify({ script }) },
+      },
+      { type: "content_block_stop", index: 1 },
+    );
+  events.push(
+    {
+      type: "message_delta",
+      delta: { stop_reason: script === undefined ? "end_turn" : "tool_use" },
+      usage: { output_tokens: 20 },
+    },
+    { type: "message_stop" },
+  );
+  const body = events
+    .map((e) => `event: ${String(Reflect.get(e, "type"))}\ndata: ${JSON.stringify(e)}\n\n`)
+    .join("");
+  return new Response(body, { headers: { "content-type": "text/event-stream" } });
+}
+
+// Answers each request with the next response, and keeps each request's body.
+export function scriptedModel(responses: Response[]) {
+  const queue = [...responses];
+  const bodies: Record<string, unknown>[] = [];
+  const fetch: Fetch = async (input, init) => {
+    bodies.push((await new Request(input, init).json()) as Record<string, unknown>);
+    const next = queue.shift();
+    if (!next) throw new Error("the scripted model has no more responses");
+    return next;
+  };
+  return { fetch, bodies };
+}
