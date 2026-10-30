@@ -7,7 +7,8 @@ Adds: none
 **Decision.**
 
 - The agent loop reaches a model through `Provider` in `packages/agent`.
-  - A provider holds one conversation per turn and streams one response at a time: `next(results)` yields text deltas, then complete tool calls, then one end with the stop reason, the serving model and usage.
+  - A provider holds one conversation per turn and streams one response at a time. `next(results, { maxOutputTokens })` yields usage as soon as it's known, then text deltas, then complete tool calls, then one end with the stop reason, the serving model and usage.
+  - Each response is bounded by what's left of the thread's token cap, so a stopped or broken response still counts toward it.
   - The loop owns the tool, the caps, the runs and the history. A provider owns only how messages reach a model and come back.
 - The first provider is the Anthropic Messages API with an API key: one key per instance, held by whoever runs it, never part of onboarding (SPEC §7).
   - Plain `fetch` and server-sent events, with no SDK.
