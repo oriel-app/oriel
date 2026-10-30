@@ -710,12 +710,12 @@ test("an absent read goes stale when anything writes to the row, even the same w
       throw new Error("timed out");
     };
     await b.apply(set.id);
-    // 4. A third can't read SYN-21, and says it couldn't tell, as before.
-    jira.hooks.read = () => {
-      jira.hooks.read = undefined;
-      throw new Error("GET /rest/api/3/issue/SYN-21: 503");
-    };
+    // 4. A third can't read SYN-21, and says it couldn't tell in the same
+    //    words as before, so only the row's version tells the two apart.
+    jira.hide("SYN-21");
     await c.apply(set.id);
+    jira.show("SYN-21");
+    assert.equal((await changeSets.get(set.id))?.mutations[0]?.error, said);
     // And SYN-21 leaves the group, so this apply won't send it.
     groupStore(db).remove(
       groupId,

@@ -274,12 +274,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
 }
 
 // The thread's event stream reconnected after dropping: whatever it missed
-// (an apply that ended, say) isn't replayed, so the thread reloads once, and
-// a change set that was applying is diffed again, for what stopped it.
+// (an apply that ended, an edit this tab made) isn't replayed, and an ok reply
+// waits on the stream, so the thread reloads once and every change set is
+// diffed again.
 export function reconnected(model: ThreadModel): [ThreadModel, Effect[]] {
   if (model.view === null) return [model, []];
-  const applying = model.view.changeSets.filter((set) => set.applying).map((set) => diffOf(set.id));
-  return [model, [refresh(model), ...applying]];
+  return [model, [refresh(model), ...model.view.changeSets.map((set) => diffOf(set.id))]];
 }
 
 // What the thread's event stream says.

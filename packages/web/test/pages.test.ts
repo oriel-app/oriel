@@ -295,18 +295,32 @@ test("an apply reloads each tab twice and diffs once: as it starts, then as it e
   );
 });
 
-test("a stream that reconnects reloads the thread once, and diffs what was applying", () => {
+test("a stream that reconnects reloads the thread once, and diffs every change set", () => {
+  // One set was applying; the other was edited by this tab while the stream
+  // was down, so its diff on screen is stale and no event will say so.
+  const editedId = "01JBZ0000000000000000000C2";
   const [model] = initRoot({ page: "thread", id });
   const [loaded] = updateRoot(model, {
     type: "replied",
     tag: { kind: "thread", id },
     ok: true,
-    body: threadView([], [{ ...openSet, status: "applying", applying: true, nextSteps: [] }]),
+    body: threadView(
+      [],
+      [
+        { ...openSet, status: "applying", applying: true, nextSteps: [] },
+        { ...openSet, id: editedId },
+      ],
+    ),
   });
   const [, effects] = updateRoot(loaded, { type: "streamReopened" });
   assert.deepEqual(
     effects.map((e) => (e.type === "http" ? e.url : e.type)),
-    [`/api/threads/${id}`, `/api/change-sets/${setId}/diff`, "/api/threads"],
+    [
+      `/api/threads/${id}`,
+      `/api/change-sets/${setId}/diff`,
+      `/api/change-sets/${editedId}/diff`,
+      "/api/threads",
+    ],
   );
 });
 
