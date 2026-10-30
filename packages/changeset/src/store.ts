@@ -25,6 +25,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
+import { groupStore } from "@oriel/db";
 import { changeSetHash } from "./hash.ts";
 
 export const ulidValue = refine(string, isUlid, "expected a ULID");
@@ -88,7 +89,7 @@ const linkRow = object({
 });
 const nextRow = object({ next: number });
 const stableIdRow = object({ stable_id: string });
-const memberRow = object({ source: string, stable_id: string, item_id: string });
+const runRegionRow = object({ group_id: ulidValue, region_version: number });
 const foundRow = object({ found: number });
 
 export type LinkRow = Infer<typeof linkRow>;
@@ -137,9 +138,11 @@ export function store(db: DatabaseSync) {
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
-  const selectRegionMembers = db.prepare(`
-    select ri.source, ri.stable_id, ri.item_id from threads t join region_items ri on ri.region_id = t.region_id
-    where t.id = ?`);
+  // The group a run's thread is on, and the version of it the run used.
+  const selectRunRegion = db.prepare(`
+    select t.group_id, r.region_version from runs r join threads t on t.id = r.thread_id
+    where r.id = ? and r.workspace_id = ?`);
+  const groups = groupStore(db);
   // The item a handle names now: the live one, or else the latest tombstone.
   const selectStableId = db.prepare(`
     select stable_id from items where workspace_id = ? and source = ? and item_id = ?
@@ -262,17 +265,24 @@ export function store(db: DatabaseSync) {
 
     stableId: stableIdOf,
 
-    // Handles as a thread's region sees them. Membership is by stable ID
-    // (decision 0004). A handle resolves through the index first, so one
-    // reused by another item names that item and is refused. A handle no index
-    // row has, such as a moved item's old one, falls back to the handle the
-    // region was created with. Capture, edit and apply all resolve this way.
-    region(threadId: Ulid, workspaceId: Ulid) {
-      const rows = selectRegionMembers
-        .all(threadId)
-        .map((raw) => parse(memberRow, raw, "region_items"));
+    // Handles as the region a run used sees them: its thread's group at the
+    // run's version (decision 0018). A change set no run produced, a revert,
+    // has no region. Membership is by stable ID (decision 0004). A handle
+    // resolves through the index first, so one reused by another item names
+    // that item and is refused. A handle no index row has, such as a moved
+    // item's old one, falls back to the handle the member was added with.
+    // Capture, edit and apply all resolve this way.
+    region(runId: Ulid | null, workspaceId: Ulid) {
+      const raw = runId === null ? undefined : selectRunRegion.get(runId, workspaceId);
+      const at = raw ? parse(runRegionRow, raw, "runs") : null;
+      const items = at ? (groups.region(at.group_id, at.region_version)?.items ?? []) : [];
+      const rows = items.map((item) => ({
+        source: parseItemId(item.id)?.source ?? "",
+        stable_id: item.stableId,
+        item_id: item.id,
+      }));
       const members = new Set(rows.map((row) => `${row.source}\u0000${row.stable_id}`));
-      const created = new Map(rows.map((row) => [row.item_id, row.stable_id]));
+      const created = new Map<string, string>(rows.map((row) => [row.item_id, row.stable_id]));
       const stableId = (handle: string): string | null =>
         stableIdOf(workspaceId, handle) ?? created.get(handle) ?? null;
       return {

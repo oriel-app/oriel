@@ -603,15 +603,15 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   };
 
   // The stable ID of the item a mutation writes to: from the result that made
-  // it or that the mutation undoes, or else as the thread's region resolves
-  // the handle, as capture did.
+  // it or that the mutation undoes, or else as the region its run used
+  // resolves the handle, as capture did.
   const stableIdFor = (m: MutationRecord, set: ChangeSet, target: ItemId): string | null => {
     if (m.target !== null && isNewRef(m.target)) {
       const ref = m.target;
       return set.mutations.find((c) => c.ref === ref)?.applied?.item.stableId ?? null;
     }
     if (m.reverts) return rows.mutation(m.reverts)?.applied?.item.stableId ?? null;
-    return rows.region(set.threadId, set.workspaceId).stableId(target);
+    return rows.region(set.runId, set.workspaceId).stableId(target);
   };
 
   // A set op whose value is already in place, as when an earlier send landed
@@ -839,7 +839,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           "invalid",
           `mutation ${revertOnly + 1} (${checked[revertOnly]?.op}): exists only to revert a change, so a run can't ask for it`,
         );
-      const region = rows.region(owner.value.threadId, owner.value.workspaceId);
+      const region = rows.region(owner.value.id, owner.value.workspaceId);
       const outside = outsideRegion(
         checked.map((m, i) => ({ m, seq: i + 1 })),
         (handle) => region.has(handle),
@@ -918,7 +918,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           const m = checked[i];
           return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
         });
-        const region = rows.region(current.threadId, current.workspaceId);
+        const region = rows.region(current.runId, current.workspaceId);
         const outside = outsideRegion(edited, (handle) => region.has(handle), false);
         if (outside) throw new ChangeSetError("refused", outside);
         for (const mutationId of remove) rows.remove(current.id, mutationId);

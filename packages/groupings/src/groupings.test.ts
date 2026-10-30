@@ -259,7 +259,7 @@ test("over the base, the epic grouping reproduces each frozen epic region", () =
   assert.ok(base);
   const clusters = epicGrouping.group(base.records, last);
   const regions = fixture.regions.flatMap((region) =>
-    region.origin.kind === "group" && region.origin.grouping === "epic"
+    region.origin.kind === "cluster" && region.origin.grouping === "epic"
       ? [{ ...region, origin: region.origin }]
       : [],
   );

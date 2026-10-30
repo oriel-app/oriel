@@ -83,3 +83,54 @@ test("a migration that leaves a dangling foreign key is rolled back", () => {
   assert.deepEqual(tables(db), ["a", "schema_migrations"]);
   assert.equal(db.prepare("pragma foreign_keys").get()?.foreign_keys, 1);
 });
+
+test("0002 turns each region into a group at version 1, and keeps its threads and runs", () => {
+  const db = open(":memory:");
+  const [first, ...rest] = loadMigrations();
+  assert.ok(first);
+  migrate(db, [first], now);
+  db.exec(`
+    insert into workspaces values ('w1', 'test', '${now}');
+    insert into regions values ('r1', 'w1', '{"kind":"group","grouping":"epic","cluster":"10001","anchor":"jira:SYN-1"}', 3, '${now}');
+    insert into region_items values ('w1', 'r1', 1, 'jira', '10001', 'jira:SYN-1');
+    insert into region_items values ('w1', 'r1', 2, 'jira', '10013', 'jira:SYN-13');
+    insert into threads values ('t1', 'w1', 'r1', '${now}');
+    insert into runs values ('u1', 'w1', 't1', 3, 'p', 'd', 'model', 1, 2, 3, 'ok', '${now}');
+    insert into run_reads values ('w1', 'u1', 1, 'jira.listItems', '[]', 4, 0, 'h');
+    insert into items values ('w1', 'jira', '10001', 'jira:SYN-1', 'Epic', 'https://x/SYN-1', '${now}', '{}', 3, null);
+  `);
+  migrate(db, [first, ...rest], now);
+  const all = (sql: string) =>
+    db
+      .prepare(sql)
+      .all()
+      .map((row) => ({ ...row }));
+  assert.deepEqual(all("select id, name, origin from groups"), [
+    {
+      id: "r1",
+      name: "",
+      origin: '{"kind":"cluster","grouping":"epic","cluster":"10001","anchor":"jira:SYN-1"}',
+    },
+  ]);
+  assert.deepEqual(
+    all("select item_id, added_version, removed_version from group_members order by item_id"),
+    [
+      { item_id: "jira:SYN-1", added_version: 1, removed_version: null },
+      { item_id: "jira:SYN-13", added_version: 1, removed_version: null },
+    ],
+  );
+  assert.deepEqual(all("select id, group_id, region_version, state, done_by from threads"), [
+    { id: "t1", group_id: "r1", region_version: 1, state: "working", done_by: null },
+  ]);
+  assert.deepEqual(all("select id, region_version, cold_start_ms, outcome from runs"), [
+    { id: "u1", region_version: 1, cold_start_ms: null, outcome: "ok" },
+  ]);
+  assert.deepEqual(all("select status, payload_hash from run_reads"), [
+    { status: "answered", payload_hash: "h" },
+  ]);
+  assert.deepEqual(all("select location, facets from items"), [
+    { location: "https://x/SYN-1", facets: "{}" },
+  ]);
+  assert.ok(!tables(db).includes("regions") && !tables(db).includes("region_items"));
+  assert.deepEqual(db.prepare("pragma foreign_key_check").all(), []);
+});

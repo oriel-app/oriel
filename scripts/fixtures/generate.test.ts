@@ -121,7 +121,7 @@ test("mess: the injection story", () => {
 
 test("frozen regions: epic groups anchored on their epic, and a hand-picked one", () => {
   const origins = fixture.regions.map((region) => region.origin);
-  assert.ok(origins.some((o) => o.kind === "group" && o.grouping === "epic" && o.anchor));
+  assert.ok(origins.some((o) => o.kind === "cluster" && o.grouping === "epic" && o.anchor));
   assert.ok(origins.some((o) => o.kind === "picked"));
 });
 

@@ -20,7 +20,7 @@ import {
   type WriteResult,
 } from "@oriel/core";
 import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps } from "@oriel/jira";
-import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
+import { ensureWorkspace, groupStore, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSets, type FieldReader } from "./change-sets.ts";
 
@@ -325,34 +325,31 @@ export const regionKeys = [
   "SYN-117",
 ];
 
-// A fresh in-memory database with a workspace, a region, a thread and a run,
-// Jira in memory, and a clock the test moves by hand.
+// A fresh in-memory database with a workspace, a group of the region's items
+// at version 1, a thread on it and a run in that version, Jira in memory, and
+// a clock the test moves by hand.
 export function setup() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
   const ms = Date.parse(t0);
   const workspaceId = ulid(ms);
-  const regionId = ulid(ms);
+  const groupId = ulid(ms);
   const threadId = ulid(ms);
   const runId = ulid(ms);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  db.prepare(
-    "insert into regions (id, workspace_id, origin, snapshot, created_at) values (?, ?, ?, 1, ?)",
-  ).run(regionId, workspaceId, JSON.stringify({ kind: "picked" }), t0);
   const base = new Map(fixture().issues.map((issue) => [issue.key, issue.id]));
-  const member = db.prepare(`
-    insert into region_items (workspace_id, region_id, seq, source, stable_id, item_id)
-    values (?, ?, ?, 'jira', ?, ?)`);
-  regionKeys.forEach((key, i) =>
-    member.run(workspaceId, regionId, i + 1, base.get(key) ?? "", `jira:${key}`),
+  groupStore(db).create(
+    { id: groupId, workspaceId, name: "Picked", origin: { kind: "picked" } },
+    regionKeys.map((key) => ({ id: `jira:${key}`, stableId: base.get(key) ?? "" })),
+    t0,
   );
-  db.prepare(
-    "insert into threads (id, workspace_id, region_id, created_at) values (?, ?, ?, ?)",
-  ).run(threadId, workspaceId, regionId, t0);
   db.prepare(`
-    insert into runs (id, workspace_id, thread_id, snapshot, system_prompt_hash, dts_hash, model,
-      input_tokens, output_tokens, wall_ms, outcome, started_at)
-    values (?, ?, ?, 1, 'p', 'd', 'model', 0, 0, 0, 'ok', ?)`).run(
+    insert into threads (id, workspace_id, group_id, region_version, state, created_at)
+    values (?, ?, ?, 1, 'working', ?)`).run(threadId, workspaceId, groupId, t0);
+  db.prepare(`
+    insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
+      dts_hash, model, input_tokens, output_tokens, wall_ms, outcome, started_at)
+    values (?, ?, ?, 1, 1, 'p', 'd', 'model', 0, 0, 0, 'ok', ?)`).run(
     runId,
     workspaceId,
     threadId,

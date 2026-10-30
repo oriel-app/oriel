@@ -68,6 +68,13 @@ test("a consistent fixture parses, and its region origins are core's", () => {
   assert.equal(fixture.issues.length, 4);
   const origins: Region["origin"][] = fixture.regions.map((region) => region.origin);
   assert.deepEqual(origins[1], { kind: "picked" });
+  // The files say "group"; Oriel says "cluster" (decision 0018).
+  assert.deepEqual(origins[0], {
+    kind: "cluster",
+    grouping: "epic",
+    cluster: "10001",
+    anchor: "jira:SYN-1",
+  });
 });
 
 test("broken references are reported with their paths", () => {

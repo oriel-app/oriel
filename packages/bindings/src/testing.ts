@@ -8,7 +8,6 @@ import {
   type Bindings,
   type CapturedMutation,
   guestMessage,
-  instant,
   type ItemId,
   parseItemId,
   type Reader,
@@ -43,12 +42,11 @@ export function fixtureRegion(name: string): Region {
   if (!frozen) throw new RangeError(`no fixture region ${name}`);
   const stableIds = new Map(fixture.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   return {
-    id: fixedId,
+    groupId: fixedId,
+    version: 1,
     workspaceId: fixedId,
     items: frozen.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
     origin: frozen.origin,
-    snapshot: 1,
-    createdAt: instant(new Date("2026-10-01T00:00:00.000Z")),
   };
 }
 

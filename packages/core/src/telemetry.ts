@@ -1,3 +1,4 @@
+import type { GroupChange, GroupOrigin } from "./group.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { ZoomId } from "./zoom.ts";
 
@@ -9,7 +10,16 @@ import type { ZoomId } from "./zoom.ts";
 // - time to done: from `thread.opened` to the thread's first `changeset.applied`
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
-  | { name: "thread.opened"; threadId: Ulid; regionSize: number }
+  // `size` is how many items it started with.
+  | { name: "group.created"; groupId: Ulid; origin: GroupOrigin["kind"]; size: number }
+  // One per item, by the user or by a change set a thread on the group applied.
+  | {
+      name: "group.item-added";
+      groupId: Ulid;
+      source: SourceKind;
+      cause: GroupChange["cause"]["kind"];
+    }
+  | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   | { name: "question.asked"; threadId: Ulid }
   | { name: "grouping.switched"; grouping: string }
   | { name: "zoom.changed"; from: ZoomId; to: ZoomId }

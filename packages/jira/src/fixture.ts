@@ -7,6 +7,7 @@
 import {
   array,
   boolean,
+  type GroupOrigin,
   type Infer,
   type Issue,
   isInstant,
@@ -74,9 +75,10 @@ export const fixtureEdit = union(
   object({ kind: literal("delete"), key: issueKey, at: utc }),
 );
 
-// Item IDs snapshotted against the base state, as a region would be, with the
-// same origin as core's `Region`. For the epic grouping, `cluster` is the
-// epic's stable ID and `anchor` its item ID.
+// Item IDs snapshotted against the base state, as a region would be, with an
+// origin as stored: `fixtures/jira/` predates decision 0018 and calls a
+// cluster a "group". For the epic grouping, `cluster` is the epic's stable ID
+// and `anchor` its item ID.
 export const fixtureRegion = object({
   name: string,
   origin: union(
@@ -91,7 +93,8 @@ export const fixtureRegion = object({
   items: array(jiraItemId),
 });
 
-export const jiraFixture = object({
+// The fixture as its files hold it.
+export const jiraFixtureFile = object({
   project: fixtureProject,
   people: array(fixturePerson),
   issues: array(fixtureIssue),
@@ -102,8 +105,11 @@ export const jiraFixture = object({
 export type FixturePerson = Infer<typeof fixturePerson>;
 export type FixtureIssue = Infer<typeof fixtureIssue>;
 export type FixtureEdit = Infer<typeof fixtureEdit>;
-export type FixtureRegion = Infer<typeof fixtureRegion>;
-export type JiraFixture = Infer<typeof jiraFixture>;
+export type JiraFixtureFile = Infer<typeof jiraFixtureFile>;
+
+// A frozen region as Oriel uses it, with its origin in core's terms.
+export type FixtureRegion = { name: string; origin: GroupOrigin; items: ItemId<"jira">[] };
+export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureRegion[] };
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
 export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
@@ -115,15 +121,30 @@ const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 // Shape first, then what shapes can't say: references resolve, keys are
 // unique and ascending, epics precede their children (the seed creates in key
 // order), each edit applies to the state the earlier ones left, and an epic
-// region holds its epic and that epic's children.
-export function parseJiraFixture(input: unknown): Result<JiraFixture> {
-  const shaped = jiraFixture(input);
+// region holds its epic and that epic's children. The fixture as stored, for
+// the generator that writes it.
+export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
+  const shaped = jiraFixtureFile(input);
   if (!shaped.ok) return shaped;
   const problems = consistency(shaped.value);
   return problems.length ? { ok: false, issues: problems } : shaped;
 }
 
-function consistency(fixture: JiraFixture): Issue[] {
+// The fixture as Oriel uses it: checked as stored, then each region's origin
+// in core's terms, where a "group" origin is a "cluster" (decision 0018). The
+// files are maintainer-owned, so the mapping lives here.
+export function parseJiraFixture(input: unknown): Result<JiraFixture> {
+  const parsed = parseJiraFixtureFile(input);
+  if (!parsed.ok) return parsed;
+  const regions = parsed.value.regions.map(({ name, origin, items }): FixtureRegion => ({
+    name,
+    origin: origin.kind === "group" ? { ...origin, kind: "cluster" } : origin,
+    items,
+  }));
+  return { ok: true, value: { ...parsed.value, regions } };
+}
+
+function consistency(fixture: JiraFixtureFile): Issue[] {
   const found: Issue[] = [];
   const problem = (path: string, message: string) => found.push({ path, message });
   const people = new Set<string>();

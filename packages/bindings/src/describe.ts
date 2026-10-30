@@ -61,7 +61,7 @@ export function scopeOf(region: Region, issueTypes: IssueTypes): Scope {
     if (!ids.includes(id)) ids.push(id);
   }
   ids.sort(byKey);
-  if (region.origin.kind !== "group" || region.origin.anchor === null)
+  if (region.origin.kind !== "cluster" || region.origin.anchor === null)
     return { ids, anchor: null, epics: ids.filter((id) => issueTypes.get(id) === "Epic") };
   const { anchor } = region.origin;
   const member = ids.find((id) => id === anchor);

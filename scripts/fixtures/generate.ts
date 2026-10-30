@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   type FixtureIssue,
   jiraFixtureParts,
-  parseJiraFixture,
+  parseJiraFixtureFile,
 } from "../../packages/jira/src/fixture.ts";
 import { fixtureDir } from "./load.ts";
 
@@ -934,7 +934,7 @@ export function generate(): Map<string, string> {
     return { name: region.name, origin, items: inKeyOrder([epic, ...children]) };
   });
 
-  const result = parseJiraFixture({
+  const result = parseJiraFixtureFile({
     project: { key: "SYN", product: "Ferrowick" },
     people,
     issues,
