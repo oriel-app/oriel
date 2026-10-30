@@ -3,10 +3,11 @@
 // to the gitignored shots/. `pnpm shots` builds the web app first.
 //
 // The servers run on the SYN fixture in memory, with the scripted agent,
-// whose runs go to the real sandbox (Deno). One writes to SYN as a Jira site
-// in memory; the other is read-only, as Oriel is without credentials. Before
-// any screenshot they get groups and threads, with runs, change sets, a
-// search and a marker, through the same JSON routes the window uses.
+// whose runs go to the real sandbox (Deno). Most write to SYN as a Jira site
+// in memory, each to its own, so one scene's writes don't show in another's
+// diffs; one is read-only, as Oriel is without credentials. Before any
+// screenshot they get groups and threads, with runs, change sets, a search
+// and a marker, through the same JSON routes the window uses.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -23,19 +24,26 @@ type Scene = { name: string; path: string; on?: Serving; act?(page: Page): Promi
 const out = new URL("../shots/", import.meta.url);
 mkdirSync(out, { recursive: true });
 
-const site = memorySite(loadJiraFixture(), instant(new Date()));
-const server = await serve(0, {
-  db: ":memory:",
-  jira: {
-    kind: "fixture",
-    writeTo: {
-      site: memorySiteOrigin,
-      credential: { headers: async () => ({}) },
-      project: "SYN",
-      fetch: site.fetch,
+// A server that writes to its own SYN site in memory.
+const writing = async () => {
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  const serving = await serve(0, {
+    db: ":memory:",
+    jira: {
+      kind: "fixture",
+      writeTo: {
+        site: memorySiteOrigin,
+        credential: { headers: async () => ({}) },
+        project: "SYN",
+        fetch: site.fetch,
+      },
     },
-  },
-});
+  });
+  return { site, serving };
+};
+const server = (await writing()).serving;
+const refusing = await writing();
+const unanswered = await writing();
 const readOnly = await serve(0);
 
 // A request as the window sends it.
@@ -81,14 +89,24 @@ await server.app.settled();
 const changeSet = await changeSetOf(server, thread);
 const link = await post<{ url: string }>(`/api/change-sets/${changeSet}/review-link`, {});
 
-// The same question, approved while Jira refuses one of the writes: the
-// change set applies partway and says where it stopped.
-const partial = await ask("Estimate what's missing");
-const partialSet = await changeSetOf(server, partial);
-site.refuse("SYN-99");
-const { hash } = await post<{ hash: string }>(`/api/change-sets/${partialSet}/diff`, {});
-await post(`/api/change-sets/${partialSet}/approve`, { hash });
-site.allow("SYN-99");
+// The same question, approved while one of the writes fails: the change
+// set applies partway and says where it stopped. Jira refuses it, so nothing
+// of it landed; or it goes out and no answer comes back, so it may have.
+const stopAt = async (
+  { site, serving }: Awaited<ReturnType<typeof writing>>,
+  how: "refuse" | "loseAnswers",
+) => {
+  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
+  const threadId = await ask("Estimate what's missing", serving, groupId);
+  const setId = await changeSetOf(serving, threadId);
+  site[how]("SYN-99");
+  const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
+  await post(`/api/change-sets/${setId}/approve`, { hash }, serving);
+  site.allow("SYN-99");
+  return threadId;
+};
+const partial = await stopAt(refusing, "refuse");
+const unheard = await stopAt(unanswered, "loseAnswers");
 
 // Answered, over items it needn't change: the user marks it done.
 await post(`/api/threads/${await ask("What's in here?")}/done`, {});
@@ -227,7 +245,14 @@ const scenes: Scene[] = [
   {
     name: "thread-partial",
     path: `/threads/${partial}`,
+    on: refusing.serving,
     act: (page) => page.locator(".diff-line[data-stopped] .line-error").waitFor(),
+  },
+  {
+    name: "thread-unanswered",
+    path: `/threads/${unheard}`,
+    on: unanswered.serving,
+    act: (page) => page.locator(".may-have-landed").waitFor(),
   },
   {
     name: "thread-read-only",
@@ -284,6 +309,8 @@ try {
 } finally {
   await browser.close();
   await server.close();
+  await refusing.serving.close();
+  await unanswered.serving.close();
   await readOnly.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
