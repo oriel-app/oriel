@@ -22,7 +22,7 @@ import {
   type Ulid,
 } from "@oriel/core";
 import { open } from "@oriel/db";
-import { ChangeSetError, changeSetsOver } from "./change-sets.ts";
+import { ChangeSetError, changeSetsOver, type Specs } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
 import { store } from "./store.ts";
 import {
@@ -66,20 +66,42 @@ type Fault = "fail" | "lost" | "crash" | null;
 const thread = { via: "thread", by: "pm" } as const;
 const reviewBase = new URL("http://localhost:4000/review/");
 
+// Jira's catalogue, which can tighten under stored arguments: each of
+// `banned` (an op and its arguments as JSON) no longer passes. The rows, and
+// so any approval of them, stay as they were.
+function tightening(banned: ReadonlySet<string>): Specs {
+  const jira = specs.jira;
+  if (!jira) throw new Error("no Jira specs");
+  const ops = Object.fromEntries(
+    Object.entries(jira.ops).map(([name, op]) => [
+      name,
+      {
+        ...op,
+        args: (input: unknown, path?: string) =>
+          banned.has(`${name}\u0000${JSON.stringify(input)}`)
+            ? { ok: false as const, issues: [{ path: path ?? "$", message: "no longer allowed" }] }
+            : op.args(input, path),
+      },
+    ]),
+  );
+  return { jira: { ...jira, ops } };
+}
+
 // Whether every change a set applied can be undone, judged from its rows
-// alone: a change to an item it created goes with the item.
-function undoable(set: ChangeSet): boolean {
+// alone: a change to an item it created goes with the item, and what an undo
+// puts back must pass the catalogue too.
+function undoable(set: ChangeSet, catalogue: Specs): boolean {
+  const ops = catalogue.jira?.ops ?? {};
   const created = new Set(
-    set.mutations.flatMap((m) =>
-      m.applied && specs.jira?.ops[m.op]?.creates ? [m.applied.item.id] : [],
-    ),
+    set.mutations.flatMap((m) => (m.applied && ops[m.op]?.creates ? [m.applied.item.id] : [])),
   );
   return set.mutations.every((m) => {
     if (!m.applied) return true;
-    const spec = specs.jira?.ops[m.op];
+    const spec = ops[m.op];
     if (!spec?.args(m.args).ok) return false;
     if (created.has(m.applied.item.id) && !spec.creates) return true;
-    return !("refused" in spec.undo(m.args, m.applied));
+    const step = spec.undo(m.args, m.applied);
+    return !("refused" in step) && ops[step.op]?.args(step.args).ok === true;
   });
 }
 
@@ -87,16 +109,18 @@ function undoable(set: ChangeSet): boolean {
 // rejected or dismissed) and nothing it applied can be reverted (nothing
 // did, it is a revert itself, or a change can't be undone); or a revert of
 // it is under way or undid part of it.
-function finished(set: ChangeSet, reverts: readonly ChangeSet[]): boolean {
+function finished(set: ChangeSet, reverts: readonly ChangeSet[], catalogue: Specs): boolean {
   if (reverts.some((r) => r.decision?.kind !== "rejected" || r.mutations.some((m) => m.applied)))
     return true;
   const applied = set.mutations.filter((m) => m.applied !== null);
   const settled = set.decision?.kind === "rejected" || applied.length === set.mutations.length;
-  return settled && (applied.length === 0 || set.revertOf !== null || !undoable(set));
+  return settled && (applied.length === 0 || set.revertOf !== null || !undoable(set, catalogue));
 }
 
 async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const random = prng(seed + sequence * 7919);
+  const banned = new Set<string>();
+  const catalogue = tightening(banned);
   const pick = <T>(list: readonly T[]): T => nth(list, Math.floor(random() * list.length));
   const chance = (p: number) => random() < p;
   const trail: string[] = [];
@@ -151,7 +175,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     changeSetsOver({
       db,
       sources: { jira: { writer, reader: jira.reader } },
-      specs,
+      specs: catalogue,
       reviewBase,
       now: () => clock,
       emit: () => {},
@@ -235,7 +259,9 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   };
 
   // Invariant 3. Once all of a reverse applied, every write of the original
-  // that landed is undone, unless a person removed it or its reverse row.
+  // that landed is undone, unless a person removed it or its reverse row, or
+  // dismissed it unapplied (the dismissal warned it may have landed, and a
+  // revert covers exactly what applied).
   // And as the reverse rows for a field apply, the field holds its value from
   // before the original: judged in the step they apply, since anyone may
   // change it again afterwards.
@@ -257,7 +283,13 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           .filter(([r, info]) => info.setId === id && removed.has(r))
           .map(([, info]) => info.reverts),
       );
-      const original = [...known].filter(([r, info]) => info.setId === revertOf && !removed.has(r));
+      const dismissed = rows.load(revertOf)?.decision?.kind === "rejected";
+      const original = [...known].filter(
+        ([r, info]) =>
+          info.setId === revertOf &&
+          !removed.has(r) &&
+          !(dismissed && rows.mutation(r)?.status !== "applied"),
+      );
       const byField = new Map<string, Ulid[]>();
       for (const [r] of original) {
         if ((landings.get(r) ?? 0) === 0) continue;
@@ -352,6 +384,10 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     stale: 0,
     applying: 0,
     dismissedPartReverse: 0,
+    // Stale arguments under an approval that still stands.
+    staleApproved: 0,
+    // A row sent before whose item Oriel couldn't check.
+    couldntTell: 0,
   };
 
   // Invariant 7: takes one offered step on a copy of the database and of
@@ -366,7 +402,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     const engine = changeSetsOver({
       db: copy,
       sources: { jira: { writer: fork.writer, reader: fork.reader } },
-      specs,
+      specs: catalogue,
       reviewBase,
       now: () => clock,
       emit: () => {},
@@ -448,7 +484,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       if (seen.has(state)) continue;
       seen.add(state);
       const steps = await a.nextSteps(id);
-      if (steps.length === 0 && !finished(set, reverts))
+      if (steps.length === 0 && !finished(set, reverts, catalogue))
         problem(`${id} offers nothing, yet isn't done with`);
       for (const step of steps) {
         if (step.kind === "remove")
@@ -466,7 +502,11 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         reached.dismissedWithSent += 1;
       if (open.some((m) => m.preview?.["$gone"] === true) && !kinds.includes("approve"))
         reached.goneUnapproved += 1;
-      if (open.some((m) => !specs.jira?.ops[m.op]?.args(m.args).ok)) reached.stale += 1;
+      const stale = open.some((m) => !catalogue.jira?.ops[m.op]?.args(m.args).ok);
+      if (stale) reached.stale += 1;
+      if (stale && set.decision?.kind === "approved") reached.staleApproved += 1;
+      if (open.some((m) => m.status === "failed" && /couldn.t tell/.test(m.error ?? "")))
+        reached.couldntTell += 1;
       if (set.revertOf !== null && rejected && set.mutations.some((m) => m.applied))
         reached.dismissedPartReverse += 1;
     }
@@ -502,6 +542,18 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
   // Render, approve and apply in one go, perhaps with a fault on the first write.
+  // Jira's catalogue tightens under a change not yet applied, other than
+  // the next one: its stored arguments no longer pass. The row is as it was,
+  // so an approval of it stands.
+  const tighten = (id: Ulid): boolean => {
+    const open = rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? [];
+    const later = open.slice(1).filter((m) => m.op === "setEstimate" || m.op === "setSummary");
+    if (later.length === 0) return false;
+    const m = pick(later);
+    trail.push("tighten");
+    banned.add(`${m.op}\u0000${JSON.stringify(m.args)}`);
+    return true;
+  };
   const ship = async (id: Ulid) => {
     const a = nth(instances, 0);
     fault = pick<Fault>([null, null, "fail", "lost", "lost", "crash"]);
@@ -512,12 +564,16 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const shown = await a.diff(id);
       await a.decide(id, "approved", { via: "thread", by: "pm" }, shown.hash);
     });
+    // Now and then the catalogue tightens between approval and apply.
+    if (chance(0.1)) tighten(id);
     await applyOn(slot, id);
     fault = null;
   };
 
   let teammate = 0;
   const hidden = new Set<string>();
+  // Keys another item has taken, with the stable ID of the item that had it.
+  const reused = new Map<string, string>();
   const applyWithFault = async (id: Ulid) => {
     fault = pick<Fault>([null, null, "fail", "lost", "crash"]);
     faultAfter = pick([0, 1, 1]);
@@ -539,6 +595,17 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     const newest = sets.at(-1);
     if (!newest) return null;
     return chance(0.5) ? newest.id : pick(sets.slice(-4)).id;
+  };
+  // The same, among those not rejected or dismissed: for the moves that act
+  // as if it could still apply.
+  const liveSet = () => {
+    const live = sets
+      .slice(-4)
+      .filter(({ id }) => rows.load(id)?.decision?.kind !== "rejected")
+      .map(({ id }) => id);
+    const newest = live.at(-1);
+    if (!newest) return null;
+    return chance(0.5) ? newest : pick(live);
   };
   const setOp = (target: string): CapturedMutation =>
     chance(0.6)
@@ -616,9 +683,9 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       ["teammate", done || sent ? 2.5 : 1.5],
       ["revert", done ? 3 : sent ? 3 : 0.5],
       ["step", 3],
-      ["dismiss", sent ? 1.5 : 0.3],
-      ["hide", 0.4],
-      ["tighten", 0.3],
+      ["dismiss", sent ? 1 : 0.2],
+      ["hide", 0.25],
+      ["tighten", 0.15],
     ];
     let roll = random() * weights.reduce((sum, [, w]) => sum + w, 0);
     for (const [action, weight] of weights) {
@@ -637,7 +704,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const mutations = [...randomMutations(), ...(chance(0.5) ? [setOp(pick(pool))] : [])];
       await attempt(async () => remember(await a.capture(shared.run, mutations)));
     } else if (action === "ship") {
-      const id = randomSet();
+      const id = liveSet();
       if (id) await ship(id);
     } else if (action === "render") {
       const id = randomSet();
@@ -645,15 +712,18 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       trail.push("render");
       await attempt(() => a.diff(id));
     } else if (action === "decide") {
-      const id = randomSet();
+      const id = liveSet();
       if (!id) continue;
       // A rejection is final, so it ends a set's history: rarely.
       const kind = chance(0.9) ? "approved" : "rejected";
       trail.push(kind === "approved" ? "approve" : "reject");
-      const hash = rows.load(id)?.hash ?? "";
-      await attempt(() => a.decide(id, kind, { via: "thread", by: "pm" }, hash));
+      // A person decides on the diff in front of them.
+      await attempt(async () => {
+        const shown = await a.diff(id);
+        await a.decide(id, kind, thread, shown.hash);
+      });
     } else if (action === "apply") {
-      const id = randomSet();
+      const id = liveSet();
       if (!id) continue;
       fault = pick<Fault>([null, null, "fail", "lost", "crash"]);
       faultAfter = pick([0, 1, 1]);
@@ -663,7 +733,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       fault = null;
     } else if (action === "both") {
       // Two instances: the second starts while the first's write is in flight.
-      const id = randomSet();
+      const id = liveSet();
       if (!id) continue;
       trail.push("apply(both)");
       // Approved first, if it can be, so that a write goes out.
@@ -678,7 +748,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       await applyOn(0, id);
       whileSending = null;
     } else if (action === "edit") {
-      const id = randomSet();
+      const id = liveSet();
       const open = id ? (rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? []) : [];
       if (!id || open.length === 0) continue;
       const m = pick(open);
@@ -778,30 +848,34 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       trail.push("dismiss");
       await attempt(() => a.dismiss(id));
     } else if (action === "hide") {
-      // A story becomes unreadable (deleted, moved, forbidden), or readable
-      // again; the next diff shows it gone, or back.
-      // Mostly briefly: one hidden comes back more often than not.
-      const back = [...hidden];
+      // A story becomes unreadable (deleted, moved, forbidden), or another
+      // item takes its key; or it comes back. Either way Oriel can't tell
+      // what it holds. Mostly briefly: one comes back more often than not.
+      const back = [...hidden, ...reused.keys()];
       if (back.length && chance(0.7)) {
         const key = pick(back);
-        trail.push(`show(${key})`);
+        trail.push(`back(${key})`);
         hidden.delete(key);
         jira.show(key);
+        const original = reused.get(key);
+        if (original !== undefined) jira.reuse(key, original);
+        reused.delete(key);
       } else {
         const key = pick([...pool.map((id) => parseItemId(id)?.key ?? ""), ...jira.created]);
-        trail.push(`hide(${key})`);
-        hidden.add(key);
-        jira.hide(key);
+        const issue = jira.issue(key);
+        if (chance(0.5) || !issue || reused.has(key)) {
+          trail.push(`hide(${key})`);
+          hidden.add(key);
+          jira.hide(key);
+        } else {
+          trail.push(`reuse(${key})`);
+          reused.set(key, issue.id);
+          jira.reuse(key, `9${issue.id}`);
+        }
       }
     } else {
-      // Jira's catalogue tightens under a change not yet applied, other than
-      // the next one: its stored arguments no longer pass.
-      const id = randomSet();
-      const open = id ? (rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? []) : [];
-      const later = open.slice(1).filter((m) => m.op === "setEstimate" || m.op === "setSummary");
-      if (!id || later.length === 0) continue;
-      trail.push("tighten");
-      db.prepare("update mutations set args = '{}' where id = ?").run(pick(later).id);
+      const id = liveSet();
+      if (id) tighten(id);
     }
     for (const { id } of sets) {
       const set = rows.load(id);
@@ -836,6 +910,6 @@ test("model: random histories keep the change-set invariants", async () => {
   // an apply in flight, and a revert dismissed partway.
   for (const [state, n] of Object.entries(reached)) assert.ok(n > 0, `never reached: ${state}`);
   // The histories must reach the states the invariants are about.
-  assert.ok(landed > 350, `only ${landed} writes landed`);
+  assert.ok(landed > 450, `only ${landed} writes landed`);
   assert.ok(reverts > 40, `only ${reverts} reverted fields were checked`);
 });
