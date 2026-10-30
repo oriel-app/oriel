@@ -34,10 +34,7 @@ const epicOf = (record: JiraRecord) => record.facets.container ?? null;
 const assigneeId = (record: JiraRecord) =>
   record.facets.people?.find((person) => person.role === "assignee")?.id ?? null;
 const rules: Record<string, Rule> = {
-  "Items not done and last updated 14 or more days ago; from Jira, only stories, tasks and bugs": (
-    record,
-    now,
-  ) =>
+  "Not done and idle 14 or more days; from Jira, only stories, tasks and bugs": (record, now) =>
     workItem(record) &&
     notDone(record) &&
     Date.parse(now) - Date.parse(record.updatedAt) >= 14 * day,

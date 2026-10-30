@@ -176,8 +176,7 @@ export const stuckGrouping: Grouping = {
         anchor: null,
         itemIds: ids(idle),
         origin: {
-          derived:
-            "Items not done and last updated 14 or more days ago; from Jira, only stories, tasks and bugs",
+          derived: "Not done and idle 14 or more days; from Jira, only stories, tasks and bugs",
         },
       },
       {

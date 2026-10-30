@@ -23,7 +23,7 @@ export type Group = {
 };
 
 // A member is identified by its source and stable ID, so an item that moves
-// (a Jira issue to another project) stays in; `id` is the handle it had when
+// (an issue to another project) stays in; `id` is the handle it had when
 // it was added.
 export type GroupMember = { id: ItemId; stableId: string };
 

@@ -1,7 +1,7 @@
 import type { Instant, ItemId } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
 
-// A cluster either mirrors structure the source has (a Jira epic) or is derived
+// A cluster either mirrors structure the source has (an epic) or is derived
 // by Oriel, in which case `derived` says how, and the UI shows it. `anchor` is
 // the item the cluster hangs off, if any (the epic itself).
 export type Cluster = {
