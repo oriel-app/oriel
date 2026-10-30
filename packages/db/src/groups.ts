@@ -245,17 +245,24 @@ export function groupStore(db: DatabaseSync) {
     },
 
     // The group's membership at `version`, or null for a group or version
-    // that doesn't exist.
+    // that doesn't exist. A version whose members no longer include the
+    // item the group was made around has no anchor.
     region(groupId: Ulid, version: number): Region | null {
       const group = get(groupId);
       if (!group || !Number.isInteger(version) || version < 1 || version > group.version)
         return null;
+      const items = selectAt.all(groupId, version, version).map(member);
+      const { origin } = group;
+      const anchored =
+        origin.kind !== "cluster" ||
+        origin.anchor === null ||
+        items.some((item) => item.id === origin.anchor);
       return {
         groupId,
         version,
         workspaceId: group.workspaceId,
-        items: selectAt.all(groupId, version, version).map(member),
-        origin: group.origin,
+        items,
+        origin: anchored ? origin : { ...origin, anchor: null },
       };
     },
 

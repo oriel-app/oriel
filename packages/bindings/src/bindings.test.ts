@@ -197,7 +197,27 @@ test("an item that moved project is followed and keeps its region handle", async
   assert.deepEqual([view.id, view.gone, view.summary], ["jira:SYN-13", false, summary("SYN-13")]);
 });
 
-test("a region with a malformed ID, or an anchor it doesn't hold, is refused", () => {
+test("a group made from the SYN-1 cluster, with SYN-1 removed, still binds", async () => {
+  const checkout = fixtureRegion("checkout-epic");
+  assert.equal(checkout.origin.kind === "cluster" && checkout.origin.anchor, "jira:SYN-1");
+  // As the group store gives that version: the anchor gone from items and origin.
+  const region: Region = {
+    ...checkout,
+    version: 2,
+    items: checkout.items.filter((item) => item.id !== "jira:SYN-1"),
+    origin: { ...checkout.origin, anchor: null } as Region["origin"],
+  };
+  const bindings = bindingsFor(region, { reader: base, namespaces });
+  assert.doesNotMatch(bindings.dts, /"jira:SYN-1"|getEpic|listStories/);
+  const listed = await bindings.read("jira.listItems", []);
+  assert.equal((listed.value as unknown[]).length, region.items.length);
+  assert.deepEqual(bindings.capture("jira.createStory", [{ summary: "Wallets" }], "new:1").args, {
+    summary: "Wallets",
+    epic: null,
+  });
+});
+
+test("a region with a malformed ID is refused, and one without its anchor has none", () => {
   const region = fixtureRegion("boarding-epic");
   const evil: Region = {
     ...region,
@@ -210,8 +230,9 @@ test("a region with a malformed ID, or an anchor it doesn't hold, is refused", (
     ...region,
     items: region.items.filter((item) => item.id !== "jira:SYN-2"),
   };
-  assert.throws(
-    () => bindingsFor(unanchored, { reader: base, namespaces }),
-    /anchor jira:SYN-2 isn't one of its items/,
-  );
+  // As after the epic was removed from the group: no epic functions, and a
+  // new story isn't bound to the epic that left.
+  const { dts } = bindingsFor(unanchored, { reader: base, namespaces });
+  assert.doesNotMatch(dts, /getEpic|listStories/);
+  assert.match(dts, /Create a story\. This region holds no epic/);
 });

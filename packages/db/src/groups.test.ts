@@ -165,6 +165,30 @@ test("a group made from a cluster keeps its origin", () => {
   assert.deepEqual(groups.region(group.id, 1)?.origin, origin);
 });
 
+test("a version without the item the group was made around has no anchor", () => {
+  const { groups, workspaceId } = fresh();
+  const origin = {
+    kind: "cluster",
+    grouping: "epic",
+    cluster: "10001",
+    anchor: "jira:SYN-1",
+  } as const;
+  const group = groups.create(
+    { id: ulid(3, new Uint8Array(10)), workspaceId, name: "Checkout v2", origin },
+    [syn1, syn2],
+    t0,
+  );
+  groups.remove(group.id, [syn1], user, later(1));
+  assert.deepEqual(groups.region(group.id, 2)?.origin, { ...origin, anchor: null });
+  assert.deepEqual(groups.region(group.id, 2)?.items, [syn2]);
+  // Earlier versions keep it, and putting it back brings it back.
+  assert.deepEqual(groups.region(group.id, 1)?.origin, origin);
+  groups.add(group.id, [syn1], user, later(2));
+  assert.deepEqual(groups.region(group.id, 3)?.origin, origin);
+  // The group itself still says where it came from.
+  assert.deepEqual(groups.get(group.id)?.origin, origin);
+});
+
 test("malformed members and unknown groups are refused, and nothing is recorded", () => {
   const { groups, create } = fresh();
   const group = create([syn1]);

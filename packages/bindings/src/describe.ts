@@ -54,9 +54,9 @@ export function scopeOf(region: Region, namespaces: Namespaces): Scope {
     if (!ids.includes(checked)) ids.push(checked);
   }
   ids.sort(byItemId);
-  const anchor = region.origin.kind === "cluster" ? region.origin.anchor : null;
-  if (anchor !== null && !ids.includes(anchor))
-    throw new RangeError(`the region's anchor ${anchor} isn't one of its items`);
+  // A region whose anchor has left it is a region without one.
+  const named = region.origin.kind === "cluster" ? region.origin.anchor : null;
+  const anchor = named !== null && ids.includes(named) ? named : null;
   const sources = sourceKinds.flatMap((kind) => {
     const spec = namespaces[kind];
     const members = ids.filter((id) => parseItemId(id)?.source === kind);
