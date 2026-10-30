@@ -6,7 +6,6 @@ import {
   type Reader,
   type Region,
 } from "@oriel/core";
-import { jiraOps } from "@oriel/jira";
 import { describe, type Fn, type IssueTypes, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { shimFor } from "./shim.ts";
@@ -22,15 +21,15 @@ const defined = (args: object) =>
   Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
 
 // A region's bindings for one run. Reads proxy to `reader`. Writes are
-// captured, never sent: a write must target a region item or a story an
-// earlier create in this run made, and its arguments must pass the op
-// catalogue. `issueTypes` holds each region item's issue type from the index;
-// only epics can parent a new story.
+// captured, never sent: a write must target a region item from its own source
+// or a story an earlier create in this run made, and its arguments must pass
+// that source's op catalogue. `issueTypes` holds each Jira item's issue type
+// from the index; only epics can parent a new story.
 export function bindingsFor(
   region: Region,
-  options: { reader: Reader; issueTypes: IssueTypes },
+  options: { reader: Reader; issueTypes?: IssueTypes },
 ): Bindings {
-  const scope = scopeOf(region, options.issueTypes);
+  const scope = scopeOf(region, options.issueTypes ?? new Map());
   const fns = describe(scope);
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
@@ -38,7 +37,7 @@ export function bindingsFor(
   const host = {
     reader: options.reader,
     ids: scope.ids,
-    has: (id: string): id is ItemId<"jira"> => members.has(id),
+    has: (id: string): id is ItemId => members.has(id),
     created,
   };
   // The ref the next create must carry. Every correctly numbered create uses
@@ -68,9 +67,11 @@ export function bindingsFor(
           throw new Error(`expected ref new:${nextRef}, got ${JSON.stringify(ref)}`);
         if (entry.creates) nextRef += 1;
         const built = entry.build(args, host);
-        const checked = jiraOps[entry.op].args(built.args);
+        const checked = entry.spec.args(built.args);
         if (!checked.ok)
           throw new TypeError(checked.issues.map((i) => `${i.path}: ${i.message}`).join("; "));
+        if (typeof checked.value !== "object" || checked.value === null)
+          throw new TypeError("an op's arguments are an object");
         if (ref !== null) created.add(ref);
         return { op: entry.op, target: built.target, ref, args: defined(checked.value) };
       } catch (error) {

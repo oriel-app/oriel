@@ -6,7 +6,7 @@
 // parses every line with `guestMessage` and checks every call.
 import { stripTypeScriptTypes } from "node:module";
 import type { HostReply, RunError } from "@oriel/core";
-import { type Fn, globals, pathOf } from "./describe.ts";
+import { type Fn, globals, namespaces, parameters, pathOf, shadowable } from "./describe.ts";
 
 // JSON lines: calls go out on stdout, replies come back on stdin. Reply 0
 // carries the script; the guest's own reads count from 1. Reads await their
@@ -115,8 +115,12 @@ const __oriel = (() => {
   globalThis.console = logger;
   const run = async (bindings, body) => {
     try {
-      const script = new AsyncFunction(...Object.keys(bindings), body);
-      const value = await script(...Object.values(bindings));
+      const shadowable = ${JSON.stringify(shadowable)};
+      for (const name of shadowable)
+        Object.defineProperty(globalThis, name, { value: bindings[name], writable: false, configurable: false });
+      const names = Object.keys(bindings).filter((name) => !shadowable.includes(name));
+      const script = new AsyncFunction(...names, body);
+      const value = await script(...names.map((name) => bindings[name]));
       send({ kind: "done", value: value === undefined ? null : value });
     } catch (error) {
       send({ kind: "threw", message: error instanceof Error ? String(error.stack ?? error) : String(error) });
@@ -146,18 +150,22 @@ export function stubs(fns: readonly Fn[]): string {
     if (fn.kind === "read") return `(...args: unknown[]) => __oriel.read(${path}, args)`;
     return `(...args: unknown[]) => __oriel.write(${path}, args, ${fn.creates})`;
   };
+  // Every namespace, even one this region has no functions in, so each name
+  // the guest passes the script exists.
   return [
-    "const jira = Object.freeze({",
-    ...fns.filter((fn) => fn.space === "jira").map((fn) => `  ${fn.name}: ${call(fn)},`),
-    "});",
+    ...namespaces.flatMap((space) => [
+      `const ${space} = Object.freeze({`,
+      ...fns.filter((fn) => fn.space === space).map((fn) => `  ${fn.name}: ${call(fn)},`),
+      "});",
+    ]),
     ...fns.filter((fn) => fn.space === null).map((fn) => `const ${fn.name} = ${call(fn)};`),
     "",
   ].join("\n");
 }
 
 // The entry file, run as TypeScript: the runtime, the stubs, and a start
-// that hands the globals to the script in the order `guestStart` compiled it
-// with.
+// that hands the script its parameters, in the order `guestStart` compiled it
+// with, and makes the shadowable names read-only globals.
 export const shimFor = (fns: readonly Fn[]): string =>
   `${runtime}${stubs(fns)}__oriel.start({ ${globals.join(", ")} });\n`;
 
@@ -256,7 +264,7 @@ export function guestStart(
   if (!intact) return refuse("stripping its types moved it");
   const body = `"use strict";\n${stripped.slice(opening.length, stripped.length - closing.length)}`;
   try {
-    new AsyncFunction(...globals, body);
+    new AsyncFunction(...parameters, body);
   } catch (error) {
     return refuse(firstLine(error));
   }
