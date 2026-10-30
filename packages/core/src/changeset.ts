@@ -31,6 +31,9 @@ export type MutationRecord<K extends SourceKind = SourceKind> = {
   error: string | null;
   // On a reverse mutation, the mutation it undoes.
   reverts: Ulid | null;
+  // Moves on with every write to the row: a conditional write compares the
+  // version it read. Not part of the change set's hash.
+  version: number;
 };
 
 export type Decision = {

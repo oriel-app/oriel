@@ -21,7 +21,6 @@ import {
   type Log,
   literal,
   type MutationRecord,
-  type MutationStatus,
   type NextStep,
   type OpSpec,
   type OpSpecs,
@@ -142,10 +141,8 @@ const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 // other apply sends that row again, so a slow write can't land after a later
 // one. A crashed send blocks its row this long.
 export const sendLeaseMs = 5 * 60 * 1000;
-// A send's mark ends with when it was sent and a nonce of its own.
-const sendMark = / \(sent (\S+), [0-9A-Z]{26}\)$/;
-// A send that got no answer ends with that nonce.
-const sendTag = / \(send [0-9A-Z]{26}\)$/;
+// A send's mark ends with when it was sent.
+const sendMark = / \(sent (\S+)\)$/;
 const tokenShape = /^[A-Za-z0-9_-]{43}$/;
 const maxErrorChars = 500;
 // The preview of a line whose item was gone when the diff was shown. No
@@ -464,7 +461,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       wanted.set(item, entry);
     }
     // Read through the writer where there is one, so an item whose handle
-    // names another item now shows as gone: it isn't the item to change.
+    // names another item now shows as gone: it isn't the item to change. So
+    // does one Oriel can't say which item it should be (its handle names no
+    // member of the run's region now, as once sync indexes another item
+    // under a reused key): reading the handle would show another item.
     const readLive = async (
       item: ItemId,
       {
@@ -474,7 +474,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       }: { kind: SourceKind; fields: Set<string>; stableId: string | null },
     ): Promise<FieldValues | "gone"> => {
       const { writer } = sourceOf(kind);
-      if (!writer || stableId === null) return reader(kind).current(item, [...fields]);
+      if (!writer) return reader(kind).current(item, [...fields]);
+      if (stableId === null) return "gone";
       const found = await writer.read(item, [...fields]);
       return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
     };
@@ -782,27 +783,36 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     kind: SourceKind,
     spec: OpSpec,
     target: ItemId,
-  ): Promise<AppliedValue | "absent" | "unknown"> => {
+  ): Promise<{ applied: AppliedValue } | "absent" | { unknown: string }> => {
     const after = spec.after(m.args);
     const fields = Object.keys(after);
     const updated = catalogueFor(specs, kind).updatedField;
     const stableId = stableIdFor(m, set, target);
-    if (stableId === null) return "unknown";
-    // A read that fails tells nothing either.
+    if (stableId === null)
+      return { unknown: `${key(target)} no longer names an item in the region it was made in` };
+    // A read that fails tells nothing either, and says why. A bug in Oriel
+    // (a RangeError, say) isn't the source's answer, and throws.
     const found = await writerOf(kind)
       .read(target, [...fields, updated])
-      .catch(() => "gone" as const);
-    if (found === "gone" || found.stableId !== stableId) return "unknown";
+      .catch((error: unknown) => {
+        if (error instanceof RangeError || error instanceof SyntaxError) throw error;
+        return { failed: message(error) };
+      });
+    if (found === "gone") return { unknown: `${key(target)} can't be read` };
+    if ("failed" in found) return { unknown: `reading ${key(target)} failed: ${found.failed}` };
+    if (found.stableId !== stableId) return { unknown: `${key(target)} names another item now` };
     const current = found.values;
     if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
       return "absent";
     return {
-      item: { id: target, stableId },
-      before: {},
-      after: Object.fromEntries(
-        [...fields, updated].filter((f) => Object.hasOwn(current, f)).map((f) => [f, current[f]]),
-      ),
-      at: deps.now(),
+      applied: {
+        item: { id: target, stableId },
+        before: {},
+        after: Object.fromEntries(
+          [...fields, updated].filter((f) => Object.hasOwn(current, f)).map((f) => [f, current[f]]),
+        ),
+        at: deps.now(),
+      },
     };
   };
 
@@ -1193,9 +1203,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
   // Sends unapplied mutations in seq order and stops at the first failure, so
   // a retry can't land a later mutation before an earlier one. Every write is
-  // marked sent (failed, until its result is recorded) before it goes out, with
-  // a mark unique to that send, so a crash mid-send leaves that on record and
-  // of two instances only one can record the result. A stop before sending
+  // marked sent (failed, until its result is recorded) before it goes out, so
+  // a crash mid-send leaves that on record. Every write to a row compares the
+  // row's version it read, so of two instances only one can mark or record a
+  // send, and a conclusion drawn before an await is dropped if anything wrote
+  // to the row meanwhile. A stop before sending
   // leaves the row's status as it was, says why, and is checked again next
   // time. A sent set op is retried once its lease runs out, since it is
   // idempotent and one already in place is recorded without sending; a sent
@@ -1207,24 +1219,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
-    // Stops before sending, recording why on the row unless its own record
-    // says so already.
-    // A row found absent goes back to unsent only if it still holds the send
-    // that was found absent (`seen`).
-    const stopAt = (
-      mutationId: Ulid,
-      refusal: Refusal,
-      seen?: { status: MutationStatus; error: string | null },
-    ): ApplyReport => {
-      if (refusal.stop && refusal.unsent && seen)
-        rows.markRefused(refusal.stop, seen, "pending", refusal.message);
-      else if (refusal.stop) rows.markStopped(refusal.stop, refusal.message);
+    // Stops before sending, recording why on the row (over the version
+    // `from`) unless its own record says so already. A row found absent goes
+    // back to unsent only if nothing wrote to it since the read that found it
+    // so: `from` is the row as that read began.
+    const stopAt = (mutationId: Ulid, refusal: Refusal, from: { version: number }): ApplyReport => {
+      if (refusal.stop && refusal.unsent)
+        rows.markRefused(refusal.stop, from, "pending", refusal.message);
+      else if (refusal.stop) rows.markStopped(refusal.stop, from, refusal.message);
       report.failed.push({ mutationId, error: refusal.message });
-      return report;
-    };
-    const fail = (mutationId: Ulid, stored: string, error: string): ApplyReport => {
-      rows.markFailed(mutationId, stored);
-      report.failed.push({ mutationId, error });
       return report;
     };
 
@@ -1236,12 +1239,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
-      const seen = { status: m.status, error: m.error };
+      // The row as this pass first read it, before any await.
+      const seen = { version: m.version };
       const wasSent = m.status === "failed";
       const { kind, spec } = mustSpec(specs, m, set.mutations);
       const source = catalogueFor(specs, kind).name;
       let plan = sendPlan(m, set);
-      if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
+      if ("refusal" in plan) return stopAt(mutationId, plan.refusal, seen);
       const writes = Object.keys(spec.after(m.args));
       // A write that already landed is recorded. Found absent from its own
       // item, an earlier send of it is known not to have landed; if Oriel
@@ -1249,20 +1253,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let inPlaceFound: "no" | "absent" | "unknown" = "no";
       if (spec.idempotent && plan.target !== null) {
         const result = await inPlace(m, set, kind, spec, plan.target);
-        if (typeof result === "object") {
+        if (typeof result === "object" && "applied" in result) {
           ({ m } = approved(id, mutationId));
           if (!m) continue;
-          rows.markApplied(mutationId, m, result);
+          rows.markApplied(mutationId, m, result.applied);
           report.applied.push(mutationId);
           continue;
         }
-        inPlaceFound = result;
-        if (wasSent && result === "unknown")
-          return stopAt(mutationId, {
-            code: "refused",
-            message: `Oriel couldn't tell whether ${key(plan.target)} already holds this: it can't be read, or names another item now. It may already be in ${source}, so it wasn't sent again.`,
-            stop: mutationId,
-          });
+        inPlaceFound = typeof result === "object" ? "unknown" : result;
+        if (wasSent && typeof result === "object")
+          return stopAt(
+            mutationId,
+            {
+              code: "refused",
+              message: `Oriel couldn't tell whether ${key(plan.target)} already holds this: ${result.unknown}. It may already be in ${source}, so it wasn't sent again.`,
+              stop: mutationId,
+            },
+            seen,
+          );
       }
       if (m.reverts) {
         const checking = await recheck(m.reverts).then(
@@ -1270,18 +1278,22 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           (error: unknown) => ({ failed: message(error) }),
         );
         if ("failed" in checking)
-          return stopAt(mutationId, {
-            code: "refused",
-            message: `Oriel couldn't read the item to check nobody changed it since, so this wasn't sent: ${checking.failed}`,
-            stop: mutationId,
-          });
+          return stopAt(
+            mutationId,
+            {
+              code: "refused",
+              message: `Oriel couldn't read the item to check nobody changed it since, so this wasn't sent: ${checking.failed}`,
+              stop: mutationId,
+            },
+            seen,
+          );
         const { conflicts } = checking;
         if (conflicts.length)
-          return stopAt(mutationId, {
-            code: "refused",
-            message: explainConflicts(conflicts, specs),
-            stop: mutationId,
-          });
+          return stopAt(
+            mutationId,
+            { code: "refused", message: explainConflicts(conflicts, specs), stop: mutationId },
+            seen,
+          );
       }
 
       // Every await is behind us: from this check to the write nothing awaits,
@@ -1293,7 +1305,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         continue;
       }
       plan = sendPlan(m, set, inPlaceFound);
-      if ("refusal" in plan) return stopAt(mutationId, plan.refusal, seen);
+      if ("refusal" in plan)
+        return stopAt(mutationId, plan.refusal, plan.refusal.unsent ? seen : m);
       const request = mint({
         mutationId: m.id,
         op: m.op,
@@ -1305,22 +1318,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const notice = spec.idempotent
         ? `Sent to ${source}, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.`
         : uncertain;
-      const { now: sentNow, ms: sentMs } = at();
-      const nonce = ulid(sentMs);
-      const mark = `${notice} (sent ${sentNow}, ${nonce})`;
-      // A send that got no answer keeps its own nonce, so a later apply can
-      // tell it from an earlier one with the same words.
-      const unanswered = (error: string) => fail(mutationId, `${error} (send ${nonce})`, error);
-      // Only from the row as this pass first saw it: if another apply sent it
+      const mark = `${notice} (sent ${at().now})`;
+      // Only from the row as this pass first read it: if another apply sent it
       // meanwhile, its send isn't repeated and its mark isn't reset.
-      if (!rows.markSent(mutationId, seen, mark)) {
+      const sentVersion = rows.markSent(mutationId, seen, mark);
+      if (sentVersion === null) {
         report.failed.push({
           mutationId,
           error: "Another apply is sending this change right now, so it wasn't sent again.",
         });
         return report;
       }
-      const sent = { status: "failed" as const, args: m.args, error: mark };
+      // The row as marking it left it: recording the send's result compares it.
+      const sent = { version: sentVersion };
+      const unanswered = (error: string): ApplyReport => {
+        rows.markFailed(mutationId, sent, error);
+        report.failed.push({ mutationId, error });
+        return report;
+      };
       const unsure = spec.idempotent ? "" : ` ${uncertain}`;
       let result: unknown;
       try {
@@ -1533,10 +1548,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     },
 
     async apply(id) {
-      const refusal = applyRefusal(mustLoad(id));
+      const set = mustLoad(id);
+      const refusal = applyRefusal(set);
       if (refusal) {
         // A stop says why on the row, as one partway through would.
-        if (refusal.stop) rows.markStopped(refusal.stop, refusal.message);
+        const row = set.mutations.find((m) => m.id === refusal.stop);
+        if (row) rows.markStopped(row.id, row, refusal.message);
         refuse(refusal);
       }
       applying.add(id);
@@ -1763,7 +1780,7 @@ function plainUnsent(why: string): string {
 // sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
 // are already plain.
 export function plainError(error: string): string {
-  const bare = error.replace(sendMark, "").replace(sendTag, "");
+  const bare = error.replace(sendMark, "");
   if (bare.startsWith(notSent)) return plainUnsent(bare.slice(notSent.length));
   const lost = unheard.exec(bare);
   if (lost) return ["Oriel sent this and didn't hear back.", lost[1]].filter(Boolean).join(" ");

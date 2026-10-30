@@ -23,6 +23,19 @@ alter table new_messages rename to messages;
 -- thread is done as of this time, not as of its last mutation's.
 alter table change_sets add column completed_at text;
 
+-- Each mutation row's version, moved on by every write to it. Apply's
+-- conditional writes (marking a send, recording its result, putting a row
+-- back to unsent, saying why it stopped) compare the version they read, so
+-- one that went stale while it awaited the source writes nothing.
+alter table mutations add column version integer not null default 0;
+-- Whatever writes to a row without moving its version on (a hand edit, a
+-- statement that forgot) moves it on all the same.
+create trigger mutations_version after update on mutations
+when new.version = old.version
+begin
+  update mutations set version = old.version + 1 where id = new.id;
+end;
+
 -- The inbox lists a workspace's threads, newest first; a group's page and
 -- following a group list its threads.
 create index threads_by_workspace on threads (workspace_id, created_at);

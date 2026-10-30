@@ -252,7 +252,7 @@ test("a send still within its lease isn't retried until the lease runs out", asy
   const later = instance();
   assert.deepEqual(kinds(await later.nextSteps(set.id)), ["remove", "dismiss"]);
   const stored = (await later.get(set.id))?.mutations[0]?.error ?? "";
-  assert.match(stored, /\(sent \S+, [0-9A-Z]{26}\)$/);
+  assert.match(stored, /\(sent \S+\)$/);
   assert.equal(
     plainError(stored),
     "Sent to Jira, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.",
@@ -315,7 +315,7 @@ test("a reason a change stopped reads as plain words, from the forms apply store
   );
   assert.equal(
     plainError(
-      "Sent to Jira, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again. (sent 2026-10-29T09:00:00.000Z, 01M63E6DM079K0EBQXZS52NYS7)",
+      "Sent to Jira, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again. (sent 2026-10-29T09:00:00.000Z)",
     ),
     "Sent to Jira, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.",
   );
@@ -684,4 +684,63 @@ test("a read that fails while apply checks a sent change is recorded, not thrown
   assert.match(nth(report.failed, 0).error, /couldn't tell whether SYN-21 already holds this/);
   assert.equal(status(db, mutationId), "failed");
   assert.match(String((await changeSets.get(set.id))?.mutations[0]?.error), /couldn't tell/);
+});
+
+test("an absent read goes stale when anything writes to the row, even the same words again", async () => {
+  const { db, changeSets, instance, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // 1. The row is sent and its answer lost; then its item can't be read, so
+  //    apply says it couldn't tell.
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  jira.hide("SYN-21");
+  await changeSets.apply(set.id);
+  jira.show("SYN-21");
+  const said = (await changeSets.get(set.id))?.mutations[0]?.error;
+  assert.match(String(said), /couldn't tell/);
+  const [b, c] = [instance(), instance()];
+  jira.hooks.answered = async () => {
+    jira.hooks.answered = undefined;
+    // 2. This apply has read SYN-21 without the change, and waits.
+    // 3. Another sends it: it lands, and its answer is lost.
+    jira.hooks.after = () => {
+      jira.hooks.after = undefined;
+      throw new Error("timed out");
+    };
+    await b.apply(set.id);
+    // 4. A third can't read SYN-21, and says it couldn't tell, as before.
+    jira.hooks.read = () => {
+      jira.hooks.read = undefined;
+      throw new Error("GET /rest/api/3/issue/SYN-21: 503");
+    };
+    await c.apply(set.id);
+    // And SYN-21 leaves the group, so this apply won't send it.
+    groupStore(db).remove(
+      groupId,
+      [{ id: "jira:SYN-21", stableId: indexed("SYN-21").stableId }],
+      { kind: "user" },
+      "2026-10-29T09:00:01.000Z" as never,
+    );
+  };
+  // 5. Its read is out of date: the other's write landed. The row stays sent.
+  await changeSets.apply(set.id);
+  assert.equal(jira.issue("SYN-21")?.points, 5);
+  assert.equal(status(db, mutationId), "failed");
+  assert.ok(!kinds(await changeSets.nextSteps(set.id)).includes("reject"));
+});
+
+test("an item whose key another item took in the index reads as gone in a diff", async () => {
+  const { changeSets, run, indexPage, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  // SYN-21 moves away and an item outside the region takes its key.
+  indexPage([
+    { ...indexed("SYN-21"), id: "jira:OPS-5" },
+    { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
+  ]);
+  const shown = await changeSets.diff(set.id);
+  assert.match(nth(shown.lines, 0).sentence, /SYN-21 is no longer in Jira/);
+  assert.deepEqual(nth(shown.lines, 0).fields, []);
+  assert.ok(!kinds(await changeSets.nextSteps(set.id)).includes("approve"));
 });
