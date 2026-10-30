@@ -85,7 +85,7 @@ test("history joins the agent's text, summarizes runs, and names marker items by
   assert.deepEqual(out, [
     { role: "user", text: "What's left?", at },
     { role: "assistant", text: "Let me look.", at },
-    { role: "run", runId, summary: 'ok; returned {"left":2}', at },
+    { role: "run", runId, summary: 'ok; returned {"left":2}', script: "x", at },
     { role: "marker", text: "v1→v2: added jira:SYN-3", at },
   ]);
 });

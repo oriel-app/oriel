@@ -45,6 +45,11 @@ export type TurnInput = {
   history: ChatMessage[];
   // The user's message.
   text: string;
+  // The index snapshot the turn reads, which its runs record.
+  snapshot?: number;
+  // Tokens earlier turns spent, summed from their `done` events, so the
+  // thread's token cap covers the whole thread.
+  spent?: { inputTokens: number; outputTokens: number };
 };
 
 export type ChatMessage =
@@ -52,8 +57,8 @@ export type ChatMessage =
   | { role: "assistant"; text: string; at: Instant }
   // "added jira:SYN-12" (decision 0018). IDs only: a title is source content.
   | { role: "marker"; text: string; at: Instant }
-  // A compact record of a sandbox run, for history.
-  | { role: "run"; runId: Ulid; summary: string; at: Instant };
+  // A compact record of a sandbox run, for history, with its script.
+  | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };
 
 // What a turn emits, in order.
 export type AgentEvent =
@@ -70,6 +75,8 @@ export type AgentEvent =
   | { kind: "error"; message: string }
   | { kind: "done"; usage: { inputTokens: number; outputTokens: number } };
 
+// A turn always ends with exactly one `done`, even when aborted. A run is
+// recorded when it finishes, so nothing keyed to it exists at `run.started`.
 export interface Agent {
   turn(input: TurnInput, options: { signal: AbortSignal; log: Log }): AsyncIterable<AgentEvent>;
 }
@@ -82,15 +89,13 @@ export type AgentLimits = {
 };
 
 // What the server builds an agent from, but the provider, which comes with
-// @oriel/agent. `snapshot` is the index snapshot a run reads, which a run
-// records (SPEC §7) and the contract doesn't otherwise give.
+// @oriel/agent.
 export type AgentDeps = {
   sandbox: Sandbox;
   bindingsFor: (region: Region) => Bindings;
   changeSets: Pick<ChangeSets, "capture">;
   runs: { record(run: Run, reads: ProxiedRead[]): void };
   limits: AgentLimits;
-  snapshot: () => number;
   now: () => Instant;
   newId: () => Ulid;
 };

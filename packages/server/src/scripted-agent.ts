@@ -20,83 +20,101 @@ function returned(result: RunResult): unknown {
   return entry?.kind === "return" ? entry.value : undefined;
 }
 
+// As the contract asks, a turn ends with exactly one `done`, stopped or not.
 export function scriptedAgent(deps: AgentDeps, plan: (input: TurnInput) => Step[]): Agent {
   return {
-    async *turn(input, { signal, log }): AsyncGenerator<AgentEvent> {
-      const { thread, region } = input;
-      for (const step of plan(input)) {
-        signal.throwIfAborted();
-        if ("text" in step) {
-          yield { kind: "text", text: step.text };
-          continue;
-        }
-        const script =
-          "run" in step ? step.run : `return await search(${JSON.stringify(step.search)}, 10);`;
-        const runId = deps.newId();
-        yield { kind: "run.started", runId, script };
-        const bindings = deps.bindingsFor(region);
-        const startedAt = deps.now();
-        const run = {
-          id: runId,
-          workspaceId: thread.workspaceId,
-          threadId: thread.id,
-          snapshot: deps.snapshot(),
-          regionVersion: region.version,
-          systemPromptHash: sha256(systemPrompt),
-          dtsHash: sha256(bindings.dts),
-          model: "scripted",
-          inputTokens: 0,
-          outputTokens: 0,
-          startedAt,
-        };
-        let result: RunResult;
-        try {
-          result = await deps.sandbox.run(script, bindings, {
-            limits: deps.limits.run,
-            signal,
-            log,
-          });
-        } catch (error) {
-          if (signal.aborted)
-            deps.runs.record({ ...run, wallMs: 0, coldStartMs: null, outcome: "aborted" }, []);
-          throw error;
-        }
-        deps.runs.record(
-          {
-            ...run,
-            wallMs: result.wallMs,
-            coldStartMs: result.coldStartMs,
-            outcome: result.outcome,
-          },
-          result.reads,
-        );
-        yield { kind: "run.finished", runId, result };
-        if ("search" in step) {
-          const hits = array(searchHit)(returned(result));
-          if (hits.ok) yield { kind: "search", runId, hits: hits.value };
-        }
-        if (result.mutations.length === 0) continue;
-        if (result.mutations.length > deps.limits.maxMutationsPerChangeSet) {
+    async *turn(input, options): AsyncGenerator<AgentEvent> {
+      try {
+        yield* steps(deps, plan, input, options);
+      } catch (error) {
+        if (!options.signal.aborted)
           yield {
-            kind: "limit",
-            reason: `A change set holds at most ${deps.limits.maxMutationsPerChangeSet} changes.`,
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
           };
-          continue;
-        }
-        try {
-          const set = await deps.changeSets.capture(
-            { id: runId, threadId: thread.id, workspaceId: thread.workspaceId },
-            result.mutations,
-          );
-          yield { kind: "change-set", changeSetId: set.id };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          yield { kind: "error", message: `That change couldn't be proposed: ${message}` };
-        }
       }
       yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
     },
   };
+}
+
+async function* steps(
+  deps: AgentDeps,
+  plan: (input: TurnInput) => Step[],
+  input: TurnInput,
+  { signal, log }: Parameters<Agent["turn"]>[1],
+): AsyncGenerator<AgentEvent> {
+  const { thread, region } = input;
+  for (const step of plan(input)) {
+    if (signal.aborted) return;
+    if ("text" in step) {
+      yield { kind: "text", text: step.text };
+      continue;
+    }
+    const script =
+      "run" in step ? step.run : `return await search(${JSON.stringify(step.search)}, 10);`;
+    const runId = deps.newId();
+    yield { kind: "run.started", runId, script };
+    const bindings = deps.bindingsFor(region);
+    const startedAt = deps.now();
+    const run = {
+      id: runId,
+      workspaceId: thread.workspaceId,
+      threadId: thread.id,
+      snapshot: input.snapshot ?? 0,
+      regionVersion: region.version,
+      systemPromptHash: sha256(systemPrompt),
+      dtsHash: sha256(bindings.dts),
+      model: "scripted",
+      inputTokens: 0,
+      outputTokens: 0,
+      startedAt,
+    };
+    let result: RunResult;
+    try {
+      result = await deps.sandbox.run(script, bindings, {
+        limits: deps.limits.run,
+        signal,
+        log,
+      });
+    } catch (error) {
+      if (signal.aborted)
+        deps.runs.record({ ...run, wallMs: 0, coldStartMs: null, outcome: "aborted" }, []);
+      throw error;
+    }
+    deps.runs.record(
+      {
+        ...run,
+        wallMs: result.wallMs,
+        coldStartMs: result.coldStartMs,
+        outcome: result.outcome,
+      },
+      result.reads,
+    );
+    yield { kind: "run.finished", runId, result };
+    if ("search" in step) {
+      const hits = array(searchHit)(returned(result));
+      if (hits.ok) yield { kind: "search", runId, hits: hits.value };
+    }
+    if (result.mutations.length === 0) continue;
+    if (result.mutations.length > deps.limits.maxMutationsPerChangeSet) {
+      yield {
+        kind: "limit",
+        reason: `A change set holds at most ${deps.limits.maxMutationsPerChangeSet} changes.`,
+      };
+      continue;
+    }
+    try {
+      const set = await deps.changeSets.capture(
+        { id: runId, threadId: thread.id, workspaceId: thread.workspaceId },
+        result.mutations,
+      );
+      yield { kind: "change-set", changeSetId: set.id };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      yield { kind: "error", message: `That change couldn't be proposed: ${message}` };
+    }
+  }
 }
 
 const listScript = `const all = await items.list();

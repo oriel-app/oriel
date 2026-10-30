@@ -392,25 +392,66 @@ test("a thread's events stream: what's stored first, then each new entry as it l
   await rest.return?.();
 });
 
-test("one turn at a time per thread, and stopping one is explicit", async (t) => {
-  const waiting: Agent = {
+// Thinks until stopped, then ends with its `done`, as the contract asks; or,
+// breaking it, throws.
+function waiting(keepsContract: boolean): Agent {
+  return {
     async *turn(_input, { signal }) {
       yield { kind: "text", text: "Thinking" };
-      await new Promise((_, reject) =>
-        signal.addEventListener("abort", () => reject(signal.reason)),
-      );
+      try {
+        await new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        );
+      } catch (error) {
+        if (!keepsContract) throw error;
+      }
+      yield { kind: "done", usage: { inputTokens: 3, outputTokens: 4 } };
     },
   };
-  const app = await group(t, { agent: () => waiting });
+}
+
+test("one turn at a time per thread, and stopping one is explicit", async (t) => {
+  for (const keepsContract of [true, false]) {
+    const app = await group(t, { agent: () => waiting(keepsContract) });
+    const { id } = json<{ id: string }>(
+      await app.post(`/api/groups/${app.groupId}/threads`, { text: "First" }),
+    );
+    const busy = await app.post(`/api/threads/${id}/messages`, { text: "Second" });
+    assert.equal(busy.status, 409);
+    assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: true });
+    await app.app.settled();
+    const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
+    // Every turn ends with one `done`, and a stopped one says so last.
+    assert.deepEqual(
+      view.entries.map((e) => (e.kind === "error" ? e.message : e.kind)),
+      ["user", "text", "done", "Stopped."],
+    );
+    assert.equal(view.running, false);
+    assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: false });
+  }
+});
+
+test("a turn gets the index snapshot and what earlier turns spent", async (t) => {
+  const inputs: Parameters<Agent["turn"]>[0][] = [];
+  const counting: Agent = {
+    async *turn(input) {
+      inputs.push(input);
+      yield { kind: "done", usage: { inputTokens: 10, outputTokens: 2 } };
+    },
+  };
+  const app = await group(t, { agent: () => counting });
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${app.groupId}/threads`, { text: "First" }),
+    await app.post(`/api/groups/${app.groupId}/threads`, { text: "One" }),
   );
-  const busy = await app.post(`/api/threads/${id}/messages`, { text: "Second" });
-  assert.equal(busy.status, 409);
-  assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: true });
   await app.app.settled();
-  const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
-  assert.deepEqual(view.entries.at(-1), { seq: 3, at: t0, kind: "error", message: "Stopped." });
-  assert.equal(view.running, false);
-  assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: false });
+  await app.post(`/api/threads/${id}/messages`, { text: "Two" });
+  await app.app.settled();
+  assert.deepEqual(
+    inputs.map((input) => [input.text, input.spent, input.history.length]),
+    [
+      ["One", { inputTokens: 0, outputTokens: 0 }, 0],
+      ["Two", { inputTokens: 10, outputTokens: 2 }, 1],
+    ],
+  );
+  assert.ok(inputs.every((input) => typeof input.snapshot === "number" && input.snapshot > 0));
 });

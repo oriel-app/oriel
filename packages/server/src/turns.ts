@@ -22,6 +22,8 @@ export type TurnDeps = {
   groups: GroupStore;
   agent: Agent;
   emit: (event: TelemetryEvent) => void;
+  // The index snapshot a turn reads.
+  snapshot: () => number;
   now: () => Instant;
   newId: () => Ulid;
   log: Log;
@@ -45,13 +47,28 @@ function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): strin
   return text.length > maxSummaryChars ? `${text.slice(0, maxSummaryChars - 1)}…` : text;
 }
 
+// Tokens the turns in `messages` spent, from their `done` events.
+export function spent(messages: readonly Message[]): { inputTokens: number; outputTokens: number } {
+  const total = { inputTokens: 0, outputTokens: 0 };
+  for (const message of messages) {
+    if (message.role !== "agent") continue;
+    const event = agentEvent(message.event);
+    if (!event.ok || event.value.kind !== "done") continue;
+    total.inputTokens += event.value.usage.inputTokens;
+    total.outputTokens += event.value.usage.outputTokens;
+  }
+  return total;
+}
+
 // The chat as the agent's history: the user's messages, its own replies
-// joined up, each run's summary, and markers naming items by ID only.
+// joined up, each run's script and summary, and markers naming items by ID
+// only.
 export function history(
   messages: readonly Message[],
   markerText: (from: number, to: number) => string,
 ): ChatMessage[] {
   const out: ChatMessage[] = [];
+  const scripts = new Map<string, string>();
   for (const message of messages) {
     if (message.role === "user") {
       out.push({ role: "user", text: message.text, at: message.at });
@@ -68,13 +85,17 @@ export function history(
       if (last?.role === "assistant") last.text += event.value.text;
       else out.push({ role: "assistant", text: event.value.text, at: message.at });
     }
-    if (event.value.kind === "run.finished")
+    if (event.value.kind === "run.started") scripts.set(event.value.runId, event.value.script);
+    if (event.value.kind === "run.finished") {
+      const script = scripts.get(event.value.runId);
       out.push({
         role: "run",
         runId: event.value.runId,
         summary: runSummary(event.value),
+        ...(script === undefined ? {} : { script }),
         at: message.at,
       });
+    }
   }
   return out;
 }
@@ -124,8 +145,13 @@ export function turns(deps: TurnDeps) {
     }
   };
 
+  // The agent ends each turn with one `done`, stopped or not, so the turn
+  // runs to its end. One that throws instead gets an error and a `done`
+  // here, so every turn in the chat ends the same way. A stopped turn says so
+  // last.
   const run = async (thread: Thread, text: string, seq: number, signal: AbortSignal) => {
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
+    let done = false;
     try {
       const region = groups.region(thread.groupId, thread.regionVersion);
       if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's group`);
@@ -135,19 +161,24 @@ export function turns(deps: TurnDeps) {
         region,
         history: history(before, markerText(thread.groupId)),
         text,
+        snapshot: deps.snapshot(),
+        spent: spent(before),
       };
       for await (const event of deps.agent.turn(input, { signal, log })) {
         record(thread.id, event);
-        if (signal.aborted) break;
+        if (event.kind === "done") done = true;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log("turn: failed", { error: message });
-      record(thread.id, {
-        kind: "error",
-        message: signal.aborted ? "Stopped." : `The agent stopped with an error: ${message}`,
-      });
+      if (!signal.aborted)
+        record(thread.id, {
+          kind: "error",
+          message: `The agent stopped with an error: ${message}`,
+        });
+      if (!done) record(thread.id, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
     }
+    if (signal.aborted) record(thread.id, { kind: "error", message: "Stopped." });
   };
 
   return {

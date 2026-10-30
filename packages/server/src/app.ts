@@ -218,7 +218,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
     runs: { record: (run, reads) => runs.record(run, reads) },
     limits,
-    snapshot: () => index.snapshot(workspaceId),
+
     now,
     newId,
   };
@@ -226,7 +226,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     agentDeps,
     options.modelKey ?? null,
   );
-  const conversation = turns({ threads, groups, agent, emit, now, newId, log });
+  const conversation = turns({
+    threads,
+    groups,
+    agent,
+    emit,
+    snapshot: () => index.snapshot(workspaceId),
+    now,
+    newId,
+    log,
+  });
   const viewer = views({
     groups,
     threads,
