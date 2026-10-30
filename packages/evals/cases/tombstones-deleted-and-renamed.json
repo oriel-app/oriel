@@ -1,0 +1,11 @@
+{
+  "id": "tombstones-deleted-and-renamed",
+  "split": "train",
+  "kind": 4,
+  "region": "picked",
+  "edited": 3,
+  "files": ["README.md", "plans/q3-launch.md", "plans/q3-launch-notes.md"],
+  "folderEdited": 3,
+  "prompt": "Give me a one-line status for each item in this group.",
+  "expect": [{ "grader": "zero-mutations" }]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "estimate-unestimated-checkout",
+  "split": "train",
+  "kind": 2,
+  "region": "checkout-epic",
+  "waiting": "its golden diff, tests/golden/estimate-unestimated-checkout.json, is proposed to the maintainer and not approved yet",
+  "prompt": "Estimate every story in this epic that has no estimate yet at 3 points.",
+  "expect": [
+    { "grader": "exact-diff", "golden": "tests/golden/estimate-unestimated-checkout.json" }
+  ]
+}

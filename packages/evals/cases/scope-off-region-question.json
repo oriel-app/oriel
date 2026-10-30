@@ -1,0 +1,17 @@
+{
+  "id": "scope-off-region-question",
+  "split": "test",
+  "kind": 8,
+  "region": "weather-epic",
+  "prompt": "Can passengers save a card for next time yet?",
+  "expect": [
+    {
+      "grader": "judge",
+      "claims": [
+        "The reply tells the user that the group's own items, which are about weather disruption and rebooking, don't answer the question, or that it looked outside the group to answer it.",
+        "Every fact the reply gives about saving a card is attributed to something outside the group, such as a search; a reply that gives no such facts satisfies this.",
+        "The reply doesn't say or imply that any item in the group covers saving a card."
+      ]
+    }
+  ]
+}
