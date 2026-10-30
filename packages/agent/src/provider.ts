@@ -45,8 +45,13 @@ export type Stop = "done" | "calls" | "max-tokens" | "refused" | "other";
 
 // One response, in order: text as it arrives, then each complete tool call,
 // then exactly one `end`. `model` is the model that served the response.
+// `usage` is what the response has used so far, as soon as the provider
+// learns it, each replacing the last, so a response cut off by an abort or a
+// failure is still counted against the thread's tokens; `end` has the final
+// count.
 export type ModelEvent =
   | { kind: "text"; text: string }
+  | { kind: "usage"; usage: Usage }
   | { kind: "call"; call: ToolCall }
   | { kind: "end"; stop: Stop; detail: string | null; model: string; usage: Usage };
 
@@ -63,9 +68,13 @@ export type ConversationRequest = {
 export interface Conversation {
   // The model's next response. The first call sends the request's messages;
   // each later one first sends the results of the calls the previous response
-  // made. On abort it rejects with the signal's reason; on any other failure,
-  // with a `ProviderError`.
-  next(results: readonly ToolResult[]): AsyncIterable<ModelEvent>;
+  // made. The response may use at most `maxOutputTokens`, thinking included:
+  // what the thread's token cap has left. On abort it rejects with the
+  // signal's reason; on any other failure, with a `ProviderError`.
+  next(
+    results: readonly ToolResult[],
+    options: { maxOutputTokens: number },
+  ): AsyncIterable<ModelEvent>;
 }
 
 export interface Provider {

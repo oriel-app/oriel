@@ -273,54 +273,80 @@ test("the turn cap: a thread at its limit refuses the message before the model s
 });
 
 test("the token cap: a response that reaches it runs nothing more", async () => {
-  const { turn, records } = harness([{ scripts: [unestimated], usage: tokens(900, 100) }], {
-    limits: { maxTokensPerThread: 1_000 },
+  const { turn, records } = harness([{ scripts: [unestimated], usage: tokens(9_000, 1_000) }], {
+    limits: { maxTokensPerThread: 10_000 },
   });
   const events = await turn({ region: weather });
 
   assert.deepEqual(events, [
     {
       kind: "limit",
-      reason: "This thread has used its budget of 1000 tokens, so the agent stopped.",
+      reason: "This thread has reached its budget of 10000 tokens, so the agent stopped.",
     },
-    { kind: "done", usage: { inputTokens: 900, outputTokens: 100 } },
+    { kind: "done", usage: { inputTokens: 9_000, outputTokens: 1_000 } },
   ]);
   assert.deepEqual(records.runs, []);
 });
 
-test("the token cap counts what the thread's earlier turns spent", async () => {
+test("the token cap counts what the thread's earlier turns spent, and asks for nothing it can't fit", async () => {
   const { turn, model } = harness([{ text: ["Hello."] }], {
-    limits: { maxTokensPerThread: 1_000 },
+    limits: { maxTokensPerThread: 10_000 },
   });
-  const events = await turn({ region: weather, spent: { inputTokens: 990, outputTokens: 10 } });
+  // 1000 tokens left: not enough for a response that thinks.
+  const events = await turn({ region: weather, spent: { inputTokens: 8_500, outputTokens: 500 } });
 
   assert.deepEqual(kinds(events), ["limit", "done"]);
   assert.equal(model.conversations.length, 0);
 });
 
-test("the wall-time cap: the sandbox stops the run, the turn says so, and the model can go on", async () => {
+test("the token cap bounds each response by what's left after the input it already knows of", async () => {
+  const { turn, model } = harness(
+    [
+      { scripts: [unestimated], usage: tokens(4_000, 1_000) },
+      { scripts: [unestimated], usage: tokens(6_000, 500) },
+      { text: ["Never asked for."] },
+    ],
+    { limits: { maxTokensPerThread: 20_000 } },
+  );
+  const events = await turn({ region: weather, spent: { inputTokens: 1_500, outputTokens: 500 } });
+
+  // 20000 - 2000 spent = 18000 for the first. Then 20000 - 2000 - 5000 used -
+  // 5000 the next request sends again = 8000. Then 20000 - 2000 - 11500 -
+  // 6500 = 0: too little, so the turn stops before asking.
+  assert.deepEqual(model.conversations[0]?.maxOutputTokens, [18_000, 8_000]);
+  assert.equal(model.unplayed(), 1);
+  assert.deepEqual(kinds(events), [
+    "run.started",
+    "run.finished",
+    "run.started",
+    "run.finished",
+    "limit",
+    "done",
+  ]);
+  assert.deepEqual(events.at(-1), {
+    kind: "done",
+    usage: { inputTokens: 10_000, outputTokens: 1_500 },
+  });
+});
+
+test("the wall-time cap: the sandbox stops the run, the model sees why and goes on, and the turn isn't capped", async () => {
   const { turn, model, records } = harness(
     [{ scripts: ["for (;;) {}"] }, { text: ["That took too long."] }],
     { limits: { run: { ...runLimits, wallMs: 1_000 } } },
   );
   const events = await turn({ region: weather });
 
-  assert.deepEqual(kinds(events), ["run.started", "run.finished", "limit", "text", "done"]);
+  assert.deepEqual(kinds(events), ["run.started", "run.finished", "text", "done"]);
   assert.equal(only(events, "run.finished")[0]?.result.outcome, "timeout");
-  assert.deepEqual(only(events, "limit"), [
-    {
-      kind: "limit",
-      reason: "A run was stopped: the run passed its wall time of 1000 ms and was stopped.",
-    },
-  ]);
   assert.equal(records.runs[0]?.run.outcome, "timeout");
   const timedOut = resultOf(model.conversations[0]?.results[1]);
   assert.equal(timedOut.isError, true);
-  assert.match(timedOut.content, /^Failed at limit: the run passed its wall time/);
+  assert.match(timedOut.content, /^Failed at limit: the run passed its wall time of 1000 ms/);
+  assert.match(timedOut.content, /\nHint: /);
 });
 
 test("the mutation cap: a run that captures more than a change set may hold captures nothing", async () => {
-  const { turn, records } = harness(
+  const { turn, model, records } = harness(
     [
       {
         scripts: [
@@ -333,19 +359,21 @@ test("the mutation cap: a run that captures more than a change set may hold capt
   );
   const events = await turn({ region: weather, text: "Estimate everything at 1." });
 
-  assert.deepEqual(kinds(events), ["run.started", "run.finished", "limit", "text", "done"]);
-  assert.deepEqual(only(events, "limit"), [
-    { kind: "limit", reason: "A run was stopped: the script captured more than 2 mutations." },
-  ]);
+  assert.deepEqual(kinds(events), ["run.started", "run.finished", "text", "done"]);
+  assert.equal(only(events, "run.finished")[0]?.result.outcome, "limit");
+  assert.match(
+    resultOf(model.conversations[0]?.results[1]).content,
+    /^Failed at limit: the script captured more than 2 mutations/,
+  );
   assert.deepEqual(records.changeSets, []);
 });
 
-// Abort.
+// Abort, and a stream that breaks.
 
-test("an abort while the model streams ends the turn cleanly, with nothing captured", async () => {
+test("an abort while the model streams ends the turn cleanly, counting what that response had used", async () => {
   const { turn, records } = harness([
-    { scripts: [`jira.setEstimate("jira:SYN-26", 3);`] },
-    { text: ["Proposed ", "an estimate."] },
+    { scripts: [`jira.setEstimate("jira:SYN-26", 3);`], usage: tokens(1_000, 80) },
+    { text: ["Proposed ", "an estimate."], usage: tokens(1_300, 40) },
   ]);
   const events = await turn(
     { region: weather },
@@ -353,7 +381,29 @@ test("an abort while the model streams ends the turn cleanly, with nothing captu
   );
 
   assert.deepEqual(kinds(events), ["run.started", "run.finished", "text", "done"]);
+  // The first response whole, and the second's input, reported when it began.
+  assert.deepEqual(events.at(-1), {
+    kind: "done",
+    usage: { inputTokens: 2_300, outputTokens: 80 },
+  });
   assert.deepEqual(records.changeSets, []);
+});
+
+test("a stream that breaks ends the turn with an error, counting what it had used", async () => {
+  const { turn } = harness([
+    {
+      text: ["Let me"],
+      usage: tokens(700, 50),
+      fail: "The model provider stopped its response: Overloaded.",
+    },
+  ]);
+  const events = await turn({ region: weather });
+
+  assert.deepEqual(events, [
+    { kind: "text", text: "Let me" },
+    { kind: "error", message: "The model provider stopped its response: Overloaded." },
+    { kind: "done", usage: { inputTokens: 700, outputTokens: 0 } },
+  ]);
 });
 
 test("an abort during a run stops the sandbox and records the run as aborted", async () => {
@@ -429,7 +479,7 @@ test("source content in the thread's history reaches the model only in tool resu
   const messages = model.conversations[0]?.request.messages ?? [];
   assert.deepEqual(
     messages.map((m) => m.role),
-    ["user", "assistant", "tool", "assistant", "tool", "user"],
+    ["user", "assistant", "tool", "assistant", "tool", "assistant", "user"],
   );
   for (const message of messages) {
     if (message.role === "tool") continue;

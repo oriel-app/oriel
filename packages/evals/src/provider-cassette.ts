@@ -127,11 +127,14 @@ export async function providerTurn(fetch: Fetch): Promise<ModelEvent[][]> {
     signal: new AbortController().signal,
     log: () => {},
   });
-  const first = await collect(conversation.next([]));
+  // Room for the provider's whole default output, so `max_tokens` is 64000.
+  const room = { maxOutputTokens: 64_000 };
+  const first = await collect(conversation.next([], room));
   const callIds = first.flatMap((event) => (event.kind === "call" ? [event.call.id] : []));
   const second = await collect(
     conversation.next(
       callIds.map((callId) => ({ callId, content: "Returned: 2", isError: false })),
+      room,
     ),
   );
   return [first, second];

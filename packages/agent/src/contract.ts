@@ -26,14 +26,14 @@ export type TurnInput = {
   history: ChatMessage[];
   // The user's message.
   text: string;
-  // Not in the lead's contract yet; both are optional so the server compiles
-  // without them. The index snapshot this turn's runs read against, which each
-  // run records (SPEC §7); 0 when not given.
-  snapshot?: number;
-  // What the thread's earlier turns used, from their `done` events. The
-  // per-thread token cap counts it with this turn's usage; without it, the cap
-  // can only count this turn.
-  spent?: { inputTokens: number; outputTokens: number };
+  // The index snapshot this turn reads (`indexStore.snapshot(workspaceId)`);
+  // each run records it (SPEC §7). Required: a default of 0 would record
+  // "never synced".
+  snapshot: number;
+  // Tokens spent in earlier turns, summed from their `done` events, so
+  // `maxTokensPerThread` covers the whole thread. Required: optional would let
+  // the cap silently become per-turn.
+  spent: { inputTokens: number; outputTokens: number };
 };
 
 export type ChatMessage =
@@ -41,11 +41,15 @@ export type ChatMessage =
   | { role: "assistant"; text: string; at: Instant }
   // "added SYN-12", "removed plan.md" (decision 0018).
   | { role: "marker"; text: string; at: Instant }
-  // A compact record of a sandbox run, for history.
-  | { role: "run"; runId: Ulid; summary: string; at: Instant };
+  // A compact record of a sandbox run, for history. With its script, history
+  // replays the run faithfully.
+  | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };
 
 // What a turn emits, in order. The server persists each and streams it to the
-// window. Every turn ends with exactly one `done`, however it ends.
+// window. A turn always ends with exactly one `done`, even when aborted, with
+// the usage so far. `run.started` comes before the run row exists: the run is
+// recorded when it finishes, so persist nothing with a foreign key to `runs`
+// until `run.finished`.
 export type AgentEvent =
   // Assistant text, possibly in deltas.
   | { kind: "text"; text: string }
@@ -56,7 +60,10 @@ export type AgentEvent =
   | { kind: "search"; runId: Ulid; hits: SearchHit[] }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
-  // A cap hit (SPEC §9).
+  // A per-thread cap that ends the turn: turns or tokens (SPEC §9). A
+  // run-level cap (wall time, reads, mutations, output) isn't one: it shows as
+  // `run.finished` with that outcome, and the model sees the error and can
+  // carry on.
   | { kind: "limit"; reason: string }
   | { kind: "error"; message: string }
   | { kind: "done"; usage: { inputTokens: number; outputTokens: number } };
@@ -66,6 +73,7 @@ export interface Agent {
 }
 
 export type AgentLimits = {
+  // User messages: the history's and this one.
   maxTurnsPerThread: number;
   maxTokensPerThread: number;
   run: RunLimits;

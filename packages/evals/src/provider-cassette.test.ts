@@ -29,9 +29,17 @@ test("the agent's provider replays a turn from its cassettes, offline", async ()
   const [first, second] = await providerTurn(
     cassettes({ mode: "replay", dir: providerCassettes }).fetch,
   );
+  const firstUsage = {
+    inputTokens: 1235,
+    outputTokens: 96,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 1204,
+  };
   assert.deepEqual(first, [
+    { kind: "usage", usage: { ...firstUsage, outputTokens: 2 } },
     { kind: "text", text: "Let me " },
     { kind: "text", text: "check." },
+    { kind: "usage", usage: firstUsage },
     {
       kind: "call",
       call: {
@@ -40,23 +48,19 @@ test("the agent's provider replays a turn from its cassettes, offline", async ()
         input: { script: "const s = await jira.listStories();\nreturn s.length;" },
       },
     },
-    {
-      kind: "end",
-      stop: "calls",
-      detail: "tool_use",
-      model: "claude-opus-5-5",
-      usage: { inputTokens: 1235, outputTokens: 96, cacheReadTokens: 0, cacheWriteTokens: 1204 },
-    },
+    { kind: "end", stop: "calls", detail: "tool_use", model: "claude-opus-5-5", usage: firstUsage },
   ]);
+  const secondUsage = {
+    inputTokens: 1244,
+    outputTokens: 12,
+    cacheReadTokens: 1204,
+    cacheWriteTokens: 0,
+  };
   assert.deepEqual(second, [
+    { kind: "usage", usage: { ...secondUsage, outputTokens: 1 } },
     { kind: "text", text: "Two stories." },
-    {
-      kind: "end",
-      stop: "done",
-      detail: "end_turn",
-      model: "claude-opus-5-5",
-      usage: { inputTokens: 1244, outputTokens: 12, cacheReadTokens: 1204, cacheWriteTokens: 0 },
-    },
+    { kind: "usage", usage: secondUsage },
+    { kind: "end", stop: "done", detail: "end_turn", model: "claude-opus-5-5", usage: secondUsage },
   ]);
 });
 

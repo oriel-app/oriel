@@ -29,6 +29,7 @@ import { agent } from "./loop.ts";
 import {
   type ConversationRequest,
   type Provider,
+  ProviderError,
   type Stop,
   type ToolResult,
   type Usage,
@@ -116,9 +117,11 @@ export const limits: AgentLimits = {
   maxMutationsPerChangeSet: 20,
 };
 
-// One scripted model response: text in deltas, then calls (each a script for
-// `run`, or any tool name and input), then the stop. `before` runs when the
-// response is asked for, with the results the loop sent.
+// One scripted model response: its input usage as a stream reports it first,
+// text in deltas, then calls (each a script for `run`, or any tool name and
+// input), then the stop with the full usage. `fail` breaks the stream after
+// the text instead. `before` runs when the response is asked for, with the
+// results the loop sent.
 export type Step = {
   text?: string[];
   scripts?: string[];
@@ -126,6 +129,7 @@ export type Step = {
   stop?: Stop;
   detail?: string;
   usage?: Partial<Usage>;
+  fail?: string;
   before?: (results: readonly ToolResult[]) => void;
 };
 
@@ -137,29 +141,41 @@ export const tokens = (inputTokens: number, outputTokens: number): Usage => ({
 });
 
 // Plays `steps` in order across every conversation, and keeps what each
-// conversation was asked: its request, and the results sent with each
-// response (none with the first). It honours the abort signal as a stream
-// would.
+// conversation was asked: its request, the results sent with each response
+// (none with the first), and each response's output bound. It honours the
+// abort signal as a stream would.
 export function scriptedProvider(steps: Step[]) {
   const queue = [...steps];
-  const conversations: { request: ConversationRequest; results: ToolResult[][] }[] = [];
+  const conversations: {
+    request: ConversationRequest;
+    results: ToolResult[][];
+    maxOutputTokens: number[];
+  }[] = [];
   let calls = 0;
   const provider: Provider = {
     converse(request) {
-      const conversation = { request, results: [] as ToolResult[][] };
+      const conversation = {
+        request,
+        results: [] as ToolResult[][],
+        maxOutputTokens: [] as number[],
+      };
       conversations.push(conversation);
       return {
-        async *next(results) {
+        async *next(results, { maxOutputTokens }) {
           const { signal } = request;
           signal.throwIfAborted();
           conversation.results.push([...results]);
+          conversation.maxOutputTokens.push(maxOutputTokens);
           const step = queue.shift();
           if (!step) throw new Error("the model has no more scripted responses");
           step.before?.(results);
+          const usage = { ...tokens(100, 10), ...step.usage };
+          yield { kind: "usage", usage: { ...usage, outputTokens: 0 } };
           for (const text of step.text ?? []) {
             signal.throwIfAborted();
             yield { kind: "text", text };
           }
+          if (step.fail) throw new ProviderError(step.fail);
           const made = [
             ...(step.scripts ?? []).map((script) => ({ name: "run", input: { script } })),
             ...(step.calls ?? []),
@@ -174,7 +190,7 @@ export function scriptedProvider(steps: Step[]) {
             stop: step.stop ?? (made.length ? "calls" : "done"),
             detail: step.detail ?? null,
             model: "scripted-model",
-            usage: { ...tokens(100, 10), ...step.usage },
+            usage,
           };
         },
       };
@@ -267,7 +283,14 @@ export function harness(
       hooks.onLog?.({ message, fields }, controller);
     };
     for await (const event of agent(deps).turn(
-      { thread, history: [], text: "Which stories have no estimate?", ...input },
+      {
+        thread,
+        history: [],
+        text: "Which stories have no estimate?",
+        snapshot: 1,
+        spent: { inputTokens: 0, outputTokens: 0 },
+        ...input,
+      },
       { signal: controller.signal, log },
     )) {
       events.push(event);

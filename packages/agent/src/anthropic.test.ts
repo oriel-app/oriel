@@ -10,19 +10,25 @@ import {
   type ModelEvent,
   type Provider,
   ProviderError,
+  type ToolResult,
 } from "./provider.ts";
 import { t0 } from "./testing.ts";
 
 const key = "sk-ant-api03-TESTKEY-never-print";
 
-// Server-sent events as the API writes them, split into small chunks so a
-// line or an event can fall across two reads.
-function stream(events: object[], options: { signal?: AbortSignal; open?: boolean } = {}) {
+// Server-sent events as the API writes them, split into small chunks (7 bytes
+// unless `chunk` says otherwise) so a line, an event or a character can fall
+// across two reads.
+function stream(
+  events: object[],
+  options: { signal?: AbortSignal; open?: boolean; chunk?: number } = {},
+) {
   const bytes = new TextEncoder().encode(
     events
       .map((e) => `event: ${String(Reflect.get(e, "type"))}\ndata: ${JSON.stringify(e)}\n\n`)
       .join(""),
   );
+  const size = options.chunk ?? 7;
   let at = 0;
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -30,8 +36,8 @@ function stream(events: object[], options: { signal?: AbortSignal; open?: boolea
     },
     pull(controller) {
       if (at < bytes.length) {
-        controller.enqueue(bytes.slice(at, at + 7));
-        at += 7;
+        controller.enqueue(bytes.slice(at, at + size));
+        at += size;
         return undefined;
       }
       // An open stream waits, as a slow model does, until it is aborted.
@@ -120,12 +126,14 @@ const end = (stop_reason: string, usage: object = { output_tokens: 30 }, extra: 
 
 type Logged = { message: string; fields: unknown };
 
+// A conversation whose responses may use the whole default output unless a
+// test bounds them.
 function conversation(
   provider: Provider,
   overrides: Partial<ConversationRequest> = {},
   logged: Logged[] = [],
 ) {
-  return provider.converse({
+  const inner = provider.converse({
     system: systemPrompt,
     tools: [runTool('type RegionId =\n  | "jira:ABC-1";\n')],
     messages: [{ role: "user", text: "Which stories have no estimate?" }],
@@ -133,6 +141,10 @@ function conversation(
     log: (message, fields) => logged.push({ message, fields }),
     ...overrides,
   });
+  return {
+    next: (results: readonly ToolResult[], maxOutputTokens = 64_000) =>
+      inner.next(results, { maxOutputTokens }),
+  };
 }
 
 async function collect(responses: AsyncIterable<ModelEvent>): Promise<ModelEvent[]> {
@@ -213,17 +225,15 @@ test("a response streams its text, then its call, then why it stopped and what i
     conversation(anthropicProvider({ apiKey: key, fetch: network.fetch })).next([]),
   );
 
+  const final = { inputTokens: 940, outputTokens: 75, cacheReadTokens: 0, cacheWriteTokens: 900 };
   assert.deepEqual(got, [
+    // The input is counted as soon as the stream starts, in case it breaks.
+    { kind: "usage", usage: { ...final, outputTokens: 1 } },
     { kind: "text", text: "Let me " },
     { kind: "text", text: "look." },
+    { kind: "usage", usage: final },
     { kind: "call", call: { id: "toolu_1", name: "run", input: { script: "return 1;" } } },
-    {
-      kind: "end",
-      stop: "calls",
-      detail: "tool_use",
-      model: "claude-opus-5-5",
-      usage: { inputTokens: 940, outputTokens: 75, cacheReadTokens: 0, cacheWriteTokens: 900 },
-    },
+    { kind: "end", stop: "calls", detail: "tool_use", model: "claude-opus-5-5", usage: final },
   ]);
 });
 
@@ -341,7 +351,7 @@ test("after a fallback, text from before it goes back and its calls don't run", 
   await collect(turn.next([{ callId: "toolu_kept", content: "Returned: 1", isError: false }]));
 
   assert.deepEqual(
-    got.filter((e) => e.kind !== "end"),
+    got.filter((e) => e.kind === "text" || e.kind === "call"),
     [
       { kind: "text", text: "Checking the " },
       { kind: "text", text: "stories." },
@@ -395,10 +405,13 @@ test("a call whose input isn't JSON comes through as its raw text, and goes back
   const got = await collect(turn.next([]));
   await collect(turn.next([{ callId: "toolu_1", content: "bad input", isError: true }]));
 
-  assert.deepEqual(got[0], {
-    kind: "call",
-    call: { id: "toolu_1", name: "run", input: '{"script": "ret' },
-  });
+  assert.deepEqual(
+    got.find((e) => e.kind === "call"),
+    {
+      kind: "call",
+      call: { id: "toolu_1", name: "run", input: '{"script": "ret' },
+    },
+  );
   const echoed = messagesOf(network.seen[1]).at(-2);
   assert.deepEqual(echoed, {
     role: "assistant",
@@ -482,9 +495,88 @@ test("an abort mid-stream rejects with the signal's reason", async () => {
   const reading = (async () => {
     for await (const event of conversation(provider, { signal: controller.signal }).next([])) {
       got.push(event);
-      controller.abort(reason);
+      if (event.kind === "text") controller.abort(reason);
     }
   })();
   await assert.rejects(reading, reason);
-  assert.deepEqual(got, [{ kind: "text", text: "Hi" }]);
+  // What the response had used before it was cut off came first.
+  assert.deepEqual(
+    got.map((e) => e.kind),
+    ["usage", "text"],
+  );
+});
+
+test("each response's max_tokens is the smaller of the provider's ceiling and the loop's bound", async () => {
+  const network = api([
+    events([start(), ...toolBlock(0, "toolu_1", '{"script": "return 1;"}'), ...end("tool_use")]),
+    events([start(), ...end("end_turn")]),
+  ]);
+  const turn = conversation(
+    anthropicProvider({ apiKey: key, maxTokens: 8_000, fetch: network.fetch }),
+  );
+  await collect(turn.next([], 5_000));
+  await collect(turn.next([{ callId: "toolu_1", content: "Returned: 1", isError: false }], 20_000));
+
+  assert.deepEqual(
+    network.seen.map((sent) => sent.body["max_tokens"]),
+    [5_000, 8_000],
+  );
+});
+
+test("text split inside a character, across reads, comes through whole", async () => {
+  const words = "見積もりは 3 ✨ points";
+  const network = api([
+    (signal) =>
+      new Response(
+        stream([start(), ...textBlock(0, words), ...end("end_turn")], { signal, chunk: 1 }),
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      ),
+  ]);
+  const got = await collect(
+    conversation(anthropicProvider({ apiKey: key, fetch: network.fetch })).next([]),
+  );
+
+  assert.deepEqual(
+    got.filter((e) => e.kind === "text"),
+    [{ kind: "text", text: words }],
+  );
+});
+
+test("a history that ends in a marker closes its tool round before the user's message", async () => {
+  const network = api([events([start(), ...end("end_turn")])]);
+  const messages = threadMessages(
+    [
+      { role: "user", text: "What changed?", at: t0 },
+      { role: "assistant", text: "Nothing yet.", at: t0 },
+      { role: "marker", text: "added ABC-2", at: t0 },
+    ],
+    "And now?",
+  );
+  await collect(
+    conversation(anthropicProvider({ apiKey: key, fetch: network.fetch }), { messages }).next([]),
+  );
+
+  assert.deepEqual(messagesOf(network.seen[0]), [
+    { role: "user", content: [{ type: "text", text: "What changed?" }] },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Nothing yet." },
+        {
+          type: "tool_use",
+          id: "history_2",
+          name: "run",
+          input: { script: "// Oriel's note that the group changed. Not a run." },
+        },
+      ],
+    },
+    {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "history_2", content: "added ABC-2" }],
+    },
+    { role: "assistant", content: [{ type: "text", text: "Noted." }] },
+    { role: "user", content: [{ type: "text", text: "And now?" }] },
+  ]);
 });

@@ -56,15 +56,24 @@ ${dts}\`\`\``,
   };
 }
 
+// What the assistant says after past tool results that no reply of its own
+// followed. Calls followed only by their results, then the user's text, read
+// as a tool round still in progress, whose assistant message never opened
+// with the thinking block a replayed call can't have. Manual thinking refuses
+// that with a 400; adaptive thinking may quietly turn thinking off for the
+// request. A reply after the results closes the round, so the user's message
+// starts a new turn.
+export const roundClosed = "Noted.";
+
 // The thread so far, then the user's new message. Runs and markers carry
 // source content (a run's summary, a file's name), so each becomes a tool
-// result: the call is a stand-in, a script that is only a comment, since the
-// history keeps no script. Markers before the first user message are dropped:
-// the region the tool declares is already the latest.
+// result: the call is the run's own script when the history kept it, else a
+// stand-in script that is only a comment. Markers before the first user
+// message are dropped: the region the tool declares is already the latest.
 export function threadMessages(history: readonly ChatMessage[], text: string): ModelMessage[] {
   const messages: ModelMessage[] = [];
   let pending: { calls: ToolCall[]; results: ToolResult[] } | null = null;
-  const flush = () => {
+  const flush = (next: "user" | "assistant") => {
     if (!pending) return;
     const last = messages.at(-1);
     // A call goes with the assistant text just before it, as the model wrote it.
@@ -72,11 +81,12 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
       messages[messages.length - 1] = { ...last, calls: pending.calls };
     else messages.push({ role: "assistant", text: "", calls: pending.calls });
     messages.push({ role: "tool", results: pending.results });
+    if (next === "user") messages.push({ role: "assistant", text: roundClosed, calls: [] });
     pending = null;
   };
   history.forEach((message, i) => {
     if (message.role === "user" || message.role === "assistant") {
-      flush();
+      flush(message.role);
       messages.push(
         message.role === "user"
           ? { role: "user", text: message.text }
@@ -87,17 +97,18 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
     if (!messages.length) return;
     pending ??= { calls: [], results: [] };
     const id = `history_${i}`;
-    const [comment, content] =
+    const [script, content] =
       message.role === "run"
         ? [
-            `// Run ${message.runId}, earlier in this thread. Its script isn't kept; the result is its summary.`,
+            message.script ??
+              `// Run ${message.runId}, earlier in this thread. Its script isn't kept; the result is its summary.`,
             message.summary,
           ]
         : ["// Oriel's note that the group changed. Not a run.", message.text];
-    pending.calls.push({ id, name: runToolName, input: { script: comment } });
+    pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });
-  flush();
+  flush("user");
   messages.push({ role: "user", text });
   return messages;
 }

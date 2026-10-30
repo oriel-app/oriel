@@ -3,7 +3,8 @@
 // description declares the region's module. Each call typechecks and runs a
 // script in the sandbox with fresh bindings, records the run and its reads,
 // and returns the transcript as the tool result. It repeats until the model
-// stops, a cap is hit (SPEC §9), or the signal aborts.
+// stops, a per-thread cap ends the turn (SPEC §9), or the signal aborts. Each
+// response may use only what the thread's token cap leaves.
 //
 // One change set per turn: the mutations of the last run in the turn that
 // finished and captured any. A later run replaces an earlier one's, as the
@@ -58,6 +59,11 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 
 type End = Extract<ModelEvent, { kind: "end" }>;
 
+// With less room than this left under the token cap, the turn stops rather
+// than ask for a response: with thinking always on, a reply needs room to
+// think as well as answer.
+export const minResponseTokens = 4_096;
+
 export function agent(deps: AgentDeps): Agent {
   return { turn: (input, options) => turn(deps, input, options.signal, options.log) };
 }
@@ -71,10 +77,22 @@ async function* turn(
   const { thread, region } = input;
   const { limits } = deps;
   const log: Log = (message, fields) => baseLog(message, { thread_id: thread.id, ...fields });
+  // This turn's tokens: every finished response, and what a response cut off
+  // by an abort or a failure had reported (`inFlight`), so `done` and the
+  // thread's `spent` count it too.
   const used = { inputTokens: 0, outputTokens: 0 };
-  const spent = (input.spent?.inputTokens ?? 0) + (input.spent?.outputTokens ?? 0);
-  const overBudget = () =>
-    spent + used.inputTokens + used.outputTokens >= limits.maxTokensPerThread;
+  let inFlight: Usage = noUsage;
+  const settle = () => {
+    used.inputTokens += inFlight.inputTokens;
+    used.outputTokens += inFlight.outputTokens;
+    inFlight = noUsage;
+  };
+  const spent = input.spent.inputTokens + input.spent.outputTokens;
+  const total = () => spent + used.inputTokens + used.outputTokens;
+  // What the cap leaves for the next response's output, after its input:
+  // `nextInput` is what the turn already knows of that input, the previous
+  // response's input and output, which the next request sends again.
+  const room = (nextInput: number) => limits.maxTokensPerThread - total() - nextInput;
   const done = (): AgentEvent => ({ kind: "done", usage: { ...used } });
   const limit = (reason: string): AgentEvent => {
     log("agent.limit", { reason });
@@ -86,7 +104,7 @@ async function* turn(
   };
   const tokenLimit = () =>
     limit(
-      `This thread has used its budget of ${limits.maxTokensPerThread} tokens, so the agent stopped.`,
+      `This thread has reached its budget of ${limits.maxTokensPerThread} tokens, so the agent stopped.`,
     );
   // A run may capture no more than a change set may hold.
   const runLimits: RunLimits = {
@@ -103,7 +121,7 @@ async function* turn(
     yield done();
     return;
   }
-  if (overBudget()) {
+  if (room(0) < minResponseTokens) {
     yield tokenLimit();
     yield done();
     return;
@@ -159,7 +177,7 @@ async function* turn(
           id: runId,
           workspaceId: thread.workspaceId,
           threadId: thread.id,
-          snapshot: input.snapshot ?? 0,
+          snapshot: input.snapshot,
           regionVersion: region.version,
           systemPromptHash,
           dtsHash: sha256(bindings.dts),
@@ -187,13 +205,10 @@ async function* turn(
       throw error;
     }
     record(result.outcome, result);
+    // A run-level cap (wall time, reads, mutations, output) shows here as the
+    // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
     if (hits.length) yield { kind: "search", runId, hits };
-    if (result.outcome === "timeout" || result.outcome === "limit") {
-      const last = result.transcript.at(-1);
-      const why = last?.kind === "error" ? last.error.message : "a run hit a limit";
-      yield limit(`A run was stopped: ${why}.`);
-    }
     let replaced = 0;
     if (result.outcome === "ok" && result.mutations.length) {
       replaced = turnState.proposal?.mutations.length ?? 0;
@@ -215,18 +230,28 @@ async function* turn(
       log,
     });
     let results: ToolResult[] = [];
+    let nextInput = 0;
     for (;;) {
       signal.throwIfAborted();
+      // Each response may use only what the cap leaves, and none is asked
+      // for when that isn't enough for a useful one.
+      const maxOutputTokens = room(nextInput);
+      if (maxOutputTokens < minResponseTokens) {
+        yield tokenLimit();
+        break;
+      }
       const calls: ToolCall[] = [];
       let end: End | null = null;
-      for await (const event of conversation.next(results)) {
+      for await (const event of conversation.next(results, { maxOutputTokens })) {
         if (event.kind === "text") yield { kind: "text", text: event.text };
+        else if (event.kind === "usage") inFlight = event.usage;
         else if (event.kind === "call") calls.push(event.call);
         else end = event;
       }
       if (!end) throw new ProviderError("The model's response ended without saying why.");
-      used.inputTokens += end.usage.inputTokens;
-      used.outputTokens += end.usage.outputTokens;
+      inFlight = end.usage;
+      settle();
+      nextInput = end.usage.inputTokens + end.usage.outputTokens;
       log("agent.response", {
         stop: end.stop,
         model: end.model,
@@ -250,7 +275,7 @@ async function* turn(
         break;
       }
       if (!calls.length) break;
-      if (overBudget()) {
+      if (total() >= limits.maxTokensPerThread) {
         yield tokenLimit();
         break;
       }
@@ -262,8 +287,9 @@ async function* turn(
       }
     }
   } catch (error) {
+    settle();
     if (signal.aborted) {
-      log("agent.aborted");
+      log("agent.aborted", { input_tokens: used.inputTokens, output_tokens: used.outputTokens });
       yield done();
       return;
     }

@@ -31,6 +31,7 @@ export type AnthropicOptions = {
   // Default `claude-opus-5-5`.
   model?: string;
   // The most output one response may use, thinking included. Default 64000.
+  // Each response gets the smaller of this and what the loop allows.
   maxTokens?: number;
   // How much the model thinks, its main latency and cost control. Default
   // "medium", the model's own default, sent explicitly.
@@ -187,6 +188,8 @@ async function* readResponse(
       const message = isObject(event.message) ? event.message : {};
       if (typeof message.model === "string") model = message.model;
       usage = isObject(message.usage) ? { ...message.usage } : {};
+      // The input is billed from here on, whatever happens to the stream.
+      yield { kind: "usage", usage: usageOf(usage) };
     } else if (event.type === "content_block_start") {
       const block = event.content_block;
       if (typeof event.index !== "number" || !isObject(block) || typeof block.type !== "string")
@@ -214,7 +217,10 @@ async function* readResponse(
       if (typeof delta.stop_reason === "string") reason = delta.stop_reason;
       const details = isObject(delta.stop_details) ? delta.stop_details : {};
       if (typeof details.category === "string") category = details.category;
-      if (isObject(event.usage)) Object.assign(usage, event.usage);
+      if (isObject(event.usage)) {
+        Object.assign(usage, event.usage);
+        yield { kind: "usage", usage: usageOf(usage) };
+      }
     } else if (event.type === "message_stop") {
       stopped = true;
     } else if (event.type === "error") {
@@ -256,6 +262,7 @@ async function* readResponse(
 export function anthropicProvider(options: AnthropicOptions): Provider {
   const { apiKey } = options;
   const model = options.model ?? defaultModel;
+  const ceiling = options.maxTokens ?? 64_000;
   const fallbacks = options.fallbacks ?? false;
   const send = options.fetch ?? ((input, init) => fetch(input, init));
   const headers: Record<string, string> = {
@@ -309,7 +316,6 @@ export function anthropicProvider(options: AnthropicOptions): Provider {
       // tail, which the top-level marker follows as it grows.
       const fixed = {
         model,
-        max_tokens: options.maxTokens ?? 64_000,
         stream: true,
         system: [{ type: "text", text: request.system, cache_control: ephemeral }],
         tools: request.tools.map((tool, i, all) => ({
@@ -327,11 +333,17 @@ export function anthropicProvider(options: AnthropicOptions): Provider {
         ...(fallbacks ? { fallbacks: "default" } : {}),
       };
       return {
-        async *next(results) {
+        async *next(results, { maxOutputTokens }) {
           if (results.length) messages.push({ role: "user", content: results.map(result) });
           signal.throwIfAborted();
-          log("provider.request", { model, messages: messages.length });
-          const body = await post(JSON.stringify({ ...fixed, messages }), signal);
+          // Not part of the cached prefix, so it can shrink as the thread's
+          // tokens run down.
+          const maxTokens = Math.max(1, Math.floor(Math.min(ceiling, maxOutputTokens)));
+          log("provider.request", { model, messages: messages.length, max_tokens: maxTokens });
+          const body = await post(
+            JSON.stringify({ ...fixed, max_tokens: maxTokens, messages }),
+            signal,
+          );
           let response: Reply;
           try {
             response = yield* readResponse(serverEvents(body), model);
