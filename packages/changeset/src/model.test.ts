@@ -458,8 +458,19 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
             (error: unknown) => error,
           );
           if (refusal !== null) {
+            // Only an item that really can't be read now, or whose key another
+            // item has taken, may be shown as gone.
+            const keys = set.mutations
+              .filter((m) => m.status !== "applied")
+              .flatMap((m) => {
+                const made = set.mutations.find((c) => c.ref !== null && c.ref === m.target);
+                const item = m.target?.startsWith("jira:") ? m.target : made?.applied?.item.id;
+                return item ? [parseItemId(item)?.key ?? ""] : [];
+              });
+            const unreadable = keys.some((k) => hidden.has(k) || reused.has(k));
             if (!(refusal instanceof ChangeSetError && /couldn.t be read/.test(refusal.message)))
               throw refusal;
+            if (!unreadable) throw refusal;
             break;
           }
           // What approval vouches for (each change shown, readable as the
@@ -648,7 +659,22 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const summary = () => `${pick(titles)} ${(named += 1)}`;
   const hidden = new Set<string>();
   // Keys another item has taken, with the stable ID of the item that had it.
+  // A story the index holds is taken there too, as the next sync would see
+  // it, so Oriel no longer knows which item the key should be.
   const reused = new Map<string, string>();
+  const indexedKey = (key: string) => pool.includes(`jira:${key}` as (typeof pool)[number]);
+  const reuseKey = (key: string, stableId: string) => {
+    reused.set(key, stableId);
+    jira.reuse(key, `9${stableId}`);
+    if (indexedKey(key)) shared.indexPage([{ ...shared.indexed(key), stableId: `9${stableId}` }]);
+  };
+  const restoreKey = (key: string) => {
+    const original = reused.get(key);
+    if (original === undefined) return;
+    jira.reuse(key, original);
+    if (indexedKey(key)) shared.indexPage([shared.indexed(key)], [`9${original}`]);
+    reused.delete(key);
+  };
   const applyWithFault = async (id: Ulid) => {
     fault = pick<Fault>([null, null, "fail", "lost", "crash"]);
     faultAfter = pick([0, 1, 1]);
@@ -834,6 +860,16 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           faultAfter = 0;
           await applyOn(1, id);
           fault = null;
+          // Now and then a third can't read it, and says it couldn't tell,
+          // perhaps in the very words already on the row.
+          if (chance(0.5)) {
+            jira.hooks.read = () => {
+              jira.hooks.read = undefined;
+              throw new Error("503: Jira is busy");
+            };
+            await applyOn(1, id);
+            jira.hooks.read = undefined;
+          }
           // And now and then the item leaves the group meanwhile, so the first
           // finds the change absent but may not send it. It comes back after.
           if (chance(0.5)) leaveGroup(item);
@@ -979,9 +1015,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         trail.push(`back(${key})`);
         hidden.delete(key);
         jira.show(key);
-        const original = reused.get(key);
-        if (original !== undefined) jira.reuse(key, original);
-        reused.delete(key);
+        restoreKey(key);
       } else {
         const key = pick([...pool.map((id) => parseItemId(id)?.key ?? ""), ...jira.created]);
         const issue = jira.issue(key);
@@ -991,8 +1025,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           jira.hide(key);
         } else {
           trail.push(`reuse(${key})`);
-          reused.set(key, issue.id);
-          jira.reuse(key, `9${issue.id}`);
+          reuseKey(key, issue.id);
         }
       }
     } else {
@@ -1013,6 +1046,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     if (problems.length)
       assert.fail(`sequence ${sequence}: ${problems.join("; ")}\n  steps: ${trail.join(" → ")}`);
   }
+  // The index is shared by every sequence: as it was.
+  for (const key of reused.keys()) restoreKey(key);
   return { landed: jira.landings.length, reverts: checked, reached };
 }
 
