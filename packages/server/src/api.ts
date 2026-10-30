@@ -214,7 +214,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   // A change set as the window shows it, with what can be done with it, as
   // the change set engine says.
   const viewOf = async (set: ChangeSet) =>
-    changeSetView(set, await changeSets.ofThread(set.threadId), await changeSets.nextSteps(set.id));
+    changeSetView(
+      set,
+      await changeSets.ofThread(set.threadId),
+      await changeSets.nextSteps(set.id),
+      changeSets.applying(set.id),
+    );
   const changeSetReply = async (id: Ulid, extra: Record<string, unknown> = {}) =>
     json(200, { changeSet: await viewOf(await mustChangeSet(id)), ...extra });
   const threadView = async (threadId: Ulid) => {
@@ -224,7 +229,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         sets.map(async (set) => [set.id, await changeSets.nextSteps(set.id)] as const),
       ),
     );
-    return views.thread(threadId, sets, steps);
+    return views.thread(threadId, sets, steps, (id) => changeSets.applying(id as Ulid));
   };
 
   // Decides, and on approval applies at once: approving is what lets Oriel

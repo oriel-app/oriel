@@ -176,7 +176,9 @@ test("an item that moved keeps its title in a group's history and a thread's mar
   });
   const added = shown.group(id(2))?.changes[0]?.added[0];
   assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
-  const marker = shown.thread(id(3), [], new Map())?.entries.find((e) => e.kind === "marker");
+  const marker = shown
+    .thread(id(3), [], new Map(), () => false)
+    ?.entries.find((e) => e.kind === "marker");
   assert.ok(marker?.kind === "marker");
   assert.deepEqual(
     marker.added.map((r) => r.title),

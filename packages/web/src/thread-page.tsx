@@ -263,6 +263,11 @@ function ChangeSet(props: {
         </ul>
       )}
       <footer class="change-set-actions">
+        {set.applying && (
+          <span class="applying" role="status">
+            Applying…
+          </span>
+        )}
         {steps.map((step) => {
           const forward =
             step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";

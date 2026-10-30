@@ -106,16 +106,18 @@ export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
 }
 
 // What can be done with it comes from the change set engine (`nextSteps`),
-// never from here.
+// never from here; while it applies, nothing can.
 export function changeSetView(
   set: ChangeSet,
   all: readonly ChangeSet[],
   nextSteps: readonly NextStep[],
+  applying: boolean,
 ): ChangeSetView {
   return {
     id: set.id,
     status: changeSetStatus(set),
     nextSteps: nextSteps.map((step) => ({ ...step })),
+    applying,
     // A change sent with no answer may have landed.
     sentUnapplied: set.mutations.some((m) => m.status === "failed"),
     decision: set.decision && {
@@ -356,6 +358,7 @@ export function views(deps: ViewDeps) {
       id: Ulid,
       sets: readonly ChangeSet[],
       steps: ReadonlyMap<string, readonly NextStep[]>,
+      applying: (changeSetId: string) => boolean,
     ): ThreadView | null {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
@@ -388,7 +391,9 @@ export function views(deps: ViewDeps) {
         entries,
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
-        changeSets: sets.map((set) => changeSetView(set, sets, steps.get(set.id) ?? [])),
+        changeSets: sets.map((set) =>
+          changeSetView(set, sets, steps.get(set.id) ?? [], applying(set.id)),
+        ),
         writable: deps.writable,
       };
     },

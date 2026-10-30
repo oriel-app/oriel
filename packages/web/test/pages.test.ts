@@ -196,6 +196,7 @@ const openSet: ChangeSetView = {
   id: setId,
   status: "open",
   nextSteps: [{ kind: "approve" }, { kind: "reject" }, { kind: "remove", mutationIds: ["m1"] }],
+  applying: false,
   sentUnapplied: false,
   decision: null,
   errors: [],

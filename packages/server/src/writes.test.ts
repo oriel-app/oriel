@@ -282,6 +282,34 @@ test("a change set that can go no further is dismissed, with what to check", asy
   assert.equal(reverted.status, 200);
 });
 
+test("while a change set applies, nothing is offered for it and every action waits", async (t) => {
+  const app = await proposed(t);
+  const ids = (await app.diff()).lines.map((line) => line.mutationId);
+  const held = app.site.hold("SYN-99");
+  const approving = app.approve();
+  await held.reached;
+  const set = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
+  assert.equal(set?.applying, true);
+  assert.deepEqual(set?.nextSteps, []);
+  const { hash } = await app.diff();
+  for (const [action, body] of [
+    ["apply", {}],
+    ["dismiss", {}],
+    ["revert", {}],
+    ["reject", { hash }],
+    ["edit", { remove: [ids[2]] }],
+  ] as const) {
+    const refused = await app.act(action, body);
+    assert.equal(refused.status, 409, action);
+    assert.match(refused.body.error ?? "", /being applied/, action);
+  }
+  held.release();
+  const applied = await approving;
+  assert.equal(applied.body.changeSet.status, "applied");
+  assert.equal(applied.body.changeSet.applying, false);
+  assert.deepEqual(applied.body.changeSet.nextSteps, [{ kind: "revert" }]);
+});
+
 test("an item a change set creates joins the group, with markers in its threads", async (t) => {
   const app = await proposed(t, create);
   // Another thread on the group, still working when the change set applies.

@@ -173,14 +173,22 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     return json(405, { errorMessages: [`${method} ${path} isn't something this site answers`] });
   };
 
+  // Writes held in flight, by item.
+  const holds = new Map<string, { reached: PromiseWithResolvers<void>; release: Promise<void> }>();
+
   const fetchFn: typeof fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin !== memorySiteOrigin) throw new Error(`no route to ${url.origin}`);
     const method = init?.method ?? "GET";
     calls.push({ method, path: `${url.pathname}${url.search}` });
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
-    const response = answer(method, url, body);
     const key = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)/.exec(url.pathname)?.[1];
+    const hold = method !== "GET" && key !== undefined ? holds.get(key) : undefined;
+    if (hold) {
+      hold.reached.resolve();
+      await hold.release;
+    }
+    const response = answer(method, url, body);
     // As fetch reports a connection that drops before the answer arrives.
     if (method !== "GET" && key !== undefined && unanswered.has(key))
       throw new TypeError("fetch failed");
@@ -196,6 +204,19 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     // or work again.
     refuse: (key: string) => refused.add(key),
     loseAnswers: (key: string) => unanswered.add(key),
+    // Writes to this item wait, in flight, until released.
+    hold(key: string) {
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      holds.set(key, { reached, release: release.promise });
+      return {
+        reached: reached.promise,
+        release() {
+          holds.delete(key);
+          release.resolve();
+        },
+      };
+    },
     allow(key: string) {
       refused.delete(key);
       unanswered.delete(key);

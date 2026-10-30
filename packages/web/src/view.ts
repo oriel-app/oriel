@@ -132,7 +132,9 @@ export type NextStepView =
 export type ChangeSetView = {
   id: string;
   status: ChangeSetStatus;
+  // Empty while it is being applied: then nothing else can be done with it.
   nextSteps: NextStepView[];
+  applying: boolean;
   // A change was sent with no answer, so it may already have been made.
   sentUnapplied: boolean;
   decision: {
