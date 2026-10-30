@@ -143,6 +143,11 @@ export function store(db: DatabaseSync) {
     select t.group_id, r.region_version from runs r join threads t on t.id = r.thread_id
     where r.id = ? and r.workspace_id = ?`);
   const groups = groupStore(db);
+  const selectInGroup = db.prepare(`
+    select exists (
+      select 1 from threads t join group_members m on m.group_id = t.group_id
+      where t.id = ? and m.source = ? and m.stable_id = ? and m.removed_version is null
+    ) as found`);
   // The item a handle names now: the live one, or else the latest tombstone.
   const selectStableId = db.prepare(`
     select stable_id from items where workspace_id = ? and source = ? and item_id = ?
@@ -264,6 +269,13 @@ export function store(db: DatabaseSync) {
     },
 
     stableId: stableIdOf,
+
+    // Whether the thread's group holds an item now, in its latest version.
+    inGroupNow(threadId: Ulid, source: string, stableId: string): boolean {
+      return (
+        parse(foundRow, selectInGroup.get(threadId, source, stableId), "group_members").found > 0
+      );
+    },
 
     // Handles as the region a run used sees them: its thread's group at the
     // run's version (decision 0018). A change set no run produced, a revert,

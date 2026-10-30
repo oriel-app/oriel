@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CapturedMutation } from "@oriel/core";
+import { groupStore } from "@oriel/db";
 import { sendLeaseMs } from "./change-sets.ts";
-import { approve, count, nth, preview, setup, status } from "./testing.ts";
+import { approve, count, nth, preview, setup, status, t0 } from "./testing.ts";
 
 const estimate = (target: string, points: number | null): CapturedMutation => ({
   op: "setEstimate",
@@ -202,6 +203,60 @@ test("an assignee is the field the Jira writer reports, `assignee`", async () =>
   assert.deepEqual(nth(diff.lines, 0).fields, [
     { name: "assignee", before: "dara", after: "amara" },
   ]);
+});
+
+test("an item removed from the group after capture is never written (decision 0018)", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  await approve(changeSets, set.id);
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  assert.match(
+    nth(report.failed, 0).error,
+    /^SYN-21 was removed from the group after this was captured, so it wasn't sent\.$/,
+  );
+  assert.deepEqual(jira.calls, []);
+});
+
+test("a revert still reaches an item that left the group, and a new item is the set's own", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    story("new:1", "Wallets", null),
+    estimate("new:1", 2),
+  ]);
+  await approve(changeSets, set.id);
+  assert.equal((await changeSets.apply(set.id)).applied.length, 3);
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  const reverse = await changeSets.revert(set.id);
+  assert.ok("id" in reverse);
+  await approve(changeSets, reverse.id);
+  const report = await changeSets.apply(reverse.id);
+  assert.deepEqual(report.failed, []);
+  assert.equal(jira.issue("SYN-21")?.points, 2);
+});
+
+test("stored arguments the catalogue no longer takes are shown as such, and not reverted", async () => {
+  const { db, changeSets, run } = setup();
+  const set = await changeSets.capture(run, [
+    link("jira:SYN-1", "https://docs.example.com/wallets", "Wallet spec"),
+  ]);
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id);
+  // As an http link applied before Jira's catalogue took only https.
+  db.prepare("update mutations set args = ? where id = ?").run(
+    JSON.stringify({ url: "http://docs.example.com/wallets", title: "Wallet spec" }),
+    nth(set.mutations, 0).id,
+  );
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /not revertible: stored arguments no longer valid/,
+  });
+  const diff = await changeSets.diff(set.id);
+  assert.match(nth(diff.lines, 0).sentence, /stored arguments are no longer valid/);
 });
 
 test("a key another item took after capture is never written", async () => {

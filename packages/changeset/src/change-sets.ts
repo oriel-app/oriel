@@ -137,6 +137,9 @@ const maxErrorChars = 500;
 // The preview of a line whose item was gone when the diff was shown. No
 // catalogue field starts with "$".
 const goneMark = "$gone";
+// For a mutation whose stored arguments no longer pass its source's catalogue,
+// as one captured before the catalogue tightened.
+const staleArgs = "This change's stored arguments are no longer valid";
 
 // Boundary validators for what callers pass in. Each is typed against core's
 // contract, so the two can't drift.
@@ -402,7 +405,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         kind,
         fields: new Set([catalogueFor(specs, kind).titleField]),
       };
-      if (m.status !== "applied")
+      if (m.status !== "applied" && spec.args(m.args).ok)
         for (const field of Object.keys(spec.after(m.args))) entry.fields.add(field);
       wanted.set(item, entry);
     }
@@ -436,6 +439,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         title,
       });
       const item = itemOf(m);
+
+      // A line Oriel can't describe, and a change it won't send or revert.
+      if (!spec.args(m.args).ok) {
+        if (!m.applied) gone.add(m.id);
+        lines.push({
+          mutationId: m.id,
+          sentence: `${staleArgs}, so it can't be shown, applied or reverted.`,
+          target: m.target,
+          fields: [],
+        });
+        continue;
+      }
 
       if (m.applied && item !== null) {
         const { before, after } = m.applied;
@@ -666,6 +681,20 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return region.has(target) ? region.stableId(target) : null;
   };
 
+  // Why a mutation's target may no longer be written: it left the thread's
+  // group after the change was captured (decision 0018). A revert may target
+  // anything the change set it reverts touched, and an item this change set
+  // created is its own, so neither is checked.
+  const leftGroup = (m: MutationRecord, set: ChangeSet, target: ItemId | null): string | null => {
+    if (target === null || m.reverts !== null || (m.target !== null && isNewRef(m.target)))
+      return null;
+    const source = parseItemId(target)?.source;
+    const stableId = stableIdFor(m, set, target);
+    if (!source || stableId === null || rows.inGroupNow(set.threadId, source, stableId))
+      return null;
+    return `${key(target)} was removed from the group after this was captured, so it wasn't sent.`;
+  };
+
   // A set op whose value is already in place, as when an earlier send landed
   // but its answer was lost: the result to record without sending, or null.
   // Its `before` leaves the field out. Oriel can't know whether the value is
@@ -733,6 +762,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const seen = { status: m.status, error: m.error };
       const wasSent = m.status === "failed";
       const { kind, spec } = mustSpec(specs, m, set.mutations);
+      // Arguments stored before the source's catalogue tightened may no
+      // longer pass it; nothing is sent on them.
+      if (!spec.args(m.args).ok) return halt(mutationId, `${staleArgs}, so it wasn't sent.`);
       const source = catalogueFor(specs, kind).name;
       const writes = Object.keys(spec.after(m.args));
       const uncertain = `It may have been made in ${source}: check, then remove it from the change set to continue.`;
@@ -764,6 +796,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         );
       let where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
+      const away = leftGroup(m, set, where.target);
+      if (away) return halt(mutationId, away);
       if (spec.idempotent && where.target !== null) {
         const result = await inPlace(m, set, kind, spec, where.target);
         if (result) {
@@ -796,6 +830,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           mutationId,
           `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
         );
+      const gone = leftGroup(m, set, where.target);
+      if (gone) return halt(mutationId, gone);
       const request = mint({
         mutationId: m.id,
         op: m.op,
@@ -1105,6 +1141,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const applied = set.mutations.filter((m) => m.applied !== null);
       if (applied.length === 0)
         throw new ChangeSetError("not-revertible", "nothing in this change set has been applied");
+      const stale = applied.find((m) => !mustSpec(specs, m, set.mutations).spec.args(m.args).ok);
+      if (stale)
+        throw new ChangeSetError(
+          "not-revertible",
+          `mutation ${stale.seq} (${stale.op}) is not revertible: stored arguments no longer valid`,
+        );
 
       // Items this change set created. Everything it did to one is undone by
       // deleting it, once.

@@ -397,6 +397,8 @@ export function setup() {
     events,
     run,
     workspaceId: workspaceId as Ulid,
+    // The thread's group, at version 1 holding `regionKeys`.
+    groupId: groupId as Ulid,
     changeSets: instance(),
     instance,
     // A later sync page, such as a move or a reused key.
