@@ -220,6 +220,52 @@ test("an item removed from the group after capture is never written (decision 00
   assert.deepEqual(jira.calls, []);
 });
 
+test("a set op that landed with its answer lost is recorded on retry, even after its item left the group", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // The write lands; its answer doesn't.
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  assert.deepEqual((await changeSets.apply(set.id)).applied, []);
+  jira.hooks.after = undefined;
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  const retry = await changeSets.apply(set.id);
+  assert.deepEqual(retry.applied, [mutationId]);
+  assert.equal(status(db, mutationId), "applied");
+  // Recorded in place: nothing was sent again.
+  assert.equal(jira.calls.length, 1);
+});
+
+test("a sent create keeps its own message, even with stored arguments the catalogue no longer takes", async () => {
+  const { db, changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [story("new:1", "Wallets", "jira:SYN-1")]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  const error = () => db.prepare("select error from mutations where id = ?").get(mutationId)?.error;
+  const sent = error();
+  assert.match(String(sent), /may have been made in Jira/);
+  db.prepare("update mutations set args = ? where id = ?").run(
+    JSON.stringify({ summary: "", epic: "jira:SYN-1" }),
+    mutationId,
+  );
+  // As if approved before the catalogue tightened: the approval matches these rows.
+  const { hash } = await changeSets.diff(set.id);
+  db.prepare("update decisions set hash = ? where change_set_id = ?").run(hash, set.id);
+  const retry = await changeSets.apply(set.id);
+  assert.deepEqual(retry.failed, [{ mutationId, error: sent }]);
+  assert.equal(error(), sent);
+  assert.equal(jira.calls.length, 1);
+});
+
 test("a revert still reaches an item that left the group, and a new item is the set's own", async () => {
   const { db, changeSets, run, jira, groupId, indexed } = setup();
   const set = await changeSets.capture(run, [

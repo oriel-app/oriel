@@ -762,11 +762,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const seen = { status: m.status, error: m.error };
       const wasSent = m.status === "failed";
       const { kind, spec } = mustSpec(specs, m, set.mutations);
-      // Arguments stored before the source's catalogue tightened may no
-      // longer pass it; nothing is sent on them.
-      if (!spec.args(m.args).ok) return halt(mutationId, `${staleArgs}, so it wasn't sent.`);
       const source = catalogueFor(specs, kind).name;
-      const writes = Object.keys(spec.after(m.args));
       const uncertain = `It may have been made in ${source}: check, then remove it from the change set to continue.`;
       if (wasSent && !spec.idempotent) {
         report.failed.push({ mutationId, error: m.error ?? uncertain });
@@ -783,6 +779,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         });
         return report;
       }
+      // Arguments stored before the source's catalogue tightened may no
+      // longer pass it; nothing is sent on them. Checked after the two above,
+      // so a row already sent keeps its own message.
+      if (!spec.args(m.args).ok) return halt(mutationId, `${staleArgs}, so it wasn't sent.`);
+      const writes = Object.keys(spec.after(m.args));
       // Approval refuses both of these already; apply checks again anyway.
       if (m.preview === null)
         return halt(
@@ -796,8 +797,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         );
       let where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
-      const away = leftGroup(m, set, where.target);
-      if (away) return halt(mutationId, away);
+      // A write that already landed is recorded, whatever the group holds now.
       if (spec.idempotent && where.target !== null) {
         const result = await inPlace(m, set, kind, spec, where.target);
         if (result) {
@@ -808,6 +808,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           continue;
         }
       }
+      const away = leftGroup(m, set, where.target);
+      if (away) return halt(mutationId, away);
       if (m.reverts) {
         const conflicts = await recheck(m.reverts);
         if (conflicts.length) return halt(mutationId, explainConflicts(conflicts, specs));
