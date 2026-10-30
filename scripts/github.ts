@@ -130,10 +130,12 @@ async function pullRequest(token: string, number: number) {
         headRefOid: string;
         isCrossRepository: boolean;
         headRepository: { nameWithOwner: string } | null;
-      };
+      } | null;
     };
   };
-  return data.repository.pullRequest;
+  const pr = data.repository.pullRequest;
+  if (!pr) throw new Error(`no PR #${number} in ${repo.owner}/${repo.name}`);
+  return pr;
 }
 
 export async function run(token: string, operation: Operation): Promise<unknown> {

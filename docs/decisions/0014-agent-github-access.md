@@ -4,10 +4,10 @@ Accepted 2026-10-29. Changes SPEC §5, which kept the Jira secret as a repo-wide
 
 **Decision.**
 
-- Agents reach GitHub only through `pnpm -s github`. It's a small client in `scripts/github.ts` with a fixed set of operations on this repo: list, view, create and enqueue PRs, and list CI runs.
+- Agents reach GitHub only through `pnpm -s github`. It's a small client in `scripts/github.ts` with a fixed set of operations on this repo: list, view, create and enqueue PRs, rewrite a PR's body, and list CI runs.
   - It calls `api.github.com` directly.
   - It authenticates with a fine-grained token, read from `.env` and nothing else from it. The token has read and write on Contents, Pull requests and Merge queues, and no Administration, Secrets, Environments or Workflows.
-- It doesn't use `gh`. It enqueues only PRs whose head is a branch of this repo, pinned to the commit it checked, and refuses a PR title or body that contains a credential from `.env`.
+- It doesn't use `gh`. It enqueues, or rewrites the body of, only PRs whose head is a branch of this repo; an enqueue is pinned to the commit it checked. It refuses a PR title or body that contains a credential from `.env`.
 - The Jira secrets live in the `jira` Actions environment, which only `main` can deploy to.
 
 **Why.** Agents act on text an attacker can write. With the maintainer's admin login they could edit the rulesets that gate `main`, and with repo-wide secrets, a workflow pushed to any branch could read the Jira credential.
