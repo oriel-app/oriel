@@ -47,7 +47,6 @@
       "cache_control": {
         "type": "ephemeral"
       },
-      "fallbacks": "default",
       "messages": [
         {
           "role": "user",

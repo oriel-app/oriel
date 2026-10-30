@@ -35,7 +35,8 @@ export type AnthropicOptions = {
   // How much the model thinks, its main latency and cost control. Default
   // "medium", the model's own default, sent explicitly.
   effort?: Effort;
-  // Retry a classifier refusal on a fallback model. Default true.
+  // Retry a classifier refusal on a fallback model, a beta. Default false:
+  // opt in once the beta is confirmed for the instance's key.
   fallbacks?: boolean;
   // Default: the global fetch. Evals pass their cassettes'.
   fetch?: typeof fetch;
@@ -255,7 +256,7 @@ async function* readResponse(
 export function anthropicProvider(options: AnthropicOptions): Provider {
   const { apiKey } = options;
   const model = options.model ?? defaultModel;
-  const fallbacks = options.fallbacks ?? true;
+  const fallbacks = options.fallbacks ?? false;
   const send = options.fetch ?? ((input, init) => fetch(input, init));
   const headers: Record<string, string> = {
     "content-type": "application/json",

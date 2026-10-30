@@ -149,7 +149,7 @@ test("a request streams from the default model, with caching on the system promp
   assert.equal(sent?.url, messagesUrl);
   assert.equal(sent?.headers.get("x-api-key"), key);
   assert.equal(sent?.headers.get("anthropic-version"), apiVersion);
-  assert.equal(sent?.headers.get("anthropic-beta"), fallbackBeta);
+  assert.equal(sent?.headers.get("anthropic-beta"), null);
   const tool = runTool('type RegionId =\n  | "jira:ABC-1";\n');
   assert.deepEqual(sent?.body, {
     model: "claude-opus-5-5",
@@ -168,31 +168,30 @@ test("a request streams from the default model, with caching on the system promp
     tool_choice: { type: "auto", disable_parallel_tool_use: true },
     output_config: { effort: "medium" },
     cache_control: { type: "ephemeral" },
-    fallbacks: "default",
     messages: [
       { role: "user", content: [{ type: "text", text: "Which stories have no estimate?" }] },
     ],
   });
 });
 
-test("options set the model, the output cap and the effort, and can turn fallbacks off", async () => {
+test("options set the model, the output cap and the effort, and can turn fallbacks on", async () => {
   const network = api([events([start("claude-sonnet-5-5"), ...end("end_turn")])]);
   const provider = anthropicProvider({
     apiKey: key,
     model: "claude-sonnet-5-5",
     maxTokens: 8_000,
     effort: "low",
-    fallbacks: false,
+    fallbacks: true,
     fetch: network.fetch,
   });
   await collect(conversation(provider).next([]));
 
   const [sent] = network.seen;
-  assert.equal(sent?.headers.get("anthropic-beta"), null);
+  assert.equal(sent?.headers.get("anthropic-beta"), fallbackBeta);
   assert.equal(sent?.body["model"], "claude-sonnet-5-5");
   assert.equal(sent?.body["max_tokens"], 8_000);
   assert.deepEqual(sent?.body["output_config"], { effort: "low" });
-  assert.equal("fallbacks" in (sent?.body ?? {}), false);
+  assert.equal(sent?.body["fallbacks"], "default");
 });
 
 test("a response streams its text, then its call, then why it stopped and what it used", async () => {
