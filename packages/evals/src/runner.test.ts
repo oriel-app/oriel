@@ -521,16 +521,32 @@ test("replay fails on any error and on failed deterministic cases; live only on 
   assert.equal(exitCode([result(3, "error")], "live"), 1);
 });
 
-test("the judge sees what the agent's searches found, and nothing else of its transcript", async (t) => {
-  const search = {
-    kind: "search",
-    runId: "01M66FK4VDBF4JCB1G93QVQRAF",
-    hits: [{ id: "jira:SYN-99", title: "Save a card for next time" }],
-  };
+// A run that ran `reads` and found `hits`, as the agent reports it.
+const ran = (runId: string, reads: { fn: string; args: unknown[] }[], hits: unknown[]) => [
+  {
+    kind: "run.finished",
+    runId,
+    result: {
+      outcome: "ok",
+      reads: reads.map((r) => ({ ...r, ms: 1, status: "answered", outsideRegion: true })),
+      mutations: [],
+      transcript: [],
+    },
+  },
+  ...(hits.length ? [{ kind: "search", runId, hits }] : []),
+];
+
+test("the judge sees each search's queries and hits, a search that found nothing included", async (t) => {
+  const card = { id: "jira:SYN-99", title: "Save a card for next time" };
   const answered: SystemUnderTest = async () => ({
     mutations: [],
-    reply: "A search shows SYN-99, outside this group, covers saving a card.",
-    transcript: [{ kind: "log", text: "searched" }, search],
+    reply: "Nothing in this group covers it; a search found SYN-99.",
+    transcript: [
+      { kind: "text", text: "Searching." },
+      ...ran("run-1", [{ fn: "search", args: ["saved card payment"] }], []),
+      ...ran("run-2", [{ fn: "items.read", args: [["jira:SYN-45"]] }], []),
+      ...ran("run-3", [{ fn: "search", args: ["card"] }], [card]),
+    ],
   });
   const bodies: { messages: { content: string }[] }[] = [];
   const watching: Fetch = async (input, init) => {
@@ -542,5 +558,13 @@ test("the judge sees what the agent's searches found, and nothing else of its tr
   );
   const content = bodies[0]?.messages[0]?.content ?? "";
   const document = JSON.parse(content.split("\n\nClaims:\n")[0] ?? "");
-  assert.deepEqual(document.searches, [search]);
+  assert.deepEqual(document.searches, [
+    { queries: [["saved card payment"]], hits: [] },
+    { queries: [["card"]], hits: [card] },
+  ]);
+});
+
+test("a case's hash ignores its waiting and failing marks", () => {
+  const marked = loaded({ ...injectionInput, failing: { grader: "surfaced", why: "paraphrases" } });
+  assert.equal(caseHash(marked), caseHash(injection));
 });

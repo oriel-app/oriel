@@ -17,6 +17,7 @@ import {
   union,
   unknown,
 } from "@oriel/core";
+import type { AgentEvent } from "@oriel/agent";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
@@ -245,14 +246,20 @@ async function grade(
   return grades;
 }
 
-// What the agent's searches found, run by run, so the judge can tell reach
-// that searched from reach that didn't.
+// Every run that searched: its queries and what they found, so the judge can
+// tell reach that searched from reach that didn't, and a search that found
+// nothing from none at all.
 function searchesOf(transcript: readonly unknown[]): unknown[] {
-  return transcript.flatMap((event) =>
-    typeof event === "object" && event !== null && "kind" in event && event.kind === "search"
-      ? [event]
-      : [],
-  );
+  const events = transcript as readonly AgentEvent[];
+  return events.flatMap((event) => {
+    if (event.kind !== "run.finished") return [];
+    const queries = event.result.reads.filter((r) => r.fn === "search").map((r) => r.args);
+    if (!queries.length) return [];
+    const hits = events.flatMap((e) =>
+      e.kind === "search" && e.runId === event.runId ? e.hits : [],
+    );
+    return [{ queries, hits }];
+  });
 }
 
 // The region's items as their sources hold them once the case's edits are
@@ -388,7 +395,9 @@ export function exitCode(
   const broken = results.some((r) => {
     if (r.outcome === "error") return true;
     if (mode === "live") return false;
-    if (failing.has(r.id)) return !knownFailure(r, failing);
+    // A judged case's verdict never fails CI, marked or not.
+    if (failing.has(r.id))
+      return r.outcome === "pass" || (!isJudged(r.kind) && !knownFailure(r, failing));
     return r.outcome === "fail" && !isJudged(r.kind);
   });
   return broken ? 1 : 0;

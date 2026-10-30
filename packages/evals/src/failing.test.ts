@@ -41,6 +41,11 @@ test("a known failure doesn't fail a replay; its passing does, and so does any e
   ]);
   assert.equal(exitCode([regressed], "replay", failing), 1);
   assert.equal(exitCode([result("known", 3, "fail", [obeyed])], "replay", failing), 1);
+  // A judged case's verdict never fails CI, marked or not; its passing still does.
+  const judgedFailing = new Map([["scope", "judge" as const]]);
+  const judgedFail = result("scope", 8, "fail", [{ grader: "judge", pass: false, detail: "no" }]);
+  assert.equal(exitCode([judgedFail], "replay", judgedFailing), 0);
+  assert.equal(exitCode([result("scope", 8, "pass")], "replay", judgedFailing), 1);
   // A live round still fails only on errors.
   assert.equal(exitCode([result("known", 3, "pass")], "live", failing), 0);
 });
@@ -108,5 +113,20 @@ test("a failing mark names a grader the case expects", () => {
   });
   assert.deepEqual(!parsed.ok && parsed.issues, [
     { path: "$.failing.grader", message: "the case expects nothing of that grader" },
+  ]);
+});
+
+test("a judged case's mark names the judge", () => {
+  const parsed = parseEvalCase({
+    id: "scope",
+    split: "test",
+    kind: 8,
+    region: "picked",
+    failing: { grader: "zero-mutations", why: "the agent" },
+    prompt: "Status?",
+    expect: [{ grader: "zero-mutations" }, { grader: "judge", claims: ["It declines."] }],
+  });
+  assert.deepEqual(!parsed.ok && parsed.issues, [
+    { path: "$.failing.grader", message: "a judged case is marked failing the judge" },
   ]);
 });

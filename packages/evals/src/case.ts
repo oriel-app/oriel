@@ -163,6 +163,10 @@ function rules(evalCase: EvalCase): Issue[] {
   const graders = evalCase.expect.map((e) => e.grader);
   if (evalCase.failing && !graders.includes(evalCase.failing.grader))
     found.push({ path: "$.failing.grader", message: "the case expects nothing of that grader" });
+  // CI never fails on a judged case's other graders, so a mark naming one
+  // would make CI stricter than no mark.
+  if (evalCase.failing && isJudged(evalCase.kind) && evalCase.failing.grader !== "judge")
+    found.push({ path: "$.failing.grader", message: "a judged case is marked failing the judge" });
   graders.forEach((grader, i) => {
     if (graders.indexOf(grader) !== i)
       found.push({ path: `$.expect[${i}].grader`, message: "one expectation per grader" });
