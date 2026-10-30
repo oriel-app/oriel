@@ -29,8 +29,8 @@ import type { GroupStore, Message, ThreadStore } from "@oriel/db";
 import { type GroupingId, isGroupingId, type StreamEvent } from "@oriel/web/view";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
-import { ThreadBusy, type Turns } from "./turns.ts";
-import { changeSetView, type Views } from "./views.ts";
+import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import { changeSetView, memberOf, type Views } from "./views.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
@@ -120,6 +120,15 @@ const reviewDecision = object({
   hash: string,
 });
 const emptyBody = object({});
+const tinyBody = 256;
+const zoomId = union(literal("cluster"), literal("list"), literal("item"));
+const windowEvent = union(
+  object({
+    name: literal("grouping.switched"),
+    grouping: refine(string, isGroupingId, "expected epic, assignee or stuck"),
+  }),
+  object({ name: literal("zoom.changed"), from: zoomId, to: zoomId }),
+);
 
 async function readJson<T>(request: Request, limit: number, validator: Validator<T>): Promise<T> {
   const type = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
@@ -203,10 +212,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     hash: string,
   ) => {
     await changeSets.decide(id, kind, approver, hash);
-    if (kind === "rejected") return null;
-    const report = await changeSets.apply(id);
-    await deps.applied(await mustChangeSet(id));
-    return report;
+    if (kind === "rejected") return { report: null, problem: null };
+    // The decision stands even if applying it is refused (another apply is
+    // under way, say): the change set says where it stands, and why.
+    try {
+      const report = await changeSets.apply(id);
+      await deps.applied(await mustChangeSet(id));
+      return { report, problem: null };
+    } catch (error) {
+      if (changeSetStatus(error) === null || !(error instanceof Error)) throw error;
+      return { report: null, problem: error.message };
+    }
   };
 
   const stream = (threadId: Ulid, after: number): Reply => {
@@ -247,6 +263,22 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   };
 
   const routes: Route[] = [
+    {
+      // What only the window knows happened. Two events, fixed fields.
+      method: "POST",
+      path: at("/telemetry"),
+      async run(_, request) {
+        const event = await readJson(request, tinyBody, windowEvent);
+        const at = deps.now();
+        const { workspaceId } = deps;
+        deps.emit(
+          event.name === "grouping.switched"
+            ? { name: event.name, at, workspaceId, grouping: event.grouping }
+            : { name: event.name, at, workspaceId, from: event.from, to: event.to },
+        );
+        return json(202, {});
+      },
+    },
     {
       method: "GET",
       path: at("/groups"),
@@ -352,11 +384,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         const { items } = await readJson(request, listBody, itemsBody);
-        // By the handle the group shows, so an item the index no longer has
-        // can still be removed.
+        // By identity: a moved item is removed under its current handle, and
+        // one the index no longer has under the handle the group shows.
         const held = groups.region(group.id, group.version)?.items ?? [];
+        const records = deps.records();
         const members = items.map((item) => {
-          const member = held.find((m) => m.id === item);
+          const member = memberOf(item, held, records);
           if (!member) throw new Refused(400, `${item} isn't in this group`);
           return member;
         });
@@ -447,7 +480,14 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const thread = mustThread(id);
         await readJson(request, smallBody, emptyBody);
-        threads.markDone(thread.id, deps.now());
+        const now = deps.now();
+        threads.markDone(thread.id, now);
+        deps.emit({
+          name: "thread.marked-done",
+          at: now,
+          workspaceId: deps.workspaceId,
+          threadId: thread.id,
+        });
         return json(200, views.thread(thread.id, await changeSets.ofThread(thread.id)));
       },
     },
@@ -478,8 +518,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const set = await mustChangeSet(id);
         const { hash } = await readJson(request, smallBody, hashBody);
-        const report = await decide(set.id, "approved", { via: "thread", by: "user" }, hash);
-        return changeSetReply(set.id, { report });
+        const decided = await decide(set.id, "approved", { via: "thread", by: "user" }, hash);
+        return changeSetReply(set.id, decided);
       },
     },
     {
@@ -561,7 +601,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run(_, request) {
         const body = await readJson(request, smallBody, reviewDecision);
         // The decision checks that the token is live for this change set.
-        await decide(
+        const { problem } = await decide(
           body.changeSet,
           body.kind,
           { via: "review-link", token: body.token, by: body.name.trim() },
@@ -570,6 +610,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const set = await mustChangeSet(body.changeSet);
         return json(200, {
           changeSet: changeSetView(set, await changeSets.ofThread(set.threadId)),
+          problem,
         });
       },
     },
@@ -599,7 +640,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       return await found.route.run(found.params, request, url);
     } catch (error) {
       if (error instanceof Refused) return problem(error.status, error.message);
-      if (error instanceof ThreadBusy) return problem(409, error.message);
+      if (error instanceof ThreadBusy || error instanceof ThreadLimit)
+        return problem(409, error.message);
       const status = changeSetStatus(error);
       if (status !== null && error instanceof Error) return problem(status, error.message);
       deps.log("api: failed", { path: url.pathname, error: String(error) });

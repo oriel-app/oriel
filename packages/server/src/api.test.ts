@@ -461,7 +461,11 @@ test("a turn gets the index snapshot and what earlier turns spent", async (t) =>
       ["Two", { inputTokens: 10, outputTokens: 2 }, 1],
     ],
   );
-  assert.ok(inputs.every((input) => typeof input.snapshot === "number" && input.snapshot > 0));
+  // The fixture synced once at startup: the index is at snapshot 1.
+  assert.deepEqual(
+    inputs.map((input) => input.snapshot),
+    [1, 1],
+  );
 });
 
 // SPEC §9's cap is per thread: a stopped turn's usage, and a failed one's,

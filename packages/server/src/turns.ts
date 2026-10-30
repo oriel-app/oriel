@@ -4,7 +4,13 @@
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
 import type { Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
-import { type Agent, agentEvent, type AgentEvent, type ChatMessage } from "./agent.ts";
+import {
+  type Agent,
+  agentEvent,
+  type AgentEvent,
+  type AgentLimits,
+  type ChatMessage,
+} from "./agent.ts";
 
 export type ThreadEvent =
   | { type: "message"; message: Message }
@@ -17,10 +23,33 @@ export class ThreadBusy extends Error {
   }
 }
 
+// A thread that has reached a per-thread cap; no turn runs.
+export class ThreadLimit extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "ThreadLimit";
+  }
+}
+
+export type Caps = Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">;
+
+// Why a thread can take no more questions, in plain words, or null: it has
+// asked as many as a thread may, or spent as many tokens.
+export function capReached(messages: readonly Message[], caps: Caps): string | null {
+  const asked = messages.filter((m) => m.role === "user").length;
+  if (asked >= caps.maxTurnsPerThread)
+    return `This thread has had all ${caps.maxTurnsPerThread} of its questions. Start a new thread on this group to keep going.`;
+  const used = spent(messages);
+  if (used.inputTokens + used.outputTokens >= caps.maxTokensPerThread)
+    return `This thread has used all ${caps.maxTokensPerThread.toLocaleString("en-US")} of its tokens. Start a new thread on this group to keep going.`;
+  return null;
+}
+
 export type TurnDeps = {
   threads: ThreadStore;
   groups: GroupStore;
   agent: Agent;
+  caps: Caps;
   emit: (event: TelemetryEvent) => void;
   // The index snapshot a turn reads.
   snapshot: () => number;
@@ -205,6 +234,16 @@ export function turns(deps: TurnDeps) {
     // returns. A settled thread catches up with its group first.
     say(threadId: Ulid, text: string): { seq: number } {
       if (running.has(threadId)) throw new ThreadBusy();
+      // The per-thread caps hold whatever agent is plugged in (SPEC §9).
+      const earlier = threads.messages(threadId);
+      const reason = capReached(earlier, deps.caps);
+      if (reason !== null) {
+        const last = earlier.at(-1);
+        const said = last?.role === "agent" && agentEvent(last.event);
+        if (!(said && said.ok && said.value.kind === "limit"))
+          record(threadId, { kind: "limit", reason });
+        throw new ThreadLimit(reason);
+      }
       const now = deps.now();
       const said = threads.say(
         threadId,

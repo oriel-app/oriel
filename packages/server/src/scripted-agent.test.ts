@@ -120,4 +120,11 @@ test("the dev plan's scripts typecheck and run in the sandbox", async (t) => {
     if (text.includes("estimates")) assert.ok(view.entries.some((e) => e.kind === "change-set"));
     if (text.startsWith("find")) assert.ok(view.entries.some((e) => e.kind === "search"));
   }
+  // The real sandbox's read lines name the thread and the run (SPEC §9).
+  const reads = app.logged.filter((line) => line.message === "sandbox.read");
+  assert.ok(reads.length >= 3);
+  for (const line of reads) {
+    assert.match(String(line.fields.thread_id), /^[0-9A-Z]{26}$/);
+    assert.match(String(line.fields.run_id), /^[0-9A-Z]{26}$/);
+  }
 });

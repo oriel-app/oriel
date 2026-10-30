@@ -4,7 +4,7 @@
 // sandbox runs each script against the region's bindings, the run is
 // recorded, and what it captures becomes a change set.
 import { createHash } from "node:crypto";
-import { array, parseItemId, type RunResult } from "@oriel/core";
+import { array, type Log, parseItemId, type RunResult } from "@oriel/core";
 import { type Agent, type AgentDeps, type AgentEvent, searchHit, type TurnInput } from "./agent.ts";
 
 // Text to say, a script to run, or a search, which is a run whose result
@@ -70,12 +70,15 @@ async function* steps(
       outputTokens: 0,
       startedAt,
     };
+    // Every line the run logs, each proxied read included, names the run as
+    // well as the thread (SPEC §9).
+    const runLog: Log = (message, fields) => log(message, { ...fields, run_id: runId });
     let result: RunResult;
     try {
       result = await deps.sandbox.run(script, bindings, {
         limits: deps.limits.run,
         signal,
-        log,
+        log: runLog,
       });
     } catch (error) {
       if (signal.aborted)

@@ -56,12 +56,21 @@ import { turns } from "./turns.ts";
 import { views } from "./views.ts";
 import { groupings, presentations, windowView } from "./window.ts";
 
+// How change sets reach a Jira site to write: writer config, from which
+// @oriel/changeset builds the writer. `fetch` is for tests, which answer
+// from memory; the global fetch is used without it.
+export type JiraWrites = {
+  site: string;
+  credential: Credential;
+  project: string;
+  fetch?: typeof fetch;
+};
+
 // Where Jira comes from. The fixture is SYN as `fixtures/jira/` freezes it,
-// read-only. Live is a site, read through the API and written to through
+// read-only unless tests give it a site to write to that holds the same
+// items. Live is a site, read through the API and written to through
 // approved change sets.
-export type JiraMode =
-  | { kind: "fixture" }
-  | { kind: "live"; site: string; credential: Credential; project: string };
+export type JiraMode = { kind: "fixture"; writeTo?: JiraWrites } | ({ kind: "live" } & JiraWrites);
 
 export type AppOptions = {
   // A SQLite file, or ":memory:".
@@ -75,6 +84,9 @@ export type AppOptions = {
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
   reviewBase: URL;
+  // The agent's caps; the server holds the per-thread ones whatever the
+  // agent does. `limits` below when absent.
+  limits?: AgentLimits;
   now?: () => Instant;
   log?: Log;
 };
@@ -132,7 +144,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     ? fixtureSource(fixture, { site, edited: fixture.edits.length })
     : mode.kind === "live"
       ? jiraSource({
-          transport: readTransport({ site: mode.site, credential: mode.credential }),
+          transport: readTransport({
+            site: mode.site,
+            credential: mode.credential,
+            ...(mode.fetch ? { fetch: mode.fetch } : {}),
+          }),
           site: mode.site,
           projects: [mode.project],
           log,
@@ -153,7 +169,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       );
     return syncing;
   };
-  await sync(fixture !== null || index.source(workspaceId, "jira") === null);
+  // The first sync of a source into this workspace connects it.
+  const connecting = index.source(workspaceId, "jira") === null;
+  await sync(fixture !== null || connecting);
+  if (connecting) emit({ name: "source.connected", at: now(), workspaceId, source: "jira" });
+  const caps = options.limits ?? limits;
 
   const records = (): IndexRecord[] => index.records(workspaceId, "jira", jiraAttrs);
   const people = () => {
@@ -186,17 +206,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     return bindingsFor(region, { reader, namespaces: { jira: jiraNamespace(kinds) } });
   };
 
-  const writerConfig: WriterConfig =
+  const writes: JiraWrites | null =
     mode.kind === "live"
-      ? { jira: { site: mode.site, credential: mode.credential, project: mode.project } }
-      : {};
+      ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
+      : (mode.writeTo ?? null);
+  const writerConfig: WriterConfig = writes ? { jira: writes } : {};
   const specs = { jira: jiraSpecs };
   const sets = changeSets({
     db,
     writerConfig,
-    readers: fixture
-      ? { jira: fixtureFields(fixture, { site, edited: fixture.edits.length }) }
-      : {},
+    readers:
+      fixture && !writes
+        ? { jira: fixtureFields(fixture, { site, edited: fixture.edits.length }) }
+        : {},
     people: { jira: async (id) => people().get(id) ?? null },
     specs,
     reviewBase: options.reviewBase,
@@ -217,8 +239,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     bindingsFor: regionBindings,
     changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
     runs: { record: (run, reads) => runs.record(run, reads) },
-    limits,
-
+    limits: caps,
     now,
     newId,
   };
@@ -231,6 +252,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     groups,
     agent,
     emit,
+    caps,
     snapshot: () => index.snapshot(workspaceId),
     now,
     newId,
@@ -244,7 +266,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     asOf: () => asOf ?? now(),
     now,
     running: conversation.running,
-    writable: mode.kind === "live",
+    writable: writes !== null,
   });
 
   // What a change set created joins its thread's group, so later turns can

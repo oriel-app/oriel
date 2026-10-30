@@ -54,6 +54,26 @@ export function webUrl(location: string): string | null {
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 
+const identity = (item: { id: string; stableId: string }) =>
+  `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
+
+// The member of a group a handle names. Through the index, by identity, so
+// an item that moved is found under its current handle; failing that, by the
+// handle the member was added with, if no live item has that member's
+// identity (it was deleted, or its key was reused by another item).
+export function memberOf(
+  handle: string,
+  held: readonly GroupMember[],
+  records: readonly IndexRecord[],
+): GroupMember | undefined {
+  const record = records.find((r) => r.id === handle);
+  const live = new Set(records.map(identity));
+  return (
+    (record && held.find((m) => identity(m) === identity(record))) ??
+    held.find((m) => m.id === handle && !live.has(identity(m)))
+  );
+}
+
 // What a diff field's value reads as: a person by name, an item by its key,
 // a link by its title.
 function display(
@@ -70,10 +90,27 @@ function display(
   return JSON.stringify(value) ?? null;
 }
 
+// Why a change stopped, as a person reads it: a source's refusal loses its
+// request line and status code and keeps what the source said. Oriel's own
+// reasons are already plain.
+export function plainError(error: string): string {
+  const refused = /^(?:GET|PUT|POST|DELETE) \S+: (\d{3})(?: ([\s\S]*))?$/.exec(error);
+  if (!refused) return error;
+  const [, status, said] = refused;
+  return said
+    ? `The source refused this change: ${said}`
+    : `The source refused this change (it answered ${status}).`;
+}
+
+// Where a change set stands, from its rows: applied in full or in part; or,
+// with nothing applied, approved, stopped (approved, and apply stopped at a
+// change, which says why), rejected or open.
 export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
   const applied = set.mutations.filter((m) => m.status === "applied").length;
   if (applied > 0 && applied === set.mutations.length) return "applied";
   if (applied > 0) return "partial";
+  if (set.decision?.kind === "approved")
+    return set.mutations.some((m) => m.error !== null) ? "stopped" : "approved";
   if (set.decision) return set.decision.kind;
   return "open";
 }
@@ -82,6 +119,9 @@ export function changeSetView(set: ChangeSet, all: readonly ChangeSet[]): Change
   return {
     id: set.id,
     status: changeSetStatus(set),
+    approved: set.decision?.kind === "approved",
+    // A change sent with no answer may have landed; revert waits for it.
+    sentUnapplied: set.mutations.some((m) => m.status === "failed"),
     decision: set.decision && {
       kind: set.decision.kind,
       via: set.decision.via,
@@ -89,7 +129,9 @@ export function changeSetView(set: ChangeSet, all: readonly ChangeSet[]): Change
       at: set.decision.at,
     },
     errors: set.mutations.flatMap((m) =>
-      m.status !== "applied" && m.error !== null ? [{ mutationId: m.id, error: m.error }] : [],
+      m.status !== "applied" && m.error !== null
+        ? [{ mutationId: m.id, error: plainError(m.error) }]
+        : [],
     ),
     revertOf: set.revertOf,
     reverts: all.filter((other) => other.revertOf === set.id).map((other) => other.id),
@@ -131,9 +173,10 @@ export function views(deps: ViewDeps) {
     const byIdentity = new Map(
       records.map((r) => [`${parseItemId(r.id)?.source}\u0000${r.stableId}`, r]),
     );
+    // By identity only: a handle another item has taken since names that
+    // other item, not this one.
     const find = (member: GroupMember): IndexRecord | undefined =>
-      byIdentity.get(`${parseItemId(member.id)?.source}\u0000${member.stableId}`) ??
-      byId.get(member.id);
+      byIdentity.get(`${parseItemId(member.id)?.source}\u0000${member.stableId}`);
     return { byId, find };
   };
 
@@ -212,15 +255,16 @@ export function views(deps: ViewDeps) {
   });
 
   const changeView = (groupId: Ulid, from: number, to: number): GroupChangeView[] => {
-    const { byId } = lookup();
+    // By identity, so an item that moved since keeps its title.
+    const { find } = lookup();
     return groups
       .changes(groupId, from)
       .filter((change) => change.version <= to)
       .map((change) => ({
         version: change.version,
         at: change.at,
-        added: change.added.map((m) => ref(byId.get(m.id), m.id)),
-        removed: change.removed.map((m) => ref(byId.get(m.id), m.id)),
+        added: change.added.map((m) => ref(find(m), m.id)),
+        removed: change.removed.map((m) => ref(find(m), m.id)),
         cause: change.cause.kind,
       }));
   };
@@ -352,24 +396,38 @@ export function views(deps: ViewDeps) {
     diff(diff: Diff, set: ChangeSet): DiffView {
       const { byId } = lookup();
       const person = people();
-      const applied = new Set(set.mutations.filter((m) => m.status === "applied").map((m) => m.id));
+      const rows = new Map(set.mutations.map((m) => [m.id, m]));
+      const status = changeSetStatus(set);
       return {
         changeSetId: diff.changeSetId,
         hash: diff.hash,
-        lines: diff.lines.map((line) => ({
-          mutationId: line.mutationId,
-          sentence: line.sentence,
-          target:
-            line.target !== null && parseItemId(line.target)
-              ? ref(byId.get(line.target as ItemId), line.target)
-              : null,
-          applied: applied.has(line.mutationId),
-          fields: line.fields.map((field) => ({
-            name: field.name,
-            before: display(field.name, field.before, person),
-            after: display(field.name, field.after, person),
-          })),
-        })),
+        lines: diff.lines.map((line) => {
+          const row = rows.get(line.mutationId);
+          const applied = row?.status === "applied";
+          const error = !applied && row?.error ? plainError(row.error) : null;
+          return {
+            mutationId: line.mutationId,
+            sentence: line.sentence,
+            target:
+              line.target !== null && parseItemId(line.target)
+                ? ref(byId.get(line.target as ItemId), line.target)
+                : null,
+            applied,
+            error,
+            // A change that stopped can be left out, as its message says; while
+            // open, any can. An edit never empties a change set.
+            removable:
+              !applied &&
+              set.mutations.length > 1 &&
+              status !== "rejected" &&
+              (status === "open" || error !== null),
+            fields: line.fields.map((field) => ({
+              name: field.name,
+              before: display(field.name, field.before, person),
+              after: display(field.name, field.after, person),
+            })),
+          };
+        }),
       };
     },
   };

@@ -109,13 +109,20 @@ export type ChatEntry = { seq: number; at: string } & (
   | { kind: "done" }
 );
 
-// Where a change set stands. "open": awaiting a decision; "partial": some of
-// it applied and something stopped the rest.
-export type ChangeSetStatus = "open" | "approved" | "rejected" | "applied" | "partial";
+// Where a change set stands. "open": awaiting a decision; "stopped":
+// approved, and apply stopped before anything landed; "partial": some of it
+// applied and something stopped the rest. A stopped change says why.
+export type ChangeSetStatus = "open" | "approved" | "stopped" | "rejected" | "applied" | "partial";
 
 export type ChangeSetView = {
   id: string;
   status: ChangeSetStatus;
+  // Whether the latest decision approves the change set as it stands. An
+  // edit voids it, so the rest needs approving again.
+  approved: boolean;
+  // A change was sent and may have landed; revert waits until it is applied
+  // or removed.
+  sentUnapplied: boolean;
   decision: {
     kind: "approved" | "rejected";
     via: "thread" | "review-link";
@@ -140,6 +147,10 @@ export type DiffView = {
     sentence: string;
     target: ItemRef | null;
     applied: boolean;
+    // Why apply stopped at this change, in plain words; null otherwise.
+    error: string | null;
+    // Whether it can be left out of the change set now.
+    removable: boolean;
     fields: { name: string; before: string | null; after: string | null }[];
   }[];
 };
