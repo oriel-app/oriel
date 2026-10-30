@@ -3,9 +3,43 @@
 // an `updated` cursor, no gone IDs from a listing (Jira's search can't list
 // deletions, so the sync worker's full sweep must find them), and a deleted
 // issue read as gone.
+import type { FieldValues, ItemId } from "@oriel/core";
 import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "./fixture.ts";
 import { jiraOps } from "./ops.ts";
 import type { JiraSource } from "./source.ts";
+
+// SYN's current field values, in core's field names (`FieldValues`), as
+// Jira's writer reports them: what a diff reads for a change set when
+// writing to Jira isn't configured, so it can still be reviewed. A field
+// the item doesn't have reads as null.
+export function fixtureFields(fixture: JiraFixture, options: FixtureSourceOptions) {
+  const { records, content } = fixtureSnapshot(fixture, options.site, options.edited);
+  const updated = new Map(records.map((record) => [record.id, record.updatedAt]));
+  const people = new Map(fixture.people.map((person) => [person.id, person.displayName]));
+  return {
+    async current(id: ItemId<"jira">, fields: readonly string[]): Promise<FieldValues | "gone"> {
+      const found = content.get(id);
+      if (!found) return "gone";
+      const values: Record<string, unknown> = {
+        summary: found.summary,
+        description: found.description,
+        points: found.points,
+        assignee: found.assignee?.accountId ?? null,
+        epic: found.epic,
+        updated: updated.get(id) ?? null,
+        ...Object.fromEntries(
+          found.links.map((link) => [`link:${link.linkId}`, { url: link.url, title: link.title }]),
+        ),
+      };
+      return Object.fromEntries(
+        fields.map((field) => [field, Object.hasOwn(values, field) ? values[field] : null]),
+      );
+    },
+    async person(accountId: string): Promise<string | null> {
+      return people.get(accountId) ?? null;
+    },
+  };
+}
 
 export type FixtureSourceOptions = {
   // Where item locations point, such as "https://oriel.atlassian.net".

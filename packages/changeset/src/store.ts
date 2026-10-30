@@ -135,6 +135,9 @@ export function store(db: DatabaseSync) {
   const selectNextDecisionSeq = db.prepare(
     "select coalesce(max(seq), 0) + 1 as next from decisions where change_set_id = ?",
   );
+  const selectOfThread = db.prepare(
+    "select id from change_sets where thread_id = ? order by created_at, rowid",
+  );
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
@@ -260,6 +263,13 @@ export function store(db: DatabaseSync) {
     mutation(id: Ulid): MutationRecord | null {
       const raw = selectMutation.get(id);
       return raw ? toMutation(raw) : null;
+    },
+
+    // A thread's change sets, oldest first.
+    ofThread(threadId: Ulid): Ulid[] {
+      return selectOfThread
+        .all(threadId)
+        .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
     },
 
     runExists(run: { id: Ulid; threadId: Ulid; workspaceId: Ulid }): boolean {

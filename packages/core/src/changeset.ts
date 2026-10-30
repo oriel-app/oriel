@@ -104,6 +104,11 @@ export type Conflict = {
 
 export interface ChangeSets {
   capture(run: RunRef, mutations: readonly CapturedMutation[]): Promise<ChangeSet>;
+  // The change set as its rows are now, or null. Reads nothing from a source.
+  get(id: Ulid): Promise<ChangeSet | null>;
+  // A thread's change sets, oldest first: those its runs captured, and its
+  // reverts.
+  ofThread(threadId: Ulid): Promise<ChangeSet[]>;
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
   edit(id: Ulid, patch: ChangeSetPatch): Promise<ChangeSet>;

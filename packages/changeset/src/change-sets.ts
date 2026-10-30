@@ -73,6 +73,10 @@ export type ChangeSetDeps = {
   writerConfig: WriterConfig;
   // A person's display name for a diff line, by source; null when unknown.
   people?: { [K in SourceKind]?: (personId: string) => Promise<string | null> };
+  // How a source with no writer config reads its current values, so its
+  // change sets can still be captured and diffed. They can't be approved
+  // until writing to the source is configured.
+  readers?: { [K in SourceKind]?: FieldReader<K> };
   // How each writable source's ops are checked, shown, applied and reverted,
   // as its adapter declares them.
   specs: Specs;
@@ -83,11 +87,14 @@ export type ChangeSetDeps = {
   log: Log;
 };
 
-// Each writable source's writer and the field reader its diffs use.
-export type Sources = { [K in SourceKind]?: { writer: SourceWriter<K>; reader: FieldReader<K> } };
+// Each source's writer, null when writing to it isn't configured, and the
+// field reader its diffs use.
+export type Sources = {
+  [K in SourceKind]?: { writer: SourceWriter<K> | null; reader: FieldReader<K> };
+};
 
 // What the engine runs on: the deps, with the writers built.
-export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "people" | "log"> & {
+export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "people" | "readers" | "log"> & {
   sources: Sources;
 };
 
@@ -98,7 +105,9 @@ export type ChangeSetErrorCode =
   | "refused"
   | "not-approved"
   | "busy"
-  | "not-revertible";
+  | "not-revertible"
+  // Writing to the source isn't configured, so nothing can be approved.
+  | "read-only";
 
 export class ChangeSetError extends Error {
   readonly code: ChangeSetErrorCode;
@@ -312,16 +321,21 @@ export function explainConflicts(conflicts: readonly Conflict[], specs: Specs): 
 
 // Change sets over the writers built from `deps.writerConfig`. A diff reads a
 // source's current values through its writer, which knows its field names.
+// A source with no writer config reads through `deps.readers`, if it has one
+// there: its diffs work, and approving its change sets is refused.
 export function changeSets(deps: ChangeSetDeps): ChangeSets {
   const writers = buildWriters(deps.writerConfig, deps.log);
   const unknown = async () => null;
   const sources = Object.fromEntries(
-    sourceKinds.flatMap((kind) => {
-      const writer = writers[kind];
-      if (!writer) return [];
-      const person = deps.people?.[kind] ?? unknown;
-      return [[kind, { writer, reader: { current: writer.current, person } }]];
-    }),
+    sourceKinds.flatMap(
+      (kind): [SourceKind, { writer: SourceWriter | null; reader: unknown }][] => {
+        const writer = writers[kind];
+        const person = deps.people?.[kind] ?? unknown;
+        if (writer) return [[kind, { writer, reader: { current: writer.current, person } }]];
+        const reader = deps.readers?.[kind];
+        return reader ? [[kind, { writer: null, reader }]] : [];
+      },
+    ),
   ) as Sources;
   return changeSetsOver({ ...deps, sources });
 }
@@ -375,12 +389,34 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return link;
   };
 
-  const sourceOf = (kind: SourceKind): { writer: SourceWriter; reader: FieldReader } => {
+  const sourceOf = (kind: SourceKind): { writer: SourceWriter | null; reader: FieldReader } => {
     const found = deps.sources[kind];
     if (!found) throw new Error(`${kind} items are read-only`);
     return found;
   };
   const reader = (kind: SourceKind): FieldReader => sourceOf(kind).reader;
+  // Why a change set can't be approved or applied here: a source it writes
+  // to has no writer configured. Null when every one has.
+  const unwritable = (set: ChangeSet): string | null => {
+    const names = new Set<string>();
+    for (const m of set.mutations) {
+      if (m.status === "applied") continue;
+      const { kind } = mustSpec(specs, m, set.mutations);
+      if (deps.sources[kind]?.writer) continue;
+      names.add(catalogueFor(specs, kind).name);
+    }
+    if (names.size === 0) return null;
+    return `Writing to ${[...names].join(" and ")} isn't configured here, so this change set can be reviewed but not approved or applied.`;
+  };
+  const writerOf = (kind: SourceKind): SourceWriter => {
+    const { writer } = sourceOf(kind);
+    if (!writer)
+      throw new ChangeSetError(
+        "read-only",
+        `Writing to ${catalogueFor(specs, kind).name} isn't configured here.`,
+      );
+    return writer;
+  };
 
   // Lines for the rows of `set` as loaded, so `set.hash` is the hash of exactly
   // what is rendered. Applied lines show what the source reported; pending
@@ -581,7 +617,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     for (const [item, { last, fields }] of expected) {
       const kind = parseItemId(item)?.source;
       if (!kind || fields.size === 0) continue;
-      const current = await sourceOf(kind).writer.current(item, [...fields.keys()]);
+      const current = await writerOf(kind).current(item, [...fields.keys()]);
       if (current === "gone") {
         conflicts.push({
           mutationId: last,
@@ -615,7 +651,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     if (!kind) throw new Error(`not an item ID: ${item}`);
     const field = catalogueFor(specs, kind).updatedField;
     const expected = last.applied.after[field];
-    const current = await sourceOf(kind).writer.current(item, [field]);
+    const current = await writerOf(kind).current(item, [field]);
     if (current === "gone")
       return {
         mutationId: last.id,
@@ -710,7 +746,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const after = spec.after(m.args);
     const fields = Object.keys(after);
     const updated = catalogueFor(specs, kind).updatedField;
-    const current = await sourceOf(kind).writer.current(target, [...fields, updated]);
+    const current = await writerOf(kind).current(target, [...fields, updated]);
     if (current === "gone") return null;
     if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
       return null;
@@ -739,6 +775,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // own value, and a revert must report that rather than restore it.
   const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
+    const readOnly = unwritable(first);
+    if (readOnly) throw new ChangeSetError("read-only", readOnly);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
     const halt = (mutationId: Ulid, error: string): ApplyReport => {
       rows.markStopped(mutationId, error);
@@ -861,7 +899,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       try {
         let result: unknown;
         try {
-          result = await sourceOf(kind).writer.apply(request);
+          result = await writerOf(kind).apply(request);
         } catch (error) {
           return fail(mutationId, `${message(error).replace(/\.$/, "")}.${unsure}`);
         }
@@ -963,6 +1001,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         ),
       );
       return mustLoad(id);
+    },
+
+    async get(id) {
+      return rows.load(id);
+    },
+
+    async ofThread(threadId) {
+      return rows.ofThread(threadId).flatMap((id) => rows.load(id) ?? []);
     },
 
     async diff(id) {
@@ -1074,6 +1120,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const open = current.mutations.filter((m) => m.status !== "applied");
         const unseen = open.find((m) => m.preview === null);
         const gone = open.find((m) => m.preview?.[goneMark] === true);
+        const readOnly = unwritable(current);
+        if (decision.value === "approved" && readOnly)
+          throw new ChangeSetError("read-only", readOnly);
         if (decision.value === "approved" && unseen)
           throw new ChangeSetError(
             "refused",
@@ -1246,9 +1295,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       rows.revokeLinks(set.id, at().now);
     },
 
-    // The review route (not built yet) must send `Referrer-Policy: no-referrer`
-    // and `Cache-Control: no-store`, and must not call this on the GET a link
-    // unfurler makes: it reads the source and records previews.
+    // The review route sends `Referrer-Policy: no-referrer` and
+    // `Cache-Control: no-store`, and calls this only on an explicit POST,
+    // never on the GET a link unfurler makes: it reads the source and records
+    // previews.
     async openReview(token) {
       const link = liveLink(token);
       if (!link) return null;
