@@ -21,6 +21,7 @@ import {
 import type { Route } from "./route.ts";
 import {
   initThread,
+  reconnected,
   streamed,
   type ThreadModel,
   type ThreadMsg,
@@ -65,6 +66,8 @@ export type Msg =
   // The page changed: after a link, or back and forward.
   | { type: "routed"; route: Route }
   | { type: "streamed"; event: StreamEvent }
+  // The thread's stream reconnected after dropping.
+  | { type: "streamReopened" }
   | Replied;
 
 const lists: Effect[] = [
@@ -177,6 +180,11 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       return [model, [{ type: "navigate", route: msg.route }]];
     case "routed":
       return enter(model, msg.route);
+    case "streamReopened": {
+      if (model.thread === null) return [model, []];
+      const [thread, effects] = reconnected(model.thread);
+      return [{ ...model, thread }, [...effects, get("/api/threads", { kind: "inbox" })]];
+    }
     case "streamed": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = streamed(model.thread, msg.event);

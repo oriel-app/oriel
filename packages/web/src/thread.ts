@@ -65,8 +65,16 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
 
 const refresh = (model: ThreadModel): Effect =>
   get(`/api/threads/${model.id}`, { kind: "thread", id: model.id });
-const diffOf = (changeSetId: string): Effect =>
-  post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
+const diffOf = (changeSetId: string, quiet = false): Effect =>
+  post(
+    `/api/change-sets/${changeSetId}/diff`,
+    {},
+    {
+      kind: "diff",
+      changeSetId,
+      ...(quiet ? { quiet: true as const } : {}),
+    },
+  );
 
 const problemOf = (body: unknown): string | null =>
   typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
@@ -233,10 +241,11 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           [],
         ];
       // A diff records what the person was shown, which approving waits on:
-      // the thread reloads, so its steps say what can be done now.
+      // the thread reloads, so its steps say what can be done now, unless
+      // that reload is already on its way.
       return [
         { ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } },
-        [refresh(model)],
+        tag.quiet ? [] : [refresh(model)],
       ];
     }
     case "changeSet": {
@@ -251,8 +260,15 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       // Dismissing says what to check.
       const warnings = msg.ok ? warningsOf(msg.body) : null;
       const notes = warnings ? { ...model.notes, [tag.changeSetId]: warnings } : model.notes;
-      // Whatever happened, the diff and the thread's state may have moved.
-      return [{ ...model, busy, problems, notes }, [diffOf(tag.changeSetId), refresh(model)]];
+      // An approval or a retry applied it, or tried to: the thread's stream
+      // says when that started and ended, and those reload what moved.
+      // Whatever else happened, the diff and the thread's state may have.
+      const applied =
+        msg.ok && typeof msg.body === "object" && msg.body !== null && "report" in msg.body;
+      return [
+        { ...model, busy, problems, notes },
+        applied ? [] : [diffOf(tag.changeSetId), refresh(model)],
+      ];
     }
     case "reviewLink": {
       if (!msg.ok)
@@ -266,6 +282,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     default:
       return [model, []];
   }
+}
+
+// The thread's event stream reconnected after dropping: whatever it missed
+// (an apply that ended, say) isn't replayed, so the thread reloads once.
+export function reconnected(model: ThreadModel): [ThreadModel, Effect[]] {
+  return [model, model.view === null ? [] : [refresh(model)]];
 }
 
 // What the thread's event stream says.
@@ -286,8 +308,14 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     // A finished turn may have settled the thread; a new version changes the rail.
     return [next, moved || (!event.running && view.running) ? [refresh(model)] : []];
   }
-  // Applying started or ended, here or elsewhere: what it offers has moved.
-  if (event.type === "change-set") return [model, [diffOf(event.changeSetId), refresh(model)]];
+  // Applying started, here or elsewhere: nothing can be done with it until it
+  // ends, which the thread says. Then, or once a review link dismissed it,
+  // its diff and what it offers have moved: one diff, one reload.
+  if (event.type === "change-set")
+    return [
+      model,
+      event.applying ? [refresh(model)] : [diffOf(event.changeSetId, true), refresh(model)],
+    ];
   const { entry } = event;
   if (entry.seq <= view.lastSeq) return [model, []];
   const next = {

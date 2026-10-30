@@ -126,7 +126,12 @@ const reviewDecision = object({
   name: nameValue,
   hash: string,
 });
-const reviewDismissal = object({ token: string, changeSet: ulidValue, name: nameValue });
+const reviewDismissal = object({
+  token: string,
+  changeSet: ulidValue,
+  name: nameValue,
+  hash: string,
+});
 const emptyBody = object({});
 const folderBody = object({
   path: refine(
@@ -239,11 +244,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   const applyTold = async (id: Ulid) => {
     const { threadId } = await mustChangeSet(id);
     const applying = changeSets.apply(id);
-    turns.changeSet(threadId, id);
+    turns.changeSet(threadId, id, true);
     try {
       return await applying;
     } finally {
-      turns.changeSet(threadId, id);
+      turns.changeSet(threadId, id, false);
     }
   };
 
@@ -296,7 +301,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       event.type === "message"
         ? entry(event.message)
         : event.type === "change-set"
-          ? send({ type: "change-set", changeSetId: event.changeSetId })
+          ? send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying })
           : status(),
     );
     out.push("retry: 2000\n\n");
@@ -709,12 +714,14 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run(_, request) {
         const body = await readJson(request, smallBody, reviewDismissal);
         // The engine checks that the token is live for this change set.
-        const { warnings } = await changeSets.dismiss(body.changeSet as Ulid, {
-          via: "review-link",
-          token: body.token,
-          by: body.name.trim(),
-        });
+        const { warnings } = await changeSets.dismiss(
+          body.changeSet as Ulid,
+          { via: "review-link", token: body.token, by: body.name.trim() },
+          body.hash,
+        );
         const set = await mustChangeSet(body.changeSet);
+        // Every page watching the thread reloads it.
+        turns.changeSet(set.threadId, set.id, false);
         return json(200, { changeSet: await viewOf(set), warnings });
       },
     },

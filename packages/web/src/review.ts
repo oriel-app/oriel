@@ -89,7 +89,7 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
         outcome === "dismissed"
           ? post(
               "/api/review/dismiss",
-              { token: model.token, changeSet, name },
+              { token: model.token, changeSet, name, hash: view.diff.hash },
               { kind: "reviewDecided" },
             )
           : post(

@@ -64,6 +64,13 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
         // Our own server's events, in the shape view.ts declares.
         dispatch({ type: "streamed", event: JSON.parse(message.data) as StreamEvent });
       };
+      // Every open after the first is a reconnect, which replays entries but
+      // not what changed meanwhile.
+      let opened = false;
+      events.onopen = () => {
+        if (opened) dispatch({ type: "streamReopened" });
+        opened = true;
+      };
       return;
     }
     case "unsubscribe":

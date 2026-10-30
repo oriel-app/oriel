@@ -199,9 +199,9 @@ export type ThreadView = {
 export type StreamEvent =
   | { type: "entry"; entry: ChatEntry }
   | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number }
-  // A change set of the thread started or finished applying, in any tab or
-  // through a review link.
-  | { type: "change-set"; changeSetId: string };
+  // A change set of the thread changed outside this page: it started applying
+  // (`applying`), or stopped, or a review link dismissed it.
+  | { type: "change-set"; changeSetId: string; applying: boolean };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };

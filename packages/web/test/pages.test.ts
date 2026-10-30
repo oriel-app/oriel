@@ -266,13 +266,48 @@ test("streamed entries append once, and a new change set fetches its diff", () =
   );
 });
 
-test("a change set that starts or stops applying elsewhere reloads, with its diff", () => {
+test("an apply reloads each tab twice and diffs once: as it starts, then as it ends", () => {
   const [loaded] = loadedThread(threadView([], [openSet]));
-  const [same, effects] = streamed(loaded, { type: "change-set", changeSetId: setId });
-  assert.equal(same, loaded);
+  const urls = (effects: Effect[]) => effects.map((e) => (e.type === "http" ? e.url : e.type));
+  // The tab that approved: its own reply adds nothing, the stream says it all.
+  const [approving, approve] = threadReplied(
+    loaded,
+    ok(
+      { kind: "changeSet", threadId: id, changeSetId: setId },
+      { changeSet: openSet, report: null },
+    ),
+  );
+  assert.deepEqual(approve, []);
+  const [starting, started] = streamed(approving, {
+    type: "change-set",
+    changeSetId: setId,
+    applying: true,
+  });
+  assert.equal(starting, approving);
+  assert.deepEqual(urls(started), [`/api/threads/${id}`]);
+  const [, ended] = streamed(starting, { type: "change-set", changeSetId: setId, applying: false });
+  assert.deepEqual(urls(ended), [`/api/change-sets/${setId}/diff`, `/api/threads/${id}`]);
+  const diffTag = ended[0]?.type === "http" ? ended[0].tag : null;
+  assert.deepEqual(diffTag, { kind: "diff", changeSetId: setId, quiet: true });
+  // That diff's reply doesn't reload the thread again.
+  assert.deepEqual(
+    threadReplied(starting, ok({ kind: "diff", changeSetId: setId, quiet: true }, diff))[1],
+    [],
+  );
+});
+
+test("a stream that reconnects reloads the thread once, since what it missed isn't replayed", () => {
+  const [model] = initRoot({ page: "thread", id });
+  const [loaded] = updateRoot(model, {
+    type: "replied",
+    tag: { kind: "thread", id },
+    ok: true,
+    body: threadView([], [{ ...openSet, status: "applying", applying: true, nextSteps: [] }]),
+  });
+  const [, effects] = updateRoot(loaded, { type: "streamReopened" });
   assert.deepEqual(
     effects.map((e) => (e.type === "http" ? e.url : e.type)),
-    [`/api/change-sets/${setId}/diff`, `/api/threads/${id}`],
+    [`/api/threads/${id}`, "/api/threads"],
   );
 });
 
@@ -600,7 +635,7 @@ test("a partly applied change set's review link offers what the engine offers it
       type: "http",
       method: "POST",
       url: "/api/review/dismiss",
-      body: { token: "tok", changeSet: setId, name: "Ana" },
+      body: { token: "tok", changeSet: setId, name: "Ana", hash: "h1" },
       tag: { kind: "reviewDecided" },
     },
   ]);

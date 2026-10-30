@@ -16,7 +16,9 @@ export type Tag =
   | { kind: "thread"; id: string }
   | { kind: "sent"; threadId: string }
   | { kind: "threadAction"; threadId: string }
-  | { kind: "diff"; changeSetId: string }
+  // `quiet`: what it offers is already being reloaded, so its reply doesn't
+  // reload the thread again.
+  | { kind: "diff"; changeSetId: string; quiet?: true }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "reviewLink"; changeSetId: string }
   | { kind: "inbox" }

@@ -416,9 +416,36 @@ test("a partly applied change set's review link offers what the engine does, dis
     hash: opened.diff.hash,
   });
   assert.equal(rejected.status, 409);
+  // A dismissal is of the diff the reviewer saw: a stale one is refused.
+  const stale = await app.post("/api/review/dismiss", {
+    token,
+    changeSet: app.changeSetId,
+    name: "Ana",
+    hash: "not-the-diff",
+  });
+  assert.equal(stale.status, 409);
+  // Another tab, watching the thread, hears of it.
+  const watching = (await app.get(`/api/threads/${app.threadId}/events`)).stream;
+  assert.ok(watching);
+  const events = watching[Symbol.asyncIterator]();
   const dismissed = json<{ changeSet: ChangeSetView; warnings: string[] }>(
-    await app.post("/api/review/dismiss", { token, changeSet: app.changeSetId, name: "Ana" }),
+    await app.post("/api/review/dismiss", {
+      token,
+      changeSet: app.changeSetId,
+      name: "Ana",
+      hash: opened.diff.hash,
+    }),
   );
+  for (;;) {
+    const next = await events.next();
+    assert.ok(!next.done);
+    const data = /^data: (.*)$/m.exec(next.value)?.[1];
+    const heard = data === undefined ? null : (JSON.parse(data) as StreamEvent);
+    if (heard?.type !== "change-set") continue;
+    assert.deepEqual(heard, { type: "change-set", changeSetId: app.changeSetId, applying: false });
+    break;
+  }
+  await events.return?.();
   assert.deepEqual(dismissed.warnings, []);
   assert.deepEqual(
     [dismissed.changeSet.decision?.kind, dismissed.changeSet.decision?.via],
@@ -433,6 +460,7 @@ test("a partly applied change set's review link offers what the engine does, dis
     token,
     changeSet: app.changeSetId,
     name: "Ana",
+    hash: opened.diff.hash,
   });
   assert.equal(again.status, 409);
 });

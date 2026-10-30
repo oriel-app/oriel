@@ -47,10 +47,14 @@ function Outcome({
   set,
   lines,
   problem,
+  dismissed,
 }: {
   set: ChangeSetView;
   lines: DiffView["lines"];
   problem: string | null;
+  // The reviewer dismissed what was left: none of it will be made, though a
+  // change sent without an answer may have been.
+  dismissed: boolean;
 }) {
   const stops = set.errors.map((e) => ({
     ...e,
@@ -69,10 +73,17 @@ function Outcome({
     rejected: "Nothing will be changed.",
     open: "Nothing has been changed.",
   };
+  const made =
+    set.status === "partial"
+      ? "Some of it was made; the rest won't be."
+      : "None of the rest will be made.";
+  const unsure = set.sentUnapplied
+    ? " Oriel didn't hear back about one change, so it may have been made anyway:"
+    : "";
   return (
     <>
       <p class="outcome" data-status={set.status}>
-        {said[set.status]}
+        {dismissed ? `${made}${unsure}` : said[set.status]}
       </p>
       {stops.length > 0 && (
         <ul class="outcome-stops">
@@ -142,6 +153,7 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
               set={model.decided}
               lines={model.view?.diff.lines ?? []}
               problem={model.problem}
+              dismissed={model.outcome === "dismissed"}
             />
           )}
         </section>
