@@ -53,3 +53,16 @@ test("without writer config, a source's change sets can't be shown or applied", 
   });
   await assert.rejects(readOnly.diff(set.id), /jira items are read-only/);
 });
+
+test("a writer reaches its site through the config's fetch when one is given", async () => {
+  const asked: string[] = [];
+  const answer: typeof fetch = async (input) => {
+    asked.push(String(input));
+    return new Response(JSON.stringify({ errorMessages: ["no"] }), { status: 404 });
+  };
+  const writers = buildWriters({ jira: { ...jira, fetch: answer } }, log);
+  assert.equal(await writers.jira?.current("jira:SYN-1", ["summary"]), "gone");
+  assert.deepEqual(asked, [
+    "https://oriel.atlassian.net/rest/api/3/issue/SYN-1?fields=summary,description,issuetype,parent,assignee,updated",
+  ]);
+});

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./testing": "./src/memory-site.ts",
     "./writer": "./src/writer.ts"
   },
   "scripts": {
