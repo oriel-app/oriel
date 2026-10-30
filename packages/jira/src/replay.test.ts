@@ -40,10 +40,16 @@ test("the live listing matches the fixtures", { skip: sync ? false : unrecorded 
     const got = live.get(want.id);
     assert.ok(got, want.id);
     assert.equal(got.title, want.title, want.id);
-    assert.equal(got.url, want.url, want.id);
+    assert.equal(got.location, want.location, want.id);
     assert.deepEqual(
       { ...got.attrs, labels: got.attrs.labels.toSorted() },
-      { ...want.attrs, assignee: null, labels: want.attrs.labels.toSorted() },
+      { ...want.attrs, labels: want.attrs.labels.toSorted() },
+      want.id,
+    );
+    // The epic by handle: Jira gave it its own stable ID.
+    assert.deepEqual(
+      [got.facets.state, got.facets.container?.id ?? null, got.facets.people],
+      [want.facets.state, want.facets.container?.id ?? null, []],
       want.id,
     );
   }

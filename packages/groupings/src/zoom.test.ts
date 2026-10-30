@@ -45,7 +45,7 @@ test("a derived row carries its rule, and its story list agrees with it", () => 
   const row = clusterZoom(now).view(idle, current);
   assert.deepEqual(row.origin, {
     kind: "derived",
-    rule: "Stories, tasks and bugs not done and last updated 14 or more days ago",
+    rule: "Items not done and last updated 14 or more days ago; from Jira, only stories, tasks and bugs",
   });
   const list = listZoom(now).view(idle, current);
   assert.equal(list.length, row.count);

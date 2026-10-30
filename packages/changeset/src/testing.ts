@@ -9,7 +9,6 @@ import {
   type Instant,
   instant,
   type ItemId,
-  isItemId,
   parseItemId,
   type RunRef,
   type SourceWriter,
@@ -23,7 +22,7 @@ import {
 import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps } from "@oriel/jira";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { changeSets, type Reader } from "./change-sets.ts";
+import { changeSets, type FieldReader } from "./change-sets.ts";
 
 export type MemoryIssue = {
   key: string;
@@ -164,7 +163,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
         description: args.description ?? "",
         points: args.points ?? null,
         accountId: null,
-        epic: args.epic !== null && isItemId(args.epic) ? args.epic : null,
+        epic:
+          args.epic !== null && parseItemId(args.epic)?.source === "jira"
+            ? (args.epic as ItemId<"jira">)
+            : null,
         links: [],
         updated: tick(),
       };
@@ -259,7 +261,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     current,
   };
 
-  const reader: Reader<"jira"> = {
+  const reader: FieldReader<"jira"> = {
     current,
     person: async (accountId) => people.get(accountId) ?? null,
   };

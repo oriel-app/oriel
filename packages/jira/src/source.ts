@@ -23,13 +23,16 @@ import {
   string,
   unknown,
 } from "@oriel/core";
-import type { JiraAttrs, JiraContent } from "./attrs.ts";
+import { type JiraAttrs, type JiraContent, jiraText } from "./attrs.ts";
+import { jiraOps } from "./ops.ts";
 import { adfToText } from "./adf.ts";
 import {
   api,
   attrsOf,
   call,
   discoverPoints,
+  facetsOf,
+  fieldsOf,
   indexFieldNames,
   indexFieldShape,
   indexFields,
@@ -41,11 +44,11 @@ import {
 } from "./rest.ts";
 import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
-export type JiraSource = Source<"jira", JiraAttrs, JiraContent>;
+export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & { readonly ops: typeof jiraOps };
 
 export type JiraSourceOptions = {
   transport: ReadTransport;
-  // Where item URLs point, such as "https://oriel.atlassian.net".
+  // Where item locations point, such as "https://oriel.atlassian.net".
   site: string;
   // The project keys to index.
   projects: readonly string[];
@@ -120,8 +123,9 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         id: itemId("jira", key),
         stableId: id,
         title: fields.summary,
-        url: `${site}/browse/${key}`,
+        location: `${site}/browse/${key}`,
         updatedAt: fields.updated,
+        facets: facetsOf(fields),
         attrs: attrsOf(fields, rawField(raw, points.get(projectOf(key)))),
       },
     };
@@ -158,19 +162,22 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       readComments(found.key),
       call(transport, { method: "GET", path: `${api}/issue/${found.key}/remotelink` }, remoteLinks),
     ]);
+    const summary = found.fields.summary;
+    const description = adfToText(found.fields.description);
     return {
       id,
       status: "ok",
       content: {
-        ...attrsOf(found.fields, rawField(response.body, points.get(projectOf(found.key)))),
-        summary: found.fields.summary,
-        description: adfToText(found.fields.description),
+        ...fieldsOf(found.fields, rawField(response.body, points.get(projectOf(found.key)))),
+        summary,
+        description,
         comments,
         links: links.map((link) => ({
           linkId: String(link.id),
           url: link.object.url,
           title: link.object.title ?? link.object.url,
         })),
+        text: jiraText({ summary, description, comments }),
       },
     };
   };
@@ -198,6 +205,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
 
   return {
     kind: "jira",
+    ops: jiraOps,
 
     // A null cursor lists everything. Otherwise the cursor is the latest
     // `updated` seen so far, and only issues updated since (less the overlap)

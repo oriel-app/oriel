@@ -4,10 +4,11 @@
 // deletions, so the sync worker's full sweep must find them), and a deleted
 // issue read as gone.
 import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "./fixture.ts";
+import { jiraOps } from "./ops.ts";
 import type { JiraSource } from "./source.ts";
 
 export type FixtureSourceOptions = {
-  // Where item URLs point, such as "https://oriel.atlassian.net".
+  // Where item locations point, such as "https://oriel.atlassian.net".
   site: string;
   // How many of the fixture's source edits have happened (0 is the base).
   edited: number;
@@ -22,6 +23,7 @@ export function fixtureSource(fixture: JiraFixture, options: FixtureSourceOption
   );
   return {
     kind: "jira",
+    ops: jiraOps,
 
     async *sync(cursor) {
       const listed = cursor === null ? ordered : ordered.filter((r) => r.updatedAt >= cursor);

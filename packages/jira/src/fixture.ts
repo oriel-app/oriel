@@ -7,7 +7,6 @@
 import {
   array,
   boolean,
-  type IndexRecord,
   type Infer,
   type Issue,
   isInstant,
@@ -23,7 +22,7 @@ import {
   string,
   union,
 } from "@oriel/core";
-import type { JiraAttrs, JiraContent } from "./attrs.ts";
+import { type JiraContent, jiraFacets, type JiraRecord, jiraText } from "./attrs.ts";
 import { isSummary, maxSummary } from "./ops.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
@@ -273,14 +272,15 @@ export function applySourceEdits(
 }
 
 export type FixtureSnapshot = {
-  records: IndexRecord<"jira", JiraAttrs>[];
+  records: JiraRecord[];
   content: Map<ItemId<"jira">, JiraContent>;
   // Stable IDs the applied edits deleted.
   gone: string[];
 };
 
-// Pure. `site` is the origin item URLs point at, such as
+// Pure. `site` is the origin item locations point at, such as
 // "https://oriel.atlassian.net"; `edited` is how many source edits to apply.
+// Records and content share no objects.
 export function fixtureSnapshot(
   fixture: JiraFixture,
   site: string,
@@ -288,35 +288,54 @@ export function fixtureSnapshot(
 ): FixtureSnapshot {
   const people = new Map(fixture.people.map((person) => [person.id, person]));
   const name = (id: string) => people.get(id)?.displayName ?? id;
+  // Stable IDs never change, and no edit deletes an epic that has children.
+  const stableIds = new Map(fixture.issues.map((issue) => [issue.key, issue.id]));
   const { issues, gone } = applySourceEdits(fixture, edited);
-  const records: IndexRecord<"jira", JiraAttrs>[] = [];
+  const records: JiraRecord[] = [];
   const content = new Map<ItemId<"jira">, JiraContent>();
   for (const issue of issues) {
     const id = itemId("jira", issue.key);
-    // A fresh copy each call, so records and content share no objects.
-    const attrs = (): JiraAttrs => ({
-      issueType: issue.issueType,
-      status: { ...issue.status },
-      epic: issue.epic === null ? null : itemId("jira", issue.epic),
-      assignee:
-        issue.assignee === null ? null : { accountId: issue.assignee, name: name(issue.assignee) },
-      points: issue.points,
-      labels: [...issue.labels],
-    });
+    const epic =
+      issue.epic === null
+        ? null
+        : { id: itemId("jira", issue.epic), stableId: stableIds.get(issue.epic) ?? "" };
+    const assignee = () =>
+      issue.assignee === null ? null : { accountId: issue.assignee, name: name(issue.assignee) };
     records.push({
       id,
       stableId: issue.id,
       title: issue.summary,
-      url: `${site}/browse/${issue.key}`,
+      location: `${site}/browse/${issue.key}`,
       updatedAt: issue.updatedAt,
-      attrs: attrs(),
+      facets: jiraFacets({
+        category: issue.status.category,
+        epic,
+        assignee: assignee(),
+      }),
+      attrs: {
+        issueType: issue.issueType,
+        status: issue.status.name,
+        points: issue.points,
+        labels: [...issue.labels],
+      },
     });
+    const comments = issue.comments.map((c) => ({
+      author: name(c.author),
+      body: c.body,
+      at: c.at,
+    }));
     content.set(id, {
-      ...attrs(),
+      issueType: issue.issueType,
+      status: { ...issue.status },
+      epic: epic?.id ?? null,
+      assignee: assignee(),
+      points: issue.points,
+      labels: [...issue.labels],
       summary: issue.summary,
       description: issue.description,
-      comments: issue.comments.map((c) => ({ author: name(c.author), body: c.body, at: c.at })),
+      comments,
       links: issue.links.map((link) => ({ ...link })),
+      text: jiraText({ summary: issue.summary, description: issue.description, comments }),
     });
   }
   return { records, content, gone };

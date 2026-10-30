@@ -3,41 +3,50 @@ import { test } from "node:test";
 import {
   type Cluster,
   type Grouping,
-  type IndexRecord,
   type Instant,
   instant,
   itemId,
+  type State,
 } from "@oriel/core";
-import type { JiraAttrs } from "@oriel/jira";
+import type { JiraRecord } from "@oriel/jira";
 import { fixtureIndex } from "./fixture.ts";
 import { groupings, windowView } from "./window.ts";
 
-type JiraRecord = IndexRecord<"jira", JiraAttrs>;
-
 const now: Instant = instant(new Date("2026-10-29T09:00:00.000Z"));
 
-function record(key: string, attrs: Partial<JiraAttrs> & { updated?: string } = {}): JiraRecord {
-  const { updated = "2026-10-28T09:00:00.000Z", ...rest } = attrs;
+function record(
+  key: string,
+  fields: {
+    issueType?: string;
+    status?: { name: string; category: State };
+    assignee?: { accountId: string; name: string };
+    points?: number;
+    updated?: string;
+  } = {},
+): JiraRecord {
+  const { updated = "2026-10-28T09:00:00.000Z", status, assignee } = fields;
   return {
     id: itemId("jira", key),
     stableId: key,
     title: `Title of ${key}`,
-    url: `https://oriel.atlassian.net/browse/${key}`,
+    location: `https://oriel.atlassian.net/browse/${key}`,
     updatedAt: instant(new Date(updated)),
+    facets: {
+      people: assignee ? [{ role: "assignee", id: assignee.accountId, name: assignee.name }] : [],
+      state: status?.category ?? "todo",
+      container: null,
+    },
     attrs: {
-      issueType: "Story",
-      status: { name: "To Do", category: "todo" },
-      epic: null,
-      assignee: null,
-      points: null,
+      issueType: fields.issueType ?? "Story",
+      status: status?.name ?? "To Do",
+      points: fields.points ?? null,
       labels: [],
-      ...rest,
     },
   };
 }
 
 // Returns the clusters it was given, whatever the records.
-function fixed(clusters: Cluster[]): Grouping<JiraRecord> {
+function fixed(clusters: Cluster[]): Grouping {
   return { id: "epic", label: "Epic", group: () => clusters };
 }
 
@@ -171,7 +180,10 @@ test("the fixtures are served after every source edit, as of their last one", ()
     indexed.some((record) => record.id === "jira:SYN-27"),
     false,
   );
-  assert.equal(indexed.find((record) => record.id === "jira:SYN-88")?.attrs.epic, "jira:SYN-3");
+  assert.equal(
+    indexed.find((record) => record.id === "jira:SYN-88")?.facets.container?.id,
+    "jira:SYN-3",
+  );
   for (const id of ["epic", "assignee", "stuck"] as const) {
     assert.equal(groupings[id].id, id);
     const view = windowView(id, groupings[id], indexed, asOf, true);

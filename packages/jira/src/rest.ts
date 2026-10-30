@@ -3,6 +3,7 @@
 import {
   array,
   boolean,
+  type Facets,
   type Infer,
   type Instant,
   instant,
@@ -16,11 +17,12 @@ import {
   parseItemId,
   record,
   refine,
+  type State,
   string,
   unknown,
   type Validator,
 } from "@oriel/core";
-import type { JiraAttrs } from "./attrs.ts";
+import { type JiraAttrs, type JiraContent, jiraFacets } from "./attrs.ts";
 import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";
@@ -72,7 +74,7 @@ export const indexFieldShape = {
   summary: string,
   issuetype: issueType,
   status: object({ name: string, statusCategory: object({ key: string }) }),
-  parent: optional(object({ key: issueKey })),
+  parent: optional(object({ id: numericId, key: issueKey })),
   assignee: optional(nullable(user)),
   labels: optional(array(string)),
   updated: time,
@@ -94,7 +96,7 @@ export const issue = <F>(fields: Validator<F>) => object({ id: numericId, key: i
 
 // Jira's status categories are "new", "indeterminate" and "done"; a status
 // outside them counts as not started.
-const categories: Record<string, JiraAttrs["status"]["category"]> = {
+const categories: Record<string, State> = {
   indeterminate: "in-progress",
   done: "done",
 };
@@ -110,6 +112,12 @@ const isStandard = (type: Infer<typeof issueType>) =>
 export const epicOf = (fields: Pick<IndexFields, "issuetype" | "parent">): ItemId<"jira"> | null =>
   fields.parent && isStandard(fields.issuetype) ? itemId("jira", fields.parent.key) : null;
 
+// The epic as a container: its handle and its stable ID.
+const containerOf = (fields: Pick<IndexFields, "issuetype" | "parent">) =>
+  fields.parent && isStandard(fields.issuetype)
+    ? { id: itemId("jira", fields.parent.key), stableId: fields.parent.id }
+    : null;
+
 // An estimate is a number; anything else on the field isn't one.
 export const pointsOf = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -123,17 +131,41 @@ export function rawField(raw: unknown, field: string | undefined): unknown {
   return parsed.ok ? parsed.value.fields[field] : undefined;
 }
 
+const categoryOf = (fields: IndexFields): State =>
+  categories[fields.status.statusCategory.key] ?? "todo";
+
+const assigneeOf = (fields: IndexFields) =>
+  fields.assignee
+    ? { accountId: fields.assignee.accountId, name: fields.assignee.displayName }
+    : null;
+
 export function attrsOf(fields: IndexFields, points: unknown): JiraAttrs {
   return {
     issueType: fields.issuetype.name,
-    status: {
-      name: fields.status.name,
-      category: categories[fields.status.statusCategory.key] ?? "todo",
-    },
+    status: fields.status.name,
+    points: pointsOf(points),
+    labels: fields.labels ?? [],
+  };
+}
+
+export function facetsOf(fields: IndexFields): Facets {
+  return jiraFacets({
+    category: categoryOf(fields),
+    epic: containerOf(fields),
+    assignee: assigneeOf(fields),
+  });
+}
+
+// What a read returns about the fields the index also keeps.
+export function fieldsOf(
+  fields: IndexFields,
+  points: unknown,
+): Pick<JiraContent, "issueType" | "status" | "epic" | "assignee" | "points" | "labels"> {
+  return {
+    issueType: fields.issuetype.name,
+    status: { name: fields.status.name, category: categoryOf(fields) },
     epic: epicOf(fields),
-    assignee: fields.assignee
-      ? { accountId: fields.assignee.accountId, name: fields.assignee.displayName }
-      : null,
+    assignee: assigneeOf(fields),
     points: pointsOf(points),
     labels: fields.labels ?? [],
   };

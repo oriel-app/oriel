@@ -1,20 +1,23 @@
 // Identifiers and time. Items are addressed by source-qualified IDs
-// (`jira:SYN-12`), which are handles; an item's identity is the source's stable
-// ID, kept beside it. Internal records use ULIDs. Time is canonical UTC
+// (`jira:SYN-12`, `folder:3f9a…`), which are handles; an item's identity is
+// the source's stable ID, kept beside it. Internal records use ULIDs. Time is canonical UTC
 // ISO-8601 with milliseconds, so instants sort as strings.
 
 // Adding a source here makes `keyShapes` below require its key shape.
-export const sourceKinds = ["jira"] as const;
+export const sourceKinds = ["jira", "folder"] as const;
 export type SourceKind = (typeof sourceKinds)[number];
 export type ItemId<K extends SourceKind = SourceKind> = `${K}:${string}`;
 export type Ulid = string & { readonly __brand: "Ulid" };
 export type Instant = string & { readonly __brand: "Instant" };
 
 // Keys reach generated code (the region's `.d.ts` and guest stubs), so each
-// source's key shape is strict.
+// source's key shape is strict, and no key carries text a person wrote.
 
 const keyShapes: Record<SourceKind, RegExp> = {
   jira: /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/,
+  // A fixed-length hash of the folder's ID and the file's canonical relative
+  // path (decision 0019): a file's name is its title, never its key.
+  folder: /^[0-9a-f]{16}$/,
 };
 
 export function parseItemId(id: string): { source: SourceKind; key: string } | null {

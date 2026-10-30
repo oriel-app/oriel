@@ -8,17 +8,19 @@ import {
   type Bindings,
   type CapturedMutation,
   guestMessage,
-  type IndexRecord,
   instant,
-  type Region,
-  type ReadResult,
   type ItemId,
+  parseItemId,
+  type Reader,
+  type ReadResult,
+  type Region,
+  type SearchHit,
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { type FixtureSnapshot, fixtureSnapshot, type JiraContent } from "@oriel/jira";
+import { type FixtureSnapshot, fixtureSnapshot } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { IssueTypes, Reader } from "./describe.ts";
+import type { IssueTypes } from "./describe.ts";
 import { guestStart } from "./shim.ts";
 
 export const fixture = loadJiraFixture();
@@ -59,15 +61,17 @@ export function pickedWithEpic(): Region {
 
 // Every term must appear in the item's key or title.
 export function fixtureReader(snapshot: FixtureSnapshot): Reader {
+  const contentOf = (id: ItemId) =>
+    parseItemId(id)?.source === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
   return {
     read: async (ids) =>
-      ids.map((id): ReadResult<"jira", JiraContent> => {
-        const content = snapshot.content.get(id);
+      ids.map((id): ReadResult => {
+        const content = contentOf(id);
         return content ? { id, status: "ok", content } : { id, status: "gone", reason: "deleted" };
       }),
     search: async (query, limit) => {
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      const found: IndexRecord[] = snapshot.records.filter((record) => {
+      const found: SearchHit[] = snapshot.records.filter((record) => {
         const haystack = `${record.id} ${record.title}`.toLowerCase();
         return terms.every((term) => haystack.includes(term));
       });
@@ -83,7 +87,7 @@ export function movingReader(reader: Reader, from: ItemId<"jira">, to: ItemId<"j
     read: async (ids) => {
       const results = await reader.read(ids.map((id) => (id === to ? from : id)));
       const byId = new Map(results.map((result) => [result.id, result]));
-      return ids.map((id): ReadResult<"jira", JiraContent> => {
+      return ids.map((id): ReadResult => {
         if (id === from) return { id, status: "moved", to };
         const result = byId.get(id === to ? from : id);
         if (!result) throw new Error(`no result for ${id}`);

@@ -156,24 +156,31 @@ test("the snapshot maps issues to index records and content", () => {
     id: "jira:SYN-3",
     stableId: "10003",
     title: "Summary of SYN-3",
-    url: "https://oriel.atlassian.net/browse/SYN-3",
+    location: "https://oriel.atlassian.net/browse/SYN-3",
     updatedAt: "2026-09-01T10:00:00.000Z",
-    attrs: {
-      issueType: "Story",
-      status: { name: "To Do", category: "todo" },
-      epic: "jira:SYN-1",
-      assignee: { accountId: "old", name: "Old Hand" },
-      points: 3,
-      labels: [],
+    facets: {
+      people: [{ role: "assignee", id: "old", name: "Old Hand" }],
+      state: "todo",
+      container: { id: "jira:SYN-1", stableId: "10001" },
     },
+    attrs: { issueType: "Story", status: "To Do", points: 3, labels: [] },
   });
-  assert.deepEqual(before.content.get("jira:SYN-3")?.comments, [
+  const content = before.content.get("jira:SYN-3");
+  assert.deepEqual(content?.comments, [
     { author: "Ana Field", body: "Looks right.", at: "2026-08-30T10:00:00.000Z" },
   ]);
+  assert.deepEqual(
+    [content?.status, content?.epic, content?.assignee],
+    [{ name: "To Do", category: "todo" }, "jira:SYN-1", { accountId: "old", name: "Old Hand" }],
+  );
+  assert.equal(
+    content?.text,
+    "Summary of SYN-3\n\nAna Field, 2026-08-30T10:00:00.000Z:\nLooks right.",
+  );
 
   const after = fixtureSnapshot(fixture, "https://oriel.atlassian.net", fixture.edits.length);
   const moved = after.records.find((record) => record.id === "jira:SYN-3");
-  assert.equal(moved?.attrs.epic, "jira:SYN-2");
+  assert.deepEqual(moved?.facets.container, { id: "jira:SYN-2", stableId: "10002" });
   assert.equal(moved?.title, "Renamed");
   assert.equal(moved?.updatedAt, "2026-10-01T11:00:00.000Z");
   assert.equal(after.content.has("jira:SYN-5"), false);

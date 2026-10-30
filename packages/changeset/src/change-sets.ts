@@ -52,8 +52,9 @@ import {
   type LinkRow,
 } from "./store.ts";
 
-// The read side a diff needs: values as they are now in the source.
-export type Reader<K extends SourceKind = SourceKind> = {
+// The read side a diff needs: field values as they are now in the source.
+// Not core's `Reader`, which reads whole items for a run.
+export type FieldReader<K extends SourceKind = SourceKind> = {
   // Field names as in the source's catalogue (see jira.ts); "gone" when the
   // item no longer exists or can't be seen.
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
@@ -64,7 +65,7 @@ export type Reader<K extends SourceKind = SourceKind> = {
 export type ChangeSetDeps = {
   db: DatabaseSync;
   // The writable sources. A source missing here is read-only.
-  sources: { [K in SourceKind]?: { writer: SourceWriter<K>; reader: Reader<K> } };
+  sources: { [K in SourceKind]?: { writer: SourceWriter<K>; reader: FieldReader<K> } };
   // A review link is this URL with the token appended as a last path segment.
   reviewBase: URL;
   now: () => Instant;
@@ -325,12 +326,12 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return link;
   };
 
-  const sourceOf = (kind: SourceKind): { writer: SourceWriter; reader: Reader } => {
+  const sourceOf = (kind: SourceKind): { writer: SourceWriter; reader: FieldReader } => {
     const found = deps.sources[kind];
     if (!found) throw new Error(`${kind} items are read-only`);
     return found;
   };
-  const reader = (kind: SourceKind): Reader => sourceOf(kind).reader;
+  const reader = (kind: SourceKind): FieldReader => sourceOf(kind).reader;
 
   // Lines for the rows of `set` as loaded, so `set.hash` is the hash of exactly
   // what is rendered. Applied lines show what the source reported; pending

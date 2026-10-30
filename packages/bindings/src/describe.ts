@@ -4,7 +4,6 @@
 // Each parameter carries its TypeScript type, as the agent sees it, beside the
 // validator the host checks the guest's value with.
 import {
-  type IndexRecord,
   type ItemId,
   isNewRef,
   type NewRef,
@@ -13,19 +12,13 @@ import {
   object,
   optional,
   parseItemId,
+  type Reader,
   type ReadResult,
   type Region,
   string,
   type Validator,
 } from "@oriel/core";
-import type { JiraContent, JiraOp } from "@oriel/jira";
-
-// What reads proxy to: the source's live content for region items, and the
-// index for `search()`. The caller binds the workspace.
-export type Reader = {
-  read(ids: readonly ItemId<"jira">[]): Promise<ReadResult<"jira", JiraContent>[]>;
-  search(query: string, limit: number): Promise<readonly IndexRecord[]>;
-};
+import { type JiraContent, jiraContent, type JiraOp } from "@oriel/jira";
 
 // The names the script sees, in the order the guest passes them to it. Each
 // function lives in one: a namespace, or a global function of that name.
@@ -204,9 +197,19 @@ const gone = (id: ItemId<"jira">, reason: "deleted" | "forbidden" | "moved") => 
   reason,
 });
 
-async function answers(reader: Reader, ids: readonly ItemId<"jira">[]) {
-  const byId = new Map((await reader.read(ids)).map((result) => [result.id, result]));
-  return (id: ItemId<"jira">) => {
+// A Jira item's content as the guest sees it. A reader may sit behind any
+// transport, so what it returns is checked here.
+function jiraItem(id: ItemId<"jira">, content: unknown) {
+  const parsed = jiraContent(content);
+  if (!parsed.ok) throw new Error(`the source returned ${id} in a shape Oriel can't read`);
+  return item(id, parsed.value);
+}
+
+async function answers(reader: Reader, ids: readonly ItemId[]) {
+  const byId = new Map<string, ReadResult>(
+    (await reader.read(ids)).map((result) => [result.id, result]),
+  );
+  return (id: ItemId) => {
     const result = byId.get(id);
     if (!result) throw new Error(`the source returned nothing for ${id}`);
     return result;
@@ -226,10 +229,10 @@ async function live(reader: Reader, ids: readonly ItemId<"jira">[]): Promise<Vie
   const second = moves.length ? await answers(reader, moves) : null;
   return ids.map((id) => {
     const result = first(id);
-    if (result.status === "ok") return item(id, result.content);
+    if (result.status === "ok") return jiraItem(id, result.content);
     if (result.status === "gone") return gone(id, result.reason);
     const next = second?.(result.to);
-    if (next?.status === "ok") return item(id, next.content);
+    if (next?.status === "ok") return jiraItem(id, next.content);
     return gone(id, next?.status === "gone" ? next.reason : "moved");
   });
 }
@@ -312,7 +315,7 @@ const searchFn = read({
     return records.slice(0, count).map((r) => ({
       id: r.id,
       title: r.title,
-      url: r.url,
+      location: r.location,
       updatedAt: r.updatedAt,
     }));
   },

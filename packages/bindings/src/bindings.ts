@@ -3,10 +3,11 @@ import {
   type CapturedMutation,
   type ItemId,
   type NewRef,
+  type Reader,
   type Region,
 } from "@oriel/core";
 import { jiraOps } from "@oriel/jira";
-import { describe, type Fn, type IssueTypes, pathOf, type Reader, scopeOf } from "./describe.ts";
+import { describe, type Fn, type IssueTypes, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { shimFor } from "./shim.ts";
 

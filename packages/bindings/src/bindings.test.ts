@@ -158,7 +158,7 @@ test("reads proxy live, and only search() reaches outside the region", async () 
   const results = found.value as object[];
   assert.ok(results.length > 0 && results.length <= 3);
   for (const result of results)
-    assert.deepEqual(Object.keys(result), ["id", "title", "url", "updatedAt"]);
+    assert.deepEqual(Object.keys(result), ["id", "title", "location", "updatedAt"]);
 
   await assert.rejects(
     bindings.read("jira.getItem", ["jira:SYN-80"]),

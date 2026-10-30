@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Cluster, type Grouping, type Instant, instant } from "@oriel/core";
-import { fixtureSnapshot } from "@oriel/jira";
+import { fixtureSnapshot, type JiraRecord } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import {
-  assigneeGrouping,
-  byKey,
-  epicGrouping,
-  type JiraRecord,
-  stuckGrouping,
-} from "./groupings.ts";
+import { assigneeGrouping, byKey, epicGrouping, stuckGrouping } from "./groupings.ts";
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
@@ -35,16 +29,24 @@ const groupings = [epicGrouping, assigneeGrouping, stuckGrouping];
 // the grouping that wrote it. A rule missing here fails the check.
 type Rule = (record: JiraRecord, now: Instant, index: readonly JiraRecord[]) => boolean;
 const workItem = (record: JiraRecord) => ["Story", "Task", "Bug"].includes(record.attrs.issueType);
-const notDone = (record: JiraRecord) => record.attrs.status.category !== "done";
+const notDone = (record: JiraRecord) => record.facets.state !== "done";
+const epicOf = (record: JiraRecord) => record.facets.container ?? null;
+const assigneeId = (record: JiraRecord) =>
+  record.facets.people?.find((person) => person.role === "assignee")?.id ?? null;
 const rules: Record<string, Rule> = {
-  "Stories, tasks and bugs not done and last updated 14 or more days ago": (record, now) =>
+  "Items not done and last updated 14 or more days ago; from Jira, only stories, tasks and bugs": (
+    record,
+    now,
+  ) =>
     workItem(record) &&
     notDone(record) &&
     Date.parse(now) - Date.parse(record.updatedAt) >= 14 * day,
-  "Stories, tasks and bugs not done and with no story point estimate": (record) =>
+  "Jira stories, tasks and bugs not done and with no story point estimate": (record) =>
     workItem(record) && notDone(record) && record.attrs.points === null,
-  "Items whose epic isn't in the index": (record, _now, index) =>
-    record.attrs.epic !== null && !index.some((other) => other.id === record.attrs.epic),
+  "Items whose epic isn't in the index": (record, _now, index) => {
+    const epic = epicOf(record);
+    return epic !== null && !index.some((other) => other.stableId === epic.stableId);
+  },
 };
 
 // What's wrong with a grouping's derived clusters: a rule we can't check, an
@@ -67,7 +69,7 @@ function ruleProblems(clusters: Cluster[], index: readonly JiraRecord[], now: In
       if (shown.has(record.id) && !holds) problems.push(`${cluster.key}: shows ${record.id}`);
       if (!shown.has(record.id) && holds) problems.push(`${cluster.key}: leaves out ${record.id}`);
     }
-    const known = new Set(index.map((record) => record.id));
+    const known = new Set<string>(index.map((record) => record.id));
     for (const id of shown) if (!known.has(id)) problems.push(`${cluster.key}: unknown ${id}`);
   }
   return problems;
@@ -188,7 +190,7 @@ test("no update in 14 days counts back from now to the millisecond", () => {
 
 test("stuck leaves out epics, done work, types it doesn't name and zero estimates", () => {
   const epic = current.find((record) => record.id === "jira:SYN-7");
-  const done = current.find((record) => record.attrs.status.category === "done");
+  const done = current.find((record) => record.facets.state === "done");
   const story = current.find((record) => record.id === "jira:SYN-88");
   assert.ok(epic && done && story);
   const old = at("2020-01-01T00:00:00.000Z");
@@ -232,14 +234,14 @@ test("each epic is a cluster keyed by its stable ID, anchored on it, holding its
           key: epic.stableId,
           label: epic.title,
           anchor: epic.id,
-          itemIds: items.filter((item) => item.attrs.epic === epic.id).map((item) => item.id),
+          itemIds: items.filter((item) => epicOf(item)?.id === epic.id).map((item) => item.id),
           origin: "source",
         })),
         {
           key: "no-epic",
           label: "No epic",
           anchor: null,
-          itemIds: items.filter((item) => item.attrs.epic === null).map((item) => item.id),
+          itemIds: items.filter((item) => epicOf(item) === null).map((item) => item.id),
           origin: "source",
         },
       ],
@@ -286,7 +288,7 @@ test("items whose epic isn't in the index get a derived cluster that says so", (
   // Without the weather epic, its stories still name it.
   const records = current.filter((record) => record.id !== "jira:SYN-3");
   const clusters = epicGrouping.group(records, last);
-  const orphaned = records.filter((record) => record.attrs.epic === "jira:SYN-3");
+  const orphaned = records.filter((record) => epicOf(record)?.id === "jira:SYN-3");
   assert.ok(orphaned.length > 0);
   const missing = clusters.at(-1);
   assert.deepEqual(missing, {
@@ -307,10 +309,16 @@ test("an item the source names as an epic anchors a cluster, whatever its type",
   const story = current.find((record) => record.id === "jira:SYN-88");
   const other = current.find((record) => record.id === "jira:SYN-10");
   assert.ok(story && other);
-  const child = { ...other, attrs: { ...other.attrs, epic: story.id } };
+  const child = {
+    ...other,
+    facets: { ...other.facets, container: { id: story.id, stableId: story.stableId } },
+  };
   // Whether the story names an epic of its own or not, it's an anchor, never an item.
-  for (const epic of [null, "jira:SYN-3"] as const) {
-    const records: JiraRecord[] = [{ ...story, attrs: { ...story.attrs, epic } }, child];
+  for (const epic of [null, { id: "jira:SYN-3" as const, stableId: "10003" }]) {
+    const records: JiraRecord[] = [
+      { ...story, facets: { ...story.facets, container: epic } },
+      child,
+    ];
     const clusters = epicGrouping.group(records, last);
     assert.deepEqual(clusters.find((cluster) => cluster.anchor === story.id)?.itemIds, [child.id]);
     assert.deepEqual(ruleProblems(clusters, records, last), []);
@@ -325,8 +333,10 @@ test("one cluster per assignee by name, then the unassigned, with epics as items
   for (const { edited, records } of states) {
     const clusters = assigneeGrouping.group(records, last);
     const people = new Map(
-      records.flatMap(({ attrs }) =>
-        attrs.assignee ? [[attrs.assignee.accountId, attrs.assignee.name] as const] : [],
+      records.flatMap(({ facets }) =>
+        (facets.people ?? []).flatMap((person) =>
+          person.role === "assignee" ? [[person.id, person.name] as const] : [],
+        ),
       ),
     );
     const names = [...people.values()].toSorted((a, b) => a.localeCompare(b, "en"));
@@ -340,9 +350,7 @@ test("one cluster per assignee by name, then the unassigned, with epics as items
       assert.equal(cluster.anchor, null);
       const members = records.filter((record) => cluster.itemIds.includes(record.id));
       const accountId = cluster.key === "unassigned" ? null : cluster.key.slice("person:".length);
-      assert.ok(
-        members.every((record) => (record.attrs.assignee?.accountId ?? null) === accountId),
-      );
+      assert.ok(members.every((record) => assigneeId(record) === accountId));
       assert.deepEqual(
         cluster.itemIds,
         members.toSorted(byKey).map((record) => record.id),

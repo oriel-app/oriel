@@ -1,15 +1,14 @@
-import type { Grouping, Instant } from "@oriel/core";
+import type { Grouping, IndexRecord, Instant } from "@oriel/core";
 import {
   assigneeGrouping,
   clusterZoom,
   epicGrouping,
-  type JiraRecord,
   listZoom,
   stuckGrouping,
 } from "@oriel/groupings";
 import type { GroupingId, WindowView } from "@oriel/web/view";
 
-export const groupings: Record<GroupingId, Grouping<JiraRecord>> = {
+export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,
   assignee: assigneeGrouping,
   stuck: stuckGrouping,
@@ -17,8 +16,8 @@ export const groupings: Record<GroupingId, Grouping<JiraRecord>> = {
 
 export function windowView(
   id: GroupingId,
-  grouping: Grouping<JiraRecord>,
-  records: readonly JiraRecord[],
+  grouping: Grouping,
+  records: readonly IndexRecord[],
   now: Instant,
   fixture: boolean,
 ): WindowView {
