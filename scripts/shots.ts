@@ -77,8 +77,7 @@ async function openAll(page: Page): Promise<void> {
   for (let left = await closed.count(); left > 0; left -= 1) {
     await closed.first().click();
     await page.waitForFunction(
-      (count) => document.querySelectorAll('.cluster-toggle[aria-expanded="false"]').length < count,
-      left,
+      `document.querySelectorAll('.cluster-toggle[aria-expanded="false"]').length < ${left}`,
     );
   }
 }

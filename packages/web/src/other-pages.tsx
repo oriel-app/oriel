@@ -68,7 +68,9 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
       ) : model.stage === "decided" ? (
         <section class="review-card">
           <h1 class="page-title">
-            {model.decided?.decision?.kind === "approved" ? "Approved" : "Rejected"}
+            {model.decided?.decision?.kind === "approved"
+              ? "You approved this change"
+              : "You rejected this change"}
           </h1>
           <p>
             Thanks, {model.decided?.decision?.by}.{" "}

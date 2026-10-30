@@ -30,7 +30,7 @@ const actionNames: Record<ChangeSetAction, string> = {
 
 const statusNames: Record<ChangeSetView["status"], string> = {
   open: "Awaiting review",
-  approved: "Approved",
+  approved: "Ready to apply",
   rejected: "Rejected",
   applied: "Applied",
   partial: "Partly applied",
