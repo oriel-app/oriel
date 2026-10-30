@@ -47,6 +47,6 @@ Adds: none
 - Core shrinks and adapters grow.
 - Groupings, bindings and change sets reach source-specific behaviour only through what each adapter declares.
 - The folder source gets its own fixtures and evals (SPEC §8).
-- A thread over only folder items has no change to apply. Under the four thread states it ends as dropped unless a writable item joins its group.
+- A thread over only folder items has no change to apply. The user marks it done once it's answered (SPEC §1.3, added by the maintainer on 2026-10-29).
 - The synthetic chat channel comes after the slice.
 - Notes shared between users wait for multiplayer. Until then, a teammate's note can arrive as a file in the folder.
