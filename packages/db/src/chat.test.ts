@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type Run, type Ulid, ulid } from "@oriel/core";
+import { folderStore } from "./folders.ts";
 import { groupStore } from "./groups.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
@@ -259,6 +260,26 @@ test("the inbox and a thread's change sets are read through indexes", () => {
     plan("select id from threads where group_id = 'g' order by created_at desc, id desc"),
     /threads_by_group/,
   );
+});
+
+test("a workspace connects one folder, and a new pick replaces it", () => {
+  const { db, id, workspaceId } = fresh();
+  const folders = folderStore(db);
+  assert.equal(folders.get(workspaceId), null);
+  const first = id();
+  folders.connect(workspaceId, { id: first, path: "/Users/pm/notes" }, t0);
+  assert.deepEqual(folders.get(workspaceId), {
+    id: first,
+    path: "/Users/pm/notes",
+    connectedAt: t0,
+  });
+  const second = id();
+  folders.connect(workspaceId, { id: second, path: "/Users/pm/plans" }, after(1));
+  assert.deepEqual(folders.get(workspaceId), {
+    id: second,
+    path: "/Users/pm/plans",
+    connectedAt: after(1),
+  });
 });
 
 test("the first workspace is the oldest, or none", () => {

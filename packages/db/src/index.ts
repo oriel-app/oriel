@@ -1,3 +1,4 @@
+export * from "./folders.ts";
 export * from "./groups.ts";
 export * from "./index-store.ts";
 export * from "./migrate.ts";
