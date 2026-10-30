@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,10 +55,14 @@ test("a script reads through the bindings and returns a value", async () => {
   assert.deepEqual(result.reads, [
     { fn: "jira.listStories", args: [], ms: 0, outsideRegion: false, payloadHash },
   ]);
-  assert.deepEqual(logged, [
+  const [typechecked, ...rest] = logged;
+  assert.equal(typechecked?.message, "sandbox.typecheck");
+  assert.equal(typeof typechecked.fields?.["tsc_pid"], "number");
+  assert.deepEqual(rest, [
     {
       message: "sandbox.read",
       fields: {
+        status: "answered",
         fn: "jira.listStories",
         args: [],
         ms: 0,
@@ -141,10 +146,15 @@ test("a read the bindings reject throws inside the guest", async () => {
   `);
   assert.deepEqual(result.transcript, [{ kind: "return", value: "the source is down" }]);
   assert.deepEqual(result.reads, []);
-  assert.deepEqual(logged[0], {
-    message: "sandbox.read",
-    fields: { fn: "jira.fail", args: [], ms: 0, error: "the source is down" },
-  });
+  assert.deepEqual(
+    logged.filter((line) => line.message === "sandbox.read"),
+    [
+      {
+        message: "sandbox.read",
+        fields: { status: "failed", fn: "jira.fail", args: [], ms: 0, error: "the source is down" },
+      },
+    ],
+  );
 });
 
 test("nothing returned is null", async () => {
@@ -368,6 +378,169 @@ test("aborting stops the run and rejects with the reason", async () => {
     },
   );
   await assert.rejects(running, reason);
+});
+
+test("the outcome follows the error's phase", async () => {
+  // A type error is the script's to fix.
+  const typed = await go(`const n: number = "two";\nreturn n;`);
+  assert.equal(errorOf(typed.result.transcript.at(-1)).phase, "typecheck");
+  assert.equal(typed.result.outcome, "threw");
+  // The bindings' own size cap is a limit, not a throw.
+  const big = await go(`return "${"x".repeat(70_000)}";`, { maxScriptBytes: 100_000 });
+  assert.equal(errorOf(big.result.transcript.at(-1)).phase, "limit");
+  assert.equal(big.result.outcome, "limit");
+});
+
+test("reads still out when a run ends are logged as unanswered, and a late answer is ignored", async () => {
+  const base = fakeBindings();
+  let answer = () => {};
+  const bindings: Bindings = {
+    ...base,
+    read: (fn, args) =>
+      fn === "jira.hold"
+        ? new Promise(
+            (resolve) => (answer = () => resolve({ value: "late", outsideRegion: false })),
+          )
+        : base.read(fn, args),
+  };
+  const { result, logged } = await go(
+    `await jira.listStories();\nawait jira.hold();`,
+    { wallMs: 1_000 },
+    bindings,
+  );
+  assert.equal(result.outcome, "timeout");
+  const lines = () =>
+    logged
+      .filter((line) => line.message !== "sandbox.typecheck")
+      .map((line) => [line.message, line.fields?.["status"] ?? line.fields?.["outcome"]]);
+  const expected = [
+    ["sandbox.read", "answered"],
+    ["sandbox.read", "unanswered"],
+    ["sandbox.run", "timeout"],
+  ];
+  assert.deepEqual(lines(), expected);
+  answer();
+  // Let the late answer land, then check nothing came of it.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(lines(), expected);
+  assert.deepEqual(
+    result.reads.map((read) => read.fn),
+    ["jira.listStories"],
+  );
+});
+
+// Types that keep tsc busy for seconds: a 100,000-member union compared
+// against tuples it doesn't fit.
+const slowTypes = [
+  "type D = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;",
+  "type Flat<T extends unknown[]> = T extends [infer H, ...infer R] ? (H extends unknown ? [H, ...Flat<R>] : never) : [];",
+  "const all = null as unknown as Flat<[D, D, D, D, D]>;",
+  "const a: [number, number, number, number, string] = all;",
+  "const b: [string, number, number, number, number] = all;",
+  "const c: [number, string, number, number, number] = all;",
+  "return [a, b, c];",
+].join("\n");
+
+// Whether a process is still there, zombies included.
+const exists = (pid: number) =>
+  spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim() !==
+  "";
+
+function tscPid(logged: Logged[]): number {
+  const pid = logged.find((line) => line.message === "sandbox.typecheck")?.fields?.["tsc_pid"];
+  assert.equal(typeof pid, "number");
+  return Number(pid);
+}
+
+test("types that keep tsc busy end at the deadline, with no tsc or temp directory left", async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "oriel-tsc-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  // A high memory cap, so the deadline is what stops tsc here.
+  const box = createSandbox({ now: () => 0, tmpDir: tmp, maxRssMb: 4096 });
+  const logged: Logged[] = [];
+  const log = (message: string, fields?: Record<string, unknown>) =>
+    logged.push({ message, fields });
+  const signal = new AbortController().signal;
+  const result = await box.run(slowTypes, fakeBindings(), {
+    limits: { ...limits, wallMs: 2_000 },
+    signal,
+    log,
+  });
+  assert.equal(result.outcome, "timeout");
+  const error = errorOf(result.transcript.at(-1));
+  assert.equal(error.phase, "limit");
+  assert.match(error.message, /typecheck took longer than|while its types were checked/);
+  assert.equal(exists(tscPid(logged)), false);
+  assert.deepEqual(readdirSync(tmp), []);
+  const next = await box.run(`return 1;`, fakeBindings(), { limits, signal, log: () => {} });
+  assert.deepEqual(next.transcript, [{ kind: "return", value: 1 }]);
+});
+
+test("tsc over the memory cap is killed from the host", async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "oriel-tsc-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const box = createSandbox({ now: () => 0, tmpDir: tmp, maxRssMb: 256, memoryPollMs: 10 });
+  const logged: Logged[] = [];
+  const result = await box.run(slowTypes, fakeBindings(), {
+    limits,
+    signal: new AbortController().signal,
+    log: (message, fields) => logged.push({ message, fields }),
+  });
+  assert.equal(result.outcome, "limit");
+  assert.match(errorOf(result.transcript.at(-1)).message, /the typecheck used \d+ MB of memory/);
+  assert.equal(exists(tscPid(logged)), false);
+  assert.deepEqual(readdirSync(tmp), []);
+});
+
+test("an abort while tsc runs kills it from the host", async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "oriel-tsc-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const box = createSandbox({ now: () => 0, tmpDir: tmp });
+  const controller = new AbortController();
+  const logged: Logged[] = [];
+  const running = box.run(slowTypes, fakeBindings(), {
+    limits,
+    signal: controller.signal,
+    log: (message, fields) => {
+      logged.push({ message, fields });
+      if (message === "sandbox.typecheck") controller.abort(new Error("stopped"));
+    },
+  });
+  await assert.rejects(running, /stopped/);
+  // The next run waits in the queue until the aborted one is cleaned up.
+  const signal = new AbortController().signal;
+  const next = await box.run(`return 1;`, fakeBindings(), { limits, signal, log: () => {} });
+  assert.deepEqual(next.transcript, [{ kind: "return", value: 1 }]);
+  assert.equal(exists(tscPid(logged)), false);
+  assert.deepEqual(readdirSync(tmp), []);
+});
+
+test("an abort while queued behind a slow compile rejects at once and starts no tsc", async () => {
+  const box = createSandbox({ now: () => 0, maxRssMb: 4096 });
+  const slow = box.run(slowTypes, fakeBindings(), {
+    limits: { ...limits, wallMs: 3_000 },
+    signal: new AbortController().signal,
+    log: () => {},
+  });
+  const controller = new AbortController();
+  const queuedLog: string[] = [];
+  const queued = box.run(`return 1;`, fakeBindings(), {
+    limits,
+    signal: controller.signal,
+    log: (message) => queuedLog.push(message),
+  });
+  controller.abort(new Error("not needed"));
+  const first = await Promise.race([
+    queued.then(
+      () => "queued resolved",
+      () => "queued rejected",
+    ),
+    slow.then(() => "slow settled"),
+  ]);
+  assert.equal(first, "queued rejected");
+  await assert.rejects(queued, /not needed/);
+  assert.equal((await slow).outcome, "timeout");
+  assert.deepEqual(queuedLog, []);
 });
 
 test("an aborted signal rejects before Deno starts", async () => {

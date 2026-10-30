@@ -16,8 +16,10 @@ const canary = "canary-41c2e8";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "oriel-deno-")));
 const secretTs = join(root, "secret.ts");
 const secretJson = join(root, "secret.json");
+const secretEnv = join(root, ".env");
 writeFileSync(secretTs, `export const canary = "${canary}";\n`);
 writeFileSync(secretJson, JSON.stringify({ canary }));
+writeFileSync(secretEnv, `TOKEN=${canary}\n`);
 after(() => rmSync(root, { recursive: true, force: true }));
 
 let runs = 0;
@@ -79,6 +81,26 @@ test("--deny-read stops a JSON import inside an AsyncFunction body", async () =>
   const { out } = await entry(
     `const AsyncFunction = (async () => {}).constructor;\ntry {\n  console.log(await new AsyncFunction(${JSON.stringify(body)})());\n} catch (error) {\n  console.log(String(error));\n}\n`,
   );
+  assert.doesNotMatch(out, new RegExp(canary));
+  assert.match(out, /Requires read access/);
+});
+
+// The entry module prints what the worker sent, or its error, then exits.
+const workerEntry = (url: string) =>
+  `const worker = new Worker(${JSON.stringify(url)}, { type: "module" });
+worker.onmessage = (event) => { console.log("sent " + event.data); Deno.exit(0); };
+worker.onerror = (event) => { event.preventDefault(); console.log("error " + event.message); Deno.exit(0); };
+`;
+
+test("--deny-read stops a worker whose script is a local file", async () => {
+  const { out } = await entry(workerEntry(pathToFileURL(secretEnv).href));
+  assert.doesNotMatch(out, new RegExp(canary));
+  assert.match(out, /Requires read access/);
+});
+
+test("--deny-read stops a data: worker's static import of a local file", async () => {
+  const source = `import secret from ${JSON.stringify(pathToFileURL(secretJson).href)} with { type: "json" };\npostMessage(JSON.stringify(secret));`;
+  const { out } = await entry(workerEntry(`data:text/javascript,${encodeURIComponent(source)}`));
   assert.doesNotMatch(out, new RegExp(canary));
   assert.match(out, /Requires read access/);
 });

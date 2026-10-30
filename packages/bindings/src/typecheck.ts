@@ -4,7 +4,7 @@
 // no `types`, an explicit file list and the script wrapped in a function (so
 // a `///` line in it is only a comment), tsc reads the listed files and the
 // es2024 lib, nothing else.
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -81,43 +81,81 @@ function tscBin(): Promise<string> {
   return launcher;
 }
 
+// What a caller can do about tsc from outside: put it in a directory the
+// caller owns and removes, and learn its pid as soon as it starts, to watch
+// its memory or kill it. tsc runs detached, so its pid also names its process
+// group: on Node 22.15 and later the launcher `execve`s the native compiler,
+// so the pid is the compiler itself, and on the fallback, where the launcher
+// spawns it, killing the group still takes both.
+export type TscControl = { dir?: string; onSpawn?: (pid: number) => void };
+
+const maxOutput = 1 << 20;
+
+// `spawn`, not `execFile`: execFile passes spawn only a fixed set of options,
+// and `detached` isn't one of them.
 function tsc(
   dir: string,
-  options: { timeoutMs: number; signal?: AbortSignal },
+  options: { timeoutMs: number; signal?: AbortSignal } & TscControl,
   bin: string,
 ): Promise<{ stdout: string; failed: boolean } | "timeout" | "overflow"> {
   return new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [bin, "-p", "tsconfig.json", "--pretty", "false"],
-      {
-        cwd: dir,
-        env: {},
-        encoding: "utf8",
-        timeout: options.timeoutMs,
-        maxBuffer: 1 << 20,
-        ...(options.signal ? { signal: options.signal } : {}),
-      },
-      (error, stdout, stderr) => {
-        if (!error) return resolve({ stdout, failed: false });
-        if (error.name === "AbortError") return reject(error);
-        if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return resolve("overflow");
-        if (error.killed) return resolve("timeout");
-        if (typeof error.code === "number") return resolve({ stdout, failed: true });
-        reject(new Error(`tsc didn't run: ${error.message}\n${stderr}`, { cause: error }));
-      },
-    );
+    const child = spawn(process.execPath, [bin, "-p", "tsconfig.json", "--pretty", "false"], {
+      cwd: dir,
+      env: {},
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    const pid = child.pid;
+    if (pid !== undefined) options.onSpawn?.(pid);
+    let ended: "timeout" | "overflow" | null = null;
+    const end = (why: "timeout" | "overflow") => {
+      ended ??= why;
+      if (pid === undefined) return;
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    };
+    const timer = setTimeout(() => end("timeout"), options.timeoutMs);
+    // spawn's own abort only signals the pid; take the whole group.
+    options.signal?.addEventListener("abort", () => end("timeout"), { once: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > maxOutput) end("overflow");
+    });
+    child.stderr.on("data", (chunk: string) => {
+      if (stderr.length < maxOutput) stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      if (error.name === "AbortError") return reject(error);
+      reject(new Error(`tsc didn't run: ${error.message}\n${stderr}`, { cause: error }));
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (options.signal?.aborted) return;
+      if (ended) return resolve(ended);
+      if (code === 0) return resolve({ stdout, failed: false });
+      if (code !== null) return resolve({ stdout, failed: true });
+      reject(new Error(`tsc didn't run: it was stopped by ${signal}\n${stderr}`));
+    });
   });
 }
 
 // Checks `files` (name → source) as one program. Names are ours, never the
-// agent's.
+// agent's. Without `dir`, it makes its own temporary directory and removes it.
 export async function compile(
   files: Readonly<Record<string, string>>,
-  options: { timeoutMs: number; signal?: AbortSignal },
+  options: { timeoutMs: number; signal?: AbortSignal } & TscControl,
 ): Promise<Checked> {
   const bin = await tscBin();
-  const dir = await mkdtemp(join(tmpdir(), "oriel-typecheck-"));
+  const dir = options.dir ?? (await mkdtemp(join(tmpdir(), "oriel-typecheck-")));
   try {
     const tsconfig = { compilerOptions, files: Object.keys(files) };
     await writeFile(join(dir, "tsconfig.json"), JSON.stringify(tsconfig));
@@ -131,7 +169,7 @@ export async function compile(
       throw new Error(`tsc failed without diagnostics:\n${result.stdout}`);
     return { kind: "checked", diagnostics };
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    if (options.dir === undefined) await rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -156,7 +194,7 @@ function where(d: Diagnostic, scriptLines: number): string {
 export async function typecheck(
   script: string,
   dts: string,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal } & TscControl = {},
 ): Promise<RunError | null> {
   options.signal?.throwIfAborted();
   const start = guestStart(script);
@@ -166,6 +204,8 @@ export async function typecheck(
     {
       timeoutMs: options.timeoutMs ?? 10_000,
       ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.dir === undefined ? {} : { dir: options.dir }),
+      ...(options.onSpawn ? { onSpawn: options.onSpawn } : {}),
     },
   );
   if (checked.kind === "limit") return { phase: "limit", message: checked.message, logs: [] };

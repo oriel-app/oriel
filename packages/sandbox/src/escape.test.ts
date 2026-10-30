@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "no
 import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { after, test } from "node:test";
 import type { RunLimits, TranscriptEntry } from "@oriel/core";
 import { regionBindings } from "./real-bindings.ts";
@@ -25,9 +26,11 @@ const secretJson = join(dir, "secret.json");
 const secretTs = join(dir, "secret.ts");
 const secretTxt = join(dir, "secret.txt");
 const written = join(dir, "written.txt");
+const secretEnv = join(dir, ".env");
 writeFileSync(secretJson, JSON.stringify({ canary }));
 writeFileSync(secretTs, `export const canary = "${canary}";\n`);
 writeFileSync(secretTxt, `${canary}\n`);
+writeFileSync(secretEnv, `TOKEN=${canary}\n`);
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const limits: RunLimits = {
@@ -80,19 +83,21 @@ function errorOf(entry: TranscriptEntry | undefined) {
   return entry.error;
 }
 
-const notCapable = /NotCapable|Requires \w+ access/;
+// Each test names the permission it expects, so it can't pass on another denial.
+const denied = (permission: string) => new RegExp(`Requires ${permission} access`);
 const noImports = /Unsupported scheme "no-imports"/;
 const noRemote = /--no-remote is specified|A remote specifier was requested/;
 
-test("network: fetch", () => mustFail(`return await fetch("https://example.com/");`, notCapable));
+test("network: fetch", () =>
+  mustFail(`return await fetch("https://example.com/");`, denied("net")));
 
 test("network: fetch to localhost", () =>
-  mustFail(`return await fetch("http://127.0.0.1:8787/");`, notCapable));
+  mustFail(`return await fetch("http://127.0.0.1:8787/");`, denied("net")));
 
 test("network: a raw socket", () =>
-  mustFail(`return await Deno.connect({ hostname: "127.0.0.1", port: 8787 });`, notCapable));
+  mustFail(`return await Deno.connect({ hostname: "127.0.0.1", port: 8787 });`, denied("net")));
 
-test("network: listening", () => mustFail(`return Deno.listen({ port: 0 });`, notCapable));
+test("network: listening", () => mustFail(`return Deno.listen({ port: 0 });`, denied("net")));
 
 test("network: node:net", () =>
   mustFail(
@@ -102,25 +107,28 @@ test("network: node:net", () =>
        const socket = net.connect(8787, "127.0.0.1", () => resolve("connected"));
        socket.on("error", reject);
      });`,
-    notCapable,
+    denied("net"),
   ));
 
 test("files: Deno read", () =>
-  mustFail(`return Deno.readTextFileSync(${JSON.stringify(secretTxt)});`, notCapable));
+  mustFail(`return Deno.readTextFileSync(${JSON.stringify(secretTxt)});`, denied("read")));
 
 test("files: node:fs read", () =>
   mustFail(
     `// @ts-ignore
      const fs = await import("node:fs");
      return fs.readFileSync(${JSON.stringify(secretTxt)}, "utf8");`,
-    notCapable,
+    denied("read"),
   ));
 
 test("files: listing a directory", () =>
-  mustFail(`return [...Deno.readDirSync(${JSON.stringify(dir)})].length;`, notCapable));
+  mustFail(`return [...Deno.readDirSync(${JSON.stringify(dir)})].length;`, denied("read")));
 
 test("files: write", async () => {
-  await mustFail(`return Deno.writeTextFileSync(${JSON.stringify(written)}, "x");`, notCapable);
+  await mustFail(
+    `return Deno.writeTextFileSync(${JSON.stringify(written)}, "x");`,
+    denied("write"),
+  );
   assert.equal(existsSync(written), false);
 });
 
@@ -129,33 +137,40 @@ test("files: node:module require", () =>
     `// @ts-ignore
      const { createRequire } = await import("node:module");
      return JSON.stringify(createRequire("file:///require-base.js")(${JSON.stringify(secretJson)}));`,
-    notCapable,
+    denied("read"),
   ));
 
-test("env: one variable", () => mustFail(`return Deno.env.get("HOME");`, notCapable));
+test("env: one variable", () => mustFail(`return Deno.env.get("HOME");`, denied("env")));
 
-test("env: all of it", () => mustFail(`return JSON.stringify(Deno.env.toObject());`, notCapable));
+test("env: all of it", () =>
+  mustFail(`return JSON.stringify(Deno.env.toObject());`, denied("env")));
 
 test("env: node:process", () =>
-  mustFail(`// @ts-ignore\nreturn (await import("node:process")).default.env.HOME;`, notCapable));
+  mustFail(
+    `// @ts-ignore\nreturn (await import("node:process")).default.env.HOME;`,
+    denied("env"),
+  ));
 
-test("os information", () => mustFail(`return Deno.hostname();`, notCapable));
+test("os information", () => mustFail(`return Deno.hostname();`, denied("sys")));
 
 test("subprocess: Deno.Command", () =>
   mustFail(
     `return new Deno.Command("/bin/echo", { args: ["hi"] }).outputSync().code;`,
-    notCapable,
+    denied("run"),
   ));
 
 test("subprocess: node:child_process", () =>
   mustFail(
+    // Deno's child_process reads NODE_V8_COVERAGE before it spawns, so env
+    // access is refused first, even with an explicit env. Deno.Command above
+    // shows the run denial.
     `// @ts-ignore
-     const { execSync } = await import("node:child_process");
-     return String(execSync("echo hi"));`,
-    notCapable,
+     const { execFileSync } = await import("node:child_process");
+     return String(execFileSync("/bin/echo", ["hi"], { env: {} }));`,
+    denied("env"),
   ));
 
-test("FFI", () => mustFail(`return Deno.dlopen("libc.so.6", {});`, notCapable));
+test("FFI", () => mustFail(`return Deno.dlopen("libc.so.6", {});`, denied("ffi")));
 
 // The script becomes a function at run time, so even a literal specifier in it
 // is a run-time import: the import map refuses `file:`, and read permission
@@ -223,13 +238,13 @@ test("import(): jsr: and npm: packages", async () => {
 test("Function constructor: reading a file", () =>
   mustFail(
     `return new Function("return Deno.readTextFileSync(" + ${JSON.stringify(JSON.stringify(secretTxt))} + ")")();`,
-    notCapable,
+    denied("read"),
   ));
 
 test("Function constructor: through a prototype chain", () =>
   mustFail(
     `return [].constructor.constructor("return globalThis.Deno.env.toObject()")();`,
-    notCapable,
+    denied("env"),
   ));
 
 test("Function constructor: an import the static scan can't see", () =>
@@ -260,8 +275,38 @@ test("a worker inherits the denials", () =>
      } finally {
        worker.terminate();
      }`,
-    notCapable,
+    denied("read"),
   ));
+
+// Waits for a worker made from `url`: its first message, or its error.
+const workerFrom = (url: string) => `
+  const worker = new Worker(${url}, { type: "module" });
+  try {
+    return await new Promise((resolve, reject) => {
+      worker.onmessage = (event: any) => resolve(event.data);
+      worker.onerror = (event: any) => {
+        event.preventDefault();
+        reject(new Error(event.message));
+      };
+    });
+  } finally {
+    worker.terminate();
+  }`;
+
+// A parse error would quote the file's first line, so its contents must never
+// be read at all. Deno 2.9 applies the import map to a worker's own script
+// URL and to its imports, so the map refuses these first; deno.test.ts shows
+// --deny-read alone stops them too.
+test("a worker whose script is a local file", () =>
+  mustFail(workerFrom(JSON.stringify(pathToFileURL(secretEnv).href)), noImports));
+
+test("a data: worker that statically imports a local file", () => {
+  const source = `import secret from ${JSON.stringify(pathToFileURL(secretJson).href)} with { type: "json" };\npostMessage(JSON.stringify(secret));`;
+  return mustFail(
+    workerFrom(JSON.stringify(`data:text/javascript,${encodeURIComponent(source)}`)),
+    noImports,
+  );
+});
 
 test("an infinite loop is killed at the wall time", async () => {
   const result = await run(`for (;;) {}`, { wallMs: 1_000 });
@@ -356,11 +401,13 @@ test("an error message shaped to make the host's error cleanup slow", async () =
 // overflows its stack and can break it for the rest of its thread. Deep
 // brackets are refused before it runs; other deep shapes reach it, so it runs
 // in a worker that is replaced after any refusal.
-async function strippingSurvives(deep: string) {
+async function strippingSurvives(deep: string, refusal: RegExp) {
   for (let i = 0; i < 3; i++) {
     const result = await run(deep);
     assert.equal(result.outcome, "threw");
-    assert.equal(errorOf(result.transcript.at(-1)).phase, "typecheck");
+    const error = errorOf(result.transcript.at(-1));
+    assert.equal(error.phase, "typecheck");
+    assert.match(error.message, refusal);
   }
   const result = await run(`const n: number = 2;\nreturn n;`);
   assert.deepEqual(result.transcript, [{ kind: "return", value: 2 }]);
@@ -369,10 +416,18 @@ async function strippingSurvives(deep: string) {
 }
 
 test("deeply nested brackets can't break the type stripper", () =>
-  strippingSurvives(`return ${"(".repeat(8_000)}1${")".repeat(8_000)};`));
+  strippingSurvives(
+    `return ${"(".repeat(8_000)}1${")".repeat(8_000)};`,
+    /nests brackets more than 256 deep/,
+  ));
 
+// Refused by the stripper itself, before tsc: so this still proves the worker
+// is replaced even if a Node upgrade stopped the overflow corrupting it.
 test("chained arrows that overflow the type stripper can't break later runs", () =>
-  strippingSurvives(`return ${"a=>".repeat(1_500)}1;`));
+  strippingSurvives(
+    `return ${"a=>".repeat(1_500)}1;`,
+    /doesn't compile as the body of an async function: .*(Maximum call stack size exceeded|memory access out of bounds)/,
+  ));
 
 test("a memory flood on the V8 heap", async () => {
   const result = await run(

@@ -47,6 +47,9 @@ export type SandboxOptions = {
   now?: () => number;
   // The host's user ID. Default: the process's.
   uid?: number;
+  // A cap on the compile step (typecheck and guestStart), however long the
+  // wall time. Default 10 s.
+  typecheckMs?: number;
 };
 
 // `coldStartMs`: from spawning Deno to the guest's first line, or null when
@@ -82,6 +85,17 @@ const maxDepth = 64;
 
 type Ending = { outcome: RunResult["outcome"]; last: TranscriptEntry };
 
+// A read passed to the source. `read` is set once it is answered; a failed or
+// unanswered one is only logged, since core's `ProxiedRead` needs a payload
+// hash.
+type ReadRecord = {
+  fn: string;
+  args: unknown[];
+  startedAt: number;
+  read: ProxiedRead | null;
+  status: "answered" | "failed" | "unanswered";
+};
+
 export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   // Root ignores file modes, so the read-only location_data below would not
   // hold, and the Cache API could fill the disk.
@@ -95,7 +109,13 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   const memoryPollMs = options.memoryPollMs ?? 50;
   const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
   const now = options.now ?? (() => performance.now());
-  const compiler = createCompiler();
+  const typecheckMs = options.typecheckMs ?? 10_000;
+  const tmpRoot = options.tmpDir ?? tmpdir();
+  const compiler = createCompiler({
+    tmpDir: tmpRoot,
+    maxRssBytes: maxRssMb * MB,
+    memoryPollMs,
+  });
 
   async function run(
     script: string,
@@ -103,9 +123,11 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     { limits, signal, log }: RunOptions,
   ): Promise<SandboxRunResult> {
     signal.throwIfAborted();
-    const started = now();
+    // The wall clock starts when the compile does: compile and execution
+    // share one `wallMs`. A wait in the compile queue isn't counted.
+    let started = now();
     // A script that is too big or doesn't compile never reaches Deno.
-    const refuse = (last: TranscriptEntry, outcome: "limit" | "threw") =>
+    const refuse = (last: TranscriptEntry, outcome: Exclude<RunResult["outcome"], "ok">) =>
       finished(
         { reads: [], mutations: [], transcript: [last], outcome },
         now() - started,
@@ -118,16 +140,34 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       return refuse(errorEntry("limit", text, [], hints.script), "limit");
     }
     // The typecheck, then the reply that starts the guest: in a worker, see
-    // compiler.ts.
+    // compiler.ts. Its own cap is the smaller of the wall time and
+    // `typecheckMs`.
+    const compileMs = Math.min(limits.wallMs, typecheckMs);
     const prepared = await compiler.prepare({
       script,
       dts: bindings.dts,
-      timeoutMs: limits.wallMs,
+      deadlineMs: compileMs,
+      deadlineMessage:
+        compileMs === limits.wallMs
+          ? `the run passed its wall time of ${limits.wallMs} ms while its types were checked`
+          : `the typecheck took longer than ${typecheckMs} ms`,
+      signal,
+      log,
+      onStart: () => (started = now()),
     });
     signal.throwIfAborted();
-    if (!prepared.ok) return refuse({ kind: "error", error: prepared.error }, "threw");
+    if (!prepared.ok) {
+      const { error, outcome } = prepared;
+      const hint = outcome === "timeout" ? hints.wall : error.hint;
+      return refuse(errorEntry(error.phase, error.message, error.logs, hint), outcome);
+    }
+    const remainingMs = limits.wallMs - (now() - started);
+    if (remainingMs <= 0) {
+      const text = `the run passed its wall time of ${limits.wallMs} ms while its types were checked`;
+      return refuse(errorEntry("limit", text, [], hints.wall), "timeout");
+    }
 
-    const dir = await realpath(await mkdtemp(join(options.tmpDir ?? tmpdir(), "oriel-run-")));
+    const dir = await realpath(await mkdtemp(join(tmpRoot, "oriel-run-")));
     try {
       const work = join(dir, "work");
       await mkdir(work);
@@ -155,6 +195,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         entryPath,
         clean,
         started,
+        remainingMs,
         bindings,
         limits,
         signal,
@@ -173,6 +214,8 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     entryPath: string;
     clean: (text: string) => string;
     started: number;
+    // What is left of the wall time after the compile.
+    remainingMs: number;
     bindings: Bindings;
     limits: RunLimits;
     signal: AbortSignal;
@@ -189,7 +232,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       child.stdin.on("error", () => {});
       child.stdin.write(`${JSON.stringify(job.start)}\n`);
 
-      const reads: (ProxiedRead | undefined)[] = [];
+      const reads: ReadRecord[] = [];
       const mutations: CapturedMutation[] = [];
       const transcript: TranscriptEntry[] = [];
       const logs: string[] = [];
@@ -209,8 +252,9 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         child.kill("SIGKILL");
       };
       // An addition to decision 0006 (see 0017): there is no in-guest
-      // deadline. The host kills the process at the wall-time cap and reports
-      // it itself, as a clean "limit" error that names the cap.
+      // deadline. The host kills the process at the wall-time cap, less what
+      // the compile used, and reports it itself, as a clean "limit" error that
+      // names the cap.
       const wall = setTimeout(
         () =>
           end(
@@ -221,7 +265,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               hints.wall,
             ),
           ),
-        limits.wallMs,
+        job.remainingMs,
       );
       const stopWatching =
         child.pid === undefined
@@ -245,22 +289,28 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       // Aborted while the entry file was being written.
       if (signal.aborted) onAbort();
 
+      // Every read passed to the source is logged once, before the run's
+      // `sandbox.run` line: answered or failed as it settles, and unanswered
+      // when the run ends first. One that answers after that is ignored.
       const proxyRead = async (id: number, fn: string, args: unknown[]) => {
-        const slot = reads.push(undefined) - 1;
-        const startedRead = now();
+        const record: ReadRecord = { fn, args, startedAt: now(), read: null, status: "unanswered" };
+        reads.push(record);
         let reply: string;
         try {
           const { value, outsideRegion } = await bindings.read(fn, args);
+          if (settled) return;
           const payload = JSON.stringify(value) ?? "null";
           const read = {
             fn,
             args,
-            ms: now() - startedRead,
+            ms: now() - record.startedAt,
             outsideRegion,
             payloadHash: sha256(payload),
           };
-          if (!settled) reads[slot] = read;
+          record.read = read;
+          record.status = "answered";
           log("sandbox.read", {
+            status: "answered",
             fn,
             args,
             ms: read.ms,
@@ -269,8 +319,16 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           });
           reply = `{"id":${id},"ok":true,"value":${payload}}`;
         } catch (error) {
+          if (settled) return;
           const message = errorText(error);
-          log("sandbox.read", { fn, args, ms: now() - startedRead, error: message });
+          record.status = "failed";
+          log("sandbox.read", {
+            status: "failed",
+            fn,
+            args,
+            ms: now() - record.startedAt,
+            error: message,
+          });
           reply = JSON.stringify({ id, ok: false, error: message });
         }
         if (!ending) child.stdin.write(`${reply}\n`);
@@ -431,6 +489,15 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         clearTimeout(wall);
         stopWatching();
         signal.removeEventListener("abort", onAbort);
+        for (const record of reads) {
+          if (record.status !== "unanswered") continue;
+          log("sandbox.read", {
+            status: "unanswered",
+            fn: record.fn,
+            args: record.args,
+            ms: now() - record.startedAt,
+          });
+        }
       };
 
       child.on("error", (error) => {
@@ -443,18 +510,21 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         if (settled) return;
         if (ending === null && lines.pending() > 0) malformed("its last line has no newline");
         settle();
+        const answered = reads.flatMap((record) => (record.read ? [record.read] : []));
         if (ending === "aborted") {
+          log("sandbox.run", {
+            outcome: "aborted",
+            wall_ms: now() - job.started,
+            cold_start_ms: coldStartMs,
+            reads: answered.length,
+            mutations: mutations.length,
+          });
           reject(signal.reason);
           return;
         }
         const { outcome, last } = ending ?? exited(code, killedBy);
         transcript.push(last);
-        const result = {
-          reads: reads.filter((read) => read !== undefined),
-          mutations,
-          transcript,
-          outcome,
-        };
+        const result = { reads: answered, mutations, transcript, outcome };
         resolve(finished(result, now() - job.started, coldStartMs, log));
       });
     });

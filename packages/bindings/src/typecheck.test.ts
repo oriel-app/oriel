@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -113,6 +113,18 @@ test("an aborted typecheck rejects", async () => {
   await assert.rejects(typecheck("return 1;", dts, { signal: AbortSignal.abort() }), {
     name: "AbortError",
   });
+});
+
+test("a caller can own tsc's directory and learn its pid as it starts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "oriel-typecheck-owned-"));
+  const pids: number[] = [];
+  const error = await typecheck("return 1;", dts, { dir, onSpawn: (pid) => pids.push(pid) });
+  assert.equal(error, null);
+  assert.equal(pids.length, 1);
+  assert.ok((pids[0] ?? 0) > 0);
+  // Left for its owner to remove.
+  assert.deepEqual((await readdir(dir)).sort(), ["region.d.ts", "script.ts", "tsconfig.json"]);
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("tsc's plain output parses, chained messages and file-less errors included", () => {
