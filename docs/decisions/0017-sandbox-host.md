@@ -14,6 +14,7 @@ Adds: none
 - **Deadline.** This replaces 0006's in-guest deadline. When the host kills a run at its wall-time cap, it returns a clean error with phase `limit`, naming the cap.
 - **Root.** The host refuses to run as root, where file modes don't hold.
 - **Isolation of the type stripper.** `typecheck` and `guestStart` run in a worker that is replaced after any failure. A hostile script, such as a long chain of arrow functions, can break Node's type stripper for the rest of its thread. `guestStart`'s bounds on size and nesting catch some such scripts, but not all.
+- **tsc is the host's.** tsc runs detached, as its own process group. The main thread learns its pid, holds it to the same memory cap as the guest, and kills the group at the compile deadline or on abort before replacing the worker. The main thread also owns the typecheck's temp directory. Compile and execution share one wall-time cap.
 
 **Why.** Each one closes a gap found by a test:
 
