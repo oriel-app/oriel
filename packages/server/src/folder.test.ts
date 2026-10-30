@@ -1,7 +1,15 @@
 // A folder of markdown files, connected by its typed path: its items join
 // the window beside Jira's, and a group can mix both.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type TestContext, test } from "node:test";
@@ -84,6 +92,53 @@ test("only a folder can be connected, by a full path, from this window", async (
     405,
   );
   assert.deepEqual(json(await app.get("/api/folder")), { folder: null });
+});
+
+const fileIds = (view: WindowView) =>
+  view.clusters
+    .flatMap((c) => c.list.map((row) => row.id))
+    .filter((id) => id.startsWith("folder:"))
+    .toSorted();
+
+test("picking the same folder again keeps every item's ID", async (t) => {
+  const app = await connected(t);
+  const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  assert.equal(before.length, 2);
+  // Typed another way, it resolves to the same folder.
+  const again = await app.post("/api/folder", { path: `${app.dir.root}/` });
+  assert.equal(again.status, 200);
+  const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  assert.deepEqual(after, before);
+});
+
+test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {
+  const app = await connected(t);
+  const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const locked = join(app.dir.top, "locked");
+  mkdirSync(locked);
+  writeFileSync(join(locked, "Secret plan.md"), "Not for Oriel.");
+  // Enterable, but not listable.
+  chmodSync(locked, 0o311);
+  let listable = true;
+  try {
+    readdirSync(locked);
+  } catch {
+    listable = false;
+  }
+  // Running as root, permissions don't bind.
+  if (listable) {
+    chmodSync(locked, 0o700);
+    t.skip("permissions don't bind here");
+    return;
+  }
+  const refused = await app.post("/api/folder", { path: locked });
+  // Back to normal, so the temporary directory can be removed.
+  chmodSync(locked, 0o700);
+  assert.equal(refused.status, 400);
+  assert.match(json<{ error: string }>(refused).error, /couldn't read the folder/);
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder });
+  const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  assert.deepEqual(after, before);
 });
 
 test("a folder syncs again on demand, and when the server starts", async (t) => {

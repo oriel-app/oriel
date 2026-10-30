@@ -199,10 +199,10 @@ export async function createApp(options: AppOptions): Promise<App> {
   let folder = stored && folderFrom(stored);
   // A folder that can't be read now (an unmounted drive) leaves its items as
   // they were, and says so.
-  const syncFolder = async (): Promise<string | null> => {
-    if (!folder) return "No folder is connected.";
+  const syncFolder = async (which = folder): Promise<string | null> => {
+    if (!which) return "No folder is connected.";
     try {
-      await syncInto(folder.source, folderAttrs, true);
+      await syncInto(which.source, folderAttrs, true);
       return null;
     } catch (error) {
       log("folder sync failed", { error: error instanceof Error ? error.message : String(error) });
@@ -239,11 +239,16 @@ export async function createApp(options: AppOptions): Promise<App> {
       };
     }
     const first = index.source(workspaceId, "folder") === null;
-    const id = newId();
-    folders.connect(workspaceId, { id, path: real }, now());
-    folder = folderFrom({ id, path: real });
-    const problem = await syncFolder();
+    // The same folder keeps its ID, so none of its items' keys change.
+    const id = folder && folder.path === real ? folder.id : newId();
+    const chosen = folderFrom({ id, path: real });
+    // Only a folder that synced is kept; one that can't be listed leaves the
+    // one before as it was. A walk that fails throws before the index sees
+    // any of it.
+    const problem = await syncFolder(chosen);
     if (problem) return { problem };
+    folders.connect(workspaceId, { id, path: real }, now());
+    folder = chosen;
     if (first) connected("folder");
     const view = folderView();
     return view ? { folder: view } : { problem: "No folder is connected." };
