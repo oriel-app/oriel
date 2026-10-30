@@ -1,6 +1,7 @@
 // The sync worker: drives a source's `sync` into the index, one snapshot
 // version per sync. Any source works; Jira is the first.
 import {
+  facets,
   type IndexRecord,
   type Instant,
   isInstant,
@@ -70,11 +71,11 @@ export async function syncSource<K extends SourceKind, A>(
     run.apply({ records: valid, gone: page.gone, cursor: page.cursor });
     records += valid.length;
     gone += page.gone.length;
-    last = page.cursor;
+    last = page.cursor ?? last;
   }
   if (full) {
     const missing = index.liveStableIds(workspaceId, source.kind).filter((id) => !seen.has(id));
-    if (missing.length) run.apply({ records: [], gone: missing, cursor: last ?? "" });
+    if (missing.length) run.apply({ records: [], gone: missing, cursor: last });
     gone += missing.length;
   }
   const version = run.finish(last, options.clock());
@@ -88,8 +89,11 @@ export async function syncSource<K extends SourceKind, A>(
 function check<A>(kind: SourceKind, attrs: Validator<A>, record: IndexRecord): string | null {
   if (parseItemId(record.id)?.source !== kind) return `not a ${kind} item ID`;
   if (!record.stableId || typeof record.stableId !== "string") return "empty stable ID";
-  if (typeof record.title !== "string" || typeof record.url !== "string")
-    return "title and url must be strings";
+  if (typeof record.title !== "string" || typeof record.location !== "string")
+    return "title and location must be strings";
+  const checked = facets(JSON.parse(JSON.stringify(record.facets) ?? "null"), "$.facets");
+  if (!checked.ok)
+    return checked.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");
   if (!isInstant(record.updatedAt)) return "updatedAt is not a canonical instant";
   const parsed = attrs(JSON.parse(JSON.stringify(record.attrs) ?? "null"), "$.attrs");
   if (!parsed.ok) return parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");

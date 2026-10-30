@@ -1,7 +1,23 @@
 // The read side only. The writer is exported from `@oriel/jira/writer`, and
 // nothing here imports it.
 export { adfToText, textToAdf } from "./adf.ts";
-export { jiraAttrs } from "./attrs.ts";
+export {
+  type JiraAttrs,
+  jiraAttrs,
+  jiraAttrsOf,
+  type JiraContent,
+  jiraContent,
+  jiraDetails,
+  jiraFacets,
+  jiraKind,
+  jiraPresentation,
+  type JiraRecord,
+  jiraText,
+} from "./attrs.ts";
+export * from "./fixture.ts";
+export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
+export { jiraNamespace } from "./namespace.ts";
+export { jiraSpecs } from "./specs.ts";
 export { cassette, type Exchange, exchange, recording, replay } from "./cassette.ts";
 export { fixtureSource, type FixtureSourceOptions } from "./fixture-source.ts";
 export { type JiraSource, type JiraSourceOptions, jiraSource, jqlDate } from "./source.ts";

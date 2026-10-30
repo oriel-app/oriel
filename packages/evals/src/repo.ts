@@ -1,7 +1,7 @@
 // Where evals read and write, from the repo root, whatever the working
 // directory: `pnpm evals` runs from the root, `evals:ci` from this package.
 import { readFileSync } from "node:fs";
-import { type JiraFixture, jiraFixtureParts, parseJiraFixture } from "@oriel/core";
+import { type JiraFixture, jiraFixtureParts, parseJiraFixture } from "@oriel/jira";
 
 export const repoRoot = new URL("../../../", import.meta.url);
 export const casesDir = new URL("packages/evals/cases/", repoRoot);

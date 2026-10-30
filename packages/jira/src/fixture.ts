@@ -4,23 +4,27 @@
 // throwaway site. Fixtures are the source of truth. `fixtureSnapshot` is the
 // one mapping from fixtures to index records and content, shared by sources
 // and tests.
-import { isInstant, type ItemId, itemId, parseItemId } from "./ids.ts";
-import type { JiraAttrs, JiraContent } from "./jira.ts";
-import type { IndexRecord } from "./source.ts";
 import {
   array,
   boolean,
+  type GroupOrigin,
   type Infer,
   type Issue,
+  isInstant,
+  type ItemId,
+  itemId,
   literal,
   nullable,
   number,
   object,
+  parseItemId,
   refine,
   type Result,
   string,
   union,
-} from "./validate.ts";
+} from "@oriel/core";
+import { type JiraContent, jiraFacets, jiraKind, type JiraRecord, jiraText } from "./attrs.ts";
+import { isSummary, maxSummary } from "./ops.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
 const issueKey = refine(
@@ -71,9 +75,10 @@ export const fixtureEdit = union(
   object({ kind: literal("delete"), key: issueKey, at: utc }),
 );
 
-// Item IDs snapshotted against the base state, as a region would be, with the
-// same origin as core's `Region`. For the epic grouping, `cluster` is the
-// epic's stable ID and `anchor` its item ID.
+// Item IDs snapshotted against the base state, as a region would be, with an
+// origin as stored: `fixtures/jira/` predates decision 0018 and calls a
+// cluster a "group". For the epic grouping, `cluster` is the epic's stable ID
+// and `anchor` its item ID.
 export const fixtureRegion = object({
   name: string,
   origin: union(
@@ -88,7 +93,8 @@ export const fixtureRegion = object({
   items: array(jiraItemId),
 });
 
-export const jiraFixture = object({
+// The fixture as its files hold it.
+export const jiraFixtureFile = object({
   project: fixtureProject,
   people: array(fixturePerson),
   issues: array(fixtureIssue),
@@ -99,30 +105,59 @@ export const jiraFixture = object({
 export type FixturePerson = Infer<typeof fixturePerson>;
 export type FixtureIssue = Infer<typeof fixtureIssue>;
 export type FixtureEdit = Infer<typeof fixtureEdit>;
-export type FixtureRegion = Infer<typeof fixtureRegion>;
-export type JiraFixture = Infer<typeof jiraFixture>;
+export type JiraFixtureFile = Infer<typeof jiraFixtureFile>;
+
+// A frozen region as Oriel uses it, with its origin in core's terms.
+export type FixtureRegion = { name: string; origin: GroupOrigin; items: ItemId<"jira">[] };
+export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureRegion[] };
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
 export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
 
-// Jira's limit on a summary, in characters.
-const maxSummary = 255;
-const badSummary = (summary: string) => !summary.trim() || [...summary].length > maxSummary;
+const badSummary = (summary: string) => !isSummary(summary);
 
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 
 // Shape first, then what shapes can't say: references resolve, keys are
 // unique and ascending, epics precede their children (the seed creates in key
 // order), each edit applies to the state the earlier ones left, and an epic
-// region holds its epic and that epic's children.
-export function parseJiraFixture(input: unknown): Result<JiraFixture> {
-  const shaped = jiraFixture(input);
+// region holds its epic and that epic's children. The fixture as stored, for
+// the generator that writes it.
+export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
+  const shaped = jiraFixtureFile(input);
   if (!shaped.ok) return shaped;
   const problems = consistency(shaped.value);
   return problems.length ? { ok: false, issues: problems } : shaped;
 }
 
-function consistency(fixture: JiraFixture): Issue[] {
+// The fixture as Oriel uses it: checked as stored, then each region's origin
+// in core's terms, where a "group" origin is a "cluster" (decision 0018). The
+// files are maintainer-owned, so the mapping lives here.
+export function parseJiraFixture(input: unknown): Result<JiraFixture> {
+  const parsed = parseJiraFixtureFile(input);
+  if (!parsed.ok) return parsed;
+  // The anchor by its stable ID too, from the base; the checks above
+  // guarantee an epic region's anchor is there.
+  const stableIds = new Map(parsed.value.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
+  const regions = parsed.value.regions.map(({ name, origin, items }): FixtureRegion => ({
+    name,
+    origin:
+      origin.kind === "group"
+        ? {
+            ...origin,
+            kind: "cluster",
+            anchor:
+              origin.anchor === null
+                ? null
+                : { id: origin.anchor, stableId: stableIds.get(origin.anchor) ?? "" },
+          }
+        : origin,
+    items,
+  }));
+  return { ok: true, value: { ...parsed.value, regions } };
+}
+
+function consistency(fixture: JiraFixtureFile): Issue[] {
   const found: Issue[] = [];
   const problem = (path: string, message: string) => found.push({ path, message });
   const people = new Set<string>();
@@ -271,14 +306,15 @@ export function applySourceEdits(
 }
 
 export type FixtureSnapshot = {
-  records: IndexRecord<"jira", JiraAttrs>[];
+  records: JiraRecord[];
   content: Map<ItemId<"jira">, JiraContent>;
   // Stable IDs the applied edits deleted.
   gone: string[];
 };
 
-// Pure. `site` is the origin item URLs point at, such as
+// Pure. `site` is the origin item locations point at, such as
 // "https://oriel.atlassian.net"; `edited` is how many source edits to apply.
+// Records and content share no objects.
 export function fixtureSnapshot(
   fixture: JiraFixture,
   site: string,
@@ -286,35 +322,56 @@ export function fixtureSnapshot(
 ): FixtureSnapshot {
   const people = new Map(fixture.people.map((person) => [person.id, person]));
   const name = (id: string) => people.get(id)?.displayName ?? id;
+  // Stable IDs never change, and no edit deletes an epic that has children.
+  const stableIds = new Map(fixture.issues.map((issue) => [issue.key, issue.id]));
   const { issues, gone } = applySourceEdits(fixture, edited);
-  const records: IndexRecord<"jira", JiraAttrs>[] = [];
+  const records: JiraRecord[] = [];
   const content = new Map<ItemId<"jira">, JiraContent>();
   for (const issue of issues) {
     const id = itemId("jira", issue.key);
-    // A fresh copy each call, so records and content share no objects.
-    const attrs = (): JiraAttrs => ({
-      issueType: issue.issueType,
-      status: { ...issue.status },
-      epic: issue.epic === null ? null : itemId("jira", issue.epic),
-      assignee:
-        issue.assignee === null ? null : { accountId: issue.assignee, name: name(issue.assignee) },
-      points: issue.points,
-      labels: [...issue.labels],
-    });
+    const epic =
+      issue.epic === null
+        ? null
+        : { id: itemId("jira", issue.epic), stableId: stableIds.get(issue.epic) ?? "" };
+    const assignee = () =>
+      issue.assignee === null ? null : { accountId: issue.assignee, name: name(issue.assignee) };
     records.push({
       id,
       stableId: issue.id,
       title: issue.summary,
-      url: `${site}/browse/${issue.key}`,
+      location: `${site}/browse/${issue.key}`,
       updatedAt: issue.updatedAt,
-      attrs: attrs(),
+      facets: jiraFacets({
+        category: issue.status.category,
+        epic,
+        assignee: assignee(),
+        // The fixture's types carry no hierarchy, so the name decides.
+        kind: jiraKind({ name: issue.issueType }),
+        points: issue.points,
+      }),
+      attrs: {
+        issueType: issue.issueType,
+        status: issue.status.name,
+        labels: [...issue.labels],
+      },
     });
+    const comments = issue.comments.map((c) => ({
+      author: name(c.author),
+      body: c.body,
+      at: c.at,
+    }));
     content.set(id, {
-      ...attrs(),
+      issueType: issue.issueType,
+      status: { ...issue.status },
+      epic: epic?.id ?? null,
+      assignee: assignee(),
+      points: issue.points,
+      labels: [...issue.labels],
       summary: issue.summary,
       description: issue.description,
-      comments: issue.comments.map((c) => ({ author: name(c.author), body: c.body, at: c.at })),
+      comments,
       links: issue.links.map((link) => ({ ...link })),
+      text: jiraText({ summary: issue.summary, description: issue.description, comments }),
     });
   }
   return { records, content, gone };

@@ -5,15 +5,10 @@ import {
   type Approved,
   type ChangeSets,
   type FieldValues,
-  fixtureSnapshot,
   type IndexRecord,
   type Instant,
   instant,
   type ItemId,
-  isItemId,
-  isJiraOp,
-  type JiraFixture,
-  jiraOps,
   parseItemId,
   type RunRef,
   type SourceWriter,
@@ -24,9 +19,10 @@ import {
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
-import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
+import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps, jiraSpecs } from "@oriel/jira";
+import { ensureWorkspace, groupStore, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { changeSets, type Reader } from "./change-sets.ts";
+import { changeSetsOver, type FieldReader, type Specs } from "./change-sets.ts";
 
 export type MemoryIssue = {
   key: string;
@@ -139,7 +135,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     summary: issue.summary,
     description: issue.description,
     points: issue.points,
-    accountId: issue.accountId,
+    assignee: issue.accountId,
     epic: issue.epic,
     updated: issue.updated,
     ...Object.fromEntries(
@@ -159,7 +155,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
   const land = (request: Request): WriteResult<"jira"> => {
     if (!isJiraOp(request.op)) throw new Error(`unknown op ${request.op}`);
     if (request.op === "createStory") {
-      const args = parsed(jiraOps.createStory(request.args));
+      const args = parsed(jiraOps.createStory.args(request.args));
       const issue: MemoryIssue = {
         key: `${start.project}-${nextIssue}`,
         id: String(20000 + nextIssue),
@@ -167,7 +163,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
         description: args.description ?? "",
         points: args.points ?? null,
         accountId: null,
-        epic: args.epic !== null && isItemId(args.epic) ? args.epic : null,
+        epic:
+          args.epic !== null && parseItemId(args.epic)?.source === "jira"
+            ? (args.epic as ItemId<"jira">)
+            : null,
         links: [],
         updated: tick(),
       };
@@ -185,26 +184,31 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
       throw new Error(
         `404: Issue does not exist or you do not have permission to see it: ${request.target}`,
       );
+    // As the Jira writer does: a handle that names another item now is refused.
+    if (issue.id !== request.expectedStableId)
+      throw new Error(`${request.target} names another item now (stable ID ${issue.id})`);
     const set = <F extends "summary" | "description" | "points" | "accountId">(
-      field: F,
+      property: F,
       value: MemoryIssue[F],
     ) => {
+      // Reported under core's field names, as the Jira writer does.
+      const field = property === "accountId" ? "assignee" : property;
       const before = pick(issue, [field]);
-      issue[field] = value;
+      issue[property] = value;
       issue.updated = tick();
       return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };
     };
     switch (request.op) {
       case "setSummary":
-        return set("summary", parsed(jiraOps.setSummary(request.args)).summary);
+        return set("summary", parsed(jiraOps.setSummary.args(request.args)).summary);
       case "setDescription":
-        return set("description", parsed(jiraOps.setDescription(request.args)).description);
+        return set("description", parsed(jiraOps.setDescription.args(request.args)).description);
       case "setEstimate":
-        return set("points", parsed(jiraOps.setEstimate(request.args)).points);
+        return set("points", parsed(jiraOps.setEstimate.args(request.args)).points);
       case "setAssignee":
-        return set("accountId", parsed(jiraOps.setAssignee(request.args)).accountId);
+        return set("accountId", parsed(jiraOps.setAssignee.args(request.args)).accountId);
       case "addLink": {
-        const args = parsed(jiraOps.addLink(request.args));
+        const args = parsed(jiraOps.addLink.args(request.args));
         const field = `link:${nextLink}`;
         issue.links.push({ linkId: String(nextLink), url: args.url, title: args.title });
         nextLink += 1;
@@ -216,7 +220,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
         };
       }
       case "removeLink": {
-        const { linkId } = parsed(jiraOps.removeLink(request.args));
+        const { linkId } = parsed(jiraOps.removeLink.args(request.args));
         const field = `link:${linkId}`;
         const before = pick(issue, [field]);
         if (before[field] === null) throw new Error(`404: no link ${linkId}`);
@@ -262,7 +266,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     current,
   };
 
-  const reader: Reader<"jira"> = {
+  const reader: FieldReader<"jira"> = {
     current,
     person: async (accountId) => people.get(accountId) ?? null,
   };
@@ -311,6 +315,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
 
 export const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9, 0, 0)));
 
+// Jira's op specs, as the composition root hands them to change sets.
+export const specs: Specs = { jira: jiraSpecs };
+
 // The thread's region: hand-picked stories that cover the fixture's mess, with
 // SYN-27, which the fixture's edits delete. SYN-2 and SYN-14 are outside it.
 export const regionKeys = [
@@ -326,34 +333,31 @@ export const regionKeys = [
   "SYN-117",
 ];
 
-// A fresh in-memory database with a workspace, a region, a thread and a run,
-// Jira in memory, and a clock the test moves by hand.
+// A fresh in-memory database with a workspace, a group of the region's items
+// at version 1, a thread on it and a run in that version, Jira in memory, and
+// a clock the test moves by hand.
 export function setup() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
   const ms = Date.parse(t0);
   const workspaceId = ulid(ms);
-  const regionId = ulid(ms);
+  const groupId = ulid(ms);
   const threadId = ulid(ms);
   const runId = ulid(ms);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  db.prepare(
-    "insert into regions (id, workspace_id, origin, snapshot, created_at) values (?, ?, ?, 1, ?)",
-  ).run(regionId, workspaceId, JSON.stringify({ kind: "picked" }), t0);
   const base = new Map(fixture().issues.map((issue) => [issue.key, issue.id]));
-  const member = db.prepare(`
-    insert into region_items (workspace_id, region_id, seq, source, stable_id, item_id)
-    values (?, ?, ?, 'jira', ?, ?)`);
-  regionKeys.forEach((key, i) =>
-    member.run(workspaceId, regionId, i + 1, base.get(key) ?? "", `jira:${key}`),
+  groupStore(db).create(
+    { id: groupId, workspaceId, name: "Picked", origin: { kind: "picked" } },
+    regionKeys.map((key) => ({ id: `jira:${key}`, stableId: base.get(key) ?? "" })),
+    t0,
   );
-  db.prepare(
-    "insert into threads (id, workspace_id, region_id, created_at) values (?, ?, ?, ?)",
-  ).run(threadId, workspaceId, regionId, t0);
   db.prepare(`
-    insert into runs (id, workspace_id, thread_id, snapshot, system_prompt_hash, dts_hash, model,
-      input_tokens, output_tokens, wall_ms, outcome, started_at)
-    values (?, ?, ?, 1, 'p', 'd', 'model', 0, 0, 0, 'ok', ?)`).run(
+    insert into threads (id, workspace_id, group_id, region_version, created_at)
+    values (?, ?, ?, 1, ?)`).run(threadId, workspaceId, groupId, t0);
+  db.prepare(`
+    insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
+      dts_hash, model, input_tokens, output_tokens, wall_ms, outcome, started_at)
+    values (?, ?, ?, 1, 1, 'p', 'd', 'model', 0, 0, 0, 'ok', ?)`).run(
     runId,
     workspaceId,
     threadId,
@@ -378,9 +382,10 @@ export function setup() {
   const events: TelemetryEvent[] = [];
   // Another instance over the same database, as after a restart.
   const instance = (writer: SourceWriter<"jira"> = jira.writer): ChangeSets =>
-    changeSets({
+    changeSetsOver({
       db,
       sources: { jira: { writer, reader: jira.reader } },
+      specs,
       reviewBase: new URL("http://localhost:4000/review/"),
       now: () => now,
       emit: (event) => events.push(event),
@@ -392,6 +397,8 @@ export function setup() {
     events,
     run,
     workspaceId: workspaceId as Ulid,
+    // The thread's group, at version 1 holding `regionKeys`.
+    groupId: groupId as Ulid,
     changeSets: instance(),
     instance,
     // A later sync page, such as a move or a reused key.

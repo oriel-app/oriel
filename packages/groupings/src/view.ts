@@ -11,7 +11,8 @@ export type ItemRow = {
   key: string;
   title: string;
   type: string;
-  status: { name: string; category: StatusCategory };
+  // Null for an item whose source tracks no state.
+  status: { name: string; category: StatusCategory } | null;
   assignee: string | null;
   points: number | null;
   // Whole days from the item's last update to the window's `asOf`.

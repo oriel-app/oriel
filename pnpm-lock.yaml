@@ -32,6 +32,10 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+    devDependencies:
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/changeset:
     dependencies:
@@ -41,6 +45,9 @@ importers:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/core: {}
 
@@ -55,12 +62,19 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/groupings:
     dependencies:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/jira:
     dependencies:
@@ -79,6 +93,10 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/server:
     dependencies:
@@ -88,6 +106,9 @@ importers:
       '@oriel/groupings':
         specifier: workspace:*
         version: link:../groupings
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
       '@oriel/web':
         specifier: workspace:*
         version: link:../web

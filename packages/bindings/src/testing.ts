@@ -7,29 +7,33 @@ import { createInterface } from "node:readline";
 import {
   type Bindings,
   type CapturedMutation,
-  type FixtureSnapshot,
-  fixtureSnapshot,
   guestMessage,
-  type IndexRecord,
-  instant,
-  type Region,
-  type ReadResult,
-  type JiraContent,
   type ItemId,
+  parseItemId,
+  type Reader,
+  type ReadResult,
+  type Region,
+  type SearchHit,
   type Ulid,
   ulid,
 } from "@oriel/core";
+import { type FixtureSnapshot, fixtureSnapshot, jiraNamespace } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { IssueTypes, Reader } from "./describe.ts";
+import type { Namespaces } from "./describe.ts";
 import { guestStart } from "./shim.ts";
 
 export const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
 
-// Every fixture item's issue type, as the index would give it.
-export const issueTypes: IssueTypes = new Map(
-  fixture.issues.map((issue) => [`jira:${issue.key}`, issue.issueType]),
-);
+// Jira's namespace, as the composition root hands it over, with each fixture
+// item's kind as the index would give it.
+export const namespaces: Namespaces = {
+  jira: jiraNamespace(
+    new Map(
+      fixtureSnapshot(fixture, site, 0).records.map((record) => [record.id, record.facets.kind]),
+    ),
+  ),
+};
 
 // The source as the base state left it (0) or after the first `edited` source
 // edits.
@@ -43,12 +47,11 @@ export function fixtureRegion(name: string): Region {
   if (!frozen) throw new RangeError(`no fixture region ${name}`);
   const stableIds = new Map(fixture.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   return {
-    id: fixedId,
+    groupId: fixedId,
+    version: 1,
     workspaceId: fixedId,
     items: frozen.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
     origin: frozen.origin,
-    snapshot: 1,
-    createdAt: instant(new Date("2026-10-01T00:00:00.000Z")),
   };
 }
 
@@ -61,15 +64,17 @@ export function pickedWithEpic(): Region {
 
 // Every term must appear in the item's key or title.
 export function fixtureReader(snapshot: FixtureSnapshot): Reader {
+  const contentOf = (id: ItemId) =>
+    parseItemId(id)?.source === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
   return {
     read: async (ids) =>
-      ids.map((id): ReadResult<"jira", JiraContent> => {
-        const content = snapshot.content.get(id);
+      ids.map((id): ReadResult => {
+        const content = contentOf(id);
         return content ? { id, status: "ok", content } : { id, status: "gone", reason: "deleted" };
       }),
     search: async (query, limit) => {
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      const found: IndexRecord[] = snapshot.records.filter((record) => {
+      const found: SearchHit[] = snapshot.records.filter((record) => {
         const haystack = `${record.id} ${record.title}`.toLowerCase();
         return terms.every((term) => haystack.includes(term));
       });
@@ -85,7 +90,7 @@ export function movingReader(reader: Reader, from: ItemId<"jira">, to: ItemId<"j
     read: async (ids) => {
       const results = await reader.read(ids.map((id) => (id === to ? from : id)));
       const byId = new Map(results.map((result) => [result.id, result]));
-      return ids.map((id): ReadResult<"jira", JiraContent> => {
+      return ids.map((id): ReadResult => {
         if (id === from) return { id, status: "moved", to };
         const result = byId.get(id === to ? from : id);
         if (!result) throw new Error(`no result for ${id}`);

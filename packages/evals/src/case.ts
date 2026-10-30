@@ -6,13 +6,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   array,
   type CapturedMutation,
-  type FixtureRegion,
   type Infer,
   type Issue,
   isItemId,
   isNewRef,
   type ItemId,
-  type JiraFixture,
   literal,
   type NewRef,
   nullable,
@@ -26,6 +24,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
+import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader

@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
+  facets,
   type IndexRecord,
   type Instant,
   isInstant,
@@ -23,8 +24,9 @@ const itemRow = object({
   item_id: refine(string, isItemId, "expected an item ID"),
   stable_id: string,
   title: string,
-  url: string,
+  location: string,
   updated_at: refine(string, isInstant, "expected an instant"),
+  facets: string,
   attrs: string,
 });
 
@@ -59,14 +61,16 @@ export function indexStore(db: DatabaseSync) {
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
   const upsert = db.prepare(`
-    insert into items (workspace_id, source, stable_id, item_id, title, url, updated_at, attrs, snapshot)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     on conflict (workspace_id, source, stable_id) do update set
-      item_id = excluded.item_id, title = excluded.title, url = excluded.url,
-      updated_at = excluded.updated_at, attrs = excluded.attrs, snapshot = excluded.snapshot, gone_at = null
+      item_id = excluded.item_id, title = excluded.title, location = excluded.location,
+      updated_at = excluded.updated_at, facets = excluded.facets, attrs = excluded.attrs,
+      snapshot = excluded.snapshot, gone_at = null
     where items.item_id is not excluded.item_id or items.title is not excluded.title
-      or items.url is not excluded.url or items.updated_at is not excluded.updated_at
-      or items.attrs is not excluded.attrs or items.gone_at is not null`);
+      or items.location is not excluded.location or items.updated_at is not excluded.updated_at
+      or items.facets is not excluded.facets or items.attrs is not excluded.attrs
+      or items.gone_at is not null`);
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
@@ -84,7 +88,7 @@ export function indexStore(db: DatabaseSync) {
     "select max(version) as version from snapshots where workspace_id = ?",
   );
   const selectLive = db.prepare(`
-    select item_id, stable_id, title, url, updated_at, attrs from items
+    select item_id, stable_id, title, location, updated_at, facets, attrs from items
     where workspace_id = ? and gone_at is null and (? is null or source = ?) order by item_id`);
   const selectLiveIds = db.prepare(
     "select stable_id from items where workspace_id = ? and source = ? and gone_at is null order by stable_id",
@@ -108,12 +112,18 @@ export function indexStore(db: DatabaseSync) {
           `index attrs don't match: ${row.value.item_id} ${JSON.stringify(parsed.issues)}`,
         );
       }
+      const stored = facets(JSON.parse(row.value.facets), "$.facets");
+      if (!stored.ok)
+        throw new Error(
+          `corrupt index facets: ${row.value.item_id} ${JSON.stringify(stored.issues)}`,
+        );
       return {
         id: row.value.item_id,
         stableId: row.value.stable_id,
         title: row.value.title,
-        url: row.value.url,
+        location: row.value.location,
         updatedAt: row.value.updated_at,
+        facets: stored.value,
         attrs: parsed.value,
       };
     });
@@ -127,6 +137,9 @@ export function indexStore(db: DatabaseSync) {
       }
       if (!isInstant(r.updatedAt)) throw new Error(`${r.id}: updatedAt is not a canonical instant`);
       if (!r.stableId) throw new Error(`${r.id}: empty stable ID`);
+      const checked = facets(JSON.parse(JSON.stringify(r.facets) ?? "null"), "$.facets");
+      if (!checked.ok)
+        throw new Error(`${r.id}: facets don't match: ${JSON.stringify(checked.issues)}`);
       const parsed = attrs(JSON.parse(JSON.stringify(r.attrs) ?? "null"), "$.attrs");
       if (!parsed.ok)
         throw new Error(`${r.id}: attrs don't match: ${JSON.stringify(parsed.issues)}`);
@@ -165,8 +178,9 @@ export function indexStore(db: DatabaseSync) {
                 r.stableId,
                 r.id,
                 r.title,
-                r.url,
+                r.location,
                 r.updatedAt,
+                JSON.stringify(r.facets),
                 JSON.stringify(r.attrs),
                 version,
               );

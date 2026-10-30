@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
-import type { FixtureIssue, JiraFixture } from "../packages/core/src/fixture.ts";
+import type { FixtureIssue, JiraFixture } from "../packages/jira/src/fixture.ts";
 import {
   array,
   boolean,

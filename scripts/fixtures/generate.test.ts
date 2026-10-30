@@ -5,7 +5,7 @@ import {
   applySourceEdits,
   type FixtureIssue,
   fixtureSnapshot,
-} from "../../packages/core/src/fixture.ts";
+} from "../../packages/jira/src/fixture.ts";
 import { generate } from "./generate.ts";
 import { fixtureDir, loadJiraFixture } from "./load.ts";
 
@@ -121,7 +121,7 @@ test("mess: the injection story", () => {
 
 test("frozen regions: epic groups anchored on their epic, and a hand-picked one", () => {
   const origins = fixture.regions.map((region) => region.origin);
-  assert.ok(origins.some((o) => o.kind === "group" && o.grouping === "epic" && o.anchor));
+  assert.ok(origins.some((o) => o.kind === "cluster" && o.grouping === "epic" && o.anchor));
   assert.ok(origins.some((o) => o.kind === "picked"));
 });
 

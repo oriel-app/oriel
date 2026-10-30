@@ -12,11 +12,10 @@ import {
   type SourceWriter,
   type Ulid,
 } from "@oriel/core";
-import { ChangeSetError, changeSets } from "./change-sets.ts";
+import { ChangeSetError, changeSetsOver } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
-import { jiraCatalogue } from "./jira.ts";
 import { store } from "./store.ts";
-import { fixtureJira, type MemoryIssue, memoryJira, nth, setup, t0 } from "./testing.ts";
+import { fixtureJira, type MemoryIssue, memoryJira, nth, setup, specs, t0 } from "./testing.ts";
 
 const seed = 20261029;
 const sequences = 200;
@@ -41,7 +40,7 @@ const titles = ["Retry", "Refund", "Receipt"];
 type Field = "points" | "summary";
 const fieldOf = (issue: MemoryIssue, field: Field) =>
   field === "points" ? issue.points : issue.summary;
-const idempotent = (op: string) => jiraCatalogue.ops[op]?.idempotent === true;
+const idempotent = (op: string) => specs.jira?.ops[op]?.idempotent === true;
 
 type Fault = "fail" | "lost" | "crash" | null;
 
@@ -97,9 +96,10 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     },
   };
   const instance = (): ChangeSets =>
-    changeSets({
+    changeSetsOver({
       db,
       sources: { jira: { writer, reader: jira.reader } },
+      specs,
       reviewBase: new URL("http://localhost:4000/review/"),
       now: () => clock,
       emit: () => {},

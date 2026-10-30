@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
-import { fixtureReader, fixtureRegion, issueTypes, snapshotAfter } from "./testing.ts";
+import { fixtureReader, fixtureRegion, namespaces, snapshotAfter } from "./testing.ts";
 import { parseOutput, typecheck } from "./typecheck.ts";
 
 const { dts } = bindingsFor(fixtureRegion("boarding-epic"), {
   reader: fixtureReader(snapshotAfter(0)),
-  issueTypes,
+  namespaces,
 });
 
 test("a clean script passes", async () => {

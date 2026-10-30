@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, test } from "node:test";
 import type { RunLimits, TranscriptEntry } from "@oriel/core";
-import { regionBindings } from "./real-bindings.ts";
+import { regionBindings } from "./testing.ts";
 import { createSandbox, type SandboxOptions, type SandboxRunResult } from "./sandbox.ts";
 
 const untyped =

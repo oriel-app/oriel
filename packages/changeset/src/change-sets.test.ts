@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CapturedMutation } from "@oriel/core";
+import { groupStore } from "@oriel/db";
 import { sendLeaseMs } from "./change-sets.ts";
-import { approve, count, nth, preview, setup, status } from "./testing.ts";
+import { approve, count, nth, preview, setup, status, t0 } from "./testing.ts";
 
 const estimate = (target: string, points: number | null): CapturedMutation => ({
   op: "setEstimate",
@@ -173,6 +174,155 @@ test("a handle reused by an item outside the region names that item and is refus
   assert.equal(nth(set.mutations, 0).target, "jira:OPS-5");
 });
 
+test("each write names the stable ID its target must have, and a create names none", async () => {
+  const { changeSets, run, jira, indexed } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    story("new:1", "Pay with a phone wallet at the kiosk", "jira:SYN-1"),
+    estimate("new:1", 2),
+  ]);
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id);
+  const made = jira.issue(jira.created[0] ?? "");
+  assert.deepEqual(
+    jira.calls.map((call) => [call.target, call.expectedStableId]),
+    [
+      ["jira:SYN-21", indexed("SYN-21").stableId],
+      [null, null],
+      [`jira:${made?.key}`, made?.id],
+    ],
+  );
+});
+
+test("an assignee is the field the Jira writer reports, `assignee`", async () => {
+  const { changeSets, run } = setup();
+  const set = await changeSets.capture(run, [
+    { op: "setAssignee", target: "jira:SYN-21", ref: null, args: { accountId: "amara" } },
+  ]);
+  const diff = await changeSets.diff(set.id);
+  assert.deepEqual(nth(diff.lines, 0).fields, [
+    { name: "assignee", before: "dara", after: "amara" },
+  ]);
+});
+
+test("an item removed from the group after capture is never written (decision 0018)", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  await approve(changeSets, set.id);
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  assert.match(
+    nth(report.failed, 0).error,
+    /^SYN-21 was removed from the group after this was captured, so it wasn't sent\.$/,
+  );
+  assert.deepEqual(jira.calls, []);
+});
+
+test("a set op that landed with its answer lost is recorded on retry, even after its item left the group", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // The write lands; its answer doesn't.
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  assert.deepEqual((await changeSets.apply(set.id)).applied, []);
+  jira.hooks.after = undefined;
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  const retry = await changeSets.apply(set.id);
+  assert.deepEqual(retry.applied, [mutationId]);
+  assert.equal(status(db, mutationId), "applied");
+  // Recorded in place: nothing was sent again.
+  assert.equal(jira.calls.length, 1);
+});
+
+test("a sent create keeps its own message, even with stored arguments the catalogue no longer takes", async () => {
+  const { db, changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [story("new:1", "Wallets", "jira:SYN-1")]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  const error = () => db.prepare("select error from mutations where id = ?").get(mutationId)?.error;
+  const sent = error();
+  assert.match(String(sent), /may have been made in Jira/);
+  db.prepare("update mutations set args = ? where id = ?").run(
+    JSON.stringify({ summary: "", epic: "jira:SYN-1" }),
+    mutationId,
+  );
+  // As if approved before the catalogue tightened: the approval matches these rows.
+  const { hash } = await changeSets.diff(set.id);
+  db.prepare("update decisions set hash = ? where change_set_id = ?").run(hash, set.id);
+  const retry = await changeSets.apply(set.id);
+  assert.deepEqual(retry.failed, [{ mutationId, error: sent }]);
+  assert.equal(error(), sent);
+  assert.equal(jira.calls.length, 1);
+});
+
+test("a revert still reaches an item that left the group, and a new item is the set's own", async () => {
+  const { db, changeSets, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    story("new:1", "Wallets", null),
+    estimate("new:1", 2),
+  ]);
+  await approve(changeSets, set.id);
+  assert.equal((await changeSets.apply(set.id)).applied.length, 3);
+  const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
+  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  const reverse = await changeSets.revert(set.id);
+  assert.ok("id" in reverse);
+  await approve(changeSets, reverse.id);
+  const report = await changeSets.apply(reverse.id);
+  assert.deepEqual(report.failed, []);
+  assert.equal(jira.issue("SYN-21")?.points, 2);
+});
+
+test("stored arguments the catalogue no longer takes are shown as such, and not reverted", async () => {
+  const { db, changeSets, run } = setup();
+  const set = await changeSets.capture(run, [
+    link("jira:SYN-1", "https://docs.example.com/wallets", "Wallet spec"),
+  ]);
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id);
+  // As an http link applied before Jira's catalogue took only https.
+  db.prepare("update mutations set args = ? where id = ?").run(
+    JSON.stringify({ url: "http://docs.example.com/wallets", title: "Wallet spec" }),
+    nth(set.mutations, 0).id,
+  );
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /not revertible: stored arguments no longer valid/,
+  });
+  const diff = await changeSets.diff(set.id);
+  assert.match(nth(diff.lines, 0).sentence, /stored arguments are no longer valid/);
+});
+
+test("a key another item took after capture is never written", async () => {
+  const { changeSets, run, jira, indexPage, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  await approve(changeSets, set.id);
+  // SYN-21 moves away and an item outside the region takes its key.
+  indexPage([
+    { ...indexed("SYN-21"), id: "jira:OPS-5" },
+    { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
+  ]);
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  assert.match(
+    nth(report.failed, 0).error,
+    /SYN-21 no longer names an item in the region this change was made in/,
+  );
+  assert.deepEqual(jira.calls, []);
+});
+
 test("a diff says what each mutation will do, in plain words", async () => {
   const { changeSets, run } = setup();
   const set = await changeSets.capture(run, [
@@ -184,7 +334,7 @@ test("a diff says what each mutation will do, in plain words", async () => {
       args: { summary: "Pay with a phone wallet at the kiosk", epic: "jira:SYN-1", points: 2 },
     },
     link("new:1", "https://docs.example.com/wallets", "Wallet spec"),
-    link("jira:SYN-13", "javascript://docs.example.com/%0aalert(1)", "Countdown spec"),
+    link("jira:SYN-13", "https://docs.example.com@links.example.net/countdown", "Countdown spec"),
     estimate("jira:SYN-21", 8),
     {
       op: "setSummary",
@@ -209,7 +359,7 @@ test("a diff says what each mutation will do, in plain words", async () => {
       `Reassign ${declined} (SYN-21) from Dara Nikolaidis to Amara Okafor.`,
       "Create a story “Pay with a phone wallet at the kiosk” in the epic “Checkout v2: phone wallets and saved cards” (SYN-1), estimated at 2 points.",
       "Add the link “Wallet spec” (docs.example.com) to the new story “Pay with a phone wallet at the kiosk”.",
-      "Add the link “Countdown spec” (“javascript://docs.example.com/%0aalert(1)”) to “🚢 Show a countdown to departure on the home screen” (SYN-13).",
+      "Add the link “Countdown spec” (links.example.net) to “🚢 Show a countdown to departure on the home screen” (SYN-13).",
       `Change the estimate of ${declined} (SYN-21) from 5 points to 8 points.`,
       "Rename “運航状況のプッシュ通知を日本語で送る” (SYN-31) to “運航状況のプッシュ通知を日本語と英語で送る”.",
       "Rewrite the description of “Cache the winter timetable on the device” (SYN-103).",
@@ -219,6 +369,13 @@ test("a diff says what each mutation will do, in plain words", async () => {
   assert.deepEqual(nth(diff.lines, 0).fields, [{ name: "points", before: 2, after: 5 }]);
   assert.ok(String(nth(nth(diff.lines, 8).fields, 0).before).length > 10_000);
   assert.equal(diff.hash, set.hash);
+  // Jira's catalogue takes only https links, so this one never reaches a diff.
+  await assert.rejects(
+    changeSets.capture(run, [
+      link("jira:SYN-13", "javascript://docs.example.com/%0aalert(1)", "Countdown spec"),
+    ]),
+    { code: "invalid", message: /https URL/ },
+  );
 });
 
 test("a diff's hash is the hash of the rows it rendered, even when an edit lands meanwhile", async () => {

@@ -8,7 +8,8 @@
 // Usage: pnpm record:jira
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ItemId, JiraFixture } from "../packages/core/src/index.ts";
+import type { ItemId } from "../packages/core/src/index.ts";
+import type { JiraFixture } from "../packages/jira/src/fixture.ts";
 import { type Exchange, recording } from "../packages/jira/src/cassette.ts";
 import { type JiraSourceOptions, jiraSource } from "../packages/jira/src/source.ts";
 import { basicAuth, type ReadTransport, readTransport } from "../packages/jira/src/transport.ts";

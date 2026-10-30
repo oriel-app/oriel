@@ -11,6 +11,7 @@ test("a writer accepts only approved requests", () => {
     mutationId: ulid(0, new Uint8Array(10)),
     op: "setEstimate",
     target: "jira:SYN-12",
+    expectedStableId: "10012",
     args: { points: 3 },
   };
   const apply = (writer: SourceWriter<"jira">) =>

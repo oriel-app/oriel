@@ -53,7 +53,14 @@ test("a script reads through the bindings and returns a value", async () => {
   assert.deepEqual(result.transcript, [{ kind: "return", value: ["jira:SYN-2"] }]);
   const payloadHash = sha256(JSON.stringify(stories));
   assert.deepEqual(result.reads, [
-    { fn: "jira.listStories", args: [], ms: 0, outsideRegion: false, payloadHash },
+    {
+      fn: "jira.listStories",
+      args: [],
+      ms: 0,
+      status: "answered",
+      outsideRegion: false,
+      payloadHash,
+    },
   ]);
   const [typechecked, ...rest] = logged;
   assert.equal(typechecked?.message, "sandbox.typecheck");
@@ -145,7 +152,16 @@ test("a read the bindings reject throws inside the guest", async () => {
     }
   `);
   assert.deepEqual(result.transcript, [{ kind: "return", value: "the source is down" }]);
-  assert.deepEqual(result.reads, []);
+  assert.deepEqual(result.reads, [
+    {
+      fn: "jira.fail",
+      args: [],
+      ms: 0,
+      status: "failed",
+      outsideRegion: null,
+      payloadHash: null,
+    },
+  ]);
   assert.deepEqual(
     logged.filter((line) => line.message === "sandbox.read"),
     [
@@ -424,8 +440,11 @@ test("reads still out when a run ends are logged as unanswered, and a late answe
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(lines(), expected);
   assert.deepEqual(
-    result.reads.map((read) => read.fn),
-    ["jira.listStories"],
+    result.reads.map((read) => [read.fn, read.status, read.payloadHash === null]),
+    [
+      ["jira.listStories", "answered", false],
+      ["jira.hold", "unanswered", true],
+    ],
   );
 });
 

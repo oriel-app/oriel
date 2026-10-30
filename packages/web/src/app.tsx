@@ -18,7 +18,7 @@ const groupingNames: Record<GroupingId, string> = {
   stuck: "Stuck",
 };
 
-const zoomNames: Record<Zoom, string> = { cluster: "Groups", list: "Items" };
+const zoomNames: Record<Zoom, string> = { cluster: "Clusters", list: "Items" };
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program);
@@ -97,7 +97,7 @@ function Summary({ view }: { view: WindowView }) {
   return (
     <div class="summary">
       <p class="counts">
-        {plural(view.items, "item")} in {plural(view.clusters.length, "group")}
+        {plural(view.items, "item")} in {plural(view.clusters.length, "cluster")}
         {view.fixture && (
           <span class="fixture" title="Synthetic fixture data, not your index">
             Fixture data · {asOf}
@@ -107,7 +107,7 @@ function Summary({ view }: { view: WindowView }) {
       {derived && (
         <p class="derived-note">
           <span class="derived-tag">Oriel rule</span>
-          marks a group Oriel made, which the source doesn't have. Each one shows its rule.
+          marks a cluster Oriel made, which the source doesn't have. Each one shows its rule.
         </p>
       )}
     </div>
@@ -151,13 +151,13 @@ function Cluster({ view, zoom, dispatch }: { view: ClusterView; zoom: Zoom; disp
 function Origin({ origin }: { origin: ClusterRow["origin"] }) {
   if (origin.kind === "source") {
     return (
-      <span class="origin" title={`This group is in ${origin.source}`}>
+      <span class="origin" title={`This cluster is in ${origin.source}`}>
         {origin.source}
       </span>
     );
   }
   return (
-    <span class="origin derived" title="Oriel made this group; the source doesn't have it">
+    <span class="origin derived" title="Oriel made this cluster; the source doesn't have it">
       <span class="derived-tag">Oriel rule</span>
       {origin.rule}
     </span>
@@ -225,8 +225,8 @@ function Item({ item }: { item: ItemRow }) {
       <span class="title" title={item.title}>
         {item.title}
       </span>
-      <span class="status" data-category={item.status.category}>
-        {item.status.name}
+      <span class="status" data-category={item.status?.category}>
+        {item.status?.name}
       </span>
       <Assignee name={item.assignee} />
       <span class="points" title={item.points === null ? "Unestimated" : `${item.points} points`}>

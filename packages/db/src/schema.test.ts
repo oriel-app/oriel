@@ -58,13 +58,20 @@ test("JSON columns reject malformed JSON", () => {
   );
 });
 
-test("mutation status is one of pending, applied, failed", () => {
+// A group at version 1 and a working thread on it.
+function withThread() {
   const { db, workspaceId } = fresh();
   db.exec(`
-    insert into regions values ('r1', '${workspaceId}', '{"kind":"picked"}', 0, '${now}');
-    insert into threads values ('t1', '${workspaceId}', 'r1', '${now}');
-    insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');
+    insert into groups values ('g1', '${workspaceId}', 'Checkout', '{"kind":"picked"}', '${now}');
+    insert into group_changes values ('${workspaceId}', 'g1', 1, '${now}', '{"kind":"user"}');
+    insert into threads values ('t1', '${workspaceId}', 'g1', 1, null, '${now}');
   `);
+  return { db, workspaceId };
+}
+
+test("mutation status is one of pending, applied, failed", () => {
+  const { db, workspaceId } = withThread();
+  db.exec(`insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');`);
   const insert = db.prepare(
     "insert into mutations (id, workspace_id, change_set_id, seq, op, args, status) values (?, ?, 'c1', ?, 'setEstimate', '{}', ?)",
   );
@@ -74,14 +81,71 @@ test("mutation status is one of pending, applied, failed", () => {
 });
 
 function withChangeSet() {
-  const { db, workspaceId } = fresh();
-  db.exec(`
-    insert into regions values ('r1', '${workspaceId}', '{"kind":"picked"}', 0, '${now}');
-    insert into threads values ('t1', '${workspaceId}', 'r1', '${now}');
-    insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');
-  `);
+  const { db, workspaceId } = withThread();
+  db.exec(`insert into change_sets values ('c1', '${workspaceId}', 't1', null, null, '${now}');`);
   return { db, workspaceId };
 }
+
+test("a thread's state isn't stored, only when the user marked it done", () => {
+  const { db } = withThread();
+  const columns = db
+    .prepare("pragma table_info(threads)")
+    .all()
+    .map((row) => String(row.name));
+  assert.deepEqual(columns, [
+    "id",
+    "workspace_id",
+    "group_id",
+    "region_version",
+    "marked_done_at",
+    "created_at",
+  ]);
+});
+
+test("a thread and a member name versions their group has", () => {
+  const { db, workspaceId } = withThread();
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          "insert into threads (id, workspace_id, group_id, region_version, created_at) values ('t2', ?, 'g1', 2, ?)",
+        )
+        .run(workspaceId, now),
+    /FOREIGN KEY/,
+  );
+  const member = db.prepare(
+    "insert into group_members (workspace_id, group_id, source, stable_id, item_id, added_version, removed_version) values (?, 'g1', 'jira', ?, 'jira:SYN-1', ?, ?)",
+  );
+  member.run(workspaceId, "10001", 1, null);
+  assert.throws(() => member.run(workspaceId, "10002", 2, null), /FOREIGN KEY/);
+  assert.throws(() => member.run(workspaceId, "10003", 1, 1), /CHECK/);
+  // One live row per member, whatever version adds it again.
+  db.prepare("insert into group_changes values (?, 'g1', 2, ?, '{\"kind\":\"user\"}')").run(
+    workspaceId,
+    now,
+  );
+  assert.throws(() => member.run(workspaceId, "10001", 2, null), /UNIQUE/);
+});
+
+test("a run's read has a payload hash and a region flag exactly when it was answered", () => {
+  const { db, workspaceId } = withThread();
+  db.exec(`
+    insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
+      dts_hash, model, input_tokens, output_tokens, wall_ms, cold_start_ms, outcome, started_at)
+    values ('u1', '${workspaceId}', 't1', 1, 1, 'p', 'd', 'model', 0, 0, 0, null, 'aborted', '${now}');
+  `);
+  const read = db.prepare(
+    "insert into run_reads (workspace_id, run_id, seq, fn, args, ms, outside_region, status, payload_hash) values (?, 'u1', ?, 'items.list', '[]', 0, ?, ?, ?)",
+  );
+  read.run(workspaceId, 1, 0, "answered", "h");
+  read.run(workspaceId, 2, null, "failed", null);
+  read.run(workspaceId, 3, null, "unanswered", null);
+  assert.throws(() => read.run(workspaceId, 4, 0, "answered", null), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 5, null, "answered", "h"), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 6, null, "failed", "h"), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 7, 1, "unanswered", null), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 8, null, "late", null), /CHECK/);
+});
 
 test("a mutation's applied result is set exactly when it is applied", () => {
   const { db, workspaceId } = withChangeSet();

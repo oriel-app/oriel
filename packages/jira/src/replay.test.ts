@@ -6,9 +6,11 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { fixtureSnapshot, type JiraAttrs, type SyncPage } from "@oriel/core";
+import type { SyncPage } from "@oriel/core";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { recordedReads, recordedSource, testData } from "../../../scripts/record-jira.ts";
+import type { JiraAttrs } from "./attrs.ts";
+import { fixtureSnapshot } from "./fixture.ts";
 import { cassette, replay } from "./cassette.ts";
 import { jiraSource } from "./source.ts";
 
@@ -38,10 +40,28 @@ test("the live listing matches the fixtures", { skip: sync ? false : unrecorded 
     const got = live.get(want.id);
     assert.ok(got, want.id);
     assert.equal(got.title, want.title, want.id);
-    assert.equal(got.url, want.url, want.id);
+    assert.equal(got.location, want.location, want.id);
     assert.deepEqual(
       { ...got.attrs, labels: got.attrs.labels.toSorted() },
-      { ...want.attrs, assignee: null, labels: want.attrs.labels.toSorted() },
+      { ...want.attrs, labels: want.attrs.labels.toSorted() },
+      want.id,
+    );
+    // The epic by handle: Jira gave it its own stable ID.
+    assert.deepEqual(
+      [
+        got.facets.state,
+        got.facets.container?.id ?? null,
+        got.facets.people,
+        got.facets.kind,
+        got.facets.estimate,
+      ],
+      [
+        want.facets.state,
+        want.facets.container?.id ?? null,
+        [],
+        want.facets.kind,
+        want.facets.estimate,
+      ],
       want.id,
     );
   }

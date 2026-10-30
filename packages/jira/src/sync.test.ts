@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  fixtureSnapshot,
-  type Instant,
-  instant,
-  type Log,
-  type Source,
-  type SyncPage,
-  ulid,
-} from "@oriel/core";
+import { type Instant, instant, type Log, type Source, type SyncPage, ulid } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs } from "./attrs.ts";
+import { fixtureSnapshot } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
 import { syncSource } from "./sync.ts";
 
@@ -126,7 +119,7 @@ test("a malformed record is skipped and logged, its page still lands, and a swee
     ...page,
     records: page.records.map((record) => {
       if (record.id !== victim) return record;
-      return { ...record, attrs: { ...(record.attrs as object), points: "3" } };
+      return { ...record, attrs: { ...(record.attrs as object), labels: "payments" } };
     }),
   }));
   const report = await sync(source, true);
@@ -135,7 +128,7 @@ test("a malformed record is skipped and logged, its page still lands, and a swee
   assert.deepEqual(byId(live()), byId(before));
   const line = lines.find((l) => l.message.includes("malformed"));
   assert.equal(line?.fields?.stableId, before[0]?.stableId);
-  assert.match(String(line?.fields?.problem), /\$\.attrs\.points/);
+  assert.match(String(line?.fields?.problem), /\$\.attrs\.labels/);
 });
 
 test("records with a foreign ID, a bad time or no stable ID are skipped too", async () => {

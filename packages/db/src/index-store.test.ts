@@ -47,8 +47,9 @@ function record(
     id: `jira:${key}`,
     stableId,
     title,
-    url: `https://oriel.atlassian.net/browse/${key}`,
+    location: `https://oriel.atlassian.net/browse/${key}`,
     updatedAt: t0,
+    facets: {},
     attrs: { points },
   };
 }
@@ -202,6 +203,41 @@ test("attrs are checked on write, so one bad record can't blank the window", () 
     attrs: { points: "5" },
   } as unknown as IndexRecord<"jira">;
   assert.throws(() => run.apply({ records: [bad], gone: [], cursor: "c" }), /attrs don't match/);
+  assert.deepEqual(ids(), ["jira:SYN-1"]);
+});
+
+test("facets are kept as given, absent ones stay absent, and a facet change is a change", () => {
+  const { index, workspaceId, sync } = fresh();
+  const facets = {
+    people: [{ role: "assignee", id: "amara", name: "Amara Okafor" }],
+    state: "in-progress" as const,
+    container: { id: "jira:SYN-1" as const, stableId: "10001" },
+  };
+  sync([{ records: [{ ...record("2", "SYN-2", "Story"), facets }] }]);
+  const [stored] = index.records(workspaceId, "jira", attrs);
+  assert.deepEqual(stored?.facets, facets);
+  assert.equal(Object.hasOwn(stored?.facets ?? {}, "links"), false);
+  const moved = { ...facets, container: null };
+  assert.equal(sync([{ records: [{ ...record("2", "SYN-2", "Story"), facets: moved }] }]), 2);
+  assert.deepEqual(index.records(workspaceId, "jira", attrs)[0]?.facets, moved);
+});
+
+test("facets are checked on write, like attrs", () => {
+  const { index, workspaceId, ids, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "ok")] }]);
+  const run = index.beginSync(workspaceId, "jira", attrs, t1);
+  for (const facets of [
+    { state: "stuck" },
+    { container: { id: "SYN-1", stableId: "10001" } },
+    { people: [{ id: "amara" }] },
+  ]) {
+    const bad = { ...record("2", "SYN-2", "bad"), facets } as unknown as IndexRecord<"jira">;
+    assert.throws(
+      () => run.apply({ records: [bad], gone: [], cursor: "c" }),
+      /facets don't match/,
+      JSON.stringify(facets),
+    );
+  }
   assert.deepEqual(ids(), ["jira:SYN-1"]);
 });
 
