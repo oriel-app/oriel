@@ -752,3 +752,14 @@ test("the window reports a grouping switch and a zoom in or out, and nothing els
   );
   assert.deepEqual(reported({ type: "itemToggled", id: "jira:SYN-10" }), []);
 });
+
+test("a diff that works clears an earlier diff's failure", () => {
+  const [loaded] = loadedThread(
+    threadView([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
+  );
+  const tag = { kind: "diff", changeSetId: setId } as const;
+  const [down] = threadReplied(loaded, failed(tag, "Oriel can't reach Jira."));
+  assert.equal(down.problems[setId], "Oriel can't reach Jira.");
+  const [back] = threadReplied(down, ok(tag, diff));
+  assert.equal(back.problems[setId], undefined);
+});

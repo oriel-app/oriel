@@ -234,8 +234,13 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         ];
       // A diff records what the person was shown, which approving waits on:
       // the thread reloads after it, so its steps say what can be done now.
+      // It also clears an earlier diff's failure.
       return [
-        { ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } },
+        {
+          ...model,
+          diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView },
+          problems: without(model.problems, tag.changeSetId),
+        },
         [refresh(model)],
       ];
     }
