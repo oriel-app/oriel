@@ -46,7 +46,7 @@ export type TurnInput = {
   // The user's message.
   text: string;
   // The index snapshot the turn reads, which its runs record.
-  snapshot?: number;
+  snapshot: number;
   // Tokens earlier turns spent, summed from their `done` events, so the
   // thread's token cap covers the whole thread.
   spent: { inputTokens: number; outputTokens: number };
@@ -70,7 +70,8 @@ export type AgentEvent =
   | { kind: "search"; runId: Ulid; hits: SearchHit[] }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
-  // A per-thread cap was hit (SPEC §9).
+  // A per-thread cap (turns or tokens) ended the turn (SPEC §9). A run-level
+  // cap arrives as a run.finished whose outcome is "limit", and the turn goes on.
   | { kind: "limit"; reason: string }
   | { kind: "error"; message: string }
   | { kind: "done"; usage: { inputTokens: number; outputTokens: number } };

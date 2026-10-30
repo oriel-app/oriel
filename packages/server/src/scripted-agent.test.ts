@@ -29,6 +29,7 @@ function input(text: string, items: string[]): TurnInput {
     },
     history: [],
     spent: { inputTokens: 0, outputTokens: 0 },
+    snapshot: 1,
     text,
   };
 }

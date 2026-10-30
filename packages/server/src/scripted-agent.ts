@@ -61,7 +61,7 @@ async function* steps(
       id: runId,
       workspaceId: thread.workspaceId,
       threadId: thread.id,
-      snapshot: input.snapshot ?? 0,
+      snapshot: input.snapshot,
       regionVersion: region.version,
       systemPromptHash: sha256(systemPrompt),
       dtsHash: sha256(bindings.dts),
@@ -99,8 +99,8 @@ async function* steps(
     if (result.mutations.length === 0) continue;
     if (result.mutations.length > deps.limits.maxMutationsPerChangeSet) {
       yield {
-        kind: "limit",
-        reason: `A change set holds at most ${deps.limits.maxMutationsPerChangeSet} changes.`,
+        kind: "error",
+        message: `A change set holds at most ${deps.limits.maxMutationsPerChangeSet} changes.`,
       };
       continue;
     }
