@@ -21,7 +21,7 @@ import {
   type SourceWriter,
   type Ulid,
 } from "@oriel/core";
-import { open } from "@oriel/db";
+import { groupStore, open } from "@oriel/db";
 import { ChangeSetError, changeSetsOver, type Specs } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
 import { store } from "./store.ts";
@@ -151,12 +151,33 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   };
   // Rows a person removed: their writes are theirs to check.
   const removed = new Set<Ulid>();
+  // Reads that found a sent row's item without its value, and the landings
+  // before each; and each row's last landing.
+  const absentReads: { row: Ulid; landed: number }[] = [];
+  const lastLanding = new Map<Ulid, number>();
 
   // Checked as each write leaves.
   const writer: SourceWriter<"jira"> = {
     kind: "jira",
     current: jira.writer.current,
-    read: jira.writer.read,
+    // Each read notes the sent rows on the item that it found without their
+    // value, and how many writes had landed by then (invariant 10).
+    async read(id, fields) {
+      // Landings so far: the read's answer can't reflect any later one.
+      const landed = jira.landings.length;
+      const found = await jira.writer.read(id, fields);
+      if (found === "gone") return found;
+      for (const [rowId] of known) {
+        const row = rows.mutation(rowId);
+        if (row?.status !== "failed" || row.target !== id) continue;
+        const field =
+          row.op === "setEstimate" ? "points" : row.op === "setSummary" ? "summary" : null;
+        const args = row.args as Record<string, unknown>;
+        if (field && !sameValue(found.values[field], args[field]))
+          absentReads.push({ row: rowId, landed });
+      }
+      return found;
+    },
     apply(request) {
       const row = rows.mutation(request.mutationId);
       const set = row ? rows.load(row.changeSetId) : null;
@@ -228,6 +249,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       if (!info) problem(`a write landed for ${id}, which the model never saw`);
       const count = (landings.get(id) ?? 0) + 1;
       landings.set(id, count);
+      lastLanding.set(id, read);
       // Invariant 2: a write that can't be repeated reaches Jira at most once.
       if (!idempotent(request.op) && count > 1)
         problem(`${request.op} ${id} reached Jira ${count} times`);
@@ -341,6 +363,17 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     }
   };
 
+  // Invariant 10: a row whose write landed is unsent again only once a read
+  // made after that landing found its item without its value. Anything else
+  // un-sends a write that may have landed.
+  const checkUnsent = () => {
+    for (const [id, last] of lastLanding) {
+      if (rows.mutation(id)?.status !== "pending") continue;
+      if (!absentReads.some((r) => r.row === id && r.landed > last))
+        problem(`${id} landed, then went back to unsent without a read finding it absent since`);
+    }
+  };
+
   const expected = (error: unknown) => {
     if (error instanceof ChangeSetError) return;
     if (
@@ -388,6 +421,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     staleApproved: 0,
     // A row sent before whose item Oriel couldn't check.
     couldntTell: 0,
+    // A sent row whose item can't be read, and so can't be approved again.
+    sentGone: 0,
   };
 
   // Invariant 7: takes one offered step on a copy of the database and of
@@ -414,13 +449,26 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       switch (step.kind) {
         case "approve":
         case "approve-rest": {
-          await engine.decide(id, "approved", thread, set.hash);
-          // What approval vouches for (each change shown, readable and
-          // valid) never stops the apply that follows it.
+          // Offered on the diff last shown; the person approves the one in
+          // front of them, which reads the source again. Only an item that
+          // has become unreadable since may stop it there.
+          const shown = await engine.diff(id);
+          const refusal = await engine.decide(id, "approved", thread, shown.hash).then(
+            () => null,
+            (error: unknown) => error,
+          );
+          if (refusal !== null) {
+            if (!(refusal instanceof ChangeSetError && /couldn.t be read/.test(refusal.message)))
+              throw refusal;
+            break;
+          }
+          // What approval vouches for (each change shown, readable as the
+          // item it should be, and valid) never stops the apply after it.
           const report = await engine.apply(id).catch((error: unknown) => ({
             failed: [{ error: error instanceof Error ? error.message : String(error) }],
           }));
-          const vouched = /no longer valid|hasn.t been shown in a diff|couldn.t be read when/;
+          const vouched =
+            /no longer valid|hasn.t been shown in a diff|couldn.t be read when|couldn.t tell/;
           const stop = report.failed.find((f) => vouched.test(f.error));
           if (stop) problem(`${id} was approved, then apply stopped: ${stop.error}`);
           break;
@@ -505,6 +553,12 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const stale = open.some((m) => !catalogue.jira?.ops[m.op]?.args(m.args).ok);
       if (stale) reached.stale += 1;
       if (stale && set.decision?.kind === "approved") reached.staleApproved += 1;
+      if (
+        open.some((m) => m.status === "failed" && m.preview?.["$gone"] === true) &&
+        !kinds.includes("approve") &&
+        !kinds.includes("approve-rest")
+      )
+        reached.sentGone += 1;
       if (open.some((m) => m.status === "failed" && /couldn.t tell/.test(m.error ?? "")))
         reached.couldntTell += 1;
       if (set.revertOf !== null && rejected && set.mutations.some((m) => m.applied))
@@ -547,7 +601,9 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   // so an approval of it stands.
   const tighten = (id: Ulid): boolean => {
     const open = rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? [];
-    const later = open.slice(1).filter((m) => m.op === "setEstimate" || m.op === "setSummary");
+    // Only a rename: summaries are unique to a row, so this bans that row's
+    // arguments and no other's.
+    const later = open.slice(1).filter((m) => m.op === "setSummary");
     if (later.length === 0) return false;
     const m = pick(later);
     trail.push("tighten");
@@ -570,7 +626,26 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     fault = null;
   };
 
+  // Pool stories taken out of the thread's group, which every sequence
+  // shares, for as long as one move.
+  const outOfGroup = new Set<string>();
+  const member = (item: string) => ({
+    id: item as `jira:${string}`,
+    stableId: shared.indexed(parseItemId(item)?.key ?? "").stableId,
+  });
+  const leaveGroup = (item: string) => {
+    if (!(pool as readonly string[]).includes(item) || outOfGroup.has(item)) return;
+    groupStore(db).remove(shared.groupId, [member(item)], { kind: "user" }, clock);
+    outOfGroup.add(item);
+  };
+  const joinGroup = (item: string) => {
+    groupStore(db).add(shared.groupId, [member(item)], { kind: "user" }, clock);
+    outOfGroup.delete(item);
+  };
   let teammate = 0;
+  // A summary no other row has: titles, numbered.
+  let named = 0;
+  const summary = () => `${pick(titles)} ${(named += 1)}`;
   const hidden = new Set<string>();
   // Keys another item has taken, with the stable ID of the item that had it.
   const reused = new Map<string, string>();
@@ -619,7 +694,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           op: "setSummary",
           target: target as `jira:${string}`,
           ref: null,
-          args: { summary: pick(titles) },
+          args: { summary: summary() },
         };
   const randomMutations = (): CapturedMutation[] => {
     if (chance(0.8)) return [setOp(pick(pool))];
@@ -664,7 +739,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     | "step"
     | "dismiss"
     | "hide"
-    | "tighten";
+    | "tighten"
+    | "unreadable";
   const chooseAction = (): Action => {
     const newest = sets.at(-1);
     if (!newest) return "capture";
@@ -686,6 +762,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       ["dismiss", sent ? 1 : 0.2],
       ["hide", 0.25],
       ["tighten", 0.15],
+      ["unreadable", sent ? 1 : 0],
     ];
     let roll = random() * weights.reduce((sum, [, w]) => sum + w, 0);
     for (const [action, weight] of weights) {
@@ -741,12 +818,31 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         const shown = await a.diff(id);
         await a.decide(id, "approved", thread, shown.hash);
       });
-      whileSending = async () => {
-        await checkBusy(id);
-        await applyOn(1, id);
-      };
+      if (chance(0.6)) {
+        whileSending = async () => {
+          await checkBusy(id);
+          await applyOn(1, id);
+        };
+      } else {
+        // Or while the first checks whether an earlier send is in place.
+        trail.push("(while reading)");
+        jira.hooks.answered = async (item) => {
+          jira.hooks.answered = undefined;
+          // Its send often lands with its answer lost, after the first's
+          // read: what the first read is out of date.
+          fault = chance(0.5) ? "lost" : null;
+          faultAfter = 0;
+          await applyOn(1, id);
+          fault = null;
+          // And now and then the item leaves the group meanwhile, so the first
+          // finds the change absent but may not send it. It comes back after.
+          if (chance(0.5)) leaveGroup(item);
+        };
+      }
       await applyOn(0, id);
       whileSending = null;
+      jira.hooks.answered = undefined;
+      for (const item of outOfGroup) joinGroup(item);
     } else if (action === "edit") {
       const id = liveSet();
       const open = id ? (rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? []) : [];
@@ -764,7 +860,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
           m.op === "setEstimate"
             ? { points: pick(points) }
             : m.op === "setSummary"
-              ? { summary: pick(titles) }
+              ? { summary: summary() }
               : m.args;
         await attempt(() => a.edit(id, { set: [{ mutationId: m.id, args }] }));
       }
@@ -847,6 +943,32 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       if (!id) continue;
       trail.push("dismiss");
       await attempt(() => a.dismiss(id));
+    } else if (action === "unreadable") {
+      // A change sent with no answer, the rest of its set left out (which
+      // voids the approval), then its item can't be read: the next diff shows
+      // it gone, and approving is refused.
+      const candidates = sets.slice(-4).flatMap(({ id }) => {
+        const set = rows.load(id);
+        if (!set || set.decision?.kind === "rejected") return [];
+        const open = set.mutations.filter((m) => m.status !== "applied");
+        const sentRow = open.find((m) => m.status === "failed" && m.target?.startsWith("jira:"));
+        const others = open.filter((m) => m !== sentRow);
+        return sentRow?.target && others.length
+          ? [{ id, sentRow, target: sentRow.target, others }]
+          : [];
+      });
+      if (candidates.length === 0) continue;
+      const { id, target, others } = pick(candidates);
+      trail.push("unreadable");
+      for (const m of others)
+        await attempt(async () => {
+          await a.edit(id, { remove: [m.id] });
+          removed.add(m.id);
+        });
+      const key = parseItemId(target)?.key ?? "";
+      hidden.add(key);
+      jira.hide(key);
+      await attempt(() => a.diff(id));
     } else if (action === "hide") {
       // A story becomes unreadable (deleted, moved, forbidden), or another
       // item takes its key; or it comes back. Either way Oriel can't tell
@@ -884,6 +1006,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     absorb();
     checkReverts();
     checkApplied();
+    checkUnsent();
     await checkSteps();
     for (const id of known.keys())
       if (rows.mutation(id)?.status === "applied") appliedBefore.add(id);

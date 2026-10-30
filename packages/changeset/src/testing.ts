@@ -127,6 +127,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     // Runs after a request has landed, before the writer answers.
     after?: (request: Request, call: number) => Promise<void> | void;
     read?: (id: ItemId) => Promise<void> | void;
+    // Runs once a read has its answer, before the reader gets it: what
+    // happens here lands after the read, while its answer is on its way.
+    answered?: (id: ItemId) => Promise<void> | void;
   } = {};
 
   const tick = (): Instant => {
@@ -272,7 +275,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     async read(id, fields) {
       await hooks.read?.(id);
       const issue = find(id);
-      return issue ? { stableId: issue.id, values: pick(issue, fields) } : "gone";
+      const found = issue ? { stableId: issue.id, values: pick(issue, fields) } : ("gone" as const);
+      await hooks.answered?.(id);
+      return found;
     },
   };
 
