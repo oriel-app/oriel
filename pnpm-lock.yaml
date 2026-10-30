@@ -93,6 +93,10 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/server:
     dependencies:

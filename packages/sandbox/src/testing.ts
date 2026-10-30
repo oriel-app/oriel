@@ -1,8 +1,9 @@
-// Real bindings from @oriel/bindings over a two-story region whose reader has
-// nothing: a fixture, so the escape tests run the production shim and
-// typecheck rather than a stand-in.
+// Test support: real bindings from @oriel/bindings over a two-story region
+// whose reader has nothing, with Jira's production namespace, so the escape
+// tests run the production shim, stubs and typecheck rather than a stand-in.
 import { bindingsFor } from "@oriel/bindings";
 import { type Bindings, type ItemId, type Region, ulid } from "@oriel/core";
+import { jiraNamespace } from "@oriel/jira";
 
 const ids: ItemId<"jira">[] = ["jira:SYN-1", "jira:SYN-2"];
 const fixedId = ulid(0, new Uint8Array(10));
@@ -20,8 +21,6 @@ export function regionBindings(): Bindings {
       read: async (wanted) => wanted.map((id) => ({ id, status: "gone", reason: "deleted" })),
       search: async () => [],
     },
-    // No source namespace: the escape tests need the shim and the typecheck,
-    // not a source's functions, and only test support may name an adapter.
-    namespaces: {},
+    namespaces: { jira: jiraNamespace(new Map(ids.map((id) => [id, "story"]))) },
   });
 }
