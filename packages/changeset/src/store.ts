@@ -192,7 +192,7 @@ export function store(db: DatabaseSync) {
     "update mutations set status = 'failed', error = ? where id = ? and status = ? and error is ?",
   );
   const updateRefused = db.prepare(
-    "update mutations set status = ?, error = ? where id = ? and status != 'applied'",
+    "update mutations set status = ?, error = ? where id = ? and status = ? and error is ?",
   );
   const updateStopped = db.prepare(
     "update mutations set error = ? where id = ? and status != 'applied'",
@@ -428,10 +428,21 @@ export function store(db: DatabaseSync) {
       return Number(updateSent.run(mark, mutationId, from.status, from.error).changes) === 1;
     },
 
-    // The source answered a send and made no change: the row goes back to the
-    // status the caller gives (unsent, unless an earlier send may be in place).
-    markRefused(mutationId: Ulid, status: MutationStatus, error: string): void {
-      updateRefused.run(status, error, mutationId);
+    // Nothing of a send landed (the source answered it and changed nothing,
+    // or it was found absent): the row goes to the status the caller gives
+    // (unsent, unless an earlier send may be in place). Only from the row as
+    // the caller saw it, status and mark: if another apply sent it since, its
+    // send may have landed, and the row stays as that apply left it. False if
+    // so.
+    markRefused(
+      mutationId: Ulid,
+      from: { status: MutationStatus; error: string | null },
+      status: MutationStatus,
+      error: string,
+    ): boolean {
+      return (
+        Number(updateRefused.run(status, error, mutationId, from.status, from.error).changes) === 1
+      );
     },
 
     // Apply stopped before sending this mutation. The status stays as it was, so

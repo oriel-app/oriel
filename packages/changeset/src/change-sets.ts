@@ -21,6 +21,7 @@ import {
   type Log,
   literal,
   type MutationRecord,
+  type MutationStatus,
   type NextStep,
   type OpSpec,
   type OpSpecs,
@@ -143,6 +144,8 @@ const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 export const sendLeaseMs = 5 * 60 * 1000;
 // A send's mark ends with when it was sent and a nonce of its own.
 const sendMark = / \(sent (\S+), [0-9A-Z]{26}\)$/;
+// A send that got no answer ends with that nonce.
+const sendTag = / \(send [0-9A-Z]{26}\)$/;
 const tokenShape = /^[A-Za-z0-9_-]{43}$/;
 const maxErrorChars = 500;
 // The preview of a line whose item was gone when the diff was shown. No
@@ -302,6 +305,14 @@ function outsideRegion(
   return null;
 }
 
+// What a sent row was approved from: its preview's values, without whether
+// its item could be read since. Null when it has none.
+function approvedFrom(preview: FieldValues | null): FieldValues | null {
+  if (preview === null) return null;
+  const values = Object.fromEntries(Object.entries(preview).filter(([f]) => f !== goneMark));
+  return Object.keys(values).length > 0 ? values : null;
+}
+
 // Conflicts in plain words, for the thread and the review page. An `expected`
 // of undefined means Oriel is missing a value it recorded at apply (before or
 // after), so it can't revert that field safely.
@@ -433,7 +444,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return creates.get(m.target)?.applied?.item.id ?? null;
     };
 
-    const wanted = new Map<ItemId, { kind: SourceKind; fields: Set<string> }>();
+    // Each item's fields, and the stable ID it should have, where known.
+    const wanted = new Map<
+      ItemId,
+      { kind: SourceKind; fields: Set<string>; stableId: string | null }
+    >();
     for (const m of set.mutations) {
       const item = itemOf(m);
       if (item === null) continue;
@@ -441,17 +456,31 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const entry = wanted.get(item) ?? {
         kind,
         fields: new Set([catalogueFor(specs, kind).titleField]),
+        stableId: null,
       };
+      entry.stableId ??= m.applied?.item.stableId ?? stableIdFor(m, set, item);
       if (m.status !== "applied" && spec.args(m.args).ok)
         for (const field of Object.keys(spec.after(m.args))) entry.fields.add(field);
       wanted.set(item, entry);
     }
+    // Read through the writer where there is one, so an item whose handle
+    // names another item now shows as gone: it isn't the item to change.
+    const readLive = async (
+      item: ItemId,
+      {
+        kind,
+        fields,
+        stableId,
+      }: { kind: SourceKind; fields: Set<string>; stableId: string | null },
+    ): Promise<FieldValues | "gone"> => {
+      const { writer } = sourceOf(kind);
+      if (!writer || stableId === null) return reader(kind).current(item, [...fields]);
+      const found = await writer.read(item, [...fields]);
+      return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
+    };
     const live = new Map(
       await Promise.all(
-        [...wanted].map(
-          async ([item, { kind, fields }]) =>
-            [item, await reader(kind).current(item, [...fields])] as const,
-        ),
+        [...wanted].map(async ([item, entry]) => [item, await readLive(item, entry)] as const),
       ),
     );
     const title = async (id: ItemId): Promise<string | null> => {
@@ -536,7 +565,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       }
       // A row sent with no answer may have landed, so the source may hold
       // its value already: it shows what the person approved it from.
-      const shown = m.status === "failed" && m.preview?.[goneMark] !== true ? m.preview : null;
+      const shown = m.status === "failed" ? approvedFrom(m.preview) : null;
       const before = Object.fromEntries(
         Object.keys(after).map((f) => [f, (shown ? shown[f] : values[f]) ?? null]),
       );
@@ -556,26 +585,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // before values, or that the item couldn't be read. Approval requires a diff
   // since the last edit and none of its lines gone; a later render that reads
   // the item again replaces a gone line. Not while the change set is approved
-  // (a rejection reopens it), not if its rows changed while the diff was
-  // rendering, and not over a sent row's: that stays what it was approved
-  // from, since what landed may show now.
+  // (a rejection reopens it), and not if its rows changed while the diff was
+  // rendering. A sent row keeps the values it was approved from, since what
+  // landed may show now; only whether its item can be read changes.
   const keepPreview = (set: ChangeSet, rendered: { diff: Diff; gone: Set<Ulid> }): void =>
     transaction(db, () => {
       const now = rows.load(set.id);
       if (!now || now.hash !== set.hash || now.decision?.kind === "approved") return;
-      const open = new Set(
-        now.mutations
-          .filter((m) => m.status === "pending" || (m.status === "failed" && m.preview === null))
-          .map((m) => m.id),
+      const open = new Map(
+        now.mutations.filter((m) => m.status !== "applied").map((m) => [m.id, m]),
       );
       for (const line of rendered.diff.lines) {
-        if (!open.has(line.mutationId)) continue;
-        rows.setPreview(
-          line.mutationId,
-          rendered.gone.has(line.mutationId)
-            ? { [goneMark]: true }
-            : Object.fromEntries(line.fields.map((f) => [f.name, f.before])),
-        );
+        const m = open.get(line.mutationId);
+        if (!m) continue;
+        const gone = rendered.gone.has(line.mutationId);
+        const shown = Object.fromEntries(line.fields.map((f) => [f.name, f.before]));
+        const kept = m.status === "failed" ? approvedFrom(m.preview) : null;
+        const values = kept ?? (gone ? {} : shown);
+        rows.setPreview(line.mutationId, gone ? { ...values, [goneMark]: true } : values);
       }
     });
 
@@ -761,7 +788,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const updated = catalogueFor(specs, kind).updatedField;
     const stableId = stableIdFor(m, set, target);
     if (stableId === null) return "unknown";
-    const found = await writerOf(kind).read(target, [...fields, updated]);
+    // A read that fails tells nothing either.
+    const found = await writerOf(kind)
+      .read(target, [...fields, updated])
+      .catch(() => "gone" as const);
     if (found === "gone" || found.stableId !== stableId) return "unknown";
     const current = found.values;
     if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
@@ -1179,15 +1209,21 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
     // Stops before sending, recording why on the row unless its own record
     // says so already.
-    const stopAt = (mutationId: Ulid, refusal: Refusal): ApplyReport => {
-      if (refusal.stop && refusal.unsent)
-        rows.markRefused(refusal.stop, "pending", refusal.message);
+    // A row found absent goes back to unsent only if it still holds the send
+    // that was found absent (`seen`).
+    const stopAt = (
+      mutationId: Ulid,
+      refusal: Refusal,
+      seen?: { status: MutationStatus; error: string | null },
+    ): ApplyReport => {
+      if (refusal.stop && refusal.unsent && seen)
+        rows.markRefused(refusal.stop, seen, "pending", refusal.message);
       else if (refusal.stop) rows.markStopped(refusal.stop, refusal.message);
       report.failed.push({ mutationId, error: refusal.message });
       return report;
     };
-    const fail = (mutationId: Ulid, error: string): ApplyReport => {
-      rows.markFailed(mutationId, error);
+    const fail = (mutationId: Ulid, stored: string, error: string): ApplyReport => {
+      rows.markFailed(mutationId, stored);
       report.failed.push({ mutationId, error });
       return report;
     };
@@ -1229,7 +1265,17 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           });
       }
       if (m.reverts) {
-        const conflicts = await recheck(m.reverts);
+        const checking = await recheck(m.reverts).then(
+          (conflicts) => ({ conflicts }),
+          (error: unknown) => ({ failed: message(error) }),
+        );
+        if ("failed" in checking)
+          return stopAt(mutationId, {
+            code: "refused",
+            message: `Oriel couldn't read the item to check nobody changed it since, so this wasn't sent: ${checking.failed}`,
+            stop: mutationId,
+          });
+        const { conflicts } = checking;
         if (conflicts.length)
           return stopAt(mutationId, {
             code: "refused",
@@ -1247,7 +1293,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         continue;
       }
       plan = sendPlan(m, set, inPlaceFound);
-      if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
+      if ("refusal" in plan) return stopAt(mutationId, plan.refusal, seen);
       const request = mint({
         mutationId: m.id,
         op: m.op,
@@ -1260,7 +1306,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         ? `Sent to ${source}, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.`
         : uncertain;
       const { now: sentNow, ms: sentMs } = at();
-      const mark = `${notice} (sent ${sentNow}, ${ulid(sentMs)})`;
+      const nonce = ulid(sentMs);
+      const mark = `${notice} (sent ${sentNow}, ${nonce})`;
+      // A send that got no answer keeps its own nonce, so a later apply can
+      // tell it from an earlier one with the same words.
+      const unanswered = (error: string) => fail(mutationId, `${error} (send ${nonce})`, error);
       // Only from the row as this pass first saw it: if another apply sent it
       // meanwhile, its send isn't repeated and its mark isn't reset.
       if (!rows.markSent(mutationId, seen, mark)) {
@@ -1284,18 +1334,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           const why = error.sent ? said : `${notSent}${said}`;
           rows.markRefused(
             mutationId,
+            sent,
             wasSent && inPlaceFound !== "absent" ? "failed" : "pending",
             why,
           );
           report.failed.push({ mutationId, error: why });
           return report;
         }
-        return fail(mutationId, `${said}${unsure}`);
+        return unanswered(`${said}${unsure}`);
       }
       const checked = writeResult(result);
       if (!checked.ok) {
-        return fail(
-          mutationId,
+        return unanswered(
           `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${unsure}`,
         );
       }
@@ -1636,9 +1686,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // Rejects what hasn't applied, as the set stands, and says what may have
     // landed anyway. What did apply stays, and a revert covers exactly that.
     // Dismissing a change set already rejected or dismissed changes nothing.
-    async dismiss(id, approver = { via: "thread", by: "user" }) {
+    async dismiss(id, approver = { via: "thread", by: "user" }, reviewed) {
       const who = approverValue(approver, "$.approver");
       if (!who.ok) throw invalid("approver", who.issues);
+      if (reviewed !== undefined && typeof reviewed !== "string")
+        throw new ChangeSetError("invalid", "reviewed must be a hash");
       const by = who.value.by.trim();
       const result = transaction(db, () => {
         const link = linkOf(id, who.value, by);
@@ -1646,6 +1698,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const refusal = dismissRefusal(current);
         if (refusal === "done") return { set: current, dismissed: false };
         if (refusal) refuse(refusal);
+        if (reviewed !== undefined && current.hash !== reviewed)
+          throw new ChangeSetError(
+            "stale",
+            "this change set changed after you reviewed it; review the new diff",
+          );
         const { now, ms } = at();
         rows.insertDecision({
           id: ulid(ms),
@@ -1706,7 +1763,7 @@ function plainUnsent(why: string): string {
 // sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
 // are already plain.
 export function plainError(error: string): string {
-  const bare = error.replace(sendMark, "");
+  const bare = error.replace(sendMark, "").replace(sendTag, "");
   if (bare.startsWith(notSent)) return plainUnsent(bare.slice(notSent.length));
   const lost = unheard.exec(bare);
   if (lost) return ["Oriel sent this and didn't hear back.", lost[1]].filter(Boolean).join(" ");

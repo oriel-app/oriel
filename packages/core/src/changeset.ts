@@ -171,5 +171,11 @@ export interface ChangeSets {
   // The warnings name any change that may already have landed. Dismissing
   // twice changes nothing.
   // In the thread by default; through a review link, as `decide` checks one.
-  dismiss(id: Ulid, by?: Approver): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
+  // `reviewed`, when given, is the hash of the diff the person saw; a stale
+  // one is refused.
+  dismiss(
+    id: Ulid,
+    by?: Approver,
+    reviewed?: string,
+  ): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
 }

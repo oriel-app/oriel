@@ -484,3 +484,32 @@ test("a write whose credentials fail never goes out, and the failure names no se
   assert.equal(signed, 2);
   assert.deepEqual(jira.writes(), []);
 });
+
+test("read gives an item's values with the stable ID its key names now", async () => {
+  const jira = fakeSite();
+  const w = writer(jira.transport);
+  assert.deepEqual(await w.read("jira:SYN-12", ["summary"]), {
+    stableId: "10012",
+    values: { summary: "Retry a declined card" },
+  });
+  // Deleted, or not visible: either way, gone.
+  assert.equal(await w.read("jira:SYN-99", ["summary"]), "gone");
+  const forbidden: Transport = async (req) =>
+    req.method === "GET" ? { status: 403, body: { errorMessages: ["No."] } } : jira.transport(req);
+  assert.equal(await writer(forbidden).read("jira:SYN-12", ["summary"]), "gone");
+  // A key that moved answers with the item, which keeps its stable ID.
+  const moved: Transport = async (req) =>
+    jira.transport(
+      req.path.startsWith("/rest/api/3/issue/OPS-5?")
+        ? { ...req, path: req.path.replace("OPS-5", "SYN-12") }
+        : req,
+    );
+  assert.deepEqual(await writer(moved).read("jira:OPS-5", ["summary"]), {
+    stableId: "10012",
+    values: { summary: "Retry a declined card" },
+  });
+  // A server error tells nothing, and says so.
+  const broken: Transport = async (req) =>
+    req.method === "GET" ? { status: 503, body: "Unavailable" } : jira.transport(req);
+  await assert.rejects(writer(broken).read("jira:SYN-12", ["summary"]), /GET \S+: 503/);
+});

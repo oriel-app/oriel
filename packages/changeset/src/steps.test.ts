@@ -610,3 +610,78 @@ test("a change sent with no answer shows what it was approved from, not what lan
   assert.deepEqual(preview(db, sent), { points: was });
   assert.deepEqual((await line()).fields, [{ name: "points", before: was, after: 8 }]);
 });
+
+test("a sent change whose item can't be read now can't be approved again", async () => {
+  const { changeSets, run, jira } = setup();
+  const was = jira.issue("SYN-21")?.points ?? null;
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  const other = nth(set.mutations, 1).id;
+  await approve(changeSets, set.id);
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  // Leaving the other change out voids the approval; then SYN-21 can't be read.
+  await changeSets.edit(set.id, { remove: [other] });
+  jira.hide("SYN-21");
+  const unreadable = await changeSets.diff(set.id);
+  assert.ok(!kinds(await changeSets.nextSteps(set.id)).includes("approve"));
+  await assert.rejects(
+    changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, unreadable.hash),
+    { code: "refused", message: /SYN-21 couldn.t be read/ },
+  );
+  // Readable again, it can be, and it still shows what it was approved from.
+  jira.show("SYN-21");
+  const shown = await changeSets.diff(set.id);
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["approve", "dismiss"]);
+  assert.deepEqual(nth(shown.lines, 0).fields, [{ name: "points", before: was, after: 5 }]);
+});
+
+test("a send found absent goes back to unsent only if no other apply sent it since", async () => {
+  const { db, changeSets, instance, run, jira, groupId, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  const other = instance();
+  jira.hooks.read = async () => {
+    jira.hooks.read = undefined;
+    // While this apply checks SYN-21, another sends the change again and
+    // hears nothing back either; then SYN-21 leaves the group.
+    loseCall(jira, 2);
+    await other.apply(set.id);
+    groupStore(db).remove(
+      groupId,
+      [{ id: "jira:SYN-21", stableId: indexed("SYN-21").stableId }],
+      { kind: "user" },
+      "2026-10-29T09:00:01.000Z" as never,
+    );
+  };
+  const report = await changeSets.apply(set.id);
+  assert.match(nth(report.failed, 0).error, /removed from the group/);
+  // This apply found its own send absent, not the other's: that may have
+  // landed, so the row stays sent.
+  assert.equal(status(db, mutationId), "failed");
+  assert.equal(jira.calls.length, 2);
+  assert.deepEqual((await changeSets.dismiss(set.id)).warnings, [
+    "This may already be in Jira: check SYN-21",
+  ]);
+});
+
+test("a read that fails while apply checks a sent change is recorded, not thrown", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  jira.hooks.read = () => {
+    throw new Error("GET /rest/api/3/issue/SYN-21: 503");
+  };
+  const report = await changeSets.apply(set.id);
+  assert.match(nth(report.failed, 0).error, /couldn't tell whether SYN-21 already holds this/);
+  assert.equal(status(db, mutationId), "failed");
+  assert.match(String((await changeSets.get(set.id))?.mutations[0]?.error), /couldn't tell/);
+});
