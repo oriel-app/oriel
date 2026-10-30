@@ -7,9 +7,10 @@ import type { Instant, ItemId, Ulid } from "./ids.ts";
 // Where a group came from: a copy of a cluster's members at that moment (it
 // doesn't follow the cluster afterwards), or items the user picked. A group
 // made from a cluster remembers that cluster's anchor (e.g. the epic), which
-// bindings bind into functions like `listStories()`.
+// bindings bind into functions like `listStories()`. The anchor is matched by
+// its stable ID, so an epic that moves projects stays the anchor.
 export type GroupOrigin =
-  | { kind: "cluster"; grouping: string; cluster: string; anchor: ItemId | null }
+  | { kind: "cluster"; grouping: string; cluster: string; anchor: GroupMember | null }
   | { kind: "picked" };
 
 export type Group = {
@@ -40,7 +41,8 @@ export type GroupChange = {
 
 // One version of a group's membership: what a thread works in, what a run
 // records, and what bindings and the `.d.ts` are built from. Moving around the
-// window never changes it.
+// window never changes it. A version whose members don't include the origin's
+// anchor has none; one that does names the anchor by that member's handle.
 export type Region = {
   groupId: Ulid;
   version: number;

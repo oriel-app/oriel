@@ -56,7 +56,15 @@ export function scopeOf(region: Region, namespaces: Namespaces): Scope {
   ids.sort(byItemId);
   // A region whose anchor has left it is a region without one.
   const named = region.origin.kind === "cluster" ? region.origin.anchor : null;
-  const anchor = named !== null && ids.includes(named) ? named : null;
+  // By source and stable ID, under the handle the region has for it.
+  const held =
+    named &&
+    region.items.find(
+      (item) =>
+        item.stableId === named.stableId &&
+        parseItemId(item.id)?.source === parseItemId(named.id)?.source,
+    );
+  const anchor = held && ids.includes(held.id) ? held.id : null;
   const sources = sourceKinds.flatMap((kind) => {
     const spec = namespaces[kind];
     const members = ids.filter((id) => parseItemId(id)?.source === kind);

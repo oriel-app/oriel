@@ -197,9 +197,26 @@ test("an item that moved project is followed and keeps its region handle", async
   assert.deepEqual([view.id, view.gone, view.summary], ["jira:SYN-13", false, summary("SYN-13")]);
 });
 
+test("an epic that moved projects is still the anchor, by stable ID, under its new handle", () => {
+  const checkout = fixtureRegion("checkout-epic");
+  // SYN-1 moved and was added back as OPS-1; the origin still names SYN-1.
+  const region: Region = {
+    ...checkout,
+    items: checkout.items.map((item) =>
+      item.id === "jira:SYN-1" ? { id: "jira:OPS-1", stableId: item.stableId } : item,
+    ),
+  };
+  const bindings = bindingsFor(region, { reader: base, namespaces });
+  assert.match(bindings.dts, /The epic this region was made around, jira:OPS-1, read live\./);
+  assert.deepEqual(bindings.capture("jira.createStory", [{ summary: "Wallets" }], "new:1").args, {
+    summary: "Wallets",
+    epic: "jira:OPS-1",
+  });
+});
+
 test("a group made from the SYN-1 cluster, with SYN-1 removed, still binds", async () => {
   const checkout = fixtureRegion("checkout-epic");
-  assert.equal(checkout.origin.kind === "cluster" && checkout.origin.anchor, "jira:SYN-1");
+  assert.equal(checkout.origin.kind === "cluster" && checkout.origin.anchor?.id, "jira:SYN-1");
   // As the group store gives that version: the anchor gone from items and origin.
   const region: Region = {
     ...checkout,

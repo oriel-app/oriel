@@ -267,7 +267,8 @@ test("over the base, the epic grouping reproduces each frozen epic region", () =
   for (const region of regions) {
     const cluster = clusters.find((c) => c.key === region.origin.cluster);
     assert.ok(cluster, region.name);
-    assert.equal(cluster.anchor, region.origin.anchor);
+    assert.equal(cluster.anchor, region.origin.anchor?.id);
+    assert.equal(cluster.key, region.origin.anchor?.stableId);
     const ids = [cluster.anchor ?? "", ...cluster.itemIds];
     assert.deepEqual(ids.toSorted(), region.items.toSorted(), region.name);
   }

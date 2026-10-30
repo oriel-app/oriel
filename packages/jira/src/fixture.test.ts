@@ -73,7 +73,7 @@ test("a consistent fixture parses, and its region origins are core's", () => {
     kind: "cluster",
     grouping: "epic",
     cluster: "10001",
-    anchor: "jira:SYN-1",
+    anchor: { id: "jira:SYN-1", stableId: "10001" },
   });
 });
 

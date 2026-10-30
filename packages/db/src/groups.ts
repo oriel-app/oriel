@@ -34,7 +34,7 @@ const groupOrigin: Validator<GroupOrigin> = union(
     kind: literal("cluster"),
     grouping: string,
     cluster: string,
-    anchor: nullable(itemIdValue),
+    anchor: nullable(object({ id: itemIdValue, stableId: string })),
   }),
   object({ kind: literal("picked") }),
 );
@@ -253,16 +253,22 @@ export function groupStore(db: DatabaseSync) {
         return null;
       const items = selectAt.all(groupId, version, version).map(member);
       const { origin } = group;
-      const anchored =
-        origin.kind !== "cluster" ||
-        origin.anchor === null ||
-        items.some((item) => item.id === origin.anchor);
+      const anchor = origin.kind === "cluster" ? origin.anchor : null;
+      // By source and stable ID: an epic that moved projects and was added
+      // back under its new handle is still the anchor.
+      const held =
+        anchor &&
+        items.find(
+          (item) =>
+            item.stableId === anchor.stableId &&
+            parseItemId(item.id)?.source === parseItemId(anchor.id)?.source,
+        );
       return {
         groupId,
         version,
         workspaceId: group.workspaceId,
         items,
-        origin: anchored ? origin : { ...origin, anchor: null },
+        origin: origin.kind === "cluster" ? { ...origin, anchor: held ?? null } : origin,
       };
     },
 

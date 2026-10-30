@@ -154,7 +154,7 @@ test("a group made from a cluster keeps its origin", () => {
     kind: "cluster",
     grouping: "epic",
     cluster: "10001",
-    anchor: "jira:SYN-1",
+    anchor: syn1,
   } as const;
   const group = groups.create(
     { id: ulid(3, new Uint8Array(10)), workspaceId, name: "Checkout v2", origin },
@@ -171,7 +171,7 @@ test("a version without the item the group was made around has no anchor", () =>
     kind: "cluster",
     grouping: "epic",
     cluster: "10001",
-    anchor: "jira:SYN-1",
+    anchor: syn1,
   } as const;
   const group = groups.create(
     { id: ulid(3, new Uint8Array(10)), workspaceId, name: "Checkout v2", origin },
@@ -187,6 +187,25 @@ test("a version without the item the group was made around has no anchor", () =>
   assert.deepEqual(groups.region(group.id, 3)?.origin, origin);
   // The group itself still says where it came from.
   assert.deepEqual(groups.get(group.id)?.origin, origin);
+});
+
+test("an epic that moved projects and was added back is still the anchor, by stable ID", () => {
+  const { groups, workspaceId } = fresh();
+  const origin = { kind: "cluster", grouping: "epic", cluster: "10001", anchor: syn1 } as const;
+  const group = groups.create(
+    { id: ulid(3, new Uint8Array(10)), workspaceId, name: "Checkout v2", origin },
+    [syn1, syn2],
+    t0,
+  );
+  groups.remove(group.id, [syn1], user, later(1));
+  // SYN-1 moved to another project and is OPS-1 now.
+  const moved = m("OPS-1", "10001");
+  groups.add(group.id, [moved], user, later(2));
+  assert.deepEqual(groups.region(group.id, 3)?.origin, { ...origin, anchor: moved });
+  // Another item with the anchor's old handle isn't the anchor.
+  groups.remove(group.id, [moved], user, later(3));
+  groups.add(group.id, [m("SYN-1", "20001")], user, later(4));
+  assert.deepEqual(groups.region(group.id, 5)?.origin, { ...origin, anchor: null });
 });
 
 test("malformed members and unknown groups are refused, and nothing is recorded", () => {

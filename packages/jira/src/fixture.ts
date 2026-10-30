@@ -136,9 +136,22 @@ export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
 export function parseJiraFixture(input: unknown): Result<JiraFixture> {
   const parsed = parseJiraFixtureFile(input);
   if (!parsed.ok) return parsed;
+  // The anchor by its stable ID too, from the base; the checks above
+  // guarantee an epic region's anchor is there.
+  const stableIds = new Map(parsed.value.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   const regions = parsed.value.regions.map(({ name, origin, items }): FixtureRegion => ({
     name,
-    origin: origin.kind === "group" ? { ...origin, kind: "cluster" } : origin,
+    origin:
+      origin.kind === "group"
+        ? {
+            ...origin,
+            kind: "cluster",
+            anchor:
+              origin.anchor === null
+                ? null
+                : { id: origin.anchor, stableId: stableIds.get(origin.anchor) ?? "" },
+          }
+        : origin,
     items,
   }));
   return { ok: true, value: { ...parsed.value, regions } };

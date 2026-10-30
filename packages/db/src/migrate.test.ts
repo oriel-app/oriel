@@ -110,7 +110,8 @@ test("0002 turns each region into a group at version 1, and keeps its threads an
     {
       id: "r1",
       name: "",
-      origin: '{"kind":"cluster","grouping":"epic","cluster":"10001","anchor":"jira:SYN-1"}',
+      origin:
+        '{"kind":"cluster","grouping":"epic","cluster":"10001","anchor":{"id":"jira:SYN-1","stableId":"10001"}}',
     },
   ]);
   assert.deepEqual(

@@ -102,8 +102,15 @@ create unique index group_members_live on group_members (group_id, source, stabl
 
 insert into groups (id, workspace_id, name, origin, created_at)
   select id, workspace_id, '',
-    case when json_extract(origin, '$.kind') = 'group'
-      then json_set(origin, '$.kind', 'cluster') else origin end,
+    case when json_extract(origin, '$.kind') != 'group' then origin
+      when json_type(origin, '$.anchor') != 'text' then json_set(origin, '$.kind', 'cluster')
+      -- The anchor by its stable ID too, from the region's own items.
+      else json_set(origin, '$.kind', 'cluster', '$.anchor', json_object(
+        'id', json_extract(origin, '$.anchor'),
+        'stableId', coalesce(
+          (select stable_id from region_items
+            where region_id = regions.id and item_id = json_extract(regions.origin, '$.anchor')),
+          ''))) end,
     created_at
   from regions;
 insert into group_changes (workspace_id, group_id, version, at, cause)
