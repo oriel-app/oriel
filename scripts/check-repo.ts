@@ -47,9 +47,23 @@ function backticked(text: string): string[] {
 
 const adapters: readonly string[] = sourceKinds;
 
-// The one file that builds writers.
+// The one file that builds writers, and an adapter's own writer and its test:
+// `packages/<kind>/src/writer.ts` for a kind in core's source kinds only.
 const writersFile = "packages/changeset/src/writers.ts";
-const ownWriterFile = /^packages\/[^/]+\/src\/writer(\.test)?\.ts$/;
+const ownWriterFile = new RegExp(
+  `^packages/(?:${sourceKinds.join("|")})/src/writer(?:\\.test)?\\.ts$`,
+);
+
+// A specifier: a quoted string, or a template literal in `import(…)`, the one
+// place a template literal can name a module, so long as it has no `${…}`,
+// which can't be read without running the code. (Elsewhere, backticks are
+// code in a comment.)
+const open = "(?:[\"']|\\bimport\\s*\\(\\s*`)";
+const inside = "[^\"'`\\s$]";
+const close = "[\"'`]";
+const writerImport = new RegExp(`${open}${inside}*/writer(?:\\.ts)?${close}`);
+const packageSpecifier = new RegExp(`${open}@oriel/([a-z0-9-]+)(/${inside}*)?${close}`, "g");
+const relativeSpecifier = new RegExp(`${open}(\\.{1,2}/${inside}*)${close}`, "g");
 
 // The source adapters a file imports: an `@oriel/<kind>` specifier, with or
 // without a subpath, or a relative path into `packages/<kind>/`, for each
@@ -60,9 +74,8 @@ export function importedAdapters(path: string, text: string): { kind: string; wr
     const writer = /\/writer(\.ts)?$/.test(target);
     if (adapters.includes(kind)) found.set(`${kind} ${writer}`, { kind, writer });
   };
-  for (const [, kind = "", sub = ""] of text.matchAll(/["']@oriel\/([a-z0-9-]+)(\/[^"'\s]*)?["']/g))
-    add(kind, sub);
-  for (const [, relative = ""] of text.matchAll(/["'](\.{1,2}\/[^"'\s]*)["']/g)) {
+  for (const [, kind = "", sub = ""] of text.matchAll(packageSpecifier)) add(kind, sub);
+  for (const [, relative = ""] of text.matchAll(relativeSpecifier)) {
     const resolved = posix.normalize(posix.join(posix.dirname(path), relative));
     add(/^packages\/([^/]+)\//.exec(resolved)?.[1] ?? "", resolved);
   }
@@ -85,7 +98,10 @@ function mayImportAdapter(path: string, kind: string, writer: boolean): boolean 
 
 // Relative specifiers in import syntax: `from "…"`, `import "…"` and
 // `import("…")`. Other strings that look like paths aren't imports.
-const relativeImports = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}\/[^"'\s]*)["']/g;
+const relativeImports = new RegExp(
+  `(?:\\bfrom|\\bimport)\\s*\\(?\\s*["'\`](\\.{1,2}/${inside}*)${close}`,
+  "g",
+);
 
 // The other packages a file under packages/ imports by a relative path.
 export function crossPackageImports(path: string, text: string): string[] {
@@ -127,7 +143,7 @@ export function problems(repo: {
         `${path}: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)`,
       );
     }
-    if (path !== writersFile && !ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
+    if (path !== writersFile && !ownWriter && writerImport.test(text)) {
       found.add(`${path}: imports a source writer outside ${writersFile} (decision 0003)`);
     }
     if (!path.startsWith("packages/")) continue;

@@ -197,6 +197,40 @@ test("the composition root may import an adapter, but never its writer", () => {
   ]);
 });
 
+test("a template literal in import() names a module like a quoted string does", () => {
+  const sources = [
+    { path: "packages/server/src/x.ts", text: "const w = await import(`@oriel/jira/writer`);" },
+    { path: "packages/groupings/src/y.ts", text: "const j = await import( `@oriel/jira` );" },
+    {
+      path: "packages/server/src/z.ts",
+      text: "const e = await import(`../../changeset/src/change-sets.ts`);",
+    },
+    // Not read: an interpolated specifier, and backticked code in a comment.
+    { path: "packages/server/src/w.ts", text: "await import(`@oriel/${kind}/writer`);" },
+    { path: "packages/jira/src/v.ts", text: "// The writer is `@oriel/jira/writer` only." },
+  ];
+  assert.deepEqual(problems({ ...clean, sources }), [
+    "packages/server/src/x.ts: imports a source writer outside packages/changeset/src/writers.ts (decision 0003)",
+    "packages/server/src/x.ts: imports the jira writer; only packages/changeset/src/writers.ts builds writers (decisions 0003 and 0019)",
+    "packages/groupings/src/y.ts: imports the jira adapter; outside packages/jira, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)",
+    "packages/server/src/z.ts: imports packages/changeset by a relative path; packages reach each other only through @oriel/changeset and its exports",
+  ]);
+});
+
+test("only an adapter's own writer.ts is exempt, not any package's", () => {
+  const sources = [
+    { path: "packages/groupings/src/writer.ts", text: 'import { w } from "@oriel/jira/writer";' },
+    { path: "packages/groupings/src/writer.test.ts", text: "w: SourceWriter<K>" },
+    { path: "packages/jira/src/writer.ts", text: 'SourceWriter<"jira">' },
+    { path: "packages/jira/src/writer.test.ts", text: 'import { jiraWriter } from "./writer.ts";' },
+  ];
+  assert.deepEqual(problems({ ...clean, sources }), [
+    "packages/groupings/src/writer.ts: imports a source writer outside packages/changeset/src/writers.ts (decision 0003)",
+    "packages/groupings/src/writer.ts: imports the jira writer; only packages/changeset/src/writers.ts builds writers (decisions 0003 and 0019)",
+    "packages/groupings/src/writer.test.ts: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)",
+  ]);
+});
+
 test("lockedPackages reads keys from the packages section only", () => {
   assert.deepEqual(lockedPackages(lockfile), [
     "@oxlint/binding-darwin-arm64@1.89.0",
