@@ -2,7 +2,7 @@
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the groups and threads lists the chrome shows.
 import { type GroupModel, type GroupMsg, groupReplied, initGroup, updateGroup } from "./group.ts";
-import { type Effect, get, type Replied } from "./http.ts";
+import { type Effect, get, post, type Replied } from "./http.ts";
 import {
   initReview,
   type ReviewModel,
@@ -76,10 +76,32 @@ export function init(route: Route): [Model, Effect[]] {
 
 // Sets up the page `route` names. The window keeps its state between visits,
 // picked items included.
+// What only the window knows happened, for pilot telemetry: the grouping
+// switched, or a cluster zoomed in or out.
+export function windowTelemetry(before: WindowModel, after: WindowModel): Effect[] {
+  const report = (body: unknown): Effect => post("/api/telemetry", body, { kind: "telemetry" });
+  if (after.grouping !== before.grouping)
+    return [report({ name: "grouping.switched", grouping: after.grouping })];
+  const shown = after.window?.grouping;
+  if (shown === undefined || after.open === before.open) return [];
+  const was = before.open[shown].length;
+  const now = after.open[shown].length;
+  if (now === was) return [];
+  return [
+    report(
+      now > was
+        ? { name: "zoom.changed", from: "cluster", to: "list" }
+        : { name: "zoom.changed", from: "list", to: "cluster" },
+    ),
+  ];
+}
+
+// A thread's page watches its events only while it is on screen: leaving
+// stops watching, and entering, by a link, Back or the same link again,
+// loads it fresh and watches again from its last entry.
 function enter(model: Model, route: Route): [Model, Effect[]] {
-  const leaving: Effect[] =
-    model.thread && route.page !== "thread" ? [{ type: "unsubscribe" }] : [];
-  const base = { ...model, route };
+  const leaving: Effect[] = model.thread ? [{ type: "unsubscribe" }] : [];
+  const base = { ...model, route, thread: null };
   switch (route.page) {
     case "window": {
       if (model.window === null) {
@@ -101,10 +123,8 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       return [{ ...base, group }, [...leaving, ...effects, ...lists]];
     }
     case "thread": {
-      if (model.thread?.id === route.id) return [base, []];
       const [thread, effects] = initThread(route.id);
-      const swap: Effect[] = model.thread ? [{ type: "unsubscribe" }] : [];
-      return [{ ...base, thread }, [...swap, ...effects, ...lists]];
+      return [{ ...base, thread }, [...leaving, ...effects, ...lists]];
     }
     case "inbox":
       return [base, [...leaving, ...lists]];
@@ -120,7 +140,7 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "window": {
       if (model.window === null) return [model, []];
       const [window, effects] = updateWindow(model.window, msg.msg);
-      return [{ ...model, window }, effects];
+      return [{ ...model, window }, [...effects, ...windowTelemetry(model.window, window)]];
     }
     case "group": {
       if (model.group === null) return [model, []];
@@ -162,6 +182,9 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return msg.ok ? [{ ...model, groups: (msg.body as GroupsView).groups }, []] : [model, []];
     case "inbox":
       return msg.ok ? [{ ...model, threads: (msg.body as InboxView).threads }, []] : [model, []];
+    // Telemetry is best effort; the window carries on either way.
+    case "telemetry":
+      return [model, []];
     case "createGroup":
     case "addToGroup": {
       if (model.window === null) return [model, []];

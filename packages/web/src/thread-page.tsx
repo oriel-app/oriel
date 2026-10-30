@@ -3,10 +3,10 @@
 // a diff with what can be done with it.
 import { type Dispatch, ItemKey, Link, plural, StateChip, TypeMark } from "./parts.tsx";
 import {
+  actionName,
   actionsOf,
   type Block,
   blocks,
-  type ChangeSetAction,
   type ThreadModel,
   type ThreadMsg,
 } from "./thread.ts";
@@ -21,16 +21,10 @@ const fieldNames: Record<string, string> = {
 };
 const fieldName = (name: string) => fieldNames[name] ?? (name.startsWith("link:") ? "Link" : name);
 
-const actionNames: Record<ChangeSetAction, string> = {
-  approve: "Approve and apply",
-  reject: "Reject",
-  apply: "Apply",
-  revert: "Revert",
-};
-
 const statusNames: Record<ChangeSetView["status"], string> = {
   open: "Awaiting review",
   approved: "Ready to apply",
+  stopped: "Stopped",
   rejected: "Rejected",
   applied: "Applied",
   partial: "Partly applied",
@@ -117,7 +111,7 @@ function ChatBlock(props: {
     case "run":
       return (
         <li class="run-block">
-          <Run script={block.script} run={block.run} />
+          <Run script={block.script} run={block.run} stopped={block.stopped} />
         </li>
       );
     case "search":
@@ -175,10 +169,12 @@ function refList(refs: readonly ItemRef[]) {
 }
 
 // A run, folded: what it did in one line, the script and its output inside.
-function Run({ script, run }: { script: string; run: RunView | null }) {
+function Run({ script, run, stopped }: { script: string; run: RunView | null; stopped: boolean }) {
   const summary =
     run === null
-      ? "Running a script…"
+      ? stopped
+        ? "Script stopped before it finished"
+        : "Running a script…"
       : [
           run.outcome === "ok" ? "Ran a script" : `Script ${outcomeNames[run.outcome]}`,
           plural(run.reads.length, "read"),
@@ -188,7 +184,7 @@ function Run({ script, run }: { script: string; run: RunView | null }) {
           .filter(Boolean)
           .join(" · ");
   return (
-    <details class="run" data-outcome={run?.outcome ?? "running"}>
+    <details class="run" data-outcome={run?.outcome ?? (stopped ? "stopped" : "running")}>
       <summary>{summary}</summary>
       <div class="run-body">
         <pre class="code">{script}</pre>
@@ -238,22 +234,23 @@ function ChangeSet(props: {
       {diff ? (
         <Diff
           diff={diff}
-          editable={set.status === "open" && diff.lines.length > 1}
           busy={busy}
           onRemove={(mutationId) => send({ type: "lineRemoved", changeSetId: set.id, mutationId })}
         />
       ) : (
-        <p class="loading">Reading current values…</p>
-      )}
-      {set.errors.length > 0 && (
-        <ul class="apply-errors">
-          {set.errors.map((e) => (
-            <li key={e.mutationId}>{e.error}</li>
-          ))}
-        </ul>
+        <>
+          <p class="loading">Reading current values…</p>
+          {set.errors.length > 0 && (
+            <ul class="apply-errors">
+              {set.errors.map((e) => (
+                <li key={e.mutationId}>{e.error}</li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
       <footer class="change-set-actions">
-        {actionsOf(set).map((action) => (
+        {actionsOf(set, view.writable).map((action) => (
           <button
             key={action}
             type="button"
@@ -261,10 +258,16 @@ function ChangeSet(props: {
             disabled={busy || (action !== "revert" && action !== "apply" && !diff)}
             onClick={() => send({ type: "changeSetClicked", changeSetId: set.id, action })}
           >
-            {actionNames[action]}
+            {actionName(action, set)}
           </button>
         ))}
+        {set.status === "open" && !view.writable && (
+          <span class="read-only-note">
+            Live writes aren't configured here, so this can be reviewed and rejected, not approved.
+          </span>
+        )}
         {set.status === "open" &&
+          view.writable &&
           (link ? (
             <span class="review-link">
               <input class="link-field" readOnly value={link} aria-label="Review link" />
@@ -298,16 +301,23 @@ function ChangeSet(props: {
   );
 }
 
+// A change set's lines. With `onRemove`, a line that can be left out offers
+// it: quietly while the change set is open, and plainly beside a change that
+// stopped, as the reason it stopped says.
 export function Diff(props: {
   diff: DiffView;
-  editable: boolean;
   busy: boolean;
   onRemove?: (mutationId: string) => void;
 }) {
   return (
     <ul class="diff">
       {props.diff.lines.map((line) => (
-        <li key={line.mutationId} class="diff-line" data-applied={line.applied ? "" : undefined}>
+        <li
+          key={line.mutationId}
+          class="diff-line"
+          data-applied={line.applied ? "" : undefined}
+          data-stopped={line.error ? "" : undefined}
+        >
           <p class="sentence">
             {line.sentence} {line.target?.url && <ItemKey item={line.target} />}
           </p>
@@ -327,7 +337,22 @@ export function Diff(props: {
               ))}
             </dl>
           )}
-          {props.editable && props.onRemove && (
+          {line.error && (
+            <p class="line-error" role="note">
+              {line.error}
+              {line.removable && props.onRemove && (
+                <button
+                  type="button"
+                  class="quiet-action"
+                  disabled={props.busy}
+                  onClick={() => props.onRemove?.(line.mutationId)}
+                >
+                  Remove this change
+                </button>
+              )}
+            </p>
+          )}
+          {!line.error && line.removable && props.onRemove && (
             <button
               type="button"
               class="remove-line"
@@ -418,7 +443,7 @@ export function Member({ member, onRemove }: { member: MemberView; onRemove?: ()
     <li class={row ? "member" : "member gone"}>
       <TypeMark row={row} />
       <ItemKey item={ref} />
-      <span class="member-title">{row?.title ?? ref.title ?? "No longer in its source"}</span>
+      <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>
       {row?.status && (
         <span class="status" data-category={row.status.category}>
           {row.status.name}

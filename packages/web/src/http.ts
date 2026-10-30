@@ -21,7 +21,8 @@ export type Tag =
   | { kind: "reviewLink"; changeSetId: string }
   | { kind: "inbox" }
   | { kind: "reviewOpened" }
-  | { kind: "reviewDecided" };
+  | { kind: "reviewDecided" }
+  | { kind: "telemetry" };
 
 export type Effect =
   | { type: "loadWindow"; request: number; grouping: GroupingId }

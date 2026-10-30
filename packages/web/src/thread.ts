@@ -63,6 +63,11 @@ const refresh = (model: ThreadModel): Effect =>
 const diffOf = (changeSetId: string): Effect =>
   post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
 
+const problemOf = (body: unknown): string | null =>
+  typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
+    ? body.problem
+    : null;
+
 const without = <T>(record: Readonly<Record<string, T>>, key: string) =>
   Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
 
@@ -195,9 +200,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     case "changeSet": {
       if (tag.threadId !== model.id) return [model, []];
       const busy = model.busy.filter((id) => id !== tag.changeSetId);
-      const problems = msg.ok
-        ? model.problems
-        : { ...model.problems, [tag.changeSetId]: errorOf(msg.body) };
+      // A refusal, or a decision that stood while applying it didn't.
+      const problem = msg.ok ? problemOf(msg.body) : errorOf(msg.body);
+      const problems =
+        problem === null
+          ? without(model.problems, tag.changeSetId)
+          : { ...model.problems, [tag.changeSetId]: problem };
       // Whatever happened, the diff and the thread's state may have moved.
       return [{ ...model, busy, problems }, [diffOf(tag.changeSetId), refresh(model)]];
     }
@@ -255,7 +263,15 @@ export type Block =
   | { kind: "user"; seq: number; text: string }
   | { kind: "reply"; seq: number; text: string }
   | { kind: "marker"; seq: number; from: number; to: number; added: ItemRef[]; removed: ItemRef[] }
-  | { kind: "run"; seq: number; runId: string; script: string; run: RunView | null }
+  // `stopped`: its turn ended before it finished, as when the user stopped it.
+  | {
+      kind: "run";
+      seq: number;
+      runId: string;
+      script: string;
+      run: RunView | null;
+      stopped: boolean;
+    }
   | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; seq: number; changeSetId: string }
   | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string };
@@ -282,13 +298,21 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
           runId: entry.runId,
           script: entry.script,
           run: null,
+          stopped: false,
         });
         break;
       case "run.finished": {
         const started = out.find((b) => b.kind === "run" && b.runId === entry.runId);
         if (started?.kind === "run") started.run = entry.run;
         else
-          out.push({ kind: "run", seq: entry.seq, runId: entry.runId, script: "", run: entry.run });
+          out.push({
+            kind: "run",
+            seq: entry.seq,
+            runId: entry.runId,
+            script: "",
+            run: entry.run,
+            stopped: false,
+          });
         break;
       }
       case "search":
@@ -303,7 +327,10 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
       case "error":
         out.push({ kind: "notice", seq: entry.seq, tone: "error", text: entry.message });
         break;
+      // A turn has ended: a run it started and never finished was stopped.
       case "done":
+        for (const block of out)
+          if (block.kind === "run" && block.run === null) block.stopped = true;
         break;
     }
   }
@@ -311,16 +338,41 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
 }
 
 // What a person can do with a change set as it stands.
-export function actionsOf(set: ChangeSetView): ChangeSetAction[] {
+// Each state leads somewhere: a stopped change is retried or, line by line,
+// left out (`DiffView` says which can be); what's left after that is
+// approved again; and whatever applied can be reverted, once nothing sent is
+// still unaccounted for. Without live writes, only rejecting is possible.
+export function actionsOf(set: ChangeSetView, writable: boolean): ChangeSetAction[] {
+  if (!writable) return set.status === "open" ? ["reject"] : [];
   switch (set.status) {
     case "open":
       return ["approve", "reject"];
     case "approved":
+    case "stopped":
+      return ["apply", "reject"];
     case "partial":
-      return ["apply"];
+      return [
+        set.approved ? "apply" : "approve",
+        ...(set.sentUnapplied ? [] : ["revert" as const]),
+      ];
     case "applied":
       return set.reverts.length ? [] : ["revert"];
     case "rejected":
       return [];
+  }
+}
+
+// What an action is called where it stands.
+export function actionName(action: ChangeSetAction, set: ChangeSetView): string {
+  const partway = set.status === "partial" || set.status === "stopped";
+  switch (action) {
+    case "approve":
+      return partway ? "Approve the rest" : "Approve and apply";
+    case "reject":
+      return "Reject";
+    case "apply":
+      return partway ? "Try again" : "Apply";
+    case "revert":
+      return set.status === "partial" ? "Revert what was applied" : "Revert";
   }
 }

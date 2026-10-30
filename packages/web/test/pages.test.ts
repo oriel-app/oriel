@@ -6,6 +6,7 @@ import { initReview, reviewReplied, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import { parseRoute, routeUrl, safeHref } from "../src/route.ts";
 import {
+  actionName,
   actionsOf,
   blocks,
   initThread,
@@ -192,6 +193,8 @@ function threadView(entries: ChatEntry[], changeSets: ChangeSetView[] = []): Thr
 const openSet: ChangeSetView = {
   id: setId,
   status: "open",
+  approved: false,
+  sentUnapplied: false,
   decision: null,
   errors: [],
   revertOf: null,
@@ -348,18 +351,91 @@ test("the chat joins a streamed reply and a run's start and finish into one bloc
   assert.deepEqual(out, [
     { kind: "user", seq: 1, text: "Hi" },
     { kind: "reply", seq: 2, text: "Let me look." },
-    { kind: "run", seq: 4, runId: "r1", script: "return 3;", run },
+    { kind: "run", seq: 4, runId: "r1", script: "return 3;", run, stopped: false },
     { kind: "reply", seq: 6, text: "Three." },
     { kind: "notice", seq: 8, tone: "error", text: "Stopped." },
   ]);
 });
 
-test("what can be done with a change set follows its status", () => {
-  assert.deepEqual(actionsOf(openSet), ["approve", "reject"]);
-  assert.deepEqual(actionsOf({ ...openSet, status: "partial" }), ["apply"]);
-  assert.deepEqual(actionsOf({ ...openSet, status: "applied" }), ["revert"]);
-  assert.deepEqual(actionsOf({ ...openSet, status: "applied", reverts: ["x"] }), []);
-  assert.deepEqual(actionsOf({ ...openSet, status: "rejected" }), []);
+test("every state of a change set leads somewhere", () => {
+  const named = (set: ChangeSetView) =>
+    actionsOf(set, true).map((action) => actionName(action, set));
+  assert.deepEqual(named(openSet), ["Approve and apply", "Reject"]);
+  // Once approved, if apply stopped before anything landed: try again, or reject.
+  assert.deepEqual(named({ ...openSet, status: "stopped", approved: true }), [
+    "Try again",
+    "Reject",
+  ]);
+  // Partly applied and still approved: try again, or revert what landed.
+  assert.deepEqual(named({ ...openSet, status: "partial", approved: true }), [
+    "Try again",
+    "Revert what was applied",
+  ]);
+  // After a stopped change was left out, the rest needs approving again.
+  assert.deepEqual(named({ ...openSet, status: "partial" }), [
+    "Approve the rest",
+    "Revert what was applied",
+  ]);
+  // A change sent with no answer may have landed: revert waits for it.
+  assert.deepEqual(named({ ...openSet, status: "partial", approved: true, sentUnapplied: true }), [
+    "Try again",
+  ]);
+  assert.deepEqual(named({ ...openSet, status: "applied" }), ["Revert"]);
+  assert.deepEqual(named({ ...openSet, status: "applied", reverts: ["x"] }), []);
+  assert.deepEqual(named({ ...openSet, status: "rejected" }), []);
+});
+
+test("without live writes a change set can only be rejected", () => {
+  assert.deepEqual(actionsOf(openSet, false), ["reject"]);
+  assert.deepEqual(actionsOf({ ...openSet, status: "applied" }, false), []);
+});
+
+test("a stopped change is left out with an edit, then the diff and thread reload", () => {
+  const [loaded] = loadedThread(
+    threadView([], [{ ...openSet, status: "partial", approved: true }]),
+  );
+  const [busy, effects] = updateThread(loaded, {
+    type: "lineRemoved",
+    changeSetId: setId,
+    mutationId: "m2",
+  });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/change-sets/${setId}/edit`,
+      body: { remove: ["m2"] },
+      tag: { kind: "changeSet", threadId: id, changeSetId: setId },
+    },
+  ]);
+  const [, after] = threadReplied(
+    busy,
+    ok({ kind: "changeSet", threadId: id, changeSetId: setId }, { changeSet: openSet }),
+  );
+  assert.deepEqual(
+    after.map((e) => (e.type === "http" ? `${e.method} ${e.url}` : e.type)),
+    [`POST /api/change-sets/${setId}/diff`, `GET /api/threads/${id}`],
+  );
+});
+
+test("a problem the server reports alongside a decision shows on the change set", () => {
+  const [loaded] = loadedThread(threadView([], [openSet]));
+  const [shown] = threadReplied(
+    loaded,
+    ok(
+      { kind: "changeSet", threadId: id, changeSetId: setId },
+      { changeSet: { ...openSet, status: "approved", approved: true }, problem: "busy" },
+    ),
+  );
+  assert.equal(shown.problems[setId], "busy");
+});
+
+test("a run its turn never finished shows as stopped once the turn ends", () => {
+  const started = { seq: 1, at, kind: "run.started" as const, runId: "r1", script: "x" };
+  const [running] = blocks([started]);
+  assert.equal(running?.kind === "run" && running.stopped, false);
+  const [stopped] = blocks([started, { seq: 2, at, kind: "done" }]);
+  assert.equal(stopped?.kind === "run" && stopped.stopped, true);
 });
 
 test("asking on a group's page opens a thread and goes to it", () => {
@@ -466,4 +542,65 @@ test("leaving a thread stops watching it; the window keeps what was picked", () 
   assert.deepEqual(back.window?.selected, ["jira:SYN-10"]);
   const [, review] = updateRoot(model, { type: "routed", route: { page: "review", token: "tok" } });
   assert.deepEqual(review, []);
+});
+
+test("going back to a thread, or following its link again, watches it again", () => {
+  const [model] = initRoot({ page: "thread", id });
+  const view = threadView([{ seq: 1, at, kind: "user", text: "Hi" }]);
+  const load = (current: typeof model) =>
+    updateRoot(current, { type: "replied", tag: { kind: "thread", id }, ok: true, body: view });
+  const [watching, first] = load(model);
+  assert.deepEqual(first[0], { type: "subscribe", threadId: id, after: 1 });
+  // Away to the window, then Back.
+  const [away, leave] = updateRoot(watching, {
+    type: "routed",
+    route: { page: "window", grouping: "epic", addTo: null },
+  });
+  assert.deepEqual(leave[0], { type: "unsubscribe" });
+  assert.equal(away.thread, null);
+  const [back, enter] = updateRoot(away, { type: "routed", route: { page: "thread", id } });
+  assert.ok(enter.some((e) => e.type === "http" && e.url === `/api/threads/${id}`));
+  const [again, resubscribe] = load(back);
+  assert.deepEqual(resubscribe[0], { type: "subscribe", threadId: id, after: 1 });
+  // Live events land again.
+  const [live] = updateRoot(again, {
+    type: "streamed",
+    event: { type: "entry", entry: { seq: 2, at, kind: "text", text: "Hello" } },
+  });
+  assert.equal(live.thread?.view?.entries.length, 2);
+  // The same link while on the page: stop, reload, watch again.
+  const [, same] = updateRoot(again, { type: "routed", route: { page: "thread", id } });
+  assert.deepEqual(same.map((e) => (e.type === "http" ? e.url : e.type)).slice(0, 2), [
+    "unsubscribe",
+    `/api/threads/${id}`,
+  ]);
+});
+
+test("the window reports a grouping switch and a zoom in or out, and nothing else", () => {
+  const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
+  const shown = updateRoot(model, {
+    type: "window",
+    msg: { type: "windowLoaded", request: model.window?.request ?? 0, window: windowView() },
+  })[0];
+  const reported = (msg: Parameters<typeof update>[1]) =>
+    updateRoot(shown, { type: "window", msg })[1].flatMap((e) =>
+      e.type === "http" && e.url === "/api/telemetry" ? [e.body] : [],
+    );
+  assert.deepEqual(reported({ type: "groupingPicked", grouping: "stuck" }), [
+    { name: "grouping.switched", grouping: "stuck" },
+  ]);
+  assert.deepEqual(reported({ type: "clusterToggled", key: "10001" }), [
+    { name: "zoom.changed", from: "cluster", to: "list" },
+  ]);
+  const opened = updateRoot(shown, {
+    type: "window",
+    msg: { type: "clusterToggled", key: "10001" },
+  })[0];
+  assert.deepEqual(
+    updateRoot(opened, { type: "window", msg: { type: "clusterToggled", key: "10001" } })[1].map(
+      (e) => (e.type === "http" ? e.body : e.type),
+    ),
+    [{ name: "zoom.changed", from: "list", to: "cluster" }],
+  );
+  assert.deepEqual(reported({ type: "itemToggled", id: "jira:SYN-10" }), []);
 });
