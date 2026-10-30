@@ -26,6 +26,7 @@ const threadRow = object({
   created_at: instantValue,
 });
 const atRow = object({ at: nullable(string) });
+const appliedRow = object({ at: string, handed_off: number });
 
 // A working thread with no activity this long is dropped.
 const idleMs = 7 * 24 * 60 * 60 * 1000;
@@ -52,21 +53,20 @@ export function threadStore(db: DatabaseSync) {
       union all select created_at from change_sets where thread_id = ?1
       union all select d.at from decisions d join change_sets c on c.id = d.change_set_id
         where c.thread_id = ?1)`);
-  // When the last of its change sets to be applied in full finished applying.
+  // The change set last applied in full, at the time it completed (its last
+  // mutation's), and whether it handed the work off: any of its mutations
+  // set an assignee or attached a link, in core's field names
+  // (`FieldValues`). A set only partly applied settles nothing.
   const lastApplied = db.prepare(`
-    select max(done) as at from (
-      select max(json_extract(m.applied, '$.at')) as done
-      from change_sets c join mutations m on m.change_set_id = c.id
-      where c.thread_id = ? group by c.id
-      having count(*) = sum(m.status = 'applied'))`);
-  // When it last handed off: an applied change to an item's assignee, or a
-  // link attached, in core's field names (`FieldValues`).
-  const lastHandOff = db.prepare(`
-    select max(json_extract(m.applied, '$.at')) as at
+    select max(json_extract(m.applied, '$.at')) as at,
+      max(exists (
+        select 1 from json_each(m.applied, '$.after') field
+        where field.key = 'assignee' or (field.key like 'link:%' and field.type != 'null')
+      )) as handed_off
     from change_sets c join mutations m on m.change_set_id = c.id
-    where c.thread_id = ? and m.status = 'applied' and exists (
-      select 1 from json_each(m.applied, '$.after') field
-      where field.key = 'assignee' or (field.key like 'link:%' and field.type != 'null'))`);
+    where c.thread_id = ? group by c.id
+    having count(*) = sum(m.status = 'applied')
+    order by at desc, handed_off desc limit 1`);
 
   const at = (statement: ReturnType<DatabaseSync["prepare"]>, id: Ulid): string | null => {
     const row = atRow(statement.get(id));
@@ -97,10 +97,21 @@ export function threadStore(db: DatabaseSync) {
       if (!parsed.ok) throw new Error(`corrupt threads row: ${JSON.stringify(parsed.issues)}`);
       const row = parsed.value;
       const since = at(lastMessage, id);
+      const appliedRaw = lastApplied.get(id);
+      const applied = appliedRaw ? appliedRow(appliedRaw) : null;
+      const set = applied?.ok ? applied.value : null;
       const settled = [
-        { state: "handed-off" as const, doneBy: null, at: at(lastHandOff, id) },
+        {
+          state: "handed-off" as const,
+          doneBy: null,
+          at: set?.handed_off ? set.at : null,
+        },
         { state: "done" as const, doneBy: "marked" as const, at: row.marked_done_at },
-        { state: "done" as const, doneBy: "applied" as const, at: at(lastApplied, id) },
+        {
+          state: "done" as const,
+          doneBy: "applied" as const,
+          at: set && !set.handed_off ? set.at : null,
+        },
       ]
         .filter(
           (s): s is typeof s & { at: string } => s.at !== null && (since === null || s.at > since),

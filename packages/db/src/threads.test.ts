@@ -118,6 +118,35 @@ test("an applied assignee change or attached link hands it off; a removed link d
   assert.deepEqual(unlinked.state(after(2000)), ["done", "applied"]);
 });
 
+test("a change set settles the thread when it completes, whatever its mutations' order", () => {
+  const assign = (at: Instant | null) => ({ after: { assignee: "amara" }, at });
+  const estimate = (at: Instant | null) => ({ after: { points: 3 }, at });
+  for (const mutations of [
+    [assign(after(1000)), estimate(after(2000))],
+    [estimate(after(1000)), assign(after(2000))],
+  ]) {
+    const { changeSet, state } = fresh();
+    changeSet(mutations);
+    assert.deepEqual(state(after(3000)), ["handed-off", null]);
+  }
+  // Partly applied, it settles nothing; once it completes, it hands off.
+  const { db, changeSet, state } = fresh();
+  changeSet([assign(after(1000)), estimate(null)]);
+  assert.deepEqual(state(after(3000)), ["working", null]);
+  db.prepare("update mutations set status = 'applied', applied = ? where status = 'pending'").run(
+    JSON.stringify({
+      item: { id: "jira:SYN-1", stableId: "10001" },
+      before: {},
+      after: { points: 3 },
+      at: after(4000),
+    }),
+  );
+  assert.deepEqual(state(after(5000)), ["handed-off", null]);
+  // A later set that hands nothing off makes it done.
+  changeSet([estimate(after(6000))]);
+  assert.deepEqual(state(after(7000)), ["done", "applied"]);
+});
+
 test("of two settlings the later counts", () => {
   const { threads, threadId, changeSet, state } = fresh();
   changeSet([{ after: { assignee: "amara" }, at: after(1000) }]);
