@@ -285,18 +285,17 @@ test("an apply reloads each tab twice and diffs once: as it starts, then as it e
   });
   assert.equal(starting, approving);
   assert.deepEqual(urls(started), [`/api/threads/${id}`]);
+  // As it ends: one diff, then the thread once that diff is recorded, so the
+  // steps it offers count it.
   const [, ended] = streamed(starting, { type: "change-set", changeSetId: setId, applying: false });
-  assert.deepEqual(urls(ended), [`/api/change-sets/${setId}/diff`, `/api/threads/${id}`]);
-  const diffTag = ended[0]?.type === "http" ? ended[0].tag : null;
-  assert.deepEqual(diffTag, { kind: "diff", changeSetId: setId, quiet: true });
-  // That diff's reply doesn't reload the thread again.
+  assert.deepEqual(urls(ended), [`/api/change-sets/${setId}/diff`]);
   assert.deepEqual(
-    threadReplied(starting, ok({ kind: "diff", changeSetId: setId, quiet: true }, diff))[1],
-    [],
+    urls(threadReplied(starting, ok({ kind: "diff", changeSetId: setId }, diff))[1]),
+    [`/api/threads/${id}`],
   );
 });
 
-test("a stream that reconnects reloads the thread once, since what it missed isn't replayed", () => {
+test("a stream that reconnects reloads the thread once, and diffs what was applying", () => {
   const [model] = initRoot({ page: "thread", id });
   const [loaded] = updateRoot(model, {
     type: "replied",
@@ -307,7 +306,7 @@ test("a stream that reconnects reloads the thread once, since what it missed isn
   const [, effects] = updateRoot(loaded, { type: "streamReopened" });
   assert.deepEqual(
     effects.map((e) => (e.type === "http" ? e.url : e.type)),
-    [`/api/threads/${id}`, "/api/threads"],
+    [`/api/threads/${id}`, `/api/change-sets/${setId}/diff`, "/api/threads"],
   );
 });
 
@@ -464,7 +463,7 @@ test("each offered step has a name for where the change set stands", () => {
   assert.equal(stepLabel("approve-rest", stoppedSet), "Approve the rest");
 });
 
-test("a stopped change is left out with an edit, then the diff and thread reload", () => {
+test("a stopped change is left out with an edit, and the thread's stream reloads it", () => {
   const [loaded] = loadedThread(threadView([], [stoppedSet]));
   const [busy, effects] = updateThread(loaded, {
     type: "lineRemoved",
@@ -480,13 +479,17 @@ test("a stopped change is left out with an edit, then the diff and thread reload
       tag: { kind: "changeSet", threadId: id, changeSetId: setId },
     },
   ]);
-  const [, after] = threadReplied(
+  // The reply adds nothing: the server tells the stream, which diffs it,
+  // then reloads the thread.
+  const [edited, after] = threadReplied(
     busy,
     ok({ kind: "changeSet", threadId: id, changeSetId: setId }, { changeSet: openSet }),
   );
+  assert.deepEqual(after, []);
+  const [, told] = streamed(edited, { type: "change-set", changeSetId: setId, applying: false });
   assert.deepEqual(
-    after.map((e) => (e.type === "http" ? `${e.method} ${e.url}` : e.type)),
-    [`POST /api/change-sets/${setId}/diff`, `GET /api/threads/${id}`],
+    told.map((e) => (e.type === "http" ? `${e.method} ${e.url}` : e.type)),
+    [`POST /api/change-sets/${setId}/diff`],
   );
 });
 

@@ -65,16 +65,8 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
 
 const refresh = (model: ThreadModel): Effect =>
   get(`/api/threads/${model.id}`, { kind: "thread", id: model.id });
-const diffOf = (changeSetId: string, quiet = false): Effect =>
-  post(
-    `/api/change-sets/${changeSetId}/diff`,
-    {},
-    {
-      kind: "diff",
-      changeSetId,
-      ...(quiet ? { quiet: true as const } : {}),
-    },
-  );
+const diffOf = (changeSetId: string): Effect =>
+  post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
 
 const problemOf = (body: unknown): string | null =>
   typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
@@ -241,11 +233,10 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           [],
         ];
       // A diff records what the person was shown, which approving waits on:
-      // the thread reloads, so its steps say what can be done now, unless
-      // that reload is already on its way.
+      // the thread reloads after it, so its steps say what can be done now.
       return [
         { ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } },
-        tag.quiet ? [] : [refresh(model)],
+        [refresh(model)],
       ];
     }
     case "changeSet": {
@@ -260,14 +251,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       // Dismissing says what to check.
       const warnings = msg.ok ? warningsOf(msg.body) : null;
       const notes = warnings ? { ...model.notes, [tag.changeSetId]: warnings } : model.notes;
-      // An approval or a retry applied it, or tried to: the thread's stream
-      // says when that started and ended, and those reload what moved.
-      // Whatever else happened, the diff and the thread's state may have.
-      const applied =
-        msg.ok && typeof msg.body === "object" && msg.body !== null && "report" in msg.body;
+      // Whatever it changed, the server tells the thread's stream, which
+      // reloads it here too. A refusal changed nothing, but what it was
+      // refused on may have moved: reload.
       return [
         { ...model, busy, problems, notes },
-        applied ? [] : [diffOf(tag.changeSetId), refresh(model)],
+        msg.ok ? [] : [diffOf(tag.changeSetId), refresh(model)],
       ];
     }
     case "reviewLink": {
@@ -285,9 +274,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
 }
 
 // The thread's event stream reconnected after dropping: whatever it missed
-// (an apply that ended, say) isn't replayed, so the thread reloads once.
+// (an apply that ended, say) isn't replayed, so the thread reloads once, and
+// a change set that was applying is diffed again, for what stopped it.
 export function reconnected(model: ThreadModel): [ThreadModel, Effect[]] {
-  return [model, model.view === null ? [] : [refresh(model)]];
+  if (model.view === null) return [model, []];
+  const applying = model.view.changeSets.filter((set) => set.applying).map((set) => diffOf(set.id));
+  return [model, [refresh(model), ...applying]];
 }
 
 // What the thread's event stream says.
@@ -309,13 +301,11 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     return [next, moved || (!event.running && view.running) ? [refresh(model)] : []];
   }
   // Applying started, here or elsewhere: nothing can be done with it until it
-  // ends, which the thread says. Then, or once a review link dismissed it,
-  // its diff and what it offers have moved: one diff, one reload.
+  // ends, which the thread says. Once it has, or anything else changed it,
+  // its diff and what it offers have moved: one diff, whose reply reloads
+  // the thread.
   if (event.type === "change-set")
-    return [
-      model,
-      event.applying ? [refresh(model)] : [diffOf(event.changeSetId, true), refresh(model)],
-    ];
+    return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
   const { entry } = event;
   if (entry.seq <= view.lastSeq) return [model, []];
   const next = {

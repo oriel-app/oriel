@@ -464,3 +464,57 @@ test("a partly applied change set's review link offers what the engine does, dis
   });
   assert.equal(again.status, 409);
 });
+
+// The next `change-set` event on a thread's stream.
+async function told(events: AsyncIterator<string>) {
+  for (;;) {
+    const next = await events.next();
+    assert.ok(!next.done, "the stream ended early");
+    const data = /^data: (.*)$/m.exec(next.value)?.[1];
+    const event = data === undefined ? null : (JSON.parse(data) as StreamEvent);
+    if (event?.type === "change-set") return event;
+  }
+}
+
+test("every action that changes a change set tells the thread's stream", async (t) => {
+  const app = await proposed(t);
+  app.site.refuse("SYN-99");
+  await app.approve();
+  const watching = (await app.get(`/api/threads/${app.threadId}/events`)).stream;
+  assert.ok(watching);
+  const events = watching[Symbol.asyncIterator]();
+  const changed = { type: "change-set", changeSetId: app.changeSetId, applying: false };
+  const stopped = (await app.diff()).lines[1];
+  assert.ok(stopped);
+  assert.equal((await app.act("edit", { remove: [stopped.mutationId] })).status, 200);
+  assert.deepEqual(await told(events), changed);
+  assert.equal((await app.act("dismiss")).status, 200);
+  assert.deepEqual(await told(events), changed);
+  await events.return?.();
+});
+
+test("a review link's rejection tells the thread's stream", async (t) => {
+  const app = await proposed(t);
+  const minted = json<{ url: string }>(
+    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
+  );
+  const token = new URL(minted.url).pathname.split("/").at(-1);
+  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
+  const watching = (await app.get(`/api/threads/${app.threadId}/events`)).stream;
+  assert.ok(watching);
+  const events = watching[Symbol.asyncIterator]();
+  const rejected = await app.post("/api/review/decide", {
+    token,
+    changeSet: app.changeSetId,
+    kind: "rejected",
+    name: "Ana",
+    hash: opened.diff.hash,
+  });
+  assert.equal(rejected.status, 200);
+  assert.deepEqual(await told(events), {
+    type: "change-set",
+    changeSetId: app.changeSetId,
+    applying: false,
+  });
+  await events.return?.();
+});

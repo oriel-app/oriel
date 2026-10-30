@@ -238,17 +238,22 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     return views.thread(threadId, sets, steps, (id) => changeSets.applying(id as Ulid));
   };
 
-  // Applies a change set, and tells every page watching its thread when that
-  // starts and when it ends. The engine marks it applying before `apply`
-  // returns its promise, so the first reload sees that.
+  // Every action that changes a change set tells the pages watching its
+  // thread, through this: whether it is applying now, or has changed.
+  const tell = (set: { id: Ulid; threadId: Ulid }, applying: boolean) =>
+    turns.changeSet(set.threadId, set.id, applying);
+
+  // Applies a change set, and tells when that starts and when it ends. The
+  // engine marks it applying before `apply` returns its promise, so the first
+  // reload sees that.
   const applyTold = async (id: Ulid) => {
-    const { threadId } = await mustChangeSet(id);
+    const set = await mustChangeSet(id);
     const applying = changeSets.apply(id);
-    turns.changeSet(threadId, id, true);
+    tell(set, true);
     try {
       return await applying;
     } finally {
-      turns.changeSet(threadId, id, false);
+      tell(set, false);
     }
   };
 
@@ -260,8 +265,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     approver: Parameters<ChangeSets["decide"]>[2],
     hash: string,
   ) => {
-    await changeSets.decide(id, kind, approver, hash);
-    if (kind === "rejected") return { report: null, problem: null };
+    const decided = await changeSets.decide(id, kind, approver, hash);
+    if (kind === "rejected") {
+      tell(decided, false);
+      return { report: null, problem: null };
+    }
     // The decision stands even if applying it is refused (another apply is
     // under way, say): the change set says where it stands, and why.
     try {
@@ -589,7 +597,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const set = await mustChangeSet(id);
         const { remove } = await readJson(request, smallBody, editBody);
-        await changeSets.edit(set.id, { remove });
+        tell(await changeSets.edit(set.id, { remove }), false);
         return changeSetReply(set.id);
       },
     },
@@ -634,6 +642,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
         const { warnings } = await changeSets.dismiss(set.id);
+        tell(set, false);
         return changeSetReply(set.id, { warnings });
       },
     },
@@ -649,6 +658,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
             error: deps.explain(reverted.conflicts),
             conflicts: reverted.conflicts.length,
           });
+        tell(set, false);
         return changeSetReply(set.id, { revert: reverted.id });
       },
     },
@@ -720,8 +730,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           body.hash,
         );
         const set = await mustChangeSet(body.changeSet);
-        // Every page watching the thread reloads it.
-        turns.changeSet(set.threadId, set.id, false);
+        tell(set, false);
         return json(200, { changeSet: await viewOf(set), warnings });
       },
     },
