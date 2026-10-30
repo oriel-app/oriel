@@ -13,6 +13,7 @@ export const usage = `usage: pnpm -s github <operation>
   pr-list
   pr-view <number>
   pr-create <branch> <title> <body>
+  pr-edit <number> <body>
   pr-enqueue <number>
   runs [branch]`;
 
@@ -20,6 +21,7 @@ export type Operation =
   | { op: "pr-list" }
   | { op: "pr-view" | "pr-enqueue"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
+  | { op: "pr-edit"; number: number; body: string }
   | { op: "runs"; branch: string | null };
 
 // SPEC §10: branch names are at most three hyphenated words, no prefixes.
@@ -37,6 +39,11 @@ export function parse(args: readonly string[]): Operation | { error: string } {
   if (op === "pr-create" && rest.length === 3) {
     const [branch = "", title = "", body = ""] = rest;
     if (branchName.test(branch) && title.trim()) return { op, branch, title, body };
+  }
+  if (op === "pr-edit" && rest.length === 2) {
+    const number = prNumber(rest[0]);
+    const body = rest[1] ?? "";
+    if (number && body.trim()) return { op, number, body };
   }
   if (op === "runs" && rest.length <= 1) {
     const branch = rest[0] ?? null;
@@ -60,15 +67,16 @@ export function leaksSecret(texts: readonly string[], envFile: string | null): b
   return texts.some((text) => values.some((value) => text.includes(value)));
 }
 
-// Only a branch of this repo may enter the merge queue: a fork's PR is
-// attacker input, whatever its title or branch name says (decision 0012).
-export function enqueueRefusal(pr: {
-  isCrossRepository: boolean;
-  headRepository: { nameWithOwner: string } | null;
-}): string | null {
+// Only a PR from a branch of this repo may enter the merge queue or have its
+// body rewritten: a fork's PR is attacker input, whatever its title or branch
+// name says (decision 0012).
+export function headRefusal(
+  pr: { isCrossRepository: boolean; headRepository: { nameWithOwner: string } | null },
+  action: "enqueue" | "edit",
+): string | null {
   const own = `${repo.owner}/${repo.name}`;
   if (pr.isCrossRepository || pr.headRepository?.nameWithOwner !== own) {
-    return `refusing to enqueue a PR whose head is not a branch of ${own} (head: ${pr.headRepository?.nameWithOwner ?? "deleted"})`;
+    return `refusing to ${action} a PR whose head is not a branch of ${own} (head: ${pr.headRepository?.nameWithOwner ?? "deleted"})`;
   }
   return null;
 }
@@ -114,6 +122,20 @@ const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) 
   }
 }`;
 
+async function pullRequest(token: string, number: number) {
+  const data = (await graphql(token, pullRequestQuery, { ...repo, number })) as {
+    repository: {
+      pullRequest: {
+        id: string;
+        headRefOid: string;
+        isCrossRepository: boolean;
+        headRepository: { nameWithOwner: string } | null;
+      };
+    };
+  };
+  return data.repository.pullRequest;
+}
+
 export async function run(token: string, operation: Operation): Promise<unknown> {
   const base = `/repos/${repo.owner}/${repo.name}`;
   switch (operation.op) {
@@ -141,22 +163,18 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       })) as { number: number; html_url: string };
       return { number: created.number, url: created.html_url };
     }
+    case "pr-edit": {
+      const pr = await pullRequest(token, operation.number);
+      const refusal = headRefusal(pr, "edit");
+      if (refusal) throw new Error(refusal);
+      const edited = (await call(token, "PATCH", `${base}/pulls/${operation.number}`, {
+        body: operation.body,
+      })) as { number: number; html_url: string };
+      return { number: edited.number, url: edited.html_url };
+    }
     case "pr-enqueue": {
-      const data = (await graphql(token, pullRequestQuery, {
-        ...repo,
-        number: operation.number,
-      })) as {
-        repository: {
-          pullRequest: {
-            id: string;
-            headRefOid: string;
-            isCrossRepository: boolean;
-            headRepository: { nameWithOwner: string } | null;
-          };
-        };
-      };
-      const pr = data.repository.pullRequest;
-      const refusal = enqueueRefusal(pr);
+      const pr = await pullRequest(token, operation.number);
+      const refusal = headRefusal(pr, "enqueue");
       if (refusal) throw new Error(refusal);
       // Pin the commit just checked, so a push in between can't slip in.
       return graphql(
@@ -203,8 +221,8 @@ if (import.meta.main) {
   const operation = parse(process.argv.slice(2));
   if (
     !("error" in operation) &&
-    operation.op === "pr-create" &&
-    leaksSecret([operation.title, operation.body], envFile)
+    (operation.op === "pr-create" || operation.op === "pr-edit") &&
+    leaksSecret([operation.op === "pr-create" ? operation.title : "", operation.body], envFile)
   ) {
     console.error("refusing: the title or body contains a value from .env");
     process.exit(1);
