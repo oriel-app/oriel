@@ -170,5 +170,6 @@ export interface ChangeSets {
   // changes are rejected for good, and a revert covers exactly what applied.
   // The warnings name any change that may already have landed. Dismissing
   // twice changes nothing.
-  dismiss(id: Ulid): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
+  // In the thread by default; through a review link, as `decide` checks one.
+  dismiss(id: Ulid, by?: Approver): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
 }

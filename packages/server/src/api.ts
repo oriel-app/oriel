@@ -126,6 +126,7 @@ const reviewDecision = object({
   name: nameValue,
   hash: string,
 });
+const reviewDismissal = object({ token: string, changeSet: ulidValue, name: nameValue });
 const emptyBody = object({});
 const folderBody = object({
   path: refine(
@@ -680,6 +681,23 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           changeSet: await viewOf(set),
           problem,
         });
+      },
+    },
+    {
+      // Ends what is left of a change set that started landing, as the
+      // thread's dismiss does. The warnings name what may have landed.
+      method: "POST",
+      path: at("/review/dismiss"),
+      async run(_, request) {
+        const body = await readJson(request, smallBody, reviewDismissal);
+        // The engine checks that the token is live for this change set.
+        const { warnings } = await changeSets.dismiss(body.changeSet as Ulid, {
+          via: "review-link",
+          token: body.token,
+          by: body.name.trim(),
+        });
+        const set = await mustChangeSet(body.changeSet);
+        return json(200, { changeSet: await viewOf(set), warnings });
       },
     },
   ];

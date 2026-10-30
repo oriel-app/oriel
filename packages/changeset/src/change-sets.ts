@@ -1312,6 +1312,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return report;
   };
 
+  // The live link a review-link decision comes through, checked: minted for
+  // this change set, and with a typed name. Null for one in the thread.
+  const linkOf = (id: string, who: Approver, by: string): LinkRow | null => {
+    if (who.via !== "review-link") return null;
+    const link = liveLink(who.token);
+    if (!link || link.change_set_id !== id)
+      throw new ChangeSetError("refused", "this review link isn't live for this change set");
+    if (by === "")
+      throw new ChangeSetError("refused", "type your name to decide through a review link");
+    return link;
+  };
+
   const reviewUrl = (token: string): URL => {
     const url = new URL(deps.reviewBase);
     url.pathname = `${url.pathname.replace(/\/+$/, "")}/${token}`;
@@ -1433,14 +1445,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const by = who.value.by.trim();
       const set = transaction(db, () => {
         const { now, ms } = at();
-        let link: LinkRow | null = null;
-        if (who.value.via === "review-link") {
-          link = liveLink(who.value.token);
-          if (!link || link.change_set_id !== id)
-            throw new ChangeSetError("refused", "this review link isn't live for this change set");
-          if (by === "")
-            throw new ChangeSetError("refused", "type your name to decide through a review link");
-        }
+        const link = linkOf(id, who.value, by);
         const current = mustLoad(id);
         if (current.hash !== reviewed) {
           throw new ChangeSetError(
@@ -1631,8 +1636,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // Rejects what hasn't applied, as the set stands, and says what may have
     // landed anyway. What did apply stays, and a revert covers exactly that.
     // Dismissing a change set already rejected or dismissed changes nothing.
-    async dismiss(id) {
+    async dismiss(id, approver = { via: "thread", by: "user" }) {
+      const who = approverValue(approver, "$.approver");
+      if (!who.ok) throw invalid("approver", who.issues);
+      const by = who.value.by.trim();
       const result = transaction(db, () => {
+        const link = linkOf(id, who.value, by);
         const current = mustLoad(id);
         const refusal = dismissRefusal(current);
         if (refusal === "done") return { set: current, dismissed: false };
@@ -1643,9 +1652,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           workspaceId: current.workspaceId,
           changeSetId: current.id,
           kind: "rejected",
-          via: "thread",
-          reviewLink: null,
-          by: "user",
+          via: who.value.via,
+          reviewLink: link?.token_hash ?? null,
+          by,
           hash: current.hash,
           at: now,
         });
@@ -1660,6 +1669,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           at: deps.now(),
           workspaceId: result.set.workspaceId,
           changeSetId: result.set.id,
+          via: who.value.via,
         });
       return { changeSet: mustLoad(id), warnings: warningsOf(result.set) };
     },

@@ -1,7 +1,8 @@
 // The inbox, and a review link's page.
 import { Threads } from "./group-page.tsx";
 import { type Dispatch, Mark, stateNames } from "./parts.tsx";
-import type { ReviewModel, ReviewMsg } from "./review.ts";
+import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
+import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
 import { type ChangeSetView, type DiffView, threadStates, type ThreadSummaryView } from "./view.ts";
 
@@ -121,11 +122,20 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
       ) : model.stage === "decided" ? (
         <section class="review-card">
           <h1 class="page-title">
-            {model.decided?.decision?.kind === "approved"
-              ? "You approved this change"
-              : "You rejected this change"}
+            {model.outcome === "dismissed"
+              ? "You dismissed the rest of this change"
+              : model.decided?.decision?.kind === "approved"
+                ? "You approved this change"
+                : "You rejected this change"}
           </h1>
           <p>Thanks, {model.decided?.decision?.by}.</p>
+          {model.warnings.length > 0 && (
+            <ul class="may-have-landed" role="note">
+              {model.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
           {model.decided && (
             <Outcome
               set={model.decided}
@@ -136,49 +146,102 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
         </section>
       ) : (
         model.view && (
-          <section class="review-card">
-            <h1 class="page-title">Review this change</h1>
-            <Diff diff={model.view.diff} busy={false} />
-            <form
-              class="review-decide"
-              onSubmit={(event) => {
-                event.preventDefault();
-                send({ type: "decideClicked", kind: "approved" });
-              }}
-            >
-              <label class="name-field">
-                Your name
-                <input
-                  value={model.name}
-                  maxLength={120}
-                  autoComplete="name"
-                  onInput={(event) =>
-                    send({ type: "nameChanged", name: event.currentTarget.value })
-                  }
-                />
-              </label>
-              <div class="review-actions">
-                <button type="submit" class="button primary" disabled={model.stage === "deciding"}>
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  class="button"
-                  disabled={model.stage === "deciding"}
-                  onClick={() => send({ type: "decideClicked", kind: "rejected" })}
-                >
-                  Reject
-                </button>
-              </div>
-            </form>
-            {model.problem && (
-              <p class="change-set-problem" role="alert">
-                {model.problem}
-              </p>
-            )}
-          </section>
+          <ReviewChange
+            view={model.view}
+            name={model.name}
+            deciding={model.stage === "deciding"}
+            problem={model.problem}
+            send={send}
+          />
         )
       )}
     </main>
+  );
+}
+
+// The change and what the reviewer can do with it: exactly the steps the
+// change set engine offers that a review link can take, as the thread shows
+// them, with what dismissing says may have landed.
+function ReviewChange(props: {
+  view: NonNullable<ReviewModel["view"]>;
+  name: string;
+  deciding: boolean;
+  problem: string | null;
+  send: (msg: ReviewMsg) => void;
+}) {
+  const { view, name, deciding, problem, send } = props;
+  const steps = reviewSteps(view);
+  const dismissing = view.changeSet.nextSteps.find((step) => step.kind === "dismiss");
+  const approving = steps.find((step) => step === "approve" || step === "approve-rest");
+  return (
+    <section class="review-card">
+      <h1 class="page-title">Review this change</h1>
+      <Diff diff={view.diff} busy={false} />
+      {dismissing?.kind === "dismiss" && dismissing.warnings.length > 0 && (
+        <ul class="may-have-landed">
+          {dismissing.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
+      {steps.length === 0 ? (
+        <p class="read-only-note">
+          {view.changeSet.applying
+            ? "Applying…"
+            : "There's nothing to decide here now. Whoever shared this link can take it from the thread."}
+        </p>
+      ) : (
+        <form
+          class="review-decide"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (approving) send({ type: "decideClicked", kind: "approved" });
+          }}
+        >
+          <label class="name-field">
+            Your name
+            <input
+              value={name}
+              maxLength={120}
+              autoComplete="name"
+              onInput={(event) => send({ type: "nameChanged", name: event.currentTarget.value })}
+            />
+          </label>
+          <div class="review-actions">
+            {steps.map((step) => (
+              <button
+                key={step}
+                type={step === approving ? "submit" : "button"}
+                class={
+                  step === approving
+                    ? "button primary"
+                    : step === "dismiss"
+                      ? "quiet-action"
+                      : "button"
+                }
+                disabled={deciding}
+                onClick={
+                  step === approving
+                    ? undefined
+                    : () =>
+                        send(
+                          step === "dismiss"
+                            ? { type: "dismissClicked" }
+                            : { type: "decideClicked", kind: "rejected" },
+                        )
+                }
+              >
+                {step === "approve" ? "Approve" : stepLabel(step, view.changeSet)}
+              </button>
+            ))}
+          </div>
+        </form>
+      )}
+      {problem && (
+        <p class="change-set-problem" role="alert">
+          {problem}
+        </p>
+      )}
+    </section>
   );
 }

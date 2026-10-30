@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { groupReplied, initGroup, updateGroup } from "../src/group.ts";
 import type { Effect, Replied } from "../src/http.ts";
-import { initReview, reviewReplied, updateReview } from "../src/review.ts";
+import { initReview, reviewReplied, reviewSteps, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import { parseRoute, routeUrl, safeHref } from "../src/route.ts";
 import {
@@ -551,6 +551,65 @@ test("a review link opens nothing on load; the person asks, then decides with th
     failed({ kind: "reviewOpened" }, "This review link has expired"),
   );
   assert.equal(dead.stage, "dead");
+});
+
+test("a partly applied change set's review link offers what the engine offers it", () => {
+  const warning = "This may already be in Jira: check SYN-12";
+  const partial: ChangeSetView = {
+    ...openSet,
+    status: "partial",
+    nextSteps: [
+      { kind: "approve-rest" },
+      { kind: "remove", mutationIds: ["m2"] },
+      { kind: "dismiss", warnings: [warning] },
+      { kind: "revert" },
+    ],
+  };
+  const [opening] = updateReview(initReview("tok")[0], { type: "openClicked" });
+  const [shown] = reviewReplied(
+    opening,
+    ok({ kind: "reviewOpened" }, { changeSet: partial, diff }),
+  );
+  assert.ok(shown.view);
+  // Only what a link can do: no remove, no revert, and no reject.
+  assert.deepEqual(reviewSteps(shown.view), ["approve-rest", "dismiss"]);
+  const named = updateReview(shown, { type: "nameChanged", name: "Ana" })[0];
+  assert.deepEqual(updateReview(named, { type: "decideClicked", kind: "rejected" })[1], []);
+  assert.deepEqual(updateReview(named, { type: "decideClicked", kind: "approved" })[1], [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/review/decide",
+      body: { token: "tok", changeSet: setId, kind: "approved", name: "Ana", hash: "h1" },
+      tag: { kind: "reviewDecided" },
+    },
+  ]);
+  const [dismissing, effects] = updateReview(named, { type: "dismissClicked" });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/review/dismiss",
+      body: { token: "tok", changeSet: setId, name: "Ana" },
+      tag: { kind: "reviewDecided" },
+    },
+  ]);
+  const [dismissed] = reviewReplied(
+    dismissing,
+    ok(
+      { kind: "reviewDecided" },
+      {
+        changeSet: {
+          ...partial,
+          nextSteps: [{ kind: "revert" }],
+          decision: { kind: "rejected", via: "review-link", by: "Ana", at },
+        },
+        warnings: [warning],
+      },
+    ),
+  );
+  assert.deepEqual([dismissed.stage, dismissed.outcome], ["decided", "dismissed"]);
+  assert.deepEqual(dismissed.warnings, [warning]);
 });
 
 test("leaving a thread stops watching it; the window keeps what was picked", () => {

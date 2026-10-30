@@ -369,3 +369,51 @@ test("a review link approves and applies, and says what happened", async (t) => 
   assert.equal(decided.changeSet.errors.length, 1);
   assert.equal(decided.changeSet.decision?.by, "Ana");
 });
+
+test("a partly applied change set's review link offers what the engine does, dismiss included", async (t) => {
+  const app = await proposed(t);
+  app.site.refuse("SYN-99");
+  await app.approve();
+  const stopped = (await app.diff()).lines[1];
+  assert.ok(stopped);
+  await app.act("edit", { remove: [stopped.mutationId] });
+  const minted = json<{ url: string }>(
+    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
+  );
+  const token = new URL(minted.url).pathname.split("/").at(-1);
+  const opened = json<{ changeSet: ChangeSetView; diff: DiffView }>(
+    await app.post("/api/review/open", { token }),
+  );
+  assert.deepEqual(
+    opened.changeSet.nextSteps.map((s) => s.kind),
+    ["approve-rest", "remove", "dismiss", "revert"],
+  );
+  // Part of it applied, so it can't be rejected: the page doesn't offer it.
+  const rejected = await app.post("/api/review/decide", {
+    token,
+    changeSet: app.changeSetId,
+    kind: "rejected",
+    name: "Ana",
+    hash: opened.diff.hash,
+  });
+  assert.equal(rejected.status, 409);
+  const dismissed = json<{ changeSet: ChangeSetView; warnings: string[] }>(
+    await app.post("/api/review/dismiss", { token, changeSet: app.changeSetId, name: "Ana" }),
+  );
+  assert.deepEqual(dismissed.warnings, []);
+  assert.deepEqual(
+    [dismissed.changeSet.decision?.kind, dismissed.changeSet.decision?.via],
+    ["rejected", "review-link"],
+  );
+  assert.equal(dismissed.changeSet.decision?.by, "Ana");
+  assert.deepEqual(dismissed.changeSet.nextSteps, [{ kind: "revert" }]);
+  const event = app.app.telemetry().find((e) => e.name === "changeset.dismissed");
+  assert.equal(event?.data.via, "review-link");
+  // The link died with the decision.
+  const again = await app.post("/api/review/dismiss", {
+    token,
+    changeSet: app.changeSetId,
+    name: "Ana",
+  });
+  assert.equal(again.status, 409);
+});
