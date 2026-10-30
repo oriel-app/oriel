@@ -37,7 +37,7 @@ async function thread(t: TestContext, text: string, options: Parameters<typeof t
 const names = (app: { app: { telemetry(): { name: string }[] } }) =>
   app.app.telemetry().map((event) => event.name);
 
-test("a cluster becomes a group in one request: a copy of its members, anchor first", async (t) => {
+test("a cluster becomes a group in one request: a copy of its members, its anchor included", async (t) => {
   const { get, groupId, summary, app } = await group(t);
   assert.equal(summary.origin.kind, "cluster");
   assert.equal(summary.version, 1);
@@ -72,7 +72,7 @@ test("hand-picked items make a group; adding and removing each take a version", 
   assert.equal(added.group.version, 2);
   assert.deepEqual(
     added.members.map((m) => m.ref.key),
-    ["SYN-10", "SYN-21", "SYN-3"],
+    ["SYN-3", "SYN-10", "SYN-21"],
   );
   assert.deepEqual(
     added.changes[0]?.added.map((r) => r.key),
@@ -84,7 +84,7 @@ test("hand-picked items make a group; adding and removing each take a version", 
   assert.equal(removed.group.version, 3);
   assert.deepEqual(
     removed.members.map((m) => m.ref.key),
-    ["SYN-10", "SYN-3"],
+    ["SYN-3", "SYN-10"],
   );
   const renamed = json<GroupSummary>(
     await app.post(`/api/groups/${id}/rename`, { name: "Launch" }),
@@ -300,6 +300,14 @@ test("search results come back as their own block, and count as the escape hatch
   assert.ok(found.hits.some((hit) => !hit.inRegion));
   const used = app.app.telemetry().find((e) => e.name === "escape-hatch.used");
   assert.equal(used?.data.threadId, app.threadId);
+  // A hit is shown against the version the search ran in, whatever the group
+  // holds since.
+  const outside = found.hits.find((hit) => !hit.inRegion);
+  assert.ok(outside);
+  await app.post(`/api/groups/${app.groupId}/add`, { items: [outside.id] });
+  const later = (await app.view()).entries.find((e) => e.kind === "search");
+  assert.ok(later?.kind === "search");
+  assert.equal(later.hits.find((hit) => hit.id === outside.id)?.inRegion, false);
 });
 
 test("a review link works without the thread; its GET opens and decides nothing", async (t) => {

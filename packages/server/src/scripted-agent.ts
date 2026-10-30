@@ -130,6 +130,28 @@ for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
 return unestimated.slice(0, 3);`;
 
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
+// Words a person adds around what they're looking for, which an index search
+// would require every item to contain.
+const filler = new Set([
+  "a",
+  "about",
+  "an",
+  "anything",
+  "any",
+  "everything",
+  "for",
+  "in",
+  "items",
+  "mentioning",
+  "of",
+  "on",
+  "something",
+  "stories",
+  "that",
+  "the",
+  "to",
+  "with",
+]);
 
 // What `pnpm dev` answers with: a search when asked to find something, an
 // estimate change when asked about estimates, and otherwise a read of every
@@ -137,8 +159,10 @@ const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
 export function devPlan(input: TurnInput): Step[] {
   const query = searchAsk
     .exec(input.text)?.[1]
-    ?.replace(/[?.!"]+$/g, "")
-    .trim();
+    ?.replace(/[?.!"]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word && !filler.has(word.toLowerCase()))
+    .join(" ");
   if (query)
     return [
       { text: "I'll look across the whole window, not just this group." },

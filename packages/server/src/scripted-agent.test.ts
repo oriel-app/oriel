@@ -36,7 +36,7 @@ function input(text: string, items: string[]): TurnInput {
 
 test("the dev plan searches when asked to find something", () => {
   assert.deepEqual(devPlan(input("Can you find the payment retries?", ["jira:SYN-1"]))[1], {
-    search: "the payment retries",
+    search: "payment retries",
   });
 });
 

@@ -1,6 +1,7 @@
 // The view data the JSON routes return, built from the stores. Plain data in
 // the shapes @oriel/web/view declares; the window renders it as it is.
 import {
+  byItemId,
   type ChangeSet,
   type Diff,
   type GroupMember,
@@ -153,13 +154,15 @@ export function views(deps: ViewDeps) {
   const members = (items: readonly GroupMember[]): MemberView[] => {
     const { find } = lookup();
     const asOf = deps.asOf();
-    return items.map((member) => {
-      const record = find(member);
-      return {
-        ref: ref(record, member.id),
-        row: record ? itemRow(record, asOf, deps.presentations) : null,
-      };
-    });
+    return items
+      .map((member) => {
+        const record = find(member);
+        return {
+          ref: ref(record, member.id),
+          row: record ? itemRow(record, asOf, deps.presentations) : null,
+        };
+      })
+      .toSorted((a, b) => byItemId(a.ref.id, b.ref.id));
   };
 
   const counts = (summaries: readonly ThreadSummary[]): Record<ThreadStateId, number> => {
@@ -315,8 +318,21 @@ export function views(deps: ViewDeps) {
       const group = groups.get(thread.groupId);
       if (!group) return null;
       const region = groups.region(thread.groupId, thread.regionVersion);
-      const ids = new Set(region?.items.map((m) => m.id) ?? []);
       const messages = threads.messages(id);
+      // Each entry against the version the thread was in when it was stored:
+      // the one its last marker moved it to, or the one it opened in.
+      const firstMarker = messages.find((m) => m.role === "marker");
+      let version = firstMarker?.role === "marker" ? firstMarker.from : thread.regionVersion;
+      const versions = new Map<number, Set<string>>();
+      const idsAt = (at: number) => {
+        const known = versions.get(at) ?? regionIds(thread.groupId, at);
+        versions.set(at, known);
+        return known;
+      };
+      const entries = messages.flatMap((m) => {
+        if (m.role === "marker") version = m.to;
+        return entry(m, thread.groupId, idsAt(version)) ?? [];
+      });
       return {
         id,
         title: title(id),
@@ -325,7 +341,7 @@ export function views(deps: ViewDeps) {
         doneBy: thread.doneBy,
         regionVersion: thread.regionVersion,
         members: members(region?.items ?? []),
-        entries: messages.flatMap((m) => entry(m, thread.groupId, ids) ?? []),
+        entries,
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
         changeSets: sets.map((set) => changeSetView(set, sets)),
