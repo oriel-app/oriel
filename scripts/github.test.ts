@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentToken, enqueueRefusal, leaksSecret, parse } from "./github.ts";
+import { agentToken, headRefusal, leaksSecret, parse } from "./github.ts";
 
 test("only the agent token from .env is accepted", () => {
   assert.equal(agentToken("JIRA_API_TOKEN=secret\nGH_TOKEN=github_pat_abc\n"), "github_pat_abc");
@@ -18,6 +18,11 @@ test("the fixed operations parse", () => {
     branch: "readme-header",
     title: "docs: x",
     body: "body",
+  });
+  assert.deepEqual(parse(["pr-edit", "11", "new body"]), {
+    op: "pr-edit",
+    number: 11,
+    body: "new body",
   });
   assert.deepEqual(parse(["runs"]), { op: "runs", branch: null });
   assert.deepEqual(parse(["runs", "db-schema"]), { op: "runs", branch: "db-schema" });
@@ -39,6 +44,10 @@ test("anything else is refused, flags and gh commands included", () => {
     ["pr-create", "ok-branch", "t"],
     ["repo", "clone", "o/r", "--", "-c", "x=y"],
     ["runs", "a", "b"],
+    ["pr-edit", "11"],
+    ["pr-edit", "11", "   "],
+    ["pr-edit", "0", "body"],
+    ["pr-edit", "11", "body", "--title", "x"],
   ];
   for (const args of refused) assert.ok("error" in parse(args), JSON.stringify(args));
 });
@@ -48,16 +57,21 @@ test("a token with whitespace or junk is refused, so it can't leak into a header
   assert.equal(agentToken("GH_TOKEN=github_pat_abc def\n"), null);
 });
 
-test("only this repo's own branches may be enqueued", () => {
+test("only this repo's own branches may be enqueued or edited", () => {
   const own = { isCrossRepository: false, headRepository: { nameWithOwner: "oriel-app/oriel" } };
-  assert.equal(enqueueRefusal(own), null);
-  assert.match(enqueueRefusal({ ...own, isCrossRepository: true }) ?? "", /refusing/);
-  assert.match(
-    enqueueRefusal({ isCrossRepository: false, headRepository: { nameWithOwner: "evil/oriel" } }) ??
-      "",
-    /evil\/oriel/,
-  );
-  assert.match(enqueueRefusal({ isCrossRepository: false, headRepository: null }) ?? "", /deleted/);
+  for (const action of ["enqueue", "edit"] as const) {
+    assert.equal(headRefusal(own, action), null);
+    assert.match(
+      headRefusal({ ...own, isCrossRepository: true }, action) ?? "",
+      new RegExp(`refusing to ${action}`),
+    );
+    const fork = { isCrossRepository: false, headRepository: { nameWithOwner: "evil/oriel" } };
+    assert.match(headRefusal(fork, action) ?? "", /evil\/oriel/);
+    assert.match(
+      headRefusal({ isCrossRepository: false, headRepository: null }, action) ?? "",
+      /deleted/,
+    );
+  }
 });
 
 test("a title or body carrying a value from .env is caught", () => {
