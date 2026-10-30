@@ -14,7 +14,8 @@ import {
 
 export type ThreadEvent =
   | { type: "message"; message: Message }
-  | { type: "status"; running: boolean };
+  | { type: "status"; running: boolean }
+  | { type: "change-set"; changeSetId: Ulid };
 
 export class ThreadBusy extends Error {
   constructor() {
@@ -237,6 +238,12 @@ export function turns(deps: TurnDeps) {
         set.delete(listener);
         if (set.size === 0) watchers.delete(threadId);
       };
+    },
+
+    // A change set of the thread started or finished applying: every page
+    // watching it reloads it.
+    changeSet(threadId: Ulid, changeSetId: Ulid): void {
+      publish(threadId, { type: "change-set", changeSetId });
     },
 
     // Threads that moved to a newer version of their group: their markers.

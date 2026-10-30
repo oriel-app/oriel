@@ -286,6 +286,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     // A finished turn may have settled the thread; a new version changes the rail.
     return [next, moved || (!event.running && view.running) ? [refresh(model)] : []];
   }
+  // Applying started or ended, here or elsewhere: what it offers has moved.
+  if (event.type === "change-set") return [model, [diffOf(event.changeSetId), refresh(model)]];
   const { entry } = event;
   if (entry.seq <= view.lastSeq) return [model, []];
   const next = {

@@ -383,7 +383,9 @@ test("a thread's events stream: what's stored first, then each new entry as it l
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "Again" });
   const live = await read(stream, (e) => e.type === "status" && !e.running);
   assert.deepEqual(
-    live.map((e) => (e.type === "entry" ? e.entry.kind : `status ${e.running}`)),
+    live.map((e) =>
+      e.type === "entry" ? e.entry.kind : e.type === "status" ? `status ${e.running}` : e.type,
+    ),
     ["user", "status true", "text", "text", "done", "status false"],
   );
   await stream.return?.();

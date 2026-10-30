@@ -1576,11 +1576,6 @@ a {
   font-size: var(--text-sm);
 }
 
-.applying {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
 .sentence {
   margin: 0;
   overflow-wrap: anywhere;

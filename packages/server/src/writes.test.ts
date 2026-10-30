@@ -2,7 +2,7 @@
 // a Jira site in memory, through the writer @oriel/changeset builds.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import type { ChangeSetView, DiffView, GroupView, ThreadView } from "@oriel/web/view";
+import type { ChangeSetView, DiffView, GroupView, StreamEvent, ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 // SYN-1's epic, whose stories SYN-23, SYN-99 and SYN-104 have no estimate.
@@ -285,11 +285,27 @@ test("a change set that can go no further is dismissed, with what to check", asy
 test("while a change set applies, nothing is offered for it and every action waits", async (t) => {
   const app = await proposed(t);
   const ids = (await app.diff()).lines.map((line) => line.mutationId);
+  // Another tab, watching the thread.
+  const watching = (await app.get(`/api/threads/${app.threadId}/events`)).stream;
+  assert.ok(watching);
+  const events = watching[Symbol.asyncIterator]();
+  const changed = async () => {
+    for (;;) {
+      const next = await events.next();
+      assert.ok(!next.done);
+      const data = /^data: (.*)$/m.exec(next.value)?.[1];
+      const event = data === undefined ? null : (JSON.parse(data) as StreamEvent);
+      if (event?.type === "change-set") return event.changeSetId;
+    }
+  };
   const held = app.site.hold("SYN-99");
   const approving = app.approve();
   await held.reached;
+  // It hears that the apply started, and sees only that.
+  assert.equal(await changed(), app.changeSetId);
   const set = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
   assert.equal(set?.applying, true);
+  assert.equal(set?.status, "applying");
   assert.deepEqual(set?.nextSteps, []);
   // The write in flight is no stop: nothing says why it stopped, or to try again.
   assert.deepEqual(set?.errors, []);
@@ -308,6 +324,9 @@ test("while a change set applies, nothing is offered for it and every action wai
   }
   held.release();
   const applied = await approving;
+  // And that it ended.
+  assert.equal(await changed(), app.changeSetId);
+  await events.return?.();
   assert.equal(applied.body.changeSet.status, "applied");
   assert.equal(applied.body.changeSet.applying, false);
   assert.deepEqual(applied.body.changeSet.nextSteps, [{ kind: "revert" }]);

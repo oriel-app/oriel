@@ -116,7 +116,15 @@ export type ChatEntry = { seq: number; at: string } & (
 // Where a change set stands. "open": awaiting a decision; "stopped":
 // approved, and apply stopped before anything landed; "partial": some of it
 // applied and something stopped the rest. A stopped change says why.
-export type ChangeSetStatus = "open" | "approved" | "stopped" | "rejected" | "applied" | "partial";
+export type ChangeSetStatus =
+  | "open"
+  | "approved"
+  | "stopped"
+  | "rejected"
+  | "applied"
+  | "partial"
+  // Being applied now: nothing else can be done with it until that ends.
+  | "applying";
 
 // What a person can do with a change set now, as the change set engine says
 // (`nextSteps`). The window offers these and nothing else.
@@ -190,7 +198,10 @@ export type ThreadView = {
 // is running and the thread's state.
 export type StreamEvent =
   | { type: "entry"; entry: ChatEntry }
-  | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number };
+  | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number }
+  // A change set of the thread started or finished applying, in any tab or
+  // through a review link.
+  | { type: "change-set"; changeSetId: string };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };

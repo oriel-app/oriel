@@ -266,6 +266,16 @@ test("streamed entries append once, and a new change set fetches its diff", () =
   );
 });
 
+test("a change set that starts or stops applying elsewhere reloads, with its diff", () => {
+  const [loaded] = loadedThread(threadView([], [openSet]));
+  const [same, effects] = streamed(loaded, { type: "change-set", changeSetId: setId });
+  assert.equal(same, loaded);
+  assert.deepEqual(
+    effects.map((e) => (e.type === "http" ? e.url : e.type)),
+    [`/api/change-sets/${setId}/diff`, `/api/threads/${id}`],
+  );
+});
+
 test("approving sends the hash of the diff on screen; a refusal shows on the change set", () => {
   const [loaded] = loadedThread(
     threadView([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),

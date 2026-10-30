@@ -28,6 +28,7 @@ const statusNames: Record<ChangeSetView["status"], string> = {
   rejected: "Rejected",
   applied: "Applied",
   partial: "Partly applied",
+  applying: "Applying…",
 };
 
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
@@ -263,11 +264,6 @@ function ChangeSet(props: {
         </ul>
       )}
       <footer class="change-set-actions">
-        {set.applying && (
-          <span class="applying" role="status">
-            Applying…
-          </span>
-        )}
         {steps.map((step) => {
           const forward =
             step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";

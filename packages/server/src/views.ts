@@ -115,7 +115,7 @@ export function changeSetView(
 ): ChangeSetView {
   return {
     id: set.id,
-    status: changeSetStatus(set),
+    status: applying ? "applying" : changeSetStatus(set),
     nextSteps: nextSteps.map((step) => ({ ...step })),
     applying,
     // A change sent with no answer may have landed.

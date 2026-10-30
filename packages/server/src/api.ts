@@ -233,6 +233,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     return views.thread(threadId, sets, steps, (id) => changeSets.applying(id as Ulid));
   };
 
+  // Applies a change set, and tells every page watching its thread when that
+  // starts and when it ends. The engine marks it applying before `apply`
+  // returns its promise, so the first reload sees that.
+  const applyTold = async (id: Ulid) => {
+    const { threadId } = await mustChangeSet(id);
+    const applying = changeSets.apply(id);
+    turns.changeSet(threadId, id);
+    try {
+      return await applying;
+    } finally {
+      turns.changeSet(threadId, id);
+    }
+  };
+
   // Decides, and on approval applies at once: approving is what lets Oriel
   // write, so replay follows it (decision 0003).
   const decide = async (
@@ -246,7 +260,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     // The decision stands even if applying it is refused (another apply is
     // under way, say): the change set says where it stands, and why.
     try {
-      const report = await changeSets.apply(id);
+      const report = await applyTold(id);
       await deps.applied(await mustChangeSet(id));
       return { report, problem: null };
     } catch (error) {
@@ -279,7 +293,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     // Watch first, then catch up, in one synchronous step, so no entry falls
     // between the two.
     const stop = turns.watch(threadId, (event) =>
-      event.type === "message" ? entry(event.message) : status(),
+      event.type === "message"
+        ? entry(event.message)
+        : event.type === "change-set"
+          ? send({ type: "change-set", changeSetId: event.changeSetId })
+          : status(),
     );
     out.push("retry: 2000\n\n");
     for (const message of threads.messages(threadId, after)) entry(message);
@@ -597,7 +615,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        const report = await changeSets.apply(set.id);
+        const report = await applyTold(set.id);
         await deps.applied(await mustChangeSet(set.id));
         return changeSetReply(set.id, { report });
       },

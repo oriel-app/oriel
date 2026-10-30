@@ -65,6 +65,7 @@ function Outcome({
       ? "Oriel didn't hear back about a change, so it may have been made. Nothing else was:"
       : "None of it was made: Oriel stopped at the first change it couldn't make.",
     approved: "It's approved, and hasn't been made yet.",
+    applying: "It's being made now.",
     rejected: "Nothing will be changed.",
     open: "Nothing has been changed.",
   };
