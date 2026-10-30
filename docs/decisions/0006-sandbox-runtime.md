@@ -8,7 +8,7 @@ Accepted 2026-10-28.
 - Environment: empty env except `DENO_DIR`, an empty temporary working directory, a capped V8 heap.
 - ~~The agent's script and the generated binding stubs are joined into one entry file.~~ Amended by 0016: the entry file is the binding shim alone. The script arrives as data and runs as an async function body, never as module source.
 - The guest talks to the host only through JSON lines over stdin/stdout. Reads come back as values; writes are queued as captured mutations, never awaited as effects.
-- Deadlines: an in-guest deadline gives a clean error, and the host kills the process at the hard wall-time cap. The host also caps script size, reads, mutations, result size and console bytes.
+- Deadlines: ~~an in-guest deadline gives a clean error, and~~ the host kills the process at the hard wall-time cap. Amended by 0017: the host's kill returns the clean error. The host also caps script size, reads, mutations, result size and console bytes. 0017 adds further hardening that these flags don't cover.
 - Errors come back as `{ phase, message, hint, logs }` with phase one of typecheck, runtime or limit, so the agent can fix its own script.
 
 **Why.** It runs TypeScript directly, so it doesn't depend on a TypeScript transpiler API. Deny-all is its default, and its permission model is built for untrusted code. A separate process gives a hard kill and a reliable memory cap. There is no npm dependency, and the Deno team ships security releases.

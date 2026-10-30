@@ -1,0 +1,15 @@
+{
+  "name": "@oriel/sandbox",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+  },
+  "dependencies": {
+    "@oriel/bindings": "workspace:*",
+    "@oriel/core": "workspace:*"
+  }
+}

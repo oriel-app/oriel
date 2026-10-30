@@ -71,6 +71,15 @@ importers:
         specifier: workspace:*
         version: link:../db
 
+  packages/sandbox:
+    dependencies:
+      '@oriel/bindings':
+        specifier: workspace:*
+        version: link:../bindings
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/server:
     dependencies:
       '@oriel/core':
