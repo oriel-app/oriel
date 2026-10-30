@@ -29,12 +29,13 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
-      '@oriel/jira':
-        specifier: workspace:*
-        version: link:../jira
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+    devDependencies:
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
 
   packages/changeset:
     dependencies:
@@ -44,6 +45,7 @@ importers:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
+    devDependencies:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
@@ -70,6 +72,7 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira

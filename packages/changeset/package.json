@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@oriel/core": "workspace:*",
-    "@oriel/db": "workspace:*",
+    "@oriel/db": "workspace:*"
+  },
+  "devDependencies": {
     "@oriel/jira": "workspace:*"
   }
 }

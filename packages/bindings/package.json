@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@oriel/core": "workspace:*",
-    "@oriel/jira": "workspace:*",
     "typescript": "7.0.2"
+  },
+  "devDependencies": {
+    "@oriel/jira": "workspace:*"
   }
 }

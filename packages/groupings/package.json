@@ -10,7 +10,9 @@
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"
   },
   "dependencies": {
-    "@oriel/core": "workspace:*",
+    "@oriel/core": "workspace:*"
+  },
+  "devDependencies": {
     "@oriel/jira": "workspace:*"
   }
 }

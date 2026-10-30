@@ -103,6 +103,43 @@ test("naming SourceWriter, which can stand in for an approval in a cast, is repo
   ]);
 });
 
+test("importing a source adapter outside its package, the server, evals and tests is reported", () => {
+  const sources = [
+    { path: "packages/groupings/src/x.ts", text: 'import { jiraAttrsOf } from "@oriel/jira";' },
+    { path: "packages/changeset/src/x.ts", text: "import { jiraSpecs } from '@oriel/jira';" },
+    { path: "packages/bindings/src/x.ts", text: 'const j = await import("@oriel/folder/walk");' },
+    { path: "packages/sandbox/src/x.ts", text: 'import { a } from "../../jira/src/attrs.ts";' },
+    // Allowed: the adapter itself, the composition root, evals and tests.
+    { path: "packages/jira/src/source.ts", text: 'import { jiraAttrs } from "./attrs.ts";' },
+    {
+      path: "packages/server/src/window.ts",
+      text: 'import { jiraPresentation } from "@oriel/jira";',
+    },
+    { path: "packages/evals/src/repo.ts", text: 'import { parseJiraFixture } from "@oriel/jira";' },
+    {
+      path: "packages/groupings/src/x.test.ts",
+      text: 'import { fixtureSnapshot } from "@oriel/jira";',
+    },
+    {
+      path: "packages/bindings/src/testing.ts",
+      text: 'import { jiraNamespace } from "@oriel/jira";',
+    },
+    // Not adapters: core and other packages, and a name that only starts like one.
+    { path: "packages/groupings/src/y.ts", text: 'import { facets } from "@oriel/core";' },
+    { path: "packages/groupings/src/z.ts", text: 'import { x } from "@oriel/jiraish";' },
+    // A writer is decision 0003's to report, once.
+    { path: "packages/changeset/src/apply.ts", text: 'import { w } from "@oriel/jira/writer";' },
+  ];
+  const where = (kind: string) =>
+    `imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`;
+  assert.deepEqual(problems({ ...clean, sources }), [
+    `packages/groupings/src/x.ts: ${where("jira")}`,
+    `packages/changeset/src/x.ts: ${where("jira")}`,
+    `packages/bindings/src/x.ts: ${where("folder")}`,
+    `packages/sandbox/src/x.ts: ${where("jira")}`,
+  ]);
+});
+
 test("lockedPackages reads keys from the packages section only", () => {
   assert.deepEqual(lockedPackages(lockfile), [
     "@oxlint/binding-darwin-arm64@1.89.0",

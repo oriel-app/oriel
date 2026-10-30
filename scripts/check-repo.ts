@@ -3,8 +3,14 @@
 // an ADR's `Adds:` line; and outside packages/changeset, no code names
 // `Approved` or `SourceWriter` (core defines them) or imports a writer by any
 // path. An adapter's own `src/writer.ts` and its test are the exceptions; the
-// test may stand in for an approval, which nothing else may.
+// test may stand in for an approval, which nothing else may. And no package
+// imports a source adapter except the adapter itself, the composition root
+// (packages/server), the eval harness (packages/evals) and tests: other
+// packages get a source's behaviour as declarations typed by core (decision
+// 0019).
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
+import { posix } from "node:path";
+import { sourceKinds } from "../packages/core/src/ids.ts";
 
 // `name@version` keys from every top-level `packages:` block.
 export function lockedPackages(lockfile: string): string[] {
@@ -34,6 +40,33 @@ function backticked(text: string): string[] {
   return [...text.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
 }
 
+const adapters: readonly string[] = sourceKinds;
+
+// The source adapters a file imports: an `@oriel/<kind>` specifier, with or
+// without a subpath, or a relative path into `packages/<kind>/`, for each
+// `<kind>` in core's source kinds. A writer import doesn't count here: the
+// writer rule above governs those (decision 0003).
+export function importedAdapters(path: string, text: string): string[] {
+  const found = new Set<string>();
+  const writer = /\/writer(\.ts)?$/;
+  for (const [, kind = "", sub = ""] of text.matchAll(/["']@oriel\/([a-z0-9-]+)(\/[^"'\s]*)?["']/g))
+    if (adapters.includes(kind) && !writer.test(sub)) found.add(kind);
+  for (const [, relative = ""] of text.matchAll(/["'](\.{1,2}\/[^"'\s]*)["']/g)) {
+    const resolved = posix.normalize(posix.join(posix.dirname(path), relative));
+    const kind = /^packages\/([^/]+)\//.exec(resolved)?.[1] ?? "";
+    if (adapters.includes(kind) && !writer.test(resolved)) found.add(kind);
+  }
+  return [...found];
+}
+
+// Where a source adapter may be imported from: its own package, the
+// composition root, the eval harness, and tests and their support files.
+function mayImportAdapter(path: string, kind: string): boolean {
+  if (path.startsWith(`packages/${kind}/`)) return true;
+  if (path.startsWith("packages/server/") || path.startsWith("packages/evals/")) return true;
+  return /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/.test(path);
+}
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -48,21 +81,28 @@ export function problems(repo: {
 }): string[] {
   const found = new Set<string>();
   for (const { path, text } of repo.sources) {
-    if (path.startsWith("packages/changeset/")) continue;
+    const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = /^packages\/[^/]+\/src\/writer(\.test)?\.ts$/.test(path);
-    if (!core && /\bApproved\b/.test(text)) {
+    if (!changeset && !core && /\bApproved\b/.test(text)) {
       found.add(
         `${path}: names Approved outside packages/core and packages/changeset (decision 0003)`,
       );
     }
-    if (!core && !ownWriter && /\bSourceWriter\b/.test(text)) {
+    if (!changeset && !core && !ownWriter && /\bSourceWriter\b/.test(text)) {
       found.add(
         `${path}: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)`,
       );
     }
-    if (!ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
+    if (!changeset && !ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
       found.add(`${path}: imports a source writer outside packages/changeset (decision 0003)`);
+    }
+    if (!path.startsWith("packages/")) continue;
+    for (const kind of importedAdapters(path, text)) {
+      if (mayImportAdapter(path, kind)) continue;
+      found.add(
+        `${path}: imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
+      );
     }
   }
   if (repo.claudeLink !== "AGENTS.md") {
