@@ -1793,6 +1793,15 @@ a {
     padding-right: 6rem;
   }
 
+  .cluster-label {
+    white-space: normal;
+  }
+
+  .count,
+  .points-sum {
+    white-space: nowrap;
+  }
+
   .cluster-details {
     display: flex;
     flex-wrap: wrap;
