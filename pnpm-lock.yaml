@@ -66,6 +66,12 @@ importers:
         specifier: workspace:*
         version: link:../jira
 
+  packages/folder:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/groupings:
     dependencies:
       '@oriel/core':
