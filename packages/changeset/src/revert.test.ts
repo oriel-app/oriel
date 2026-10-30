@@ -503,6 +503,45 @@ test("a send another instance starts while the revert is being built blocks it",
   assert.equal(status(db, unsent), "failed");
 });
 
+test("a field Oriel never learned stays unknown, even when a later row wrote it again", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-21", 8),
+  ]);
+  const [first, second] = [nth(set.mutations, 0).id, nth(set.mutations, 1).id];
+  await approve(changeSets, set.id);
+  // The first is found in place, so its earlier value is never learned; the
+  // second is sent and reports one.
+  jira.edit("SYN-21", { points: 5 });
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, [first, second]);
+  const result = await changeSets.revert(set.id);
+  assert.ok("conflicts" in result);
+  assert.deepEqual(
+    result.conflicts.map((c) => [c.mutationId, c.field, c.expected]),
+    [[first, "points", undefined]],
+  );
+  assert.equal(jira.issue("SYN-21")?.points, 8);
+});
+
+test("a revert's rows can be removed but not edited", async () => {
+  const { changeSets, run } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-117", 2),
+  ]);
+  await applied(changeSets, set);
+  const back = await reverse(changeSets, set.id);
+  const row = nth(back.mutations, 0);
+  await assert.rejects(
+    changeSets.edit(back.id, { set: [{ mutationId: row.id, args: { points: 40 } }] }),
+    { code: "refused" },
+  );
+  const trimmed = await changeSets.edit(back.id, { remove: [row.id] });
+  assert.equal(trimmed.mutations.length, 1);
+});
+
 test("a value a teammate set to the same thing before apply isn't overwritten by a revert", async () => {
   const { changeSets, run, jira } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);

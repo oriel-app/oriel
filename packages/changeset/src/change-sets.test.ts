@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CapturedMutation } from "@oriel/core";
+import { sendLeaseMs } from "./change-sets.ts";
 import { approve, count, nth, preview, setup, status } from "./testing.ts";
 
 const estimate = (target: string, points: number | null): CapturedMutation => ({
@@ -130,6 +131,19 @@ test("a moved item stays in the region under its old handle and its new one", as
     ]);
     assert.equal(nth(set.mutations, 0).target, target);
   }
+});
+
+test("apply resolves a moved item's old handle the way capture did", async () => {
+  const { changeSets, run, jira, indexPage, indexed } = setup();
+  indexPage([{ ...indexed("SYN-21"), id: "jira:OPS-5" }]);
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  await approve(changeSets, set.id);
+  // The value is already in place, so apply records it without sending,
+  // which needs the item's stable ID from the old handle.
+  jira.edit("SYN-21", { points: 5 });
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, [nth(set.mutations, 0).id]);
+  assert.deepEqual(jira.calls, []);
 });
 
 test("a handle reused by an item outside the region names that item and is refused", async () => {
@@ -318,26 +332,25 @@ test("an edit that changes nothing leaves the approval and the previews standing
   assert.equal(jira.issue("SYN-21")?.points, 5);
 });
 
-test("a change shown as gone can't be approved until it is edited or removed", async () => {
+test("a change whose item couldn't be read can't be approved until a render reads it", async () => {
   const { changeSets, run, jira, db } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   jira.hide("SYN-21");
-  await changeSets.diff(set.id);
-  jira.show("SYN-21");
-  // A later render shows it back, but what was shown as gone stands.
   await assert.rejects(approve(changeSets, set.id), {
     code: "refused",
     message:
-      "SYN-21 couldn't be read when this was reviewed: remove that change, or edit it to review it again",
+      "SYN-21 couldn't be read when this was last reviewed: remove that change, or review it again once it can be read",
   });
   assert.deepEqual(preview(db, mutationId), { $gone: true });
 
-  await changeSets.edit(set.id, { set: [{ mutationId, args: { points: 6 } }] });
+  // The latest render reads it again, and that is what approval goes by.
+  jira.show("SYN-21");
   await approve(changeSets, set.id);
+  assert.deepEqual(preview(db, mutationId), { points: 2 });
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [mutationId]);
-  assert.equal(jira.issue("SYN-21")?.points, 6);
+  assert.equal(jira.issue("SYN-21")?.points, 5);
 });
 
 test("apply itself won't send a row with no preview or one shown as gone", async () => {
@@ -431,18 +444,99 @@ test("a write that lands after its row vanished is an error, not a silent succes
   await assert.rejects(changeSets.apply(set.id), /landed in the source/);
 });
 
-test("an edit from another instance during the write isn't recorded as applied", async () => {
+test("a result isn't recorded on a row whose arguments changed during the send", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  // Something outside the engine rewrites the row while the write is out.
+  jira.hooks.after = () => {
+    db.prepare("update mutations set args = ? where id = ?").run('{"points":40}', mutationId);
+  };
+  await assert.rejects(changeSets.apply(set.id), /landed in the source/);
+  assert.equal(status(db, mutationId), "failed");
+});
+
+test("a sent row can be removed but not edited", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-117", 2),
+  ]);
+  const sent = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
+  jira.hooks.after = () => {
+    throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  await assert.rejects(
+    changeSets.edit(set.id, { set: [{ mutationId: sent, args: { points: 40 } }] }),
+    { code: "refused", message: /this change may already be in Jira: check, then remove it/ },
+  );
+  const removed = await changeSets.edit(set.id, { remove: [sent] });
+  assert.deepEqual(
+    removed.mutations.map((m) => m.target),
+    ["jira:SYN-117"],
+  );
+});
+
+test("a send still unanswered isn't repeated by another instance within its lease", async () => {
   const { changeSets, instance, run, jira, db } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   await approve(changeSets, set.id);
+  let other: unknown;
+  jira.hooks.before = async (_request, call) => {
+    if (call === 1) other = await instance().apply(set.id);
+  };
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, [mutationId]);
+  assert.match(
+    String((other as { failed: { error: string }[] }).failed[0]?.error),
+    /it may still be on its way/,
+  );
+  assert.equal(jira.calls.length, 1);
+  assert.equal(status(db, mutationId), "applied");
+});
+
+test("of two instances that both sent a row, only the later mark records it", async () => {
+  const { changeSets, instance, run, jira, db, advance } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  const mutationId = nth(set.mutations, 0).id;
+  await approve(changeSets, set.id);
   const elsewhere = instance();
-  jira.hooks.after = async () => {
-    await elsewhere.edit(set.id, { set: [{ mutationId, args: { points: 40 } }] });
+
+  // This instance marks its send, which then takes longer than the lease.
+  // Another instance marks the row again and starts its own send; then this
+  // one lands first.
+  const otherMarked = Promise.withResolvers<void>();
+  const releaseOther = Promise.withResolvers<void>();
+  let other: Promise<unknown> | undefined;
+  jira.hooks.before = async (_request, call) => {
+    if (call === 1) {
+      advance(sendLeaseMs);
+      other = elsewhere.apply(set.id);
+      await otherMarked.promise;
+      return;
+    }
+    otherMarked.resolve();
+    await releaseOther.promise;
   };
   await assert.rejects(changeSets.apply(set.id), /landed in the source/);
-  // It was sent and may have landed, and nothing records it as applied.
-  assert.equal(status(db, mutationId), "failed");
+  releaseOther.resolve();
+  const report = await other;
+  assert.deepEqual(report, { changeSetId: set.id, applied: [mutationId], skipped: [], failed: [] });
+  assert.equal(status(db, mutationId), "applied");
+  assert.equal(jira.calls.length, 2);
+  // The instance that recorded it saw the row already sent, so the source's
+  // "before" may be Oriel's own write: a revert reports it, not restores it.
+  const result = await changeSets.revert(set.id);
+  assert.ok("conflicts" in result);
+  assert.deepEqual(
+    result.conflicts.map((c) => [c.target, c.field, c.expected]),
+    [["jira:SYN-21", "points", undefined]],
+  );
 });
 
 test("apply replays exactly the captured arguments, in seq order", async () => {
@@ -572,7 +666,7 @@ test("NewRef chains resolve to the items earlier creates made", async () => {
 });
 
 test("after a crash, apply resumes and skips what already landed", async () => {
-  const { changeSets, instance, run, jira } = setup();
+  const { changeSets, instance, run, jira, advance } = setup();
   const set = await changeSets.capture(run, [
     story("new:1", "Pay with a phone wallet at the kiosk", "jira:SYN-1"),
     estimate("jira:SYN-21", 5),
@@ -593,8 +687,15 @@ test("after a crash, apply resumes and skips what already landed", async () => {
   await reached.promise;
   jira.hooks.before = undefined;
 
-  // The new process resolves new:1 from the stored result of the create.
-  const report = await instance().apply(set.id);
+  // Within the send's lease the new process won't send it again: it may
+  // still be on its way. After the lease it resumes, and resolves new:1 from
+  // the stored result of the create.
+  const restarted = instance();
+  const early = await restarted.apply(set.id);
+  assert.match(nth(early.failed, 0).error, /it may still be on its way/);
+  assert.equal(jira.calls.length, 2);
+  advance(sendLeaseMs);
+  const report = await restarted.apply(set.id);
   assert.deepEqual(report.skipped, ids.slice(0, 1));
   assert.deepEqual(report.applied, ids.slice(1));
   assert.deepEqual(

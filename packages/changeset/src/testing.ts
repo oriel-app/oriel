@@ -60,7 +60,14 @@ const site = "https://oriel.atlassian.net";
 
 // Jira as the SYN fixture leaves it after all its source edits: SYN-16
 // renamed, SYN-88 moved to SYN-3, SYN-27 deleted.
+// Computed once: it is pure, and memoryJira copies what it takes from it.
+let synJira: MemorySnapshot | null = null;
 export function fixtureJira(): MemorySnapshot {
+  synJira ??= buildFixtureJira();
+  return synJira;
+}
+
+function buildFixtureJira(): MemorySnapshot {
   const syn = fixture();
   const { records, content } = fixtureSnapshot(syn, site, syn.edits.length);
   return {
@@ -108,6 +115,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
   const calls: Request[] = [];
   // Keys of the issues writes created, in order.
   const created: string[] = [];
+  // Every write that landed, in order, with the item just before and after it.
+  const landings: { request: Request; before: MemoryIssue | null; after: MemoryIssue | null }[] =
+    [];
   const hooks: {
     // Runs before a request lands; a promise that never settles is a crash.
     before?: (request: Request, call: number) => Promise<void> | void;
@@ -238,7 +248,14 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
       const plain: Request = structuredClone({ ...request });
       calls.push(plain);
       await hooks.before?.(plain, calls.length);
+      const prior = plain.target === null ? null : structuredClone(find(plain.target));
       const result = land(plain);
+      const key = parseItemId(result.item.id)?.key ?? "";
+      landings.push({
+        request: plain,
+        before: prior,
+        after: structuredClone(issues.get(key) ?? null),
+      });
       await hooks.after?.(plain, calls.length);
       return result;
     },
@@ -262,6 +279,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     reader,
     calls,
     created,
+    landings,
     hooks,
     issue: (key: string): MemoryIssue | null => structuredClone(issues.get(key) ?? null),
     // An edit someone makes directly in Jira, outside Oriel.

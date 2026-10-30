@@ -164,12 +164,12 @@ export function store(db: DatabaseSync) {
   );
   const updateApplied = db.prepare(`
     update mutations set status = 'applied', applied = ?, error = null
-    where id = ? and status = ? and args = ?`);
+    where id = ? and status = ? and args = ? and error is ?`);
   const updateFailed = db.prepare(
     "update mutations set status = 'failed', error = ? where id = ? and status != 'applied'",
   );
   const updateSent = db.prepare(
-    "update mutations set status = 'failed', error = ? where id = ? and status = ?",
+    "update mutations set status = 'failed', error = ? where id = ? and status = ? and error is ?",
   );
   const updateStopped = db.prepare(
     "update mutations set error = ? where id = ? and status != 'applied'",
@@ -262,22 +262,26 @@ export function store(db: DatabaseSync) {
 
     stableId: stableIdOf,
 
-    // Whether a handle names an item of the thread's region. Membership is by
-    // stable ID (decision 0004). A handle resolves through the index first, so
-    // one reused by another item names that item and is refused. A handle no
-    // index row has, such as a moved item's old one, falls back to the handle
-    // the region was created with.
-    inRegion(threadId: Ulid, workspaceId: Ulid): (handle: string) => boolean {
+    // Handles as a thread's region sees them. Membership is by stable ID
+    // (decision 0004). A handle resolves through the index first, so one
+    // reused by another item names that item and is refused. A handle no index
+    // row has, such as a moved item's old one, falls back to the handle the
+    // region was created with. Capture, edit and apply all resolve this way.
+    region(threadId: Ulid, workspaceId: Ulid) {
       const rows = selectRegionMembers
         .all(threadId)
         .map((raw) => parse(memberRow, raw, "region_items"));
       const members = new Set(rows.map((row) => `${row.source}\u0000${row.stable_id}`));
       const created = new Map(rows.map((row) => [row.item_id, row.stable_id]));
-      return (handle) => {
-        const source = parseItemId(handle)?.source;
-        if (!source) return false;
-        const stableId = stableIdOf(workspaceId, handle) ?? created.get(handle) ?? null;
-        return stableId !== null && members.has(`${source}\u0000${stableId}`);
+      const stableId = (handle: string): string | null =>
+        stableIdOf(workspaceId, handle) ?? created.get(handle) ?? null;
+      return {
+        stableId,
+        has(handle: string): boolean {
+          const source = parseItemId(handle)?.source;
+          const id = stableId(handle);
+          return source !== undefined && id !== null && members.has(`${source}\u0000${id}`);
+        },
       };
     },
 
@@ -331,11 +335,13 @@ export function store(db: DatabaseSync) {
     },
 
     // Records a result only on the row as it was sent: same status, same
-    // arguments. Throws otherwise, since the write landed but its row was
-    // removed, edited or applied meanwhile.
+    // arguments, same mark (a send's mark carries its own nonce, so of two
+    // instances that both sent a row only the last to mark it can record it).
+    // Throws otherwise, since the write landed but its row was removed,
+    // edited, applied or sent again meanwhile.
     markApplied(
       mutationId: Ulid,
-      sent: { status: MutationStatus; args: unknown },
+      sent: { status: MutationStatus; args: unknown; error: string | null },
       applied: Infer<typeof appliedValue>,
     ): void {
       const { changes } = updateApplied.run(
@@ -343,6 +349,7 @@ export function store(db: DatabaseSync) {
         mutationId,
         sent.status,
         JSON.stringify(sent.args),
+        sent.error,
       );
       if (Number(changes) !== 1)
         throw new Error(
@@ -356,10 +363,15 @@ export function store(db: DatabaseSync) {
     },
 
     // Records, before a write goes out, that it was sent: until its result is
-    // recorded, it may have landed. Only from the status the caller saw, so
-    // another apply's mark is never overwritten; false if the row moved on.
-    markSent(mutationId: Ulid, from: MutationStatus, error: string): boolean {
-      return Number(updateSent.run(error, mutationId, from).changes) === 1;
+    // recorded, it may have landed. Only from the row as the caller saw it
+    // (status and message), so another apply's mark is never overwritten;
+    // false if the row moved on. `mark` should be unique to this send.
+    markSent(
+      mutationId: Ulid,
+      from: { status: MutationStatus; error: string | null },
+      mark: string,
+    ): boolean {
+      return Number(updateSent.run(mark, mutationId, from.status, from.error).changes) === 1;
     },
 
     // Apply stopped before sending this mutation. The status stays as it was, so
