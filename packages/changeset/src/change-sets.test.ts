@@ -173,6 +173,55 @@ test("a handle reused by an item outside the region names that item and is refus
   assert.equal(nth(set.mutations, 0).target, "jira:OPS-5");
 });
 
+test("each write names the stable ID its target must have, and a create names none", async () => {
+  const { changeSets, run, jira, indexed } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    story("new:1", "Pay with a phone wallet at the kiosk", "jira:SYN-1"),
+    estimate("new:1", 2),
+  ]);
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id);
+  const made = jira.issue(jira.created[0] ?? "");
+  assert.deepEqual(
+    jira.calls.map((call) => [call.target, call.expectedStableId]),
+    [
+      ["jira:SYN-21", indexed("SYN-21").stableId],
+      [null, null],
+      [`jira:${made?.key}`, made?.id],
+    ],
+  );
+});
+
+test("an assignee is the field the Jira writer reports, `assignee`", async () => {
+  const { changeSets, run } = setup();
+  const set = await changeSets.capture(run, [
+    { op: "setAssignee", target: "jira:SYN-21", ref: null, args: { accountId: "amara" } },
+  ]);
+  const diff = await changeSets.diff(set.id);
+  assert.deepEqual(nth(diff.lines, 0).fields, [
+    { name: "assignee", before: "dara", after: "amara" },
+  ]);
+});
+
+test("a key another item took after capture is never written", async () => {
+  const { changeSets, run, jira, indexPage, indexed } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+  await approve(changeSets, set.id);
+  // SYN-21 moves away and an item outside the region takes its key.
+  indexPage([
+    { ...indexed("SYN-21"), id: "jira:OPS-5" },
+    { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
+  ]);
+  const report = await changeSets.apply(set.id);
+  assert.deepEqual(report.applied, []);
+  assert.match(
+    nth(report.failed, 0).error,
+    /SYN-21 no longer names an item in the region this change was made in/,
+  );
+  assert.deepEqual(jira.calls, []);
+});
+
 test("a diff says what each mutation will do, in plain words", async () => {
   const { changeSets, run } = setup();
   const set = await changeSets.capture(run, [

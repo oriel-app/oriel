@@ -26,8 +26,22 @@ const approve = (request: WriteRequest<"jira">) =>
 const at = (n: number) => new Date(Date.UTC(2026, 9, 29, 9, 0, n)).toISOString();
 
 let seq = 0;
-const request = (op: string, target: ItemId<"jira"> | null, args: unknown) =>
-  approve({ mutationId: ulid(0, new Uint8Array(10).fill(seq++ % 256)), op, target, args });
+// The fake site's stable ID for a key, as the region would know it.
+const stableIdOf = (target: ItemId<"jira">) =>
+  String(10000 + Number(target.slice(target.lastIndexOf("-") + 1)));
+const request = (
+  op: string,
+  target: ItemId<"jira"> | null,
+  args: unknown,
+  expectedStableId = target === null ? null : stableIdOf(target),
+) =>
+  approve({
+    mutationId: ulid(0, new Uint8Array(10).fill(seq++ % 256)),
+    op,
+    target,
+    expectedStableId,
+    args,
+  });
 
 // A small stateful Jira: issues and remote links that writes change.
 function fakeSite() {
@@ -306,6 +320,38 @@ test("arguments and targets are checked before anything is written", async () =>
   ];
   for (const [op, target, args, error] of refused)
     await assert.rejects(w.apply(request(op, target, args)), error, op);
+  assert.deepEqual(jira.writes(), []);
+});
+
+test("a handle that names another item now is refused before anything is written", async () => {
+  const jira = fakeSite();
+  const w = writer(jira.transport);
+  // SYN-12's key was reused: the item there now isn't the one the region holds.
+  for (const [op, args] of [
+    ["setSummary", { summary: "Retry once" }],
+    ["addLink", { url: "https://runbook.example.com/r", title: "Runbook" }],
+    ["removeLink", { linkId: "10050" }],
+    ["deleteItem", {}],
+  ] as const)
+    await assert.rejects(
+      w.apply(request(op, "jira:SYN-12", args, "99999")),
+      /jira:SYN-12 names another item in Jira now \(stable ID 10012, not 99999\)/,
+      op,
+    );
+  assert.deepEqual(jira.writes(), []);
+});
+
+test("a target comes with the stable ID it must have, and a create with none", async () => {
+  const jira = fakeSite();
+  const w = writer(jira.transport);
+  await assert.rejects(
+    w.apply(request("setSummary", "jira:SYN-12", { summary: "x" }, null)),
+    /no stable ID to check jira:SYN-12 against/,
+  );
+  await assert.rejects(
+    w.apply(request("createStory", null, { summary: "x", epic: null }, "10012")),
+    /a stable ID needs a target/,
+  );
   assert.deepEqual(jira.writes(), []);
 });
 

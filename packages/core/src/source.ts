@@ -117,6 +117,10 @@ export type WriteRequest<K extends SourceKind = SourceKind> = {
   mutationId: Ulid;
   op: string;
   target: ItemId<K> | null;
+  // The stable ID the target must have, null exactly when there is no target.
+  // A writer reads the item before it writes and refuses a mismatch: the
+  // handle now names another item, as when a recreated project reuses keys.
+  expectedStableId: string | null;
   args: unknown;
 };
 

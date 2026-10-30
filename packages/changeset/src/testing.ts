@@ -135,7 +135,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     summary: issue.summary,
     description: issue.description,
     points: issue.points,
-    accountId: issue.accountId,
+    assignee: issue.accountId,
     epic: issue.epic,
     updated: issue.updated,
     ...Object.fromEntries(
@@ -184,12 +184,17 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
       throw new Error(
         `404: Issue does not exist or you do not have permission to see it: ${request.target}`,
       );
+    // As the Jira writer does: a handle that names another item now is refused.
+    if (issue.id !== request.expectedStableId)
+      throw new Error(`${request.target} names another item now (stable ID ${issue.id})`);
     const set = <F extends "summary" | "description" | "points" | "accountId">(
-      field: F,
+      property: F,
       value: MemoryIssue[F],
     ) => {
+      // Reported under core's field names, as the Jira writer does.
+      const field = property === "accountId" ? "assignee" : property;
       const before = pick(issue, [field]);
-      issue[field] = value;
+      issue[property] = value;
       issue.updated = tick();
       return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };
     };

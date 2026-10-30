@@ -15,15 +15,15 @@ import {
   type Undo,
 } from "./catalogue.ts";
 
-// How change sets treat Jira's ops. Field names are shared with the Jira
-// reader and writer (their `current`, `before` and `after`):
+// How change sets treat Jira's ops. Field names are core's (`FieldValues`),
+// as the Jira writer reports them in `current`, `before` and `after`:
 // - `summary`, `description` ("" when empty), `points`, `epic` (an item ID)
-//   and `accountId` (the assignee);
+//   and `assignee` (an account ID);
 // - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed;
 // - `updated`: the item's last update time, an instant. Every `after` carries
 //   it except deleteItem's, and `current(id, ["updated"])` returns it.
-// A set op's one argument key is the field it sets, so its revert restores
-// `applied.before[key]`.
+// A set op's one argument sets one field, so its revert restores
+// `applied.before[field]` under that argument's key.
 
 const maxTitleChars = 80;
 
@@ -74,11 +74,12 @@ function linkField(values: FieldValues): string | null {
 }
 
 // A set op's revert: the same op, with the value the source reported before.
-function restore<T>(name: string, field: string, validator: Validator<T>) {
+// `arg` is the argument that sets `field`, when its name differs.
+function restore<T>(name: string, field: string, validator: Validator<T>, arg = field) {
   return (_args: T, applied: WriteResult): Undo => {
     if (!Object.hasOwn(applied.before, field))
       return { refused: `Jira didn't report the earlier ${field}` };
-    const result = validator({ [field]: applied.before[field] });
+    const result = validator({ [arg]: applied.before[field] });
     if (!result.ok) return { refused: `the earlier ${field} can't be set back` };
     return { op: name, args: result.value };
   };
@@ -145,9 +146,9 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
   setAssignee: op(jiraOps.setAssignee, {
     idempotent: true,
-    after: (a) => ({ accountId: a.accountId }),
+    after: (a) => ({ assignee: a.accountId }),
     describe: async (a, context) => {
-      const was = context.before.accountId;
+      const was = context.before.assignee;
       const item = named(context.subject);
       if (a.accountId === null)
         return typeof was === "string"
@@ -156,7 +157,7 @@ const ops: Record<JiraOp, OpSpec> = {
       if (typeof was !== "string") return `Assign ${item} to ${await who(context, a.accountId)}.`;
       return `Reassign ${item} from ${await who(context, was)} to ${await who(context, a.accountId)}.`;
     },
-    undo: restore("setAssignee", "accountId", jiraOps.setAssignee.args),
+    undo: restore("setAssignee", "assignee", jiraOps.setAssignee.args, "accountId"),
   }),
   addLink: op(jiraOps.addLink, {
     // Jira names the link when it adds it; until then it is `link:new`.

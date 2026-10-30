@@ -2,7 +2,8 @@
 // scripts/check-repo.ts), and `apply` takes only a request a person approved:
 // its type comes from `SourceWriter`, so nothing here can mint one.
 //
-// Before and after values are keyed by field name: "summary", "description"
+// Before and after values are keyed by core's field names (`FieldValues`):
+// "summary", "description"
 // (plain text), "points", "assignee" (an account ID), "epic" (an item ID), and
 // "link:<linkId>" ({ url, title }, or null when there is no such link). A
 // create has no before values and a delete no after values.
@@ -51,6 +52,9 @@ export type JiraWriterOptions = {
   project: string;
   log: Log;
 };
+
+// A write's target: an item's handle and the stable ID it must have.
+type Target = { id: ItemId<"jira">; stableId: string } | null;
 
 const issueFields = ["summary", "description", "points", "assignee", "epic"] as const;
 type IssueField = (typeof issueFields)[number];
@@ -158,10 +162,16 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { url: found.object.url, title: found.object.title ?? found.object.url };
   };
 
-  const existing = async (target: ItemId<"jira"> | null, names: readonly string[]) => {
+  // The target's current values, read through its handle, so long as the
+  // handle still names the item with the stable ID expected of it.
+  const existing = async (target: Target, names: readonly string[]) => {
     if (target === null) throw new Error("this operation needs a target item");
-    const found = await values(keyOf(target), names);
-    if (found === "gone") throw new Error(`${target} is gone from Jira`);
+    const found = await values(keyOf(target.id), names);
+    if (found === "gone") throw new Error(`${target.id} is gone from Jira`);
+    if (found.stableId !== target.stableId)
+      throw new Error(
+        `${target.id} names another item in Jira now (stable ID ${found.stableId}, not ${target.stableId})`,
+      );
     return found;
   };
 
@@ -172,7 +182,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   // item Oriel created since Oriel last wrote to it.
   const afterwards = async (key: string, stableId: string, names: readonly string[]) => {
     try {
-      const after = await existing(itemId("jira", key), [...names, "updated"]);
+      const after = await existing({ id: itemId("jira", key), stableId }, [...names, "updated"]);
       return {
         item: { id: itemId("jira", after.key), stableId: after.stableId },
         after: after.values,
@@ -188,7 +198,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   // Reads before, sends, reads after.
   const edit = async (
-    target: ItemId<"jira"> | null,
+    target: Target,
     names: readonly string[],
     request: (key: string, before: FieldValues) => Promise<JiraRequest>,
   ): Promise<WriteResult<"jira">> => {
@@ -242,11 +252,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return found;
   };
 
-  const write = (
-    op: JiraOp,
-    target: ItemId<"jira"> | null,
-    args: unknown,
-  ): Promise<WriteResult<"jira">> => {
+  const write = (op: JiraOp, target: Target, args: unknown): Promise<WriteResult<"jira">> => {
     switch (op) {
       case "createStory":
         return createStory(valid(jiraOps.createStory.args, args, op));
@@ -291,7 +297,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   };
 
   const addLink = async (
-    target: ItemId<"jira"> | null,
+    target: Target,
     { url, title }: JiraArgs<"addLink">,
   ): Promise<WriteResult<"jira">> => {
     const before = await existing(target, []);
@@ -306,7 +312,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 
-  const deleteItem = async (target: ItemId<"jira"> | null): Promise<WriteResult<"jira">> => {
+  const deleteItem = async (target: Target): Promise<WriteResult<"jira">> => {
     const before = await existing(target, issueFields);
     await send({ method: "DELETE", path: `${api}/issue/${before.key}` });
     return {
@@ -318,9 +324,17 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   return {
     kind: "jira",
-    apply: async (request) => {
-      if (!isJiraOp(request.op)) throw new Error(`not a Jira operation: ${request.op}`);
-      return write(request.op, request.target, request.args);
+    // A target must come with the stable ID it is expected to have, and a
+    // create with none.
+    apply: async ({ op, target, expectedStableId, args }) => {
+      if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
+      if (target === null) {
+        if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
+        return write(op, null, args);
+      }
+      if (expectedStableId === null)
+        throw new Error(`${op}: no stable ID to check ${target} against`);
+      return write(op, { id: target, stableId: expectedStableId }, args);
     },
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);

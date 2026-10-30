@@ -604,14 +604,16 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 
   // The stable ID of the item a mutation writes to: from the result that made
   // it or that the mutation undoes, or else as the region its run used
-  // resolves the handle, as capture did.
+  // resolves the handle, as capture did. Null when the handle names no member
+  // of that region any more, such as a key another item has taken since.
   const stableIdFor = (m: MutationRecord, set: ChangeSet, target: ItemId): string | null => {
     if (m.target !== null && isNewRef(m.target)) {
       const ref = m.target;
       return set.mutations.find((c) => c.ref === ref)?.applied?.item.stableId ?? null;
     }
     if (m.reverts) return rows.mutation(m.reverts)?.applied?.item.stableId ?? null;
-    return rows.region(set.runId, set.workspaceId).stableId(target);
+    const region = rows.region(set.runId, set.workspaceId);
+    return region.has(target) ? region.stableId(target) : null;
   };
 
   // A set op whose value is already in place, as when an earlier send landed
@@ -737,7 +739,20 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       }
       where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
-      const request = mint({ mutationId: m.id, op: m.op, target: where.target, args: m.args });
+      // The writer refuses a target whose handle names another item by now.
+      const expectedStableId = where.target === null ? null : stableIdFor(m, set, where.target);
+      if (where.target !== null && expectedStableId === null)
+        return halt(
+          mutationId,
+          `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
+        );
+      const request = mint({
+        mutationId: m.id,
+        op: m.op,
+        target: where.target,
+        expectedStableId,
+        args: m.args,
+      });
       const notice = spec.idempotent
         ? `Sent to ${source}, with no answer recorded yet. Retry apply: Oriel checks whether it landed before sending it again.`
         : uncertain;
