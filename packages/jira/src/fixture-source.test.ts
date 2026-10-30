@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fixtureSnapshot, type JiraAttrs, type SyncPage } from "@oriel/core";
+import type { SyncPage } from "@oriel/core";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import type { JiraAttrs } from "./attrs.ts";
+import { fixtureSnapshot } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
 
 const fixture = loadJiraFixture();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applySourceEdits, fixtureSnapshot, parseJiraFixture } from "./fixture.ts";
-import type { Region } from "./region.ts";
+import type { Region } from "@oriel/core";
 
 const issue = (key: string, fields: Record<string, unknown> = {}) => ({
   key,

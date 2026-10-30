@@ -2,10 +2,10 @@ import {
   type Bindings,
   type CapturedMutation,
   type ItemId,
-  jiraOps,
   type NewRef,
   type Region,
 } from "@oriel/core";
+import { jiraOps } from "@oriel/jira";
 import { describe, type Fn, type IssueTypes, pathOf, type Reader, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { shimFor } from "./shim.ts";

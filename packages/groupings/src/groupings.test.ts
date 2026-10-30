@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, fixtureSnapshot, type Grouping, type Instant, instant } from "@oriel/core";
+import { type Cluster, type Grouping, type Instant, instant } from "@oriel/core";
+import { fixtureSnapshot } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import {
   assigneeGrouping,

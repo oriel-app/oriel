@@ -8,7 +8,6 @@ import {
   instant,
   type ItemId,
   itemId,
-  type JiraAttrs,
   type Log,
   number,
   nullable,
@@ -21,6 +20,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
+import type { JiraAttrs } from "./attrs.ts";
 import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";

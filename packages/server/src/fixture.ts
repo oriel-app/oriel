@@ -1,7 +1,8 @@
 // What the window shows until sync lands: SYN from `fixtures/jira/`, with
 // every source edit applied, as of the last thing that happened in it, so the
 // window and its "stuck" rules are the same on every run.
-import { fixtureSnapshot, type Instant, type JiraFixture } from "@oriel/core";
+import type { Instant } from "@oriel/core";
+import { fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import type { JiraRecord } from "@oriel/groupings";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 

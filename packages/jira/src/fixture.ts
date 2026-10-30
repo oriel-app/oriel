@@ -4,23 +4,26 @@
 // throwaway site. Fixtures are the source of truth. `fixtureSnapshot` is the
 // one mapping from fixtures to index records and content, shared by sources
 // and tests.
-import { isInstant, type ItemId, itemId, parseItemId } from "./ids.ts";
-import type { JiraAttrs, JiraContent } from "./jira.ts";
-import type { IndexRecord } from "./source.ts";
 import {
   array,
   boolean,
+  type IndexRecord,
   type Infer,
   type Issue,
+  isInstant,
+  type ItemId,
+  itemId,
   literal,
   nullable,
   number,
   object,
+  parseItemId,
   refine,
   type Result,
   string,
   union,
-} from "./validate.ts";
+} from "@oriel/core";
+import type { JiraAttrs, JiraContent } from "./attrs.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
 const issueKey = refine(

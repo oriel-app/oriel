@@ -4,7 +4,7 @@ import {
   type JiraFixture,
   jiraFixtureParts,
   parseJiraFixture,
-} from "../../packages/core/src/fixture.ts";
+} from "../../packages/jira/src/fixture.ts";
 
 export const fixtureDir = new URL("../../fixtures/jira/", import.meta.url);
 

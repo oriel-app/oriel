@@ -1,24 +1,4 @@
-import type { Instant, ItemId } from "./ids.ts";
-import { type Infer, nullable, number, object, optional, string } from "./validate.ts";
-
-// What the index keeps per Jira item: enough for grouping (epic, assignee,
-// stuck) and the window's filters, nothing more.
-export type JiraAttrs = {
-  issueType: string;
-  status: { name: string; category: "todo" | "in-progress" | "done" };
-  epic: ItemId<"jira"> | null;
-  assignee: { accountId: string; name: string } | null;
-  points: number | null;
-  labels: string[];
-};
-
-// Full content, read live at run time. Rich text arrives as plain text.
-export type JiraContent = JiraAttrs & {
-  summary: string;
-  description: string;
-  comments: { author: string; body: string; at: Instant }[];
-  links: { linkId: string; url: string; title: string }[];
-};
+import { type Infer, nullable, number, object, optional, string } from "@oriel/core";
 
 // The write operations. Bindings validate captured arguments with these, the
 // writer applies them, diffs describe them and revert inverts them. The last

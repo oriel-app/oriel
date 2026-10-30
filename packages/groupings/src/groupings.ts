@@ -2,7 +2,8 @@
 // cluster the source has (an epic, an assignee, no epic) says so; one Oriel
 // derives carries a rule, true of every item it holds and of no item it leaves
 // out. Pure: `now` is passed in.
-import type { Cluster, Grouping, IndexRecord, ItemId, JiraAttrs } from "@oriel/core";
+import type { Cluster, Grouping, IndexRecord, ItemId } from "@oriel/core";
+import type { JiraAttrs } from "@oriel/jira";
 
 export type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 

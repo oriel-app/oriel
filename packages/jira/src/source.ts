@@ -10,8 +10,6 @@ import {
   isInstant,
   type ItemId,
   itemId,
-  type JiraAttrs,
-  type JiraContent,
   type Log,
   nullable,
   number,
@@ -25,6 +23,7 @@ import {
   string,
   unknown,
 } from "@oriel/core";
+import type { JiraAttrs, JiraContent } from "./attrs.ts";
 import { adfToText } from "./adf.ts";
 import {
   api,

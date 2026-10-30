@@ -11,11 +11,7 @@ import {
   boolean,
   type FieldValues,
   type ItemId,
-  isJiraOp,
   itemId,
-  type JiraArgs,
-  jiraOps,
-  type JiraOp,
   type Log,
   number,
   object,
@@ -27,6 +23,7 @@ import {
   type Validator,
   type WriteResult,
 } from "@oriel/core";
+import { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 import { adfToText, textToAdf } from "./adf.ts";
 import {
   api,

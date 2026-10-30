@@ -3,7 +3,7 @@
 // an `updated` cursor, no gone IDs from a listing (Jira's search can't list
 // deletions, so the sync worker's full sweep must find them), and a deleted
 // issue read as gone.
-import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "@oriel/core";
+import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "./fixture.ts";
 import type { JiraSource } from "./source.ts";
 
 export type FixtureSourceOptions = {

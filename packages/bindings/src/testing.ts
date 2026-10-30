@@ -7,18 +7,16 @@ import { createInterface } from "node:readline";
 import {
   type Bindings,
   type CapturedMutation,
-  type FixtureSnapshot,
-  fixtureSnapshot,
   guestMessage,
   type IndexRecord,
   instant,
   type Region,
   type ReadResult,
-  type JiraContent,
   type ItemId,
   type Ulid,
   ulid,
 } from "@oriel/core";
+import { type FixtureSnapshot, fixtureSnapshot, type JiraContent } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { IssueTypes, Reader } from "./describe.ts";
 import { guestStart } from "./shim.ts";

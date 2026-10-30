@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { JiraAttrs, Log, SyncPage } from "@oriel/core";
+import type { Log, SyncPage } from "@oriel/core";
+import type { JiraAttrs } from "./attrs.ts";
 import {
   discovery,
   doc,

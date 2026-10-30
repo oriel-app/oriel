@@ -1,11 +1,11 @@
 import {
   type FieldValues,
   isItemId,
-  jiraOps,
   parseItemId,
   type Validator,
   type WriteResult,
 } from "@oriel/core";
+import { jiraOps } from "@oriel/jira";
 import { type Catalogue, type LineContext, op, type Subject, type Undo } from "./catalogue.ts";
 
 // How change sets treat Jira's ops. Field names are shared with the Jira

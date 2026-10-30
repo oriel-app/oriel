@@ -7,8 +7,6 @@ import {
   type IndexRecord,
   type ItemId,
   isNewRef,
-  type JiraContent,
-  type JiraOp,
   type NewRef,
   nullable,
   number,
@@ -20,6 +18,7 @@ import {
   string,
   type Validator,
 } from "@oriel/core";
+import type { JiraContent, JiraOp } from "@oriel/jira";
 
 // What reads proxy to: the source's live content for region items, and the
 // index for `search()`. The caller binds the workspace.

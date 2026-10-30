@@ -10,6 +10,7 @@
     "evals:ci": "node src/cli.ts replay"
   },
   "dependencies": {
-    "@oriel/core": "workspace:*"
+    "@oriel/core": "workspace:*",
+    "@oriel/jira": "workspace:*"
   }
 }

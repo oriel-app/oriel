@@ -7,11 +7,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import {
   array,
   boolean,
-  fixtureSnapshot,
-  type FixtureRegion,
   type Infer,
   type Instant,
-  type JiraFixture,
   literal,
   nullable,
   number,
@@ -20,6 +17,7 @@ import {
   union,
   unknown,
 } from "@oriel/core";
+import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
 import { canonicalJson } from "./canonical.ts";
 import {

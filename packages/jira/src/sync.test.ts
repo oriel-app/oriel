@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  fixtureSnapshot,
-  type Instant,
-  instant,
-  type Log,
-  type Source,
-  type SyncPage,
-  ulid,
-} from "@oriel/core";
+import { type Instant, instant, type Log, type Source, type SyncPage, ulid } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs } from "./attrs.ts";
+import { fixtureSnapshot } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
 import { syncSource } from "./sync.ts";
 

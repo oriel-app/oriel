@@ -5,15 +5,11 @@ import {
   type Approved,
   type ChangeSets,
   type FieldValues,
-  fixtureSnapshot,
   type IndexRecord,
   type Instant,
   instant,
   type ItemId,
   isItemId,
-  isJiraOp,
-  type JiraFixture,
-  jiraOps,
   parseItemId,
   type RunRef,
   type SourceWriter,
@@ -24,6 +20,7 @@ import {
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
+import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps } from "@oriel/jira";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSets, type Reader } from "./change-sets.ts";

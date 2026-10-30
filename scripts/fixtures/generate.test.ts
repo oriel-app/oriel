@@ -5,7 +5,7 @@ import {
   applySourceEdits,
   type FixtureIssue,
   fixtureSnapshot,
-} from "../../packages/core/src/fixture.ts";
+} from "../../packages/jira/src/fixture.ts";
 import { generate } from "./generate.ts";
 import { fixtureDir, loadJiraFixture } from "./load.ts";
 

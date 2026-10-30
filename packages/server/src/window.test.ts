@@ -5,10 +5,10 @@ import {
   type Grouping,
   type IndexRecord,
   type Instant,
-  type JiraAttrs,
   instant,
   itemId,
 } from "@oriel/core";
+import type { JiraAttrs } from "@oriel/jira";
 import { fixtureIndex } from "./fixture.ts";
 import { groupings, windowView } from "./window.ts";
 
