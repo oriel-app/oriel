@@ -225,8 +225,8 @@ function Item({ item }: { item: ItemRow }) {
       <span class="title" title={item.title}>
         {item.title}
       </span>
-      <span class="status" data-category={item.status.category}>
-        {item.status.name}
+      <span class="status" data-category={item.status?.category}>
+        {item.status?.name}
       </span>
       <Assignee name={item.assignee} />
       <span class="points" title={item.points === null ? "Unestimated" : `${item.points} points`}>

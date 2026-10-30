@@ -38,9 +38,13 @@ const keyOf = (id: ItemId) => id.slice(id.indexOf(":") + 1);
 const identity = (item: { id: ItemId; stableId: string }) =>
   `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
 
-// An item's state, as a status category; an item whose source tracks no state
-// counts as not started.
-const categoryOf = (record: IndexRecord): StatusCategory => record.facets.state ?? "todo";
+// An item's state as a status category, with its source's name for it; none
+// for an item whose source tracks no state, which isn't counted as not
+// started.
+const statusOf = (record: IndexRecord, name: string): ItemRow["status"] => {
+  const category: StatusCategory | undefined = record.facets.state;
+  return category === undefined ? null : { name, category };
+};
 
 export function itemRow(record: IndexRecord, now: Instant, sources: Presentations): ItemRow {
   const details = presentationOf(record.id, sources)?.details(record) ?? null;
@@ -49,7 +53,7 @@ export function itemRow(record: IndexRecord, now: Instant, sources: Presentation
     key: keyOf(record.id),
     title: record.title,
     type: details?.type ?? record.facets.kind ?? "",
-    status: { name: details?.status ?? "", category: categoryOf(record) },
+    status: statusOf(record, details?.status ?? ""),
     assignee: assigneeOf(record)?.name ?? null,
     points: record.facets.estimate ?? null,
     idleDays: Math.max(0, Math.floor((Date.parse(now) - Date.parse(record.updatedAt)) / day)),
@@ -75,7 +79,7 @@ export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<Clu
       const items = members(cluster, index);
       const anchor = cluster.anchor === null ? undefined : index.get(cluster.anchor);
       const status = { todo: 0, "in-progress": 0, done: 0 };
-      for (const item of items) status[categoryOf(item)] += 1;
+      for (const item of items) if (item.facets.state) status[item.facets.state] += 1;
       const ids = cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds];
       const names = new Set(ids.flatMap((id) => sourceName(id, sources) ?? []));
       return {

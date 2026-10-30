@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, type Grouping, type Instant, instant } from "@oriel/core";
+import { type Cluster, type Grouping, type IndexRecord, type Instant, instant } from "@oriel/core";
 import { fixtureSnapshot, type JiraRecord } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { assigneeGrouping, byKey, epicGrouping, stuckGrouping } from "./groupings.ts";
@@ -27,12 +27,12 @@ const groupings = [epicGrouping, assigneeGrouping, stuckGrouping];
 
 // Each derived rule Oriel shows, checked as its words read, independently of
 // the grouping that wrote it. A rule missing here fails the check.
-type Rule = (record: JiraRecord, now: Instant, index: readonly JiraRecord[]) => boolean;
-const workItem = (record: JiraRecord) =>
+type Rule = (record: IndexRecord, now: Instant, index: readonly IndexRecord[]) => boolean;
+const workItem = (record: IndexRecord) =>
   ["story", "task", "bug"].includes(record.facets.kind ?? "");
-const notDone = (record: JiraRecord) => record.facets.state !== "done";
-const epicOf = (record: JiraRecord) => record.facets.container ?? null;
-const assigneeId = (record: JiraRecord) =>
+const notDone = (record: IndexRecord) => record.facets.state !== "done";
+const epicOf = (record: IndexRecord) => record.facets.container ?? null;
+const assigneeId = (record: IndexRecord) =>
   record.facets.people?.find((person) => person.role === "assignee")?.id ?? null;
 const rules: Record<string, Rule> = {
   "Stories, tasks and bugs not done and last updated 14 or more days ago": (record, now) =>
@@ -41,6 +41,8 @@ const rules: Record<string, Rule> = {
     Date.parse(now) - Date.parse(record.updatedAt) >= 14 * day,
   "Stories, tasks and bugs not done and with no estimate": (record) =>
     workItem(record) && notDone(record) && record.facets.estimate === null,
+  "Items from sources that have no epics": (record) => record.facets.container === undefined,
+  "Items from sources that have no assignees": (record) => record.facets.people === undefined,
   "Items whose epic isn't in the index": (record, _now, index) => {
     const epic = epicOf(record);
     return epic !== null && !index.some((other) => other.stableId === epic.stableId);
@@ -50,7 +52,7 @@ const rules: Record<string, Rule> = {
 // What's wrong with a grouping's derived clusters: a rule we can't check, an
 // item shown that the rule is false of, or one the rule fits that's left out.
 // A cluster's anchor isn't one of the grouping's items, so rules skip anchors.
-function ruleProblems(clusters: Cluster[], index: readonly JiraRecord[], now: Instant): string[] {
+function ruleProblems(clusters: Cluster[], index: readonly IndexRecord[], now: Instant): string[] {
   const problems: string[] = [];
   const anchors = new Set(clusters.map((cluster) => cluster.anchor));
   for (const cluster of clusters) {
@@ -75,7 +77,7 @@ function ruleProblems(clusters: Cluster[], index: readonly JiraRecord[], now: In
 
 // Every record of the index in exactly one cluster's items (`items`), or as
 // exactly one cluster's anchor and in no cluster's items (`anchors`).
-function placement(clusters: Cluster[], index: readonly JiraRecord[]) {
+function placement(clusters: Cluster[], index: readonly IndexRecord[]) {
   const count = (ids: (string | null)[]) => {
     const counts = new Map<string, number>();
     for (const id of ids) if (id !== null) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -373,4 +375,45 @@ test("groupings are pure: the same records in any order give the same clusters",
       assert.deepEqual(grouping.group(shuffled, now), grouping.group(current, now), grouping.id);
     }
   }
+});
+
+test("an item from a source with no epics or people gets a cluster saying so", () => {
+  // A file from a folder: no container, people, state, kind or estimate.
+  const file: IndexRecord = {
+    id: "folder:0123456789abcdef",
+    stableId: "plan",
+    title: "Q3 plan",
+    location: "file:///notes/q3-plan.md",
+    updatedAt: at("2026-01-01T00:00:00.000Z"),
+    facets: {},
+    attrs: {},
+  };
+  const records = [...current, file];
+  const epics = epicGrouping.group(records, last);
+  assert.deepEqual(epics.at(-1), {
+    key: "no-epics-in-source",
+    label: "No epics in this source",
+    anchor: null,
+    itemIds: [file.id],
+    origin: { derived: "Items from sources that have no epics" },
+  });
+  assert.equal(epics.find((c) => c.key === "no-epic")?.itemIds.includes(file.id), false);
+  const assignees = assigneeGrouping.group(records, last);
+  assert.deepEqual(assignees.at(-1), {
+    key: "no-assignees-in-source",
+    label: "No assignees in this source",
+    anchor: null,
+    itemIds: [file.id],
+    origin: { derived: "Items from sources that have no assignees" },
+  });
+  assert.equal(assignees.find((c) => c.key === "unassigned")?.itemIds.includes(file.id), false);
+  // Every item still shows exactly once, and the rules hold.
+  for (const clusters of [epics, assignees]) {
+    for (const place of placement(clusters, records))
+      assert.equal(place.items + place.anchors, 1, place.id);
+    assert.deepEqual(ruleProblems(clusters, records, last), []);
+  }
+  // A file isn't work, so it is never stuck, however old.
+  for (const cluster of stuckGrouping.group(records, shift(last, 400 * day)))
+    assert.equal(cluster.itemIds.includes(file.id), false, cluster.key);
 });

@@ -27,7 +27,8 @@ const ids = (records: readonly IndexRecord[]) => records.map((record) => record.
 // by its stable ID and anchored on it, holding the items it contains. Epics
 // are anchors, never items, so an item only lands in the derived cluster when
 // its container really isn't in the index. An item whose source has no
-// containers has no epic.
+// containers at all (no container facet) isn't "no epic": it gets a derived
+// cluster of its own, so every item shows exactly once.
 export const epicGrouping: Grouping = {
   id: "epic",
   label: "Epic",
@@ -42,7 +43,9 @@ export const epicGrouping: Grouping = {
       (record) => record.facets.kind === "epic" || named.has(identity(record.id, record.stableId)),
     );
     const anchored = new Set(anchors.map((record) => identity(record.id, record.stableId)));
-    const items = sorted.filter((record) => !anchored.has(identity(record.id, record.stableId)));
+    const rest = sorted.filter((record) => !anchored.has(identity(record.id, record.stableId)));
+    const sourceless = rest.filter((record) => record.facets.container === undefined);
+    const items = rest.filter((record) => record.facets.container !== undefined);
     const byContainer = Map.groupBy(items, containerOf);
     const clusters: Cluster[] = anchors.map((epic) => ({
       key: epic.stableId,
@@ -74,6 +77,15 @@ export const epicGrouping: Grouping = {
         origin: { derived: "Items whose epic isn't in the index" },
       });
     }
+    if (sourceless.length > 0) {
+      clusters.push({
+        key: "no-epics-in-source",
+        label: "No epics in this source",
+        anchor: null,
+        itemIds: ids(sourceless),
+        origin: { derived: "Items from sources that have no epics" },
+      });
+    }
     return clusters;
   },
 };
@@ -86,13 +98,20 @@ export function assigneeOf(record: IndexRecord): { id: string; name: string } | 
 }
 
 // One cluster per assignee, by name, then the unassigned. Epics are items here.
+// An item whose source has no people (no people facet) isn't unassigned: it
+// gets a derived cluster of its own.
 export const assigneeGrouping: Grouping = {
   id: "assignee",
   label: "Assignee",
   group(records) {
     const people = new Map<string, { name: string; items: IndexRecord[] }>();
     const unassigned: IndexRecord[] = [];
+    const sourceless: IndexRecord[] = [];
     for (const record of records.toSorted(byKey)) {
+      if (record.facets.people === undefined) {
+        sourceless.push(record);
+        continue;
+      }
       const assignee = assigneeOf(record);
       if (assignee === null) {
         unassigned.push(record);
@@ -112,14 +131,22 @@ export const assigneeGrouping: Grouping = {
         itemIds: ids(person.items),
         origin: "source",
       }));
-    if (unassigned.length === 0) return clusters;
-    clusters.push({
-      key: "unassigned",
-      label: "Unassigned",
-      anchor: null,
-      itemIds: ids(unassigned),
-      origin: "source",
-    });
+    if (unassigned.length > 0)
+      clusters.push({
+        key: "unassigned",
+        label: "Unassigned",
+        anchor: null,
+        itemIds: ids(unassigned),
+        origin: "source",
+      });
+    if (sourceless.length > 0)
+      clusters.push({
+        key: "no-assignees-in-source",
+        label: "No assignees in this source",
+        anchor: null,
+        itemIds: ids(sourceless),
+        origin: { derived: "Items from sources that have no assignees" },
+      });
     return clusters;
   },
 };

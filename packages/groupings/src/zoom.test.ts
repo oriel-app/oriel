@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, instant } from "@oriel/core";
+import { type Cluster, type IndexRecord, instant } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
@@ -53,7 +53,11 @@ test("a derived row carries its rule, and its story list agrees with it", () => 
   });
   const list = listZoom(now, sources).view(idle, current);
   assert.equal(list.length, row.count);
-  assert.ok(list.every((item) => item.idleDays >= 14 && item.status.category !== "done"));
+  assert.ok(
+    list.every(
+      (item) => item.idleDays >= 14 && item.status !== null && item.status.category !== "done",
+    ),
+  );
   // The longest idle first.
   const days = list.map((item) => item.idleDays);
   assert.deepEqual(
@@ -102,4 +106,31 @@ test("the item view shows what the index has, with the epic by title", () => {
       .view(loose, current)
       .every((item) => item.epic === null),
   );
+});
+
+test("an item whose source tracks no state isn't counted as not started", () => {
+  const file: IndexRecord = {
+    id: "folder:0123456789abcdef",
+    stableId: "plan",
+    title: "Q3 plan",
+    location: "file:///notes/q3-plan.md",
+    updatedAt: now,
+    facets: {},
+    attrs: {},
+  };
+  const records = [...current, file];
+  const mixed: Cluster = {
+    key: "mixed",
+    label: "Mixed",
+    anchor: null,
+    itemIds: [file.id, "jira:SYN-88"],
+    origin: "source",
+  };
+  const row = clusterZoom(now, sources).view(mixed, records);
+  assert.equal(row.count, 2);
+  // SYN-88 is to do; the file is in no category.
+  assert.deepEqual(row.status, { todo: 1, "in-progress": 0, done: 0 });
+  assert.equal(row.origin.kind === "source" && row.origin.source, "folder and Jira");
+  const [listed] = listZoom(now, sources).view({ ...mixed, itemIds: [file.id] }, records);
+  assert.deepEqual([listed?.status, listed?.type, listed?.points], [null, "", null]);
 });
