@@ -6,7 +6,7 @@ Accepted 2026-10-28.
 
 - Permissions: no `--allow-*` flags, plus `--no-prompt --no-remote --no-npm --no-config` and explicit `--deny-*` for net, read, write, env, run, ffi, sys and import.
 - Environment: empty env except `DENO_DIR`, an empty temporary working directory, a capped V8 heap.
-- The agent's script and the generated binding stubs are joined into one entry file.
+- ~~The agent's script and the generated binding stubs are joined into one entry file.~~ Amended by 0016: the entry file is the binding shim alone. The script arrives as data and runs as an async function body, never as module source.
 - The guest talks to the host only through JSON lines over stdin/stdout. Reads come back as values; writes are queued as captured mutations, never awaited as effects.
 - Deadlines: an in-guest deadline gives a clean error, and the host kills the process at the hard wall-time cap. The host also caps script size, reads, mutations, result size and console bytes.
 - Errors come back as `{ phase, message, hint, logs }` with phase one of typecheck, runtime or limit, so the agent can fix its own script.
