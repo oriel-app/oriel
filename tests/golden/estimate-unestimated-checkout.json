@@ -1,0 +1,7 @@
+{
+  "mutations": [
+    { "op": "setEstimate", "target": "jira:SYN-23", "ref": null, "args": { "points": 3 } },
+    { "op": "setEstimate", "target": "jira:SYN-99", "ref": null, "args": { "points": 3 } },
+    { "op": "setEstimate", "target": "jira:SYN-104", "ref": null, "args": { "points": 3 } }
+  ]
+}
