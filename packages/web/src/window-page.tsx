@@ -2,6 +2,7 @@
 // groups beside them. Controls stay out of the way until something is picked
 // or hovered.
 import { Assignee, Chevron, type Dispatch, Link, plural } from "./parts.tsx";
+import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
   type ClusterRow,
@@ -22,13 +23,17 @@ const groupingNames: Record<GroupingId, string> = {
 export function WindowPage(props: {
   model: Model;
   groups: GroupSummary[] | null;
+  folder: FolderModel;
   dispatch: Dispatch;
 }) {
   const { model, groups, dispatch } = props;
   const adding = groups?.find((group) => group.id === model.addTo) ?? null;
   return (
     <div class="window-layout">
-      <Groups groups={groups} dispatch={dispatch} />
+      <aside class="sources">
+        <Groups groups={groups} dispatch={dispatch} />
+        <Folder folder={props.folder} dispatch={dispatch} />
+      </aside>
       <main class="window" aria-busy={model.status === "loading"}>
         <div class="window-head">
           <Tabs
@@ -112,6 +117,78 @@ function Groups({ groups, dispatch }: { groups: GroupSummary[] | null; dispatch:
         ))}
       </ul>
     </nav>
+  );
+}
+
+// The folder, under the groups: one quiet line, and a path to type only when
+// the user asks to add one.
+function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
+  const send = (msg: FolderMsg) => dispatch({ type: "folder", msg });
+  const { view } = folder;
+  const name = view?.path.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+  return (
+    <section class="folder" aria-label="Folder">
+      {view && !folder.open && (
+        <p class="folder-line" title={view.path}>
+          <span class="folder-name">{name}</span>
+          <span class="group-meta">{plural(view.items, "file")}</span>
+          <button
+            type="button"
+            class="quiet-action"
+            disabled={folder.pending}
+            onClick={() => send({ type: "syncClicked" })}
+          >
+            {folder.pending ? "Syncing…" : "Sync"}
+          </button>
+        </p>
+      )}
+      {!folder.open ? (
+        <button
+          type="button"
+          class="quiet-action add-folder"
+          onClick={() => send({ type: "opened" })}
+        >
+          {view ? "Use another folder" : "Add a folder"}
+        </button>
+      ) : (
+        <form
+          class="folder-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            send({ type: "connectClicked" });
+          }}
+        >
+          <label class="folder-label">
+            A folder of markdown files, by its path
+            <input
+              value={folder.path}
+              placeholder="~/notes"
+              spellcheck={false}
+              autoComplete="off"
+              onInput={(event) => send({ type: "pathChanged", path: event.currentTarget.value })}
+            />
+          </label>
+          <span class="folder-actions">
+            <button
+              type="submit"
+              class="button primary"
+              disabled={folder.pending || folder.path.trim() === ""}
+            >
+              {folder.pending ? "Reading…" : "Add"}
+            </button>
+            <button type="button" class="quiet-action" onClick={() => send({ type: "closed" })}>
+              Cancel
+            </button>
+          </span>
+          <span class="folder-note">Oriel reads its .md files and never changes them.</span>
+        </form>
+      )}
+      {folder.problem && (
+        <p class="folder-problem" role="alert">
+          {folder.problem}
+        </p>
+      )}
+    </section>
   );
 }
 

@@ -1,6 +1,14 @@
 // The whole app as one program: where the page is, and each page's own
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the groups and threads lists the chrome shows.
+import {
+  type FolderModel,
+  type FolderMsg,
+  folderReplied,
+  initFolder,
+  loadFolder,
+  updateFolder,
+} from "./folder.ts";
 import { type GroupModel, type GroupMsg, groupReplied, initGroup, updateGroup } from "./group.ts";
 import { type Effect, get, post, type Replied } from "./http.ts";
 import {
@@ -39,6 +47,8 @@ export type Model = {
   group: GroupModel | null;
   thread: ThreadModel | null;
   review: ReviewModel | null;
+  // The connected folder, beside the groups.
+  folder: FolderModel;
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
   threads: ThreadSummaryView[] | null;
@@ -49,6 +59,7 @@ export type Msg =
   | { type: "group"; msg: GroupMsg }
   | { type: "thread"; msg: ThreadMsg }
   | { type: "review"; msg: ReviewMsg }
+  | { type: "folder"; msg: FolderMsg }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -68,6 +79,7 @@ export function init(route: Route): [Model, Effect[]] {
     group: null,
     thread: null,
     review: null,
+    folder: initFolder(),
     groups: null,
     threads: null,
   };
@@ -106,7 +118,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists, loadFolder]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -115,7 +127,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists],
+        [...leaving, ...loads, ...lists, loadFolder],
       ];
     }
     case "group": {
@@ -157,6 +169,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const [review, effects] = updateReview(model.review, msg.msg);
       return [{ ...model, review }, effects];
     }
+    case "folder": {
+      const [folder, effects] = updateFolder(model.folder, msg.msg);
+      return [{ ...model, folder }, effects];
+    }
     case "linkClicked":
       return [model, [{ type: "navigate", route: msg.route }]];
     case "routed":
@@ -185,6 +201,15 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
+    // Once the folder synced, the window shows its files.
+    case "folder":
+    case "folderConnected":
+    case "folderSynced": {
+      const { model: folder, synced } = folderReplied(model.folder, msg);
+      if (!synced || model.window === null) return [{ ...model, folder }, []];
+      const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
+      return [{ ...model, folder, window }, effects];
+    }
     case "createGroup":
     case "addToGroup": {
       if (model.window === null) return [model, []];

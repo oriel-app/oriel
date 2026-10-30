@@ -22,7 +22,10 @@ export type Tag =
   | { kind: "inbox" }
   | { kind: "reviewOpened" }
   | { kind: "reviewDecided" }
-  | { kind: "telemetry" };
+  | { kind: "telemetry" }
+  | { kind: "folder" }
+  | { kind: "folderConnected" }
+  | { kind: "folderSynced" };
 
 export type Effect =
   | { type: "loadWindow"; request: number; grouping: GroupingId }
