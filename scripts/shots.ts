@@ -109,6 +109,21 @@ const stopAt = async (
 const partial = await stopAt(refusing, "refuse");
 const unheard = await stopAt(unanswered, "loseAnswers");
 
+// Another set stopped the same way; the refused change left out, and a
+// review link shared for the rest: the reviewer may approve it or dismiss it.
+const partlyReviewed = await (async () => {
+  const threadId = await stopAt(refusing, "refuse");
+  const setId = await changeSetOf(refusing.serving, threadId);
+  const { lines } = await post<{ lines: { mutationId: string }[] }>(
+    `/api/change-sets/${setId}/diff`,
+    {},
+    refusing.serving,
+  );
+  const refused = lines[1]?.mutationId;
+  await post(`/api/change-sets/${setId}/edit`, { remove: [refused] }, refusing.serving);
+  return post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, refusing.serving);
+})();
+
 // Approving, with SYN-99's write held in flight until the shots are taken:
 // the change set says it is being applied, and offers nothing else.
 const inFlight = await (async () => {
@@ -275,7 +290,7 @@ const scenes: Scene[] = [
     name: "thread-applying",
     path: `/threads/${inFlight.threadId}`,
     on: holding.serving,
-    act: (page) => page.locator(".change-set .applying").waitFor(),
+    act: (page) => page.locator('.change-set[data-status="applying"]').waitFor(),
   },
   {
     name: "thread-read-only",
@@ -294,6 +309,15 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    name: "review-partial",
+    path: new URL(partlyReviewed.url).pathname,
+    on: refusing.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.getByRole("button", { name: "Dismiss" }).waitFor();
     },
   },
 ];
