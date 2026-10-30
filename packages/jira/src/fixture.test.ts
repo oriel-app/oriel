@@ -169,8 +169,10 @@ test("the snapshot maps issues to index records and content", () => {
       people: [{ role: "assignee", id: "old", name: "Old Hand" }],
       state: "todo",
       container: { id: "jira:SYN-1", stableId: "10001" },
+      kind: "story",
+      estimate: 3,
     },
-    attrs: { issueType: "Story", status: "To Do", points: 3, labels: [] },
+    attrs: { issueType: "Story", status: "To Do", labels: [] },
   });
   const content = before.content.get("jira:SYN-3");
   assert.deepEqual(content?.comments, [

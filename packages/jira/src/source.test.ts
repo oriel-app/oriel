@@ -91,11 +91,12 @@ test("a listing pages by token and maps issues to index records", async () => {
       people: [{ role: "assignee", id: "acc-amara", name: "Amara Okafor" }],
       state: "in-progress",
       container: { id: "jira:SYN-1", stableId: "10001" },
+      kind: "story",
+      estimate: 3,
     },
     attrs: {
       issueType: "Story",
       status: "In Review",
-      points: 3,
       labels: ["payments", "android"],
     },
   });
@@ -193,6 +194,34 @@ test("only a standard issue's parent is its epic", async () => {
   );
 });
 
+test("an issue type becomes a kind by its hierarchy where Jira gives one, else by its name", async () => {
+  const { transport } = fakeJira({
+    ...discovery(),
+    [search]: pages([
+      jiraIssue("SYN-30", { issuetype: issueType("Epic") }),
+      // A site that renamed its epic type.
+      jiraIssue("SYN-31", { issuetype: { ...issueType("Epic"), name: "Feature" } }),
+      jiraIssue("SYN-32", { issuetype: issueType("Subtask") }),
+      jiraIssue("SYN-33", { issuetype: issueType("Story") }),
+      jiraIssue("SYN-34", { issuetype: { name: "Bug", subtask: false } }),
+      jiraIssue("SYN-35", { issuetype: issueType("Initiative") }),
+    ]),
+  });
+  const { log } = logged();
+  const listed = await listAll(jiraSource({ transport, site, projects: ["SYN"], log }), null);
+  assert.deepEqual(
+    listed[0]?.records.map((r) => [r.id, r.facets.kind, r.attrs.issueType]),
+    [
+      ["jira:SYN-30", "epic", "Epic"],
+      ["jira:SYN-31", "epic", "Feature"],
+      ["jira:SYN-32", "subtask", "Subtask"],
+      ["jira:SYN-33", "story", "Story"],
+      ["jira:SYN-34", "bug", "Bug"],
+      ["jira:SYN-35", "initiative", "Initiative"],
+    ],
+  );
+});
+
 test("each project's points field comes from its board, and a board without one gives no points", async () => {
   const { transport, calls } = fakeJira({
     ...discovery("SYN"),
@@ -224,7 +253,7 @@ test("each project's points field comes from its board, and a board without one 
   const source = jiraSource({ transport, site, projects: ["SYN", "OA", "TIME", "NONE"], log });
   const listed = await listAll(source, null);
   assert.deepEqual(
-    listed[0]?.records.map((r) => [r.id, r.attrs.points]),
+    listed[0]?.records.map((r) => [r.id, r.facets.estimate]),
     [
       ["jira:SYN-5", 5],
       ["jira:OA-7", 2],
@@ -256,7 +285,7 @@ test("an issue in a shape Oriel can't read is skipped and logged; odd values deg
   const { lines, log } = logged();
   const listed = await listAll(jiraSource({ transport, site, projects: ["SYN"], log }), null);
   assert.deepEqual(
-    listed[0]?.records.map((r) => [r.id, r.attrs.status, r.facets.state, r.attrs.points]),
+    listed[0]?.records.map((r) => [r.id, r.attrs.status, r.facets.state, r.facets.estimate]),
     [["jira:SYN-31", "Parked", "todo", null]],
   );
   assert.equal(lines.length, 2);

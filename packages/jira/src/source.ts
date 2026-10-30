@@ -125,8 +125,8 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         title: fields.summary,
         location: `${site}/browse/${key}`,
         updatedAt: fields.updated,
-        facets: facetsOf(fields),
-        attrs: attrsOf(fields, rawField(raw, points.get(projectOf(key)))),
+        facets: facetsOf(fields, rawField(raw, points.get(projectOf(key)))),
+        attrs: attrsOf(fields),
       },
     };
   };

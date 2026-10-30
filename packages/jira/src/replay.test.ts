@@ -48,8 +48,20 @@ test("the live listing matches the fixtures", { skip: sync ? false : unrecorded 
     );
     // The epic by handle: Jira gave it its own stable ID.
     assert.deepEqual(
-      [got.facets.state, got.facets.container?.id ?? null, got.facets.people],
-      [want.facets.state, want.facets.container?.id ?? null, []],
+      [
+        got.facets.state,
+        got.facets.container?.id ?? null,
+        got.facets.people,
+        got.facets.kind,
+        got.facets.estimate,
+      ],
+      [
+        want.facets.state,
+        want.facets.container?.id ?? null,
+        [],
+        want.facets.kind,
+        want.facets.estimate,
+      ],
       want.id,
     );
   }

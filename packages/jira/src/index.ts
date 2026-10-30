@@ -7,7 +7,10 @@ export {
   jiraAttrsOf,
   type JiraContent,
   jiraContent,
+  jiraDetails,
   jiraFacets,
+  jiraKind,
+  jiraPresentation,
   type JiraRecord,
   jiraText,
 } from "./attrs.ts";

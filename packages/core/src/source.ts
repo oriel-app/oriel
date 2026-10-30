@@ -8,6 +8,7 @@ import {
   array,
   literal,
   nullable,
+  number,
   object,
   optional,
   refine,
@@ -46,6 +47,13 @@ export type Facets = {
   container?: { id: ItemId; stableId: string } | null;
   // Where the item points, outside its source.
   links?: { url: string; title: string }[];
+  // What the item is, in words any source can use: "epic", "story",
+  // "task", "bug", "subtask", "doc". An adapter maps its own types onto
+  // these.
+  kind?: string;
+  // Its estimate, or null when it has none yet. Absent when the source
+  // doesn't estimate.
+  estimate?: number | null;
 };
 
 // What the index keeps per item: the minimum for grouping, summaries and
@@ -153,6 +161,8 @@ export const facets: Validator<Facets> = (input, path) => {
       nullable(object({ id: refine(string, isItemId, "expected an item ID"), stableId: string })),
     ),
     links: optional(array(object({ url: string, title: string }))),
+    kind: optional(string),
+    estimate: optional(nullable(number)),
   })(input, path);
   if (!result.ok) return result;
   // An absent facet stays absent rather than becoming a key set to undefined.

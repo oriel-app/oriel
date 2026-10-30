@@ -24,7 +24,7 @@ function record(
     updated?: string;
   } = {},
 ): JiraRecord {
-  const { updated = "2026-10-28T09:00:00.000Z", status, assignee } = fields;
+  const { updated = "2026-10-28T09:00:00.000Z", status, assignee, issueType = "Story" } = fields;
   return {
     id: itemId("jira", key),
     stableId: key,
@@ -35,13 +35,10 @@ function record(
       people: assignee ? [{ role: "assignee", id: assignee.accountId, name: assignee.name }] : [],
       state: status?.category ?? "todo",
       container: null,
+      kind: issueType.toLowerCase(),
+      estimate: fields.points ?? null,
     },
-    attrs: {
-      issueType: fields.issueType ?? "Story",
-      status: status?.name ?? "To Do",
-      points: fields.points ?? null,
-      labels: [],
-    },
+    attrs: { issueType, status: status?.name ?? "To Do", labels: [] },
   };
 }
 

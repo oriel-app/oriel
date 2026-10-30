@@ -22,7 +22,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import { type JiraAttrs, type JiraContent, jiraFacets } from "./attrs.ts";
+import { type JiraAttrs, type JiraContent, jiraFacets, jiraKind } from "./attrs.ts";
 import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";
@@ -139,20 +139,21 @@ const assigneeOf = (fields: IndexFields) =>
     ? { accountId: fields.assignee.accountId, name: fields.assignee.displayName }
     : null;
 
-export function attrsOf(fields: IndexFields, points: unknown): JiraAttrs {
+export function attrsOf(fields: IndexFields): JiraAttrs {
   return {
     issueType: fields.issuetype.name,
     status: fields.status.name,
-    points: pointsOf(points),
     labels: fields.labels ?? [],
   };
 }
 
-export function facetsOf(fields: IndexFields): Facets {
+export function facetsOf(fields: IndexFields, points: unknown): Facets {
   return jiraFacets({
     category: categoryOf(fields),
     epic: containerOf(fields),
     assignee: assigneeOf(fields),
+    kind: jiraKind(fields.issuetype),
+    points: pointsOf(points),
   });
 }
 

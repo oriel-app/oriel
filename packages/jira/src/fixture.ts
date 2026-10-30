@@ -23,7 +23,7 @@ import {
   string,
   union,
 } from "@oriel/core";
-import { type JiraContent, jiraFacets, type JiraRecord, jiraText } from "./attrs.ts";
+import { type JiraContent, jiraFacets, jiraKind, type JiraRecord, jiraText } from "./attrs.ts";
 import { isSummary, maxSummary } from "./ops.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
@@ -332,11 +332,13 @@ export function fixtureSnapshot(
         category: issue.status.category,
         epic,
         assignee: assignee(),
+        // The fixture's types carry no hierarchy, so the name decides.
+        kind: jiraKind({ name: issue.issueType }),
+        points: issue.points,
       }),
       attrs: {
         issueType: issue.issueType,
         status: issue.status.name,
-        points: issue.points,
         labels: [...issue.labels],
       },
     });

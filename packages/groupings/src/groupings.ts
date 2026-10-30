@@ -1,53 +1,33 @@
 // The phase 1 groupings: by epic, by assignee and "stuck". They work from
-// core's facets, so they span sources; a rule that needs a source's own
-// fields reads them through its adapter and applies only to that source's
-// items (decision 0019). A cluster the source has (an epic, an assignee, no
-// epic) says so; one Oriel derives carries a rule, true of every item it
-// holds and of no item it leaves out. Pure: `now` is passed in.
+// core's facets alone, so they span sources and know none of them (decision
+// 0019). A cluster the source has (an epic, an assignee, no epic) says so;
+// one Oriel derives carries a rule, true of every item it holds and of no
+// item it leaves out. Pure: `now` is passed in.
 import {
+  byItemId,
   type Cluster,
   type Grouping,
   type IndexRecord,
   type ItemId,
   parseItemId,
-  sourceKinds,
 } from "@oriel/core";
-import { jiraAttrsOf } from "@oriel/jira";
 
 const day = 86_400_000;
 
-// Source, then for Jira project and issue number (so SYN-9 comes before
-// SYN-10), and otherwise the key: a total order in every locale.
-export function byKey(a: IndexRecord, b: IndexRecord): number {
-  const [aSource, aProject, aNumber] = keyParts(a.id);
-  const [bSource, bProject, bNumber] = keyParts(b.id);
-  if (aSource !== bSource) return aSource - bSource;
-  if (aProject !== bProject) return aProject < bProject ? -1 : 1;
-  return aNumber - bNumber;
-}
-
-function keyParts(id: ItemId): [number, string, number] {
-  const parsed = parseItemId(id);
-  const source = parsed ? sourceKinds.indexOf(parsed.source) : sourceKinds.length;
-  const key = parsed?.key ?? id;
-  if (parsed?.source !== "jira") return [source, key, 0];
-  const dash = key.lastIndexOf("-");
-  return [source, key.slice(0, dash), Number(key.slice(dash + 1))];
-}
+// Records in item ID order (so SYN-9 comes before SYN-10).
+export const byKey = (a: IndexRecord, b: IndexRecord): number => byItemId(a.id, b.id);
 
 // An item's identity: its source and stable ID. Handles can change.
 const identity = (id: ItemId, stableId: string) =>
   `${parseItemId(id)?.source ?? ""}\u0000${stableId}`;
 const ids = (records: readonly IndexRecord[]) => records.map((record) => record.id);
 
-// Jira marks an epic by its type, so an epic with no stories is still one.
-const isJiraEpic = (record: IndexRecord) => jiraAttrsOf(record)?.issueType === "Epic";
-
-// One cluster per container (an epic), keyed by its stable ID and anchored on
-// it, holding the items it contains. Containers are anchors, never items. An
-// item another names as its container anchors a cluster whatever its type, so
-// an item only lands in the derived cluster when its container really isn't
-// in the index. An item whose source has no containers has no epic.
+// One cluster per epic: an item of kind "epic", even one with no stories, or
+// one another item names as its container, whatever its kind. Each is keyed
+// by its stable ID and anchored on it, holding the items it contains. Epics
+// are anchors, never items, so an item only lands in the derived cluster when
+// its container really isn't in the index. An item whose source has no
+// containers has no epic.
 export const epicGrouping: Grouping = {
   id: "epic",
   label: "Epic",
@@ -59,7 +39,7 @@ export const epicGrouping: Grouping = {
     };
     const named = new Set(sorted.map(containerOf));
     const anchors = sorted.filter(
-      (record) => isJiraEpic(record) || named.has(identity(record.id, record.stableId)),
+      (record) => record.facets.kind === "epic" || named.has(identity(record.id, record.stableId)),
     );
     const anchored = new Set(anchors.map((record) => identity(record.id, record.stableId)));
     const items = sorted.filter((record) => !anchored.has(identity(record.id, record.stableId)));
@@ -144,22 +124,19 @@ export const assigneeGrouping: Grouping = {
   },
 };
 
-// Jira's work items: stories, tasks and bugs, not epics or sub-tasks.
-const jiraWorkTypes = new Set(["Story", "Task", "Bug"]);
+// What "stuck" covers: work items, not epics, sub-tasks or documents.
+const workKinds = new Set(["story", "task", "bug"]);
 const stuckAfter = 14 * day;
 
-// Work that isn't done: an item with a state other than done, and from Jira
-// only a story, task or bug. An item whose source tracks no state isn't work.
-const isOpenWork = (record: IndexRecord) => {
-  const { state } = record.facets;
-  if (state === undefined || state === "done") return false;
-  const jira = jiraAttrsOf(record);
-  return parseItemId(record.id)?.source !== "jira" || jiraWorkTypes.has(jira?.issueType ?? "");
-};
+// A work item with a state other than done.
+const isOpenWork = (record: IndexRecord) =>
+  workKinds.has(record.facets.kind ?? "") &&
+  record.facets.state !== undefined &&
+  record.facets.state !== "done";
 
 // Both clusters always show, so an empty one says nothing is stuck that way.
-// "No update" lists the longest idle first. "Unestimated" is Jira's rule:
-// only Jira items have story points.
+// "No update" lists the longest idle first. "Unestimated" counts only items
+// whose source estimates: one with no estimate facet has nothing to lack.
 export const stuckGrouping: Grouping = {
   id: "stuck",
   label: "Stuck",
@@ -168,7 +145,7 @@ export const stuckGrouping: Grouping = {
     const idle = open
       .filter((item) => Date.parse(now) - Date.parse(item.updatedAt) >= stuckAfter)
       .toSorted((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
-    const unestimated = open.filter((item) => jiraAttrsOf(item)?.points === null);
+    const unestimated = open.filter((item) => item.facets.estimate === null);
     return [
       {
         key: "no-update-14-days",
@@ -176,7 +153,7 @@ export const stuckGrouping: Grouping = {
         anchor: null,
         itemIds: ids(idle),
         origin: {
-          derived: "Not done and idle 14 or more days; from Jira, only stories, tasks and bugs",
+          derived: "Stories, tasks and bugs not done and last updated 14 or more days ago",
         },
       },
       {
@@ -184,9 +161,7 @@ export const stuckGrouping: Grouping = {
         label: "Unestimated",
         anchor: null,
         itemIds: ids(unestimated),
-        origin: {
-          derived: "Jira stories, tasks and bugs not done and with no story point estimate",
-        },
+        origin: { derived: "Stories, tasks and bugs not done and with no estimate" },
       },
     ];
   },

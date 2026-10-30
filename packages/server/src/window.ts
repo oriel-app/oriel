@@ -1,4 +1,4 @@
-import type { Grouping, IndexRecord, Instant } from "@oriel/core";
+import type { Grouping, IndexRecord, Instant, Presentations } from "@oriel/core";
 import {
   assigneeGrouping,
   clusterZoom,
@@ -6,7 +6,12 @@ import {
   listZoom,
   stuckGrouping,
 } from "@oriel/groupings";
+import { jiraPresentation } from "@oriel/jira";
 import type { GroupingId, WindowView } from "@oriel/web/view";
+
+// How each connected source shows in the window. The server is where the
+// adapters' declarations meet the packages that use them.
+export const presentations: Presentations = { jira: jiraPresentation };
 
 export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,
@@ -22,8 +27,8 @@ export function windowView(
   fixture: boolean,
 ): WindowView {
   const clusters = grouping.group(records, now);
-  const rows = clusterZoom(now);
-  const list = listZoom(now);
+  const rows = clusterZoom(now, presentations);
+  const list = listZoom(now, presentations);
   const known = new Set(records.map((record) => record.id));
   return {
     grouping: id,

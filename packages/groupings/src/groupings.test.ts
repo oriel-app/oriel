@@ -28,18 +28,19 @@ const groupings = [epicGrouping, assigneeGrouping, stuckGrouping];
 // Each derived rule Oriel shows, checked as its words read, independently of
 // the grouping that wrote it. A rule missing here fails the check.
 type Rule = (record: JiraRecord, now: Instant, index: readonly JiraRecord[]) => boolean;
-const workItem = (record: JiraRecord) => ["Story", "Task", "Bug"].includes(record.attrs.issueType);
+const workItem = (record: JiraRecord) =>
+  ["story", "task", "bug"].includes(record.facets.kind ?? "");
 const notDone = (record: JiraRecord) => record.facets.state !== "done";
 const epicOf = (record: JiraRecord) => record.facets.container ?? null;
 const assigneeId = (record: JiraRecord) =>
   record.facets.people?.find((person) => person.role === "assignee")?.id ?? null;
 const rules: Record<string, Rule> = {
-  "Not done and idle 14 or more days; from Jira, only stories, tasks and bugs": (record, now) =>
+  "Stories, tasks and bugs not done and last updated 14 or more days ago": (record, now) =>
     workItem(record) &&
     notDone(record) &&
     Date.parse(now) - Date.parse(record.updatedAt) >= 14 * day,
-  "Jira stories, tasks and bugs not done and with no story point estimate": (record) =>
-    workItem(record) && notDone(record) && record.attrs.points === null,
+  "Stories, tasks and bugs not done and with no estimate": (record) =>
+    workItem(record) && notDone(record) && record.facets.estimate === null,
   "Items whose epic isn't in the index": (record, _now, index) => {
     const epic = epicOf(record);
     return epic !== null && !index.some((other) => other.stableId === epic.stableId);
@@ -193,14 +194,14 @@ test("stuck leaves out epics, done work, types it doesn't name and zero estimate
   const old = at("2020-01-01T00:00:00.000Z");
   const records: JiraRecord[] = [
     { ...epic, updatedAt: old },
-    { ...done, updatedAt: old, attrs: { ...done.attrs, points: null } },
+    { ...done, updatedAt: old, facets: { ...done.facets, estimate: null } },
     {
       ...story,
       id: "jira:SYN-900",
       updatedAt: old,
-      attrs: { ...story.attrs, issueType: "Sub-task", points: null },
+      facets: { ...story.facets, kind: "subtask", estimate: null },
     },
-    { ...story, id: "jira:SYN-901", attrs: { ...story.attrs, points: 0 } },
+    { ...story, id: "jira:SYN-901", facets: { ...story.facets, estimate: 0 } },
   ];
   const clusters = stuckGrouping.group(records, last);
   assert.deepEqual(
@@ -216,8 +217,8 @@ test("stuck leaves out epics, done work, types it doesn't name and zero estimate
 test("each epic is a cluster keyed by its stable ID, anchored on it, holding its items", () => {
   for (const { edited, records } of states) {
     const clusters = epicGrouping.group(records, last);
-    const epics = records.filter((record) => record.attrs.issueType === "Epic");
-    const items = records.filter((record) => record.attrs.issueType !== "Epic").toSorted(byKey);
+    const epics = records.filter((record) => record.facets.kind === "epic");
+    const items = records.filter((record) => record.facets.kind !== "epic").toSorted(byKey);
     assert.deepEqual(
       clusters.map(({ key, label, anchor, itemIds, origin }) => ({
         key,

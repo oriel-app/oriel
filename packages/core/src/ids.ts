@@ -32,6 +32,30 @@ export function isItemId(value: string): value is ItemId {
   return parseItemId(value) !== null;
 }
 
+// Item IDs in one order everywhere: by source, then by key, where a key that
+// ends in a number is ordered by what comes before it and then by that number
+// (so SYN-9 comes before SYN-10). Code-unit comparisons only, so it is the
+// same in every locale.
+export function byItemId(a: string, b: string): number {
+  const [sourceA, stemA, numberA] = orderOf(a);
+  const [sourceB, stemB, numberB] = orderOf(b);
+  if (sourceA !== sourceB) return sourceA - sourceB;
+  if (stemA !== stemB) return stemA < stemB ? -1 : 1;
+  if (numberA !== numberB) return numberA - numberB;
+  // Equal numbers written differently, such as 01 and 1.
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+function orderOf(id: string): [number, string, number] {
+  const parsed = parseItemId(id);
+  const source = parsed ? sourceKinds.indexOf(parsed.source) : sourceKinds.length;
+  const key = parsed?.key ?? id;
+  const digits = /[0-9]+$/.exec(key)?.[0] ?? "";
+  // A key whose number is too long to compare as one sorts by its text.
+  if (digits === "" || digits.length > 15) return [source, key, 0];
+  return [source, key.slice(0, -digits.length), Number(digits)];
+}
+
 export function itemId<K extends SourceKind>(source: K, key: string): ItemId<K> {
   if (!keyShapes[source].test(key))
     throw new RangeError(`not a ${source} key: ${JSON.stringify(key)}`);

@@ -1,9 +1,11 @@
 // What the index keeps per Jira item beyond core's facets, the full content
 // read live, and validators for both. Facets carry the assignee (people), the
-// status category (state) and the epic (container), so attrs hold only what
-// is Jira's own.
+// status category (state), the epic (container), the issue type as a kind
+// and the story points as an estimate, so attrs hold only what is Jira's own
+// words for them, for the window.
 import {
   array,
+  type DetailsOf,
   type Facets,
   type IndexRecord,
   type Instant,
@@ -14,6 +16,7 @@ import {
   number,
   object,
   parseItemId,
+  type Presentation,
   refine,
   type State,
   string,
@@ -21,13 +24,13 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// Enough for the window and Jira's own rules (an epic, an estimate), nothing
-// more.
+// Enough for the window, nothing more.
 export type JiraAttrs = {
+  // The issue type as the site names it; its `kind` facet is the type in
+  // core's words.
   issueType: string;
   // The status as Jira names it; its category is the item's `state` facet.
   status: string;
-  points: number | null;
   labels: string[];
 };
 
@@ -53,7 +56,6 @@ export type JiraContent = {
 export const jiraAttrs = object({
   issueType: string,
   status: string,
-  points: nullable(number),
   labels: array(string),
 }) satisfies Validator<JiraAttrs>;
 
@@ -86,23 +88,44 @@ export const jiraContent = object({
   text: string,
 }) satisfies Validator<JiraContent>;
 
-// A record's Jira attrs, or null for another source's item. This is how a
-// grouping reaches Jira's own fields; a rule built on them applies only to
-// Jira items (decision 0019).
+// A record's Jira attrs, or null for another source's item.
 export function jiraAttrsOf(record: IndexRecord): JiraAttrs | null {
   if (parseItemId(record.id)?.source !== "jira") return null;
   const parsed = jiraAttrs(record.attrs);
   return parsed.ok ? parsed.value : null;
 }
 
-// The facets every Jira item has: its assignee, its status category, and its
-// epic, by the epic's stable ID. Remote links aren't among them: Jira's search
-// doesn't return them, and a read per issue on every sync costs too much.
-// They are in the content a read returns.
+// How a Jira item shows in the window beyond core's fields: its issue type,
+// status and labels as the site names them. The composition root passes this
+// to the zoom levels.
+export const jiraDetails: DetailsOf = (record) => {
+  const attrs = jiraAttrsOf(record);
+  return attrs && { type: attrs.issueType, status: attrs.status, labels: [...attrs.labels] };
+};
+
+export const jiraPresentation: Presentation = { name: "Jira", details: jiraDetails };
+
+// An issue type in core's words. The hierarchy decides where Jira gives one:
+// an epic-level type is an epic whatever the site calls it, and a sub-task
+// is a sub-task. Otherwise the type's own name, lowercased: "story", "task",
+// "bug".
+export function jiraKind(type: { name: string; subtask?: boolean; hierarchyLevel?: number }) {
+  if (type.hierarchyLevel === 1) return "epic";
+  if (type.subtask === true || type.hierarchyLevel === -1) return "subtask";
+  return type.name.toLowerCase();
+}
+
+// The facets every Jira item has: its assignee, its status category, its
+// epic by the epic's stable ID, its issue type as a kind and its story points
+// as an estimate. Remote links aren't among them: Jira's search doesn't
+// return them, and a read per issue on every sync costs too much. They are
+// in the content a read returns.
 export function jiraFacets(item: {
   category: State;
   epic: { id: ItemId<"jira">; stableId: string } | null;
   assignee: { accountId: string; name: string } | null;
+  kind: string;
+  points: number | null;
 }): Facets {
   return {
     people: item.assignee
@@ -110,6 +133,8 @@ export function jiraFacets(item: {
       : [],
     state: item.category,
     container: item.epic,
+    kind: item.kind,
+    estimate: item.points,
   };
 }
 
