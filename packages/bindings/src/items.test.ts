@@ -249,8 +249,10 @@ test("a namespace reads only the region's items and what this run's search() fou
     found.map((hit) => hit.id),
     ["jira:SYN-1"],
   );
-  await bindings.read("jira.peek", ["jira:SYN-1"]);
+  // Logged as the escape hatch, since it reached outside the region.
+  assert.equal((await bindings.read("jira.peek", ["jira:SYN-1"])).outsideRegion, true);
   assert.deepEqual(asked, ["jira:SYN-1"]);
+  assert.equal((await bindings.read("jira.peek", [plan])).outsideRegion, false);
   // Jira's own read still takes only the region's items.
   await assert.rejects(bindings.read("jira.getItem", ["jira:SYN-1"]), /isn't in this region/);
 });

@@ -69,8 +69,18 @@ export function bindingsFor(
     async read(fn, args) {
       const entry = byPath.get(fn);
       if (entry?.kind !== "read") throw new Error(`${JSON.stringify(fn)} isn't a read here`);
+      // A read that reached any item outside the region, as a namespace read
+      // of what search() found can, is the escape hatch too.
+      let outsideRegion = entry.outsideRegion;
+      const own: Host = {
+        ...host,
+        read: (ids, view) => {
+          if (ids.some((id) => !members.has(id))) outsideRegion = true;
+          return host.read(ids, view);
+        },
+      };
       try {
-        return { value: await entry.run(args, host), outsideRegion: entry.outsideRegion };
+        return { value: await entry.run(args, own), outsideRegion };
       } catch (error) {
         throw named(fn, error);
       }
