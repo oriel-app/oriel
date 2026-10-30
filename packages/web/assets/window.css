@@ -232,7 +232,7 @@ button {
   color: var(--text-muted);
 }
 
-.sample {
+.fixture {
   padding: 0 var(--space-2);
   border: 1px dashed var(--line-strong);
   border-radius: 999px;

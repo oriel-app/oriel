@@ -30,7 +30,7 @@ function site(t: TestContext) {
       clusters: [],
       items: 0,
       asOf: "2026-10-29T09:00:00.000Z",
-      sample: true,
+      fixture: true,
     }),
   });
 }

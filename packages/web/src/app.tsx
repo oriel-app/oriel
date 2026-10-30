@@ -98,16 +98,16 @@ function Summary({ view }: { view: WindowView }) {
     <div class="summary">
       <p class="counts">
         {plural(view.items, "item")} in {plural(view.clusters.length, "group")}
-        {view.sample && (
-          <span class="sample" title="Hand-written sample data, not your index">
-            Sample data · {asOf}
+        {view.fixture && (
+          <span class="fixture" title="Synthetic fixture data, not your index">
+            Fixture data · {asOf}
           </span>
         )}
       </p>
       {derived && (
         <p class="derived-note">
           <span class="derived-tag">Oriel rule</span>
-          Jira doesn't have these groups. Oriel made them, and each one shows its rule.
+          marks a group Oriel made, which the source doesn't have. Each one shows its rule.
         </p>
       )}
     </div>
