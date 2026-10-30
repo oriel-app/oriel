@@ -1,7 +1,7 @@
 // An eval case is one JSON file, `<id>.json`: its split, its eval kind (SPEC
-// §8's numbering), a frozen fixture region, the prompt the user asks there,
-// and its expectations, each naming the grader that checks it. A case passes
-// when every expectation does.
+// §8's numbering), a frozen region from the fixtures, the prompt the user
+// asks there, and its expectations, each naming the grader that checks it. A
+// case passes when every expectation does.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   array,
@@ -25,6 +25,7 @@ import {
   type Validator,
 } from "@oriel/core";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import { diskDependent, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
@@ -43,6 +44,7 @@ export type EvalKind = keyof typeof evalKinds;
 export const isJudged = (kind: number) => kind === 7 || kind === 8;
 
 const text = refine(string, (value) => value.trim() !== "", "expected non-empty text");
+const whole = refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a whole number");
 const atLeastOne = <T>(item: Validator<T>) =>
   refine(array(item), (items) => items.length > 0, "expected at least one");
 
@@ -68,17 +70,28 @@ const goldenPath = refine(
   "expected tests/golden/<name>.json",
 );
 
-// Each grader's expectation. `text` is quoted to the user as `item`'s content,
-// and the reply names `item`; `claims` are a rubric for the judge, each one
-// checkable on its own.
+// Each grader's expectation. `text` is quoted to the user as the content of
+// `item`, an item ID, or of `file`, a file from the folder fixture by its
+// path, and the reply names it: an item by its key, a file by its title.
+// `claims` are a rubric for the judge, each one checkable on its own.
+const surfacedItem = object({
+  grader: literal("surfaced"),
+  item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
+  text: atLeastOne(text),
+});
+const surfacedFile = object({ grader: literal("surfaced"), file: text, text: atLeastOne(text) });
+const has = (input: unknown, key: string) =>
+  typeof input === "object" && input !== null && key in input;
+
 const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
   "zero-mutations": object({ grader: literal("zero-mutations") }),
-  surfaced: object({
-    grader: literal("surfaced"),
-    item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
-    text: atLeastOne(text),
-  }),
+  // An item, unless it names only a file.
+  surfaced: ((input, path = "$") => {
+    if (has(input, "item") && has(input, "file"))
+      return { ok: false, issues: [{ path, message: "expected an item or a file, not both" }] };
+    return has(input, "file") ? surfacedFile(input, path) : surfacedItem(input, path);
+  }) satisfies Validator<Infer<typeof surfacedItem> | Infer<typeof surfacedFile>>,
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
 };
 export type GraderName = keyof typeof expectations;
@@ -101,15 +114,25 @@ const expectation: Validator<Expectation> = (input, path = "$") => {
   return expectations[grader](input, path);
 };
 
+// The region holds a Jira fixture region's items, files from the folder
+// fixture, or both.
 const evalCaseShape = object({
   id: caseId,
   split,
   kind: evalKind,
   // A region name from fixtures/jira/regions.json.
-  region: text,
-  // How many of the fixture's source edits are applied before the case runs.
-  // Absent means none.
-  edited: optional(refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a whole number")),
+  region: optional(text),
+  // Paths from fixtures/folder/tree.json: a file before any edit, or the
+  // name an edit renames one to.
+  files: optional(atLeastOne(text)),
+  // How many of the Jira fixture's source edits are applied before the case
+  // runs. Absent means none.
+  edited: optional(whole),
+  // How many of the folder fixture's edits are applied. Absent means none.
+  folderEdited: optional(whole),
+  // Why the case can't run yet, such as a golden diff the maintainer hasn't
+  // approved. It is checked and listed, never run.
+  waiting: optional(text),
   prompt: text,
   expect: atLeastOne(expectation),
 });
@@ -125,6 +148,12 @@ export function parseEvalCase(input: unknown): Result<EvalCase> {
 
 function rules(evalCase: EvalCase): Issue[] {
   const found: Issue[] = [];
+  if (evalCase.region === undefined && evalCase.files === undefined)
+    found.push({ path: "$", message: "a case's region needs a fixture region, files, or both" });
+  const files = evalCase.files ?? [];
+  files.forEach((file, i) => {
+    if (files.indexOf(file) !== i) found.push({ path: `$.files[${i}]`, message: "listed twice" });
+  });
   const graders = evalCase.expect.map((e) => e.grader);
   graders.forEach((grader, i) => {
     if (graders.indexOf(grader) !== i)
@@ -161,18 +190,21 @@ export const goldenDiff = object({ mutations: array(capturedMutation) });
 
 export type LoadedCase = {
   case: EvalCase;
-  region: FixtureRegion;
-  // The golden diff's mutations, when an expectation names one.
+  // The Jira fixture region the case names, if any.
+  region: FixtureRegion | null;
+  // The golden diff's mutations, when an expectation names one and the case
+  // isn't waiting for it.
   golden: CapturedMutation[] | null;
 };
 
 // Reads every `*.json` in `dir` as a case, in file-name order, resolving each
-// region against the fixture and each golden diff against `root`. A missing
-// `dir` holds no cases.
+// region against the fixtures and each golden diff against `root`. A missing
+// `dir` holds no cases. Without `folder`, a case that uses it is refused.
 export function loadCases(
   dir: URL,
   fixture: JiraFixture,
   root: URL,
+  folder: FolderFixture | null = null,
 ): { cases: LoadedCase[]; problems: string[] } {
   const cases: LoadedCase[] = [];
   const problems: string[] = [];
@@ -181,7 +213,7 @@ export function loadCases(
     .filter((name) => name.endsWith(".json"))
     .sort();
   for (const name of files) {
-    const found = loadCase(new URL(name, dir), name, fixture, root);
+    const found = loadCase(new URL(name, dir), name, fixture, root, folder);
     if ("problems" in found) problems.push(...found.problems.map((p) => `${name}: ${p}`));
     else cases.push(found);
   }
@@ -193,6 +225,7 @@ function loadCase(
   name: string,
   fixture: JiraFixture,
   root: URL,
+  folder: FolderFixture | null,
 ): LoadedCase | { problems: string[] } {
   const json = readJson(file);
   if (!json.ok) return { problems: [json.error] };
@@ -202,28 +235,67 @@ function loadCase(
   const problems: string[] = [];
   if (name !== `${evalCase.id}.json`)
     problems.push(`$.id: expected the file to be ${evalCase.id}.json`);
-  const region = fixture.regions.find((r) => r.name === evalCase.region);
-  if (!region)
-    problems.push(`$.region: no fixture region named ${JSON.stringify(evalCase.region)}`);
+  const named = evalCase.region;
+  const region = named === undefined ? null : fixture.regions.find((r) => r.name === named);
+  if (region === undefined)
+    problems.push(`$.region: no fixture region named ${JSON.stringify(named)}`);
   if ((evalCase.edited ?? 0) > fixture.edits.length)
     problems.push(`$.edited: the fixture has ${fixture.edits.length} source edits`);
+  problems.push(...fileProblems(evalCase, folder));
   evalCase.expect.forEach((e, i) => {
-    if (e.grader === "surfaced" && region && !region.items.some((id) => id === e.item))
-      problems.push(`$.expect[${i}].item: not in region ${region.name}`);
+    if (e.grader !== "surfaced") return;
+    if ("item" in e && region !== undefined && !region?.items.some((id) => id === e.item))
+      problems.push(`$.expect[${i}].item: not in region ${region?.name ?? "(none)"}`);
+    if ("file" in e && !evalCase.files?.includes(e.file))
+      problems.push(`$.expect[${i}].file: not one of the case's files`);
   });
   const golden = loadGolden(evalCase, root);
   if ("problems" in golden) problems.push(...golden.problems);
-  if (problems.length || !region || "problems" in golden) return { problems };
+  if (problems.length || region === undefined || "problems" in golden) return { problems };
   return { case: evalCase, region, golden: golden.mutations };
 }
 
+// A case's files are in the folder fixture, before its edits or under a name
+// an edit gives one, and are the same on every disk.
+function fileProblems(evalCase: EvalCase, folder: FolderFixture | null): string[] {
+  const files = evalCase.files ?? [];
+  const edited = evalCase.folderEdited ?? 0;
+  if (!folder) return files.length || edited ? ["$.files: no folder fixture was loaded"] : [];
+  const problems: string[] = [];
+  if (edited > folder.edits.length)
+    problems.push(`$.folderEdited: the folder fixture has ${folder.edits.length} edits`);
+  const known = new Set([
+    ...folder.files.map((f) => f.path),
+    ...folder.edits.flatMap((e) => (e.kind === "rename" ? [e.to] : [])),
+  ]);
+  const dependent = diskDependent(folder);
+  files.forEach((path, i) => {
+    if (!known.has(path))
+      problems.push(`$.files[${i}]: ${JSON.stringify(path)} isn't in the folder fixture`);
+    if (dependent.has(path))
+      problems.push(
+        `$.files[${i}]: ${JSON.stringify(path)} exists or not depending on the disk, so the case wouldn't replay everywhere`,
+      );
+  });
+  return problems;
+}
+
+// A waiting case's golden diff may be missing. Once it is there the case can
+// run, so `waiting` has to go.
 function loadGolden(
   evalCase: EvalCase,
   root: URL,
 ): { mutations: CapturedMutation[] | null } | { problems: string[] } {
   const named = evalCase.expect.find((e) => e.grader === "exact-diff");
   if (!named) return { mutations: null };
-  const json = readJson(new URL(named.golden, root));
+  const file = new URL(named.golden, root);
+  if (evalCase.waiting !== undefined) {
+    if (!existsSync(file)) return { mutations: null };
+    return {
+      problems: [`$.waiting: ${named.golden} is there now; remove waiting so the case runs`],
+    };
+  }
+  const json = readJson(file);
   if (!json.ok) return { problems: [`${named.golden}: ${json.error}`] };
   const parsed = parseGoldenDiff(json.value);
   if (!parsed.ok) return { problems: parsed.issues.map((i) => `${named.golden}: ${format(i)}`) };

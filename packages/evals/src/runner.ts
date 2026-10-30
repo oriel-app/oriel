@@ -17,7 +17,8 @@ import {
   union,
   unknown,
 } from "@oriel/core";
-import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
+import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
 import { canonicalJson } from "./canonical.ts";
 import {
@@ -39,6 +40,7 @@ import {
   gradeZeroMutations,
 } from "./graders.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
+import { buildWorld } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
@@ -46,7 +48,11 @@ import { formatRate, type Rate, wilson } from "./stats.ts";
 export type SystemInput = {
   case: EvalCase;
   fixture: JiraFixture;
-  region: FixtureRegion;
+  // The folder fixture; null when the round has none, and then no case holds
+  // files.
+  folder: FolderFixture | null;
+  // The Jira fixture region the case names, if any; its files are the case's.
+  region: FixtureRegion | null;
   // The eval clock: fixed, so prompts that depend on time still replay.
   now: Instant;
   model: string;
@@ -98,6 +104,8 @@ export type Round = { results: CaseResult[]; summary: Summary };
 export type RoundOptions = {
   cases: readonly LoadedCase[];
   fixture: JiraFixture;
+  // Absent: none, so no case may hold files.
+  folder?: FolderFixture | null;
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
@@ -111,9 +119,6 @@ export type RoundOptions = {
   now: Instant;
   concurrency?: number;
 };
-
-// Item URLs in the judge's evidence point here, as they do in the index.
-const site = "https://oriel.atlassian.net";
 
 export async function runRound(options: RoundOptions): Promise<Round> {
   if (sameModel(options.judgeModel, options.model))
@@ -147,6 +152,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
     const raw: unknown = await options.system({
       case: evalCase,
       fixture: options.fixture,
+      folder: options.folder ?? null,
       region: loaded.region,
       now: options.now,
       model: options.model,
@@ -212,14 +218,18 @@ async function grade(
       grades.push(gradeExactDiff(loaded.golden, output.mutations));
     }
     if (expectation.grader === "zero-mutations") grades.push(gradeZeroMutations(output.mutations));
-    if (expectation.grader === "surfaced")
-      grades.push(gradeSurfaced(expectation.item, expectation.text, output.reply));
+    if (expectation.grader === "surfaced") {
+      // A file is named by its title.
+      const named =
+        "item" in expectation ? expectation.item : { title: fileTitle(expectation.file) };
+      grades.push(gradeSurfaced(named, expectation.text, output.reply));
+    }
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({
           claims: expectation.claims,
           prompt: loaded.case.prompt,
-          region: evidence(options.fixture, loaded.region, loaded.case.edited ?? 0),
+          region: await evidence(loaded, options),
           reply: output.reply,
           model: options.judgeModel,
           fetch: transport,
@@ -230,14 +240,22 @@ async function grade(
   return grades;
 }
 
-// The region's items as the source holds them once the case's source edits
-// are applied; a deleted item says so.
-function evidence(fixture: JiraFixture, region: FixtureRegion, edited: number): unknown[] {
-  const { content } = fixtureSnapshot(fixture, site, edited);
-  return region.items.map((id) => {
-    const item = content.get(id);
-    return item ? { id, ...item } : { id, deleted: true };
+// The region's items as their sources hold them once the case's edits are
+// applied; an item that is gone says so.
+async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> {
+  const world = await buildWorld({
+    fixture: options.fixture,
+    folder: options.folder ?? null,
+    region: loaded.region,
+    files: loaded.case.files ?? [],
+    edited: loaded.case.edited ?? 0,
+    folderEdited: loaded.case.folderEdited ?? 0,
   });
+  try {
+    return await world.evidence();
+  } finally {
+    world.close();
+  }
 }
 
 // Notes each model a caller asks for and each model a response reports. A

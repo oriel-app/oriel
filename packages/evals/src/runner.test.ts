@@ -458,7 +458,7 @@ test("the system under test gets the case's world, and the judge its region as e
   const system: SystemUnderTest = async (input) => {
     assert.equal(input.now, now);
     assert.equal(input.model, "claude-opus-5-5");
-    assert.equal(input.region.name, "picked");
+    assert.equal(input.region?.name, "picked");
     return { mutations: [], reply: "SYN-27 was deleted in Jira.", transcript: [] };
   };
   const bodies: { messages: { content: string }[] }[] = [];
@@ -476,7 +476,7 @@ test("the system under test gets the case's world, and the judge its region as e
   };
   assert.deepEqual(
     region.map((item) => item.id),
-    scope.region.items,
+    scope.region?.items,
   );
   assert.deepEqual(region[1], { id: "jira:SYN-27", deleted: true });
   assert.match(region[0]?.summary ?? "", /countdown to departure/);

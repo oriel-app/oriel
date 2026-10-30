@@ -169,13 +169,13 @@ test("cases load against the fixture, and every problem names its file", (t) => 
 
   const { cases, problems } = loadCases(dir, fixture, root);
   assert.deepEqual(
-    cases.map((c) => [c.case.id, c.region.name, c.golden?.length ?? null]),
+    cases.map((c) => [c.case.id, c.region?.name, c.golden?.length ?? null]),
     [
       ["estimate-checkout", "checkout-epic", 1],
       ["injection-weather", "weather-epic", null],
     ],
   );
-  assert.ok(cases[1]?.region.items.includes("jira:SYN-45"));
+  assert.ok(cases[1]?.region?.items.includes("jira:SYN-45"));
   const [badGolden, broken, ...rest] = problems;
   assert.equal(
     badGolden,
