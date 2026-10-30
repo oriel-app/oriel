@@ -1,107 +1,43 @@
-// The agent contract, as @oriel/agent exports it. The server builds against
-// this copy until that package lands; wiring it in turns this file into a
-// re-export. The server persists each event a turn emits and streams it to
-// the window.
+// The agent contract is @oriel/agent's. The server persists each event a
+// turn emits and streams it to the window; what comes back from the database
+// is checked here on the way out.
+import type { AgentDeps, AgentEvent } from "@oriel/agent";
 import {
   array,
   boolean,
-  type Bindings,
-  type ChangeSets,
-  type Instant,
   isInstant,
   isItemId,
   isNewRef,
   isUlid,
   type ItemId,
   literal,
-  type Log,
   type NewRef,
   nullable,
   number,
   object,
   optional,
-  type ProxiedRead,
   refine,
-  type Region,
-  type Run,
-  type RunLimits,
   type RunResult,
-  type Sandbox,
   type SearchHit,
   string,
-  type Thread,
-  type Ulid,
   union,
   unknown,
   type Validator,
 } from "@oriel/core";
 
-// One user message in a thread, run to completion.
-export type TurnInput = {
-  thread: Thread;
-  // The version of the thread's group this turn uses, start to end.
-  region: Region;
-  // Prior messages, oldest first.
-  history: ChatMessage[];
-  // The user's message.
-  text: string;
-  // The index snapshot the turn reads, which its runs record.
-  snapshot: number;
-  // Tokens earlier turns spent, summed from their `done` events, so the
-  // thread's token cap covers the whole thread.
-  spent: { inputTokens: number; outputTokens: number };
-};
+export type {
+  Agent,
+  AgentDeps,
+  AgentEvent,
+  AgentLimits,
+  ChatMessage,
+  TurnInput,
+} from "@oriel/agent";
 
-export type ChatMessage =
-  | { role: "user"; text: string; at: Instant }
-  | { role: "assistant"; text: string; at: Instant }
-  // "added jira:SYN-12" (decision 0018). IDs only: a title is source content.
-  | { role: "marker"; text: string; at: Instant }
-  // A compact record of a sandbox run, for history, with its script.
-  | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };
+// What the server builds an agent from: everything but the provider, which
+// only the model-backed agent has.
+export type ServerAgentDeps = Omit<AgentDeps, "provider">;
 
-// What a turn emits, in order.
-export type AgentEvent =
-  // Assistant text, possibly in deltas.
-  | { kind: "text"; text: string }
-  | { kind: "run.started"; runId: Ulid; script: string }
-  | { kind: "run.finished"; runId: Ulid; result: RunResult }
-  // The escape hatch, rendered as its own block (SPEC §1.6).
-  | { kind: "search"; runId: Ulid; hits: SearchHit[] }
-  // Captured mutations awaiting approval.
-  | { kind: "change-set"; changeSetId: Ulid }
-  // A per-thread cap (turns or tokens) ended the turn (SPEC §9). A run-level
-  // cap arrives as a run.finished whose outcome is "limit", and the turn goes on.
-  | { kind: "limit"; reason: string }
-  | { kind: "error"; message: string }
-  | { kind: "done"; usage: { inputTokens: number; outputTokens: number } };
-
-// A turn always ends with exactly one `done`, even when aborted. A run is
-// recorded when it finishes, so nothing keyed to it exists at `run.started`.
-export interface Agent {
-  turn(input: TurnInput, options: { signal: AbortSignal; log: Log }): AsyncIterable<AgentEvent>;
-}
-
-export type AgentLimits = {
-  maxTurnsPerThread: number;
-  maxTokensPerThread: number;
-  run: RunLimits;
-  maxMutationsPerChangeSet: number;
-};
-
-// What the server builds an agent from, but the provider, which comes with
-// @oriel/agent.
-export type AgentDeps = {
-  sandbox: Sandbox;
-  bindingsFor: (region: Region) => Bindings;
-  changeSets: Pick<ChangeSets, "capture">;
-  runs: { record(run: Run, reads: ProxiedRead[]): void };
-  limits: AgentLimits;
-  now: () => Instant;
-  newId: () => Ulid;
-};
-
-// Events come back from the database, so they are checked on the way out.
 // A run's result is checked as far as the window renders it.
 const ulidValue = refine(string, isUlid, "expected a ULID");
 const runError = object({

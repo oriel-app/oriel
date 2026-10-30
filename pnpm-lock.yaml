@@ -134,6 +134,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@oriel/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@oriel/bindings':
         specifier: workspace:*
         version: link:../bindings

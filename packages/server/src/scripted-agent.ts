@@ -5,7 +5,13 @@
 // recorded, and what it captures becomes a change set.
 import { createHash } from "node:crypto";
 import { array, type Log, parseItemId, type RunResult } from "@oriel/core";
-import { type Agent, type AgentDeps, type AgentEvent, searchHit, type TurnInput } from "./agent.ts";
+import {
+  type Agent,
+  type ServerAgentDeps,
+  type AgentEvent,
+  searchHit,
+  type TurnInput,
+} from "./agent.ts";
 
 // Text to say, a script to run, or a search, which is a run whose result
 // renders as its own block.
@@ -21,7 +27,7 @@ function returned(result: RunResult): unknown {
 }
 
 // As the contract asks, a turn ends with exactly one `done`, stopped or not.
-export function scriptedAgent(deps: AgentDeps, plan: (input: TurnInput) => Step[]): Agent {
+export function scriptedAgent(deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]): Agent {
   return {
     async *turn(input, options): AsyncGenerator<AgentEvent> {
       try {
@@ -39,7 +45,7 @@ export function scriptedAgent(deps: AgentDeps, plan: (input: TurnInput) => Step[
 }
 
 async function* steps(
-  deps: AgentDeps,
+  deps: ServerAgentDeps,
   plan: (input: TurnInput) => Step[],
   input: TurnInput,
   { signal, log }: Parameters<Agent["turn"]>[1],

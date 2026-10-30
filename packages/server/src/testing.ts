@@ -16,7 +16,7 @@ import {
 } from "@oriel/core";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { Agent, AgentDeps, AgentLimits } from "./agent.ts";
+import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { type App, createApp, limits } from "./app.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
@@ -81,7 +81,7 @@ export function fakeSandbox(scripts: Record<string, Script>): Sandbox {
 export type TestOptions = {
   plan?: (input: Parameters<Agent["turn"]>[0]) => Step[];
   scripts?: Record<string, Script>;
-  agent?: (deps: AgentDeps) => Agent;
+  agent?: (deps: ServerAgentDeps) => Agent;
   sandbox?: Sandbox;
   limits?: Partial<Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">>;
   // Change sets write to SYN in memory instead of being read-only.

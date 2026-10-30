@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { agent, anthropicProvider, defaultModel } from "@oriel/agent";
 import { basicAuth } from "@oriel/jira";
 import { webFiles, serve } from "./serve.ts";
 import { join } from "node:path";
@@ -52,12 +53,17 @@ if (values.jira === "live") {
   };
 }
 
+// The model-backed agent when `.env` has a model key, which only its
+// provider holds; the scripted agent otherwise.
+const { modelKey } = env;
 const dir = join(root, ".oriel");
 mkdirSync(dir, { recursive: true });
 const serving = await serve(port, {
   db: join(dir, `${jira.kind}.db`),
   jira,
-  modelKey: env.modelKey,
+  ...(modelKey
+    ? { agent: (deps) => agent({ ...deps, provider: anthropicProvider({ apiKey: modelKey }) }) }
+    : {}),
   log: (message, fields) => console.log(JSON.stringify({ message, ...fields })),
 });
 console.log(`Oriel is running at ${serving.url}`);
@@ -66,7 +72,11 @@ console.log(
     ? "Jira: the SYN fixture, read-only. Change sets can be reviewed; approving says writing isn't configured."
     : `Jira: ${jira.site}, project ${jira.project}. Change sets you approve are written there.`,
 );
-console.log("Agent: the scripted agent for local development.");
+console.log(
+  modelKey
+    ? `Agent: the model-backed agent (${defaultModel}), with the model key from .env.`
+    : "Agent: the scripted agent for local development. Set ANTHROPIC_API_KEY in .env for the model-backed one.",
+);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {

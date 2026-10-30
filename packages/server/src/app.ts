@@ -47,7 +47,7 @@ import {
 import { createSandbox } from "@oriel/sandbox";
 import type { GroupingId, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { Agent, AgentDeps, AgentLimits } from "./agent.ts";
+import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { api } from "./api.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
@@ -76,10 +76,9 @@ export type AppOptions = {
   // A SQLite file, or ":memory:".
   db: string;
   jira: JiraMode;
-  // Builds the agent; the scripted dev agent when absent. The model key, from
-  // `.env`, is for the model-backed agent's provider; it is never printed.
-  agent?: (deps: AgentDeps, modelKey: string | null) => Agent;
-  modelKey?: string | null;
+  // Builds the agent from everything but a model provider: @oriel/agent's,
+  // with one, or the scripted dev agent, which is the default.
+  agent?: (deps: ServerAgentDeps) => Agent;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -234,7 +233,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return deno.run(script, bindings, runOptions);
     },
   };
-  const agentDeps: AgentDeps = {
+  const agentDeps: ServerAgentDeps = {
     sandbox,
     bindingsFor: regionBindings,
     changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
@@ -243,10 +242,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     newId,
   };
-  const agent = (options.agent ?? ((deps) => scriptedAgent(deps, devPlan)))(
-    agentDeps,
-    options.modelKey ?? null,
-  );
+  const agent = (options.agent ?? ((deps) => scriptedAgent(deps, devPlan)))(agentDeps);
   const conversation = turns({
     threads,
     groups,
