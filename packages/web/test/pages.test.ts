@@ -1,0 +1,469 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { groupReplied, initGroup, updateGroup } from "../src/group.ts";
+import type { Effect, Replied } from "../src/http.ts";
+import { initReview, reviewReplied, updateReview } from "../src/review.ts";
+import { init as initRoot, update as updateRoot } from "../src/root.ts";
+import { parseRoute, routeUrl, safeHref } from "../src/route.ts";
+import {
+  actionsOf,
+  blocks,
+  initThread,
+  streamed,
+  type ThreadModel,
+  threadReplied,
+  updateThread,
+} from "../src/thread.ts";
+import { init, pickedName, update } from "../src/update.ts";
+import type {
+  ChangeSetView,
+  ChatEntry,
+  DiffView,
+  GroupView,
+  ReviewView,
+  ThreadView,
+  WindowView,
+} from "../src/view.ts";
+
+const id = "01JBZ0000000000000000000T1";
+const groupId = "01JBZ0000000000000000000G1";
+const setId = "01JBZ0000000000000000000C1";
+const at = "2026-10-29T09:00:00.000Z";
+
+const ok = (tag: Replied["tag"], body: unknown): Replied => ({
+  type: "replied",
+  tag,
+  ok: true,
+  body,
+});
+const failed = (tag: Replied["tag"], error: string): Replied => ({
+  type: "replied",
+  tag,
+  ok: false,
+  body: { error },
+});
+
+test("routes read from and write to the address bar", () => {
+  const routes = [
+    { page: "window", grouping: "stuck", addTo: null },
+    { page: "window", grouping: "epic", addTo: groupId },
+    { page: "group", id: groupId },
+    { page: "thread", id },
+    { page: "inbox" },
+    { page: "review", token: "abc_DEF-123" },
+  ] as const;
+  for (const route of routes) {
+    const url = new URL(routeUrl(route), "http://127.0.0.1:4310");
+    assert.deepEqual(parseRoute(url.pathname, url.search), route);
+  }
+  assert.deepEqual(parseRoute("/nonsense", "?grouping=x&addTo=../x"), {
+    page: "window",
+    grouping: "epic",
+    addTo: null,
+  });
+});
+
+test("only http(s) URLs become links", () => {
+  assert.equal(
+    safeHref("https://oriel.atlassian.net/browse/SYN-1"),
+    "https://oriel.atlassian.net/browse/SYN-1",
+  );
+  for (const url of [
+    null,
+    "javascript:alert(1)",
+    "file:///etc/passwd",
+    "data:text/html,x",
+    "//evil",
+  ])
+    assert.equal(safeHref(url), undefined, String(url));
+});
+
+function windowView(): WindowView {
+  const row = (key: string) => ({
+    id: `jira:${key}`,
+    key,
+    title: `Title ${key}`,
+    type: "Story",
+    status: null,
+    assignee: null,
+    points: null,
+    idleDays: 0,
+  });
+  return {
+    grouping: "epic",
+    clusters: [
+      {
+        row: {
+          key: "10001",
+          label: "Checkout",
+          origin: { kind: "source", source: "Jira" },
+          anchor: null,
+          count: 2,
+          points: 0,
+          unestimated: 2,
+          status: { todo: 2, "in-progress": 0, done: 0 },
+        },
+        list: [row("SYN-10"), row("SYN-11")],
+      },
+    ],
+    items: 2,
+    asOf: at,
+    fixture: true,
+  };
+}
+
+function shownWindow() {
+  const [model] = init("epic");
+  return update(model, { type: "windowLoaded", request: model.request, window: windowView() })[0];
+}
+
+test("picking items, then making a group of them, goes to the new group", () => {
+  let model = shownWindow();
+  model = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
+  model = update(model, { type: "itemToggled", id: "jira:SYN-11" })[0];
+  assert.deepEqual(model.selected, ["jira:SYN-10", "jira:SYN-11"]);
+  assert.equal(pickedName(model), "Checkout");
+  const [pending, effects] = update(model, { type: "selectionGrouped", name: "Checkout" });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/groups",
+      body: { kind: "picked", name: "Checkout", items: ["jira:SYN-10", "jira:SYN-11"] },
+      tag: { kind: "createGroup" },
+    },
+  ]);
+  // A second click while it's pending does nothing.
+  assert.deepEqual(update(pending, { type: "selectionGrouped", name: "x" })[1], []);
+  const [made, next] = update(pending, ok({ kind: "createGroup" }, { id: groupId }));
+  assert.deepEqual(made.selected, []);
+  assert.deepEqual(next, [{ type: "navigate", route: { page: "group", id: groupId } }]);
+  const [refused] = update(
+    pending,
+    failed({ kind: "createGroup" }, "jira:SYN-11 isn't in the window"),
+  );
+  assert.deepEqual([refused.pending, refused.notice], [false, "jira:SYN-11 isn't in the window"]);
+  assert.deepEqual(refused.selected, ["jira:SYN-10", "jira:SYN-11"]);
+});
+
+test("a cluster becomes a group in one click; picked items can join an existing group", () => {
+  const model = shownWindow();
+  assert.deepEqual(update(model, { type: "clusterGrouped", key: "10001" })[1], [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/groups",
+      body: { kind: "cluster", grouping: "epic", cluster: "10001" },
+      tag: { kind: "createGroup" },
+    },
+  ]);
+  const picked = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
+  const [, effects] = update(picked, { type: "selectionAdded", groupId });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/add`,
+      body: { items: ["jira:SYN-10"] },
+      tag: { kind: "addToGroup", groupId },
+    },
+  ]);
+  assert.deepEqual(update(model, { type: "selectionAdded", groupId })[1], []);
+  assert.deepEqual(update(picked, { type: "selectionCleared" })[0].selected, []);
+});
+
+function threadView(entries: ChatEntry[], changeSets: ChangeSetView[] = []): ThreadView {
+  return {
+    id,
+    title: "Hi",
+    group: { id: groupId, name: "Checkout", version: 1 },
+    state: "working",
+    doneBy: null,
+    regionVersion: 1,
+    members: [],
+    entries,
+    lastSeq: entries.at(-1)?.seq ?? 0,
+    running: false,
+    changeSets,
+    writable: false,
+  };
+}
+
+const openSet: ChangeSetView = {
+  id: setId,
+  status: "open",
+  decision: null,
+  errors: [],
+  revertOf: null,
+  reverts: [],
+  createdAt: at,
+};
+
+const diff: DiffView = { changeSetId: setId, hash: "h1", lines: [] };
+
+function loadedThread(view: ThreadView): [ThreadModel, Effect[]] {
+  const [model] = initThread(id);
+  return threadReplied(model, ok({ kind: "thread", id }, view));
+}
+
+test("a thread loads, then watches its events from the last entry, and diffs its change sets", () => {
+  assert.deepEqual(initThread(id)[1], [
+    { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
+  ]);
+  const [model, effects] = loadedThread(
+    threadView(
+      [
+        { seq: 1, at, kind: "user", text: "Hi" },
+        { seq: 2, at, kind: "change-set", changeSetId: setId },
+      ],
+      [openSet],
+    ),
+  );
+  assert.equal(model.status, "ready");
+  assert.deepEqual(effects, [
+    { type: "subscribe", threadId: id, after: 2 },
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/change-sets/${setId}/diff`,
+      body: {},
+      tag: { kind: "diff", changeSetId: setId },
+    },
+  ]);
+});
+
+test("streamed entries append once, and a new change set fetches its diff", () => {
+  const [model] = loadedThread(threadView([{ seq: 1, at, kind: "user", text: "Hi" }]));
+  const text = {
+    type: "entry" as const,
+    entry: { seq: 2, at, kind: "text" as const, text: "Hello" },
+  };
+  const [once] = streamed(model, text);
+  assert.equal(once.view?.entries.length, 2);
+  assert.equal(streamed(once, text)[0], once);
+  const [, effects] = streamed(once, {
+    type: "entry",
+    entry: { seq: 3, at, kind: "change-set", changeSetId: setId },
+  });
+  assert.deepEqual(
+    effects.map((e) => (e.type === "http" ? e.url : e.type)),
+    [`/api/change-sets/${setId}/diff`, `/api/threads/${id}`],
+  );
+  const [finished, after] = streamed(
+    { ...once, view: once.view && { ...once.view, running: true } },
+    { type: "status", running: false, state: "working", regionVersion: 1 },
+  );
+  assert.equal(finished.view?.running, false);
+  assert.deepEqual(
+    after.map((e) => e.type),
+    ["http"],
+  );
+});
+
+test("approving sends the hash of the diff on screen; a refusal shows on the change set", () => {
+  const [loaded] = loadedThread(
+    threadView([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
+  );
+  // No diff yet: nothing to approve.
+  assert.deepEqual(
+    updateThread(loaded, { type: "changeSetClicked", changeSetId: setId, action: "approve" })[1],
+    [],
+  );
+  const [withDiff] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
+  const [busy, effects] = updateThread(withDiff, {
+    type: "changeSetClicked",
+    changeSetId: setId,
+    action: "approve",
+  });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/change-sets/${setId}/approve`,
+      body: { hash: "h1" },
+      tag: { kind: "changeSet", threadId: id, changeSetId: setId },
+    },
+  ]);
+  assert.deepEqual(busy.busy, [setId]);
+  const [refused, again] = threadReplied(
+    busy,
+    failed(
+      { kind: "changeSet", threadId: id, changeSetId: setId },
+      "Writing to Jira isn't configured here.",
+    ),
+  );
+  assert.deepEqual(refused.busy, []);
+  assert.equal(refused.problems[setId], "Writing to Jira isn't configured here.");
+  assert.equal(again.length, 2);
+  const [, removing] = updateThread(withDiff, {
+    type: "lineRemoved",
+    changeSetId: setId,
+    mutationId: "m1",
+  });
+  assert.deepEqual(removing[0], {
+    type: "http",
+    method: "POST",
+    url: `/api/change-sets/${setId}/edit`,
+    body: { remove: ["m1"] },
+    tag: { kind: "changeSet", threadId: id, changeSetId: setId },
+  });
+});
+
+test("sending a message clears the draft once the server takes it", () => {
+  const [loaded] = loadedThread(threadView([]));
+  const drafted = updateThread(loaded, { type: "draftChanged", text: "  What's left?  " })[0];
+  const [sending, effects] = updateThread(drafted, { type: "sendClicked" });
+  assert.deepEqual(effects[0], {
+    type: "http",
+    method: "POST",
+    url: `/api/threads/${id}/messages`,
+    body: { text: "What's left?" },
+    tag: { kind: "sent", threadId: id },
+  });
+  assert.deepEqual(updateThread(sending, { type: "sendClicked" })[1], []);
+  const [sent] = threadReplied(sending, ok({ kind: "sent", threadId: id }, { seq: 1 }));
+  assert.deepEqual([sent.draft, sent.sending], ["", false]);
+});
+
+test("the chat joins a streamed reply and a run's start and finish into one block each", () => {
+  const run = {
+    outcome: "ok" as const,
+    wallMs: 4,
+    reads: [],
+    mutations: 0,
+    logs: [],
+    returned: "3",
+    error: null,
+  };
+  const out = blocks([
+    { seq: 1, at, kind: "user", text: "Hi" },
+    { seq: 2, at, kind: "text", text: "Let me " },
+    { seq: 3, at, kind: "text", text: "look." },
+    { seq: 4, at, kind: "run.started", runId: "r1", script: "return 3;" },
+    { seq: 5, at, kind: "run.finished", runId: "r1", run },
+    { seq: 6, at, kind: "text", text: "Three." },
+    { seq: 7, at, kind: "done" },
+    { seq: 8, at, kind: "error", message: "Stopped." },
+  ]);
+  assert.deepEqual(out, [
+    { kind: "user", seq: 1, text: "Hi" },
+    { kind: "reply", seq: 2, text: "Let me look." },
+    { kind: "run", seq: 4, runId: "r1", script: "return 3;", run },
+    { kind: "reply", seq: 6, text: "Three." },
+    { kind: "notice", seq: 8, tone: "error", text: "Stopped." },
+  ]);
+});
+
+test("what can be done with a change set follows its status", () => {
+  assert.deepEqual(actionsOf(openSet), ["approve", "reject"]);
+  assert.deepEqual(actionsOf({ ...openSet, status: "partial" }), ["apply"]);
+  assert.deepEqual(actionsOf({ ...openSet, status: "applied" }), ["revert"]);
+  assert.deepEqual(actionsOf({ ...openSet, status: "applied", reverts: ["x"] }), []);
+  assert.deepEqual(actionsOf({ ...openSet, status: "rejected" }), []);
+});
+
+test("asking on a group's page opens a thread and goes to it", () => {
+  const [model, effects] = initGroup(groupId);
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "GET",
+      url: `/api/groups/${groupId}`,
+      tag: { kind: "group", id: groupId },
+    },
+  ]);
+  const drafted = updateGroup(model, { type: "draftChanged", text: "What's stuck?" })[0];
+  const [pending, ask] = updateGroup(drafted, { type: "askClicked" });
+  assert.deepEqual(ask, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/threads`,
+      body: { text: "What's stuck?" },
+      tag: { kind: "threadOpened", groupId },
+    },
+  ]);
+  const [, go] = groupReplied(pending, ok({ kind: "threadOpened", groupId }, { id }));
+  assert.deepEqual(go, [{ type: "navigate", route: { page: "thread", id } }]);
+  assert.deepEqual(updateGroup(model, { type: "memberRemoved", id: "jira:SYN-3" })[1], [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/remove`,
+      body: { items: ["jira:SYN-3"] },
+      tag: { kind: "groupChanged", id: groupId },
+    },
+  ]);
+  assert.deepEqual(updateGroup(model, { type: "addClicked" })[1], [
+    { type: "navigate", route: { page: "window", grouping: "epic", addTo: groupId } },
+  ]);
+});
+
+test("a group is renamed only when the name changed", () => {
+  const view = { group: { name: "Checkout" } } as GroupView;
+  const [model] = groupReplied(initGroup(groupId)[0], ok({ kind: "group", id: groupId }, view));
+  const same = updateGroup(model, { type: "nameEdited", name: " Checkout " })[0];
+  assert.deepEqual(updateGroup(same, { type: "nameSaved" })[1], []);
+  const changed = updateGroup(model, { type: "nameEdited", name: "Checkout v2" })[0];
+  assert.deepEqual(updateGroup(changed, { type: "nameSaved" })[1], [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/rename`,
+      body: { name: "Checkout v2" },
+      tag: { kind: "renamed", id: groupId },
+    },
+  ]);
+});
+
+test("a review link opens nothing on load; the person asks, then decides with their name", () => {
+  const [model, effects] = initReview("tok");
+  assert.deepEqual(effects, []);
+  const [opening, open] = updateReview(model, { type: "openClicked" });
+  assert.deepEqual(open, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/review/open",
+      body: { token: "tok" },
+      tag: { kind: "reviewOpened" },
+    },
+  ]);
+  const review: ReviewView = { changeSet: openSet, diff };
+  const [shown] = reviewReplied(opening, ok({ kind: "reviewOpened" }, review));
+  const [nameless, none] = updateReview(shown, { type: "decideClicked", kind: "approved" });
+  assert.deepEqual([nameless.problem, none], ["Type your name first.", []]);
+  const named = updateReview(shown, { type: "nameChanged", name: " Ana " })[0];
+  assert.deepEqual(updateReview(named, { type: "decideClicked", kind: "approved" })[1], [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/review/decide",
+      body: { token: "tok", changeSet: setId, kind: "approved", name: "Ana", hash: "h1" },
+      tag: { kind: "reviewDecided" },
+    },
+  ]);
+  const [dead] = reviewReplied(
+    opening,
+    failed({ kind: "reviewOpened" }, "This review link has expired"),
+  );
+  assert.equal(dead.stage, "dead");
+});
+
+test("leaving a thread stops watching it; the window keeps what was picked", () => {
+  const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
+  const picked = updateRoot(model, {
+    type: "window",
+    msg: { type: "itemToggled", id: "jira:SYN-10" },
+  })[0];
+  const [inThread, enter] = updateRoot(picked, { type: "routed", route: { page: "thread", id } });
+  assert.ok(enter.some((e) => e.type === "http" && e.url === `/api/threads/${id}`));
+  const [back, leave] = updateRoot(inThread, {
+    type: "routed",
+    route: { page: "window", grouping: "epic", addTo: null },
+  });
+  assert.deepEqual(leave[0], { type: "unsubscribe" });
+  assert.deepEqual(back.window?.selected, ["jira:SYN-10"]);
+  const [, review] = updateRoot(model, { type: "routed", route: { page: "review", token: "tok" } });
+  assert.deepEqual(review, []);
+});
