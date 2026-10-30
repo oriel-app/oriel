@@ -57,6 +57,7 @@ test("reads go to each item's own source; a deleted story and a deleted or renam
     folderEdited: folder.edits.length,
   });
   const ids = before.region.items.map((m) => m.id);
+  // START-HERE.md exists only once README.md is renamed to it.
   assert.deepEqual((await before.reader.read(ids)).map(statusOf), [
     "ok",
     "ok",
@@ -65,8 +66,7 @@ test("reads go to each item's own source; a deleted story and a deleted or renam
     "ok",
     "ok",
     "ok",
-    // README.md has a second hard link, twin.md, so the source never reads it.
-    "gone: deleted",
+    "ok",
     "gone: deleted",
   ]);
   const read = await after.reader.read(ids);
@@ -79,12 +79,13 @@ test("reads go to each item's own source; a deleted story and a deleted or renam
     "ok",
     "gone: deleted",
     "gone: deleted",
-    "gone: deleted",
+    "ok",
   ]);
   assert.equal(read[1]?.id, "jira:SYN-27");
   const plan = read[5];
   assert.ok(plan?.status === "ok");
-  assert.match((plan.content as { text: string }).text, /^# Q3 launch: disruption and rebooking/);
+  assert.equal(plan.content.title, "q3-launch");
+  assert.match(plan.content.text, /^# Q3 launch: disruption and rebooking/);
 });
 
 test("search reaches both sources, files at a fixed location, never a twin the disk decides", async (t) => {

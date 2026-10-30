@@ -79,6 +79,11 @@
       "path": "notes/latin1.md",
       "mtime": "2026-10-03T11:00:00.000Z",
       "latin1": "# Café menu\n\nCrème brûlée, £4.50. Saved in Latin-1, so these bytes aren't valid UTF-8.\n"
+    },
+    {
+      "path": "hard-linked.md",
+      "mtime": "2026-10-04T09:00:00.000Z",
+      "text": "# Hard-linked\n\nThis file has a second name, twin.md, so it is never an item. It exists only for that case, and no edit touches it.\n"
     }
   ],
   "skipped": [
@@ -108,7 +113,7 @@
     { "path": "linked-dir", "to": "../outside/dir", "directory": true },
     { "path": "alias.md", "to": "README.md" }
   ],
-  "hardLinks": [{ "path": "twin.md", "to": "README.md" }],
+  "hardLinks": [{ "path": "twin.md", "to": "hard-linked.md" }],
   "outside": [
     {
       "path": "secret.md",

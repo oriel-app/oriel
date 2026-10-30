@@ -110,6 +110,17 @@ test("the parser refuses what the generator couldn't build or the source couldn'
       "$.edits[1].to: README.md is taken",
     ],
   );
+  // The source never lists a hard-linked file, so an edit to one is invisible.
+  assert.deepEqual(issuesOf({ ...raw, edits: [{ kind: "delete", path: "hard-linked.md" }] }), [
+    "$.edits[0]: hard-linked.md is hard-linked, so the source never lists it",
+  ]);
+});
+
+test("the hard link has a file of its own, which no edit touches", () => {
+  assert.deepEqual(fixture.hardLinks, [{ path: "twin.md", to: "hard-linked.md" }]);
+  const touched = fixture.edits.map((e) => (e.kind === "rename" ? e.from : e.path));
+  assert.ok(!touched.includes("hard-linked.md"));
+  assert.ok(touched.includes("README.md"));
 });
 
 test("the generator writes every file with its bytes and time, and links them as the manifest says", (t) => {
@@ -159,7 +170,8 @@ test("edits apply in order: a file deleted, one renamed, one touched", (t) => {
   assert.equal(exists("plans/q3-launch-notes.md"), false);
   assert.equal(exists("README.md"), false);
   assert.equal(readFileSync(join(built.root, "START-HERE.md"), "utf8"), textOf("README.md"));
-  assert.equal(lstatSync(join(built.root, "START-HERE.md")).nlink, 2);
+  assert.equal(lstatSync(join(built.root, "START-HERE.md")).nlink, 1);
+  assert.equal(lstatSync(join(built.root, "twin.md")).nlink, 2);
   assert.equal(
     lstatSync(join(built.root, "plans/q3-launch.md")).mtime.toISOString(),
     "2026-10-20T10:00:00.000Z",

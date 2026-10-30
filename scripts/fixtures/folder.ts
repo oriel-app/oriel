@@ -111,7 +111,8 @@ export type FolderFixture = Infer<typeof folderFixtureShape>;
 
 // The shape, then what a shape can't say: no path twice, every hard link and
 // edit names a file the folder holds by then, and no edit touches a file whose
-// presence depends on the disk.
+// presence depends on the disk, or a hard-linked one, which the folder source
+// never lists, so an edit to it would change nothing the source can see.
 export function parseFolderFixture(input: unknown): Result<FolderFixture> {
   const shaped = folderFixtureShape(input);
   if (!shaped.ok) return shaped;
@@ -134,6 +135,7 @@ export function parseFolderFixture(input: unknown): Result<FolderFixture> {
       issues.push({ path: `$.hardLinks[${i}].to`, message: `${l.to} isn't one of the files` });
   });
   const folded = diskDependent(fixture);
+  const linked = new Set(fixture.hardLinks.map((l) => l.to));
   fixture.edits.forEach((edit, i) => {
     const named = edit.kind === "rename" ? edit.from : edit.path;
     const at = `$.edits[${i}]`;
@@ -141,6 +143,8 @@ export function parseFolderFixture(input: unknown): Result<FolderFixture> {
       issues.push({ path: at, message: `${named} isn't one of the files by this edit` });
     if (folded.has(named))
       issues.push({ path: at, message: `${named} may not exist: it depends on the disk` });
+    if (linked.has(named))
+      issues.push({ path: at, message: `${named} is hard-linked, so the source never lists it` });
     if (edit.kind === "delete") files.delete(edit.path);
     if (edit.kind !== "rename") return;
     files.delete(edit.from);
