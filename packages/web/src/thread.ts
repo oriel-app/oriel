@@ -232,7 +232,12 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           { ...model, problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) } },
           [],
         ];
-      return [{ ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } }, []];
+      // A diff records what the person was shown, which approving waits on:
+      // the thread reloads, so its steps say what can be done now.
+      return [
+        { ...model, diffs: { ...model.diffs, [tag.changeSetId]: msg.body as DiffView } },
+        [refresh(model)],
+      ];
     }
     case "changeSet": {
       if (tag.threadId !== model.id) return [model, []];

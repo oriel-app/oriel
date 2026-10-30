@@ -274,7 +274,11 @@ test("approving sends the hash of the diff on screen; a refusal shows on the cha
     updateThread(loaded, { type: "changeSetClicked", changeSetId: setId, step: "approve" })[1],
     [],
   );
-  const [withDiff] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
+  // A diff on screen is what approving waits on, so the thread reloads.
+  const [withDiff, reload] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
+  assert.deepEqual(reload, [
+    { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
+  ]);
   const [busy, effects] = updateThread(withDiff, {
     type: "changeSetClicked",
     changeSetId: setId,

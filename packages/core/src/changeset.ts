@@ -159,10 +159,16 @@ export interface ChangeSets {
   revokeReviewLink(id: Ulid): Promise<void>;
   // What the review page shows; null for a dead or unknown token.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
-  // Exactly what can be done with it now (`NextStep`). Every message the
-  // engine shows a person names only these.
+  // Exactly what can be done with it now (`NextStep`): each step is an
+  // action whose own guard passes, so none offered is refused. Every message
+  // the engine shows a person names only these. Empty while it is applying.
   nextSteps(id: Ulid): Promise<NextStep[]>;
-  // Ends a change set that can go no further: its unapplied changes are
-  // rejected. The warnings name any that may already have landed.
+  // Whether this instance is applying it now. Until that ends, every action
+  // on it is refused as busy.
+  applying(id: Ulid): boolean;
+  // Ends a change set that started landing, or may have: its unapplied
+  // changes are rejected for good, and a revert covers exactly what applied.
+  // The warnings name any change that may already have landed. Dismissing
+  // twice changes nothing.
   dismiss(id: Ulid): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
 }

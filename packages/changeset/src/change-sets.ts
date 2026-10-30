@@ -348,11 +348,10 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const { db, specs } = deps;
   const rows = store(db);
-  // Change sets this instance is applying; a second apply is refused until the
-  // first returns, so no mutation is sent twice at once.
+  // Change sets this instance is applying. Until an apply returns, every
+  // action on its change set is refused as busy (see `busy`), so no mutation
+  // is sent twice at once and no edit races the one in flight.
   const applying = new Set<string>();
-  // Mutations whose write is in flight; an edit can't touch them.
-  const sending = new Set<Ulid>();
 
   const at = (): { now: Instant; ms: number } => {
     const now = deps.now();
@@ -781,38 +780,321 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
   const hasWriter = (kind: SourceKind) => Boolean(deps.sources[kind]?.writer);
 
-  // What apply would do with this row, the first unapplied one: true unless
-  // it would stop at it without sending, as `applyOnce` does.
-  const sendable = (m: MutationRecord, set: ChangeSet, approved: boolean): boolean => {
-    const { kind, spec } = mustSpec(specs, m, set.mutations);
-    if (!hasWriter(kind) || !spec.args(m.args).ok) return false;
-    if (m.status === "failed") {
-      if (!spec.idempotent) return false;
-      const sentAt = m.error === null ? null : sendMark.exec(m.error)?.[1];
-      if (sentAt && at().ms < Date.parse(sentAt) + sendLeaseMs) return false;
-    }
-    // Approval records what the diff showed; apply needs it.
-    if (approved && (m.preview === null || m.preview[goneMark] === true)) return false;
-    const where = resolve(m, set);
-    if ("failed" in where) return false;
-    if (where.target !== null && stableIdFor(m, set, where.target) === null) return false;
-    return leftGroup(m, set, where.target) === null;
+  // Guards. Each action has one: whether it may run on the change set as it
+  // stands now, and if not, why. The action calls its own guard first, and
+  // `nextSteps` offers exactly the actions whose guard passes, so nothing it
+  // offers is refused and nothing refused is offered.
+  type Refusal = {
+    code: ChangeSetErrorCode;
+    message: string;
+    // The row apply stopped at, when the row's own record doesn't say why
+    // already: apply records the message on it.
+    stop?: Ulid;
+    // That row was sent before, and has just been found not in place: it is
+    // unsent again.
+    unsent?: true;
+  };
+  const refuse = (refusal: Refusal): never => {
+    throw new ChangeSetError(refusal.code, refusal.message);
   };
 
-  // The rows an edit may leave out, one at a time: unapplied, not being
-  // sent, not created by a row another one targets, and never the last.
-  const removable = (set: ChangeSet): Ulid[] => {
-    if (set.mutations.length < 2) return [];
-    if (set.mutations.some((m) => !mustSpec(specs, m, set.mutations).spec.args(m.args).ok))
-      return [];
-    return set.mutations
-      .filter(
-        (m) =>
-          m.status !== "applied" &&
-          !sending.has(m.id) &&
-          !(m.ref !== null && set.mutations.some((other) => other.target === m.ref)),
+  // While this instance applies a change set, every action on it waits: no
+  // edit can race the row in flight, and the apply records completion.
+  const busy = (set: ChangeSet): Refusal | null =>
+    applying.has(set.id)
+      ? { code: "busy", message: "this change set is being applied; try again once that ends" }
+      : null;
+
+  // A rejected or dismissed change set is decided for good: nothing more of
+  // it applies and its rows don't change. Only reverting what it applied is
+  // left.
+  const decided = (set: ChangeSet): Refusal | null =>
+    set.decision?.kind === "rejected"
+      ? {
+          code: "refused",
+          message: "this change set was rejected or dismissed, so it can't change any more",
+        }
+      : null;
+
+  const readOnly = (set: ChangeSet): Refusal | null => {
+    const why = unwritable(set);
+    return why === null ? null : { code: "read-only", message: why };
+  };
+
+  const mayHaveLanded = (source: string) =>
+    `This may already be in ${source}: check, then dismiss what is left of this change set.`;
+
+  // Why a row that was sent can't be sent again yet, or null: a create or a
+  // link may have landed and is never sent twice, and a set op's send may
+  // still be on its way until its lease runs out. The row's own record (a
+  // send's mark) already says so, so nothing is recorded over it.
+  const sentAndWaiting = (m: MutationRecord, set: ChangeSet): Refusal | null => {
+    if (m.status !== "failed") return null;
+    const { kind, spec } = mustSpec(specs, m, set.mutations);
+    if (!spec.idempotent)
+      return { code: "refused", message: mayHaveLanded(catalogueFor(specs, kind).name) };
+    const sentAt = m.error === null ? null : sendMark.exec(m.error)?.[1];
+    if (!sentAt || at().ms >= Date.parse(sentAt) + sendLeaseMs) return null;
+    return {
+      code: "refused",
+      message: `Oriel sent this at ${sentAt} and has no answer yet; it may still be on its way. Try again after ${instant(new Date(Date.parse(sentAt) + sendLeaseMs))}.`,
+    };
+  };
+
+  // Where apply would send a row now, or why it wouldn't, short of reading
+  // the source. Apply checks each row with this before sending it, and its
+  // guard checks the first unapplied one. A set op sent before may have
+  // landed: apply first checks whether it is in place, and records it if so,
+  // whatever the group or region holds now; only once `inPlaceChecked` do
+  // those stop it, and it is unsent again.
+  const sendPlan = (
+    m: MutationRecord,
+    set: ChangeSet,
+    inPlaceChecked = false,
+  ): { refusal: Refusal } | { target: ItemId | null; stableId: string | null } => {
+    const { kind, spec } = mustSpec(specs, m, set.mutations);
+    if (!hasWriter(kind))
+      return {
+        refusal: {
+          code: "read-only",
+          message: `Writing to ${catalogueFor(specs, kind).name} isn't configured here.`,
+        },
+      };
+    const waiting = sentAndWaiting(m, set);
+    if (waiting) return { refusal: waiting };
+    const sentBefore = m.status === "failed";
+    const stop = (message: string) => ({
+      refusal: {
+        code: "refused" as const,
+        message,
+        stop: m.id,
+        ...(sentBefore && inPlaceChecked ? { unsent: true as const } : {}),
+      },
+    });
+    // Arguments stored before the source's catalogue tightened may no longer
+    // pass it; nothing is sent on them.
+    if (!spec.args(m.args).ok) return stop(`${staleArgs}, so it wasn't sent.`);
+    // Approval records what the diff showed; apply needs it.
+    if (m.preview === null)
+      return stop(
+        "This hasn't been shown in a diff since the last edit, so it wasn't sent. Review the diff, then approve it.",
+      );
+    if (m.preview[goneMark] === true)
+      return stop(
+        `${key(m.target ?? "the new item")} couldn't be read when this was last reviewed, so it wasn't sent. Review it again once it can be read.`,
+      );
+    const where = resolve(m, set);
+    if ("failed" in where) return stop(where.failed);
+    // The writer refuses a target whose handle names another item by now.
+    const stableId = where.target === null ? null : stableIdFor(m, set, where.target);
+    if (sentBefore && spec.idempotent && where.target !== null && !inPlaceChecked)
+      return { target: where.target, stableId };
+    if (where.target !== null && stableId === null)
+      return stop(
+        `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
+      );
+    const away = leftGroup(m, set, where.target);
+    if (away) return stop(away);
+    return { target: where.target, stableId };
+  };
+
+  // Apply, and retry: approved as it stands, writable, something left to
+  // apply, and its next change can be sent.
+  const applyRefusal = (set: ChangeSet): Refusal | null => {
+    const first = set.mutations.find((m) => m.status !== "applied");
+    const refusal =
+      busy(set) ??
+      readOnly(set) ??
+      (set.decision?.kind === "approved"
+        ? null
+        : {
+            code: "not-approved" as const,
+            message: "this change set isn't approved as it stands; review the diff and approve it",
+          }) ??
+      (first ? null : { code: "refused" as const, message: "every change in it has applied" });
+    if (refusal || !first) return refusal;
+    const plan = sendPlan(first, set);
+    return "refusal" in plan ? plan.refusal : null;
+  };
+
+  // Approve, and approve the rest: undecided, writable, every change still to
+  // apply shown in a diff since the last edit and none of them shown as gone
+  // or stale, and the next one not waiting on an earlier send.
+  const approveRefusal = (set: ChangeSet): Refusal | null => {
+    const open = set.mutations.filter((m) => m.status !== "applied");
+    const [first] = open;
+    const refused = (message: string): Refusal => ({ code: "refused", message });
+    const pre =
+      busy(set) ??
+      decided(set) ??
+      (set.decision?.kind === "approved" ? refused("this change set is already approved") : null) ??
+      (first ? null : refused("every change in it has applied; nothing is left to approve")) ??
+      readOnly(set);
+    if (pre || !first) return pre;
+    const stale = open.find((m) => !mustSpec(specs, m, set.mutations).spec.args(m.args).ok);
+    if (stale)
+      return refused(
+        `mutation ${stale.seq} (${stale.op}): ${staleArgs.toLowerCase()}; leave it out, or reject the change set`,
+      );
+    const unseen = open.find((m) => m.preview === null);
+    if (unseen)
+      return refused(
+        `mutation ${unseen.seq} hasn't been shown in a diff since the last edit; review the diff, then approve`,
+      );
+    const gone = open.find((m) => m.preview?.[goneMark] === true);
+    if (gone)
+      return refused(
+        `${key(gone.target ?? "the new item")} couldn't be read when this was last reviewed; it can be approved once it can be read again`,
+      );
+    return sentAndWaiting(first, set);
+  };
+
+  // Reject: declines a change set before anything of it landed, or may have.
+  const rejectRefusal = (set: ChangeSet): Refusal | null => {
+    const refused = (message: string): Refusal => ({ code: "refused", message });
+    return (
+      busy(set) ??
+      decided(set) ??
+      (set.mutations.some((m) => m.status === "applied")
+        ? refused("part of this change set has applied; dismiss what is left instead")
+        : null) ??
+      (set.mutations.some((m) => m.status === "failed")
+        ? refused("a change in it was sent and may have landed; dismiss it instead")
+        : null)
+    );
+  };
+
+  // Edit, and remove: rows left out or given new arguments. Returns the
+  // validated arguments of the rows edited, or why not. Leaving rows out of
+  // a change set that is approved and hasn't stopped waits until it has.
+  const editGuard = (
+    set: ChangeSet,
+    remove: ReadonlySet<Ulid>,
+    changes: ReadonlyMap<Ulid, unknown>,
+  ): { refusal: Refusal } | { edited: { id: Ulid; args: unknown }[] } => {
+    const pre = busy(set) ?? decided(set);
+    if (pre) return { refusal: pre };
+    const refused = (code: ChangeSetErrorCode, message: string) => ({
+      refusal: { code, message },
+    });
+    for (const mutationId of [...remove, ...changes.keys()]) {
+      const m = set.mutations.find((r) => r.id === mutationId);
+      if (!m) return refused("not-found", `no mutation ${mutationId} in this change set`);
+      if (m.status === "applied")
+        return refused("refused", `mutation ${m.seq} is already applied and can't be edited`);
+      // A revert puts back what was there; changing a row of it would write
+      // something else under that name. Rows can only be removed.
+      if (m.reverts !== null && changes.has(mutationId))
+        return refused(
+          "refused",
+          `mutation ${m.seq} undoes an earlier change: remove it from the revert instead of editing it`,
+        );
+      // A sent row may have landed: it can be removed, never changed.
+      if (m.status === "failed" && changes.has(mutationId))
+        return refused(
+          "refused",
+          `mutation ${m.seq}: this change may already be in ${catalogueFor(specs, mustSpec(specs, m, set.mutations).kind).name}: check, then remove it`,
+        );
+      if (remove.has(mutationId) && changes.has(mutationId))
+        return refused("invalid", `mutation ${m.seq} is both removed and changed`);
+    }
+    const stopped = set.mutations.some((m) => m.status !== "applied" && m.error !== null);
+    if (remove.size > 0 && set.decision?.kind === "approved" && !stopped)
+      return refused(
+        "refused",
+        "this change set is approved and ready to apply; apply it, or reject it, before leaving changes out",
+      );
+    const kept = set.mutations.filter((m) => !remove.has(m.id));
+    if (kept.length === 0)
+      return refused("invalid", "an edit can't leave a change set with no changes");
+    let checked: Checked[];
+    try {
+      checked = check(
+        specs,
+        kept.map((m) => ({ ...m, args: changes.has(m.id) ? changes.get(m.id) : m.args })),
+      );
+    } catch (error) {
+      if (error instanceof ChangeSetError) return refused(error.code, error.message);
+      throw error;
+    }
+    // Targets don't change in an edit, and a revert's may be items it
+    // created, so only the edited arguments are held to the region.
+    const edited = kept.flatMap((row, i) => {
+      const m = checked[i];
+      return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
+    });
+    if (edited.length > 0) {
+      const region = rows.region(set.runId, set.workspaceId);
+      const outside = outsideRegion(edited, (handle) => region.has(handle), false);
+      if (outside) return refused("refused", outside);
+    }
+    return { edited: edited.map(({ id, m }) => ({ id, args: m.args })) };
+  };
+
+  // Dismiss: ends a change set that started landing, or may have. One that
+  // nothing landed from is rejected instead.
+  const dismissRefusal = (set: ChangeSet): Refusal | null => {
+    const refused = (message: string): Refusal => ({ code: "refused", message });
+    return (
+      busy(set) ??
+      decided(set) ??
+      (set.mutations.every((m) => m.status === "applied")
+        ? refused("every change in this change set has applied; nothing is left to dismiss")
+        : null) ??
+      (set.mutations.some((m) => m.status !== "pending")
+        ? null
+        : refused("nothing in this change set has landed or been sent; reject it instead"))
+    );
+  };
+
+  // Revert: something applied and each applied change can be undone; nothing
+  // sent and unanswered, unless the rest was dismissed, since then the revert
+  // covers exactly what applied; and no revert of it already, whether under
+  // way or one that undid part of it before it was dismissed (the items no
+  // longer hold what this applied, so a second revert could only conflict).
+  const revertRefusal = (set: ChangeSet, reverts: readonly ChangeSet[]): Refusal | null => {
+    const pre = busy(set);
+    if (pre) return pre;
+    const refused = (message: string): Refusal => ({ code: "not-revertible", message });
+    if (set.revertOf !== null) return refused("this change set is itself a revert");
+    const applied = set.mutations.filter((m) => m.applied !== null);
+    if (applied.length === 0) return refused("nothing in this change set has been applied");
+    const sent = set.mutations.find((m) => m.status === "failed");
+    if (sent && set.decision?.kind !== "rejected")
+      return refused(
+        `mutation ${sent.seq} (${sent.op}) was sent and may have landed in ${catalogueFor(specs, mustSpec(specs, sent, set.mutations).kind).name}, so this change set can't be reverted until the rest of it is dismissed`,
+      );
+    if (
+      reverts.some(
+        (other) =>
+          other.decision?.kind !== "rejected" || other.mutations.some((m) => m.applied !== null),
       )
-      .map((m) => m.id);
+    )
+      return { code: "refused", message: "this change set has been reverted already" };
+    // Items it created: everything it did to one is undone by deleting it.
+    const created = new Map<ItemId, MutationRecord>();
+    for (const m of applied) {
+      const { kind, spec } = mustSpec(specs, m, set.mutations);
+      if (!hasWriter(kind))
+        return {
+          code: "read-only",
+          message: `Writing to ${catalogueFor(specs, kind).name} isn't configured here.`,
+        };
+      if (!spec.args(m.args).ok)
+        return refused(
+          `mutation ${m.seq} (${m.op}) is not revertible: stored arguments no longer valid`,
+        );
+      if (spec.creates && m.applied) created.set(m.applied.item.id, m);
+    }
+    for (const m of applied) {
+      if (!m.applied) continue;
+      const create = created.get(m.applied.item.id);
+      if (create && create !== m) continue;
+      const step = mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied);
+      if ("refused" in step)
+        return refused(`mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`);
+    }
+    return null;
   };
 
   // A change that was sent and got no answer may be in its source already.
@@ -834,75 +1116,51 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return [`This may already be in ${catalogue.name}: check ${what}`];
     });
 
-  // Whether `revert` would build a reverse change set: something applied,
-  // nothing sent and unanswered, every applied change undoable, no live
-  // revert of it already, and a writer to check conflicts with.
-  const revertible = (set: ChangeSet, reverts: readonly ChangeSet[]): boolean => {
-    if (set.revertOf !== null) return false;
-    const applied = set.mutations.filter((m) => m.applied !== null);
-    if (applied.length === 0) return false;
-    if (set.mutations.some((m) => m.status === "failed")) return false;
-    if (reverts.some((other) => other.decision?.kind !== "rejected")) return false;
-    const created = new Map<ItemId, MutationRecord>();
-    for (const m of applied) {
-      const { kind, spec } = mustSpec(specs, m, set.mutations);
-      if (!hasWriter(kind) || !spec.args(m.args).ok) return false;
-      if (spec.creates && m.applied) created.set(m.applied.item.id, m);
-    }
-    return applied.every((m) => {
-      if (!m.applied) return true;
-      const create = created.get(m.applied.item.id);
-      if (create && create !== m) return true;
-      return !("refused" in mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied));
-    });
-  };
-
-  // What a person can do now, and nothing the engine would refuse.
+  // Exactly the actions whose guards pass, in the order a person reads them.
   const stepsOf = (set: ChangeSet, reverts: readonly ChangeSet[]): NextStep[] => {
-    const unapplied = set.mutations.filter((m) => m.status !== "applied");
-    const applied = set.mutations.length - unapplied.length;
-    const sent = unapplied.some((m) => m.status === "failed");
-    const approved = set.decision?.kind === "approved";
     const steps: NextStep[] = [];
-    const [first] = unapplied;
-    if (first && set.decision?.kind !== "rejected") {
-      if (sendable(first, set, approved))
-        steps.push({ kind: approved ? "retry" : applied ? "approve-rest" : "approve" });
-      if (!applied && !sent) steps.push({ kind: "reject" });
-      const stopped = unapplied.some((m) => m.error !== null);
-      const ids = !approved || stopped ? removable(set) : [];
-      if (ids.length) steps.push({ kind: "remove", mutationIds: ids });
-      if (applied || sent) steps.push({ kind: "dismiss", warnings: warningsOf(set) });
-    }
-    if (revertible(set, reverts)) steps.push({ kind: "revert" });
+    if (!approveRefusal(set))
+      steps.push({
+        kind: set.mutations.some((m) => m.status === "applied") ? "approve-rest" : "approve",
+      });
+    if (!applyRefusal(set)) steps.push({ kind: "retry" });
+    if (!rejectRefusal(set)) steps.push({ kind: "reject" });
+    const removable = set.mutations
+      .filter((m) => m.status !== "applied")
+      .filter((m) => "edited" in editGuard(set, new Set([m.id]), new Map()))
+      .map((m) => m.id);
+    if (removable.length) steps.push({ kind: "remove", mutationIds: removable });
+    if (!dismissRefusal(set)) steps.push({ kind: "dismiss", warnings: warningsOf(set) });
+    if (!revertRefusal(set, reverts)) steps.push({ kind: "revert" });
     return steps;
   };
 
   const revertsOf = (set: ChangeSet): ChangeSet[] =>
-    rows
-      .ofThread(set.threadId)
-      .flatMap((id) => rows.load(id) ?? [])
-      .filter((other) => other.revertOf === set.id);
+    rows.revertsOf(set.id).flatMap((id) => rows.load(id) ?? []);
 
   // Sends unapplied mutations in seq order and stops at the first failure, so
   // a retry can't land a later mutation before an earlier one. Every write is
   // marked sent (failed, until its result is recorded) before it goes out, with
   // a mark unique to that send, so a crash mid-send leaves that on record and
   // of two instances only one can record the result. A stop before sending
-  // leaves the row as it was, to be checked again next time. A sent set op is
-  // retried, since it is idempotent and one already in place is recorded
-  // without sending; a sent create or link is never sent again. A row already
-  // sent when the pass began never records a `before` for the fields it writes:
-  // an earlier send may have landed, so the source's "before" may be Oriel's
-  // own value, and a revert must report that rather than restore it.
+  // leaves the row's status as it was, says why, and is checked again next
+  // time. A sent set op is retried once its lease runs out, since it is
+  // idempotent and one already in place is recorded without sending; a sent
+  // create or link is never sent again. A row already sent when the pass
+  // began never records a `before` for the fields it writes: an earlier send
+  // may have landed, so the source's "before" may be Oriel's own value, and a
+  // revert must report that rather than restore it. The caller has checked
+  // `applyRefusal`.
   const applyOnce = async (id: string): Promise<ApplyReport> => {
     const first = mustLoad(id);
-    const readOnly = unwritable(first);
-    if (readOnly) throw new ChangeSetError("read-only", readOnly);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
-    const halt = (mutationId: Ulid, error: string): ApplyReport => {
-      rows.markStopped(mutationId, error);
-      report.failed.push({ mutationId, error });
+    // Stops before sending, recording why on the row unless its own record
+    // says so already.
+    const stopAt = (mutationId: Ulid, refusal: Refusal): ApplyReport => {
+      if (refusal.stop && refusal.unsent)
+        rows.markRefused(refusal.stop, "pending", refusal.message);
+      else if (refusal.stop) rows.markStopped(refusal.stop, refusal.message);
+      report.failed.push({ mutationId, error: refusal.message });
       return report;
     };
     const fail = (mutationId: Ulid, error: string): ApplyReport => {
@@ -923,45 +1181,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const wasSent = m.status === "failed";
       const { kind, spec } = mustSpec(specs, m, set.mutations);
       const source = catalogueFor(specs, kind).name;
-      const uncertain = `This may already be in ${source}: check, then dismiss what is left of this change set.`;
-      if (wasSent && !spec.idempotent) {
-        report.failed.push({ mutationId, error: m.error ?? uncertain });
-        return report;
-      }
-      // A send still unanswered may still be on its way: neither send it again
-      // nor record it in place until its lease runs out. Nothing is written, so
-      // the mark stays.
-      const sentAt = m.error === null ? null : sendMark.exec(m.error)?.[1];
-      if (wasSent && sentAt && at().ms < Date.parse(sentAt) + sendLeaseMs) {
-        report.failed.push({
-          mutationId,
-          error: `Oriel sent this at ${sentAt} and has no answer yet; it may still be on its way. Try again after ${instant(new Date(Date.parse(sentAt) + sendLeaseMs))}.`,
-        });
-        return report;
-      }
-      // Arguments stored before the source's catalogue tightened may no
-      // longer pass it; nothing is sent on them. Checked after the two above,
-      // so a row already sent keeps its own message.
-      if (!spec.args(m.args).ok) return halt(mutationId, `${staleArgs}, so it wasn't sent.`);
+      let plan = sendPlan(m, set);
+      if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
       const writes = Object.keys(spec.after(m.args));
-      // Approval refuses both of these already; apply checks again anyway.
-      if (m.preview === null)
-        return halt(
-          mutationId,
-          "This hasn't been shown in a diff since the last edit, so it wasn't sent. Review the diff, then approve it.",
-        );
-      if (m.preview[goneMark] === true)
-        return halt(
-          mutationId,
-          `${key(m.target ?? "the new item")} couldn't be read when this was last reviewed, so it wasn't sent. Review it again once it can be read.`,
-        );
-      let where = resolve(m, set);
-      if ("failed" in where) return halt(mutationId, where.failed);
-      // A write that already landed is recorded, whatever the group holds now.
-      // Once checked, an earlier send of it is known not to be in place.
-      const checkedFirst = spec.idempotent && where.target !== null;
-      if (spec.idempotent && where.target !== null) {
-        const result = await inPlace(m, set, kind, spec, where.target);
+      // A write that already landed is recorded. Once checked, an earlier
+      // send of it is known not to be in place.
+      const checkedFirst = spec.idempotent && plan.target !== null;
+      if (spec.idempotent && plan.target !== null) {
+        const result = await inPlace(m, set, kind, spec, plan.target);
         if (result) {
           ({ m } = approved(id, mutationId));
           if (!m) continue;
@@ -970,11 +1197,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           continue;
         }
       }
-      const away = leftGroup(m, set, where.target);
-      if (away) return halt(mutationId, away);
       if (m.reverts) {
         const conflicts = await recheck(m.reverts);
-        if (conflicts.length) return halt(mutationId, explainConflicts(conflicts, specs));
+        if (conflicts.length)
+          return stopAt(mutationId, {
+            code: "refused",
+            message: explainConflicts(conflicts, specs),
+            stop: mutationId,
+          });
       }
 
       // Every await is behind us: from this check to the write nothing awaits,
@@ -985,24 +1215,16 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         report.skipped.push(mutationId);
         continue;
       }
-      where = resolve(m, set);
-      if ("failed" in where) return halt(mutationId, where.failed);
-      // The writer refuses a target whose handle names another item by now.
-      const expectedStableId = where.target === null ? null : stableIdFor(m, set, where.target);
-      if (where.target !== null && expectedStableId === null)
-        return halt(
-          mutationId,
-          `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
-        );
-      const gone = leftGroup(m, set, where.target);
-      if (gone) return halt(mutationId, gone);
+      plan = sendPlan(m, set, checkedFirst);
+      if ("refusal" in plan) return stopAt(mutationId, plan.refusal);
       const request = mint({
         mutationId: m.id,
         op: m.op,
-        target: where.target,
-        expectedStableId,
+        target: plan.target,
+        expectedStableId: plan.stableId,
         args: m.args,
       });
+      const uncertain = mayHaveLanded(source);
       const notice = spec.idempotent
         ? `Sent to ${source}, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.`
         : uncertain;
@@ -1019,40 +1241,35 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       }
       const sent = { status: "failed" as const, args: m.args, error: mark };
       const unsure = spec.idempotent ? "" : ` ${uncertain}`;
-      sending.add(mutationId);
+      let result: unknown;
       try {
-        let result: unknown;
-        try {
-          result = await writerOf(kind).apply(request);
-        } catch (error) {
-          const said = `${message(error).replace(/\.$/, "")}.`;
-          // Nothing landed: the source changed nothing, or the write was never
-          // sent. The row is unsent again, unless an earlier send of it went
-          // unchecked and may still be there.
-          if (error instanceof SourceRefused) {
-            const why = error.sent ? said : `${notSent}${said}`;
-            rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", why);
-            report.failed.push({ mutationId, error: why });
-            return report;
-          }
-          return fail(mutationId, `${said}${unsure}`);
+        result = await writerOf(kind).apply(request);
+      } catch (error) {
+        const said = `${message(error).replace(/\.$/, "")}.`;
+        // Nothing landed: the source changed nothing, or the write was never
+        // sent. The row is unsent again, unless an earlier send of it went
+        // unchecked and may still be there.
+        if (error instanceof SourceRefused) {
+          const why = error.sent ? said : `${notSent}${said}`;
+          rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", why);
+          report.failed.push({ mutationId, error: why });
+          return report;
         }
-        const checked = writeResult(result);
-        if (!checked.ok) {
-          return fail(
-            mutationId,
-            `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${unsure}`,
-          );
-        }
-        const before = wasSent
-          ? Object.fromEntries(
-              Object.entries(checked.value.before).filter(([f]) => !writes.includes(f)),
-            )
-          : checked.value.before;
-        rows.markApplied(mutationId, sent, { ...checked.value, before, at: deps.now() });
-      } finally {
-        sending.delete(mutationId);
+        return fail(mutationId, `${said}${unsure}`);
       }
+      const checked = writeResult(result);
+      if (!checked.ok) {
+        return fail(
+          mutationId,
+          `The source answered in a shape Oriel can't read: ${JSON.stringify(checked.issues)}.${unsure}`,
+        );
+      }
+      const before = wasSent
+        ? Object.fromEntries(
+            Object.entries(checked.value.before).filter(([f]) => !writes.includes(f)),
+          )
+        : checked.value.before;
+      rows.markApplied(mutationId, sent, { ...checked.value, before, at: deps.now() });
       report.applied.push(mutationId);
     }
 
@@ -1147,54 +1364,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const changes = new Map((parsed.value.set ?? []).map((s) => [s.mutationId, s.args]));
       const changed = transaction(db, () => {
         const current = mustLoad(id);
-        for (const mutationId of [...remove, ...changes.keys()]) {
-          const m = current.mutations.find((r) => r.id === mutationId);
-          if (!m)
-            throw new ChangeSetError("not-found", `no mutation ${mutationId} in this change set`);
-          if (m.status === "applied")
-            throw new ChangeSetError(
-              "refused",
-              `mutation ${m.seq} is already applied and can't be edited`,
-            );
-          if (sending.has(m.id))
-            throw new ChangeSetError(
-              "refused",
-              `mutation ${m.seq} is being applied right now and can't be edited`,
-            );
-          // A revert puts back what was there; changing a row of it would
-          // write something else under that name. Rows can only be removed.
-          if (m.reverts !== null && changes.has(mutationId))
-            throw new ChangeSetError(
-              "refused",
-              `mutation ${m.seq} undoes an earlier change: remove it from the revert instead of editing it`,
-            );
-          // A sent row may have landed: it can be removed, never changed.
-          if (m.status === "failed" && changes.has(mutationId))
-            throw new ChangeSetError(
-              "refused",
-              `mutation ${m.seq}: this change may already be in ${catalogueFor(specs, mustSpec(specs, m, current.mutations).kind).name}: check, then remove it`,
-            );
-          if (remove.has(mutationId) && changes.has(mutationId))
-            throw new ChangeSetError("invalid", `mutation ${m.seq} is both removed and changed`);
-        }
-        const kept = current.mutations.filter((m) => !remove.has(m.id));
-        if (kept.length === 0)
-          throw new ChangeSetError("invalid", "an edit can't leave a change set with no changes");
-        const checked = check(
-          specs,
-          kept.map((m) => ({ ...m, args: changes.has(m.id) ? changes.get(m.id) : m.args })),
-        );
-        // Targets don't change in an edit, and a revert's may be items it
-        // created, so only the edited arguments are held to the region.
-        const edited = kept.flatMap((row, i) => {
-          const m = checked[i];
-          return m && changes.has(row.id) ? [{ id: row.id, seq: row.seq, m }] : [];
-        });
-        const region = rows.region(current.runId, current.workspaceId);
-        const outside = outsideRegion(edited, (handle) => region.has(handle), false);
-        if (outside) throw new ChangeSetError("refused", outside);
+        const guarded = editGuard(current, remove, changes);
+        if ("refusal" in guarded) return refuse(guarded.refusal);
         for (const mutationId of remove) rows.remove(current.id, mutationId);
-        for (const { id: mutationId, m } of edited) rows.setArgs(current.id, mutationId, m.args);
+        for (const { id: mutationId, args } of guarded.edited)
+          rows.setArgs(current.id, mutationId, args);
         // An edit that changes nothing changes nothing: the approval and what
         // the diff showed both stand. Otherwise the earlier diff no longer
         // stands for these rows, and the new hash voids the approval.
@@ -1239,24 +1413,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             "this change set changed after you reviewed it; review the new diff",
           );
         }
-        // An approval needs a diff shown since the last edit for every row it
-        // will send, and none of them shown as gone.
-        const open = current.mutations.filter((m) => m.status !== "applied");
-        const unseen = open.find((m) => m.preview === null);
-        const gone = open.find((m) => m.preview?.[goneMark] === true);
-        const readOnly = unwritable(current);
-        if (decision.value === "approved" && readOnly)
-          throw new ChangeSetError("read-only", readOnly);
-        if (decision.value === "approved" && unseen)
-          throw new ChangeSetError(
-            "refused",
-            `mutation ${unseen.seq} hasn't been shown in a diff since the last edit; review the diff, then approve`,
-          );
-        if (decision.value === "approved" && gone)
-          throw new ChangeSetError(
-            "refused",
-            `${key(gone.target ?? "the new item")} couldn't be read when this was last reviewed; it can be approved once it can be read again`,
-          );
+        const refusal =
+          decision.value === "approved" ? approveRefusal(current) : rejectRefusal(current);
+        if (refusal) refuse(refusal);
         rows.insertDecision({
           id: ulid(ms),
           workspaceId: current.workspaceId,
@@ -1284,8 +1443,12 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     },
 
     async apply(id) {
-      if (applying.has(id))
-        throw new ChangeSetError("busy", "this change set is already being applied");
+      const refusal = applyRefusal(mustLoad(id));
+      if (refusal) {
+        // A stop says why on the row, as one partway through would.
+        if (refusal.stop) rows.markStopped(refusal.stop, refusal.message);
+        refuse(refusal);
+      }
       applying.add(id);
       try {
         return await applyOnce(id);
@@ -1294,34 +1457,20 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       }
     },
 
-    // Reverses what has been applied. Refused while any unapplied row was sent,
-    // since it may have landed and a revert would leave it behind. A partly
-    // applied change set loses its unsent rows in the same transaction, so
-    // nothing more of it can land; that voids its approval.
+    applying(id) {
+      return applying.has(id);
+    },
+
+    // Reverses exactly what has been applied (see `revertRefusal`). A partly
+    // applied change set that wasn't dismissed loses its unsent rows in the
+    // same transaction, so nothing more of it can land; that voids its
+    // approval. A dismissed one keeps its rows, and with them what its
+    // dismissal said may have landed.
     async revert(id) {
-      const busy = () =>
-        new ChangeSetError("busy", "this change set is being applied; revert it once that ends");
-      const sentUnapplied = (current: ChangeSet): ChangeSetError | null => {
-        const m = current.mutations.find((r) => r.status === "failed");
-        if (!m) return null;
-        const source = catalogueFor(specs, mustSpec(specs, m, current.mutations).kind).name;
-        return new ChangeSetError(
-          "not-revertible",
-          `mutation ${m.seq} (${m.op}) was sent and may have landed in ${source}, so this change set can't be reverted`,
-        );
-      };
       const set = mustLoad(id);
-      const unsent = sentUnapplied(set);
-      if (unsent) throw unsent;
+      const refusal = revertRefusal(set, revertsOf(set));
+      if (refusal) refuse(refusal);
       const applied = set.mutations.filter((m) => m.applied !== null);
-      if (applied.length === 0)
-        throw new ChangeSetError("not-revertible", "nothing in this change set has been applied");
-      const stale = applied.find((m) => !mustSpec(specs, m, set.mutations).spec.args(m.args).ok);
-      if (stale)
-        throw new ChangeSetError(
-          "not-revertible",
-          `mutation ${stale.seq} (${stale.op}) is not revertible: stored arguments no longer valid`,
-        );
 
       // Items this change set created. Everything it did to one is undone by
       // deleting it, once.
@@ -1330,8 +1479,6 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         if (m.applied && mustSpec(specs, m, set.mutations).spec.creates)
           created.set(m.applied.item.id, m);
 
-      // Conflicts first: a value Oriel never learned is reported here, not
-      // turned into a reverse it can't build.
       const conflicts: Conflict[] = [];
       for (const item of created.keys()) {
         const conflict = await touched(
@@ -1363,11 +1510,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         const create = created.get(item);
         if (create && create !== m) continue;
         const step = mustSpec(specs, m, set.mutations).spec.undo(m.args, m.applied);
-        if ("refused" in step)
-          throw new ChangeSetError(
-            "not-revertible",
-            `mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`,
-          );
+        // The guard found every one undoable.
+        if ("refused" in step) throw new Error(`mutation ${m.id} can't be undone: ${step.refused}`);
         undo.push({ reverts: m.id, op: step.op, target: item, ref: null, args: step.args });
       }
       const checked = check(specs, undo);
@@ -1375,11 +1519,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       transaction(db, () => {
         // Nothing may have been sent, landed or started since the plan was made.
         const now = mustLoad(set.id);
+        const again = revertRefusal(now, revertsOf(now));
+        if (again) refuse(again);
         const appliedNow = now.mutations.filter((m) => m.applied !== null).map((m) => m.id);
-        if (applying.has(set.id) || appliedNow.join() !== applied.map((m) => m.id).join())
-          throw busy();
-        const sentNow = sentUnapplied(now);
-        if (sentNow) throw sentNow;
+        if (appliedNow.join() !== applied.map((m) => m.id).join())
+          throw new ChangeSetError(
+            "busy",
+            "more of this change set applied while the revert was being made; revert it again",
+          );
         insertAll(
           {
             id: reverseId,
@@ -1390,7 +1537,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           },
           checked.map((m, i) => ({ ...m, reverts: undo[i]?.reverts ?? null })),
         );
-        for (const m of now.mutations) if (m.applied === null) rows.remove(now.id, m.id);
+        if (now.decision?.kind !== "rejected")
+          for (const m of now.mutations) if (m.applied === null) rows.remove(now.id, m.id);
       });
       deps.emit({
         name: "changeset.reverted",
@@ -1445,17 +1593,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return stepsOf(set, revertsOf(set));
     },
 
-    // Rejects what hasn't applied, as the person reviewed it: the set as it
-    // stands. What did apply stays, and can still be reverted.
+    // Rejects what hasn't applied, as the set stands, and says what may have
+    // landed anyway. What did apply stays, and a revert covers exactly that.
+    // Dismissing a change set already rejected or dismissed changes nothing.
     async dismiss(id) {
-      const set = transaction(db, () => {
+      const result = transaction(db, () => {
         const current = mustLoad(id);
-        if (current.mutations.every((m) => m.status === "applied"))
-          throw new ChangeSetError(
-            "refused",
-            "every change in this change set has applied; nothing is left to dismiss",
-          );
-        if (current.decision?.kind === "rejected") return current;
+        if (current.decision?.kind === "rejected") return { set: current, dismissed: false };
+        const refusal = dismissRefusal(current);
+        if (refusal) refuse(refusal);
         const { now, ms } = at();
         rows.insertDecision({
           id: ulid(ms),
@@ -1469,17 +1615,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           at: now,
         });
         rows.revokeLinks(current.id, now);
-        return current;
+        return { set: current, dismissed: true };
       });
-      deps.emit({
-        name: "changeset.decided",
-        at: deps.now(),
-        workspaceId: set.workspaceId,
-        changeSetId: set.id,
-        decision: "rejected",
-        via: "thread",
-      });
-      return { changeSet: mustLoad(id), warnings: warningsOf(set) };
+      // Not a rejection: the person didn't decline the change; the source
+      // stopped it partway.
+      if (result.dismissed)
+        deps.emit({
+          name: "changeset.dismissed",
+          at: deps.now(),
+          workspaceId: result.set.workspaceId,
+          changeSetId: result.set.id,
+        });
+      return { changeSet: mustLoad(id), warnings: warningsOf(result.set) };
     },
   };
 }

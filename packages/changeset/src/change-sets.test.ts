@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CapturedMutation } from "@oriel/core";
 import { groupStore } from "@oriel/db";
-import { sendLeaseMs } from "./change-sets.ts";
+import { ChangeSetError, sendLeaseMs } from "./change-sets.ts";
 import { approve, count, nth, preview, setup, status, t0 } from "./testing.ts";
 
 const estimate = (target: string, points: number | null): CapturedMutation => ({
@@ -211,12 +211,10 @@ test("an item removed from the group after capture is never written (decision 00
   const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
   groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
   await approve(changeSets, set.id);
-  const report = await changeSets.apply(set.id);
-  assert.deepEqual(report.applied, []);
-  assert.match(
-    nth(report.failed, 0).error,
-    /^SYN-21 was removed from the group after this was captured, so it wasn't sent\.$/,
-  );
+  const why = /^SYN-21 was removed from the group after this was captured, so it wasn't sent\.$/;
+  await assert.rejects(changeSets.apply(set.id), { code: "refused", message: why });
+  // The row says why, as a stop partway through would.
+  assert.match(String((await changeSets.get(set.id))?.mutations[0]?.error), why);
   assert.deepEqual(jira.calls, []);
 });
 
@@ -260,8 +258,10 @@ test("a sent create keeps its own message, even with stored arguments the catalo
   // As if approved before the catalogue tightened: the approval matches these rows.
   const { hash } = await changeSets.diff(set.id);
   db.prepare("update decisions set hash = ? where change_set_id = ?").run(hash, set.id);
-  const retry = await changeSets.apply(set.id);
-  assert.deepEqual(retry.failed, [{ mutationId, error: sent }]);
+  await assert.rejects(changeSets.apply(set.id), {
+    code: "refused",
+    message: /may already be in Jira: check, then dismiss/,
+  });
   assert.equal(error(), sent);
   assert.equal(jira.calls.length, 1);
 });
@@ -314,12 +314,10 @@ test("a key another item took after capture is never written", async () => {
     { ...indexed("SYN-21"), id: "jira:OPS-5" },
     { ...indexed("SYN-14"), id: "jira:SYN-21", stableId: "99999" },
   ]);
-  const report = await changeSets.apply(set.id);
-  assert.deepEqual(report.applied, []);
-  assert.match(
-    nth(report.failed, 0).error,
-    /SYN-21 no longer names an item in the region this change was made in/,
-  );
+  await assert.rejects(changeSets.apply(set.id), {
+    code: "refused",
+    message: /SYN-21 no longer names an item in the region this change was made in/,
+  });
   assert.deepEqual(jira.calls, []);
 });
 
@@ -518,12 +516,7 @@ test("apply itself won't send a row with no preview or one shown as gone", async
     await approve(changeSets, set.id);
     // Past approval's own checks, as a bug or a hand-edited database might.
     db.prepare("update mutations set preview = ? where id = ?").run(shown, mutationId);
-    const report = await changeSets.apply(set.id);
-    assert.deepEqual(
-      report.failed.map((f) => f.mutationId),
-      [mutationId],
-      String(shown),
-    );
+    await assert.rejects(changeSets.apply(set.id), { code: "refused" }, String(shown));
     assert.deepEqual(jira.calls, []);
     assert.equal(status(db, mutationId), "pending");
   }
@@ -543,18 +536,21 @@ test("an edit after approval voids it: apply refuses and writes nothing", async 
   assert.equal(jira.issue("SYN-21")?.points, 2);
 });
 
-test("an edit during apply stops every write after it", async () => {
-  const { changeSets, run, jira } = setup();
+test("an edit after approval from outside the engine stops every write after it", async () => {
+  const { changeSets, run, jira, db } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
     estimate("jira:SYN-117", 2),
   ]);
   await approve(changeSets, set.id);
-  jira.hooks.after = async (_request, call) => {
+  // The engine refuses edits while it applies; a row rewritten behind its
+  // back still voids the approval.
+  jira.hooks.after = (_request, call) => {
     if (call !== 1) return;
-    await changeSets.edit(set.id, {
-      set: [{ mutationId: nth(set.mutations, 1).id, args: { points: 13 } }],
-    });
+    db.prepare("update mutations set args = ? where id = ?").run(
+      '{"points":13}',
+      nth(set.mutations, 1).id,
+    );
   };
   await assert.rejects(changeSets.apply(set.id), { code: "not-approved" });
   assert.equal(jira.calls.length, 1);
@@ -584,7 +580,7 @@ test("the mutation being written can't be edited or removed", async () => {
     );
   };
   const report = await changeSets.apply(set.id);
-  assert.deepEqual(await Promise.all(attempts), ["refused", "refused"]);
+  assert.deepEqual(await Promise.all(attempts), ["busy", "busy"]);
   assert.deepEqual(report.applied, [mutationId, nth(set.mutations, 1).id]);
   assert.equal(jira.issue("SYN-21")?.points, 5);
 });
@@ -645,14 +641,15 @@ test("a send still unanswered isn't repeated by another instance within its leas
   await approve(changeSets, set.id);
   let other: unknown;
   jira.hooks.before = async (_request, call) => {
-    if (call === 1) other = await instance().apply(set.id);
+    if (call === 1)
+      other = await instance()
+        .apply(set.id)
+        .catch((error: unknown) => error);
   };
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [mutationId]);
-  assert.match(
-    String((other as { failed: { error: string }[] }).failed[0]?.error),
-    /it may still be on its way/,
-  );
+  assert.ok(other instanceof ChangeSetError);
+  assert.match(other.message, /it may still be on its way/);
   assert.equal(jira.calls.length, 1);
   assert.equal(status(db, mutationId), "applied");
 });
@@ -687,13 +684,13 @@ test("of two instances that both sent a row, only the later mark records it", as
   assert.equal(status(db, mutationId), "applied");
   assert.equal(jira.calls.length, 2);
   // The instance that recorded it saw the row already sent, so the source's
-  // "before" may be Oriel's own write: a revert reports it, not restores it.
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(
-    result.conflicts.map((c) => [c.target, c.field, c.expected]),
-    [["jira:SYN-21", "points", undefined]],
-  );
+  // "before" may be Oriel's own write: a revert can't restore it, and isn't
+  // offered.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /didn't report the earlier points/,
+  });
 });
 
 test("apply replays exactly the captured arguments, in seq order", async () => {
@@ -732,11 +729,8 @@ test("apply replays exactly the captured arguments, in seq order", async () => {
   // Once applied, a line shows what Jira reported, without its update time.
   const shown = await changeSets.diff(set.id);
   assert.deepEqual(nth(shown.lines, 1).fields, [{ name: "points", before: 2, after: 5 }]);
-  const again = await changeSets.apply(set.id);
-  assert.deepEqual(
-    again.skipped,
-    set.mutations.map((m) => m.id),
-  );
+  // Nothing is left to apply, so applying again is refused.
+  await assert.rejects(changeSets.apply(set.id), { code: "refused" });
   assert.equal(jira.calls.length, 3);
 });
 
@@ -785,11 +779,10 @@ test("a create that failed may have landed, so it is never sent again", async ()
   assert.match(nth(report.failed, 0).error, /may already be in Jira: check, then dismiss/);
   jira.hooks.after = undefined;
 
-  const retry = await changeSets.apply(set.id);
-  assert.deepEqual(
-    retry.failed.map((f) => f.mutationId),
-    [create],
-  );
+  await assert.rejects(changeSets.apply(set.id), {
+    code: "refused",
+    message: /may already be in Jira: check, then dismiss/,
+  });
   assert.equal(jira.calls.length, 1);
   assert.deepEqual(jira.created, ["SYN-900"]);
 
@@ -848,8 +841,7 @@ test("after a crash, apply resumes and skips what already landed", async () => {
   // still be on its way. After the lease it resumes, and resolves new:1 from
   // the stored result of the create.
   const restarted = instance();
-  const early = await restarted.apply(set.id);
-  assert.match(nth(early.failed, 0).error, /it may still be on its way/);
+  await assert.rejects(restarted.apply(set.id), { message: /it may still be on its way/ });
   assert.equal(jira.calls.length, 2);
   advance(sendLeaseMs);
   const report = await restarted.apply(set.id);
@@ -888,13 +880,10 @@ test("a crash after a create was sent leaves it blocked, not sent twice", async 
   await reached.promise;
   jira.hooks.after = undefined;
 
-  const report = await instance().apply(set.id);
-  assert.deepEqual(report.applied, []);
-  assert.deepEqual(
-    report.failed.map((f) => f.mutationId),
-    [create],
-  );
-  assert.match(nth(report.failed, 0).error, /may already be in Jira: check, then dismiss/);
+  await assert.rejects(instance().apply(set.id), {
+    code: "refused",
+    message: /may already be in Jira: check, then dismiss/,
+  });
   assert.equal(status(db, create), "failed");
   assert.equal(jira.calls.length, 1);
   assert.deepEqual(jira.created, ["SYN-900"]);
@@ -918,11 +907,7 @@ test("a crash while a create is being sent leaves it blocked, even if it never l
   await reached.promise;
   jira.hooks.before = undefined;
 
-  const report = await instance().apply(set.id);
-  assert.deepEqual(
-    report.failed.map((f) => f.mutationId),
-    [create],
-  );
+  await assert.rejects(instance().apply(set.id), { message: /may already be in Jira/ });
   assert.equal(status(db, create), "failed");
   assert.equal(jira.calls.length, 1);
   assert.deepEqual(jira.created, []);
@@ -948,7 +933,7 @@ test("a send another instance started meanwhile isn't repeated or reset", async 
     await sentElsewhere.promise;
   };
   const report = await changeSets.apply(set.id);
-  assert.match(nth(report.failed, 0).error, /Another apply is sending this change/);
+  assert.match(nth(report.failed, 0).error, /it may still be on its way/);
   assert.equal(jira.calls.length, 1);
   assert.equal(status(db, mutationId), "failed");
   assert.match(

@@ -1,25 +1,44 @@
 // A model-based test: seeded random histories of what a PM, a teammate, two
 // Oriel instances and a flaky Jira do, with invariants checked after every
 // step. A pure function of the seed: no clock, no sleeps.
+//
+// Besides what lands, it checks what is offered. After every step, each of
+// the newest change sets offers a step or is done with (invariant 8), and
+// every step offered succeeds when taken from that state (invariant 7),
+// tried on a copy of the database and of Jira so the walk goes on from the
+// state as it was. While an apply is in flight, nothing is offered and every
+// action is refused as busy (invariant 9).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   type CapturedMutation,
+  type ChangeSet,
   type ChangeSets,
   type Instant,
   instant,
+  type NextStep,
   parseItemId,
   type SourceWriter,
   type Ulid,
 } from "@oriel/core";
+import { open } from "@oriel/db";
 import { ChangeSetError, changeSetsOver } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
 import { store } from "./store.ts";
-import { fixtureJira, type MemoryIssue, memoryJira, nth, setup, specs, t0 } from "./testing.ts";
+import {
+  fixtureJira,
+  forkJira,
+  type MemoryIssue,
+  memoryJira,
+  nth,
+  setup,
+  specs,
+  t0,
+} from "./testing.ts";
 
 const seed = 20261029;
 const sequences = 200;
-const steps = 22;
+const steps = 28;
 
 // mulberry32: small, fast, and the same everywhere.
 function prng(start: number): () => number {
@@ -43,6 +62,38 @@ const fieldOf = (issue: MemoryIssue, field: Field) =>
 const idempotent = (op: string) => specs.jira?.ops[op]?.idempotent === true;
 
 type Fault = "fail" | "lost" | "crash" | null;
+
+const thread = { via: "thread", by: "pm" } as const;
+const reviewBase = new URL("http://localhost:4000/review/");
+
+// Whether every change a set applied can be undone, judged from its rows
+// alone: a change to an item it created goes with the item.
+function undoable(set: ChangeSet): boolean {
+  const created = new Set(
+    set.mutations.flatMap((m) =>
+      m.applied && specs.jira?.ops[m.op]?.creates ? [m.applied.item.id] : [],
+    ),
+  );
+  return set.mutations.every((m) => {
+    if (!m.applied) return true;
+    const spec = specs.jira?.ops[m.op];
+    if (!spec?.args(m.args).ok) return false;
+    if (created.has(m.applied.item.id) && !spec.creates) return true;
+    return !("refused" in spec.undo(m.args, m.applied));
+  });
+}
+
+// Done with: nothing more of it applies (it applied in full, or it was
+// rejected or dismissed) and nothing it applied can be reverted (nothing
+// did, it is a revert itself, or a change can't be undone); or a revert of
+// it is under way or undid part of it.
+function finished(set: ChangeSet, reverts: readonly ChangeSet[]): boolean {
+  if (reverts.some((r) => r.decision?.kind !== "rejected" || r.mutations.some((m) => m.applied)))
+    return true;
+  const applied = set.mutations.filter((m) => m.applied !== null);
+  const settled = set.decision?.kind === "rejected" || applied.length === set.mutations.length;
+  return settled && (applied.length === 0 || set.revertOf !== null || !undoable(set));
+}
 
 async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const random = prng(seed + sequence * 7919);
@@ -100,7 +151,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       db,
       sources: { jira: { writer, reader: jira.reader } },
       specs,
-      reviewBase: new URL("http://localhost:4000/review/"),
+      reviewBase,
       now: () => clock,
       emit: () => {},
     });
@@ -292,6 +343,163 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     ]);
     if (outcome === "crashed") instances[slot] = instance();
   };
+
+  // States the offered-step invariants must reach, counted over the run.
+  const reached = {
+    dismissedWithSent: 0,
+    goneUnapproved: 0,
+    stale: 0,
+    applying: 0,
+    dismissedPartReverse: 0,
+  };
+
+  // Invariant 7: takes one offered step on a copy of the database and of
+  // Jira, and checks that it succeeds. A retry must send, or record in place,
+  // its first change: only a revert's conflict check or (for a change sent
+  // before, once found not in place) the group may stop it, since those read
+  // the source.
+  const probe = async (id: Ulid, step: NextStep, mutationId?: Ulid) => {
+    const copy = open(":memory:");
+    copy.deserialize(db.serialize());
+    const fork = forkJira(jira);
+    const engine = changeSetsOver({
+      db: copy,
+      sources: { jira: { writer: fork.writer, reader: fork.reader } },
+      specs,
+      reviewBase,
+      now: () => clock,
+      emit: () => {},
+    });
+    const copied = store(copy);
+    const set = copied.load(id);
+    try {
+      if (!set) throw new Error("gone");
+      switch (step.kind) {
+        case "approve":
+        case "approve-rest": {
+          await engine.decide(id, "approved", thread, set.hash);
+          // What approval vouches for (each change shown, readable and
+          // valid) never stops the apply that follows it.
+          const report = await engine.apply(id).catch((error: unknown) => ({
+            failed: [{ error: error instanceof Error ? error.message : String(error) }],
+          }));
+          const vouched = /no longer valid|hasn.t been shown in a diff|couldn.t be read when/;
+          const stop = report.failed.find((f) => vouched.test(f.error));
+          if (stop) problem(`${id} was approved, then apply stopped: ${stop.error}`);
+          break;
+        }
+        case "reject":
+          await engine.decide(id, "rejected", thread, set.hash);
+          break;
+        case "remove":
+          await engine.edit(id, { remove: mutationId ? [mutationId] : [] });
+          break;
+        case "retry": {
+          const first = set.mutations.find((m) => m.status !== "applied");
+          const report = await engine.apply(id);
+          const why = report.failed[0]?.error ?? "";
+          if (
+            report.applied.length === 0 &&
+            fork.calls.length === 0 &&
+            first?.status !== "failed" &&
+            !why.startsWith("Stopped, so nothing was overwritten")
+          )
+            problem(`retry of ${id} was offered, then stopped before sending: ${why}`);
+          break;
+        }
+        case "revert": {
+          await engine.revert(id);
+          // One revert at a time: no other may be under way, or have undone
+          // part of it.
+          const standing = copied
+            .revertsOf(id)
+            .flatMap((r) => copied.load(r) ?? [])
+            .filter((r) => r.decision?.kind !== "rejected" || r.mutations.some((m) => m.applied));
+          if (standing.length > 1) problem(`${id} was reverted while a revert of it stands`);
+          break;
+        }
+        case "dismiss":
+          await engine.dismiss(id);
+          break;
+      }
+    } catch (error) {
+      problem(
+        `${step.kind} of ${id} was offered, then failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      copy.close();
+    }
+  };
+
+  // Invariants 7 and 8, over the newest change sets: the ones the walk acts
+  // on. Older ones change only through a teammate, which no guard reads. A
+  // state already seen isn't checked again: what a guard reads is the set's
+  // rows, its reverts', and the clock while a send's lease may be running.
+  const seen = new Set<string>();
+  const checkSteps = async () => {
+    const a = nth(instances, 0);
+    for (const { id } of sets.slice(-4)) {
+      const set = rows.load(id);
+      if (!set) continue;
+      const reverts = sets.flatMap((s) => (s.revertOf === id ? (rows.load(s.id) ?? []) : []));
+      const leased = set.mutations.some((m) => m.status === "failed");
+      const state = JSON.stringify([set, reverts, leased ? clock : null]);
+      if (seen.has(state)) continue;
+      seen.add(state);
+      const steps = await a.nextSteps(id);
+      if (steps.length === 0 && !finished(set, reverts))
+        problem(`${id} offers nothing, yet isn't done with`);
+      for (const step of steps) {
+        if (step.kind === "remove")
+          for (const mutationId of step.mutationIds) await probe(id, step, mutationId);
+        else await probe(id, step);
+      }
+      const kinds = steps.map((s) => s.kind);
+      const open = set.mutations.filter((m) => m.status !== "applied");
+      const rejected = set.decision?.kind === "rejected";
+      if (
+        rejected &&
+        set.mutations.some((m) => m.applied) &&
+        open.some((m) => m.status === "failed")
+      )
+        reached.dismissedWithSent += 1;
+      if (open.some((m) => m.preview?.["$gone"] === true) && !kinds.includes("approve"))
+        reached.goneUnapproved += 1;
+      if (open.some((m) => !specs.jira?.ops[m.op]?.args(m.args).ok)) reached.stale += 1;
+      if (set.revertOf !== null && rejected && set.mutations.some((m) => m.applied))
+        reached.dismissedPartReverse += 1;
+    }
+  };
+
+  // Invariant 9: while instance 0 applies a change set, it offers nothing
+  // and refuses every action as busy.
+  const checkBusy = async (id: Ulid) => {
+    const a = nth(instances, 0);
+    const set = rows.load(id);
+    if (!set) return;
+    reached.applying += 1;
+    if (!a.applying(id)) problem(`${id} isn't marked as applying while it applies`);
+    const offered = await a.nextSteps(id);
+    if (offered.length) problem(`${id} offered ${offered.map((s) => s.kind)} while it applies`);
+    const open = set.mutations.find((m) => m.status !== "applied");
+    const actions: [string, () => Promise<unknown>][] = [
+      ["approve", () => a.decide(id, "approved", thread, set.hash)],
+      ["reject", () => a.decide(id, "rejected", thread, set.hash)],
+      ["retry", () => a.apply(id)],
+      ["revert", () => a.revert(id)],
+      ["dismiss", () => a.dismiss(id)],
+      ...(open
+        ? [["remove", () => a.edit(id, { remove: [open.id] })] as [string, () => Promise<unknown>]]
+        : []),
+    ];
+    for (const [name, act] of actions) {
+      const outcome = await act().then(
+        () => "done",
+        (error: unknown) => (error instanceof ChangeSetError ? error.code : String(error)),
+      );
+      if (outcome !== "busy") problem(`${name} of ${id} while it applies: ${outcome}, not busy`);
+    }
+  };
   // Render, approve and apply in one go, perhaps with a fault on the first write.
   const ship = async (id: Ulid) => {
     const a = nth(instances, 0);
@@ -308,6 +516,23 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   };
 
   let teammate = 0;
+  const hidden = new Set<string>();
+  const applyWithFault = async (id: Ulid) => {
+    fault = pick<Fault>([null, null, "fail", "lost", "crash"]);
+    faultAfter = pick([0, 1, 1]);
+    await applyOn(pick([0, 1]), id);
+    fault = null;
+  };
+  const revert = async (id: Ulid) => {
+    let reverse: Ulid | null = null;
+    await attempt(async () => {
+      const result = await nth(instances, 0).revert(id);
+      if ("conflicts" in result) return;
+      remember(result);
+      reverse = result.id;
+    });
+    if (reverse && chance(0.6)) await ship(reverse);
+  };
   // Mostly the newest change set, so a revert tends to get shipped too.
   const randomSet = () => {
     const newest = sets.at(-1);
@@ -331,6 +556,9 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   const randomMutations = (): CapturedMutation[] => {
     if (chance(0.8)) return [setOp(pick(pool))];
     return [
+      // Sometimes a change lands before the create, so a create sent with no
+      // answer can sit next to applied rows.
+      ...(chance(0.4) ? [setOp(pick(pool))] : []),
       {
         op: "createStory",
         target: null,
@@ -353,6 +581,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
 
   // A random walk that leans toward the next interesting move: retry or
   // revert what was sent, revert or edit around what applied, ship a revert.
+  // A random walk that also takes the steps the engine offers, and moves the
+  // world under them: an item that can't be read, a catalogue that tightened.
   type Action =
     | "capture"
     | "ship"
@@ -362,7 +592,11 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     | "both"
     | "edit"
     | "teammate"
-    | "revert";
+    | "revert"
+    | "step"
+    | "dismiss"
+    | "hide"
+    | "tighten";
   const chooseAction = (): Action => {
     const newest = sets.at(-1);
     if (!newest) return "capture";
@@ -376,10 +610,14 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       ["render", 0.4],
       ["decide", 0.5],
       ["apply", sent ? 3 : 1],
-      ["both", sent ? 1.5 : 0.6],
+      ["both", sent ? 2 : 1],
       ["edit", sent || newest.revertOf !== null ? 1.5 : 0.8],
       ["teammate", done || sent ? 2.5 : 1.5],
       ["revert", done ? 3 : sent ? 3 : 0.5],
+      ["step", 3],
+      ["dismiss", sent ? 1.5 : 0.3],
+      ["hide", 0.4],
+      ["tighten", 0.3],
     ];
     let roll = random() * weights.reduce((sum, [, w]) => sum + w, 0);
     for (const [action, weight] of weights) {
@@ -408,7 +646,8 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     } else if (action === "decide") {
       const id = randomSet();
       if (!id) continue;
-      const kind = chance(0.8) ? "approved" : "rejected";
+      // A rejection is final, so it ends a set's history: rarely.
+      const kind = chance(0.9) ? "approved" : "rejected";
       trail.push(kind === "approved" ? "approve" : "reject");
       const hash = rows.load(id)?.hash ?? "";
       await attempt(() => a.decide(id, kind, { via: "thread", by: "pm" }, hash));
@@ -426,7 +665,15 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
       const id = randomSet();
       if (!id) continue;
       trail.push("apply(both)");
-      whileSending = () => applyOn(1, id);
+      // Approved first, if it can be, so that a write goes out.
+      await attempt(async () => {
+        const shown = await a.diff(id);
+        await a.decide(id, "approved", thread, shown.hash);
+      });
+      whileSending = async () => {
+        await checkBusy(id);
+        await applyOn(1, id);
+      };
       await applyOn(0, id);
       whileSending = null;
     } else if (action === "edit") {
@@ -497,18 +744,63 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
         field === "points" ? { points: value as number | null } : { summary: String(value) },
       );
       dirty.add(`${key}|${field}`);
-    } else {
+    } else if (action === "revert") {
       const id = randomSet();
       if (!id) continue;
       trail.push("revert");
-      let reverse: Ulid | null = null;
-      await attempt(async () => {
-        const result = await a.revert(id);
-        if ("conflicts" in result) return;
-        remember(result);
-        reverse = result.id;
-      });
-      if (reverse && chance(0.6)) await ship(reverse);
+      await revert(id);
+    } else if (action === "step") {
+      // One of the steps the engine offers, taken for real.
+      const id = randomSet();
+      if (!id) continue;
+      const offered = await a.nextSteps(id);
+      if (offered.length === 0) continue;
+      const next = pick(offered);
+      trail.push(`step(${next.kind})`);
+      const hash = rows.load(id)?.hash ?? "";
+      if (next.kind === "approve" || next.kind === "approve-rest") {
+        await attempt(() => a.decide(id, "approved", thread, hash));
+        if (chance(0.7)) await applyWithFault(id);
+      } else if (next.kind === "retry") await applyWithFault(id);
+      else if (next.kind === "reject") await attempt(() => a.decide(id, "rejected", thread, hash));
+      else if (next.kind === "remove") {
+        const mutationId = pick(next.mutationIds);
+        await attempt(async () => {
+          await a.edit(id, { remove: [mutationId] });
+          removed.add(mutationId);
+        });
+      } else if (next.kind === "dismiss") await attempt(() => a.dismiss(id));
+      else await revert(id);
+    } else if (action === "dismiss") {
+      const id = randomSet();
+      if (!id) continue;
+      trail.push("dismiss");
+      await attempt(() => a.dismiss(id));
+    } else if (action === "hide") {
+      // A story becomes unreadable (deleted, moved, forbidden), or readable
+      // again; the next diff shows it gone, or back.
+      // Mostly briefly: one hidden comes back more often than not.
+      const back = [...hidden];
+      if (back.length && chance(0.7)) {
+        const key = pick(back);
+        trail.push(`show(${key})`);
+        hidden.delete(key);
+        jira.show(key);
+      } else {
+        const key = pick([...pool.map((id) => parseItemId(id)?.key ?? ""), ...jira.created]);
+        trail.push(`hide(${key})`);
+        hidden.add(key);
+        jira.hide(key);
+      }
+    } else {
+      // Jira's catalogue tightens under a change not yet applied, other than
+      // the next one: its stored arguments no longer pass.
+      const id = randomSet();
+      const open = id ? (rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? []) : [];
+      const later = open.slice(1).filter((m) => m.op === "setEstimate" || m.op === "setSummary");
+      if (!id || later.length === 0) continue;
+      trail.push("tighten");
+      db.prepare("update mutations set args = '{}' where id = ?").run(pick(later).id);
     }
     for (const { id } of sets) {
       const set = rows.load(id);
@@ -517,24 +809,32 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     absorb();
     checkReverts();
     checkApplied();
+    await checkSteps();
     for (const id of known.keys())
       if (rows.mutation(id)?.status === "applied") appliedBefore.add(id);
     if (problems.length)
       assert.fail(`sequence ${sequence}: ${problems.join("; ")}\n  steps: ${trail.join(" → ")}`);
   }
-  return { landed: jira.landings.length, reverts: checked };
+  return { landed: jira.landings.length, reverts: checked, reached };
 }
 
 test("model: random histories keep the change-set invariants", async () => {
   const shared = setup();
   let landed = 0;
   let reverts = 0;
+  const reached: Record<string, number> = {};
   for (let sequence = 0; sequence < sequences; sequence++) {
     const outcome = await run(sequence, shared);
     landed += outcome.landed;
     reverts += outcome.reverts;
+    for (const [state, n] of Object.entries(outcome.reached))
+      reached[state] = (reached[state] ?? 0) + n;
   }
+  // And the states the offered-step invariants are about: a dismissed set
+  // with applied rows and one sent unanswered, a gone item, stale arguments,
+  // an apply in flight, and a revert dismissed partway.
+  for (const [state, n] of Object.entries(reached)) assert.ok(n > 0, `never reached: ${state}`);
   // The histories must reach the states the invariants are about.
-  assert.ok(landed > 450, `only ${landed} writes landed`);
+  assert.ok(landed > 350, `only ${landed} writes landed`);
   assert.ok(reverts > 40, `only ${reverts} reverted fields were checked`);
 });

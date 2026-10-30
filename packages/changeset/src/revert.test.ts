@@ -355,8 +355,7 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   // A later stop before sending doesn't erase that it was sent.
   const shown = db.prepare("select preview from mutations where id = ?").get(second)?.preview;
   db.prepare("update mutations set preview = null where id = ?").run(second);
-  const stopped = await changeSets.apply(set.id);
-  assert.deepEqual(stopped.applied, []);
+  await assert.rejects(changeSets.apply(set.id), { code: "refused" });
   assert.equal(status(db, second), "failed");
   await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
   db.prepare("update mutations set preview = ? where id = ?").run(shown ?? null, second);
@@ -366,13 +365,13 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   const retry = await changeSets.apply(set.id);
   assert.deepEqual(retry.applied, [second]);
   assert.equal(jira.calls.length, writes);
-  // Oriel never learned what SYN-117 held before, so it won't guess.
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(
-    result.conflicts.map((c) => [c.mutationId, c.target, c.field, c.expected]),
-    [[second, "jira:SYN-117", "points", undefined]],
-  );
+  // Oriel never learned what SYN-117 held before, so it won't guess, and
+  // doesn't offer to.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /mutation 2 \(setEstimate\) can.t be reverted: Jira didn.t report the earlier points/,
+  });
   assert.deepEqual([jira.issue("SYN-21")?.points, jira.issue("SYN-117")?.points], [5, 2]);
 });
 
@@ -516,12 +515,10 @@ test("a field Oriel never learned stays unknown, even when a later row wrote it 
   jira.edit("SYN-21", { points: 5 });
   const report = await changeSets.apply(set.id);
   assert.deepEqual(report.applied, [first, second]);
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(
-    result.conflicts.map((c) => [c.mutationId, c.field, c.expected]),
-    [[first, "points", undefined]],
-  );
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /mutation 1 \(setEstimate\) can.t be reverted: Jira didn.t report the earlier points/,
+  });
   assert.equal(jira.issue("SYN-21")?.points, 8);
 });
 
@@ -553,11 +550,9 @@ test("a value a teammate set to the same thing before apply isn't overwritten by
   assert.deepEqual(report.applied, [mutationId]);
   assert.deepEqual(jira.calls, []);
 
-  const result = await changeSets.revert(set.id);
-  assert.ok("conflicts" in result);
-  assert.deepEqual(result.conflicts, [
-    { mutationId, target: "jira:SYN-21", field: "points", expected: undefined, actual: 5 },
-  ]);
+  // Oriel can't tell the teammate's value from its own, so it won't revert.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.revert(set.id), { code: "not-revertible" });
   assert.equal(jira.issue("SYN-21")?.points, 5);
 });
 

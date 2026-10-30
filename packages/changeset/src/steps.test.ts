@@ -42,12 +42,23 @@ function loseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   };
 }
 
-test("an open change set can be approved, rejected or trimmed; an approved one applied", async () => {
+test("an open change set can be approved once a diff has shown it, rejected or trimmed", async () => {
   const { changeSets, run } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
     estimate("jira:SYN-3", 3),
   ]);
+  const ids = set.mutations.map((m) => m.id);
+  // Approval is of a diff the person saw, so it waits for one.
+  assert.deepEqual(await changeSets.nextSteps(set.id), [
+    { kind: "reject" },
+    { kind: "remove", mutationIds: ids },
+  ]);
+  await assert.rejects(
+    changeSets.decide(set.id, "approved", { via: "thread", by: "pm" }, set.hash),
+    { code: "refused", message: /hasn.t been shown in a diff/ },
+  );
+  await changeSets.diff(set.id);
   assert.deepEqual(await changeSets.nextSteps(set.id), [
     { kind: "approve" },
     { kind: "reject" },
@@ -69,8 +80,9 @@ test("an applied change set is complete and can be reverted, once at a time", as
   assert.ok(!("conflicts" in reverse));
   // While its revert is live, there is nothing more to do with it.
   assert.deepEqual(await changeSets.nextSteps(set.id), []);
-  assert.deepEqual(kinds(await changeSets.nextSteps(reverse.id)), ["approve", "reject"]);
+  assert.deepEqual(kinds(await changeSets.nextSteps(reverse.id)), ["reject"]);
   const shown = await changeSets.diff(reverse.id);
+  assert.deepEqual(kinds(await changeSets.nextSteps(reverse.id)), ["approve", "reject"]);
   await changeSets.decide(reverse.id, "rejected", { via: "thread", by: "pm" }, shown.hash);
   assert.deepEqual(await changeSets.nextSteps(set.id), [{ kind: "revert" }]);
 });
@@ -165,6 +177,7 @@ test("after a stopped change is left out, the rest is approved again; nothing el
   const [, refused, pending] = set.mutations.map((m) => m.id);
   assert.deepEqual(removable(await changeSets.nextSteps(set.id)), [refused, pending]);
   await changeSets.edit(set.id, { remove: [refused as Ulid] });
+  await changeSets.diff(set.id);
   const steps = await changeSets.nextSteps(set.id);
   assert.deepEqual(kinds(steps), ["approve-rest", "remove", "dismiss", "revert"]);
   assert.deepEqual(removable(steps), [pending]);
@@ -183,6 +196,7 @@ test("a line that can't be removed isn't offered once an edit leaves it alone", 
   assert.deepEqual(removable(await changeSets.nextSteps(set.id)), [refused, other]);
   await changeSets.edit(set.id, { remove: [refused as Ulid] });
   // A diff shown before the edit offered both; the engine now refuses the other.
+  await changeSets.diff(set.id);
   const steps = await changeSets.nextSteps(set.id);
   assert.deepEqual(kinds(steps), ["approve", "reject"]);
   await assert.rejects(changeSets.edit(set.id, { remove: [other as Ulid] }), { code: "invalid" });
@@ -210,9 +224,7 @@ test("a one-line create sent with no answer can only be dismissed, with a warnin
     },
   ]);
   // Trying again is refused by the engine, so it isn't offered.
-  const report = await later.apply(set.id);
-  assert.equal(report.applied.length, 0);
-  assert.match(nth(report.failed, 0).error, /dismiss/);
+  await assert.rejects(later.apply(set.id), { code: "refused", message: /dismiss/ });
   const dismissed = await later.dismiss(set.id);
   assert.equal(dismissed.changeSet.decision?.kind, "rejected");
   assert.deepEqual(dismissed.warnings, [
@@ -332,6 +344,182 @@ test("a reason a change stopped reads as plain words, from the forms apply store
   );
   const own = "SYN-99 was removed from the group after this was captured, so it wasn't sent.";
   assert.equal(plainError(own), own);
+});
+
+test("dismissing a change set whose create may have landed leaves revert for what applied", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    story("Pay with a gift card"),
+  ]);
+  const [estimated, created] = set.mutations.map((m) => m.id);
+  await approve(changeSets, set.id);
+  // The story lands; its answer doesn't.
+  jira.hooks.after = (_request, n) => {
+    if (n === 2) throw new Error("timed out");
+  };
+  await changeSets.apply(set.id);
+  jira.hooks.after = undefined;
+  const warning = "This may already be in Jira: check for “Pay with a gift card”";
+  // Until the rest is dismissed, a revert would leave the story behind.
+  assert.deepEqual(await changeSets.nextSteps(set.id), [
+    { kind: "remove", mutationIds: [created] },
+    { kind: "dismiss", warnings: [warning] },
+  ]);
+  await assert.rejects(changeSets.revert(set.id), {
+    code: "not-revertible",
+    message: /until the rest of it is dismissed/,
+  });
+  const dismissed = await changeSets.dismiss(set.id);
+  assert.deepEqual(dismissed.warnings, [warning]);
+  assert.deepEqual(await changeSets.nextSteps(set.id), [{ kind: "revert" }]);
+  const reverse = await changeSets.revert(set.id);
+  assert.ok(!("conflicts" in reverse));
+  // Exactly what applied: the estimate, not the story that may be there.
+  assert.deepEqual(
+    reverse.mutations.map((m) => m.reverts),
+    [estimated],
+  );
+  // The dismissed set keeps the row its warning names, and stays dismissed.
+  const original = await changeSets.get(set.id);
+  assert.equal(original?.decision?.kind, "rejected");
+  assert.equal(original?.mutations[1]?.status, "failed");
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await approve(changeSets, reverse.id);
+  assert.deepEqual((await changeSets.apply(reverse.id)).failed, []);
+  assert.equal(jira.issue("SYN-21")?.points, 2);
+});
+
+test("dismissing is its own event, once, and never a rejection", async () => {
+  const { changeSets, run, jira, events } = setup();
+  const open = await changeSets.capture(run, [estimate("jira:SYN-8", 1)]);
+  // Nothing of it has landed: that is a rejection, not a dismissal.
+  await assert.rejects(changeSets.dismiss(open.id), { code: "refused", message: /reject it/ });
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  await approve(changeSets, set.id);
+  refuseCall(jira, 2);
+  await changeSets.apply(set.id);
+  const named = (name: string) => events.filter((e) => e.name === name);
+  await changeSets.dismiss(set.id);
+  assert.deepEqual(
+    named("changeset.dismissed").map((e) => e.name === "changeset.dismissed" && e.changeSetId),
+    [set.id],
+  );
+  assert.deepEqual(
+    named("changeset.decided").filter(
+      (e) => e.name === "changeset.decided" && e.decision !== "approved",
+    ),
+    [],
+  );
+  // Dismissing again changes nothing and says nothing.
+  const before = events.length;
+  const again = await changeSets.dismiss(set.id);
+  assert.equal(again.changeSet.decision?.kind, "rejected");
+  assert.equal(events.length, before);
+  assert.deepEqual(await changeSets.nextSteps(set.id), [{ kind: "revert" }]);
+});
+
+test("a change set with a gone item or stale arguments offers remove and reject, not approve", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+    estimate("jira:SYN-8", 1),
+  ]);
+  const ids = set.mutations.map((m) => m.id);
+  const thread = { via: "thread", by: "pm" } as const;
+  jira.hide("SYN-3");
+  const gone = await changeSets.diff(set.id);
+  assert.deepEqual(await changeSets.nextSteps(set.id), [
+    { kind: "reject" },
+    { kind: "remove", mutationIds: ids },
+  ]);
+  await assert.rejects(changeSets.decide(set.id, "approved", thread, gone.hash), {
+    code: "refused",
+    message: /SYN-3 couldn.t be read/,
+  });
+  jira.show("SYN-3");
+  await changeSets.diff(set.id);
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["approve", "reject", "remove"]);
+
+  // The third row's arguments no longer pass the catalogue, as after it
+  // tightened: only that row can be left out, and nothing approved.
+  db.prepare("update mutations set args = ? where id = ?").run('{"points":"many"}', nth(ids, 2));
+  const stale = await changeSets.get(set.id);
+  assert.deepEqual(await changeSets.nextSteps(set.id), [
+    { kind: "reject" },
+    { kind: "remove", mutationIds: [nth(ids, 2)] },
+  ]);
+  await assert.rejects(changeSets.decide(set.id, "approved", thread, stale?.hash ?? ""), {
+    code: "refused",
+    message: /mutation 3 \(setEstimate\): this change's stored arguments are no longer valid/,
+  });
+  await changeSets.edit(set.id, { remove: [nth(ids, 2)] });
+  await changeSets.diff(set.id);
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["approve", "reject", "remove"]);
+});
+
+test("while a change set is applying, nothing else can be done with it", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  const [first, second] = set.mutations.map((m) => m.id) as [Ulid, Ulid];
+  await approve(changeSets, set.id);
+  const reached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  jira.hooks.before = async (_request, n) => {
+    if (n !== 1) return;
+    reached.resolve();
+    await release.promise;
+  };
+  const applying = changeSets.apply(set.id);
+  await reached.promise;
+  assert.equal(changeSets.applying(set.id), true);
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  const thread = { via: "thread", by: "pm" } as const;
+  for (const attempt of [
+    () => changeSets.edit(set.id, { remove: [second] }),
+    () => changeSets.edit(set.id, { set: [{ mutationId: second, args: { points: 8 } }] }),
+    () => changeSets.dismiss(set.id),
+    () => changeSets.apply(set.id),
+    () => changeSets.revert(set.id),
+    () => changeSets.decide(set.id, "rejected", thread, set.hash),
+    () => changeSets.decide(set.id, "approved", thread, set.hash),
+  ])
+    await assert.rejects(attempt(), { code: "busy" });
+  release.resolve();
+  // The apply ran to its end undisturbed, and recorded completion.
+  assert.deepEqual((await applying).applied, [first, second]);
+  assert.equal(changeSets.applying(set.id), false);
+  assert.ok((await changeSets.get(set.id))?.completedAt);
+  assert.deepEqual(await changeSets.nextSteps(set.id), [{ kind: "revert" }]);
+});
+
+test("a revert that undid part of a change set before it was dismissed ends its reverts", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id);
+  const reverse = await changeSets.revert(set.id);
+  assert.ok(!("conflicts" in reverse));
+  await approve(changeSets, reverse.id);
+  // The reverse puts SYN-3 back, then Jira refuses SYN-21's.
+  refuseCall(jira, 4);
+  await changeSets.apply(reverse.id);
+  await changeSets.dismiss(reverse.id);
+  // SYN-3 no longer holds what the change set applied, so a second revert
+  // could only conflict: it isn't offered, and the reverse is done with too.
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  assert.deepEqual(await changeSets.nextSteps(reverse.id), []);
+  await assert.rejects(changeSets.revert(set.id), { code: "refused", message: /reverted already/ });
 });
 
 test("a write never sent, because a read before it failed, is unsent and says so", async () => {

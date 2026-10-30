@@ -144,6 +144,9 @@ export function store(db: DatabaseSync) {
   const selectOfThread = db.prepare(
     "select id from change_sets where thread_id = ? order by created_at, rowid",
   );
+  const selectRevertsOf = db.prepare(
+    "select id from change_sets where revert_of = ? order by created_at, rowid",
+  );
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
@@ -268,6 +271,13 @@ export function store(db: DatabaseSync) {
         createdAt: row.created_at,
         completedAt: row.completed_at,
       };
+    },
+
+    // The change sets that revert this one, oldest first.
+    revertsOf(changeSetId: Ulid): Ulid[] {
+      return selectRevertsOf
+        .all(changeSetId)
+        .map((raw) => parse(object({ id: ulidValue }), raw, "change_sets").id);
     },
 
     mutation(id: Ulid): MutationRecord | null {

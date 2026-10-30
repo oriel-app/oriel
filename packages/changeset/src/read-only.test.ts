@@ -69,3 +69,15 @@ test("a thread's change sets read back in order, without touching the source", a
   assert.deepEqual(await sets.ofThread(run.id), []);
   assert.equal(jira.calls.length, reads);
 });
+
+test("without writer config, next steps never offer approving or applying", async () => {
+  const { sets, run } = readOnly();
+  const set = await sets.capture(run, [estimate("SYN-3", 5), estimate("SYN-8", 2)]);
+  const removable = { kind: "remove", mutationIds: set.mutations.map((m) => m.id) } as const;
+  assert.deepEqual(await sets.nextSteps(set.id), [{ kind: "reject" }, removable]);
+  // A diff shown changes nothing: there is no writer to approve it for.
+  await sets.diff(set.id);
+  assert.deepEqual(await sets.nextSteps(set.id), [{ kind: "reject" }, removable]);
+  await sets.decide(set.id, "rejected", { via: "thread", by: "pm" }, set.hash);
+  assert.deepEqual(await sets.nextSteps(set.id), []);
+});

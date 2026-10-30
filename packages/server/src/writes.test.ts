@@ -134,10 +134,17 @@ test("a stopped change can be left out, and the rest approved again", async (t) 
   const stoppedLine = (await app.diff()).lines[1];
   assert.ok(stoppedLine);
   const edited = await app.act("edit", { remove: [stoppedLine.mutationId] });
-  // The edit voids the approval; what's left needs approving again.
+  // The edit voids the approval; what's left needs approving again, once a
+  // diff has shown it.
   assert.equal(edited.body.changeSet.status, "partial");
   assert.deepEqual(
     edited.body.changeSet.nextSteps.map((s) => s.kind),
+    ["remove", "dismiss", "revert"],
+  );
+  await app.diff();
+  const shown = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
+  assert.deepEqual(
+    shown?.nextSteps.map((s) => s.kind),
     ["approve-rest", "remove", "dismiss", "revert"],
   );
   const rest = await app.approve();
@@ -259,9 +266,20 @@ test("a change set that can go no further is dismissed, with what to check", asy
   assert.equal(dismissed.status, 200);
   assert.deepEqual(dismissed.body.warnings, ["This may already be in Jira: check SYN-99"]);
   assert.equal(dismissed.body.changeSet.decision?.kind, "rejected");
-  // What applied stays, and the sent change keeps revert off the table.
-  assert.deepEqual(dismissed.body.changeSet.nextSteps, []);
+  // What applied stays, and a revert covers exactly that.
+  assert.deepEqual(dismissed.body.changeSet.nextSteps, [{ kind: "revert" }]);
   assert.equal((await app.act("apply")).status, 409);
+  // A dismissal, not a rejection.
+  const names = app.app.telemetry().map((e) => [e.name, e.data.decision]);
+  assert.deepEqual(
+    names.filter(([name]) => name === "changeset.dismissed" || name === "changeset.decided"),
+    [
+      ["changeset.decided", "approved"],
+      ["changeset.dismissed", undefined],
+    ],
+  );
+  const reverted = await app.act("revert");
+  assert.equal(reverted.status, 200);
 });
 
 test("an item a change set creates joins the group, with markers in its threads", async (t) => {

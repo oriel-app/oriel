@@ -92,24 +92,28 @@ type Request = WriteRequest<"jira">;
 
 export type MemoryJira = ReturnType<typeof memoryJira>;
 
+// What a copy of Jira in memory carries on from the one it copies.
+type Carried = { hidden: string[]; nextIssue: number; nextLink: number; ticks: number };
+
 // Every write and every touch from outside moves the clock one second on from
 // `clock`, and stamps the item's `updated` with it. A write that never
 // reaches the issue (it is gone, names another item, or its arguments are
 // bad) changes nothing and says so, as the Jira writer does.
-export function memoryJira(start: MemorySnapshot, clock: Instant) {
+export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carried) {
   const issues = new Map(start.issues.map((issue) => [issue.key, structuredClone(issue)]));
-  for (const issue of issues.values()) {
-    const number = Number(issue.key.slice(issue.key.lastIndexOf("-") + 1));
-    if (number >= firstNewIssue) throw new RangeError(`fixture key ${issue.key} is too high`);
-    for (const link of issue.links)
-      if (Number(link.linkId) >= firstNewLink)
-        throw new RangeError(`link ${link.linkId} is too high`);
-  }
+  if (!carried)
+    for (const issue of issues.values()) {
+      const number = Number(issue.key.slice(issue.key.lastIndexOf("-") + 1));
+      if (number >= firstNewIssue) throw new RangeError(`fixture key ${issue.key} is too high`);
+      for (const link of issue.links)
+        if (Number(link.linkId) >= firstNewLink)
+          throw new RangeError(`link ${link.linkId} is too high`);
+    }
   const people = new Map(start.people.map((p) => [p.accountId, p.name]));
-  const hidden = new Set<string>();
-  let nextIssue = firstNewIssue;
-  let nextLink = firstNewLink;
-  let ticks = 0;
+  const hidden = new Set<string>(carried?.hidden);
+  let nextIssue = carried?.nextIssue ?? firstNewIssue;
+  let nextLink = carried?.nextLink ?? firstNewLink;
+  let ticks = carried?.ticks ?? 0;
   // Every request a writer received, in order, including ones that then failed.
   const calls: Request[] = [];
   // Keys of the issues writes created, in order.
@@ -311,7 +315,20 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     show(key: string) {
       hidden.delete(key);
     },
+    // What `forkJira` copies.
+    state: (): { snapshot: MemorySnapshot; clock: Instant; carried: Carried } => ({
+      snapshot: { ...start, issues: [...issues.values()] },
+      clock,
+      carried: { hidden: [...hidden], nextIssue, nextLink, ticks },
+    }),
   };
+}
+
+// A copy of Jira in memory as it stands, with no history and no hooks: what
+// happens to one doesn't happen to the other.
+export function forkJira(jira: MemoryJira): MemoryJira {
+  const { snapshot, clock, carried } = jira.state();
+  return memoryJira(snapshot, clock, carried);
 }
 
 export const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9, 0, 0)));

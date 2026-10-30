@@ -34,6 +34,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       via: "thread" | "review-link";
     }
   | { name: "changeset.applied"; changeSetId: Ulid; threadId: Ulid }
+  // The rest of a change set that started landing, or may have, was dropped.
+  // Not a rejection: the person didn't decline it; the source stopped it.
+  | { name: "changeset.dismissed"; changeSetId: Ulid }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
   | { name: "review-link.opened"; changeSetId: Ulid }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
