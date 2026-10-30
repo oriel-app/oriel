@@ -176,6 +176,7 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
           applied: null,
           error: null,
           reverts: null,
+          version: 0,
         }));
         const changeSet: ChangeSet = {
           id,
@@ -187,6 +188,7 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
           decision: null,
           revertOf: null,
           createdAt: now,
+          completedAt: null,
         };
         return changeSet;
       },
