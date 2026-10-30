@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -490,6 +490,49 @@ test("tsc over the memory cap is killed from the host", async (t) => {
   assert.match(errorOf(result.transcript.at(-1)).message, /the typecheck used \d+ MB of memory/);
   assert.equal(exists(tscPid(logged)), false);
   assert.deepEqual(readdirSync(tmp), []);
+});
+
+// One field of `ps` for a process, or "" once it's gone.
+const ps = (pid: number, field: "comm" | "pgid" | "stat") =>
+  spawnSync("/bin/ps", ["-o", `${field}=`, "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
+
+test("tsc is the native compiler in the host's process group, and the host's exit kills it", async () => {
+  // A child Node process is the host: it prints tsc's pid as tsc starts, and
+  // exits mid-compile when told to.
+  const host = `
+    import { createSandbox } from ${JSON.stringify(new URL("./sandbox.ts", import.meta.url).href)};
+    import { fakeBindings } from ${JSON.stringify(new URL("./fake-bindings.ts", import.meta.url).href)};
+    process.stdin.once("data", () => process.exit(0));
+    void createSandbox({ maxRssMb: 4096 }).run(${JSON.stringify(slowTypes)}, fakeBindings(), {
+      limits: ${JSON.stringify(limits)},
+      signal: new AbortController().signal,
+      log: (message, fields) => {
+        if (message === "sandbox.typecheck") process.stdout.write(fields.tsc_pid + "\\n");
+      },
+    });
+  `;
+  const child = spawn(process.execPath, ["--no-warnings", "--input-type=module", "-e", host], {
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  const closed = new Promise((resolve) => child.on("close", resolve));
+  child.stdout.setEncoding("utf8");
+  const pid = await new Promise<number>((resolve, reject) => {
+    let out = "";
+    child.stdout.on("data", (chunk: string) => {
+      out += chunk;
+      if (out.includes("\n")) resolve(Number(out.trim()));
+    });
+    child.once("close", () => reject(new Error("the host exited before tsc started")));
+  });
+  // The compiler itself, not a Node launcher, and not a group leader: it is
+  // in the host's group, where a Ctrl-C or hangup reaches it.
+  assert.match(ps(pid, "comm"), /(^|\/)tsc$/);
+  assert.notEqual(Number(ps(pid, "pgid")), pid);
+  assert.equal(ps(pid, "pgid"), ps(child.pid ?? 0, "pgid"));
+  child.stdin.end("exit\n");
+  await closed;
+  const stat = ps(pid, "stat");
+  assert.ok(stat === "" || stat.startsWith("Z"), `tsc outlived its host: ${stat}`);
 });
 
 test("an abort while tsc runs kills it from the host", async (t) => {

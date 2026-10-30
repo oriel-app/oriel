@@ -9,8 +9,11 @@
 // terminating a worker neither kills its children nor runs its cleanup:
 // - it makes and removes tsc's directory, whatever happens to the worker;
 // - it learns tsc's pid as tsc starts, watches its memory, and at the
-//   deadline, on abort or over the cap kills tsc's process group before the
-//   worker goes. tsc runs detached, so the pid names its group.
+//   deadline, on abort or over the cap kills tsc before the worker goes.
+//   bindings runs the native compiler directly, so the pid is tsc itself;
+// - if the host exits while tsc runs, its exit hook kills tsc. tsc stays in
+//   the host's process group, so a Ctrl-C or hangup reaches it anyway. A
+//   SIGTERM to the host alone runs no hook, and is the remaining gap.
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -40,13 +43,26 @@ export type Compiler = { prepare(job: CompileJob): Promise<Compiled> };
 // it is terminated regardless.
 const graceMs = 2_000;
 
-const killGroup = (pid: number) => {
+const kill = (pid: number) => {
   try {
-    process.kill(-pid, "SIGKILL");
+    process.kill(pid, "SIGKILL");
   } catch {
     // Already gone.
   }
 };
+
+// Every tsc a compiler in this process has started and not yet seen exit.
+// One exit hook for all of them: a synchronous kill is all `exit` allows.
+const live = new Set<number>();
+let hooked = false;
+function track(pid: number): void {
+  live.add(pid);
+  if (hooked) return;
+  hooked = true;
+  process.on("exit", () => {
+    for (const tsc of live) kill(tsc);
+  });
+}
 
 const limit = (message: string, outcome: "timeout" | "limit"): Compiled => ({
   ok: false,
@@ -90,10 +106,17 @@ export function createCompiler(options: {
       let stopWatching = () => {};
       let settled = false;
 
+      // A killed tsc is dead, so it leaves the exit hook's list at once: its
+      // pid may soon belong to some other process.
+      const stop = (pid: number) => {
+        kill(pid);
+        live.delete(pid);
+      };
+
       const retire = async () => {
         if (worker === current) worker = null;
         if (!answered) {
-          if (tsc !== null) killGroup(tsc);
+          if (tsc !== null) stop(tsc);
           // Give the worker a moment to see tsc die, so the child is reaped.
           await new Promise<void>((done) => {
             const timer = setTimeout(done, graceMs);
@@ -104,7 +127,7 @@ export function createCompiler(options: {
             current.once("exit", finish);
             current.on("message", (message: WorkerMessage) => {
               // A tsc that started as the worker was retired goes too.
-              if (message.kind === "spawned") killGroup(message.pid);
+              if (message.kind === "spawned") stop(message.pid);
               else finish();
             });
           });
@@ -129,8 +152,9 @@ export function createCompiler(options: {
       const onMessage = (message: WorkerMessage) => {
         if (message.kind === "spawned") {
           tsc = message.pid;
+          track(message.pid);
           job.log("sandbox.typecheck", { tsc_pid: message.pid });
-          if (settled) return killGroup(message.pid);
+          if (settled) return stop(message.pid);
           // An addition to decision 0006 (see 0017): tsc gets the same memory
           // cap as the guest. TypeScript 7's compiler is native, so V8 heap
           // flags don't apply to it; the RSS watchdog is its only cap.
@@ -146,7 +170,9 @@ export function createCompiler(options: {
           );
           return;
         }
+        // The worker answers only once tsc has exited.
         answered = true;
+        if (tsc !== null) live.delete(tsc);
         const { started } = message;
         settle(started.ok ? started : refusal(started.error), started.ok);
       };
@@ -224,7 +250,12 @@ export function createCompiler(options: {
 }
 
 function spawnWorker(): Worker {
-  const worker = new Worker(new URL("./compile-worker.ts", import.meta.url));
+  // None of the host's own flags: a worker would inherit them, and some,
+  // such as `--input-type` for a host started with `-e`, make it fail.
+  const worker = new Worker(new URL("./compile-worker.ts", import.meta.url), {
+    // Node marks its type stripper experimental; that one warning says nothing new.
+    execArgv: ["--disable-warning=ExperimentalWarning"],
+  });
   // An idle compiler doesn't keep the host alive.
   worker.unref();
   return worker;

@@ -1,11 +1,13 @@
 // The pre-run typecheck: the agent's script against its region's declarations,
-// by the repo's pinned `tsc`, run through the package's own `bin` on a fresh
-// temporary directory. The child gets an empty environment. With `noResolve`,
+// by the repo's pinned `tsc` (its native compiler, see `tscCommand`) on a
+// fresh temporary directory. The child gets an empty environment. With `noResolve`,
 // no `types`, an explicit file list and the script wrapped in a function (so
 // a `///` line in it is only a comment), tsc reads the listed files and the
 // es2024 lib, nothing else.
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,59 +70,72 @@ export function parseOutput(output: string): Diagnostic[] {
   return diagnostics;
 }
 
-let launcher: Promise<string> | undefined;
+// How to start tsc: the file to run and the arguments before tsc's own.
+type TscCommand = { file: string; args: string[] };
 
-// The `tsc` the typescript package declares as its bin.
-function tscBin(): Promise<string> {
-  launcher ??= (async () => {
+let command: Promise<TscCommand> | undefined;
+
+// The native compiler itself, the binary TypeScript 7's launcher would
+// `execve` into: `lib/tsc` in the `@typescript/typescript-<platform>-<arch>`
+// package the typescript package depends on. Run directly, its pid is the
+// compiler, so a kill of that pid stops it. If that package can't be found,
+// fall back to the launcher run by this Node. On Node 22.15 and later it
+// execs the compiler in place, keeping the pid; before that, it spawns the
+// compiler as a child the pid kill would miss.
+function tscCommand(): Promise<TscCommand> {
+  command ??= (async () => {
     const manifest = fileURLToPath(import.meta.resolve("typescript/package.json"));
-    const { bin } = JSON.parse(await readFile(manifest, "utf8")) as { bin?: { tsc?: string } };
-    if (!bin?.tsc) throw new Error("the typescript package declares no tsc bin");
-    return join(dirname(manifest), bin.tsc);
+    const platform = `@typescript/typescript-${process.platform}-${process.arch}`;
+    try {
+      const native = createRequire(manifest).resolve(`${platform}/package.json`);
+      const exe = join(dirname(native), "lib", process.platform === "win32" ? "tsc.exe" : "tsc");
+      await access(exe, constants.X_OK);
+      return { file: exe, args: [] };
+    } catch {
+      const { bin } = JSON.parse(await readFile(manifest, "utf8")) as { bin?: { tsc?: string } };
+      if (!bin?.tsc) throw new Error("the typescript package declares no tsc bin");
+      return { file: process.execPath, args: [join(dirname(manifest), bin.tsc)] };
+    }
   })();
-  return launcher;
+  return command;
 }
 
 // What a caller can do about tsc from outside: put it in a directory the
 // caller owns and removes, and learn its pid as soon as it starts, to watch
-// its memory or kill it. tsc runs detached, so its pid also names its process
-// group: on Node 22.15 and later the launcher `execve`s the native compiler,
-// so the pid is the compiler itself, and on the fallback, where the launcher
-// spawns it, killing the group still takes both.
+// its memory or kill it. tsc stays in the caller's process group, so a Ctrl-C
+// or a hangup that reaches the caller reaches tsc too.
 export type TscControl = { dir?: string; onSpawn?: (pid: number) => void };
 
 const maxOutput = 1 << 20;
 
-// `spawn`, not `execFile`: execFile passes spawn only a fixed set of options,
-// and `detached` isn't one of them.
 function tsc(
   dir: string,
   options: { timeoutMs: number; signal?: AbortSignal } & TscControl,
-  bin: string,
+  run: TscCommand,
 ): Promise<{ stdout: string; failed: boolean } | "timeout" | "overflow"> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [bin, "-p", "tsconfig.json", "--pretty", "false"], {
+    const child = spawn(run.file, [...run.args, "-p", "tsconfig.json", "--pretty", "false"], {
       cwd: dir,
       env: {},
-      detached: true,
       stdio: ["ignore", "pipe", "pipe"],
       ...(options.signal ? { signal: options.signal } : {}),
     });
     const pid = child.pid;
     if (pid !== undefined) options.onSpawn?.(pid);
     let ended: "timeout" | "overflow" | null = null;
+    let exited = false;
     const end = (why: "timeout" | "overflow") => {
       ended ??= why;
-      if (pid === undefined) return;
+      if (pid === undefined || exited) return;
       try {
-        process.kill(-pid, "SIGKILL");
+        process.kill(pid, "SIGKILL");
       } catch {
         // Already gone.
       }
     };
     const timer = setTimeout(() => end("timeout"), options.timeoutMs);
-    // spawn's own abort only signals the pid; take the whole group.
-    options.signal?.addEventListener("abort", () => end("timeout"), { once: true });
+    const onAbort = () => end("timeout");
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -132,13 +147,20 @@ function tsc(
     child.stderr.on("data", (chunk: string) => {
       if (stderr.length < maxOutput) stderr += chunk;
     });
-    child.on("error", (error) => {
+    // Once tsc is gone, a late abort or timeout must not signal its pid,
+    // which the system may have given to another process.
+    const done = () => {
+      exited = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
+    };
+    child.on("error", (error) => {
+      done();
       if (error.name === "AbortError") return reject(error);
       reject(new Error(`tsc didn't run: ${error.message}\n${stderr}`, { cause: error }));
     });
     child.on("close", (code, signal) => {
-      clearTimeout(timer);
+      done();
       if (options.signal?.aborted) return;
       if (ended) return resolve(ended);
       if (code === 0) return resolve({ stdout, failed: false });
@@ -154,13 +176,13 @@ export async function compile(
   files: Readonly<Record<string, string>>,
   options: { timeoutMs: number; signal?: AbortSignal } & TscControl,
 ): Promise<Checked> {
-  const bin = await tscBin();
+  const run = await tscCommand();
   const dir = options.dir ?? (await mkdtemp(join(tmpdir(), "oriel-typecheck-")));
   try {
     const tsconfig = { compilerOptions, files: Object.keys(files) };
     await writeFile(join(dir, "tsconfig.json"), JSON.stringify(tsconfig));
     for (const [name, source] of Object.entries(files)) await writeFile(join(dir, name), source);
-    const result = await tsc(dir, options, bin);
+    const result = await tsc(dir, options, run);
     if (result === "timeout")
       return { kind: "limit", message: `the typecheck took longer than ${options.timeoutMs}ms` };
     if (result === "overflow") return { kind: "limit", message: "the typecheck printed too much" };
