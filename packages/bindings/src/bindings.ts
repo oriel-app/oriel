@@ -6,8 +6,9 @@ import {
   type Reader,
   type Region,
 } from "@oriel/core";
-import { describe, type Fn, type IssueTypes, pathOf, scopeOf } from "./describe.ts";
+import { describe, type Fn, type Namespaces, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
+import { type Host, live } from "./fn.ts";
 import { shimFor } from "./shim.ts";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -23,22 +24,24 @@ const defined = (args: object) =>
 // A region's bindings for one run. Reads proxy to `reader`. Writes are
 // captured, never sent: a write must target a region item from its own source
 // or a story an earlier create in this run made, and its arguments must pass
-// that source's op catalogue. `issueTypes` holds each Jira item's issue type
-// from the index; only epics can parent a new story.
+// that source's op catalogue. `namespaces` are the sources' own namespaces,
+// as their adapters declare them; the composition root passes them in.
 export function bindingsFor(
   region: Region,
-  options: { reader: Reader; issueTypes?: IssueTypes },
+  options: { reader: Reader; namespaces: Namespaces },
 ): Bindings {
-  const scope = scopeOf(region, options.issueTypes ?? new Map());
+  const scope = scopeOf(region, options.namespaces);
   const fns = describe(scope);
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
   const created = new Set<NewRef>();
-  const host = {
-    reader: options.reader,
+  const { reader } = options;
+  const host: Host = {
     ids: scope.ids,
     has: (id: string): id is ItemId => members.has(id),
     created,
+    read: (ids, view) => live(reader, ids, view),
+    search: (query, limit) => reader.search(query, limit),
   };
   // The ref the next create must carry. Every correctly numbered create uses
   // one up, so a rejected create can't shift the numbering of later ones.

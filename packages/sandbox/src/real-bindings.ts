@@ -20,6 +20,8 @@ export function regionBindings(): Bindings {
       read: async (wanted) => wanted.map((id) => ({ id, status: "gone", reason: "deleted" })),
       search: async () => [],
     },
-    issueTypes: new Map(ids.map((id) => [id, "Story"])),
+    // No source namespace: the escape tests need the shim and the typecheck,
+    // not a source's functions, and only test support may name an adapter.
+    namespaces: {},
   });
 }

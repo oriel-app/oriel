@@ -6,7 +6,7 @@ import {
   fixture,
   fixtureReader,
   fixtureRegion,
-  issueTypes,
+  namespaces,
   movingReader,
   pickedWithEpic,
   snapshotAfter,
@@ -15,8 +15,8 @@ import {
 const base = fixtureReader(snapshotAfter(0));
 // After every source edit: SYN-88 moved to SYN-3's epic, SYN-27 deleted.
 const edited = fixtureReader(snapshotAfter(fixture.edits.length));
-const boarding = () => bindingsFor(fixtureRegion("boarding-epic"), { reader: base, issueTypes });
-const picked = () => bindingsFor(fixtureRegion("picked"), { reader: base, issueTypes });
+const boarding = () => bindingsFor(fixtureRegion("boarding-epic"), { reader: base, namespaces });
+const picked = () => bindingsFor(fixtureRegion("picked"), { reader: base, namespaces });
 
 const summary = (key: string) => fixture.issues.find((issue) => issue.key === key)?.summary;
 
@@ -100,7 +100,7 @@ test("a refused create still uses its ref, so later refs keep their numbers", ()
 });
 
 test("without an anchor, a create's epic must be one of the region's epics, or none", () => {
-  const bindings = bindingsFor(pickedWithEpic(), { reader: base, issueTypes });
+  const bindings = bindingsFor(pickedWithEpic(), { reader: base, namespaces });
   const inside = bindings.capture(
     "jira.createStory",
     [{ summary: "A", epic: "jira:SYN-1" }],
@@ -169,7 +169,7 @@ test("reads proxy live, and only search() reaches outside the region", async () 
 });
 
 test("a deleted item reads as a tombstone, not a throw (eval 4)", async () => {
-  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader: edited, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader: edited, namespaces });
   const { value } = await bindings.read("jira.listStories", []);
   const views = value as { id: string; gone: boolean; reason?: string }[];
   assert.deepEqual(
@@ -181,7 +181,7 @@ test("a deleted item reads as a tombstone, not a throw (eval 4)", async () => {
 
 test("listStories is the region's items but its epic, even one that moved epic since", async () => {
   const region = fixtureRegion("checkout-epic");
-  const bindings = bindingsFor(region, { reader: edited, issueTypes });
+  const bindings = bindingsFor(region, { reader: edited, namespaces });
   const { value } = await bindings.read("jira.listStories", []);
   const views = value as { id: string; epic: string | null }[];
   const stories = region.items.map((item) => item.id).filter((id) => id !== "jira:SYN-1");
@@ -191,7 +191,7 @@ test("listStories is the region's items but its epic, even one that moved epic s
 
 test("an item that moved project is followed and keeps its region handle", async () => {
   const reader = movingReader(base, "jira:SYN-13", "jira:FER-7");
-  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("boarding-epic"), { reader, namespaces });
   const { value } = await bindings.read("jira.getItem", ["jira:SYN-13"]);
   const view = value as { id: string; gone: boolean; summary: string };
   assert.deepEqual([view.id, view.gone, view.summary], ["jira:SYN-13", false, summary("SYN-13")]);
@@ -203,15 +203,15 @@ test("a region with a malformed ID, or an anchor it doesn't hold, is refused", (
     ...region,
     items: [...region.items, { id: 'jira:SYN-1" | string', stableId: "1" }],
   };
-  assert.throws(() => bindingsFor(evil, { reader: base, issueTypes }), /not a Jira item ID/);
+  assert.throws(() => bindingsFor(evil, { reader: base, namespaces }), /not a Jira item ID/);
   const lower: Region = { ...region, items: [{ id: "jira:syn-1", stableId: "1" }] };
-  assert.throws(() => bindingsFor(lower, { reader: base, issueTypes }), /not a Jira item ID/);
+  assert.throws(() => bindingsFor(lower, { reader: base, namespaces }), /not a Jira item ID/);
   const unanchored: Region = {
     ...region,
     items: region.items.filter((item) => item.id !== "jira:SYN-2"),
   };
   assert.throws(
-    () => bindingsFor(unanchored, { reader: base, issueTypes }),
+    () => bindingsFor(unanchored, { reader: base, namespaces }),
     /anchor jira:SYN-2 isn't one of its items/,
   );
 });

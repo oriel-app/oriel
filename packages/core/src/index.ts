@@ -2,6 +2,7 @@ export * from "./changeset.ts";
 export * from "./group.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";
+export * from "./namespace.ts";
 export * from "./ops.ts";
 export * from "./run.ts";
 export * from "./sandbox.ts";

@@ -17,18 +17,23 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { type FixtureSnapshot, fixtureSnapshot } from "@oriel/jira";
+import { type FixtureSnapshot, fixtureSnapshot, jiraNamespace } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { IssueTypes } from "./describe.ts";
+import type { Namespaces } from "./describe.ts";
 import { guestStart } from "./shim.ts";
 
 export const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
 
-// Every fixture item's issue type, as the index would give it.
-export const issueTypes: IssueTypes = new Map(
-  fixture.issues.map((issue) => [`jira:${issue.key}`, issue.issueType]),
-);
+// Jira's namespace, as the composition root hands it over, with each fixture
+// item's kind as the index would give it.
+export const namespaces: Namespaces = {
+  jira: jiraNamespace(
+    new Map(
+      fixtureSnapshot(fixture, site, 0).records.map((record) => [record.id, record.facets.kind]),
+    ),
+  ),
+};
 
 // The source as the base state left it (0) or after the first `edited` source
 // edits.

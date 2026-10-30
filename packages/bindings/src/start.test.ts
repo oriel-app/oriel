@@ -8,12 +8,12 @@ import { test } from "node:test";
 import { Worker } from "node:worker_threads";
 import { bindingsFor } from "./bindings.ts";
 import { guestStart, maxNesting, maxScriptBytes, nesting, scriptLineOffset } from "./shim.ts";
-import { fixtureReader, fixtureRegion, issueTypes, runGuest, snapshotAfter } from "./testing.ts";
+import { fixtureReader, fixtureRegion, namespaces, runGuest, snapshotAfter } from "./testing.ts";
 import { typecheck } from "./typecheck.ts";
 
 const bindings = bindingsFor(fixtureRegion("picked"), {
   reader: fixtureReader(snapshotAfter(0)),
-  issueTypes,
+  namespaces,
 });
 
 // The escape a joined entry allowed: close the wrapper, import a file
@@ -34,7 +34,7 @@ const refused: [string, string][] = [
   ["a close and reopen", "}\nawait import('/etc/hosts');\nasync function again() {"],
   ["a brace that closes the body", "}"],
   ["an enum", "enum E { A }\nreturn E.A;"],
-  ["a binding redeclared", "let jira = 1;\nreturn jira;"],
+  ["a binding redeclared", "let search = 1;\nreturn search;"],
 ];
 
 for (const [name, script] of refused) {

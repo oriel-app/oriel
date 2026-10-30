@@ -1,7 +1,7 @@
 // What works for any item in the region, whatever its source: `items.read()`
 // and `items.list()`, which return its text, and the escape hatch.
-import { type ItemId, number, string } from "@oriel/core";
-import { type Fn, live, optionalParam, outside, param, read } from "./fn.ts";
+import { type ItemId, number, optionalParam, param, read, string } from "@oriel/core";
+import { type Fn, type Host, outside } from "./fn.ts";
 
 // The guest's view of any item: its text, and nothing the reader added.
 function itemView(id: ItemId, content: unknown) {
@@ -12,50 +12,56 @@ function itemView(id: ItemId, content: unknown) {
   return { id, gone: false as const, text };
 }
 
-const readItem = read({
+const readItem: Fn = {
   space: "items",
-  name: "read",
-  doc: "One item in this region, from any source, read live.",
-  params: [param("id", "RegionId", string)],
-  returns: "Item | Gone",
   outsideRegion: false,
-  run: async ([id], host) => {
-    if (!host.has(id)) throw outside(id);
-    const [view] = await live(host.reader, [id], itemView);
-    return view;
-  },
-});
+  ...read({
+    name: "read",
+    doc: "One item in this region, from any source, read live.",
+    params: [param("id", "RegionId", string)],
+    returns: "Item | Gone",
+    run: async ([id], host: Host) => {
+      if (!host.has(id)) throw outside(id);
+      const [view] = await host.read([id], itemView);
+      return view;
+    },
+  }),
+};
 
-const listItems = read({
+const listItems: Fn = {
   space: "items",
-  name: "list",
-  doc: "Every item in this region, from any source, read live, in RegionId order.",
-  params: [],
-  returns: "readonly (Item | Gone)[]",
   outsideRegion: false,
-  run: (_, host) => live(host.reader, host.ids, itemView),
-});
+  ...read({
+    name: "list",
+    doc: "Every item in this region, from any source, read live, in RegionId order.",
+    params: [],
+    returns: "readonly (Item | Gone)[]",
+    run: (_, host: Host) => host.read(host.ids, itemView),
+  }),
+};
 
 export const itemFns: readonly Fn[] = [readItem, listItems];
 
-export const searchFn = read({
+export const searchFn: Fn = {
   space: null,
-  name: "search",
-  doc: "The escape hatch: anything indexed, in this region or outside it, by key or title words. Results are read-only and can't be written.",
-  params: [param("query", "string", string), optionalParam("limit", "number", number)],
-  returns: "readonly Found[]",
   outsideRegion: true,
-  run: async ([query, limit], host) => {
-    const count = Math.min(Math.max(Math.trunc(limit ?? 20), 1), 50);
-    const records = await host.reader.search(query, count);
-    return records.slice(0, count).map((r) => ({
-      id: r.id,
-      title: r.title,
-      location: r.location,
-      updatedAt: r.updatedAt,
-    }));
-  },
-});
+  ...read({
+    name: "search",
+    doc: "The escape hatch: anything indexed, in this region or outside it, by key or title words. Results are read-only and can't be written.",
+    params: [param("query", "string", string), optionalParam("limit", "number", number)],
+    returns: "readonly Found[]",
+    run: async ([query, limit], host: Host) => {
+      const count = Math.min(Math.max(Math.trunc(limit ?? 20), 1), 50);
+      const records = await host.search(query, count);
+      return records.slice(0, count).map((r) => ({
+        id: r.id,
+        title: r.title,
+        location: r.location,
+        updatedAt: r.updatedAt,
+      }));
+    },
+  }),
+};
 
 // What `items` and `search()` add to the declarations.
 export const itemTypes = [

@@ -1,10 +1,10 @@
 // The region's declarations: what the agent codes against, and what reaches
 // its prompt. IDs and types only, never source text. The same scope gives the
 // same bytes, since a hash of the output goes in the run record.
-import type { Scope } from "./describe.ts";
-import { type Fn, idUnion } from "./fn.ts";
+import { idUnion } from "@oriel/core";
+import { type Scope, spaceNames } from "./describe.ts";
+import type { Fn } from "./fn.ts";
 import { itemTypes } from "./items.ts";
-import { jiraTypes } from "./jira.ts";
 
 const header = [
   "// This region's module. Your script is the body of an async function: await",
@@ -46,10 +46,9 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     "/** The items in this region. */",
     ...idUnion("RegionId", scope.ids),
     ...itemTypes,
-    ...(scope.jira ? jiraTypes(scope.jira) : []),
+    ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
     "",
-    ...namespace("items", fns),
-    ...namespace("jira", fns),
+    ...spaceNames.flatMap((name) => namespace(name, fns)),
     ...fns
       .filter((fn) => fn.space === null)
       .flatMap((fn) => [`/** ${fn.doc} */`, `declare function ${signature(fn)};`]),

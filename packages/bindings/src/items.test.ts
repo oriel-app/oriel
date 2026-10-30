@@ -3,7 +3,14 @@
 // and takes only those items (decision 0019).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ItemId, Reader, ReadResult, Region } from "@oriel/core";
+import {
+  type ItemId,
+  type NamespaceSpec,
+  type Reader,
+  type ReadResult,
+  type Region,
+  write,
+} from "@oriel/core";
 import { bindingsFor } from "./bindings.ts";
 import { describe, scopeOf } from "./describe.ts";
 import { stubs } from "./shim.ts";
@@ -11,7 +18,7 @@ import {
   fixture,
   fixtureReader,
   fixtureRegion,
-  issueTypes,
+  namespaces,
   runGuest,
   snapshotAfter,
 } from "./testing.ts";
@@ -58,7 +65,7 @@ const folderOnly: Region = {
 const jiraIds = picked.items.map((item) => item.id);
 
 test("items.list reads every item in the region, from any source, in RegionId order", async () => {
-  const bindings = bindingsFor(mixed, { reader, issueTypes });
+  const bindings = bindingsFor(mixed, { reader, namespaces });
   const { value, outsideRegion } = await bindings.read("items.list", []);
   assert.equal(outsideRegion, false);
   const views = value as { id: string; gone: boolean; text?: string }[];
@@ -73,12 +80,12 @@ test("items.list reads every item in the region, from any source, in RegionId or
 });
 
 test("items.read reads one item, a tombstone for one that's gone, and refuses one outside", async () => {
-  const bindings = bindingsFor(mixed, { reader, issueTypes });
+  const bindings = bindingsFor(mixed, { reader, namespaces });
   const one = await bindings.read("items.read", [plan]);
   assert.deepEqual(one.value, { id: plan, gone: false, text: files.get(plan)?.text });
   // SYN-27 is in the picked region, and the edited fixture deletes it.
   const edited = fixtureReader(snapshotAfter(fixture.edits.length));
-  const later = bindingsFor(mixed, { reader: edited, issueTypes });
+  const later = bindingsFor(mixed, { reader: edited, namespaces });
   assert.deepEqual((await later.read("items.read", ["jira:SYN-27"])).value, {
     id: "jira:SYN-27",
     gone: true,
@@ -91,7 +98,7 @@ test("items.read reads one item, a tombstone for one that's gone, and refuses on
 });
 
 test("a Jira namespace takes only the region's Jira items", async () => {
-  const bindings = bindingsFor(mixed, { reader, issueTypes });
+  const bindings = bindingsFor(mixed, { reader, namespaces });
   const listed = await bindings.read("jira.listItems", []);
   assert.deepEqual(
     (listed.value as { id: string }[]).map((view) => view.id),
@@ -112,7 +119,7 @@ test("a Jira namespace takes only the region's Jira items", async () => {
 });
 
 test("a region of read-only items has items.* and search(), and no source namespace", async () => {
-  const bindings = bindingsFor(folderOnly, { reader });
+  const bindings = bindingsFor(folderOnly, { reader, namespaces });
   assert.doesNotMatch(bindings.dts, /declare const jira|NewRef|Target|JiraId/);
   assert.match(bindings.dts, /declare const items: \{/);
   await assert.rejects(bindings.read("jira.listItems", []), /isn't a read here/);
@@ -135,7 +142,7 @@ test("a region of read-only items has items.* and search(), and no source namesp
 
 test("the declarations carry IDs and types only: no file name or body reaches them", () => {
   for (const region of [mixed, folderOnly]) {
-    const { dts } = bindingsFor(region, { reader, issueTypes });
+    const { dts } = bindingsFor(region, { reader, namespaces });
     for (const file of files.values()) {
       assert.ok(!dts.includes(file.name), file.name);
       assert.ok(!dts.includes(file.text), file.text);
@@ -143,7 +150,7 @@ test("the declarations carry IDs and types only: no file name or body reaches th
     const union = /^type RegionId =\n((?: {2}\| "[^"\n]+";?\n)+)/m.exec(dts)?.[1] ?? "";
     assert.deepEqual(
       [...union.matchAll(/"([^"]+)"/g)].map((m) => m[1]),
-      scopeOf(region, issueTypes).ids,
+      scopeOf(region, namespaces).ids,
     );
   }
 });
@@ -155,8 +162,8 @@ for (const [name, region] of [
   ["folder only", folderOnly],
 ] as const) {
   test(`${name}: the items stubs typecheck against the declarations`, async () => {
-    const { dts } = bindingsFor(region, { reader, issueTypes });
-    const fns = describe(scopeOf(region, issueTypes));
+    const { dts } = bindingsFor(region, { reader, namespaces });
+    const fns = describe(scopeOf(region, namespaces));
     const checked = await compile(
       {
         "region.d.ts": `${dts}export type Declared = { items: typeof items };\n`,
@@ -179,16 +186,54 @@ for (const [name, region] of [
   });
 }
 
-test("a script may name its own `items`, but not its own `jira`", async () => {
-  const bindings = bindingsFor(mixed, { reader, issueTypes });
-  const script = ["const items = await jira.listItems();", "return items.length;"].join("\n");
+test("a script may name its own `items` or `folder`, but not its own `search`", async () => {
+  const bindings = bindingsFor(mixed, { reader, namespaces });
+  const script = [
+    "const items = await jira.listItems();",
+    "const folder = items.length;",
+    "return folder;",
+  ].join("\n");
   assert.equal(await typecheck(script, bindings.dts), null);
   const run = await runGuest(bindings, script);
   assert.deepEqual(run.outcome, { kind: "done", value: jiraIds.length });
   assert.match(
-    (await typecheck("let jira = 1;\nreturn jira;", bindings.dts))?.message ?? "",
+    (await typecheck("let search = 1;\nreturn search;", bindings.dts))?.message ?? "",
     /doesn't compile as the body of an async function/,
   );
+});
+
+test("a source's namespace comes only from what the composition root passes in", async () => {
+  const bare = bindingsFor(mixed, { reader, namespaces: {} });
+  assert.doesNotMatch(bare.dts, /declare const jira|JiraId|NewRef/);
+  await assert.rejects(bare.read("jira.listItems", []), /isn't a read here/);
+  const listed = (await bare.read("items.list", [])).value as unknown[];
+  assert.equal(listed.length, mixed.items.length);
+});
+
+test("a namespace can't offer a revert-only op, or one its catalogue doesn't have", () => {
+  const jira = namespaces.jira;
+  assert.ok(jira);
+  for (const op of ["deleteItem", "zeroAllEstimates"]) {
+    const sneaky: NamespaceSpec = {
+      ...jira,
+      fns: (scope) => [
+        ...jira.fns(scope),
+        write({
+          name: "tidy",
+          doc: "Tidy up.",
+          op,
+          creates: false,
+          params: [],
+          build: () => ({ target: null, args: {} }),
+        }),
+      ],
+    };
+    assert.throws(
+      () => bindingsFor(mixed, { reader, namespaces: { jira: sneaky } }),
+      new RegExp(`jira\\.tidy: ${op} isn't an op a run may capture`),
+      op,
+    );
+  }
 });
 
 test("IDs from every source must have their source's key shape", () => {
@@ -196,10 +241,10 @@ test("IDs from every source must have their source's key shape", () => {
     ...folderOnly,
     items: [{ id: 'folder:0123456789abcdef" | string' as ItemId, stableId: "x" }],
   };
-  assert.throws(() => bindingsFor(evil, { reader }), /not a folder item ID/);
+  assert.throws(() => bindingsFor(evil, { reader, namespaces }), /not a folder item ID/);
   const named: Region = {
     ...folderOnly,
     items: [{ id: "folder:Q3 plan.md" as ItemId, stableId: "x" }],
   };
-  assert.throws(() => bindingsFor(named, { reader }), /not a folder item ID/);
+  assert.throws(() => bindingsFor(named, { reader, namespaces }), /not a folder item ID/);
 });

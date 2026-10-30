@@ -11,7 +11,7 @@ import {
   fixture,
   fixtureReader,
   fixtureRegion,
-  issueTypes,
+  namespaces,
   pickedWithEpic,
   runGuest,
   snapshotAfter,
@@ -61,8 +61,8 @@ const regions = [
 
 for (const [name, region] of regions) {
   test(`${name}: the stubs typecheck against the declarations`, async () => {
-    const bindings = bindingsFor(region, { reader, issueTypes });
-    const fns = describe(scopeOf(region, issueTypes));
+    const bindings = bindingsFor(region, { reader, namespaces });
+    const fns = describe(scopeOf(region, namespaces));
     const start = `__oriel.start({ ${globals.join(", ")} });\n`;
     assert.ok(bindings.shim.endsWith(stubs(fns) + start), "the shim ends with these stubs");
     assert.deepEqual(await checkStubs(bindings.dts, fns), []);
@@ -71,15 +71,19 @@ for (const [name, region] of regions) {
 
 test("every function lives under a name the guest hands the script, and each name is used", () => {
   for (const [, region] of regions) {
-    const homes = new Set(describe(scopeOf(region, issueTypes)).map((fn) => fn.space ?? fn.name));
-    assert.deepEqual(homes, new Set(globals));
+    const homes = new Set(describe(scopeOf(region, namespaces)).map((fn) => fn.space ?? fn.name));
+    // Every name but a namespace for a source the region holds nothing from,
+    // which the guest still hands the script, empty.
+    const unused = globals.filter((name) => !homes.has(name));
+    assert.deepEqual(unused, ["folder"]);
+    assert.ok([...homes].every((home) => (globals as readonly string[]).includes(home)));
   }
 });
 
 test("the stub check catches a missing, extra, renamed or mis-kinded stub", async () => {
   const region = fixtureRegion("boarding-epic");
-  const { dts } = bindingsFor(region, { reader, issueTypes });
-  const fns = describe(scopeOf(region, issueTypes));
+  const { dts } = bindingsFor(region, { reader, namespaces });
+  const fns = describe(scopeOf(region, namespaces));
   const write = fns.find((fn) => fn.name === "setSummary");
   assert.ok(write);
   // Each drift, and the diagnostic codes it must produce.
@@ -137,7 +141,7 @@ return {
 
 test("a sample script typechecks against an epic region's declarations and runs through the stubs", async () => {
   const region = fixtureRegion("boarding-epic");
-  const bindings = bindingsFor(region, { reader, issueTypes });
+  const bindings = bindingsFor(region, { reader, namespaces });
   assert.equal(await typecheck(epicScript, bindings.dts), null);
 
   const run = await runGuest(bindings, epicScript);
@@ -208,7 +212,7 @@ return items.map((item) => (item.gone ? item.reason : item.id));
 `;
 
 test("a sample script typechecks against a picked region's declarations and runs through the stubs", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, namespaces });
   assert.equal(await typecheck(pickedScript, bindings.dts), null);
 
   const run = await runGuest(bindings, pickedScript);
@@ -232,8 +236,8 @@ test("a sample script typechecks against a picked region's declarations and runs
 });
 
 test("a new story's epic is typed: only the region's epics, where it has any", async () => {
-  const picked = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
-  const withEpic = bindingsFor(pickedWithEpic(), { reader, issueTypes });
+  const picked = bindingsFor(fixtureRegion("picked"), { reader, namespaces });
+  const withEpic = bindingsFor(pickedWithEpic(), { reader, namespaces });
   const into = (epic: string) => `jira.createStory({ summary: "A", epic: "${epic}" });`;
   assert.equal(await typecheck(into("jira:SYN-1"), withEpic.dts), null);
   assert.match((await typecheck(into("jira:SYN-13"), withEpic.dts))?.message ?? "", /TS2322/);
@@ -241,7 +245,7 @@ test("a new story's epic is typed: only the region's epics, where it has any", a
 });
 
 test("console takes new properties, but its log methods can't be replaced", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, namespaces });
   const script = `
 const open = console as unknown as Record<string, unknown>;
 open._stdout = "added";
@@ -271,7 +275,7 @@ return { added: open._stdout, extensible: Object.isExtensible(console), tries };
 });
 
 test("logged errors, maps and sets show what they hold, within bounds", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, namespaces });
   const script = `
 console.log(new Map([["jira:SYN-13", 3]]), new Set(["a"]), { error: new RangeError("deep") });
 console.log("x".repeat(5000));
@@ -289,7 +293,7 @@ return null;
 });
 
 test("the guest reports a throw, and the host refuses a write the types would have caught", async () => {
-  const bindings = bindingsFor(fixtureRegion("picked"), { reader, issueTypes });
+  const bindings = bindingsFor(fixtureRegion("picked"), { reader, namespaces });
   const script = `
 jira.setEstimate("jira:SYN-1" as RegionId, 1);
 const item = await jira.getItem("jira:SYN-13");
