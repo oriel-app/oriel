@@ -12,5 +12,8 @@
   "dependencies": {
     "@oriel/core": "workspace:*",
     "@oriel/jira": "workspace:*"
+  },
+  "devDependencies": {
+    "@oriel/agent": "workspace:*"
   }
 }

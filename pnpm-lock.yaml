@@ -81,6 +81,10 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+    devDependencies:
+      '@oriel/agent':
+        specifier: workspace:*
+        version: link:../agent
 
   packages/groupings:
     dependencies:
