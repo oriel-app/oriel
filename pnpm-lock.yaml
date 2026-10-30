@@ -24,6 +24,22 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/agent:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@oriel/bindings':
+        specifier: workspace:*
+        version: link:../bindings
+      '@oriel/jira':
+        specifier: workspace:*
+        version: link:../jira
+      '@oriel/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+
   packages/bindings:
     dependencies:
       '@oriel/core':
@@ -65,6 +81,10 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+    devDependencies:
+      '@oriel/agent':
+        specifier: workspace:*
+        version: link:../agent
 
   packages/folder:
     dependencies:
