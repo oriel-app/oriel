@@ -118,14 +118,22 @@ export type ChatEntry = { seq: number; at: string } & (
 // applied and something stopped the rest. A stopped change says why.
 export type ChangeSetStatus = "open" | "approved" | "stopped" | "rejected" | "applied" | "partial";
 
+// What a person can do with a change set now, as the change set engine says
+// (`nextSteps`). The window offers these and nothing else.
+export type NextStepView =
+  | { kind: "approve" }
+  | { kind: "approve-rest" }
+  | { kind: "reject" }
+  | { kind: "remove"; mutationIds: string[] }
+  | { kind: "retry" }
+  | { kind: "revert" }
+  | { kind: "dismiss"; warnings: string[] };
+
 export type ChangeSetView = {
   id: string;
   status: ChangeSetStatus;
-  // Whether the latest decision approves the change set as it stands. An
-  // edit voids it, so the rest needs approving again.
-  approved: boolean;
-  // A change was sent and may have landed; revert waits until it is applied
-  // or removed.
+  nextSteps: NextStepView[];
+  // A change was sent with no answer, so it may already have been made.
   sentUnapplied: boolean;
   decision: {
     kind: "approved" | "rejected";
@@ -134,7 +142,8 @@ export type ChangeSetView = {
     at: string;
   } | null;
   // Why the last apply stopped, per mutation.
-  errors: { mutationId: string; error: string }[];
+  // `sent`: it went out with no answer, so it may have been made.
+  errors: { mutationId: string; error: string; sent: boolean }[];
   // The change set this one reverts, and those that revert it.
   revertOf: string | null;
   reverts: string[];
@@ -153,8 +162,6 @@ export type DiffView = {
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;
-    // Whether it can be left out of the change set now.
-    removable: boolean;
     fields: { name: string; before: string | null; after: string | null }[];
   }[];
 };

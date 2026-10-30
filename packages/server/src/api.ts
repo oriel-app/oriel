@@ -211,10 +211,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   // After a group changed: its working threads follow it, with markers.
   const follow = (groupId: Ulid) => turns.moved(threads.follow(groupId, deps.now(), deps.newId));
 
-  const changeSetReply = async (id: Ulid, extra: Record<string, unknown> = {}) => {
-    const set = await mustChangeSet(id);
-    const all = await changeSets.ofThread(set.threadId);
-    return json(200, { changeSet: changeSetView(set, all), ...extra });
+  // A change set as the window shows it, with what can be done with it, as
+  // the change set engine says.
+  const viewOf = async (set: ChangeSet) =>
+    changeSetView(set, await changeSets.ofThread(set.threadId), await changeSets.nextSteps(set.id));
+  const changeSetReply = async (id: Ulid, extra: Record<string, unknown> = {}) =>
+    json(200, { changeSet: await viewOf(await mustChangeSet(id)), ...extra });
+  const threadView = async (threadId: Ulid) => {
+    const sets = await changeSets.ofThread(threadId);
+    const steps = new Map(
+      await Promise.all(
+        sets.map(async (set) => [set.id, await changeSets.nextSteps(set.id)] as const),
+      ),
+    );
+    return views.thread(threadId, sets, steps);
   };
 
   // Decides, and on approval applies at once: approving is what lets Oriel
@@ -480,7 +490,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads/:id"),
       async run([id = ""]) {
         const thread = mustThread(id);
-        return json(200, views.thread(thread.id, await changeSets.ofThread(thread.id)));
+        return json(200, await threadView(thread.id));
       },
     },
     {
@@ -530,7 +540,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           workspaceId: deps.workspaceId,
           threadId: thread.id,
         });
-        return json(200, views.thread(thread.id, await changeSets.ofThread(thread.id)));
+        return json(200, await threadView(thread.id));
       },
     },
     {
@@ -587,6 +597,18 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // Ends a change set that can go no further. The warnings name changes
+      // that may already have landed, for the person to check.
+      method: "POST",
+      path: at("/change-sets/:id/dismiss"),
+      async run([id = ""], request) {
+        const set = await mustChangeSet(id);
+        await readJson(request, smallBody, emptyBody);
+        const { warnings } = await changeSets.dismiss(set.id);
+        return changeSetReply(set.id, { warnings });
+      },
+    },
+    {
       method: "POST",
       path: at("/change-sets/:id/revert"),
       async run([id = ""], request) {
@@ -630,9 +652,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const opened = await changeSets.openReview(token);
         if (!opened)
           throw new Refused(404, "This review link has expired, was revoked, or was already used.");
-        const all = await changeSets.ofThread(opened.changeSet.threadId);
         return json(200, {
-          changeSet: changeSetView(opened.changeSet, all),
+          changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet),
         });
       },
@@ -651,7 +672,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         );
         const set = await mustChangeSet(body.changeSet);
         return json(200, {
-          changeSet: changeSetView(set, await changeSets.ofThread(set.threadId)),
+          changeSet: await viewOf(set),
           problem,
         });
       },

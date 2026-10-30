@@ -39,15 +39,30 @@ export function InboxPage(props: { threads: ThreadSummaryView[] | null; dispatch
 // Exactly what happened once the reviewer decided: every change made, some
 // of them, or none, with each stop in plain words, next to the change it
 // stopped at.
-function Outcome({ set, lines }: { set: ChangeSetView; lines: DiffView["lines"] }) {
+// What happened, in the engine's own terms: made, made in part, or not made;
+// and a change sent without an answer may have been made, which Oriel can't
+// tell. A reviewer has no steps to take here, so nothing names one.
+function Outcome({
+  set,
+  lines,
+  problem,
+}: {
+  set: ChangeSetView;
+  lines: DiffView["lines"];
+  problem: string | null;
+}) {
   const stops = set.errors.map((e) => ({
     ...e,
     sentence: lines.find((line) => line.mutationId === e.mutationId)?.sentence ?? null,
   }));
   const said: Record<ChangeSetView["status"], string> = {
     applied: "Every change in it has been made.",
-    partial: "Some of it was made, then Oriel stopped. The rest wasn't made:",
-    stopped: "None of it was made: Oriel stopped at the first change it couldn't make.",
+    partial: set.sentUnapplied
+      ? "Some of it was made. Oriel didn't hear back about one change, so it may have been made too. The rest wasn't:"
+      : "Some of it was made, then Oriel stopped. The rest wasn't made:",
+    stopped: set.sentUnapplied
+      ? "Oriel didn't hear back about a change, so it may have been made. Nothing else was:"
+      : "None of it was made: Oriel stopped at the first change it couldn't make.",
     approved: "It's approved, and hasn't been made yet.",
     rejected: "Nothing will be changed.",
     open: "Nothing has been changed.",
@@ -62,11 +77,14 @@ function Outcome({ set, lines }: { set: ChangeSetView; lines: DiffView["lines"] 
           {stops.map((stop) => (
             <li key={stop.mutationId}>
               {stop.sentence && <span class="stop-change">{stop.sentence} </span>}
-              <span class="stop-reason">{stop.error}</span>
+              <span class="stop-reason">
+                {stop.sent ? "This may have been made; Oriel didn't hear back." : stop.error}
+              </span>
             </li>
           ))}
         </ul>
       )}
+      {problem && <p class="stop-reason">{problem}</p>}
     </>
   );
 }
@@ -108,7 +126,13 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
               : "You rejected this change"}
           </h1>
           <p>Thanks, {model.decided?.decision?.by}.</p>
-          {model.decided && <Outcome set={model.decided} lines={model.view?.diff.lines ?? []} />}
+          {model.decided && (
+            <Outcome
+              set={model.decided}
+              lines={model.view?.diff.lines ?? []}
+              problem={model.problem}
+            />
+          )}
         </section>
       ) : (
         model.view && (

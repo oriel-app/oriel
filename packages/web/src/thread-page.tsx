@@ -3,10 +3,10 @@
 // a diff with what can be done with it.
 import { type Dispatch, ItemKey, Link, plural, StateChip, TypeMark } from "./parts.tsx";
 import {
-  actionName,
-  actionsOf,
   type Block,
   blocks,
+  removable,
+  stepLabel,
   type ThreadModel,
   type ThreadMsg,
 } from "./thread.ts";
@@ -218,8 +218,13 @@ function ChangeSet(props: {
   const diff = model.diffs[set.id];
   const busy = model.busy.includes(set.id);
   const problem = model.problems[set.id];
+  const notes = model.notes[set.id] ?? [];
   const link = model.links[set.id];
   const reverts = set.reverts.flatMap((id) => view.changeSets.find((s) => s.id === id) ?? []);
+  // Only what the change set engine offers, in its order.
+  const steps = set.nextSteps.flatMap((step) => (step.kind === "remove" ? [] : [step]));
+  const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
+  const approvable = set.nextSteps.some((step) => step.kind === "approve");
   return (
     <section class="change-set" data-status={set.status} aria-busy={busy}>
       <header class="change-set-head">
@@ -235,6 +240,7 @@ function ChangeSet(props: {
         <Diff
           diff={diff}
           busy={busy}
+          removable={removable(model, set.id)}
           onRemove={(mutationId) => send({ type: "lineRemoved", changeSetId: set.id, mutationId })}
         />
       ) : (
@@ -249,25 +255,40 @@ function ChangeSet(props: {
           )}
         </>
       )}
+      {dismissing?.kind === "dismiss" && dismissing.warnings.length > 0 && (
+        <ul class="may-have-landed">
+          {dismissing.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
       <footer class="change-set-actions">
-        {actionsOf(set, view.writable).map((action) => (
-          <button
-            key={action}
-            type="button"
-            class={action === "approve" || action === "apply" ? "button primary" : "button"}
-            disabled={busy || (action !== "revert" && action !== "apply" && !diff)}
-            onClick={() => send({ type: "changeSetClicked", changeSetId: set.id, action })}
-          >
-            {actionName(action, set)}
-          </button>
-        ))}
+        {steps.map((step) => {
+          const forward =
+            step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";
+          const decides = forward && step.kind !== "retry";
+          return (
+            <button
+              key={step.kind}
+              type="button"
+              class={
+                forward ? "button primary" : step.kind === "dismiss" ? "quiet-action" : "button"
+              }
+              disabled={busy || ((decides || step.kind === "reject") && !diff)}
+              onClick={() =>
+                send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind })
+              }
+            >
+              {stepLabel(step.kind, set)}
+            </button>
+          );
+        })}
         {set.status === "open" && !view.writable && (
           <span class="read-only-note">
             Live writes aren't configured here, so this can be reviewed and rejected, not approved.
           </span>
         )}
-        {set.status === "open" &&
-          view.writable &&
+        {approvable &&
           (link ? (
             <span class="review-link">
               <input class="link-field" readOnly value={link} aria-label="Review link" />
@@ -294,6 +315,13 @@ function ChangeSet(props: {
           {problem}
         </p>
       )}
+      {notes.length > 0 && (
+        <ul class="may-have-landed" role="note">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
       {reverts.map((revert) => (
         <ChangeSet key={revert.id} set={revert} model={model} view={view} send={send} />
       ))}
@@ -301,14 +329,17 @@ function ChangeSet(props: {
   );
 }
 
-// A change set's lines. With `onRemove`, a line that can be left out offers
-// it: quietly while the change set is open, and plainly beside a change that
+// A change set's lines. The lines the change set engine says can be left
+// out (`removable`) offer it: quietly, or plainly beside a change that
 // stopped, as the reason it stopped says.
 export function Diff(props: {
   diff: DiffView;
   busy: boolean;
+  removable?: readonly string[];
   onRemove?: (mutationId: string) => void;
 }) {
+  const offered = (id: string) =>
+    props.onRemove !== undefined && (props.removable ?? []).includes(id);
   return (
     <ul class="diff">
       {props.diff.lines.map((line) => (
@@ -340,7 +371,7 @@ export function Diff(props: {
           {line.error && (
             <p class="line-error" role="note">
               {line.error}
-              {line.removable && props.onRemove && (
+              {offered(line.mutationId) && (
                 <button
                   type="button"
                   class="quiet-action"
@@ -352,7 +383,7 @@ export function Diff(props: {
               )}
             </p>
           )}
-          {!line.error && line.removable && props.onRemove && (
+          {!line.error && offered(line.mutationId) && (
             <button
               type="button"
               class="remove-line"

@@ -62,8 +62,12 @@ export function reviewReplied(model: ReviewModel, msg: Replied): [ReviewModel, E
   }
   if (msg.tag.kind === "reviewDecided") {
     if (!msg.ok) return [{ ...model, stage: "open", problem: errorOf(msg.body) }, []];
-    const { changeSet } = msg.body as { changeSet: ChangeSetView };
-    return [{ ...model, stage: "decided", decided: changeSet }, []];
+    // A decision can stand while applying it didn't: the reply says why.
+    const { changeSet, problem } = msg.body as {
+      changeSet: ChangeSetView;
+      problem?: string | null;
+    };
+    return [{ ...model, stage: "decided", decided: changeSet, problem: problem ?? null }, []];
   }
   return [model, []];
 }

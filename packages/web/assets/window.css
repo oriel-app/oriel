@@ -1562,6 +1562,15 @@ a {
   text-decoration: underline;
 }
 
+.may-have-landed {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  border-top: 1px solid var(--line);
+  background: var(--derived-soft);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .read-only-note {
   color: var(--text-faint);
   font-size: var(--text-sm);

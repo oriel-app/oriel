@@ -5,9 +5,10 @@ import { test } from "node:test";
 import { type GroupMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
 import { ensureWorkspace, groupStore, loadMigrations, migrate, open, threadStore } from "@oriel/db";
 import type { ThreadView } from "@oriel/web/view";
+import { minResponseTokens } from "@oriel/agent";
 import type { Agent } from "./agent.ts";
 import { host, json, type Script, t0, testApp } from "./testing.ts";
-import { memberOf, plainError, views } from "./views.ts";
+import { memberOf, views } from "./views.ts";
 
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
@@ -70,10 +71,17 @@ test("a thread that has spent its tokens takes no more, whatever the agent does"
       yield { kind: "done", usage: { inputTokens: 6, outputTokens: 5 } };
     },
   };
-  const app = await thread(t, { agent: () => spending, limits: { maxTokensPerThread: 10 } });
+  // What is left after this turn is less than the smallest useful response.
+  const app = await thread(t, {
+    agent: () => spending,
+    limits: { maxTokensPerThread: minResponseTokens + 10 },
+  });
   const refused = await app.say("Two");
   assert.equal(refused.status, 409);
-  assert.match(json<{ error: string }>(refused).error, /all 10 of its tokens/);
+  assert.match(
+    json<{ error: string }>(refused).error,
+    /used its [0-9,]+ tokens\. Start a new thread on this group/,
+  );
   assert.equal((await app.view()).entries.at(-1)?.kind, "limit");
 });
 
@@ -172,25 +180,12 @@ test("an item that moved keeps its title in a group's history and a thread's mar
   });
   const added = shown.group(id(2))?.changes[0]?.added[0];
   assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
-  const marker = shown.thread(id(3), [])?.entries.find((e) => e.kind === "marker");
+  const marker = shown.thread(id(3), [], new Map())?.entries.find((e) => e.kind === "marker");
   assert.ok(marker?.kind === "marker");
   assert.deepEqual(
     marker.added.map((r) => r.title),
     ["Moved story"],
   );
-});
-
-test("why a change stopped reads in plain words", () => {
-  assert.equal(
-    plainError("PUT /rest/api/3/issue/SYN-99: 400 SYN-99 can't be changed right now."),
-    "The source refused this change: SYN-99 can't be changed right now.",
-  );
-  assert.equal(
-    plainError("DELETE /rest/api/3/issue/SYN-9: 500"),
-    "The source refused this change (it answered 500).",
-  );
-  const own = "SYN-99 was removed from the group after this was captured, so it wasn't sent.";
-  assert.equal(plainError(own), own);
 });
 
 test("a member is found by identity, so a moved item is removed under its new handle", () => {

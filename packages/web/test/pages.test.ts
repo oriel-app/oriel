@@ -6,10 +6,10 @@ import { initReview, reviewReplied, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import { parseRoute, routeUrl, safeHref } from "../src/route.ts";
 import {
-  actionName,
-  actionsOf,
   blocks,
   initThread,
+  removable,
+  stepLabel,
   streamed,
   type ThreadModel,
   threadReplied,
@@ -21,6 +21,7 @@ import type {
   ChatEntry,
   DiffView,
   GroupView,
+  NextStepView,
   ReviewView,
   ThreadView,
   WindowView,
@@ -101,6 +102,7 @@ function windowView(): WindowView {
           anchor: null,
           count: 2,
           points: 0,
+          estimated: 0,
           unestimated: 2,
           status: { todo: 2, "in-progress": 0, done: 0 },
         },
@@ -193,7 +195,7 @@ function threadView(entries: ChatEntry[], changeSets: ChangeSetView[] = []): Thr
 const openSet: ChangeSetView = {
   id: setId,
   status: "open",
-  approved: false,
+  nextSteps: [{ kind: "approve" }, { kind: "reject" }, { kind: "remove", mutationIds: ["m1"] }],
   sentUnapplied: false,
   decision: null,
   errors: [],
@@ -269,14 +271,14 @@ test("approving sends the hash of the diff on screen; a refusal shows on the cha
   );
   // No diff yet: nothing to approve.
   assert.deepEqual(
-    updateThread(loaded, { type: "changeSetClicked", changeSetId: setId, action: "approve" })[1],
+    updateThread(loaded, { type: "changeSetClicked", changeSetId: setId, step: "approve" })[1],
     [],
   );
   const [withDiff] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
   const [busy, effects] = updateThread(withDiff, {
     type: "changeSetClicked",
     changeSetId: setId,
-    action: "approve",
+    step: "approve",
   });
   assert.deepEqual(effects, [
     {
@@ -357,43 +359,63 @@ test("the chat joins a streamed reply and a run's start and finish into one bloc
   ]);
 });
 
-test("every state of a change set leads somewhere", () => {
-  const named = (set: ChangeSetView) =>
-    actionsOf(set, true).map((action) => actionName(action, set));
-  assert.deepEqual(named(openSet), ["Approve and apply", "Reject"]);
-  // Once approved, if apply stopped before anything landed: try again, or reject.
-  assert.deepEqual(named({ ...openSet, status: "stopped", approved: true }), [
-    "Try again",
-    "Reject",
-  ]);
-  // Partly applied and still approved: try again, or revert what landed.
-  assert.deepEqual(named({ ...openSet, status: "partial", approved: true }), [
-    "Try again",
-    "Revert what was applied",
-  ]);
-  // After a stopped change was left out, the rest needs approving again.
-  assert.deepEqual(named({ ...openSet, status: "partial" }), [
-    "Approve the rest",
-    "Revert what was applied",
-  ]);
-  // A change sent with no answer may have landed: revert waits for it.
-  assert.deepEqual(named({ ...openSet, status: "partial", approved: true, sentUnapplied: true }), [
-    "Try again",
-  ]);
-  assert.deepEqual(named({ ...openSet, status: "applied" }), ["Revert"]);
-  assert.deepEqual(named({ ...openSet, status: "applied", reverts: ["x"] }), []);
-  assert.deepEqual(named({ ...openSet, status: "rejected" }), []);
+// Partly applied, stopped at a change that was sent without an answer.
+const stoppedSet: ChangeSetView = {
+  ...openSet,
+  status: "partial",
+  sentUnapplied: true,
+  errors: [{ mutationId: "m2", error: "This may already be in Jira.", sent: true }],
+  nextSteps: [
+    { kind: "retry" },
+    { kind: "remove", mutationIds: ["m2"] },
+    { kind: "dismiss", warnings: ["This may already be in Jira: check SYN-12"] },
+  ],
+};
+
+test("only what the change set engine offers is sent", () => {
+  const [loaded] = loadedThread(threadView([], [stoppedSet]));
+  const [shown] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
+  const click = (step: Exclude<NextStepView["kind"], "remove">) =>
+    updateThread(shown, { type: "changeSetClicked", changeSetId: setId, step })[1];
+  // Not offered, so not sent, whatever the window might show.
+  assert.deepEqual(click("approve"), []);
+  assert.deepEqual(click("revert"), []);
+  assert.deepEqual(
+    updateThread(shown, { type: "lineRemoved", changeSetId: setId, mutationId: "m1" })[1],
+    [],
+  );
+  assert.deepEqual(
+    [...click("retry"), ...click("dismiss")].map((e) => (e.type === "http" ? e.url : e.type)),
+    [`/api/change-sets/${setId}/apply`, `/api/change-sets/${setId}/dismiss`],
+  );
+  assert.deepEqual(removable(shown, setId), ["m2"]);
 });
 
-test("without live writes a change set can only be rejected", () => {
-  assert.deepEqual(actionsOf(openSet, false), ["reject"]);
-  assert.deepEqual(actionsOf({ ...openSet, status: "applied" }, false), []);
+test("dismissing keeps what it says to check", () => {
+  const [loaded] = loadedThread(threadView([], [stoppedSet]));
+  const [dismissed] = threadReplied(
+    loaded,
+    ok(
+      { kind: "changeSet", threadId: id, changeSetId: setId },
+      {
+        changeSet: { ...stoppedSet, nextSteps: [] },
+        warnings: ["This may already be in Jira: check SYN-12"],
+      },
+    ),
+  );
+  assert.deepEqual(dismissed.notes[setId], ["This may already be in Jira: check SYN-12"]);
+});
+
+test("each offered step has a name for where the change set stands", () => {
+  assert.equal(stepLabel("retry", stoppedSet), "Try again");
+  assert.equal(stepLabel("retry", { ...openSet, status: "approved" }), "Apply");
+  assert.equal(stepLabel("revert", stoppedSet), "Revert what was applied");
+  assert.equal(stepLabel("revert", { ...openSet, status: "applied" }), "Revert");
+  assert.equal(stepLabel("approve-rest", stoppedSet), "Approve the rest");
 });
 
 test("a stopped change is left out with an edit, then the diff and thread reload", () => {
-  const [loaded] = loadedThread(
-    threadView([], [{ ...openSet, status: "partial", approved: true }]),
-  );
+  const [loaded] = loadedThread(threadView([], [stoppedSet]));
   const [busy, effects] = updateThread(loaded, {
     type: "lineRemoved",
     changeSetId: setId,
@@ -424,7 +446,7 @@ test("a problem the server reports alongside a decision shows on the change set"
     loaded,
     ok(
       { kind: "changeSet", threadId: id, changeSetId: setId },
-      { changeSet: { ...openSet, status: "approved", approved: true }, problem: "busy" },
+      { changeSet: { ...openSet, status: "approved" }, problem: "busy" },
     ),
   );
   assert.equal(shown.problems[setId], "busy");

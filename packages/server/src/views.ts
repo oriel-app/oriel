@@ -8,10 +8,12 @@ import {
   type IndexRecord,
   type Instant,
   type ItemId,
+  type NextStep,
   parseItemId,
   type Presentations,
   type Ulid,
 } from "@oriel/core";
+import { plainError } from "@oriel/changeset";
 import type { GroupStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
 import { itemRow } from "@oriel/groupings";
 import type {
@@ -90,18 +92,6 @@ function display(
   return JSON.stringify(value) ?? null;
 }
 
-// Why a change stopped, as a person reads it: a source's refusal loses its
-// request line and status code and keeps what the source said. Oriel's own
-// reasons are already plain.
-export function plainError(error: string): string {
-  const refused = /^(?:GET|PUT|POST|DELETE) \S+: (\d{3})(?: ([\s\S]*))?$/.exec(error);
-  if (!refused) return error;
-  const [, status, said] = refused;
-  return said
-    ? `The source refused this change: ${said}`
-    : `The source refused this change (it answered ${status}).`;
-}
-
 // Where a change set stands, from its rows: applied in full or in part; or,
 // with nothing applied, approved, stopped (approved, and apply stopped at a
 // change, which says why), rejected or open.
@@ -115,12 +105,18 @@ export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
   return "open";
 }
 
-export function changeSetView(set: ChangeSet, all: readonly ChangeSet[]): ChangeSetView {
+// What can be done with it comes from the change set engine (`nextSteps`),
+// never from here.
+export function changeSetView(
+  set: ChangeSet,
+  all: readonly ChangeSet[],
+  nextSteps: readonly NextStep[],
+): ChangeSetView {
   return {
     id: set.id,
     status: changeSetStatus(set),
-    approved: set.decision?.kind === "approved",
-    // A change sent with no answer may have landed; revert waits for it.
+    nextSteps: nextSteps.map((step) => ({ ...step })),
+    // A change sent with no answer may have landed.
     sentUnapplied: set.mutations.some((m) => m.status === "failed"),
     decision: set.decision && {
       kind: set.decision.kind,
@@ -130,7 +126,7 @@ export function changeSetView(set: ChangeSet, all: readonly ChangeSet[]): Change
     },
     errors: set.mutations.flatMap((m) =>
       m.status !== "applied" && m.error !== null
-        ? [{ mutationId: m.id, error: plainError(m.error) }]
+        ? [{ mutationId: m.id, error: plainError(m.error), sent: m.status === "failed" }]
         : [],
     ),
     revertOf: set.revertOf,
@@ -356,7 +352,11 @@ export function views(deps: ViewDeps) {
       return entry(message, thread.groupId, regionIds(thread.groupId, thread.regionVersion));
     },
 
-    thread(id: Ulid, sets: readonly ChangeSet[]): ThreadView | null {
+    thread(
+      id: Ulid,
+      sets: readonly ChangeSet[],
+      steps: ReadonlyMap<string, readonly NextStep[]>,
+    ): ThreadView | null {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
       const group = groups.get(thread.groupId);
@@ -388,7 +388,7 @@ export function views(deps: ViewDeps) {
         entries,
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
-        changeSets: sets.map((set) => changeSetView(set, sets)),
+        changeSets: sets.map((set) => changeSetView(set, sets, steps.get(set.id) ?? [])),
         writable: deps.writable,
       };
     },
@@ -397,7 +397,6 @@ export function views(deps: ViewDeps) {
       const { byId } = lookup();
       const person = people();
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
-      const status = changeSetStatus(set);
       return {
         changeSetId: diff.changeSetId,
         hash: diff.hash,
@@ -414,13 +413,6 @@ export function views(deps: ViewDeps) {
                 : null,
             applied,
             error,
-            // A change that stopped can be left out, as its message says; while
-            // open, any can. An edit never empties a change set.
-            removable:
-              !applied &&
-              set.mutations.length > 1 &&
-              status !== "rejected" &&
-              (status === "open" || error !== null),
             fields: line.fields.map((field) => ({
               name: field.name,
               before: display(field.name, field.before, person),

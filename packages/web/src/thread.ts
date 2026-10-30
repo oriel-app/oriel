@@ -4,6 +4,7 @@
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type {
   ChangeSetView,
+  NextStepView,
   ChatEntry,
   DiffView,
   ItemRef,
@@ -25,17 +26,20 @@ export type ThreadModel = {
   problems: Readonly<Record<string, string>>;
   // Review links minted here, by change set.
   links: Readonly<Record<string, string>>;
+  // What dismissing a change set said to check, by change set.
+  notes: Readonly<Record<string, readonly string[]>>;
   notice: string | null;
 };
 
-export type ChangeSetAction = "approve" | "reject" | "apply" | "revert";
+// A step offered for a whole change set. Removing a line is its own message.
+export type SetStep = Exclude<NextStepView["kind"], "remove">;
 
 export type ThreadMsg =
   | { type: "draftChanged"; text: string }
   | { type: "sendClicked" }
   | { type: "stopClicked" }
   | { type: "doneClicked" }
-  | { type: "changeSetClicked"; changeSetId: string; action: ChangeSetAction }
+  | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string };
@@ -52,6 +56,7 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       busy: [],
       problems: {},
       links: {},
+      notes: {},
       notice: null,
     },
     [get(`/api/threads/${id}`, { kind: "thread", id })],
@@ -66,6 +71,35 @@ const diffOf = (changeSetId: string): Effect =>
 const problemOf = (body: unknown): string | null =>
   typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
     ? body.problem
+    : null;
+
+// Each step's route; approving the rest is approving the set as it stands.
+const routes: Record<SetStep, string> = {
+  approve: "approve",
+  "approve-rest": "approve",
+  reject: "reject",
+  retry: "apply",
+  revert: "revert",
+  dismiss: "dismiss",
+};
+
+const stepsOf = (model: ThreadModel, changeSetId: string): readonly NextStepView[] =>
+  model.view?.changeSets.find((set) => set.id === changeSetId)?.nextSteps ?? [];
+
+const offered = (model: ThreadModel, changeSetId: string, step: SetStep): boolean =>
+  stepsOf(model, changeSetId).some((s) => s.kind === step);
+
+// The lines the engine says can be left out now.
+export const removable = (model: ThreadModel, changeSetId: string): readonly string[] =>
+  stepsOf(model, changeSetId).flatMap((s) => (s.kind === "remove" ? s.mutationIds : []));
+
+const warningsOf = (body: unknown): string[] | null =>
+  typeof body === "object" &&
+  body !== null &&
+  "warnings" in body &&
+  Array.isArray(body.warnings) &&
+  body.warnings.every((w) => typeof w === "string")
+    ? body.warnings
     : null;
 
 const without = <T>(record: Readonly<Record<string, T>>, key: string) =>
@@ -94,10 +128,12 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         [post(`/api/threads/${model.id}/done`, {}, { kind: "threadAction", threadId: model.id })],
       ];
     case "changeSetClicked": {
-      const { changeSetId, action } = msg;
-      if (model.busy.includes(changeSetId)) return [model, []];
+      const { changeSetId, step } = msg;
+      // Only what the change set engine offers is sent.
+      if (model.busy.includes(changeSetId) || !offered(model, changeSetId, step))
+        return [model, []];
       const hash = model.diffs[changeSetId]?.hash;
-      const decides = action === "approve" || action === "reject";
+      const decides = step === "approve" || step === "approve-rest" || step === "reject";
       if (decides && hash === undefined) return [model, []];
       return [
         {
@@ -106,7 +142,7 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
           problems: without(model.problems, changeSetId),
         },
         [
-          post(`/api/change-sets/${changeSetId}/${action}`, decides ? { hash } : {}, {
+          post(`/api/change-sets/${changeSetId}/${routes[step]}`, decides ? { hash } : {}, {
             kind: "changeSet",
             threadId: model.id,
             changeSetId,
@@ -116,7 +152,8 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     }
     case "lineRemoved": {
       const { changeSetId, mutationId } = msg;
-      if (model.busy.includes(changeSetId)) return [model, []];
+      if (model.busy.includes(changeSetId) || !removable(model, changeSetId).includes(mutationId))
+        return [model, []];
       return [
         {
           ...model,
@@ -206,8 +243,11 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         problem === null
           ? without(model.problems, tag.changeSetId)
           : { ...model.problems, [tag.changeSetId]: problem };
+      // Dismissing says what to check.
+      const warnings = msg.ok ? warningsOf(msg.body) : null;
+      const notes = warnings ? { ...model.notes, [tag.changeSetId]: warnings } : model.notes;
       // Whatever happened, the diff and the thread's state may have moved.
-      return [{ ...model, busy, problems }, [diffOf(tag.changeSetId), refresh(model)]];
+      return [{ ...model, busy, problems, notes }, [diffOf(tag.changeSetId), refresh(model)]];
     }
     case "reviewLink": {
       if (!msg.ok)
@@ -337,42 +377,21 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
   return out;
 }
 
-// What a person can do with a change set as it stands.
-// Each state leads somewhere: a stopped change is retried or, line by line,
-// left out (`DiffView` says which can be); what's left after that is
-// approved again; and whatever applied can be reverted, once nothing sent is
-// still unaccounted for. Without live writes, only rejecting is possible.
-export function actionsOf(set: ChangeSetView, writable: boolean): ChangeSetAction[] {
-  if (!writable) return set.status === "open" ? ["reject"] : [];
-  switch (set.status) {
-    case "open":
-      return ["approve", "reject"];
-    case "approved":
-    case "stopped":
-      return ["apply", "reject"];
-    case "partial":
-      return [
-        set.approved ? "apply" : "approve",
-        ...(set.sentUnapplied ? [] : ["revert" as const]),
-      ];
-    case "applied":
-      return set.reverts.length ? [] : ["revert"];
-    case "rejected":
-      return [];
-  }
-}
-
-// What an action is called where it stands.
-export function actionName(action: ChangeSetAction, set: ChangeSetView): string {
-  const partway = set.status === "partial" || set.status === "stopped";
-  switch (action) {
+// What a step is called. The steps themselves come from the change set
+// engine; this only names them.
+export function stepLabel(step: SetStep, set: ChangeSetView): string {
+  switch (step) {
     case "approve":
-      return partway ? "Approve the rest" : "Approve and apply";
+      return "Approve and apply";
+    case "approve-rest":
+      return "Approve the rest";
     case "reject":
       return "Reject";
-    case "apply":
-      return partway ? "Try again" : "Apply";
+    case "retry":
+      return set.errors.length ? "Try again" : "Apply";
     case "revert":
       return set.status === "partial" ? "Revert what was applied" : "Revert";
+    case "dismiss":
+      return "Dismiss";
   }
 }
