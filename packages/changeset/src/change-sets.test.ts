@@ -252,7 +252,7 @@ test("a sent create keeps its own message, even with stored arguments the catalo
   jira.hooks.after = undefined;
   const error = () => db.prepare("select error from mutations where id = ?").get(mutationId)?.error;
   const sent = error();
-  assert.match(String(sent), /may have been made in Jira/);
+  assert.match(String(sent), /may already be in Jira/);
   db.prepare("update mutations set args = ? where id = ?").run(
     JSON.stringify({ summary: "", epic: "jira:SYN-1" }),
     mutationId,
@@ -497,7 +497,7 @@ test("a change whose item couldn't be read can't be approved until a render read
   await assert.rejects(approve(changeSets, set.id), {
     code: "refused",
     message:
-      "SYN-21 couldn't be read when this was last reviewed: remove that change, or review it again once it can be read",
+      "SYN-21 couldn't be read when this was last reviewed; it can be approved once it can be read again",
   });
   assert.deepEqual(preview(db, mutationId), { $gone: true });
 
@@ -782,7 +782,7 @@ test("a create that failed may have landed, so it is never sent again", async ()
     if (call === 1) throw new Error("timed out");
   };
   const report = await changeSets.apply(set.id);
-  assert.match(nth(report.failed, 0).error, /may have been made in Jira: check, then remove it/);
+  assert.match(nth(report.failed, 0).error, /may already be in Jira: check, then dismiss/);
   jira.hooks.after = undefined;
 
   const retry = await changeSets.apply(set.id);
@@ -894,7 +894,7 @@ test("a crash after a create was sent leaves it blocked, not sent twice", async 
     report.failed.map((f) => f.mutationId),
     [create],
   );
-  assert.match(nth(report.failed, 0).error, /may have been made in Jira: check, then remove it/);
+  assert.match(nth(report.failed, 0).error, /may already be in Jira: check, then dismiss/);
   assert.equal(status(db, create), "failed");
   assert.equal(jira.calls.length, 1);
   assert.deepEqual(jira.created, ["SYN-900"]);

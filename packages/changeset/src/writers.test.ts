@@ -33,6 +33,7 @@ test("the package entry builds change sets from config and has no way to pass a 
     "ChangeSetError",
     "changeSets",
     "explainConflicts",
+    "plainError",
     "sendLeaseMs",
   ]);
 });

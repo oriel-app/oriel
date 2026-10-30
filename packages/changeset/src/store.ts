@@ -58,6 +58,7 @@ const changeSetRow = object({
   run_id: nullable(ulidValue),
   revert_of: nullable(ulidValue),
   created_at: instantValue,
+  completed_at: nullable(instantValue),
 });
 const mutationRow = object({
   id: ulidValue,
@@ -121,7 +122,7 @@ export type Store = ReturnType<typeof store>;
 // and writes; the rules live in change-sets.ts.
 export function store(db: DatabaseSync) {
   const selectChangeSet = db.prepare(
-    "select id, workspace_id, thread_id, run_id, revert_of, created_at from change_sets where id = ?",
+    "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at from change_sets where id = ?",
   );
   const selectMutations = db.prepare(`
     select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts
@@ -135,6 +136,11 @@ export function store(db: DatabaseSync) {
   const selectNextDecisionSeq = db.prepare(
     "select coalesce(max(seq), 0) + 1 as next from decisions where change_set_id = ?",
   );
+  const markCompleted = db.prepare(`
+    update change_sets set completed_at = ?
+    where id = ? and completed_at is null
+      and not exists (select 1 from mutations where change_set_id = change_sets.id and status != 'applied')
+      and exists (select 1 from mutations where change_set_id = change_sets.id)`);
   const selectOfThread = db.prepare(
     "select id from change_sets where thread_id = ? order by created_at, rowid",
   );
@@ -257,6 +263,7 @@ export function store(db: DatabaseSync) {
             : null,
         revertOf: row.revert_of,
         createdAt: row.created_at,
+        completedAt: row.completed_at,
       };
     },
 
@@ -445,6 +452,12 @@ export function store(db: DatabaseSync) {
 
     revokeLinks(changeSetId: Ulid, at: Instant): void {
       revokeLinks.run(at, changeSetId);
+    },
+
+    // Records when a change set's last change applied, once. True if this
+    // call recorded it.
+    markCompleted(changeSetId: Ulid, at: Instant): boolean {
+      return Number(markCompleted.run(at, changeSetId).changes) === 1;
     },
 
     insertLink(tokenHash: string, workspaceId: Ulid, changeSetId: Ulid, at: Instant): void {

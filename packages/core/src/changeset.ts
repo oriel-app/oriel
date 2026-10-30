@@ -65,7 +65,32 @@ export type ChangeSet = {
   // Set when this change set reverts another.
   revertOf: Ulid | null;
   createdAt: Instant;
+  // When its last change applied, whichever way it got there: an apply, an
+  // edit that left out the last unapplied change, or a revert that dropped
+  // the unsent ones. Null until then. A thread's "done" counts from this.
+  completedAt: Instant | null;
 };
+
+// What a person can do with a change set as it stands, and nothing the
+// engine would refuse. Derived from the change set, its reverts and the
+// writers configured; never stored.
+export type NextStep =
+  // Approve it as it stands, which applies it.
+  | { kind: "approve" }
+  // Part of it applied, then an edit voided the approval: approve the rest.
+  | { kind: "approve-rest" }
+  // Decline it before anything landed.
+  | { kind: "reject" }
+  // Leave these changes out, one at a time.
+  | { kind: "remove"; mutationIds: Ulid[] }
+  // Apply again from where it stopped, or for the first time.
+  | { kind: "retry" }
+  // A new change set that undoes what this one applied.
+  | { kind: "revert" }
+  // End a change set that started landing, or may have: what hasn't applied
+  // never will. Each warning names a change that may already be in its
+  // source, for the person to check.
+  | { kind: "dismiss"; warnings: string[] };
 
 // One plain-language line per mutation: what it will do, with before and after.
 export type Diff = {
@@ -134,4 +159,10 @@ export interface ChangeSets {
   revokeReviewLink(id: Ulid): Promise<void>;
   // What the review page shows; null for a dead or unknown token.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
+  // Exactly what can be done with it now (`NextStep`). Every message the
+  // engine shows a person names only these.
+  nextSteps(id: Ulid): Promise<NextStep[]>;
+  // Ends a change set that can go no further: its unapplied changes are
+  // rejected. The warnings name any that may already have landed.
+  dismiss(id: Ulid): Promise<{ changeSet: ChangeSet; warnings: string[] }>;
 }

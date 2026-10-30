@@ -347,7 +347,7 @@ test("a set op that landed without an answer blocks revert, so the revert can't 
   const changeSetCount = count(db, "change_sets");
   await assert.rejects(changeSets.revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first, or check Jira and remove it/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
   assert.equal(count(db, "change_sets"), changeSetCount);
   assert.equal(status(db, second), "failed");
@@ -442,7 +442,7 @@ test("a change set with a create that may have landed can't be reverted until th
   jira.edit("SYN-21", { points: 8 });
   await assert.rejects(changeSets.revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first, or check Jira and remove it/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
 });
 
@@ -466,7 +466,7 @@ test("a set op being sent when the process died blocks revert", async () => {
   const changeSetCount = count(db, "change_sets");
   await assert.rejects(instance().revert(set.id), {
     code: "not-revertible",
-    message: /retry apply first/,
+    message: /may have landed in Jira, so this change set can.t be reverted/,
   });
   assert.equal(count(db, "change_sets"), changeSetCount);
   assert.equal(jira.issue("SYN-117")?.points, 2);

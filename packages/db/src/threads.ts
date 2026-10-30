@@ -108,12 +108,14 @@ export function threadStore(db: DatabaseSync) {
       union all select created_at from change_sets where thread_id = ?1
       union all select d.at from decisions d join change_sets c on c.id = d.change_set_id
         where c.thread_id = ?1)`);
-  // The change set last applied in full, at the time it completed (its last
-  // mutation's), and whether it handed the work off: any of its mutations
-  // set an assignee or attached a link, in core's field names
-  // (`FieldValues`). A set only partly applied settles nothing.
+  // The change set last applied in full, at the time it completed, and
+  // whether it handed the work off: any of its mutations set an assignee or
+  // attached a link, in core's field names (`FieldValues`). A set only partly
+  // applied settles nothing. Completion is when the set's last change
+  // applied by whichever path, an edit or a revert included, as the change
+  // set engine records it; for a row written without it, its last apply.
   const lastApplied = db.prepare(`
-    select max(json_extract(m.applied, '$.at')) as at,
+    select coalesce(c.completed_at, max(json_extract(m.applied, '$.at'))) as at,
       max(exists (
         select 1 from json_each(m.applied, '$.after') field
         where field.key = 'assignee' or (field.key like 'link:%' and field.type != 'null')

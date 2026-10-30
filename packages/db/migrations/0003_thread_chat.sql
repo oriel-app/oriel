@@ -18,6 +18,11 @@ insert into new_messages (id, workspace_id, thread_id, seq, role, content, at)
 drop table messages;
 alter table new_messages rename to messages;
 
+-- When a change set's last change applied, by apply, an edit that left out
+-- the last unapplied one, or a revert that dropped the unsent ones. A
+-- thread is done as of this time, not as of its last mutation's.
+alter table change_sets add column completed_at text;
+
 -- The inbox lists a workspace's threads, newest first; a group's page and
 -- following a group list its threads.
 create index threads_by_workspace on threads (workspace_id, created_at);

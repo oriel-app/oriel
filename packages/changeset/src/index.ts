@@ -7,6 +7,7 @@ export {
   type ChangeSetErrorCode,
   changeSets,
   explainConflicts,
+  plainError,
   type FieldReader,
   sendLeaseMs,
   type Specs,
