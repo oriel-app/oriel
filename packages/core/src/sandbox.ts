@@ -103,7 +103,9 @@ export type RunResult = {
   reads: ProxiedRead[];
   mutations: CapturedMutation[];
   transcript: TranscriptEntry[];
-  outcome: RunOutcome;
+  // A sandbox rejects with the reason when the run is aborted, so a result is
+  // never "aborted"; the run record says that (`Run`).
+  outcome: Exclude<RunOutcome, "aborted">;
   wallMs: number;
   // From starting the guest to its first line, or null when none came: the
   // cold start plus whatever the script does before its first read, write,
