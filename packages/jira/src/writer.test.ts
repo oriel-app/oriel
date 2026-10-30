@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ItemId, type SourceWriter, ulid, type WriteRequest } from "@oriel/core";
+import {
+  type ItemId,
+  SourceRefused,
+  type SourceWriter,
+  ulid,
+  type WriteRequest,
+} from "@oriel/core";
 import { textToAdf } from "./adf.ts";
 import {
   discovery,
@@ -382,7 +388,7 @@ test("current reads the named fields, and a gone item is gone", async () => {
   await assert.rejects(w.current("jira:SYN-12", ["priority"]), /not a Jira field/);
 });
 
-test("a write Jira refuses fails with Jira's own message", async () => {
+test("a write Jira refuses fails with Jira's own message, as a refusal", async () => {
   const jira = fakeSite();
   const refusing: Transport = async (req) =>
     req.method === "PUT"
@@ -390,6 +396,27 @@ test("a write Jira refuses fails with Jira's own message", async () => {
       : jira.transport(req);
   await assert.rejects(
     writer(refusing).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
-    /PUT \/rest\/api\/3\/issue\/SYN-12: 400 summary: Summary is too long\./,
+    (error) =>
+      error instanceof SourceRefused &&
+      /PUT \/rest\/api\/3\/issue\/SYN-12: 400 summary: Summary is too long\./.test(error.message),
   );
+});
+
+test("a write Jira breaks on, or a read before it that fails, isn't a refusal", async () => {
+  const jira = fakeSite();
+  const broken: Transport = async (req) =>
+    req.method === "PUT" ? { status: 503, body: "Unavailable" } : jira.transport(req);
+  // A 5xx to the write itself may have landed.
+  await assert.rejects(
+    writer(broken).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
+    (error) => !(error instanceof SourceRefused) && /PUT \S+: 503/.test(String(error)),
+  );
+  // Only the write's own answer is a refusal; a 4xx to a read isn't one.
+  const unread: Transport = async (req) =>
+    req.method === "GET" ? { status: 403, body: { errorMessages: ["No."] } } : jira.transport(req);
+  await assert.rejects(
+    writer(unread).apply(request("setSummary", "jira:SYN-12", { summary: "x" })),
+    (error) => !(error instanceof SourceRefused),
+  );
+  assert.equal(jira.writes().length, 0);
 });

@@ -32,6 +32,7 @@ import {
   type RunRef,
   type SourceKind,
   sourceKinds,
+  SourceRefused,
   type SourceWriter,
   string,
   type Subject,
@@ -957,6 +958,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let where = resolve(m, set);
       if ("failed" in where) return halt(mutationId, where.failed);
       // A write that already landed is recorded, whatever the group holds now.
+      // Once checked, an earlier send of it is known not to be in place.
+      const checkedFirst = spec.idempotent && where.target !== null;
       if (spec.idempotent && where.target !== null) {
         const result = await inPlace(m, set, kind, spec, where.target);
         if (result) {
@@ -1022,7 +1025,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         try {
           result = await writerOf(kind).apply(request);
         } catch (error) {
-          return fail(mutationId, `${message(error).replace(/\.$/, "")}.${unsure}`);
+          const said = `${message(error).replace(/\.$/, "")}.`;
+          // The source answered and changed nothing: the row is unsent again,
+          // unless an earlier send of it went unchecked and may still be there.
+          if (error instanceof SourceRefused) {
+            rows.markRefused(mutationId, wasSent && !checkedFirst ? "failed" : "pending", said);
+            report.failed.push({ mutationId, error: said });
+            return report;
+          }
+          return fail(mutationId, `${said}${unsure}`);
         }
         const checked = writeResult(result);
         if (!checked.ok) {
@@ -1471,17 +1482,25 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   };
 }
 
-// A reason a change stopped, as a person reads it. A source's refusal, as
+// How fetch says a request got no answer: the connection failed or timed out.
+const unheard =
+  /^(?:fetch failed|The operation was aborted due to timeout|This operation was aborted)\.?(?: ([\s\S]*))?$/;
+
+// A reason a change stopped, as a person reads it. A source's answer, as
 // apply stores it ("PUT /rest/…: 400 What it said."), loses its request line
-// and status code and keeps what the source said; a send's mark (when it was
-// sent, and its nonce) is Oriel's bookkeeping and goes. Oriel's own reasons
-// are already plain.
+// and status code and keeps what the source said; a send that got no answer
+// says so; a send's mark (when it was sent, and its nonce) is Oriel's
+// bookkeeping and goes. Oriel's own reasons are already plain.
 export function plainError(error: string): string {
   const bare = error.replace(sendMark, "");
-  const refused = /^(?:GET|PUT|POST|DELETE) \S+: (\d{3})\.?(?: ([\s\S]*))?$/.exec(bare);
-  if (!refused) return bare;
-  const [, status, said] = refused;
-  return said?.trim()
-    ? `The source refused this change: ${said.trim()}`
-    : `The source refused this change (it answered ${status}).`;
+  const lost = unheard.exec(bare);
+  if (lost) return ["Oriel sent this and didn't hear back.", lost[1]].filter(Boolean).join(" ");
+  const answered = /^(?:GET|PUT|POST|DELETE) \S+: (\d{3})\.?(?: ([\s\S]*))?$/.exec(bare);
+  if (!answered) return bare;
+  const [, status = "", said = ""] = answered;
+  // Only a 4xx is a refusal; a source that broke while writing may have written.
+  const what = status.startsWith("4")
+    ? "The source refused this change"
+    : "The source ran into a problem with this change";
+  return said.trim() ? `${what}: ${said.trim()}` : `${what} (it answered ${status}).`;
 }

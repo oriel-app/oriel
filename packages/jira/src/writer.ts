@@ -18,6 +18,7 @@ import {
   object,
   optional,
   parseItemId,
+  SourceRefused,
   type SourceWriter,
   string,
   unknown,
@@ -90,8 +91,12 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   const { transport, log } = options;
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
 
+  // Each write is one request. A 4xx to it is Jira refusing it, having made
+  // no change; any other failure may have landed.
   const send = async (request: JiraRequest) => {
     const response = await transport(request);
+    if (response.status >= 400 && response.status <= 499)
+      throw new SourceRefused(failure(request, response).message);
     if (response.status < 200 || response.status > 299) throw failure(request, response);
     return response;
   };

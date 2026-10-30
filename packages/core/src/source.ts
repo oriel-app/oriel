@@ -152,6 +152,16 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
 }
 
+// What `apply` throws when the source answered the write itself and made no
+// change, as Jira does with a 4xx: nothing landed, so it can be sent again.
+// Anything else thrown once the write went out may mean it landed.
+export class SourceRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SourceRefused";
+  }
+}
+
 const state: Validator<State> = union(literal("todo"), literal("in-progress"), literal("done"));
 
 // Facets as the index stores them: checked on the way in and on the way out.

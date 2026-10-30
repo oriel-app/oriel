@@ -52,6 +52,8 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
   let nextLink = 90001;
   // Items whose writes Jira refuses, as when a field is locked.
   const refused = new Set<string>();
+  // Items whose writes land, but whose answers are lost on the way back.
+  const unanswered = new Set<string>();
   // Every request, in order.
   const calls: { method: string; path: string }[] = [];
 
@@ -177,7 +179,12 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     const method = init?.method ?? "GET";
     calls.push({ method, path: `${url.pathname}${url.search}` });
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
-    return answer(method, url, body);
+    const response = answer(method, url, body);
+    const key = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)/.exec(url.pathname)?.[1];
+    // As fetch reports a connection that drops before the answer arrives.
+    if (method !== "GET" && key !== undefined && unanswered.has(key))
+      throw new TypeError("fetch failed");
+    return response;
   };
 
   return {
@@ -185,9 +192,14 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     calls,
     // The item as the site holds it now.
     issue: (key: string) => structuredClone(issues.get(key) ?? null),
-    // Writes to this item fail from now on, or work again.
+    // Writes to this item are refused from now on; or land with no answer;
+    // or work again.
     refuse: (key: string) => refused.add(key),
-    allow: (key: string) => refused.delete(key),
+    loseAnswers: (key: string) => unanswered.add(key),
+    allow(key: string) {
+      refused.delete(key);
+      unanswered.delete(key);
+    },
     // A teammate edits the item directly in Jira.
     edit(key: string, change: Partial<Pick<Issue, "summary" | "points">>) {
       const issue = issues.get(key);

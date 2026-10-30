@@ -2,7 +2,7 @@
 // step offered is one the engine takes, and each it would refuse is left out.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CapturedMutation, NextStep, Ulid } from "@oriel/core";
+import { type CapturedMutation, type NextStep, SourceRefused, type Ulid } from "@oriel/core";
 import { groupStore } from "@oriel/db";
 import { plainError, sendLeaseMs } from "./change-sets.ts";
 import { approve, nth, setup } from "./testing.ts";
@@ -25,10 +25,18 @@ const kinds = (steps: NextStep[]) => steps.map((step) => step.kind);
 const removable = (steps: NextStep[]) =>
   steps.flatMap((step) => (step.kind === "remove" ? step.mutationIds : []));
 
-// Jira refuses the write of the call-th request.
+// Jira refuses the write of the call-th request, and changes nothing.
 function refuseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
   jira.hooks.before = (_request, n) => {
-    if (n === call) throw new Error("400: SYN-3 can't be changed right now");
+    if (n === call)
+      throw new SourceRefused("PUT /rest/api/3/issue/SYN-3: 400 SYN-3 can't be changed right now");
+  };
+}
+
+// The call-th request goes out and its answer never comes back.
+function loseCall(jira: ReturnType<typeof setup>["jira"], call: number) {
+  jira.hooks.before = (_request, n) => {
+    if (n === call) throw new TypeError("fetch failed");
   };
 }
 
@@ -65,7 +73,7 @@ test("an applied change set is complete and can be reverted, once at a time", as
   assert.deepEqual(await changeSets.nextSteps(set.id), [{ kind: "revert" }]);
 });
 
-test("a write the source refused stops apply partway: retry, leave it out, or dismiss", async () => {
+test("a write the source refused stops apply partway: retry, leave it out, dismiss or revert", async () => {
   const { changeSets, run, jira } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
@@ -75,11 +83,54 @@ test("a write the source refused stops apply partway: retry, leave it out, or di
   refuseCall(jira, 2);
   await changeSets.apply(set.id);
   const refused = nth(set.mutations, 1).id;
+  const row = (await changeSets.get(set.id))?.mutations[1];
+  // The source answered and changed nothing, so the row is unsent.
+  assert.equal(row?.status, "pending");
+  assert.equal(
+    plainError(row?.error ?? ""),
+    "The source refused this change: SYN-3 can't be changed right now.",
+  );
   assert.deepEqual(await changeSets.nextSteps(set.id), [
     { kind: "retry" },
     { kind: "remove", mutationIds: [refused] },
+    { kind: "dismiss", warnings: [] },
+    { kind: "revert" },
+  ]);
+});
+
+test("a write sent with no answer may have landed: dismissing names where to check", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  await approve(changeSets, set.id);
+  loseCall(jira, 2);
+  await changeSets.apply(set.id);
+  const lost = nth(set.mutations, 1).id;
+  const row = (await changeSets.get(set.id))?.mutations[1];
+  assert.equal(row?.status, "failed");
+  assert.equal(plainError(row?.error ?? ""), "Oriel sent this and didn't hear back.");
+  // Not revertible while it may be in Jira; a retry checks before sending.
+  assert.deepEqual(await changeSets.nextSteps(set.id), [
+    { kind: "retry" },
+    { kind: "remove", mutationIds: [lost] },
     { kind: "dismiss", warnings: ["This may already be in Jira: check SYN-3"] },
   ]);
+});
+
+test("a refusal of a change sent before keeps it unsent only once it is checked in place", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [estimate("jira:SYN-3", 3)]);
+  await approve(changeSets, set.id);
+  loseCall(jira, 1);
+  await changeSets.apply(set.id);
+  // The lost send never reached Jira (the hook threw first), so a retry finds
+  // it not in place and sends again; this time Jira refuses.
+  refuseCall(jira, 2);
+  await changeSets.apply(set.id);
+  assert.equal((await changeSets.get(set.id))?.mutations[0]?.status, "pending");
+  assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), ["retry", "reject"]);
 });
 
 test("leaving out the last unapplied change completes the set", async () => {
@@ -233,8 +284,20 @@ test("a reason a change stopped reads as plain words, from the forms apply store
     "The source refused this change: SYN-99 can't be changed right now.",
   );
   assert.equal(
+    plainError("PUT /rest/api/3/issue/SYN-9: 409."),
+    "The source refused this change (it answered 409).",
+  );
+  // A source that broke while writing may have written: not a refusal.
+  assert.equal(
     plainError("DELETE /rest/api/3/issue/SYN-9: 500."),
-    "The source refused this change (it answered 500).",
+    "The source ran into a problem with this change (it answered 500).",
+  );
+  assert.equal(plainError("fetch failed."), "Oriel sent this and didn't hear back.");
+  assert.equal(
+    plainError(
+      "fetch failed. This may already be in Jira: check, then dismiss what is left of this change set.",
+    ),
+    "Oriel sent this and didn't hear back. This may already be in Jira: check, then dismiss what is left of this change set.",
   );
   assert.equal(
     plainError(

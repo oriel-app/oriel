@@ -188,6 +188,9 @@ export function store(db: DatabaseSync) {
   const updateSent = db.prepare(
     "update mutations set status = 'failed', error = ? where id = ? and status = ? and error is ?",
   );
+  const updateRefused = db.prepare(
+    "update mutations set status = ?, error = ? where id = ? and status != 'applied'",
+  );
   const updateStopped = db.prepare(
     "update mutations set error = ? where id = ? and status != 'applied'",
   );
@@ -411,6 +414,12 @@ export function store(db: DatabaseSync) {
       mark: string,
     ): boolean {
       return Number(updateSent.run(mark, mutationId, from.status, from.error).changes) === 1;
+    },
+
+    // The source answered a send and made no change: the row goes back to the
+    // status the caller gives (unsent, unless an earlier send may be in place).
+    markRefused(mutationId: Ulid, status: MutationStatus, error: string): void {
+      updateRefused.run(status, error, mutationId);
     },
 
     // Apply stopped before sending this mutation. The status stays as it was, so
