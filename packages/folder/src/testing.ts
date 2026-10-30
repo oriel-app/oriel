@@ -15,7 +15,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { TestContext } from "node:test";
-import { ulid, type Ulid } from "@oriel/core";
+import { type Log, type SyncPage, ulid, type Ulid } from "@oriel/core";
+import type { FolderAttrs } from "./attrs.ts";
+import type { FolderSource } from "./source.ts";
 import type { FolderPath } from "./walk.ts";
 
 export type TempFolder = {
@@ -74,3 +76,19 @@ export function setTime(path: string, at: string): void {
 // Fixed folder IDs, as the workspace would assign them.
 export const folderA: Ulid = ulid(1_767_225_600_000, new Uint8Array(10).fill(1));
 export const folderB: Ulid = ulid(1_767_225_600_000, new Uint8Array(10).fill(2));
+
+// A log that keeps what it's given.
+export function keptLog(): { log: Log; lines: { message: string; fields?: unknown }[] } {
+  const lines: { message: string; fields?: unknown }[] = [];
+  return { log: (message, fields) => lines.push({ message, fields }), lines };
+}
+
+// Every page one sync yields.
+export async function syncPages(
+  source: FolderSource,
+  cursor: string | null,
+): Promise<SyncPage<"folder", FolderAttrs>[]> {
+  const pages: SyncPage<"folder", FolderAttrs>[] = [];
+  for await (const page of source.sync(cursor)) pages.push(page);
+  return pages;
+}

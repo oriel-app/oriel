@@ -10,6 +10,7 @@ export {
   folderPresentation,
   type FolderRecord,
 } from "./attrs.ts";
+export { type FolderSource, type FolderSourceOptions, folderSource } from "./source.ts";
 export {
   canonicalPath,
   canonicalTime,
