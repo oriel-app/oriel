@@ -1,4 +1,11 @@
-import type { FieldValues, ItemId, NewRef, Validator, WriteResult } from "@oriel/core";
+// How change sets treat a writable source's ops: each op's entry in the
+// source's catalogue, plus what a diff, an apply and a revert need from it.
+// The adapter declares them; the composition root hands them to change sets
+// by source kind (decision 0019).
+import type { ItemId } from "./ids.ts";
+import type { NewRef } from "./sandbox.ts";
+import type { FieldValues, OpCatalogue, WriteResult } from "./source.ts";
+import type { Validator } from "./validate.ts";
 
 // What a diff line knows about the item a mutation changes. `title` is its
 // title as of this line, after earlier lines in the same change set.
@@ -17,19 +24,16 @@ export type LineContext = {
 
 export type Undo = { op: string; args: unknown } | { refused: string };
 
-// How the change-set engine treats one of a source's ops. `args` and
-// `revertOnly` are the op's entry in the source's own `OpCatalogue`.
-export type OpSpec = {
-  // Validates captured or edited arguments; replay sends what it returns.
-  args: Validator<unknown>;
+// How the change-set engine treats one of a source's ops: its entry in the
+// source's `OpCatalogue` (`args`, which validates captured or edited
+// arguments, and replay sends what it returns; `revertOnly`), and more.
+export type OpSpec = OpCatalogue[string] & {
   // A create has no target and may give its item a NewRef.
   creates: boolean;
   // Sending it twice leaves the source as sending it once does, so a failed
   // attempt may be retried. Anything else that failed may have landed and is
   // never sent again.
   idempotent: boolean;
-  // Exists only as the reverse of another op; a run can't capture it.
-  revertOnly: boolean;
   // The item IDs among its arguments, which must be in the run's region.
   refs(args: unknown): string[];
   // The fields a diff shows, with the values this op sets. Keys are field
@@ -41,7 +45,8 @@ export type OpSpec = {
   undo(args: unknown, applied: WriteResult): Undo;
 };
 
-export type Catalogue = {
+// One source's op specs, and what change sets need to name its items.
+export type OpSpecs = {
   // The source's name as a person knows it.
   name: string;
   // The field holding an item's title, read for every line.

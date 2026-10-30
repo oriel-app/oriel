@@ -11,7 +11,7 @@ import {
   ulid,
 } from "@oriel/core";
 import { explainConflicts } from "./change-sets.ts";
-import { approve, count, nth, setup, status } from "./testing.ts";
+import { approve, count, nth, setup, specs, status } from "./testing.ts";
 
 const estimate = (target: `jira:${string}`, points: number): CapturedMutation => ({
   op: "setEstimate",
@@ -600,13 +600,16 @@ test("conflicts read in plain words, including what Oriel never learned", () => 
     actual,
   });
   assert.equal(
-    explainConflicts([
-      conflict("updated", null, "2026-10-29T09:00:05.000Z"),
-      conflict("updated", "2026-10-29T09:00:01.000Z", "2026-10-29T09:00:05.000Z"),
-      conflict("points", undefined, 5),
-      conflict("points", 5, 8),
-      conflict("item", "present", "gone"),
-    ]),
+    explainConflicts(
+      [
+        conflict("updated", null, "2026-10-29T09:00:05.000Z"),
+        conflict("updated", "2026-10-29T09:00:01.000Z", "2026-10-29T09:00:05.000Z"),
+        conflict("points", undefined, 5),
+        conflict("points", 5, 8),
+        conflict("item", "present", "gone"),
+      ],
+      specs,
+    ),
     "Stopped, so nothing was overwritten: " +
       "Oriel never learned when SYN-900 was last updated, so it can't tell whether anyone touched it; " +
       "SYN-900 was touched since Oriel created it; " +

@@ -19,10 +19,10 @@ import {
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
-import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps } from "@oriel/jira";
+import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps, jiraSpecs } from "@oriel/jira";
 import { ensureWorkspace, groupStore, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { changeSets, type FieldReader } from "./change-sets.ts";
+import { changeSets, type FieldReader, type Specs } from "./change-sets.ts";
 
 export type MemoryIssue = {
   key: string;
@@ -315,6 +315,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
 
 export const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9, 0, 0)));
 
+// Jira's op specs, as the composition root hands them to change sets.
+export const specs: Specs = { jira: jiraSpecs };
+
 // The thread's region: hand-picked stories that cover the fixture's mess, with
 // SYN-27, which the fixture's edits delete. SYN-2 and SYN-14 are outside it.
 export const regionKeys = [
@@ -382,6 +385,7 @@ export function setup() {
     changeSets({
       db,
       sources: { jira: { writer, reader: jira.reader } },
+      specs,
       reviewBase: new URL("http://localhost:4000/review/"),
       now: () => now,
       emit: (event) => events.push(event),

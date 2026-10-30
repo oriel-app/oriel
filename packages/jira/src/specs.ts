@@ -1,19 +1,17 @@
 import {
   type FieldValues,
   isItemId,
-  parseItemId,
-  type Validator,
-  type WriteResult,
-} from "@oriel/core";
-import { type JiraOp, jiraOps } from "@oriel/jira";
-import {
-  type Catalogue,
   type LineContext,
   op,
   type OpSpec,
+  type OpSpecs,
+  parseItemId,
   type Subject,
   type Undo,
-} from "./catalogue.ts";
+  type Validator,
+  type WriteResult,
+} from "@oriel/core";
+import { type JiraOp, jiraOps } from "./ops.ts";
 
 // How change sets treat Jira's ops. Field names are core's (`FieldValues`),
 // as the Jira writer reports them in `current`, `before` and `after`:
@@ -194,7 +192,8 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
 };
 
-export const jiraCatalogue: Catalogue = {
+// What the composition root hands change sets for Jira.
+export const jiraSpecs: OpSpecs = {
   name: "Jira",
   titleField: "summary",
   updatedField: "updated",
