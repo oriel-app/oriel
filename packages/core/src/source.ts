@@ -1,5 +1,6 @@
 import type { Approved } from "./changeset.ts";
 import type { Instant, ItemId, SourceKind, Ulid } from "./ids.ts";
+import type { Validator } from "./validate.ts";
 
 // Field values as the source reports them, keyed by field name.
 export type FieldValues = Readonly<Record<string, unknown>>;
@@ -40,6 +41,14 @@ export interface Source<K extends SourceKind = SourceKind, A = unknown, C = unkn
   // Live, full content. A missing ID is a result, never a throw.
   read(ids: readonly ItemId<K>[]): Promise<ReadResult<K, C>[]>;
 }
+
+// A source's write operations, by name: how to check each one's arguments,
+// and whether it exists only to undo another (a run can't capture those). A
+// source with no catalogue is read-only: its items can be read and discussed,
+// never changed.
+export type OpCatalogue = Readonly<
+  Record<string, { args: Validator<unknown>; revertOnly: boolean }>
+>;
 
 // One mutation, ready to send: an earlier create's temporary name in the target
 // has already been replaced by the created item.

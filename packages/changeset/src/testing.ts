@@ -156,7 +156,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
   const land = (request: Request): WriteResult<"jira"> => {
     if (!isJiraOp(request.op)) throw new Error(`unknown op ${request.op}`);
     if (request.op === "createStory") {
-      const args = parsed(jiraOps.createStory(request.args));
+      const args = parsed(jiraOps.createStory.args(request.args));
       const issue: MemoryIssue = {
         key: `${start.project}-${nextIssue}`,
         id: String(20000 + nextIssue),
@@ -193,15 +193,15 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
     };
     switch (request.op) {
       case "setSummary":
-        return set("summary", parsed(jiraOps.setSummary(request.args)).summary);
+        return set("summary", parsed(jiraOps.setSummary.args(request.args)).summary);
       case "setDescription":
-        return set("description", parsed(jiraOps.setDescription(request.args)).description);
+        return set("description", parsed(jiraOps.setDescription.args(request.args)).description);
       case "setEstimate":
-        return set("points", parsed(jiraOps.setEstimate(request.args)).points);
+        return set("points", parsed(jiraOps.setEstimate.args(request.args)).points);
       case "setAssignee":
-        return set("accountId", parsed(jiraOps.setAssignee(request.args)).accountId);
+        return set("accountId", parsed(jiraOps.setAssignee.args(request.args)).accountId);
       case "addLink": {
-        const args = parsed(jiraOps.addLink(request.args));
+        const args = parsed(jiraOps.addLink.args(request.args));
         const field = `link:${nextLink}`;
         issue.links.push({ linkId: String(nextLink), url: args.url, title: args.title });
         nextLink += 1;
@@ -213,7 +213,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant) {
         };
       }
       case "removeLink": {
-        const { linkId } = parsed(jiraOps.removeLink(request.args));
+        const { linkId } = parsed(jiraOps.removeLink.args(request.args));
         const field = `link:${linkId}`;
         const before = pick(issue, [field]);
         if (before[field] === null) throw new Error(`404: no link ${linkId}`);

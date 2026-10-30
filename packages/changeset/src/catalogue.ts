@@ -17,7 +17,8 @@ export type LineContext = {
 
 export type Undo = { op: string; args: unknown } | { refused: string };
 
-// How the change-set engine treats one of a source's ops.
+// How the change-set engine treats one of a source's ops. `args` and
+// `revertOnly` are the op's entry in the source's own `OpCatalogue`.
 export type OpSpec = {
   // Validates captured or edited arguments; replay sends what it returns.
   args: Validator<unknown>;
@@ -52,29 +53,32 @@ export type Catalogue = {
   ops: Readonly<Record<string, OpSpec>>;
 };
 
-// Types one op from its validator, then erases the type so a catalogue can
+// One op: its entry in the source's own catalogue (how to check its
+// arguments, and whether it exists only as a revert), and how change sets
+// treat it. Typed from the entry's validator, then erased so a catalogue can
 // hold ops with different argument shapes. Arguments are re-validated on the
 // way in, since they come back from the database.
-export function op<T>(spec: {
-  args: Validator<T>;
-  creates?: boolean;
-  idempotent?: boolean;
-  revertOnly?: boolean;
-  refs?(args: T): string[];
-  after(args: T): FieldValues;
-  describe(args: T, context: LineContext): Promise<string> | string;
-  undo(args: T, applied: WriteResult): Undo;
-}): OpSpec {
+export function op<T>(
+  entry: { args: Validator<T>; revertOnly: boolean },
+  spec: {
+    creates?: boolean;
+    idempotent?: boolean;
+    refs?(args: T): string[];
+    after(args: T): FieldValues;
+    describe(args: T, context: LineContext): Promise<string> | string;
+    undo(args: T, applied: WriteResult): Undo;
+  },
+): OpSpec {
   const parse = (args: unknown): T => {
-    const result = spec.args(args);
+    const result = entry.args(args);
     if (!result.ok) throw new TypeError(`bad arguments: ${JSON.stringify(result.issues)}`);
     return result.value;
   };
   return {
-    args: spec.args,
+    args: entry.args,
     creates: spec.creates ?? false,
     idempotent: spec.idempotent ?? false,
-    revertOnly: spec.revertOnly ?? false,
+    revertOnly: entry.revertOnly,
     refs: (args) => spec.refs?.(parse(args)) ?? [],
     after: (args) => spec.after(parse(args)),
     describe: async (args, context) => spec.describe(parse(args), context),

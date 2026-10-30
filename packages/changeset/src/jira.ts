@@ -5,8 +5,15 @@ import {
   type Validator,
   type WriteResult,
 } from "@oriel/core";
-import { jiraOps } from "@oriel/jira";
-import { type Catalogue, type LineContext, op, type Subject, type Undo } from "./catalogue.ts";
+import { type JiraOp, jiraOps } from "@oriel/jira";
+import {
+  type Catalogue,
+  type LineContext,
+  op,
+  type OpSpec,
+  type Subject,
+  type Undo,
+} from "./catalogue.ts";
 
 // How change sets treat Jira's ops. Field names are shared with the Jira
 // reader and writer (their `current`, `before` and `after`):
@@ -77,125 +84,118 @@ function restore<T>(name: string, field: string, validator: Validator<T>) {
   };
 }
 
+// One entry per op in Jira's own catalogue, which supplies each one's
+// arguments and whether it exists only as a revert.
+const ops: Record<JiraOp, OpSpec> = {
+  createStory: op(jiraOps.createStory, {
+    creates: true,
+    refs: (a) => (a.epic === null ? [] : [a.epic]),
+    after: (a) => ({
+      summary: a.summary,
+      ...(a.description === undefined ? {} : { description: a.description }),
+      ...(a.points === undefined ? {} : { points: a.points }),
+      epic: a.epic,
+    }),
+    describe: async (a, context) => {
+      let epic = "";
+      if (a.epic !== null) {
+        const title = isItemId(a.epic) ? await context.title(a.epic) : null;
+        epic =
+          title === null
+            ? ` in the epic ${key(a.epic)}`
+            : ` in the epic ${quoted(title)} (${key(a.epic)})`;
+      }
+      const points = typeof a.points === "number" ? `, estimated at ${estimate(a.points)}` : "";
+      return `Create a story ${quoted(a.summary)}${epic}${points}.`;
+    },
+    undo: () => ({ op: "deleteItem", args: {} }),
+  }),
+  setSummary: op(jiraOps.setSummary, {
+    idempotent: true,
+    after: (a) => ({ summary: a.summary }),
+    describe: (a, context) => `Rename ${named(context.subject)} to ${quoted(a.summary)}.`,
+    undo: restore("setSummary", "summary", jiraOps.setSummary.args),
+  }),
+  setDescription: op(jiraOps.setDescription, {
+    idempotent: true,
+    after: (a) => ({ description: a.description }),
+    describe: (a, context) => {
+      const was = context.before.description;
+      if (a.description.trim() === "") return `Clear the description of ${named(context.subject)}.`;
+      if (typeof was !== "string" || was.trim() === "")
+        return `Add a description to ${named(context.subject)}.`;
+      return `Rewrite the description of ${named(context.subject)}.`;
+    },
+    undo: restore("setDescription", "description", jiraOps.setDescription.args),
+  }),
+  setEstimate: op(jiraOps.setEstimate, {
+    idempotent: true,
+    after: (a) => ({ points: a.points }),
+    describe: (a, context) => {
+      const was = context.before.points;
+      const item = named(context.subject);
+      if (a.points === null)
+        return typeof was === "number"
+          ? `Remove the estimate from ${item} (it was ${estimate(was)}).`
+          : `Remove the estimate from ${item}.`;
+      if (typeof was !== "number") return `Estimate ${item} at ${estimate(a.points)}.`;
+      return `Change the estimate of ${item} from ${estimate(was)} to ${estimate(a.points)}.`;
+    },
+    undo: restore("setEstimate", "points", jiraOps.setEstimate.args),
+  }),
+  setAssignee: op(jiraOps.setAssignee, {
+    idempotent: true,
+    after: (a) => ({ accountId: a.accountId }),
+    describe: async (a, context) => {
+      const was = context.before.accountId;
+      const item = named(context.subject);
+      if (a.accountId === null)
+        return typeof was === "string"
+          ? `Unassign ${item} (it was assigned to ${await who(context, was)}).`
+          : `Leave ${item} unassigned.`;
+      if (typeof was !== "string") return `Assign ${item} to ${await who(context, a.accountId)}.`;
+      return `Reassign ${item} from ${await who(context, was)} to ${await who(context, a.accountId)}.`;
+    },
+    undo: restore("setAssignee", "accountId", jiraOps.setAssignee.args),
+  }),
+  addLink: op(jiraOps.addLink, {
+    // Jira names the link when it adds it; until then it is `link:new`.
+    after: (a) => ({ "link:new": { url: a.url, title: a.title } }),
+    describe: (a, context) =>
+      `Add the link ${quoted(a.title)} (${destination(a.url)}) to ${named(context.subject)}.`,
+    undo: (_a, applied) => {
+      const field = linkField(applied.after);
+      if (field === null) return { refused: "Jira didn't report which link it added" };
+      return { op: "removeLink", args: { linkId: field.slice("link:".length) } };
+    },
+  }),
+  removeLink: op(jiraOps.removeLink, {
+    after: (a) => ({ [`link:${a.linkId}`]: null }),
+    describe: (a, context) => {
+      const link = context.before[`link:${a.linkId}`];
+      const title =
+        typeof link === "object" &&
+        link !== null &&
+        "title" in link &&
+        typeof link.title === "string"
+          ? link.title
+          : null;
+      return title === null
+        ? `Remove a link from ${named(context.subject)}.`
+        : `Remove the link ${quoted(title)} from ${named(context.subject)}.`;
+    },
+    undo: () => ({ refused: "a removed link can't be put back by a revert" }),
+  }),
+  deleteItem: op(jiraOps.deleteItem, {
+    after: () => ({}),
+    describe: (_a, context) => `Delete ${named(context.subject)} from Jira.`,
+    undo: () => ({ refused: "a deleted item can't be restored by a revert" }),
+  }),
+};
+
 export const jiraCatalogue: Catalogue = {
   name: "Jira",
   titleField: "summary",
   updatedField: "updated",
-  ops: {
-    createStory: op({
-      args: jiraOps.createStory,
-      creates: true,
-      refs: (a) => (a.epic === null ? [] : [a.epic]),
-      after: (a) => ({
-        summary: a.summary,
-        ...(a.description === undefined ? {} : { description: a.description }),
-        ...(a.points === undefined ? {} : { points: a.points }),
-        epic: a.epic,
-      }),
-      describe: async (a, context) => {
-        let epic = "";
-        if (a.epic !== null) {
-          const title = isItemId(a.epic) ? await context.title(a.epic) : null;
-          epic =
-            title === null
-              ? ` in the epic ${key(a.epic)}`
-              : ` in the epic ${quoted(title)} (${key(a.epic)})`;
-        }
-        const points = typeof a.points === "number" ? `, estimated at ${estimate(a.points)}` : "";
-        return `Create a story ${quoted(a.summary)}${epic}${points}.`;
-      },
-      undo: () => ({ op: "deleteItem", args: {} }),
-    }),
-    setSummary: op({
-      args: jiraOps.setSummary,
-      idempotent: true,
-      after: (a) => ({ summary: a.summary }),
-      describe: (a, context) => `Rename ${named(context.subject)} to ${quoted(a.summary)}.`,
-      undo: restore("setSummary", "summary", jiraOps.setSummary),
-    }),
-    setDescription: op({
-      args: jiraOps.setDescription,
-      idempotent: true,
-      after: (a) => ({ description: a.description }),
-      describe: (a, context) => {
-        const was = context.before.description;
-        if (a.description.trim() === "")
-          return `Clear the description of ${named(context.subject)}.`;
-        if (typeof was !== "string" || was.trim() === "")
-          return `Add a description to ${named(context.subject)}.`;
-        return `Rewrite the description of ${named(context.subject)}.`;
-      },
-      undo: restore("setDescription", "description", jiraOps.setDescription),
-    }),
-    setEstimate: op({
-      args: jiraOps.setEstimate,
-      idempotent: true,
-      after: (a) => ({ points: a.points }),
-      describe: (a, context) => {
-        const was = context.before.points;
-        const item = named(context.subject);
-        if (a.points === null)
-          return typeof was === "number"
-            ? `Remove the estimate from ${item} (it was ${estimate(was)}).`
-            : `Remove the estimate from ${item}.`;
-        if (typeof was !== "number") return `Estimate ${item} at ${estimate(a.points)}.`;
-        return `Change the estimate of ${item} from ${estimate(was)} to ${estimate(a.points)}.`;
-      },
-      undo: restore("setEstimate", "points", jiraOps.setEstimate),
-    }),
-    setAssignee: op({
-      args: jiraOps.setAssignee,
-      idempotent: true,
-      after: (a) => ({ accountId: a.accountId }),
-      describe: async (a, context) => {
-        const was = context.before.accountId;
-        const item = named(context.subject);
-        if (a.accountId === null)
-          return typeof was === "string"
-            ? `Unassign ${item} (it was assigned to ${await who(context, was)}).`
-            : `Leave ${item} unassigned.`;
-        if (typeof was !== "string") return `Assign ${item} to ${await who(context, a.accountId)}.`;
-        return `Reassign ${item} from ${await who(context, was)} to ${await who(context, a.accountId)}.`;
-      },
-      undo: restore("setAssignee", "accountId", jiraOps.setAssignee),
-    }),
-    addLink: op({
-      args: jiraOps.addLink,
-      // Jira names the link when it adds it; until then it is `link:new`.
-      after: (a) => ({ "link:new": { url: a.url, title: a.title } }),
-      describe: (a, context) =>
-        `Add the link ${quoted(a.title)} (${destination(a.url)}) to ${named(context.subject)}.`,
-      undo: (_a, applied) => {
-        const field = linkField(applied.after);
-        if (field === null) return { refused: "Jira didn't report which link it added" };
-        return { op: "removeLink", args: { linkId: field.slice("link:".length) } };
-      },
-    }),
-    removeLink: op({
-      args: jiraOps.removeLink,
-      revertOnly: true,
-      after: (a) => ({ [`link:${a.linkId}`]: null }),
-      describe: (a, context) => {
-        const link = context.before[`link:${a.linkId}`];
-        const title =
-          typeof link === "object" &&
-          link !== null &&
-          "title" in link &&
-          typeof link.title === "string"
-            ? link.title
-            : null;
-        return title === null
-          ? `Remove a link from ${named(context.subject)}.`
-          : `Remove the link ${quoted(title)} from ${named(context.subject)}.`;
-      },
-      undo: () => ({ refused: "a removed link can't be put back by a revert" }),
-    }),
-    deleteItem: op({
-      args: jiraOps.deleteItem,
-      revertOnly: true,
-      after: () => ({}),
-      describe: (_a, context) => `Delete ${named(context.subject)} from Jira.`,
-      undo: () => ({ refused: "a deleted item can't be restored by a revert" }),
-    }),
-  },
+  ops,
 };

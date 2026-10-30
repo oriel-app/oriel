@@ -24,6 +24,7 @@ import {
   union,
 } from "@oriel/core";
 import type { JiraAttrs, JiraContent } from "./attrs.ts";
+import { isSummary, maxSummary } from "./ops.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
 const issueKey = refine(
@@ -108,9 +109,7 @@ export type JiraFixture = Infer<typeof jiraFixture>;
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
 export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
 
-// Jira's limit on a summary, in characters.
-const maxSummary = 255;
-const badSummary = (summary: string) => !summary.trim() || [...summary].length > maxSummary;
+const badSummary = (summary: string) => !isSummary(summary);
 
 const keyNumber = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
 

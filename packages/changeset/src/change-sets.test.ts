@@ -184,7 +184,7 @@ test("a diff says what each mutation will do, in plain words", async () => {
       args: { summary: "Pay with a phone wallet at the kiosk", epic: "jira:SYN-1", points: 2 },
     },
     link("new:1", "https://docs.example.com/wallets", "Wallet spec"),
-    link("jira:SYN-13", "javascript://docs.example.com/%0aalert(1)", "Countdown spec"),
+    link("jira:SYN-13", "https://docs.example.com@links.example.net/countdown", "Countdown spec"),
     estimate("jira:SYN-21", 8),
     {
       op: "setSummary",
@@ -209,7 +209,7 @@ test("a diff says what each mutation will do, in plain words", async () => {
       `Reassign ${declined} (SYN-21) from Dara Nikolaidis to Amara Okafor.`,
       "Create a story “Pay with a phone wallet at the kiosk” in the epic “Checkout v2: phone wallets and saved cards” (SYN-1), estimated at 2 points.",
       "Add the link “Wallet spec” (docs.example.com) to the new story “Pay with a phone wallet at the kiosk”.",
-      "Add the link “Countdown spec” (“javascript://docs.example.com/%0aalert(1)”) to “🚢 Show a countdown to departure on the home screen” (SYN-13).",
+      "Add the link “Countdown spec” (links.example.net) to “🚢 Show a countdown to departure on the home screen” (SYN-13).",
       `Change the estimate of ${declined} (SYN-21) from 5 points to 8 points.`,
       "Rename “運航状況のプッシュ通知を日本語で送る” (SYN-31) to “運航状況のプッシュ通知を日本語と英語で送る”.",
       "Rewrite the description of “Cache the winter timetable on the device” (SYN-103).",
@@ -219,6 +219,13 @@ test("a diff says what each mutation will do, in plain words", async () => {
   assert.deepEqual(nth(diff.lines, 0).fields, [{ name: "points", before: 2, after: 5 }]);
   assert.ok(String(nth(nth(diff.lines, 8).fields, 0).before).length > 10_000);
   assert.equal(diff.hash, set.hash);
+  // Jira's catalogue takes only https links, so this one never reaches a diff.
+  await assert.rejects(
+    changeSets.capture(run, [
+      link("jira:SYN-13", "javascript://docs.example.com/%0aalert(1)", "Countdown spec"),
+    ]),
+    { code: "invalid", message: /https URL/ },
+  );
 });
 
 test("a diff's hash is the hash of the rows it rendered, even when an edit lands meanwhile", async () => {

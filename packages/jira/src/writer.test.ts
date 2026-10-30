@@ -296,7 +296,7 @@ test("arguments and targets are checked before anything is written", async () =>
   const w = writer(jira.transport);
   const refused: [string, ItemId<"jira"> | null, unknown, RegExp][] = [
     ["removeLink", "jira:SYN-12", { linkId: "../../../project/SYN" }, /a link ID is a number/],
-    ["addLink", "jira:SYN-12", { url: "javascript:alert(1)", title: "x" }, /http or https/],
+    ["addLink", "jira:SYN-12", { url: "javascript:alert(1)", title: "x" }, /https URL/],
     ["zeroAllEstimates", "jira:SYN-12", {}, /not a Jira operation/],
     ["toString", "jira:SYN-12", {}, /not a Jira operation/],
     ["setSummary", null, { summary: "x" }, /needs a target/],

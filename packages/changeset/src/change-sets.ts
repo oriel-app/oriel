@@ -63,7 +63,8 @@ export type Reader<K extends SourceKind = SourceKind> = {
 
 export type ChangeSetDeps = {
   db: DatabaseSync;
-  sources: { [K in SourceKind]: { writer: SourceWriter<K>; reader: Reader<K> } };
+  // The writable sources. A source missing here is read-only.
+  sources: { [K in SourceKind]?: { writer: SourceWriter<K>; reader: Reader<K> } };
   // A review link is this URL with the token appended as a last path segment.
   reviewBase: URL;
   now: () => Instant;
@@ -88,8 +89,21 @@ export class ChangeSetError extends Error {
   }
 }
 
-// Adding a source kind makes this require its catalogue.
-const catalogues: Record<SourceKind, Catalogue> = { jira: jiraCatalogue };
+// The registry: how change sets treat each writable source's ops, keyed by
+// source kind. Each entry is built over the adapter's own `OpCatalogue`. A
+// source with no entry is read-only: no change set can touch its items.
+const catalogues: Partial<Record<SourceKind, Catalogue>> = { jira: jiraCatalogue };
+
+function catalogueFor(kind: SourceKind): Catalogue {
+  const found = catalogues[kind];
+  if (!found) throw new Error(`${kind} items are read-only`);
+  return found;
+}
+
+function hasOp(kind: SourceKind, op: string): boolean {
+  const found = catalogues[kind];
+  return found !== undefined && Object.hasOwn(found.ops, op);
+}
 
 const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 // How long an unanswered send is taken to be still on its way. Until then no
@@ -153,7 +167,7 @@ function text(value: unknown): string | null {
 function catalogueOf(item: ItemId): Catalogue {
   const kind = parseItemId(item)?.source;
   if (!kind) throw new Error(`not an item ID: ${item}`);
-  return catalogues[kind];
+  return catalogueFor(kind);
 }
 
 // The one place an `Approved` value is made (decision 0003). Callers mint right
@@ -171,14 +185,14 @@ function kindOf(m: Draft, all: readonly Draft[]): SourceKind | null {
     const create = all.find((c) => c.ref === ref);
     return create && create.target === null ? kindOf(create, all) : null;
   }
-  const owners = sourceKinds.filter((kind) => Object.hasOwn(catalogues[kind].ops, m.op));
+  const owners = sourceKinds.filter((kind) => hasOp(kind, m.op));
   return owners.length === 1 ? (owners[0] ?? null) : null;
 }
 
 function specFor(m: Draft, all: readonly Draft[]): { kind: SourceKind; spec: OpSpec } | null {
   const kind = kindOf(m, all);
-  if (kind === null || !Object.hasOwn(catalogues[kind].ops, m.op)) return null;
-  const spec = catalogues[kind].ops[m.op];
+  if (kind === null || !hasOp(kind, m.op)) return null;
+  const spec = catalogueFor(kind).ops[m.op];
   return spec ? { kind, spec } : null;
 }
 
@@ -311,7 +325,12 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     return link;
   };
 
-  const reader = (kind: SourceKind): Reader => deps.sources[kind].reader;
+  const sourceOf = (kind: SourceKind): { writer: SourceWriter; reader: Reader } => {
+    const found = deps.sources[kind];
+    if (!found) throw new Error(`${kind} items are read-only`);
+    return found;
+  };
+  const reader = (kind: SourceKind): Reader => sourceOf(kind).reader;
 
   // Lines for the rows of `set` as loaded, so `set.hash` is the hash of exactly
   // what is rendered. Applied lines show what the source reported; pending
@@ -332,7 +351,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const item = itemOf(m);
       if (item === null) continue;
       const { kind, spec } = mustSpec(m, set.mutations);
-      const entry = wanted.get(item) ?? { kind, fields: new Set([catalogues[kind].titleField]) };
+      const entry = wanted.get(item) ?? { kind, fields: new Set([catalogueFor(kind).titleField]) };
       if (m.status !== "applied")
         for (const field of Object.keys(spec.after(m.args))) entry.fields.add(field);
       wanted.set(item, entry);
@@ -348,7 +367,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     const title = async (id: ItemId): Promise<string | null> => {
       const kind = parseItemId(id)?.source;
       if (!kind) return null;
-      const field = catalogues[kind].titleField;
+      const field = catalogueFor(kind).titleField;
       const values = live.get(id) ?? (await reader(kind).current(id, [field]));
       return values === "gone" ? null : text(values[field]);
     };
@@ -359,7 +378,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     const gone = new Set<Ulid>();
     for (const m of set.mutations) {
       const { kind, spec } = mustSpec(m, set.mutations);
-      const catalogue = catalogues[kind];
+      const catalogue = catalogueFor(kind);
       const context = (subject: Subject, before: FieldValues) => ({
         subject,
         before,
@@ -497,7 +516,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     for (const [item, { last, fields }] of expected) {
       const kind = parseItemId(item)?.source;
       if (!kind || fields.size === 0) continue;
-      const current = await deps.sources[kind].writer.current(item, [...fields.keys()]);
+      const current = await sourceOf(kind).writer.current(item, [...fields.keys()]);
       if (current === "gone") {
         conflicts.push({
           mutationId: last,
@@ -529,9 +548,9 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     if (!last?.applied) throw new Error(`no applied mutation on ${item}`);
     const kind = parseItemId(item)?.source;
     if (!kind) throw new Error(`not an item ID: ${item}`);
-    const field = catalogues[kind].updatedField;
+    const field = catalogueFor(kind).updatedField;
     const expected = last.applied.after[field];
-    const current = await deps.sources[kind].writer.current(item, [field]);
+    const current = await sourceOf(kind).writer.current(item, [field]);
     if (current === "gone")
       return {
         mutationId: last.id,
@@ -608,8 +627,8 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
   ): Promise<AppliedValue | null> => {
     const after = spec.after(m.args);
     const fields = Object.keys(after);
-    const updated = catalogues[kind].updatedField;
-    const current = await deps.sources[kind].writer.current(target, [...fields, updated]);
+    const updated = catalogueFor(kind).updatedField;
+    const current = await sourceOf(kind).writer.current(target, [...fields, updated]);
     if (current === "gone") return null;
     if (!fields.every((f) => Object.hasOwn(current, f) && sameValue(current[f], after[f])))
       return null;
@@ -661,7 +680,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const seen = { status: m.status, error: m.error };
       const wasSent = m.status === "failed";
       const { kind, spec } = mustSpec(m, set.mutations);
-      const source = catalogues[kind].name;
+      const source = catalogueFor(kind).name;
       const writes = Object.keys(spec.after(m.args));
       const uncertain = `It may have been made in ${source}: check, then remove it from the change set to continue.`;
       if (wasSent && !spec.idempotent) {
@@ -738,7 +757,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       try {
         let result: unknown;
         try {
-          result = await deps.sources[kind].writer.apply(request);
+          result = await sourceOf(kind).writer.apply(request);
         } catch (error) {
           return fail(mutationId, `${message(error).replace(/\.$/, "")}.${unsure}`);
         }
@@ -878,7 +897,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
           if (m.status === "failed" && changes.has(mutationId))
             throw new ChangeSetError(
               "refused",
-              `mutation ${m.seq}: this change may already be in ${catalogues[mustSpec(m, current.mutations).kind].name}: check, then remove it`,
+              `mutation ${m.seq}: this change may already be in ${catalogueFor(mustSpec(m, current.mutations).kind).name}: check, then remove it`,
             );
           if (remove.has(mutationId) && changes.has(mutationId))
             throw new ChangeSetError("invalid", `mutation ${m.seq} is both removed and changed`);
@@ -1007,7 +1026,7 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
       const sentUnapplied = (current: ChangeSet): ChangeSetError | null => {
         const m = current.mutations.find((r) => r.status === "failed");
         if (!m) return null;
-        const source = catalogues[mustSpec(m, current.mutations).kind].name;
+        const source = catalogueFor(mustSpec(m, current.mutations).kind).name;
         return new ChangeSetError(
           "not-revertible",
           `mutation ${m.seq} (${m.op}) was sent and may have landed: retry apply first, or check ${source} and remove it`,

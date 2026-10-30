@@ -67,7 +67,7 @@ export function bindingsFor(
           throw new Error(`expected ref new:${nextRef}, got ${JSON.stringify(ref)}`);
         if (entry.creates) nextRef += 1;
         const built = entry.build(args, host);
-        const checked = jiraOps[entry.op](built.args);
+        const checked = jiraOps[entry.op].args(built.args);
         if (!checked.ok)
           throw new TypeError(checked.issues.map((i) => `${i.path}: ${i.message}`).join("; "));
         if (ref !== null) created.add(ref);

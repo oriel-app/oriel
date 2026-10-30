@@ -82,9 +82,6 @@ const valid = <T>(validate: Validator<T>, args: unknown, op: string): T => {
   throw new Error(`${op}: bad arguments (${where})`);
 };
 
-const webUrl = (url: string) =>
-  URL.canParse(url) && ["https:", "http:"].includes(new URL(url).protocol);
-
 export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   const { transport, log } = options;
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
@@ -252,25 +249,25 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
   ): Promise<WriteResult<"jira">> => {
     switch (op) {
       case "createStory":
-        return createStory(valid(jiraOps.createStory, args, op));
+        return createStory(valid(jiraOps.createStory.args, args, op));
       case "setSummary": {
-        const { summary } = valid(jiraOps.setSummary, args, op);
+        const { summary } = valid(jiraOps.setSummary.args, args, op);
         return edit(target, ["summary"], async (key) => put(key, { summary }));
       }
       case "setDescription": {
-        const { description } = valid(jiraOps.setDescription, args, op);
+        const { description } = valid(jiraOps.setDescription.args, args, op);
         return edit(target, ["description"], async (key) =>
           put(key, { description: textToAdf(description) }),
         );
       }
       case "setEstimate": {
-        const { points } = valid(jiraOps.setEstimate, args, op);
+        const { points } = valid(jiraOps.setEstimate.args, args, op);
         return edit(target, ["points"], async (key) =>
           put(key, { [await requirePoints(projectOf(key))]: points }),
         );
       }
       case "setAssignee": {
-        const { accountId } = valid(jiraOps.setAssignee, args, op);
+        const { accountId } = valid(jiraOps.setAssignee.args, args, op);
         return edit(target, ["assignee"], async (key) => ({
           method: "PUT",
           path: `${api}/issue/${key}/assignee`,
@@ -278,10 +275,9 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         }));
       }
       case "addLink":
-        return addLink(target, valid(jiraOps.addLink, args, op));
+        return addLink(target, valid(jiraOps.addLink.args, args, op));
       case "removeLink": {
-        const { linkId } = valid(jiraOps.removeLink, args, op);
-        if (!numericId(linkId).ok) throw new Error("removeLink: a link ID is a number");
+        const { linkId } = valid(jiraOps.removeLink.args, args, op);
         const name = linkField(linkId);
         return edit(target, [name], async (key, before) => {
           if (before[name] === null) throw new Error(`removeLink: ${key} has no link ${linkId}`);
@@ -289,7 +285,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         });
       }
       case "deleteItem":
-        valid(jiraOps.deleteItem, args, op);
+        valid(jiraOps.deleteItem.args, args, op);
         return deleteItem(target);
     }
   };
@@ -298,7 +294,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     target: ItemId<"jira"> | null,
     { url, title }: JiraArgs<"addLink">,
   ): Promise<WriteResult<"jira">> => {
-    if (!webUrl(url)) throw new Error("addLink: the URL must be http or https");
     const before = await existing(target, []);
     const response = await send({
       method: "POST",
