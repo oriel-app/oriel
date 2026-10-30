@@ -239,6 +239,28 @@ test("telemetry keeps each raw event, oldest first", () => {
   ]);
 });
 
+test("the inbox and a thread's change sets are read through indexes", () => {
+  const { db } = fresh();
+  const plan = (sql: string) =>
+    db
+      .prepare(`explain query plan ${sql}`)
+      .all()
+      .map((row) => String(row.detail))
+      .join("\n");
+  assert.match(
+    plan("select id from threads where workspace_id = 'w' order by created_at desc, id desc"),
+    /threads_by_workspace/,
+  );
+  assert.match(
+    plan("select id from change_sets where thread_id = 't' order by created_at, rowid"),
+    /change_sets_by_thread/,
+  );
+  assert.match(
+    plan("select id from threads where group_id = 'g' order by created_at desc, id desc"),
+    /threads_by_group/,
+  );
+});
+
 test("the first workspace is the oldest, or none", () => {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);

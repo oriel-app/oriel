@@ -18,6 +18,11 @@ insert into new_messages (id, workspace_id, thread_id, seq, role, content, at)
 drop table messages;
 alter table new_messages rename to messages;
 
--- The inbox and the window list a workspace's threads and groups.
-create index threads_by_group on threads (group_id);
+-- The inbox lists a workspace's threads, newest first; a group's page and
+-- following a group list its threads.
+create index threads_by_workspace on threads (workspace_id, created_at);
+create index threads_by_group on threads (group_id, created_at);
+-- The window lists a workspace's groups, newest first.
 create index groups_by_workspace on groups (workspace_id, created_at);
+-- A thread's change sets, oldest first, and its derived state.
+create index change_sets_by_thread on change_sets (thread_id, created_at);
