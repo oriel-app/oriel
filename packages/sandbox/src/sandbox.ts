@@ -52,17 +52,13 @@ export type SandboxOptions = {
   typecheckMs?: number;
 };
 
-// `coldStartMs`: from spawning Deno to the guest's first line, or null when
-// none came. That is the cold start plus whatever the script does before its
-// first read, write, log or return. The shim writes nothing at start, so the
-// host can't time Deno's startup alone. Eval #6 reads it.
-export type SandboxRunResult = RunResult & { coldStartMs: number | null };
+// `coldStartMs` is timed from spawning Deno. The shim writes nothing at
+// start, so the host can't time Deno's startup alone.
+export type SandboxRunResult = RunResult;
 
 type RunOptions = { limits: RunLimits; signal: AbortSignal; log: Log };
 
-export interface DenoSandbox extends Sandbox {
-  run(script: string, bindings: Bindings, options: RunOptions): Promise<SandboxRunResult>;
-}
+export type DenoSandbox = Sandbox;
 
 const MB = 1024 * 1024;
 const logTail = 20;
@@ -85,16 +81,9 @@ const maxDepth = 64;
 
 type Ending = { outcome: RunResult["outcome"]; last: TranscriptEntry };
 
-// A read passed to the source. `read` is set once it is answered; a failed or
-// unanswered one is only logged, since core's `ProxiedRead` needs a payload
-// hash.
-type ReadRecord = {
-  fn: string;
-  args: unknown[];
-  startedAt: number;
-  read: ProxiedRead | null;
-  status: "answered" | "failed" | "unanswered";
-};
+// A read passed to the source, as it stands: answered or failed as it
+// settles, unanswered until then.
+type ReadRecord = ProxiedRead & { startedAt: number };
 
 export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
   // Root ignores file modes, so the read-only location_data below would not
@@ -293,40 +282,46 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
       // `sandbox.run` line: answered or failed as it settles, and unanswered
       // when the run ends first. One that answers after that is ignored.
       const proxyRead = async (id: number, fn: string, args: unknown[]) => {
-        const record: ReadRecord = { fn, args, startedAt: now(), read: null, status: "unanswered" };
+        const record: ReadRecord = {
+          fn,
+          args,
+          ms: 0,
+          status: "unanswered",
+          outsideRegion: null,
+          payloadHash: null,
+          startedAt: now(),
+        };
         reads.push(record);
         let reply: string;
         try {
           const { value, outsideRegion } = await bindings.read(fn, args);
           if (settled) return;
           const payload = JSON.stringify(value) ?? "null";
-          const read = {
-            fn,
-            args,
+          Object.assign(record, {
             ms: now() - record.startedAt,
+            status: "answered",
             outsideRegion,
             payloadHash: sha256(payload),
-          };
-          record.read = read;
-          record.status = "answered";
+          });
           log("sandbox.read", {
             status: "answered",
             fn,
             args,
-            ms: read.ms,
+            ms: record.ms,
             outside_region: outsideRegion,
-            payload_hash: read.payloadHash,
+            payload_hash: record.payloadHash,
           });
           reply = `{"id":${id},"ok":true,"value":${payload}}`;
         } catch (error) {
           if (settled) return;
           const message = errorText(error);
           record.status = "failed";
+          record.ms = now() - record.startedAt;
           log("sandbox.read", {
             status: "failed",
             fn,
             args,
-            ms: now() - record.startedAt,
+            ms: record.ms,
             error: message,
           });
           reply = JSON.stringify({ id, ok: false, error: message });
@@ -491,11 +486,12 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         signal.removeEventListener("abort", onAbort);
         for (const record of reads) {
           if (record.status !== "unanswered") continue;
+          record.ms = now() - record.startedAt;
           log("sandbox.read", {
             status: "unanswered",
             fn: record.fn,
             args: record.args,
-            ms: now() - record.startedAt,
+            ms: record.ms,
           });
         }
       };
@@ -510,13 +506,20 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         if (settled) return;
         if (ending === null && lines.pending() > 0) malformed("its last line has no newline");
         settle();
-        const answered = reads.flatMap((record) => (record.read ? [record.read] : []));
+        const proxied = reads.map((r): ProxiedRead => ({
+          fn: r.fn,
+          args: r.args,
+          ms: r.ms,
+          status: r.status,
+          outsideRegion: r.outsideRegion,
+          payloadHash: r.payloadHash,
+        }));
         if (ending === "aborted") {
           log("sandbox.run", {
             outcome: "aborted",
             wall_ms: now() - job.started,
             cold_start_ms: coldStartMs,
-            reads: answered.length,
+            reads: proxied.length,
             mutations: mutations.length,
           });
           reject(signal.reason);
@@ -524,7 +527,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
         }
         const { outcome, last } = ending ?? exited(code, killedBy);
         transcript.push(last);
-        const result = { reads: answered, mutations, transcript, outcome };
+        const result = { reads: proxied, mutations, transcript, outcome };
         resolve(finished(result, now() - job.started, coldStartMs, log));
       });
     });
@@ -534,11 +537,11 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
 }
 
 function finished(
-  result: Omit<RunResult, "wallMs">,
+  result: Omit<RunResult, "wallMs" | "coldStartMs">,
   wallMs: number,
   coldStartMs: number | null,
   log: Log,
-): SandboxRunResult {
+): RunResult {
   log("sandbox.run", {
     outcome: result.outcome,
     wall_ms: wallMs,

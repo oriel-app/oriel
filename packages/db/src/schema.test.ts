@@ -126,7 +126,7 @@ test("a thread and a member name versions their group has", () => {
   assert.throws(() => member.run(workspaceId, "10001", 2, null), /UNIQUE/);
 });
 
-test("a run's read has a payload hash exactly when it was answered", () => {
+test("a run's read has a payload hash and a region flag exactly when it was answered", () => {
   const { db, workspaceId } = withThread();
   db.exec(`
     insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
@@ -134,14 +134,16 @@ test("a run's read has a payload hash exactly when it was answered", () => {
     values ('u1', '${workspaceId}', 't1', 1, 1, 'p', 'd', 'model', 0, 0, 0, null, 'aborted', '${now}');
   `);
   const read = db.prepare(
-    "insert into run_reads (workspace_id, run_id, seq, fn, args, ms, outside_region, status, payload_hash) values (?, 'u1', ?, 'items.list', '[]', 0, 0, ?, ?)",
+    "insert into run_reads (workspace_id, run_id, seq, fn, args, ms, outside_region, status, payload_hash) values (?, 'u1', ?, 'items.list', '[]', 0, ?, ?, ?)",
   );
-  read.run(workspaceId, 1, "answered", "h");
-  read.run(workspaceId, 2, "failed", null);
-  read.run(workspaceId, 3, "unanswered", null);
-  assert.throws(() => read.run(workspaceId, 4, "answered", null), /CHECK/);
-  assert.throws(() => read.run(workspaceId, 5, "failed", "h"), /CHECK/);
-  assert.throws(() => read.run(workspaceId, 6, "late", null), /CHECK/);
+  read.run(workspaceId, 1, 0, "answered", "h");
+  read.run(workspaceId, 2, null, "failed", null);
+  read.run(workspaceId, 3, null, "unanswered", null);
+  assert.throws(() => read.run(workspaceId, 4, 0, "answered", null), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 5, null, "answered", "h"), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 6, null, "failed", "h"), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 7, 1, "unanswered", null), /CHECK/);
+  assert.throws(() => read.run(workspaceId, 8, null, "late", null), /CHECK/);
 });
 
 test("a mutation's applied result is set exactly when it is applied", () => {

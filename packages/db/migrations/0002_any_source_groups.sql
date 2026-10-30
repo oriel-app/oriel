@@ -121,7 +121,7 @@ drop table runs;
 alter table new_runs rename to runs;
 
 -- Every read a run passed to a source, answered or not. Only an answered one
--- has a payload to hash.
+-- has a payload to hash, and says whether it reached outside the region.
 create table new_run_reads (
   workspace_id text not null references workspaces (id),
   run_id text not null references runs (id),
@@ -129,11 +129,12 @@ create table new_run_reads (
   fn text not null,
   args text not null check (json_valid(args)),
   ms integer not null,
-  outside_region integer not null check (outside_region in (0, 1)),
+  outside_region integer check (outside_region in (0, 1)),
   status text not null check (status in ('answered', 'failed', 'unanswered')),
   payload_hash text,
   primary key (run_id, seq),
-  check ((status = 'answered') = (payload_hash is not null))
+  check ((status = 'answered') = (payload_hash is not null)),
+  check ((status = 'answered') = (outside_region is not null))
 ) strict;
 insert into new_run_reads (workspace_id, run_id, seq, fn, args, ms, outside_region, status,
     payload_hash)

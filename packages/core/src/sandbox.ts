@@ -1,5 +1,5 @@
 import type { ItemId } from "./ids.ts";
-import type { Log } from "./run.ts";
+import type { Log, RunOutcome } from "./run.ts";
 import {
   array,
   type Infer,
@@ -78,14 +78,20 @@ export type RunError = {
   logs: string[];
 };
 
+// Every read a run passed to its bindings, in the order the guest made them.
+// "failed": the read threw. "unanswered": the run ended before it answered,
+// and a late answer is ignored.
 export type ProxiedRead = {
   fn: string;
   args: unknown[];
+  // Until it answered, failed, or the run ended.
   ms: number;
-  // True for the escape hatch (`search()` and reads of what it found).
-  outsideRegion: boolean;
-  // A hash of the payload, never the payload (SPEC §7).
-  payloadHash: string;
+  status: "answered" | "failed" | "unanswered";
+  // True for the escape hatch (`search()` and reads of what it found), as the
+  // bindings report with an answer; null for a read that got none.
+  outsideRegion: boolean | null;
+  // A hash of the payload, never the payload (SPEC §7); null unless answered.
+  payloadHash: string | null;
 };
 
 export type TranscriptEntry =
@@ -97,8 +103,12 @@ export type RunResult = {
   reads: ProxiedRead[];
   mutations: CapturedMutation[];
   transcript: TranscriptEntry[];
-  outcome: "ok" | "threw" | "timeout" | "limit";
+  outcome: RunOutcome;
   wallMs: number;
+  // From starting the guest to its first line, or null when none came: the
+  // cold start plus whatever the script does before its first read, write,
+  // log or return. Eval #6 reads it.
+  coldStartMs: number | null;
 };
 
 // One run of agent-written TypeScript. The bindings are the only way out.
