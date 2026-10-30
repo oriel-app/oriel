@@ -1,13 +1,15 @@
 // Repo invariants: CLAUDE.md is a symlink to AGENTS.md; every locked package
 // comes from the npm registry, is on the AGENTS.md allowlist, and is listed on
-// an ADR's `Adds:` line; and outside packages/changeset, no code names
-// `Approved` or `SourceWriter` (core defines them) or imports a writer by any
-// path. An adapter's own `src/writer.ts` and its test are the exceptions; the
-// test may stand in for an approval, which nothing else may. And no package
-// imports a source adapter except the adapter itself, the composition root
-// (packages/server), the eval harness (packages/evals) and tests: other
-// packages get a source's behaviour as declarations typed by core (decision
-// 0019).
+// an ADR's `Adds:` line; outside packages/changeset, no code names
+// `Approved` or `SourceWriter` (core defines them); and nothing but
+// packages/changeset/src/writers.ts, which builds every writer, imports a
+// writer by any path. An adapter's own `src/writer.ts` and its test are the
+// exceptions; the test may stand in for an approval, which nothing else may
+// (decision 0003). And no package imports a source adapter except the
+// adapter itself, the composition root (packages/server), the eval harness
+// (packages/evals) and tests: other packages get a source's behaviour as
+// declarations typed by core (decision 0019). A writer import is refused by
+// both rules, wherever 0003 refuses it.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { sourceKinds } from "../packages/core/src/ids.ts";
@@ -42,26 +44,37 @@ function backticked(text: string): string[] {
 
 const adapters: readonly string[] = sourceKinds;
 
+// The one file that builds writers.
+const writersFile = "packages/changeset/src/writers.ts";
+const ownWriterFile = /^packages\/[^/]+\/src\/writer(\.test)?\.ts$/;
+
 // The source adapters a file imports: an `@oriel/<kind>` specifier, with or
 // without a subpath, or a relative path into `packages/<kind>/`, for each
-// `<kind>` in core's source kinds. A writer import doesn't count here: the
-// writer rule above governs those (decision 0003).
-export function importedAdapters(path: string, text: string): string[] {
-  const found = new Set<string>();
-  const writer = /\/writer(\.ts)?$/;
+// `<kind>` in core's source kinds, and whether the import is its writer.
+export function importedAdapters(path: string, text: string): { kind: string; writer: boolean }[] {
+  const found = new Map<string, { kind: string; writer: boolean }>();
+  const add = (kind: string, target: string) => {
+    const writer = /\/writer(\.ts)?$/.test(target);
+    if (adapters.includes(kind)) found.set(`${kind} ${writer}`, { kind, writer });
+  };
   for (const [, kind = "", sub = ""] of text.matchAll(/["']@oriel\/([a-z0-9-]+)(\/[^"'\s]*)?["']/g))
-    if (adapters.includes(kind) && !writer.test(sub)) found.add(kind);
+    add(kind, sub);
   for (const [, relative = ""] of text.matchAll(/["'](\.{1,2}\/[^"'\s]*)["']/g)) {
     const resolved = posix.normalize(posix.join(posix.dirname(path), relative));
-    const kind = /^packages\/([^/]+)\//.exec(resolved)?.[1] ?? "";
-    if (adapters.includes(kind) && !writer.test(resolved)) found.add(kind);
+    add(/^packages\/([^/]+)\//.exec(resolved)?.[1] ?? "", resolved);
   }
-  return [...found];
+  return [...found.values()];
 }
 
 // Where a source adapter may be imported from: its own package, the
-// composition root, the eval harness, and tests and their support files.
-function mayImportAdapter(path: string, kind: string): boolean {
+// composition root, the eval harness, and tests and their support files. Its
+// writer, only where decision 0003 allows: the file that builds writers, and
+// the adapter's own writer and its test.
+function mayImportAdapter(path: string, kind: string, writer: boolean): boolean {
+  if (writer)
+    return (
+      path === writersFile || (path.startsWith(`packages/${kind}/`) && ownWriterFile.test(path))
+    );
   if (path.startsWith(`packages/${kind}/`)) return true;
   if (path.startsWith("packages/server/") || path.startsWith("packages/evals/")) return true;
   return /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/.test(path);
@@ -83,7 +96,7 @@ export function problems(repo: {
   for (const { path, text } of repo.sources) {
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
-    const ownWriter = /^packages\/[^/]+\/src\/writer(\.test)?\.ts$/.test(path);
+    const ownWriter = ownWriterFile.test(path);
     if (!changeset && !core && /\bApproved\b/.test(text)) {
       found.add(
         `${path}: names Approved outside packages/core and packages/changeset (decision 0003)`,
@@ -94,14 +107,16 @@ export function problems(repo: {
         `${path}: names SourceWriter outside packages/core, packages/changeset and an adapter's writer (decision 0003)`,
       );
     }
-    if (!changeset && !ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
-      found.add(`${path}: imports a source writer outside packages/changeset (decision 0003)`);
+    if (path !== writersFile && !ownWriter && /["'][^"'\s]*\/writer(\.ts)?["']/.test(text)) {
+      found.add(`${path}: imports a source writer outside ${writersFile} (decision 0003)`);
     }
     if (!path.startsWith("packages/")) continue;
-    for (const kind of importedAdapters(path, text)) {
-      if (mayImportAdapter(path, kind)) continue;
+    for (const { kind, writer } of importedAdapters(path, text)) {
+      if (mayImportAdapter(path, kind, writer)) continue;
       found.add(
-        `${path}: imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
+        writer
+          ? `${path}: imports the ${kind} writer; only ${writersFile} builds writers (decisions 0003 and 0019)`
+          : `${path}: imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
       );
     }
   }

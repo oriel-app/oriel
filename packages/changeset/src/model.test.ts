@@ -12,7 +12,7 @@ import {
   type SourceWriter,
   type Ulid,
 } from "@oriel/core";
-import { ChangeSetError, changeSets } from "./change-sets.ts";
+import { ChangeSetError, changeSetsOver } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
 import { store } from "./store.ts";
 import { fixtureJira, type MemoryIssue, memoryJira, nth, setup, specs, t0 } from "./testing.ts";
@@ -96,7 +96,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     },
   };
   const instance = (): ChangeSets =>
-    changeSets({
+    changeSetsOver({
       db,
       sources: { jira: { writer, reader: jira.reader } },
       specs,

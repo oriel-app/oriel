@@ -18,6 +18,7 @@ import {
   type ItemId,
   isNewRef,
   type Issue,
+  type Log,
   literal,
   type MutationRecord,
   type OpSpec,
@@ -43,6 +44,7 @@ import {
 } from "@oriel/core";
 import { transaction } from "@oriel/db";
 import { sameValue, sha256 } from "./hash.ts";
+import { buildWriters, type WriterConfig } from "./writers.ts";
 import {
   newRefValue,
   store,
@@ -65,8 +67,12 @@ export type FieldReader<K extends SourceKind = SourceKind> = {
 
 export type ChangeSetDeps = {
   db: DatabaseSync;
-  // The writable sources. A source missing here is read-only.
-  sources: { [K in SourceKind]?: { writer: SourceWriter<K>; reader: FieldReader<K> } };
+  // How to reach each writable source. Change sets build the writers from it
+  // (writers.ts): nothing passes a writer in, so none exists outside this
+  // package (decision 0003). A source with no config is read-only.
+  writerConfig: WriterConfig;
+  // A person's display name for a diff line, by source; null when unknown.
+  people?: { [K in SourceKind]?: (personId: string) => Promise<string | null> };
   // How each writable source's ops are checked, shown, applied and reverted,
   // as its adapter declares them.
   specs: Specs;
@@ -74,6 +80,15 @@ export type ChangeSetDeps = {
   reviewBase: URL;
   now: () => Instant;
   emit: (event: TelemetryEvent) => void;
+  log: Log;
+};
+
+// Each writable source's writer and the field reader its diffs use.
+export type Sources = { [K in SourceKind]?: { writer: SourceWriter<K>; reader: FieldReader<K> } };
+
+// What the engine runs on: the deps, with the writers built.
+export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "people" | "log"> & {
+  sources: Sources;
 };
 
 export type ChangeSetErrorCode =
@@ -292,7 +307,26 @@ export function explainConflicts(conflicts: readonly Conflict[], specs: Specs): 
   return `Stopped, so nothing was overwritten: ${parts.join("; ")}.`;
 }
 
+// Change sets over the writers built from `deps.writerConfig`. A diff reads a
+// source's current values through its writer, which knows its field names.
 export function changeSets(deps: ChangeSetDeps): ChangeSets {
+  const writers = buildWriters(deps.writerConfig, deps.log);
+  const unknown = async () => null;
+  const sources = Object.fromEntries(
+    sourceKinds.flatMap((kind) => {
+      const writer = writers[kind];
+      if (!writer) return [];
+      const person = deps.people?.[kind] ?? unknown;
+      return [[kind, { writer, reader: { current: writer.current, person } }]];
+    }),
+  ) as Sources;
+  return changeSetsOver({ ...deps, sources });
+}
+
+// The engine, over writers and readers already built. Only `changeSets` and
+// tests (with a source in memory) call it; the package entry doesn't export
+// it, so production code can't pass a writer in.
+export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const { db, specs } = deps;
   const rows = store(db);
   // Change sets this instance is applying; a second apply is refused until the

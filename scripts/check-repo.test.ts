@@ -66,8 +66,12 @@ test("naming Approved outside core and changeset is reported, aliases included",
   ]);
 });
 
-test("importing an adapter's writer outside changeset is reported, by any path", () => {
+test("importing an adapter's writer anywhere but the file that builds writers is reported, by any path", () => {
   const sources = [
+    {
+      path: "packages/changeset/src/writers.ts",
+      text: 'import { jiraWriter } from "@oriel/jira/writer";',
+    },
     {
       path: "packages/changeset/src/apply.ts",
       text: 'import { writer } from "@oriel/jira/writer";',
@@ -78,11 +82,19 @@ test("importing an adapter's writer outside changeset is reported, by any path",
     { path: "packages/jira/src/source.ts", text: 'const w = await import("./writer.ts");' },
     { path: "scripts/x.ts", text: 'import { w } from "../packages/jira/src/writer";' },
   ];
-  const where = "imports a source writer outside packages/changeset (decision 0003)";
+  const where = "imports a source writer outside packages/changeset/src/writers.ts (decision 0003)";
+  // The adapter rule refuses each one in packages/ too.
+  const also =
+    "imports the jira writer; only packages/changeset/src/writers.ts builds writers (decisions 0003 and 0019)";
   assert.deepEqual(problems({ ...clean, sources }), [
+    `packages/changeset/src/apply.ts: ${where}`,
+    `packages/changeset/src/apply.ts: ${also}`,
     `packages/sandbox/src/host.ts: ${where}`,
+    `packages/sandbox/src/host.ts: ${also}`,
     `packages/server/src/x.ts: ${where}`,
+    `packages/server/src/x.ts: ${also}`,
     `packages/jira/src/source.ts: ${where}`,
+    `packages/jira/src/source.ts: ${also}`,
     `scripts/x.ts: ${where}`,
   ]);
 });
@@ -127,8 +139,6 @@ test("importing a source adapter outside its package, the server, evals and test
     // Not adapters: core and other packages, and a name that only starts like one.
     { path: "packages/groupings/src/y.ts", text: 'import { facets } from "@oriel/core";' },
     { path: "packages/groupings/src/z.ts", text: 'import { x } from "@oriel/jiraish";' },
-    // A writer is decision 0003's to report, once.
-    { path: "packages/changeset/src/apply.ts", text: 'import { w } from "@oriel/jira/writer";' },
   ];
   const where = (kind: string) =>
     `imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`;
@@ -137,6 +147,21 @@ test("importing a source adapter outside its package, the server, evals and test
     `packages/changeset/src/x.ts: ${where("jira")}`,
     `packages/bindings/src/x.ts: ${where("folder")}`,
     `packages/sandbox/src/x.ts: ${where("jira")}`,
+  ]);
+});
+
+test("the composition root may import an adapter, but never its writer", () => {
+  const sources = [
+    { path: "packages/server/src/x.ts", text: 'import { jiraWriter } from "@oriel/jira/writer";' },
+    { path: "packages/server/src/y.ts", text: 'import { jiraPresentation } from "@oriel/jira";' },
+    // Nor may a test elsewhere: writers stay in packages/changeset.
+    { path: "packages/server/src/y.test.ts", text: 'import { w } from "@oriel/jira/writer";' },
+  ];
+  assert.deepEqual(problems({ ...clean, sources }), [
+    "packages/server/src/x.ts: imports a source writer outside packages/changeset/src/writers.ts (decision 0003)",
+    "packages/server/src/x.ts: imports the jira writer; only packages/changeset/src/writers.ts builds writers (decisions 0003 and 0019)",
+    "packages/server/src/y.test.ts: imports a source writer outside packages/changeset/src/writers.ts (decision 0003)",
+    "packages/server/src/y.test.ts: imports the jira writer; only packages/changeset/src/writers.ts builds writers (decisions 0003 and 0019)",
   ]);
 });
 

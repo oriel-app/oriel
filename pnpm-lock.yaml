@@ -45,7 +45,6 @@ importers:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
-    devDependencies:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira

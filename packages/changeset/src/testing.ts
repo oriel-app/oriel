@@ -22,7 +22,7 @@ import {
 import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps, jiraSpecs } from "@oriel/jira";
 import { ensureWorkspace, groupStore, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { changeSets, type FieldReader, type Specs } from "./change-sets.ts";
+import { changeSetsOver, type FieldReader, type Specs } from "./change-sets.ts";
 
 export type MemoryIssue = {
   key: string;
@@ -382,7 +382,7 @@ export function setup() {
   const events: TelemetryEvent[] = [];
   // Another instance over the same database, as after a restart.
   const instance = (writer: SourceWriter<"jira"> = jira.writer): ChangeSets =>
-    changeSets({
+    changeSetsOver({
       db,
       sources: { jira: { writer, reader: jira.reader } },
       specs,
