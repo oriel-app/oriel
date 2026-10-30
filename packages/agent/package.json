@@ -1,0 +1,19 @@
+{
+  "name": "@oriel/agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@oriel/bindings": "workspace:*",
+    "@oriel/jira": "workspace:*",
+    "@oriel/sandbox": "workspace:*"
+  }
+}
