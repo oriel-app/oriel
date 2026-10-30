@@ -1,0 +1,15 @@
+{
+  "name": "@oriel/evals",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node --test",
+    "evals:ci": "node src/cli.ts replay"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*"
+  }
+}

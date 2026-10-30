@@ -50,6 +50,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/evals:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/groupings:
     dependencies:
       '@oriel/core':
