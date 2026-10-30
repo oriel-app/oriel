@@ -242,7 +242,29 @@ export async function typecheck(
   return {
     phase: "typecheck",
     message: `${count} in the script:\n${lines.join("\n")}`,
-    hint: "Fix the script against the region's declarations and run it again. Writes take only RegionId values and refs from createStory; search() reads outside the region.",
+    hint: hintFor(dts),
     logs: [],
   };
+}
+
+// What to fix, naming the functions this region's declarations say create
+// items, and generic when there are none.
+function hintFor(dts: string): string {
+  const makers = creators(dts);
+  const refs = makers.length ? ` and refs from ${makers.join(" or ")}` : "";
+  return `Fix the script against the region's declarations and run it again. Writes take only this region's IDs${refs}; search() reads outside the region.`;
+}
+
+// The functions the declarations say return a NewRef, as `namespace.name`.
+export function creators(dts: string): string[] {
+  const found: string[] = [];
+  let space: string | null = null;
+  for (const line of dts.split("\n")) {
+    const open = /^declare const (\w+): \{$/.exec(line);
+    if (open) space = open[1] ?? null;
+    else if (line === "};") space = null;
+    const fn = /^ {2}(\w+)\(.*\): NewRef;$/.exec(line);
+    if (space && fn) found.push(`${space}.${fn[1]}`);
+  }
+  return found;
 }

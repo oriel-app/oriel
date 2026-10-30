@@ -9,6 +9,9 @@ import {
   type Reader,
   type ReadResult,
   type Region,
+  param,
+  read,
+  string,
   write,
 } from "@oriel/core";
 import { bindingsFor } from "./bindings.ts";
@@ -208,6 +211,61 @@ test("a source's namespace comes only from what the composition root passes in",
   await assert.rejects(bare.read("jira.listItems", []), /isn't a read here/);
   const listed = (await bare.read("items.list", [])).value as unknown[];
   assert.equal(listed.length, mixed.items.length);
+});
+
+test("a namespace reads only the region's items and what this run's search() found", async () => {
+  const jira = namespaces.jira;
+  assert.ok(jira);
+  const asked: string[] = [];
+  const spying: Reader = {
+    read: async (ids) => {
+      asked.push(...ids);
+      return reader.read(ids);
+    },
+    search: reader.search,
+  };
+  // A namespace that reads whatever ID it is handed, checking nothing itself.
+  const careless: NamespaceSpec = {
+    ...jira,
+    fns: (scope) => [
+      ...jira.fns(scope),
+      read({
+        name: "peek",
+        doc: "Read any item.",
+        params: [param("id", "string", string)],
+        returns: "unknown",
+        run: async ([id], host) => host.read([id as ItemId], (_id, content) => content),
+      }),
+    ],
+  };
+  const bindings = bindingsFor(mixed, { reader: spying, namespaces: { jira: careless } });
+  await assert.rejects(
+    bindings.read("jira.peek", ["jira:SYN-1"]),
+    /jira\.peek: "jira:SYN-1" isn't in this region; use search\(\) to look outside it/,
+  );
+  assert.deepEqual(asked, []);
+  const found = (await bindings.read("search", ["SYN-1", 1])).value as { id: string }[];
+  assert.deepEqual(
+    found.map((hit) => hit.id),
+    ["jira:SYN-1"],
+  );
+  await bindings.read("jira.peek", ["jira:SYN-1"]);
+  assert.deepEqual(asked, ["jira:SYN-1"]);
+  // Jira's own read still takes only the region's items.
+  await assert.rejects(bindings.read("jira.getItem", ["jira:SYN-1"]), /isn't in this region/);
+});
+
+test("the typecheck's hint names what creates items here, and stays generic without", async () => {
+  const broken = "const n: number = 'one';\nreturn n;";
+  const withJira = bindingsFor(mixed, { reader, namespaces });
+  assert.match(
+    (await typecheck(broken, withJira.dts))?.hint ?? "",
+    /Writes take only this region's IDs and refs from jira\.createStory;/,
+  );
+  const without = bindingsFor(folderOnly, { reader, namespaces });
+  const hint = (await typecheck(broken, without.dts))?.hint ?? "";
+  assert.match(hint, /Writes take only this region's IDs; search\(\) reads outside the region\./);
+  assert.doesNotMatch(hint, /createStory/);
 });
 
 test("a namespace can't offer a revert-only op, or one its catalogue doesn't have", () => {

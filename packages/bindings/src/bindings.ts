@@ -8,7 +8,7 @@ import {
 } from "@oriel/core";
 import { describe, type Fn, type Namespaces, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
-import { type Host, live } from "./fn.ts";
+import { type Host, live, outside } from "./fn.ts";
 import { shimFor } from "./shim.ts";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -36,12 +36,27 @@ export function bindingsFor(
   const members = new Set<string>(scope.ids);
   const created = new Set<NewRef>();
   const { reader } = options;
+  // What creates items here, for messages: the namespaces' own names for it.
+  const creates = fns.flatMap((fn) => (fn.kind === "write" && fn.creates ? [pathOf(fn)] : []));
+  const makers = creates.length ? creates.join(" or ") : "a create";
+  // IDs this run's search() returned. A namespace may read those too, and
+  // nothing else outside the region: the host refuses before any adapter
+  // code sees the ID, whatever the adapter checks itself.
+  const found = new Set<string>();
   const host: Host = {
     ids: scope.ids,
     has: (id: string): id is ItemId => members.has(id),
     created,
-    read: (ids, view) => live(reader, ids, view),
-    search: (query, limit) => reader.search(query, limit),
+    read: (ids, view) => {
+      const stray = ids.find((id) => !members.has(id) && !found.has(id));
+      if (stray !== undefined) throw outside(stray);
+      return live(reader, ids, view);
+    },
+    search: async (query, limit) => {
+      const hits = (await reader.search(query, limit)).slice(0, limit);
+      for (const hit of hits) found.add(hit.id);
+      return hits;
+    },
   };
   // The ref the next create must carry. Every correctly numbered create uses
   // one up, so a rejected create can't shift the numbering of later ones.
@@ -65,7 +80,7 @@ export function bindingsFor(
       const entry = byPath.get(fn);
       if (entry?.kind !== "write") throw new Error(`${JSON.stringify(fn)} isn't a write here`);
       try {
-        if (!entry.creates && ref !== null) throw new Error(`only createStory names a new item`);
+        if (!entry.creates && ref !== null) throw new Error(`only ${makers} names a new item`);
         if (entry.creates && ref !== `new:${nextRef}`)
           throw new Error(`expected ref new:${nextRef}, got ${JSON.stringify(ref)}`);
         if (entry.creates) nextRef += 1;

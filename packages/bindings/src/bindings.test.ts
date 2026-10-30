@@ -57,7 +57,7 @@ test("writes outside the region, to unmade refs, or with bad arguments are refus
   );
   assert.throws(
     () => bindings.capture("jira.setEstimate", ["jira:SYN-13", 3], "new:1"),
-    /only createStory names a new item/,
+    /only jira\.createStory names a new item/,
   );
 });
 
