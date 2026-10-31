@@ -17,7 +17,7 @@
 //   threads [id]             each thread as JSON lines, newest last; `person` lines are the maintainer's
 //   close                    close Chrome
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright-core";
@@ -185,6 +185,14 @@ const oneKey = (chord: string): boolean => {
 type Named = { getAttribute(name: string): string | null; textContent: string | null };
 const nameOf = (el: Named | null): string =>
   el ? (el.getAttribute("aria-label") ?? (el.textContent || el.getAttribute("value")) ?? "") : "";
+// An element's name and the names of the controls inside it. It runs in the
+// page, so it stands alone.
+type Within = Named & { querySelectorAll(selector: string): ArrayLike<Named> };
+const namesWithin = (el: Within): string[] =>
+  [el, ...Array.from(el.querySelectorAll("button, input[type=submit], [role=button]"))].map(
+    (each) =>
+      each.getAttribute("aria-label") ?? (each.textContent || each.getAttribute("value")) ?? "",
+  );
 // The focused element's name, and its form's submit buttons', which Enter presses.
 const focusedNames = `(() => {
   const nameOf = ${nameOf.toString()};
@@ -211,7 +219,38 @@ else if (command === "close") {
   if (running) await (await running.newBrowserCDPSession()).send("Browser.close");
 } else await drive();
 
+// One command at a time, so none can move focus or change the page between
+// another's check and its action. A lock left by a command that died is
+// taken over.
+function lock(): boolean {
+  const path = fileURLToPath(new URL(".oriel/drive.lock", root));
+  mkdirSync(fileURLToPath(new URL(".oriel/", root)), { recursive: true });
+  for (let tries = 0; tries < 2; tries++) {
+    try {
+      const fd = openSync(path, "wx");
+      writeFileSync(fd, String(process.pid));
+      closeSync(fd);
+      process.once("exit", () => rmSync(path, { force: true }));
+      return true;
+    } catch {
+      const holder = Number(readFileSync(path, "utf8"));
+      try {
+        process.kill(holder, 0);
+        return false;
+      } catch {
+        rmSync(path, { force: true });
+      }
+    }
+  }
+  return false;
+}
+
 async function drive(): Promise<void> {
+  if (!lock()) {
+    console.error("Another drive command is running; wait for it to finish.");
+    process.exitCode = 2;
+    return;
+  }
   const on = await browser();
   try {
     const tab = await page(on);
@@ -238,8 +277,12 @@ async function drive(): Promise<void> {
         await look(tab);
         break;
       case "click": {
-        const target = tab.locator(need(args[0], "a selector")).first();
-        if (refused([await target.evaluate(nameOf)])) return;
+        // One element, found once: what's checked is what's clicked, and a
+        // control inside it counts, since a click on it can land there.
+        const target = await tab.locator(need(args[0], "a selector")).first().elementHandle();
+        if (!target) throw new Error(`nothing matches ${args[0]}`);
+        const names = await target.evaluate(namesWithin);
+        if (refused(names)) return;
         await target.click();
         await tab.waitForLoadState();
         await look(tab);
