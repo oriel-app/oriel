@@ -11,6 +11,7 @@
 // Jira unconnected, to connect it from the window to SYN in memory: one for
 // the form's shots, and one for the onboarding, timed from the first screen
 // to an approved change, which also counts the word "token" on each screen.
+// One more connects Jira to SYN with no issues, as a new project is.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -101,17 +102,19 @@ const readOnly = await serve(0);
 // Jira not connected yet; the window connects it to SYN in memory, which
 // takes only this account.
 const account = { email: "pm@example.com", token: "shots-only-value" };
-const unconnected = () =>
+const unconnected = (syn = loadJiraFixture()) =>
   serve(0, {
     db: ":memory:",
     jira: {
       kind: "window",
       store: memoryStore(),
-      fetch: memorySite(loadJiraFixture(), instant(new Date()), { account }).fetch,
+      fetch: memorySite(syn, instant(new Date()), { account }).fetch,
     },
     agent: (deps) => scriptedAgent(deps, planning),
   });
 const connecting = await unconnected();
+// Jira connected to a project with no issues yet.
+const empty = await unconnected({ ...loadJiraFixture(), issues: [], edits: [] });
 const fillJira = async (page: Page, token: string) => {
   await page.locator(".connect-jira").waitFor();
   await page.locator('input[name="site"]').fill("oriel.atlassian.net");
@@ -142,6 +145,7 @@ async function call<T>(on: Serving, method: string, path: string, body?: unknown
 }
 const post = <T>(path: string, body: unknown, on: Serving = server) =>
   call<T>(on, "POST", path, body);
+await post("/api/jira", { site: "oriel.atlassian.net", project: "SYN", ...account }, empty);
 const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
   const view = await call<{ changeSets: { id: string }[] }>(on, "GET", `/api/threads/${threadId}`);
   const id = view.changeSets[0]?.id;
@@ -321,6 +325,21 @@ const scenes: Scene[] = [
       await fillJira(page, "not-the-one");
       await page.getByRole("button", { name: "Connect" }).click();
       await page.locator(".connect-problem").waitFor();
+    },
+  },
+  {
+    name: "jira-empty",
+    path: "/?grouping=epic",
+    on: empty,
+    act: (page) => page.locator(".empty-jira").waitFor(),
+  },
+  {
+    name: "jira-empty-stuck",
+    path: "/?grouping=stuck",
+    on: empty,
+    act: async (page) => {
+      await page.locator(".empty-jira").waitFor();
+      await page.locator(".cluster").first().waitFor();
     },
   },
   { name: "epic", path: "/?grouping=epic", act: (page) => shown(page, "epic") },
@@ -597,6 +616,7 @@ try {
   await holding.serving.close();
   await readOnly.close();
   await connecting.close();
+  await empty.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 

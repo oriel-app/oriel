@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Replied } from "../src/http.ts";
-import { initJira, jiraReplied, loadJira, updateJira, type JiraModel } from "../src/jira.ts";
+import {
+  emptyJira,
+  initJira,
+  jiraReplied,
+  loadJira,
+  updateJira,
+  type JiraModel,
+} from "../src/jira.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import type { JiraView } from "../src/view.ts";
 
@@ -64,4 +71,24 @@ test("once connected, nothing typed is kept and the window loads again", () => {
     loads.map((e) => e.type),
     ["loadWindow"],
   );
+});
+
+test("Jira connected to a project with no issues is said to be, until it has some", () => {
+  const empty = {
+    site: "https://oriel.atlassian.net",
+    project: "OA",
+    items: 0,
+    syncedAt: "2026-10-01T09:00:00.000Z",
+  };
+  const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
+  const [shown] = updateRoot(
+    model,
+    replied("jira", true, { jira: { connected: empty, connectable: false } }),
+  );
+  assert.deepEqual(emptyJira(shown.jira.view), empty);
+  // Not before Jira loads, while it can be connected, or once it has items.
+  for (const view of [null, connectable, connected]) assert.equal(emptyJira(view), null);
+  // Nor before a sync has read the project, as when Jira was unreachable.
+  const unread = { connected: { ...empty, syncedAt: null }, connectable: false };
+  assert.equal(emptyJira(unread), null);
 });

@@ -58,3 +58,9 @@ export function jiraReplied(model: JiraModel, msg: Replied): { model: JiraModel;
   const { jira } = msg.body as { jira: JiraView };
   return { model: { view: jira, typed: blank, pending: false, problem: null }, synced: true };
 }
+
+// Jira connected to a project with no issues, which the window says, so an
+// empty window doesn't look as if Jira isn't connected. Only once a sync has
+// read the project: before that, Oriel doesn't know it's empty.
+export const emptyJira = (view: JiraView | null) =>
+  view?.connected?.items === 0 && view.connected.syncedAt !== null ? view.connected : null;
