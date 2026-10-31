@@ -139,3 +139,15 @@ test("a drop on a thread reaches the thread, even after a visit to its group's p
   assert.ok(urls.includes(`/api/threads/${thread}`), "the thread reloads to show its marker");
   assert.ok(urls.includes("/api/groups"));
 });
+
+test("a drop that answers after the user moved on still reloads the groups", () => {
+  const onGroup = init({ page: "group", id: groupA })[0];
+  const [onInbox] = update(onGroup, { type: "routed", route: { page: "inbox" } });
+  const [, effects] = update(onInbox, {
+    type: "replied",
+    tag: { kind: "dropped", groupId: groupA },
+    ok: true,
+    body: { group: {}, added: ["jira:OA-5"], refused: [] },
+  });
+  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
+});

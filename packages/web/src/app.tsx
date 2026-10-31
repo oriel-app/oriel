@@ -48,7 +48,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     return () => removeEventListener("keydown", pressed);
   }, []);
   // Going somewhere closes the drawer. Opening it moves focus into it.
-  useEffect(() => setDrawer(false), [model.route]);
+  useEffect(() => {
+    // Focus left on a link in the closing drawer would vanish with it.
+    if (matchMedia(narrow).matches && document.activeElement?.closest("#sidebar"))
+      document.querySelector<HTMLElement>(".bar-menu")?.focus();
+    setDrawer(false);
+  }, [model.route]);
   useEffect(() => {
     if (drawer) document.querySelector<HTMLElement>("#sidebar a")?.focus();
   }, [drawer]);
