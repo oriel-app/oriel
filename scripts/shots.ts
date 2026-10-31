@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "playwright-core";
 import { instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
+import type { TurnInput } from "../packages/server/src/agent.ts";
+import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 
@@ -23,6 +25,27 @@ type Scene = { name: string; path: string; on?: Serving; act?(page: Page): Promi
 
 const out = new URL("../shots/", import.meta.url);
 mkdirSync(out, { recursive: true });
+
+// What the scripted agent proposes when asked to plan: the checkout epic
+// renamed, a story's description reworded, an estimate, and two new stories
+// in the epic. Asked to plan only, it proposes just the new stories.
+const planScript = (all: boolean) =>
+  [
+    ...(all
+      ? [
+          'jira.setSummary("jira:SYN-1", "Checkout v2: phone wallets, saved cards and gift cards");',
+          'jira.setDescription("jira:SYN-23", "Same as the app, for every browser that supports it. Show the card form otherwise.");',
+          'jira.setEstimate("jira:SYN-99", 3);',
+        ]
+      : []),
+    'jira.createStory({ summary: "Pay with a gift card", description: "Enter the code from the card. A balance that doesn\'t cover the fare is topped up with another way to pay.", points: 3 });',
+    'jira.createStory({ summary: "Show the gift card balance at checkout" });',
+    "return null;",
+  ].join("\n");
+const planning = (input: TurnInput): Step[] =>
+  /\bplan\b/i.test(input.text)
+    ? [{ run: planScript(/rename/i.test(input.text)) }, { text: "The proposed change is below." }]
+    : devPlan(input);
 
 // A server that writes to its own SYN site in memory.
 const writing = async () => {
@@ -38,6 +61,7 @@ const writing = async () => {
         fetch: site.fetch,
       },
     },
+    agent: (deps) => scriptedAgent(deps, planning),
   });
   return { site, serving };
 };
@@ -136,6 +160,22 @@ const inFlight = await (async () => {
   const approving = post(`/api/change-sets/${setId}/approve`, { hash }, serving);
   await held.reached;
   return { threadId, release: held.release, approving };
+})();
+
+// A plan: the epic renamed, a description reworded, and new stories in it.
+const planned = await ask("Rename the epic and plan gift cards in it");
+const plannedLink = await post<{ url: string }>(
+  `/api/change-sets/${await changeSetOf(server, planned)}/review-link`,
+  {},
+);
+// New stories, approved, then reverted: the revert deletes them.
+const reverted = await (async () => {
+  const threadId = await ask("Plan gift cards");
+  const setId = await changeSetOf(server, threadId);
+  const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {});
+  await post(`/api/change-sets/${setId}/approve`, { hash });
+  await post(`/api/change-sets/${setId}/revert`, {});
+  return threadId;
 })();
 
 // Answered, over items it needn't change: the user marks it done.
@@ -280,6 +320,19 @@ const scenes: Scene[] = [
     },
   },
   {
+    name: "thread-plan",
+    path: `/threads/${planned}`,
+    act: async (page) => {
+      await page.locator(".change-set .diff").waitFor();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    },
+  },
+  {
+    name: "thread-revert",
+    path: `/threads/${reverted}`,
+    act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
+  },
+  {
     name: "thread-partial",
     path: `/threads/${partial}`,
     on: refusing.serving,
@@ -311,6 +364,14 @@ const scenes: Scene[] = [
   {
     name: "review",
     path: new URL(link.url).pathname,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    name: "review-plan",
+    path: new URL(plannedLink.url).pathname,
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.locator(".review-card .diff").waitFor();

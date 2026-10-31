@@ -118,6 +118,72 @@ test("a thread from nothing plans an epic and its stories, and its new group tak
   assert.equal(app.site?.issue(story)?.epic, epic);
 });
 
+test("a diff says what each line does, and names an epic renamed above by its new title", async (t) => {
+  const plan: Script = async () => ({
+    value: null,
+    writes: [
+      ["jira.setSummary", ["jira:SYN-1", "Checkout v2: wallets and gift cards"]],
+      ["jira.createStory", [{ summary: "Pay with a gift card", description: "" }], "new:1"],
+    ],
+  });
+  const app = await proposed(t, plan);
+  const { lines } = await app.diff();
+  assert.deepEqual(
+    lines.map((line) => [line.kind, line.sentence]),
+    [
+      [
+        "change",
+        "Rename “Checkout v2: phone wallets and saved cards” (SYN-1) to “Checkout v2: wallets and gift cards”.",
+      ],
+      [
+        "create",
+        "Create a story “Pay with a gift card” in the epic “Checkout v2: wallets and gift cards” (SYN-1).",
+      ],
+    ],
+  );
+  const fields = lines[1]?.fields ?? [];
+  // An empty description is empty, not blank text.
+  assert.equal(fields.find((f) => f.name === "description")?.after, null);
+  assert.deepEqual(fields.find((f) => f.name === "epic")?.items, {
+    before: null,
+    after: {
+      title: "Checkout v2: wallets and gift cards",
+      key: "SYN-1",
+      url: "https://oriel.atlassian.net/browse/SYN-1",
+      created: false,
+    },
+  });
+});
+
+test("a story in an epic created above names that epic as new, by its title", async (t) => {
+  const plan: Script = async () => ({
+    value: null,
+    writes: [
+      ["jira.createEpic", [{ summary: "Kiosk wallets" }], "new:1"],
+      ["jira.createStory", [{ summary: "Tap to pay", epic: "new:1" }], "new:2"],
+    ],
+  });
+  const app = await testApp(t, { writes: true, plan: () => [{ run: "plan" }], scripts: { plan } });
+  const { id: threadId } = json<{ id: string }>(
+    await app.post("/api/threads", { text: "Plan kiosk wallets" }),
+  );
+  await app.app.settled();
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  const entry = view.entries.find((e) => e.kind === "change-set");
+  assert.ok(entry?.kind === "change-set", "the run captured a change set");
+  const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  assert.deepEqual(
+    diff.lines.map((line) => line.kind),
+    ["create", "create"],
+  );
+  assert.deepEqual(diff.lines[1]?.fields.find((f) => f.name === "epic")?.items?.after, {
+    title: "Kiosk wallets",
+    key: null,
+    url: null,
+    created: true,
+  });
+});
+
 test("approving applies through the writer, and the thread is done", async (t) => {
   const app = await proposed(t);
   assert.equal((await app.view()).writable, true);

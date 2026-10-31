@@ -106,8 +106,19 @@ export type Diff = {
     mutationId: Ulid;
     sentence: string;
     target: ItemId | NewRef | null;
+    // What the line does to its item: makes it, changes some of its fields,
+    // or deletes it.
+    kind: "create" | "change" | "delete";
     // `createdAbove`: the value names an item an earlier line creates.
-    fields: { name: string; before: unknown; after: unknown; createdAbove?: true }[];
+    // `titles`: on a field whose values name items (an epic), those items'
+    // titles as the change set leaves them.
+    fields: {
+      name: string;
+      before: unknown;
+      after: unknown;
+      createdAbove?: true;
+      titles?: { before: string | null; after: string | null };
+    }[];
   }[];
 };
 

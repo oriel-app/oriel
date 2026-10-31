@@ -26,6 +26,7 @@ import type {
   GroupSummary,
   GroupView,
   ItemRef,
+  ItemValue,
   MemberView,
   RunView,
   ThreadStateId,
@@ -80,13 +81,14 @@ export function memberOf(
 }
 
 // What a diff field's value reads as: a person by name, an item by its key,
-// a link by its title.
+// a link by its title. Blank text is empty.
 function display(
   field: string,
   value: unknown,
   person: (id: string) => string | null,
 ): string | null {
   if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
   if (typeof value === "string" && field === "assignee") return person(value) ?? value;
   if (typeof value === "string") return parseItemId(value) ? keyOf(value) : value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -425,6 +427,19 @@ export function views(deps: ViewDeps) {
     diff(diff: Diff, set: ChangeSet, applying: boolean): DiffView {
       const { byId } = lookup();
       const person = people();
+      // An item a value names, by the title the diff gives it; a new item
+      // has no key or link yet.
+      const item = (value: unknown, title: string | null, created: boolean): ItemValue | null => {
+        if (typeof value !== "string") return null;
+        if (created) return { title, key: null, url: null, created };
+        const record = parseItemId(value) ? byId.get(value as ItemId) : undefined;
+        return {
+          title: title ?? record?.title ?? null,
+          key: keyOf(value),
+          url: record ? webUrl(record.location) : null,
+          created,
+        };
+      };
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
       return {
         changeSetId: diff.changeSetId,
@@ -440,6 +455,7 @@ export function views(deps: ViewDeps) {
               line.target !== null && parseItemId(line.target)
                 ? ref(byId.get(line.target as ItemId), line.target)
                 : null,
+            kind: line.kind,
             applied,
             error,
             fields: line.fields.map((field) => ({
@@ -448,6 +464,12 @@ export function views(deps: ViewDeps) {
               after: field.createdAbove
                 ? "created above"
                 : display(field.name, field.after, person),
+              ...(field.titles && {
+                items: {
+                  before: item(field.before, field.titles.before, false),
+                  after: item(field.after, field.titles.after, field.createdAbove === true),
+                },
+              }),
             })),
           };
         }),

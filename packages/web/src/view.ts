@@ -179,8 +179,18 @@ export type ChangeSetView = {
   createdAt: string;
 };
 
+// An item a field's value names, such as a story's epic: its title as the
+// change set leaves it, and its key and link once it exists. `created`: a
+// line above creates it.
+export type ItemValue = {
+  title: string | null;
+  key: string | null;
+  url: string | null;
+  created: boolean;
+};
+
 // One line per mutation, as plain language with the fields it sets. Values
-// are display text; null shows as empty.
+// are display text; null is empty.
 export type DiffView = {
   changeSetId: string;
   hash: string;
@@ -188,10 +198,18 @@ export type DiffView = {
     mutationId: string;
     sentence: string;
     target: ItemRef | null;
+    // What it does to its item: makes it, changes some fields, or deletes it.
+    kind: "create" | "change" | "delete";
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;
-    fields: { name: string; before: string | null; after: string | null }[];
+    // `items`: on a field whose values name items, those items.
+    fields: {
+      name: string;
+      before: string | null;
+      after: string | null;
+      items?: { before: ItemValue | null; after: ItemValue | null };
+    }[];
   }[];
 };
 

@@ -200,6 +200,7 @@ const ops: Record<JiraOp, OpSpec> = {
     undo: () => ({ refused: "a removed link can't be put back by a revert" }),
   }),
   deleteItem: op(jiraOps.deleteItem, {
+    deletes: true,
     after: () => ({}),
     describe: (_a, context) => `Delete ${named(context.subject)} from Jira.`,
     undo: () => ({ refused: "a deleted item can't be restored by a revert" }),
@@ -211,5 +212,13 @@ export const jiraSpecs: OpSpecs = {
   name: "Jira",
   titleField: "summary",
   updatedField: "updated",
+  // As the writer reads them for a delete's `before`.
+  fields: {
+    summary: "value",
+    description: "value",
+    points: "value",
+    assignee: "value",
+    epic: "item",
+  },
   ops,
 };

@@ -1,6 +1,7 @@
 // A thread: the chat in the middle, the region it works in on the right.
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
+import { type ComponentChildren, Fragment } from "preact";
 import {
   type Dispatch,
   DropZone,
@@ -11,6 +12,7 @@ import {
   StateChip,
   TypeMark,
 } from "./parts.tsx";
+import { lines, type Piece } from "./text-diff.ts";
 import {
   type Block,
   blocks,
@@ -23,6 +25,7 @@ import {
   type ChangeSetView,
   type DiffView,
   type ItemRef,
+  type ItemValue,
   type MemberView,
   type RunView,
   type ThreadView,
@@ -366,9 +369,162 @@ function ChangeSet(props: {
   );
 }
 
-// A change set's lines. The lines the change set engine says can be left
-// out (`removable`) offer it: quietly, or plainly beside a change that
-// stopped, as the reason it stopped says.
+type Line = DiffView["lines"][number];
+type Field = Line["fields"][number];
+
+// A field's value: an item by its title and key (or as new, when a line
+// above creates it), anything else as its text.
+function Value({ text, item }: { text: string | null; item: ItemValue | null | undefined }) {
+  if (!item) return <>{text}</>;
+  return (
+    <span class="item-value">
+      {item.title ?? item.key}
+      {item.created ? (
+        <span class="new-mark">new</span>
+      ) : (
+        item.key && (
+          <ItemKey item={{ id: item.key, key: item.key, title: item.title, url: item.url }} />
+        )
+      )}
+    </span>
+  );
+}
+
+// One side of a change: what was there, or what will be. Only the words
+// that differ from the other side are marked; a side that differs
+// throughout reads as it is.
+function Side({
+  side,
+  children,
+}: {
+  side: "before" | "after" | "same";
+  children: ComponentChildren;
+}) {
+  const said = { before: "Before: ", after: "After: ", same: "" }[side];
+  return (
+    <div class="side" data-side={side}>
+      <span class="side-sign" aria-hidden="true">
+        {{ before: "−", after: "+", same: "" }[side]}
+      </span>
+      <span class="side-text">
+        {said && <span class="visually-hidden">{said}</span>}
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function Pieces({ pieces, side }: { pieces: Piece[]; side: "before" | "after" }) {
+  if (pieces.every((piece) => piece.changed)) return <>{pieces.map((p) => p.text).join("")}</>;
+  const Mark = side === "before" ? "del" : "ins";
+  return (
+    <>
+      {pieces.map((piece, i) => (piece.changed ? <Mark key={i}>{piece.text}</Mark> : piece.text))}
+    </>
+  );
+}
+
+// Unchanged lines around a change: one line of context on each side of it,
+// and the rest folded.
+function Unchanged({ lines, first, last }: { lines: string[]; first: boolean; last: boolean }) {
+  const context = 1;
+  const head = first ? 0 : context;
+  const tail = last ? 0 : context;
+  const folded = lines.length > head + tail + 1 ? lines.slice(head, lines.length - tail) : [];
+  if (folded.length === 0) return <Side side="same">{lines.join("\n")}</Side>;
+  return (
+    <>
+      {head > 0 && <Side side="same">{lines.slice(0, head).join("\n")}</Side>}
+      <details class="fold">
+        <summary>{plural(folded.length, "unchanged line")}</summary>
+        <Side side="same">{folded.join("\n")}</Side>
+      </details>
+      {tail > 0 && <Side side="same">{lines.slice(-tail).join("\n")}</Side>}
+    </>
+  );
+}
+
+// An edited field: what it held and what it will hold, as rows.
+function Edited({ field }: { field: Field }) {
+  const { items } = field;
+  if (items)
+    return (
+      <>
+        {field.before !== null && (
+          <Side side="before">
+            <Value text={field.before} item={items.before} />
+          </Side>
+        )}
+        {field.after !== null && (
+          <Side side="after">
+            <Value text={field.after} item={items.after} />
+          </Side>
+        )}
+      </>
+    );
+  const hunks = lines(field.before ?? "", field.after ?? "");
+  return (
+    <>
+      {hunks.map((hunk, i) =>
+        hunk.kind === "same" ? (
+          <Unchanged key={i} lines={hunk.lines} first={i === 0} last={i === hunks.length - 1} />
+        ) : (
+          <Fragment key={i}>
+            {hunk.before && (
+              <Side side="before">
+                <Pieces pieces={hunk.before} side="before" />
+              </Side>
+            )}
+            {hunk.after && (
+              <Side side="after">
+                <Pieces pieces={hunk.after} side="after" />
+              </Side>
+            )}
+          </Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+// A new item, as one card: its title, its description, and the fields it
+// is made with. An empty field isn't shown.
+function NewItem({ line }: { line: Line }) {
+  const field = (name: string) => line.fields.find((f) => f.name === name);
+  const description = field("description")?.after ?? null;
+  const rest = line.fields.filter(
+    (f) => f.name !== "summary" && f.name !== "description" && f.after !== null,
+  );
+  return (
+    <>
+      <p class="line-head">
+        <span class="line-mark" data-kind="create">
+          New
+        </span>
+        <span class="new-title">{field("summary")?.after ?? line.sentence}</span>
+      </p>
+      {description && <p class="new-description">{description}</p>}
+      {rest.length > 0 && (
+        <dl class="fields">
+          {rest.map((f) => (
+            <div key={f.name} class="field">
+              <dt>{fieldName(f.name)}</dt>
+              <dd>
+                <Value text={f.after} item={f.items?.after} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </>
+  );
+}
+
+// A change set's lines: a new item as a card, an edit as each field's old
+// and new text with only the changed words marked, and a delete as every
+// field it empties. The lines the change set engine says can be left out
+// (`removable`) offer it: quietly, or plainly beside a change that stopped,
+// as the reason it stopped says.
 export function Diff(props: {
   diff: DiffView;
   busy: boolean;
@@ -383,27 +539,53 @@ export function Diff(props: {
         <li
           key={line.mutationId}
           class="diff-line"
+          data-kind={line.kind}
           data-applied={line.applied ? "" : undefined}
           data-stopped={line.error ? "" : undefined}
         >
-          <p class="sentence">
-            {line.sentence} {line.target?.url && <ItemKey item={line.target} />}
-          </p>
-          {line.fields.length > 0 && (
-            <dl class="fields">
-              {line.fields.map((field) => (
-                <div key={field.name} class="field">
-                  <dt>{fieldName(field.name)}</dt>
-                  <dd>
-                    <del>{field.before ?? "—"}</del>
-                    <span class="arrow" aria-hidden="true">
-                      →
-                    </span>
-                    <ins>{field.after ?? "—"}</ins>
-                  </dd>
-                </div>
-              ))}
-            </dl>
+          {line.kind === "create" && line.fields.length > 0 ? (
+            <NewItem line={line} />
+          ) : (
+            <>
+              <p class="line-head">
+                {line.kind === "delete" && (
+                  <span class="line-mark" data-kind="delete">
+                    Delete
+                  </span>
+                )}
+                <span class="sentence">
+                  {line.sentence} {line.target?.url && <ItemKey item={line.target} />}
+                </span>
+              </p>
+              {line.fields.length > 0 && (
+                <dl class="fields">
+                  {line.fields.map((field) => (
+                    <div key={field.name} class="field">
+                      <dt>{fieldName(field.name)}</dt>
+                      {line.kind === "delete" ? (
+                        <dd>
+                          <del>
+                            {field.before === null ? (
+                              "—"
+                            ) : (
+                              <Value text={field.before} item={field.items?.before} />
+                            )}
+                          </del>
+                          <span class="arrow" aria-hidden="true">
+                            →
+                          </span>
+                          <ins>{field.after ?? "—"}</ins>
+                        </dd>
+                      ) : (
+                        <dd class="edited">
+                          <Edited field={field} />
+                        </dd>
+                      )}
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </>
           )}
           {line.error && (
             <p class="line-error" role="note">

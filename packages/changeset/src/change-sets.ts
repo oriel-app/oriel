@@ -16,6 +16,7 @@ import {
   type Instant,
   instant,
   type ItemId,
+  isItemId,
   isNewRef,
   type Issue,
   type Log,
@@ -461,6 +462,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return creates.get(m.target)?.applied?.item.id ?? null;
     };
 
+    // The fields a pending line shows, with the values it leaves them at: a
+    // delete empties every field the source lists.
+    const shows = (spec: OpSpec, kind: SourceKind, args: unknown): FieldValues =>
+      spec.deletes
+        ? Object.fromEntries(Object.keys(catalogueFor(specs, kind).fields).map((f) => [f, null]))
+        : spec.after(args);
+    // Each item's title as the change set leaves it, where an unapplied line
+    // sets it; an applied one is in the source already.
+    const titles = new Map<string, string | null>();
+    for (const m of set.mutations) {
+      const { kind, spec } = mustSpec(specs, m, set.mutations);
+      if (m.status === "applied" || !spec.args(m.args).ok) continue;
+      const after = spec.after(m.args);
+      const field = catalogueFor(specs, kind).titleField;
+      const carry = itemOf(m) ?? m.target ?? m.ref;
+      if (carry !== null && Object.hasOwn(after, field)) titles.set(carry, text(after[field]));
+    }
+
     // Each item's fields, and the stable ID it should have, where known.
     const wanted = new Map<
       ItemId,
@@ -477,7 +496,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       };
       entry.stableId ??= m.applied?.item.stableId ?? stableIdFor(m, set, item);
       if (m.status !== "applied" && spec.args(m.args).ok)
-        for (const field of Object.keys(spec.after(m.args))) entry.fields.add(field);
+        for (const field of Object.keys(shows(spec, kind, m.args))) entry.fields.add(field);
       wanted.set(item, entry);
     }
     // Read through the writer where there is one, so an item whose handle
@@ -506,16 +525,15 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     );
     // Field values per item (or new item's ref) as earlier lines leave them.
     const state = new Map<string, Record<string, unknown>>();
-    // A new item's title is the item's once its create applied, and else as
-    // the lines before leave it.
+    // An item's title as the change set leaves it. A new item's is the
+    // item's once its create applied.
     const title = async (id: ItemId | NewRef): Promise<string | null> => {
       if (isNewRef(id)) {
         const create = set.mutations.find((m) => m.ref === id);
         if (create?.applied) return title(create.applied.item.id);
-        if (!create) return null;
-        const field = catalogueFor(specs, mustSpec(specs, create, set.mutations).kind).titleField;
-        return text(state.get(id)?.[field]);
+        return titles.get(id) ?? null;
       }
+      if (titles.has(id)) return titles.get(id) ?? null;
       const kind = parseItemId(id)?.source;
       if (!kind) return null;
       const field = catalogueFor(specs, kind).titleField;
@@ -534,6 +552,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         title,
       });
       const item = itemOf(m);
+      const lineKind = spec.creates ? "create" : spec.deletes ? "delete" : "change";
+      // On a field whose values name items, their titles.
+      const titled = async (field: string, before: unknown, after: unknown) => {
+        if (catalogue.fields[field] !== "item") return {};
+        const named = async (value: unknown) =>
+          typeof value === "string" && (isNewRef(value) || isItemId(value)) ? title(value) : null;
+        return { titles: { before: await named(before), after: await named(after) } };
+      };
 
       // A line Oriel can't describe, and a change it won't send or revert.
       if (!spec.args(m.args).ok) {
@@ -542,6 +568,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           mutationId: m.id,
           sentence: `${staleArgs}, so it can't be shown, applied or reverted.`,
           target: m.target,
+          kind: lineKind,
           fields: [],
         });
         continue;
@@ -562,16 +589,22 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           mutationId: m.id,
           sentence: await spec.describe(m.args, context(subject, before)),
           target: m.target,
-          fields: fields.map((f) => ({
-            name: f,
-            before: before[f] ?? null,
-            after: after[f] ?? null,
-          })),
+          kind: lineKind,
+          fields: await Promise.all(
+            fields.map(async (f) => ({
+              name: f,
+              before: before[f] ?? null,
+              after: after[f] ?? null,
+              ...(await titled(f, before[f], after[f])),
+            })),
+          ),
         });
         continue;
       }
 
-      const after = spec.after(m.args);
+      const after = shows(spec, kind, m.args);
+      // Named as the change set leaves it, unless this line renames it.
+      const renames = Object.hasOwn(after, catalogue.titleField);
       let subject: Subject = null;
       let values: Record<string, unknown> = {};
       if (item !== null) {
@@ -582,15 +615,18 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             mutationId: m.id,
             sentence: `${key(item)} is no longer in ${catalogue.name}, so this change can't be made.`,
             target: m.target,
+            kind: lineKind,
             fields: [],
           });
           continue;
         }
         values = state.get(item) ?? { ...now };
-        subject = { kind: "item", id: item, title: text(values[catalogue.titleField]) };
+        const name = renames ? text(values[catalogue.titleField]) : await title(item);
+        subject = { kind: "item", id: item, title: name };
       } else if (m.target !== null && isNewRef(m.target)) {
         values = state.get(m.target) ?? {};
-        subject = { kind: "new", ref: m.target, title: text(values[catalogue.titleField]) };
+        const name = renames ? text(values[catalogue.titleField]) : await title(m.target);
+        subject = { kind: "new", ref: m.target, title: name };
       }
       // A row sent with no answer may have landed, so the source may hold
       // its value already: it shows what the person approved it from.
@@ -602,17 +638,21 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         mutationId: m.id,
         sentence: await spec.describe(m.args, context(subject, before)),
         target: m.target,
-        fields: Object.keys(after).map((f) => {
-          const value = after[f];
-          const created =
-            Object.hasOwn(spec.newRefArgs, f) && typeof value === "string" && isNewRef(value);
-          return {
-            name: f,
-            before: before[f],
-            after: value,
-            ...(created ? { createdAbove: true as const } : {}),
-          };
-        }),
+        kind: lineKind,
+        fields: await Promise.all(
+          Object.keys(after).map(async (f) => {
+            const value = after[f];
+            const created =
+              Object.hasOwn(spec.newRefArgs, f) && typeof value === "string" && isNewRef(value);
+            return {
+              name: f,
+              before: before[f],
+              after: value,
+              ...(created ? { createdAbove: true as const } : {}),
+              ...(await titled(f, before[f], value)),
+            };
+          }),
+        ),
       });
       const carry = item ?? m.target ?? m.ref;
       if (carry !== null) state.set(carry, { ...values, ...after });

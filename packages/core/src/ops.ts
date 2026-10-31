@@ -8,7 +8,8 @@ import type { FieldValues, OpCatalogue, WriteResult } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
 // What a diff line knows about the item a mutation changes. `title` is its
-// title as of this line, after earlier lines in the same change set.
+// title as the change set leaves it; on a line that sets the title, as the
+// lines before leave it.
 export type Subject =
   | { kind: "item"; id: ItemId; title: string | null }
   | { kind: "new"; ref: NewRef; title: string | null }
@@ -19,7 +20,7 @@ export type LineContext = {
   // Field values just before this mutation.
   before: FieldValues;
   person(accountId: string): Promise<string | null>;
-  // An item's title, or a new item's as the change set creates it.
+  // An item's title, or a new item's, as the change set leaves it.
   title(id: ItemId | NewRef): Promise<string | null>;
 };
 
@@ -31,6 +32,8 @@ export type Undo = { op: string; args: unknown } | { refused: string };
 export type OpSpec = OpCatalogue[string] & {
   // A create has no target and may give its item a NewRef.
   creates: boolean;
+  // A delete removes its target, emptying every field the source lists.
+  deletes: boolean;
   // Sending it twice leaves the source as sending it once does, so a failed
   // attempt may be retried. Anything else that failed may have landed and is
   // never sent again.
@@ -57,6 +60,10 @@ export type OpSpecs = {
   name: string;
   // The field holding an item's title, read for every line.
   titleField: string;
+  // The fields an item has, in the order a diff lists them, each with what
+  // its value is: an item ID ("item", as an epic is) or a plain value. A
+  // pending delete lists them all, as an applied one does.
+  fields: Readonly<Record<string, "item" | "value">>;
   // The field holding an item's last update time. Every write result's
   // `after` carries it, except a delete's. Field conflict checks skip it;
   // reverting a create checks only it.
@@ -73,6 +80,7 @@ export function op<T>(
   entry: { args: Validator<T>; revertOnly: boolean },
   spec: {
     creates?: boolean;
+    deletes?: boolean;
     idempotent?: boolean;
     refs?(args: T): string[];
     newRefArgs?: Readonly<Record<string, string>>;
@@ -89,6 +97,7 @@ export function op<T>(
   return {
     args: entry.args,
     creates: spec.creates ?? false,
+    deletes: spec.deletes ?? false,
     idempotent: spec.idempotent ?? false,
     revertOnly: entry.revertOnly,
     refs: (args) => spec.refs?.(parse(args)) ?? [],
