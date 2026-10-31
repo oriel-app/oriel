@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { dropNotice, readDrop } from "../src/drop.ts";
-import { groupReplied, initGroup, nothingToAdd, updateGroup } from "../src/group.ts";
+import {
+  askPrompt,
+  groupReplied,
+  initGroup,
+  nothingToAdd,
+  planPrompt,
+  updateGroup,
+} from "../src/group.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { initReview, reviewReplied, reviewSteps, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
@@ -120,6 +127,16 @@ function shownWindow() {
   const [model] = init("epic");
   return update(model, { type: "windowLoaded", request: model.request, window: windowView() })[0];
 }
+
+test("the ask box and a picked group's name count items in good English", () => {
+  assert.equal(askPrompt(0), planPrompt);
+  assert.equal(askPrompt(1), "Ask about this item…");
+  assert.equal(askPrompt(2), "Ask about these 2 items…");
+  // Picked items no longer in the window are named by how many there are.
+  const [model] = init("epic");
+  assert.equal(pickedName({ ...model, selected: ["jira:SYN-404"] }), "1 item");
+  assert.equal(pickedName({ ...model, selected: ["jira:SYN-404", "jira:SYN-405"] }), "2 items");
+});
 
 test("picking items, then making a group of them, goes to the new group", () => {
   let model = shownWindow();

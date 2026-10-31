@@ -161,5 +161,5 @@ export function pickedName(model: Model): string {
     const item = clusters.flatMap(({ list }) => list).find((row) => row.id === id);
     if (item) return item.title.slice(0, 120);
   }
-  return `${model.selected.length} items`;
+  return model.selected.length === 1 ? "1 item" : `${model.selected.length} items`;
 }
