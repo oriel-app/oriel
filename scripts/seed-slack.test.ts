@@ -138,6 +138,12 @@ test("each name is one person's title, display name or full name, and mentions r
   );
   assert.ok(!("error" in unused) && unused.get("casey")?.user === "U3");
   assert.ok(!("error" in unused) && !unused.has("engineer"));
+  const ampersand = cast(
+    [...people, { token: "xoxp-rd", user: "U4", names: ["R&D lead"] }],
+    parseScenario(scenario([{ as: "Avery", text: "{@R&D lead} <3" }])) as Scenario,
+  );
+  assert.ok(!("error" in ampersand));
+  assert.equal(resolve("{@R&D lead} <3", ampersand), "<@U4> &lt;3");
   // The same person authorizing twice is one person.
   const again = cast(
     [...people, { token: "xoxp-eng2", user: "U2", names: ["Engineer"] }],

@@ -166,13 +166,19 @@ export function cast(
   return byRole;
 }
 
-// The text as Slack reads it: &, < and > escaped, then mentions as user IDs.
+// The text as Slack reads it: mentions as user IDs, and &, < and > escaped
+// everywhere else. Splitting on the mention pattern puts names at odd indexes.
 export function resolve(text: string, roles: ReadonlyMap<string, Person>): string {
-  const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  return escaped.replace(mention, (whole, name: string) => {
-    const person = roles.get(role(name));
-    return person ? `<@${person.user}>` : whole;
-  });
+  const escape = (part: string) =>
+    part.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return text
+    .split(mention)
+    .map((part, i) => {
+      if (i % 2 === 0) return escape(part);
+      const person = roles.get(role(part));
+      return person ? `<@${person.user}>` : escape(`{@${part}}`);
+    })
+    .join("");
 }
 
 export function dryRun(scenario: Scenario): string[] {
