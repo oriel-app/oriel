@@ -5,6 +5,7 @@ import { InboxPage, ReviewPage } from "./other-pages.tsx";
 import { nav } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
+import { Closing } from "./close-thread.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
 import type { Model, Msg } from "./root.ts";
@@ -75,6 +76,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <Page model={model} dispatch={dispatch} />
       </div>
+      <Closing model={model.closing} dispatch={dispatch} />
     </div>
   );
 }

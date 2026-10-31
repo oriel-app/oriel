@@ -1,4 +1,5 @@
 // A group: ask about it, see its threads, and curate its items.
+import { ThreadMenu } from "./close-thread.tsx";
 import { askPrompt, type GroupModel, type GroupMsg } from "./group.ts";
 import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
@@ -162,18 +163,20 @@ export function Threads(props: {
     <ul class="thread-list">
       {props.threads.map((thread) => (
         <li key={thread.id}>
-          <Link
-            route={{ page: "thread", id: thread.id }}
-            dispatch={props.dispatch}
-            class="thread-link"
-          >
-            <span class="thread-link-title">{thread.title ?? "New thread"}</span>
-            {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
-            {(!props.showGroup || thread.waitingOn) && (
-              <StateChip state={thread.state} waitingOn={thread.waitingOn} />
-            )}
-            <span class="thread-link-at">{when(thread.activityAt)}</span>
-          </Link>
+          <ThreadMenu thread={thread} dispatch={props.dispatch}>
+            <Link
+              route={{ page: "thread", id: thread.id }}
+              dispatch={props.dispatch}
+              class="thread-link"
+            >
+              <span class="thread-link-title">{thread.title ?? "New thread"}</span>
+              {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
+              {(!props.showGroup || thread.waitingOn) && (
+                <StateChip state={thread.state} waitingOn={thread.waitingOn} />
+              )}
+              <span class="thread-link-at">{when(thread.activityAt)}</span>
+            </Link>
+          </ThreadMenu>
         </li>
       ))}
     </ul>

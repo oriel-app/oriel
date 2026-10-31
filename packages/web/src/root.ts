@@ -2,6 +2,14 @@
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the groups and threads lists the chrome shows.
 import {
+  type ClosingModel,
+  type ClosingMsg,
+  closingReplied,
+  deletedOf,
+  initClosing,
+  updateClosing,
+} from "./closing.ts";
+import {
   type FolderModel,
   type FolderMsg,
   folderReplied,
@@ -72,6 +80,8 @@ export type Model = {
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
   threads: ThreadSummaryView[] | null;
+  // Threads being marked done or deleted from a list of them.
+  closing: ClosingModel;
 };
 
 export type Msg =
@@ -82,6 +92,7 @@ export type Msg =
   | { type: "review"; msg: ReviewMsg }
   | { type: "folder"; msg: FolderMsg }
   | { type: "jira"; msg: JiraMsg }
+  | { type: "closing"; msg: ClosingMsg }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -114,6 +125,7 @@ export function init(route: Route): [Model, Effect[]] {
     jira: initJira(),
     groups: null,
     threads: null,
+    closing: initClosing(),
   };
   return enter(empty, route);
 }
@@ -225,6 +237,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const [jira, effects] = updateJira(model.jira, msg.msg);
       return [{ ...model, jira }, effects];
     }
+    case "closing": {
+      const [closing, effects] = updateClosing(model.closing, msg.msg);
+      return [{ ...model, closing }, effects];
+    }
     case "linkClicked":
       return [model, [{ type: "navigate", route: msg.route }]];
     case "routed":
@@ -237,6 +253,14 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "streamed": {
       if (msg.event.type === "threads") return [model, [loadThreads, loadGroups]];
       if (model.thread === null) return [model, []];
+      // Its page says so; with no thread stream now, the page watches the rest.
+      if (msg.event.type === "deleted") {
+        const [thread, effects] = streamed(model.thread, msg.event);
+        return [
+          { ...model, thread },
+          [...effects, { type: "watchThreads" }, loadThreads, loadGroups],
+        ];
+      }
       const [thread, effects] = streamed(model.thread, msg.event);
       // Its turn starting or ending, or a change set of it moving, changes what
       // it waits on, and an end may move it between inbox states. The status
@@ -261,6 +285,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
+    case "markedDone":
+    case "deletion":
+    case "deleted":
+      return closed({ ...model, closing: closingReplied(model.closing, msg) }, msg);
     // The new group shows in the sidebar once the thread's page loads it.
     // One started from a draft the person has since left shows there now.
     case "threadStarted": {
@@ -328,4 +356,32 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [{ ...model, thread }, unwatched ? [...effects, { type: "watchThreads" }] : effects];
     }
   }
+}
+
+// Once a thread closed from a list: every list that shows it reloads, and
+// so does the page it's on. A page showing a thread or group that is gone
+// gives way, in history too, to the group's page or the inbox.
+function closed(model: Model, msg: Replied): [Model, Effect[]] {
+  if (!msg.ok || msg.tag.kind === "deletion" || !("threadId" in msg.tag)) return [model, []];
+  const { threadId } = msg.tag;
+  const deleted = deletedOf(msg);
+  const { route } = model;
+  const lists = [loadThreads, loadGroups];
+  if (deleted) {
+    const gone = (page: Route): Effect => ({ type: "navigate", route: page, replace: true });
+    const away: Route = deleted.groupRemoved
+      ? { page: "inbox" }
+      : { page: "group", id: deleted.groupId };
+    if (route.page === "thread" && route.id === threadId) return [model, [...lists, gone(away)]];
+    if (route.page === "group" && route.id === deleted.groupId)
+      return [
+        model,
+        deleted.groupRemoved ? [...lists, gone(away)] : [...lists, ...initGroup(route.id)[1]],
+      ];
+    return [model, lists];
+  }
+  if (route.page === "thread" && route.id === threadId && model.thread !== null)
+    return [model, [...lists, get(`/api/threads/${threadId}`, { kind: "thread", id: threadId })]];
+  if (route.page === "group") return [model, [...lists, ...initGroup(route.id)[1]]];
+  return [model, lists];
 }

@@ -28,6 +28,8 @@ import {
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
 import {
+  type DeletedView,
+  type DeletionView,
   type FolderView,
   type GroupingId,
   isGroupingId,
@@ -173,6 +175,8 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
+// Where the user closed a thread from.
+const closeBody = object({ via: optional(union(literal("page"), literal("menu"))) });
 const folderBody = object({
   path: refine(
     string,
@@ -264,9 +268,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       throw new Refused(404, "no such thread");
     return thread;
   };
+  // A change set of a deleted thread, kept for what it wrote, is gone with it.
   const mustChangeSet = async (id: string) => {
     const set = await changeSets.get(id as Ulid);
-    if (!set || set.workspaceId !== deps.workspaceId) throw new Refused(404, "no such change set");
+    if (!set || set.workspaceId !== deps.workspaceId || !threads.get(set.threadId, deps.now()))
+      throw new Refused(404, "no such change set");
     return set;
   };
 
@@ -390,13 +396,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
     // Watch first, then catch up, in one synchronous step, so no entry falls
     // between the two.
-    const unwatch = turns.watch(threadId, (event) =>
-      event.type === "message"
-        ? entry(event.message)
-        : event.type === "change-set"
-          ? send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying })
-          : status(),
-    );
+    // A deleted thread says so, last.
+    const unwatch = turns.watch(threadId, (event) => {
+      if (event.type === "message") entry(event.message);
+      else if (event.type === "change-set")
+        send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying });
+      else if (event.type === "deleted") {
+        send({ type: "deleted" });
+        out.end();
+      } else status();
+    });
     // A thread's page hears other threads move on this stream too, so a tab
     // holds one stream at most: browsers allow few per host. Its own thread's
     // moves are the status and change-set events above.
@@ -733,8 +742,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/threads/:id/done"),
       async run([id = ""], request) {
+        // The body first: the thread may go while it's read.
+        const { via } = await readJson(request, smallBody, closeBody);
         const thread = mustThread(id);
-        await readJson(request, smallBody, emptyBody);
         const now = deps.now();
         threads.markDone(thread.id, now);
         turns.touched(thread.id);
@@ -743,8 +753,50 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           at: now,
           workspaceId: deps.workspaceId,
           threadId: thread.id,
+          via: via ?? "page",
         });
         return json(200, await threadView(thread.id));
+      },
+    },
+    {
+      // What deleting the thread would lose, for the person to confirm.
+      method: "GET",
+      path: at("/threads/:id/deletion"),
+      async run([id = ""]) {
+        const thread = mustThread(id);
+        const deletion: DeletionView = threads.wrote(thread.id);
+        return json(200, deletion);
+      },
+    },
+    {
+      // Not while its agent answers or a change set of it applies: either
+      // may yet write.
+      method: "POST",
+      path: at("/threads/:id/delete"),
+      async run([id = ""], request) {
+        const { via } = await readJson(request, smallBody, closeBody);
+        const thread = mustThread(id);
+        if (turns.running(thread.id)) throw new ThreadBusy();
+        const now = deps.now();
+        const deleted = threads.delete(thread.id, now, (set) => changeSets.applying(set));
+        if (!deleted)
+          throw new Refused(
+            409,
+            "A change set of this thread is being applied. Wait for it to finish.",
+          );
+        turns.deleted(thread.id);
+        deps.emit({
+          name: "thread.deleted",
+          at: now,
+          workspaceId: deps.workspaceId,
+          threadId: thread.id,
+          groupId: deleted.groupId,
+          kept: deleted.kept,
+          groupRemoved: deleted.groupRemoved,
+          via: via ?? "menu",
+        });
+        const reply: DeletedView = { groupId: deleted.groupId, groupRemoved: deleted.groupRemoved };
+        return json(200, reply);
       },
     },
     {

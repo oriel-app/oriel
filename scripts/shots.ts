@@ -405,6 +405,30 @@ const scenes: Scene[] = [
     },
   },
   {
+    // A thread's menu, from a right-click on it in the sidebar.
+    name: "thread-menu",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
+      await page.locator(".nav-waiting-link").first().click({ button: "right" });
+      await page.getByRole("menu").waitFor();
+    },
+  },
+  {
+    // Deleting a thread whose change set wrote to Jira first says so.
+    name: "thread-delete",
+    path: "/inbox",
+    on: refusing.serving,
+    act: async (page) => {
+      await page.locator(`.inbox a[href="/threads/${partial}"]`).click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Delete…" }).click();
+      await page.locator(".confirm-body", { hasText: "revert" }).waitFor();
+    },
+  },
+  {
     name: "folder-add",
     path: "/?grouping=epic",
     act: async (page) => {

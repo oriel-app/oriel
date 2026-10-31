@@ -9,6 +9,9 @@ import type { ZoomId } from "./zoom.ts";
 //   budget): the earliest approving `changeset.decided` minus `source.connected`
 // - time to done: from `thread.opened` to the thread's first
 //   `changeset.applied` or `thread.marked-done`, whichever came first
+// Where the user closed a thread from: its page, or a menu on a list.
+export type CloseVia = "page" | "menu";
+
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
   // `size` is how many items it started with.
@@ -22,8 +25,19 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
     }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   | { name: "question.asked"; threadId: Ulid }
-  // The user marked the thread done, as one over read-only items needs.
-  | { name: "thread.marked-done"; threadId: Ulid }
+  // The user marked the thread done, as one over read-only items needs: on
+  // its page, or from a menu on a list of threads.
+  | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia }
+  // The user deleted the thread. `kept`: it wrote to a source, so its records
+  // stay, out of sight. `groupRemoved`: its group, made for it, went too.
+  | {
+      name: "thread.deleted";
+      threadId: Ulid;
+      groupId: Ulid;
+      kept: boolean;
+      groupRemoved: boolean;
+      via: CloseVia;
+    }
   | { name: "grouping.switched"; grouping: string }
   | { name: "zoom.changed"; from: ZoomId; to: ZoomId }
   | { name: "changeset.edited"; changeSetId: Ulid }

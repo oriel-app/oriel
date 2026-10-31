@@ -22,6 +22,9 @@ export type Tag =
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "reviewLink"; changeSetId: string }
   | { kind: "inbox" }
+  | { kind: "markedDone"; threadId: string }
+  | { kind: "deletion"; threadId: string }
+  | { kind: "deleted"; threadId: string }
   | { kind: "reviewOpened" }
   | { kind: "reviewDecided" }
   | { kind: "telemetry" }

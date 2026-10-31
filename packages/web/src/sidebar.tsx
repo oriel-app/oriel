@@ -4,6 +4,7 @@
 // On a wide screen it folds to a strip of icons; on a narrow one it's a
 // drawer the menu opens.
 import { useLayoutEffect, useState } from "preact/hooks";
+import { ThreadMenu } from "./close-thread.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Nav, type NavGroup, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
@@ -103,22 +104,24 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
       <ul class="nav-waiting">
         {where.waiting.slice(0, shownWaiting).map((thread) => (
           <li key={thread.id}>
-            <Link
-              route={{ page: "thread", id: thread.id }}
-              dispatch={dispatch}
-              class="nav-link nav-waiting-link"
-            >
-              <span class="state-dot" data-state={thread.state} data-waiting={thread.waitingOn} />
-              <span class="nav-waiting-text">
-                <span class="nav-name">{thread.title ?? "New thread"}</span>
-                <span class="nav-waiting-about">
-                  <span class="nav-waiting-on" data-waiting={thread.waitingOn}>
-                    {thread.waitingOn && waitingNames[thread.waitingOn]}
+            <ThreadMenu thread={thread} dispatch={dispatch}>
+              <Link
+                route={{ page: "thread", id: thread.id }}
+                dispatch={dispatch}
+                class="nav-link nav-waiting-link"
+              >
+                <span class="state-dot" data-state={thread.state} data-waiting={thread.waitingOn} />
+                <span class="nav-waiting-text">
+                  <span class="nav-name">{thread.title ?? "New thread"}</span>
+                  <span class="nav-waiting-about">
+                    <span class="nav-waiting-on" data-waiting={thread.waitingOn}>
+                      {thread.waitingOn && waitingNames[thread.waitingOn]}
+                    </span>
+                    <span class="nav-waiting-group">{thread.group.name}</span>
                   </span>
-                  <span class="nav-waiting-group">{thread.group.name}</span>
                 </span>
-              </span>
-            </Link>
+              </Link>
+            </ThreadMenu>
           </li>
         ))}
         {where.waiting.length > shownWaiting && (
@@ -221,22 +224,24 @@ function GroupEntry(props: {
         <ul id={listId} class="nav-threads">
           {threads.slice(0, shown).map((thread) => (
             <li key={thread.id}>
-              <Link
-                route={{ page: "thread", id: thread.id }}
-                dispatch={dispatch}
-                class="nav-link nav-thread"
-                aria-current={thread.id === props.thread ? "page" : undefined}
-              >
-                <span
-                  class="state-dot"
-                  data-state={thread.state}
-                  data-waiting={thread.waitingOn ?? undefined}
-                  title={
-                    thread.waitingOn ? waitingNames[thread.waitingOn] : stateNames[thread.state]
-                  }
-                />
-                <span class="nav-name">{thread.title ?? "New thread"}</span>
-              </Link>
+              <ThreadMenu thread={thread} dispatch={dispatch}>
+                <Link
+                  route={{ page: "thread", id: thread.id }}
+                  dispatch={dispatch}
+                  class="nav-link nav-thread"
+                  aria-current={thread.id === props.thread ? "page" : undefined}
+                >
+                  <span
+                    class="state-dot"
+                    data-state={thread.state}
+                    data-waiting={thread.waitingOn ?? undefined}
+                    title={
+                      thread.waitingOn ? waitingNames[thread.waitingOn] : stateNames[thread.state]
+                    }
+                  />
+                  <span class="nav-name">{thread.title ?? "New thread"}</span>
+                </Link>
+              </ThreadMenu>
             </li>
           ))}
           {threads.length > shown && (
