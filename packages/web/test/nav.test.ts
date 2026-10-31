@@ -266,3 +266,27 @@ test("New thread starts one from nothing, once, and opens it", () => {
   });
   assert.deepEqual([failed.starting, none], [false, []]);
 });
+
+test("the sidebar lists the threads waiting on the user, most recently active first", () => {
+  const model = at({ page: "thread", id: "T5" });
+  const where = nav({
+    ...model,
+    threads: [
+      ...(model.threads ?? []),
+      thread("T4", groupA, "working", "2026-10-27T09:00:00.000Z", "reply"),
+      thread("T5", groupA, "working", "2026-10-30T10:00:00.000Z", "reply"),
+      thread("T6", groupB, "handed-off", "2026-10-30T11:00:00.000Z"),
+    ],
+  });
+  // An agent mid-turn and a settled thread wait on nobody.
+  assert.deepEqual(
+    where.waiting.map((each) => [each.id, each.waitingOn]),
+    [
+      ["T5", "reply"],
+      ["T3", "review"],
+      ["T4", "reply"],
+    ],
+  );
+  assert.equal(where.needsYou, where.waiting.length);
+  assert.deepEqual(nav(at({ page: "inbox" }, false)).waiting, []);
+});

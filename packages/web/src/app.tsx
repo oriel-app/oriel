@@ -121,8 +121,9 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   }
 }
 
-// On a narrow screen only: the menu, which opens the sidebar as a drawer, and
-// the brand. Wide screens have the sidebar instead.
+// On a narrow screen only: the menu, which opens the sidebar as a drawer and
+// counts the threads waiting on the user, and the brand. Wide screens have
+// the sidebar instead.
 function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu(): void }) {
   const { model, dispatch } = props;
   const { needsYou } = nav(model);
@@ -136,9 +137,14 @@ function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu():
         onClick={props.onMenu}
       >
         <MenuIcon />
-        <span class="visually-hidden">Open the sidebar</span>
+        <span class="visually-hidden">
+          Open the sidebar
+          {needsYou > 0 && `, ${plural(needsYou, "thread")} waiting on you`}
+        </span>
         {needsYou > 0 && (
-          <span class="bar-working" title={`${plural(needsYou, "thread")} waiting on you`} />
+          <span class="bar-count" aria-hidden="true">
+            {needsYou}
+          </span>
         )}
       </button>
       <Link
