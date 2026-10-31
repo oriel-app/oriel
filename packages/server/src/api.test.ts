@@ -609,3 +609,34 @@ test("what stopped and failed turns spent counts toward the next turn", async (t
     ],
   );
 });
+
+test("a thread from nothing is made with its first message, and nothing without one", async (t) => {
+  const app = await testApp(t);
+  const groupsNow = async () =>
+    json<{ groups: GroupSummary[] }>(await app.get("/api/groups")).groups;
+  for (const body of [{}, { text: "  " }]) {
+    const refused = await app.post("/api/threads", body);
+    assert.equal(refused.status, 400, JSON.stringify(body));
+  }
+  assert.deepEqual(await groupsNow(), []);
+  assert.deepEqual(names(app), ["source.connected"]);
+
+  const started = await app.post("/api/threads", { text: "Plan kiosk wallets" });
+  assert.equal(started.status, 201);
+  const { id, groupId } = json<{ id: string; groupId: string }>(started);
+  await app.app.settled();
+  assert.deepEqual(
+    (await groupsNow()).map((g) => [g.id, g.name, g.origin, g.size]),
+    [[groupId, "New group", { kind: "thread" }, 0]],
+  );
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "group.created")
+      .map((e) => [e.data.groupId, e.data.origin]),
+    [[groupId, "thread"]],
+  );
+  assert.deepEqual(names(app).slice(1, 4), ["group.created", "thread.opened", "question.asked"]);
+  const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
+  assert.equal(view.entries[0]?.kind, "user");
+});

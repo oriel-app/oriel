@@ -37,6 +37,7 @@ const groupOrigin: Validator<GroupOrigin> = union(
     anchor: nullable(object({ id: itemIdValue, stableId: string })),
   }),
   object({ kind: literal("picked") }),
+  object({ kind: literal("thread") }),
 );
 const cause: Validator<GroupChange["cause"]> = union(
   object({ kind: literal("user") }),

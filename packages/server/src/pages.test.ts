@@ -53,3 +53,10 @@ test("only an http(s) location becomes a link", () => {
   ])
     assert.equal(webUrl(location), null, location);
 });
+
+test("a new thread's draft is the shell too", async (t) => {
+  const { get } = await testApp(t);
+  const reply = await get("/threads/new");
+  assert.equal(reply.status, 200);
+  assert.equal(String(reply.body), String((await get("/")).body));
+});

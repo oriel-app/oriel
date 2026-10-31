@@ -87,7 +87,7 @@ test("a thread from nothing plans an epic and its stories, and its new group tak
         name === "group.created" ? [name, data.origin, data.size] : [name, data.regionSize],
       ),
     [
-      ["group.created", "picked", 0],
+      ["group.created", "thread", 0],
       ["thread.opened", 0],
     ],
   );

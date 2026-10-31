@@ -5,13 +5,15 @@
 import type { Instant, ItemId, Ulid } from "./ids.ts";
 
 // Where a group came from: a copy of a cluster's members at that moment (it
-// doesn't follow the cluster afterwards), or items the user picked. A group
+// doesn't follow the cluster afterwards), items the user picked, or nothing,
+// made for a thread started from nothing with its first message. A group
 // made from a cluster remembers that cluster's anchor (e.g. the epic), which
 // bindings bind into functions like `listStories()`. The anchor is matched by
 // its stable ID, so an epic that moves projects stays the anchor.
 export type GroupOrigin =
   | { kind: "cluster"; grouping: string; cluster: string; anchor: GroupMember | null }
-  | { kind: "picked" };
+  | { kind: "picked" }
+  | { kind: "thread" };
 
 export type Group = {
   id: Ulid;

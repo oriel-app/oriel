@@ -338,19 +338,6 @@ a {
   text-decoration: none;
 }
 
-button.nav-link {
-  width: 100%;
-  border: 0;
-  background: none;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-button.nav-link:disabled {
-  cursor: progress;
-}
-
 .nav-link:hover {
   background: var(--surface-hover);
   color: var(--text);

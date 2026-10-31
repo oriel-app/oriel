@@ -234,7 +234,7 @@ export function views(deps: ViewDeps) {
       origin:
         origin.kind === "cluster"
           ? { kind: "cluster", grouping: origin.grouping, label: group.name || null }
-          : { kind: "picked" },
+          : { kind: origin.kind },
       version: group.version,
       size: latest?.items.length ?? 0,
       createdAt: group.createdAt,

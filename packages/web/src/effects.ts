@@ -52,7 +52,8 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
     }
     case "navigate": {
       const url = routeUrl(effect.route);
-      if (`${location.pathname}${location.search}` !== url) history.pushState(null, "", url);
+      if (effect.replace) history.replaceState(null, "", url);
+      else if (`${location.pathname}${location.search}` !== url) history.pushState(null, "", url);
       dispatch({ type: "routed", route: parseRoute(location.pathname, location.search) });
       scrollTo(0, 0);
       return;

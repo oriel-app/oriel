@@ -42,7 +42,9 @@ export function GroupPage({ model, dispatch }: { model: GroupModel; dispatch: Di
           <p class="group-origin">
             {group.origin.kind === "cluster"
               ? `Copied from a cluster in the ${group.origin.grouping} grouping`
-              : "Picked by hand"}
+              : group.origin.kind === "thread"
+                ? "Made by a thread started from nothing"
+                : "Picked by hand"}
             {" · "}
             {plural(group.size, "item")} · v{group.version}
           </p>

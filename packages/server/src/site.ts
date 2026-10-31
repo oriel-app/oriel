@@ -81,6 +81,8 @@ const pagePaths = [
   /^\/inbox$/,
   new RegExp(`^/groups/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
+  // A thread not started yet: a draft in the browser until its first message.
+  /^\/threads\/new$/,
 ];
 // A review link: the shell only. Its GET opens and decides nothing, because
 // chat apps unfurl links with GETs; the page asks with an explicit POST.

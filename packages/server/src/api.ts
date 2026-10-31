@@ -611,12 +611,14 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, { threads: await views.inbox(deps.workspaceId) }),
     },
     {
-      // A thread from nothing: on a new group with no items, where the agent
-      // may only create them, as when a plan starts with its epic.
+      // A thread from nothing, with its first message: on a new group with no
+      // items, where the agent may only create them, as when a plan starts
+      // with its epic. Until that message is sent, the thread is only a draft
+      // in the browser, so one abandoned leaves nothing behind.
       method: "POST",
       path: at("/threads"),
       async run(_, request) {
-        const { text } = await readJson(request, messageBody, openThreadBody);
+        const { text } = await readJson(request, messageBody, messageBodyValue);
         const now = deps.now();
         const groupId = deps.newId();
         const group = groups.create(
@@ -624,7 +626,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
             id: groupId,
             workspaceId: deps.workspaceId,
             name: blankGroupName,
-            origin: { kind: "picked" },
+            origin: { kind: "thread" },
           },
           [],
           now,
@@ -634,7 +636,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           at: now,
           workspaceId: deps.workspaceId,
           groupId,
-          origin: "picked",
+          origin: "thread",
           size: 0,
         });
         return json(201, { id: openThread(group.id, group.version, text), groupId });

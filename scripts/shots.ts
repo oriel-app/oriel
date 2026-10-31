@@ -364,6 +364,14 @@ const scenes: Scene[] = [
     },
   },
   {
+    name: "new-thread",
+    path: "/threads/new",
+    act: (page) =>
+      page
+        .getByRole("textbox", { name: "Message" })
+        .fill("Plan kiosk wallets: an epic, and stories for tap to pay and receipts"),
+  },
+  {
     name: "thread-revert",
     path: `/threads/${reverted}`,
     act: (page) => page.locator(".change-set .change-set .diff").waitFor(),

@@ -14,7 +14,7 @@ export type Tag =
   | { kind: "groupChanged"; id: string }
   | { kind: "renamed"; id: string }
   | { kind: "threadOpened"; groupId: string }
-  | { kind: "threadStarted" }
+  | { kind: "threadStarted"; draft: number }
   | { kind: "thread"; id: string }
   | { kind: "sent"; threadId: string }
   | { kind: "threadAction"; threadId: string }
@@ -34,8 +34,9 @@ export type Effect =
   // Puts the grouping in the address bar, so a reload keeps it.
   | { type: "showGrouping"; grouping: GroupingId }
   | { type: "http"; method: "GET" | "POST"; url: string; body?: unknown; tag: Tag }
-  // Goes to another page, as a link would, and adds it to history.
-  | { type: "navigate"; route: Route }
+  // Goes to another page, as a link would, and adds it to history, or with
+  // `replace`, takes the current page's place in it.
+  | { type: "navigate"; route: Route; replace?: true }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }

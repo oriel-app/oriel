@@ -20,12 +20,17 @@ import {
 } from "./review.ts";
 import type { Route } from "./route.ts";
 import {
+  initNewThread,
   initThread,
+  type NewThreadModel,
+  type NewThreadMsg,
+  newThreadReplied,
   reconnected,
   streamed,
   type ThreadModel,
   type ThreadMsg,
   threadReplied,
+  updateNewThread,
   updateThread,
 } from "./thread.ts";
 import {
@@ -47,20 +52,23 @@ export type Model = {
   window: WindowModel | null;
   group: GroupModel | null;
   thread: ThreadModel | null;
+  // A thread from nothing, until its first message starts it, and how many
+  // such drafts were opened, which numbers them.
+  newThread: NewThreadModel | null;
+  drafts: number;
   review: ReviewModel | null;
   // The connected folder, beside the groups.
   folder: FolderModel;
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
   threads: ThreadSummaryView[] | null;
-  // A thread from nothing is being started, on a new group.
-  starting: boolean;
 };
 
 export type Msg =
   | { type: "window"; msg: WindowMsg }
   | { type: "group"; msg: GroupMsg }
   | { type: "thread"; msg: ThreadMsg }
+  | { type: "newThread"; msg: NewThreadMsg }
   | { type: "review"; msg: ReviewMsg }
   | { type: "folder"; msg: FolderMsg }
   // A link inside the app was followed.
@@ -73,8 +81,6 @@ export type Msg =
   // Some thread's turn started or ended, a change set of one moved, or one
   // was marked done.
   | { type: "threadsMoved" }
-  // "New thread" in the sidebar: a thread from nothing, on a new group.
-  | { type: "newThreadClicked" }
   | Replied;
 
 // What the sidebar shows, loaded on entering any page. The groups load again
@@ -90,11 +96,12 @@ export function init(route: Route): [Model, Effect[]] {
     window: null,
     group: null,
     thread: null,
+    newThread: null,
+    drafts: 0,
     review: null,
     folder: initFolder(),
     groups: null,
     threads: null,
-    starting: false,
   };
   return enter(empty, route);
 }
@@ -131,7 +138,8 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
   const watching: Effect[] = [
     { type: route.page === "thread" ? "unwatchThreads" : "watchThreads" },
   ];
-  const base = { ...model, route, thread: null };
+  // A draft left behind is dropped: nothing was made for it.
+  const base = { ...model, route, thread: null, newThread: null };
   switch (route.page) {
     case "window": {
       if (model.window === null) {
@@ -156,6 +164,11 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const [thread, effects] = initThread(route.id);
       return [{ ...base, thread }, [...leaving, ...effects, ...lists, ...watching]];
     }
+    case "new-thread":
+      return [
+        { ...base, newThread: initNewThread(model.drafts + 1), drafts: model.drafts + 1 },
+        [...leaving, ...lists, ...watching],
+      ];
     case "inbox":
       return [base, [...leaving, ...lists, ...watching]];
     case "review": {
@@ -181,6 +194,11 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       if (model.thread === null) return [model, []];
       const [thread, effects] = updateThread(model.thread, msg.msg);
       return [{ ...model, thread }, effects];
+    }
+    case "newThread": {
+      if (model.newThread === null) return [model, []];
+      const [newThread, effects] = updateNewThread(model.newThread, msg.msg);
+      return [{ ...model, newThread }, effects];
     }
     case "review": {
       if (model.review === null) return [model, []];
@@ -213,9 +231,6 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     // What each thread waits on is in both lists: the groups count by state.
     case "threadsMoved":
       return [model, [loadThreads, loadGroups]];
-    case "newThreadClicked":
-      if (model.starting) return [model, []];
-      return [{ ...model, starting: true }, [post("/api/threads", {}, { kind: "threadStarted" })]];
     case "replied":
       return replied(model, msg);
   }
@@ -231,11 +246,12 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "telemetry":
       return [model, []];
     // The new group shows in the sidebar once the thread's page loads it.
+    // One started from a draft the person has since left shows there now.
     case "threadStarted": {
-      const started = { ...model, starting: false };
-      if (!msg.ok) return [started, []];
-      const { id } = msg.body as { id: string };
-      return [started, [{ type: "navigate", route: { page: "thread", id } }]];
+      if (model.newThread?.id !== msg.tag.draft)
+        return [model, msg.ok ? [loadGroups, loadThreads] : []];
+      const [newThread, effects] = newThreadReplied(model.newThread, msg);
+      return [{ ...model, newThread }, effects];
     }
     // Once the folder synced, the window shows its files.
     case "folder":
