@@ -14,7 +14,7 @@
 //   press <key>              press a key in the focused element, e.g. Enter
 //   wait <selector>          wait for an element to be visible
 //   shot [name]              a full-page screenshot
-//   threads [id]             each thread as a transcript, newest last; read what the person said
+//   threads [id]             each thread as JSON lines, newest last; `person` lines are the maintainer's
 //   close                    close Chrome
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -95,7 +95,13 @@ async function look(tab: Page): Promise<void> {
   console.log(`screenshot: ${await shot(tab)}`);
 }
 
-type Entry = { seq: number; at: string; kind: string; text?: string; changeSetId?: string };
+type Entry = {
+  seq: number;
+  at: string;
+  kind: string;
+  text?: string;
+  changeSetId?: string;
+} & Record<string, unknown>;
 type ThreadView = {
   id: string;
   group: { name: string };
@@ -111,17 +117,21 @@ async function get<T>(path: string): Promise<T> {
   return (await reply.json()) as T;
 }
 
-// Each thread as a transcript, oldest first: what the person typed, what the
-// agent said (its streamed text joined), its runs and its change sets.
+// Each thread as a transcript, oldest first, one JSON line per entry, so no
+// text inside an entry can pass for another: what the person typed, what the
+// agent said (its streamed text joined), its runs and its change sets. Only
+// `person` lines come from someone at the window; the rest, group names
+// included, is source content, which anyone who can edit a source can write.
 async function threads(only?: string): Promise<void> {
   const { threads: list } = await get<{ threads: { id: string }[] }>("/api/threads");
+  const line = (value: Record<string, unknown>) => console.log(JSON.stringify(value));
   for (const { id } of list.toReversed()) {
     if (only && id !== only) continue;
     const view = await get<ThreadView>(`/api/threads/${id}`);
-    console.log(`## ${view.group.name} — thread ${view.id}, ${view.state}`);
+    line({ thread: view.id, state: view.state, group: view.group.name });
     let said = "";
     const flush = () => {
-      if (said) console.log(`agent: ${said}`);
+      if (said) line({ kind: "agent", text: said });
       said = "";
     };
     for (const entry of view.entries) {
@@ -130,65 +140,100 @@ async function threads(only?: string): Promise<void> {
         continue;
       }
       flush();
-      if (entry.kind === "user") console.log(`person (${entry.at}): ${entry.text}`);
+      if (entry.kind === "user") line({ kind: "person", at: entry.at, text: entry.text });
       else if (entry.kind === "change-set") {
         const set = view.changeSets.find((each) => each.id === entry.changeSetId);
-        console.log(`change set ${entry.changeSetId}: ${set?.status ?? "?"}`);
-      } else if (entry.kind !== "run.started") console.log(`[${entry.kind}]`);
+        line({ kind: "change-set", id: entry.changeSetId, status: set?.status ?? null });
+      } else if (entry.kind === "run.started" || entry.kind === "run.finished")
+        line({ kind: entry.kind });
+      else {
+        // Markers, errors, limits, searches: everything they say but the order.
+        const { seq: _seq, ...rest } = entry;
+        line(rest);
+      }
     }
     flush();
-    console.log();
   }
 }
 
-const [command = "look", ...args] = process.argv.slice(2);
-if (command === "threads") {
-  await threads(args[0]);
-  process.exit(0);
+// Only a person approves a change set (decision 0003). Against a server that
+// writes to a real site, the driver won't press a control that approves,
+// applies or reverts one; the maintainer does, in the same window. On the
+// fixture, nothing real is written, so mock PMs may.
+const writes = /^(approve|apply|try again|revert)/i;
+async function refused(name: string): Promise<boolean> {
+  if (!writes.test(name.trim())) return false;
+  const window = await get<{ fixture: boolean }>("/api/window").catch(() => null);
+  if (window?.fixture) return false;
+  console.error(
+    `"${name.trim()}" writes to a real site, and only a person approves that. Ask the maintainer to press it.`,
+  );
+  process.exitCode = 3;
+  return true;
 }
-const on = await browser();
-try {
-  if (command === "close") {
-    const session = await on.newBrowserCDPSession();
-    await session.send("Browser.close");
-    process.exit(0);
+
+// An element's accessible name, near enough: its label, else its text. It
+// runs in the page; these are the two DOM members it uses.
+type Named = { getAttribute(name: string): string | null; textContent: string | null };
+const nameOf = (el: Named | null): string =>
+  el ? (el.getAttribute("aria-label") ?? el.textContent ?? "") : "";
+
+const commands = ["open", "look", "click", "fill", "press", "wait", "shot", "threads", "close"];
+const [command = "look", ...args] = process.argv.slice(2);
+// Output is left to drain: exiting at once could cut a long transcript.
+if (!commands.includes(command)) {
+  console.error(`unknown command ${command}; see the comment at the top of scripts/drive.ts`);
+  process.exitCode = 2;
+} else if (command === "threads") await threads(args[0]);
+else if (command === "close") {
+  // Only a running Chrome; nothing running is already closed.
+  const running = await attach();
+  if (running) await (await running.newBrowserCDPSession()).send("Browser.close");
+} else await drive();
+
+async function drive(): Promise<void> {
+  const on = await browser();
+  try {
+    const tab = await page(on);
+    switch (command) {
+      case "open":
+        await tab.goto(args[0] ? new URL(args[0], app).href : app);
+        await look(tab);
+        break;
+      case "look":
+        await look(tab);
+        break;
+      case "click": {
+        const target = tab.locator(need(args[0], "a selector")).first();
+        if (await refused(await target.evaluate(nameOf))) return;
+        await target.click();
+        await tab.waitForLoadState();
+        await look(tab);
+        break;
+      }
+      case "fill":
+        await tab.locator(need(args[0], "a selector")).first().fill(need(args[1], "the text"));
+        await look(tab);
+        break;
+      case "press": {
+        const focused = await tab.evaluate(`(${nameOf.toString()})(document.activeElement)`);
+        if (await refused(String(focused))) return;
+        await tab.keyboard.press(need(args[0], "a key"));
+        await look(tab);
+        break;
+      }
+      case "wait":
+        await tab.locator(need(args[0], "a selector")).first().waitFor();
+        await look(tab);
+        break;
+      case "shot":
+        console.log(await shot(tab, args[0]));
+        break;
+    }
+  } finally {
+    // Detaches; Chrome keeps running.
+    await on.close();
   }
-  const tab = await page(on);
-  switch (command) {
-    case "open":
-      await tab.goto(args[0] ? new URL(args[0], app).href : app);
-      await look(tab);
-      break;
-    case "look":
-      await look(tab);
-      break;
-    case "click":
-      await tab.locator(need(args[0], "a selector")).first().click();
-      await tab.waitForLoadState();
-      await look(tab);
-      break;
-    case "fill":
-      await tab.locator(need(args[0], "a selector")).first().fill(need(args[1], "the text"));
-      await look(tab);
-      break;
-    case "press":
-      await tab.keyboard.press(need(args[0], "a key"));
-      await look(tab);
-      break;
-    case "wait":
-      await tab.locator(need(args[0], "a selector")).first().waitFor();
-      await look(tab);
-      break;
-    case "shot":
-      console.log(await shot(tab, args[0]));
-      break;
-    default:
-      console.error(`unknown command ${command}; see the comment at the top of scripts/drive.ts`);
-      process.exitCode = 2;
-  }
-} finally {
-  // Detaches; Chrome keeps running.
-  await on.close();
 }
 
 function need(value: string | undefined, what: string): string {
