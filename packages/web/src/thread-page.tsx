@@ -110,7 +110,7 @@ function ChatBlock(props: {
     case "reply":
       return (
         <li class="reply">
-          <Markdown text={block.text} />
+          <Markdown text={block.text} linksTo={sites(props.view)} />
         </li>
       );
     case "marker":
@@ -175,6 +175,10 @@ function ChatBlock(props: {
       );
   }
 }
+
+// Where the thread's items live: the only sites a reply's links open to.
+const sites = (view: ThreadView): ReadonlySet<string> =>
+  new Set(view.members.flatMap(({ ref }) => URL.parse(ref.url ?? "")?.origin ?? []));
 
 function refList(refs: readonly ItemRef[]) {
   return refs.map((ref, i) => (

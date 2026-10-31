@@ -3,7 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { carries, type Dropped, readDrop } from "./drop.ts";
-import { type Inline, parse, type Prose } from "./markdown.ts";
+import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
 import type { ItemRef, ItemRow, ThreadStateId } from "./view.ts";
@@ -113,27 +113,31 @@ export function ItemKey({ item }: { item: ItemRef }) {
 // An agent's reply as formatted text. A heading starts at h3: the thread's
 // title and its sections hold h1 and h2. Read once per text: the page redraws
 // every reply as the latest one streams in.
-export function Markdown({ text }: { text: string }) {
+//
+// A link opens only to a site the thread's own items come from (`linksTo`, as
+// origins); any other shows its label and its whole address as text.
+export function Markdown({ text, linksTo }: { text: string; linksTo: ReadonlySet<string> }) {
   const read = useMemo(() => parse(text), [text]);
-  return <>{read.map(block)}</>;
+  return <>{read.map((prose, i) => block(prose, i, linksTo))}</>;
 }
 
-function block(prose: Prose, key: number) {
+function block(prose: Prose, key: number, to: ReadonlySet<string>): ComponentChildren {
+  const spans = (inlines: Inline[]) => inlines.map((inline, i) => span(inline, i, to));
   switch (prose.kind) {
     case "paragraph":
-      return <p key={key}>{prose.children.map(span)}</p>;
+      return <p key={key}>{spans(prose.children)}</p>;
     case "heading": {
       const Heading = `h${Math.min(prose.level + 2, 6)}` as "h3";
-      return <Heading key={key}>{prose.children.map(span)}</Heading>;
+      return <Heading key={key}>{spans(prose.children)}</Heading>;
     }
     case "list": {
       const items = prose.items.map((item, i) => (
         <li key={i}>
           {item.map((inner, j) =>
             prose.tight && inner.kind === "paragraph" ? (
-              <span key={j}>{inner.children.map(span)}</span>
+              <span key={j}>{spans(inner.children)}</span>
             ) : (
-              block(inner, j)
+              block(inner, j, to)
             ),
           )}
         </li>
@@ -147,7 +151,9 @@ function block(prose: Prose, key: number) {
       );
     }
     case "quote":
-      return <blockquote key={key}>{prose.children.map(block)}</blockquote>;
+      return (
+        <blockquote key={key}>{prose.children.map((inner, i) => block(inner, i, to))}</blockquote>
+      );
     case "code":
       return (
         <pre key={key}>
@@ -161,7 +167,7 @@ function block(prose: Prose, key: number) {
             <thead>
               <tr>
                 {prose.head.map((cell, i) => (
-                  <th key={i}>{cell.map(span)}</th>
+                  <th key={i}>{spans(cell)}</th>
                 ))}
               </tr>
             </thead>
@@ -169,7 +175,7 @@ function block(prose: Prose, key: number) {
               {prose.rows.map((row, i) => (
                 <tr key={i}>
                   {prose.head.map((_, j) => (
-                    <td key={j}>{(row[j] ?? []).map(span)}</td>
+                    <td key={j}>{spans(row[j] ?? [])}</td>
                   ))}
                 </tr>
               ))}
@@ -182,7 +188,8 @@ function block(prose: Prose, key: number) {
   }
 }
 
-function span(inline: Inline, key: number) {
+function span(inline: Inline, key: number, to: ReadonlySet<string>): ComponentChildren {
+  const spans = (inlines: Inline[]) => inlines.map((inner, i) => span(inner, i, to));
   switch (inline.kind) {
     case "text":
       return inline.text;
@@ -191,14 +198,18 @@ function span(inline: Inline, key: number) {
     case "code":
       return <code key={key}>{inline.text}</code>;
     case "strong":
-      return <strong key={key}>{inline.children.map(span)}</strong>;
+      return <strong key={key}>{spans(inline.children)}</strong>;
     case "em":
-      return <em key={key}>{inline.children.map(span)}</em>;
+      return <em key={key}>{spans(inline.children)}</em>;
     case "link":
-      return (
+      return opens(inline.href, to) ? (
         <a key={key} href={inline.href} target="_blank" rel="noopener noreferrer">
-          {inline.children.map(span)}
+          {spans(inline.children)}
         </a>
+      ) : (
+        <span key={key}>
+          {spans(inline.children)} ({inline.href})
+        </span>
       );
   }
 }

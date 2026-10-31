@@ -24,19 +24,58 @@ export type Prose =
 const blank = (line: string) => line.trim() === "";
 const indent = (line: string) => line.length - line.trimStart().length;
 
+// Each pattern runs in steps linear in the line: a line is source content
+// the agent may quote, and is read again with every streamed chunk. `s` lets
+// `.` take any character, so `$` can't fail after a long backtrack.
 const fence = /^ {0,3}(`{3,}|~{3,})/;
-const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/s;
 const rule = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
-const quote = /^ {0,3}> ?(.*)$/;
-const marker = /^( *)([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$/;
-const tableRule = /^ *\|? *:?-+:? *(?:\| *:?-+:? *)*\|? *$/;
+const quote = /^ {0,3}> ?(.*)$/s;
+const marker = /^( *)([-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*))?$/s;
 
-const startsBlock = (line: string) =>
-  fence.test(line) ||
-  heading.test(line) ||
-  rule.test(line) ||
-  quote.test(line) ||
-  marker.test(line);
+// A heading's text without the closing `#`s some writers add.
+function headingText(raw: string): string {
+  const text = raw.trimEnd();
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "#") end--;
+  return end === 0 || text[end - 1] === " " || text[end - 1] === "\t"
+    ? text.slice(0, end).trimEnd()
+    : text;
+}
+
+// A table's second line: one `---` cell, aligned or not, for each heading.
+function tableRule(line: string, columns: number): boolean {
+  const cells = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
+  return cells.length === columns && cells.every((cell) => /^:?-+:?$/.test(cell.trim()));
+}
+
+// The fence a line opens. Backticks with another backtick after them on the
+// line are code inside a sentence, not a fence.
+function fenceOf(line: string): string | undefined {
+  const opened = fence.exec(line)?.[1];
+  if (opened?.[0] === "`" && line.includes("`", line.indexOf(opened) + opened.length))
+    return undefined;
+  return opened;
+}
+
+// Whether lines[i] heads a table: the line under it rules one cell per heading.
+const startsTable = (lines: readonly string[], i: number) => {
+  const line = lines[i] ?? "";
+  return line.includes("|") && tableRule(lines[i + 1] ?? "", cellTexts(line).length);
+};
+
+// Whether lines[i] starts a block, and so ends the paragraph above it.
+const startsBlock = (lines: readonly string[], i: number) => {
+  const line = lines[i] ?? "";
+  return (
+    fenceOf(line) !== undefined ||
+    heading.test(line) ||
+    rule.test(line) ||
+    quote.test(line) ||
+    marker.test(line) ||
+    startsTable(lines, i)
+  );
+};
 
 // Quotes, lists and marks nest at most this deep; deeper, they read as text.
 const deepest = 8;
@@ -55,7 +94,7 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
       i++;
       continue;
     }
-    const opened = fence.exec(line)?.[1];
+    const opened = fenceOf(line);
     if (opened) {
       // Closed by a fence of the same kind at least as long, or by the end.
       const code: string[] = [];
@@ -81,7 +120,7 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
       out.push({
         kind: "heading",
         level: titled[1]?.length ?? 1,
-        children: inline(titled[2] ?? ""),
+        children: inline(headingText(titled[2] ?? "")),
       });
       i++;
       continue;
@@ -104,7 +143,7 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
       i = list(lines, i, out, depth);
       continue;
     }
-    if (line.includes("|") && tableRule.test(lines[i + 1] ?? "")) {
+    if (startsTable(lines, i)) {
       const head = cells(line);
       const rows: Inline[][][] = [];
       i += 2;
@@ -117,7 +156,7 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
     }
     const said: string[] = [line.trim()];
     i++;
-    while (i < lines.length && !blank(lines[i] ?? "") && !startsBlock(lines[i] ?? "")) {
+    while (i < lines.length && !blank(lines[i] ?? "") && !startsBlock(lines, i)) {
       said.push((lines[i] ?? "").trim());
       i++;
     }
@@ -168,7 +207,7 @@ function list(lines: readonly string[], from: number, out: Prose[], depth: numbe
       i++;
       continue;
     }
-    if (gap || startsBlock(line)) break;
+    if (gap || startsBlock(lines, i)) break;
     item.lines.push(line.trim());
     i++;
   }
@@ -182,13 +221,16 @@ function list(lines: readonly string[], from: number, out: Prose[], depth: numbe
   return i;
 }
 
-function cells(line: string): Inline[][] {
+// A table line's cells, split at each `|` that isn't escaped as `\|`.
+function cellTexts(line: string): string[] {
   const trimmed = line
     .trim()
     .replace(/^\|/, "")
     .replace(/(?<!\\)\|$/, "");
-  return trimmed.split(/(?<!\\)\|/).map((cell) => inline(cell.trim().replaceAll("\\|", "|")));
+  return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim().replaceAll("\\|", "|"));
 }
+
+const cells = (line: string): Inline[][] => cellTexts(line).map((cell) => inline(cell));
 
 // A paragraph's lines, with each line break kept: agents break lines on purpose.
 function joined(lines: readonly string[]): Inline[] {
@@ -309,20 +351,36 @@ function closingTicks(line: Line, from: number, length: number): number {
   return -1;
 }
 
+// Whether a reply's link opens, given the sites the thread's items come from:
+// a reply can be steered by what it quotes, so a link elsewhere could send what
+// it carries in its address anywhere, behind a label that says otherwise.
+export const opens = (href: string, sites: ReadonlySet<string>): boolean =>
+  sites.has(URL.parse(href)?.origin ?? "");
+
+// A link's target: up to its own `)`, without spaces, and no longer than this, so
+// a line of unclosed links is read in bounded steps.
+const longestTarget = 2_048;
+
 // `[label](https://…)`. A link that isn't to the web stays as typed.
 function link(line: Line, from: number): { node: Inline; end: number } | null {
   const { text } = line;
   const close = line.brackets.get(from);
   if (close === undefined || text[close + 1] !== "(") return null;
-  const end = text.indexOf(")", close + 2);
-  if (end < 0) return null;
-  const target =
-    text
-      .slice(close + 2, end)
-      .trim()
-      .replace(/^<(.*)>$/, "$1")
-      .split(/\s+/)[0] ?? "";
-  const href = safeHref(target);
+  const start = close + 2;
+  const last = Math.min(text.length, start + longestTarget);
+  // Parentheses inside it come in pairs, as in `wiki/Foo_(bar)`. A bracket
+  // ends it, as an address can't hold one: so each part of a line is scanned
+  // by one link at most.
+  let end = start;
+  let open = 0;
+  const stops = (char: string | undefined) => space(char) || char === "[" || char === "]";
+  while (end < last && !stops(text[end]) && (text[end] !== ")" || open > 0)) {
+    if (text[end] === "(") open++;
+    else if (text[end] === ")") open--;
+    end++;
+  }
+  if (text[end] !== ")") return null;
+  const href = safeHref(text.slice(start, end).replace(/^<(.*)>$/, "$1"));
   if (!href) return null;
   return {
     node: { kind: "link", href, children: inline(text.slice(from + 1, close), line.depth + 1) },

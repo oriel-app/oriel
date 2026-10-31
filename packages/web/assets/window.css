@@ -1322,16 +1322,18 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Before the rules below, which each outrank it on order or on specificity. */
+.reply :is(p, ul, ol, blockquote, pre, hr),
+.reply .table-scroll {
+  margin: 0 0 var(--space-3);
+}
+
 .reply > :first-child {
   margin-top: 0;
 }
 
 .reply > :last-child {
   margin-bottom: 0;
-}
-
-.reply :is(p, ul, ol, blockquote, pre, .table-scroll, hr) {
-  margin: 0 0 var(--space-3);
 }
 
 .reply :is(h3, h4, h5, h6) {
