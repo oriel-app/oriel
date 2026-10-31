@@ -1,10 +1,11 @@
 // Identifiers and time. Items are addressed by source-qualified IDs
-// (`jira:SYN-12`, `folder:3f9a…`), which are handles; an item's identity is
-// the source's stable ID, kept beside it. Internal records use ULIDs. Time is canonical UTC
-// ISO-8601 with milliseconds, so instants sort as strings.
+// (`jira:SYN-12`, `folder:3f9a…`, `slack:C0A1B2C3D-1759309200.000100`), which
+// are handles; an item's identity is the source's stable ID, kept beside it.
+// Internal records use ULIDs. Time is canonical UTC ISO-8601 with
+// milliseconds, so instants sort as strings.
 
 // Adding a source here makes `keyShapes` below require its key shape.
-export const sourceKinds = ["jira", "folder"] as const;
+export const sourceKinds = ["jira", "folder", "slack"] as const;
 export type SourceKind = (typeof sourceKinds)[number];
 export type ItemId<K extends SourceKind = SourceKind> = `${K}:${string}`;
 export type Ulid = string & { readonly __brand: "Ulid" };
@@ -18,6 +19,9 @@ const keyShapes: Record<SourceKind, RegExp> = {
   // A fixed-length hash of the folder's ID and the file's canonical relative
   // path (decision 0019): a file's name is its title, never its key.
   folder: /^[0-9a-f]{16}$/,
+  // A message's channel ID and its `ts`, which Slack keeps unique in the
+  // channel (decision 0021). Its text is its title and content, never its key.
+  slack: /^[CG][A-Z0-9]{6,20}-[0-9]{10}\.[0-9]{6}$/,
 };
 
 export function parseItemId(id: string): { source: SourceKind; key: string } | null {

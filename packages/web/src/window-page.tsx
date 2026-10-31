@@ -384,8 +384,9 @@ function Items(props: {
 }
 
 function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; dispatch: Dispatch }) {
-  // Files carry no people or estimates (decision 0019).
-  const tracked = !item.id.startsWith("folder:");
+  // Files and Slack messages carry no assignees or estimates (decisions 0019
+  // and 0021).
+  const tracked = !item.id.startsWith("folder:") && !item.id.startsWith("slack:");
   return (
     <li class={picked ? "item picked" : "item"}>
       <label class="pick">
@@ -406,7 +407,7 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       <span class="status" data-category={item.status?.category}>
         {item.status?.name}
       </span>
-      {/* A file has no assignee or estimate to lack: those stay empty. */}
+      {/* A file or a message has no assignee or estimate to lack: those stay empty. */}
       {tracked ? <Assignee name={item.assignee} /> : <span class="assignee" />}
       <span
         class="points"

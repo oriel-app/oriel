@@ -23,3 +23,16 @@ export function serverEnv(envFile: string | null): ServerEnv {
         : { site: throwawaySite, email, token };
   return { jira, modelKey: key ? key : null };
 }
+
+// The Slack token a live Slack source reads with: the first user token in
+// SLACK_USER_TOKENS, the person who authorized the app first (OA-22's
+// `pnpm seed:slack --add`). Read only when the server is asked for live
+// Slack, and never in a message.
+export function slackEnv(envFile: string | null): { token: string } | { problem: string } {
+  const env = envFile ? parseEnv(envFile) : {};
+  const [token] = (env.SLACK_USER_TOKENS ?? "").split(/\s+/).filter(Boolean);
+  if (!token) return { problem: "SLACK_USER_TOKENS must hold a user token in .env" };
+  if (!token.startsWith("xoxp-"))
+    return { problem: "SLACK_USER_TOKENS holds something that isn't a user token" };
+  return { token };
+}

@@ -1435,6 +1435,13 @@ button.nav-disclose:hover {
   background: none;
 }
 
+/* A chat message: a hollow bubble, its tail at the bottom left. */
+.type[data-type="message"] {
+  border: 1.5px solid var(--text-faint);
+  border-radius: 50% 50% 50% 0;
+  background: none;
+}
+
 .title {
   overflow: hidden;
   text-overflow: ellipsis;

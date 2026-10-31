@@ -1,0 +1,16 @@
+{
+  "id": "slack-fare-decision",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "messages": ["slack:C0FW1WEATHR-1788444000.000100"],
+  "prompt": "What did the team agree in Slack about fares after a weather cancellation? Quote what was said.",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "surfaced",
+      "item": "slack:C0FW1WEATHR-1788444000.000100",
+      "text": ["keep the fare they paid", "next-day sailings now follow the same rule"]
+    }
+  ]
+}

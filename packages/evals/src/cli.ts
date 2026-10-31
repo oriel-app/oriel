@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
 import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { anthropicFetch, anthropicKey, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
@@ -80,7 +81,8 @@ async function main(command: Command): Promise<number> {
   }
   const fixture = loadJiraFixture();
   const folder = loadFolderFixture();
-  const { cases: loaded, problems } = loadCases(casesDir, fixture, repoRoot, folder);
+  const slack = loadSlackFixture();
+  const { cases: loaded, problems } = loadCases(casesDir, fixture, repoRoot, folder, slack);
   for (const problem of problems) console.error(problem);
   if (problems.length) return 1;
   for (const { case: c } of loaded)
@@ -112,6 +114,7 @@ async function main(command: Command): Promise<number> {
     cases,
     fixture,
     folder,
+    slack,
     system,
     model: command.model,
     judgeModel: command.judge,

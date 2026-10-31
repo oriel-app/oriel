@@ -22,7 +22,7 @@ import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { type App, createApp, type JiraMode, limits } from "./app.ts";
+import { type App, createApp, type JiraMode, limits, type SlackMode } from "./app.ts";
 import type { ConnectionStore } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
@@ -103,6 +103,8 @@ export type TestOptions = {
   // SYN's issues as its site in memory has them, with no edits; all of them
   // by default. Only that site serves them, so this needs `connect` or `live`.
   issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
+  // Slack, off when absent.
+  slack?: SlackMode;
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -141,6 +143,7 @@ export async function testApp(
   const app: App = await createApp({
     db: options.db ?? ":memory:",
     jira,
+    ...(options.slack ? { slack: options.slack } : {}),
     reviewBase: new URL(`${origin}/review/`),
     limits: { ...limits, ...options.limits },
     now,
