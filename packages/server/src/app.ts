@@ -345,7 +345,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     asOf: () => asOf ?? now(),
     now,
     running: conversation.running,
-    changeSetsOf: (threadId) => sets.ofThread(threadId),
+    changeSets: sets,
     writable: writes !== null,
   });
 

@@ -172,7 +172,7 @@ test("an item that moved keeps its title in a group's history and a thread's mar
     asOf: () => at,
     now: () => at,
     running: () => false,
-    changeSetsOf: async () => [],
+    changeSets: { ofThread: async () => [], nextSteps: async () => [], applying: () => false },
     writable: false,
   });
   const added = (await shown.group(id(2)))?.changes[0]?.added[0];

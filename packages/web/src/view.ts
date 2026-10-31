@@ -34,20 +34,22 @@ export type FolderView = { path: string; items: number; syncedAt: string | null 
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 
-// What a working thread waits on: its agent, mid-turn; the user's decision on
-// a change set that hasn't settled; or else the user's next message. A thread
-// in any other state waits on nothing.
+// What a working thread waits on: its agent, mid-turn; the user, on a change
+// set being applied or offering a step besides a revert, which any applied
+// one offers; or else the user's next message. A thread in any other state
+// waits on nothing.
 export type WaitingOn = "agent" | "review" | "reply";
 
 export function waitingOn(thread: {
   state: ThreadStateId;
   running: boolean;
-  changeSets: readonly ChangeSetStatus[];
+  changeSets: readonly { status: ChangeSetStatus; nextSteps: readonly { kind: string }[] }[];
 }): WaitingOn | null {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
-  const settled = (status: ChangeSetStatus) => status === "applied" || status === "rejected";
-  return thread.changeSets.some((status) => !settled(status)) ? "review" : "reply";
+  const open = (set: (typeof thread.changeSets)[number]) =>
+    set.status === "applying" || set.nextSteps.some((step) => step.kind !== "revert");
+  return thread.changeSets.some(open) ? "review" : "reply";
 }
 
 // An item named somewhere: in a group, a marker, a search result. `title` is

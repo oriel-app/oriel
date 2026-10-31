@@ -364,6 +364,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
   };
 
+  // The workspace's threads moved: one empty event each time, which pages
+  // answer by reloading the threads list.
+  const anyStream = (): Reply => {
+    const out = channel<string>(() => stop());
+    const stop = turns.watchAny(() => out.push('data: {"type":"threads"}\n\n'));
+    out.push("retry: 2000\n\n");
+    return {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no" },
+      body: "",
+      stream: out.iterator,
+    };
+  };
+
   const routes: Route[] = [
     {
       method: "GET",
@@ -579,6 +593,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     },
     {
       method: "GET",
+      path: at("/threads/events"),
+      run: async () => anyStream(),
+    },
+    {
+      method: "GET",
       path: at("/threads/:id"),
       async run([id = ""]) {
         const thread = mustThread(id);
@@ -626,6 +645,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         const now = deps.now();
         threads.markDone(thread.id, now);
+        turns.markedDone(thread.id);
         deps.emit({
           name: "thread.marked-done",
           at: now,

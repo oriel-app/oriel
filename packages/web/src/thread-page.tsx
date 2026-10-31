@@ -81,7 +81,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
               waitingOn={waitingOn({
                 state: view.state,
                 running: view.running,
-                changeSets: view.changeSets.map((set) => set.status),
+                changeSets: view.changeSets,
               })}
             />
             {view.state !== "done" && (

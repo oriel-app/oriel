@@ -455,6 +455,31 @@ test("a thread's events stream: what's stored first, then each new entry as it l
   await rest.return?.();
 });
 
+test("the threads' stream says when any thread's turn starts or ends, or it's marked done", async (t) => {
+  const app = await thread(t, "Hi");
+  const reply = await app.get("/api/threads/events");
+  assert.equal(reply.headers["content-type"], "text/event-stream; charset=utf-8");
+  assert.ok(reply.stream);
+  const stream = reply.stream[Symbol.asyncIterator]();
+  assert.equal((await stream.next()).value, "retry: 2000\n\n");
+  const moved = 'data: {"type":"threads"}\n\n';
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Again" });
+  await app.app.settled();
+  assert.equal((await stream.next()).value, moved);
+  assert.equal((await stream.next()).value, moved);
+  // The turn's entries aren't told: nothing more until the thread is marked done.
+  let told = false;
+  const next = stream.next().then((result) => {
+    told = true;
+    return result;
+  });
+  await new Promise(setImmediate);
+  assert.equal(told, false);
+  await app.post(`/api/threads/${app.threadId}/done`);
+  assert.equal((await next).value, moved);
+  await stream.return?.();
+});
+
 // Thinks until stopped, then ends with its `done`, as the contract asks; or,
 // breaking it, throws.
 function waiting(keepsContract: boolean): Agent {

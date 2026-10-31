@@ -68,6 +68,9 @@ export type Msg =
   | { type: "streamed"; event: StreamEvent }
   // The thread's stream reconnected after dropping.
   | { type: "streamReopened" }
+  // Some thread's turn started or ended, a change set of one moved, or one
+  // was marked done.
+  | { type: "threadsMoved" }
   | Replied;
 
 // What the sidebar shows, loaded on entering any page. The groups load again
@@ -75,7 +78,7 @@ export type Msg =
 // page that moved them.
 const loadGroups: Effect = get("/api/groups", { kind: "groups" });
 const loadThreads: Effect = get("/api/threads", { kind: "inbox" });
-const lists: Effect[] = [loadGroups, loadThreads, loadFolder];
+const lists: Effect[] = [loadGroups, loadThreads, loadFolder, { type: "watchThreads" }];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
@@ -190,13 +193,13 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "streamed": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = streamed(model.thread, msg.event);
-      // A turn that starts or ends, or a change set that moves, changes what
-      // the thread waits on; one that ends may move it between inbox states.
-      const { event } = msg;
-      if (event.type === "status" && !event.running)
-        return [{ ...model, thread }, [...effects, loadThreads, loadGroups]];
-      return [{ ...model, thread }, event.type === "entry" ? effects : [...effects, loadThreads]];
+      // A turn that ends may have moved the thread between inbox states.
+      const ended = msg.event.type === "status" && !msg.event.running;
+      return [{ ...model, thread }, ended ? [...effects, loadThreads, loadGroups] : effects];
     }
+    // What each thread waits on is in both lists: the groups count by state.
+    case "threadsMoved":
+      return [model, [loadThreads, loadGroups]];
     case "replied":
       return replied(model, msg);
   }
@@ -253,14 +256,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [review, effects] = reviewReplied(model.review, msg);
       return [{ ...model, review }, effects];
     }
-    // A decision on a change set changes what its thread waits on.
     default: {
       if (model.thread === null) return [model, []];
       const [thread, effects] = threadReplied(model.thread, msg);
-      return [
-        { ...model, thread },
-        msg.tag.kind === "changeSet" ? [...effects, loadThreads] : effects,
-      ];
+      return [{ ...model, thread }, effects];
     }
   }
 }

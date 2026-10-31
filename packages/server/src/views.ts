@@ -3,6 +3,7 @@
 import {
   byItemId,
   type ChangeSet,
+  type ChangeSets,
   type Diff,
   type GroupMember,
   type IndexRecord,
@@ -44,7 +45,7 @@ export type ViewDeps = {
   asOf: () => Instant;
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
-  changeSetsOf: (threadId: Ulid) => Promise<readonly ChangeSet[]>;
+  changeSets: Pick<ChangeSets, "ofThread" | "nextSteps" | "applying">;
   writable: boolean;
 };
 
@@ -246,6 +247,16 @@ export function views(deps: ViewDeps) {
     return text.length > maxTitleChars ? `${text.slice(0, maxTitleChars - 1)}…` : text;
   };
 
+  // Where each of a thread's change sets stands, and what the engine says
+  // can be done with it.
+  const changeSetsOf = async (threadId: Ulid) =>
+    Promise.all(
+      (await deps.changeSets.ofThread(threadId)).map(async (set) => ({
+        status: deps.changeSets.applying(set.id) ? ("applying" as const) : changeSetStatus(set),
+        nextSteps: await deps.changeSets.nextSteps(set.id),
+      })),
+    );
+
   const threadSummary = async ({
     thread,
     activityAt,
@@ -258,8 +269,7 @@ export function views(deps: ViewDeps) {
     waitingOn: waitingOn({
       state: thread.state,
       running: deps.running(thread.id),
-      changeSets:
-        thread.state === "working" ? (await deps.changeSetsOf(thread.id)).map(changeSetStatus) : [],
+      changeSets: thread.state === "working" ? await changeSetsOf(thread.id) : [],
     }),
     activityAt,
   });

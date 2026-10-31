@@ -5,6 +5,8 @@ import type { GroupingId, StreamEvent, WindowView } from "./view.ts";
 
 // The thread being watched, one at a time.
 let events: EventSource | null = null;
+// Every thread, watched for a move between what it waits on.
+let threadsMoved: EventSource | null = null;
 
 // The only code that touches the network, the address bar or the clipboard.
 export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
@@ -69,6 +71,18 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       let opened = false;
       events.onopen = () => {
         if (opened) dispatch({ type: "streamReopened" });
+        opened = true;
+      };
+      return;
+    }
+    case "watchThreads": {
+      if (threadsMoved) return;
+      threadsMoved = new EventSource("/api/threads/events");
+      threadsMoved.onmessage = () => dispatch({ type: "threadsMoved" });
+      // A reconnect may have missed a move.
+      let opened = false;
+      threadsMoved.onopen = () => {
+        if (opened) dispatch({ type: "threadsMoved" });
         opened = true;
       };
       return;

@@ -16,9 +16,7 @@ export type Nav = {
   groups: NavGroup[] | null;
   // The thread on the page, if one is.
   thread: string | null;
-  // Threads whose agent is mid-turn, and threads waiting on the user: a
-  // change set to review or a reply.
-  busy: number;
+  // Threads waiting on the user: a change set to review, or a reply.
   needsYou: number;
 };
 
@@ -45,7 +43,6 @@ export function nav(model: Model): Nav {
         current: summary.id === group,
       })) ?? null,
     thread,
-    busy: threads.filter((each) => each.waitingOn === "agent").length,
     needsYou: threads.filter((each) => each.waitingOn === "review" || each.waitingOn === "reply")
       .length,
   };

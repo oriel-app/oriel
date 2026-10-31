@@ -3,7 +3,12 @@ import { test } from "node:test";
 import { nav } from "../src/nav.ts";
 import { init, type Model, update } from "../src/root.ts";
 import type { Route } from "../src/route.ts";
-import { type GroupSummary, type ThreadSummaryView, waitingOn } from "../src/view.ts";
+import {
+  type ChangeSetStatus,
+  type GroupSummary,
+  type ThreadSummaryView,
+  waitingOn,
+} from "../src/view.ts";
 
 const groupA = "01JBZ0000000000000000000G1";
 const groupB = "01JBZ0000000000000000000G2";
@@ -56,7 +61,6 @@ test("each group lists its own threads, most recently active first", () => {
     ],
   );
   // T2's agent is mid-turn; T3 has a change set for the user to review.
-  assert.equal(where.busy, 1);
   assert.equal(where.needsYou, 1);
   assert.equal(where.thread, null);
   assert.ok(where.groups?.every((entry) => !entry.current));
@@ -156,31 +160,45 @@ test("a drop that answers after the user moved on still reloads the groups", () 
   assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
 });
 
-test("a turn that starts, and a decision on a change set, reload what the threads wait on", () => {
-  const [model] = init({ page: "thread", id: "01JBZ0000000000000000000T1" });
-  const urls = (effects: ReturnType<typeof update>[1]) =>
-    effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
-  const [, started] = update(model, {
-    type: "streamed",
-    event: { type: "status", running: true, state: "working", regionVersion: 1 },
-  });
-  assert.ok(urls(started).includes("/api/threads"));
-  const [, decided] = update(model, {
-    type: "replied",
-    tag: { kind: "changeSet", threadId: "01JBZ0000000000000000000T1", changeSetId: "C1" },
-    ok: true,
-    body: {},
-  });
-  assert.ok(urls(decided).includes("/api/threads"));
+test("every page but a review link watches the threads, and a move reloads both lists", () => {
+  const watches = (route: Route) => init(route)[1].some((effect) => effect.type === "watchThreads");
+  assert.ok(watches({ page: "inbox" }));
+  assert.ok(watches({ page: "thread", id: "01JBZ0000000000000000000T1" }));
+  assert.equal(watches({ page: "review", token: "abc_DEF-123" }), false);
+  const [, effects] = update(init({ page: "inbox" })[0], { type: "threadsMoved" });
+  assert.deepEqual(
+    effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : [])),
+    ["/api/threads", "/api/groups"],
+  );
 });
 
 test("a working thread waits on its agent mid-turn, then on a review or the user's reply", () => {
+  const set = (status: ChangeSetStatus, ...steps: string[]) => ({
+    status,
+    nextSteps: steps.map((kind) => ({ kind })),
+  });
   const working = { state: "working", running: false } as const;
-  assert.equal(waitingOn({ ...working, running: true, changeSets: ["open"] }), "agent");
-  for (const status of ["open", "approved", "stopped", "partial", "applying"] as const)
-    assert.equal(waitingOn({ ...working, changeSets: ["rejected", status] }), "review", status);
-  assert.equal(waitingOn({ ...working, changeSets: ["rejected", "applied"] }), "reply");
+  assert.equal(
+    waitingOn({ ...working, running: true, changeSets: [set("open", "approve")] }),
+    "agent",
+  );
+  // A change set waits on the user while the engine offers a step besides a
+  // revert, or while it applies.
+  assert.equal(waitingOn({ ...working, changeSets: [set("open", "approve", "reject")] }), "review");
+  assert.equal(
+    waitingOn({ ...working, changeSets: [set("partial", "retry", "dismiss", "revert")] }),
+    "review",
+  );
+  assert.equal(waitingOn({ ...working, changeSets: [set("applying")] }), "review");
+  // Applied, rejected, or partly applied and the rest dismissed: nothing to decide.
+  assert.equal(waitingOn({ ...working, changeSets: [set("applied", "revert")] }), "reply");
+  assert.equal(waitingOn({ ...working, changeSets: [set("rejected")] }), "reply");
+  assert.equal(waitingOn({ ...working, changeSets: [set("partial", "revert")] }), "reply");
   assert.equal(waitingOn({ ...working, changeSets: [] }), "reply");
   for (const state of ["done", "handed-off", "dropped"] as const)
-    assert.equal(waitingOn({ state, running: false, changeSets: ["open"] }), null, state);
+    assert.equal(
+      waitingOn({ state, running: false, changeSets: [set("open", "approve")] }),
+      null,
+      state,
+    );
 });
