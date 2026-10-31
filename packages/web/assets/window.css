@@ -22,7 +22,8 @@
   --radius-xl: 12px;
   --row: 2.125rem;
   --page: 74rem;
-  --bar-height: 2.75rem;
+  /* The narrow-screen bar; wide screens have the sidebar instead. */
+  --bar-height: 0rem;
   --rail: 15rem;
   --chat: 44rem;
 
@@ -214,31 +215,75 @@ a {
   cursor: default;
 }
 
-/* Top bar: the brand and the inbox, and nothing that doesn't need attention. */
+/* The shell: the sidebar beside the page. */
 
-.bar {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: blur(8px);
+.shell {
+  --sidebar: 15.5rem;
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  min-height: 100vh;
+  transition: grid-template-columns 180ms ease;
 }
 
-.bar-inner {
+.shell[data-folded] {
+  --sidebar: 3.25rem;
+}
+
+.shell-main {
+  min-width: 0;
+}
+
+.icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The sidebar: the pages, the groups with their threads, the folder. */
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100vh;
+  padding: var(--space-3);
+  overflow: hidden auto;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 96%, var(--text));
+  scrollbar-width: thin;
+}
+
+.sidebar-head {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  max-width: var(--page);
-  min-height: var(--bar-height);
-  margin: 0 auto;
-  padding: 0 var(--space-6);
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding-left: var(--space-2);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  margin-right: auto;
   font-weight: 600;
   font-size: var(--text-lg);
   letter-spacing: -0.01em;
@@ -246,6 +291,7 @@ a {
 }
 
 .mark {
+  flex: none;
   width: 1.125rem;
   height: 1.125rem;
   fill: none;
@@ -253,25 +299,344 @@ a {
   stroke-width: 1.6;
 }
 
-.bar-nav {
-  display: flex;
-  gap: var(--space-1);
+.sidebar-fold,
+.bar-menu {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
 }
 
-.bar-link {
-  display: inline-flex;
+.sidebar-fold:hover,
+.bar-menu:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sidebar-pages {
+  display: grid;
+  gap: 1px;
+}
+
+.nav-link {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0.25rem var(--space-2);
+  min-width: 0;
+  min-height: 1.875rem;
+  padding: 0 var(--space-2);
   border-radius: var(--radius);
   color: var(--text-muted);
   text-decoration: none;
 }
 
-.bar-link:hover,
-.bar-link[aria-current="page"] {
-  color: var(--text);
+.nav-link:hover {
   background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nav-link[aria-current="page"] {
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 2px rgb(0 0 0 / 0.04);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.nav-link .badge {
+  margin-left: auto;
+}
+
+.sidebar .rail-title {
+  padding: 0 var(--space-2);
+}
+
+.sidebar .rail-empty {
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.nav-groups,
+.nav-threads {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-group-row {
+  display: flex;
+  align-items: center;
+}
+
+.nav-group-row .nav-link {
+  flex: 1;
+  padding-left: var(--space-1);
+}
+
+.nav-disclose {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.875rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.nav-disclose:hover {
+  color: var(--text);
+}
+
+.nav-disclose .chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform 120ms ease;
+}
+
+.nav-disclose[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+.nav-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-count {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-threads {
+  display: grid;
+  gap: 1px;
+  margin: 1px 0 var(--space-1) 0.625rem;
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--line);
+}
+
+.nav-threads > li {
+  min-width: 0;
+}
+
+.nav-thread {
+  min-height: 1.75rem;
+}
+
+.nav-more {
+  min-height: 1.5rem;
+  padding-left: calc(var(--space-2) + 0.4375rem + var(--space-2));
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* A thread's state at a glance: working pulses, the rest hold still. */
+.state-dot {
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--todo);
+}
+
+.state-dot[data-state="working"] {
+  background: var(--in-progress);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.state-dot[data-state="done"] {
+  background: var(--done);
+}
+
+.state-dot[data-state="handed-off"] {
+  background: var(--handed-off-text);
+}
+
+.state-dot[data-state="dropped"] {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--todo);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The folder sits at the foot of the sidebar. */
+.sidebar .folder {
+  margin-top: auto;
+  padding: var(--space-3) var(--space-2) 0;
+}
+
+.folder-line .icon {
+  color: var(--text-faint);
+}
+
+/* Folded, on a wide screen: icons only, with their names kept for readers. */
+@media (min-width: 761px) {
+  .shell[data-folded] .sidebar {
+    padding-inline: var(--space-2);
+  }
+
+  .shell[data-folded] .sidebar-head {
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-1) 0 0;
+  }
+
+  .shell[data-folded] .sidebar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .shell[data-folded] :is(.sidebar-groups, .sidebar .folder) {
+    display: none;
+  }
+
+  .shell[data-folded] .nav-link {
+    position: relative;
+    justify-content: center;
+    width: 2.25rem;
+    padding: 0;
+    margin-inline: auto;
+  }
+
+  .shell[data-folded] .nav-link .badge {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.375rem;
+  }
+}
+
+/* The narrow-screen bar: the menu and the brand. */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--bar-height);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.bar-menu {
+  width: 2rem;
+  height: 2rem;
+  color: var(--text-muted);
+}
+
+.bar-working {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.3125rem;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--in-progress);
+}
+
+.drawer-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --bar-height: 2.75rem;
+  }
+
+  /* The drawer floats over the page, so it takes no room beside it. */
+  .shell,
+  .shell[data-folded] {
+    --sidebar: 0rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bar {
+    display: flex;
+  }
+
+  /* The sidebar is a drawer: off screen, and out of the tab order, until the
+     menu opens it. */
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 21;
+    width: min(18rem, 86vw);
+    box-shadow: var(--shadow);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 200ms ease,
+      visibility 0s 200ms;
+  }
+
+  .shell[data-drawer] .sidebar {
+    transform: none;
+    visibility: visible;
+    transition: transform 200ms ease;
+  }
+
+  .sidebar-fold {
+    display: none;
+  }
+
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgb(0 0 0 / 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
+
+  .shell[data-drawer] .drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .sidebar,
+  .drawer-backdrop,
+  .nav-disclose .chevron {
+    transition: none;
+  }
+
+  .state-dot[data-state="working"] {
+    animation: none;
+  }
 }
 
 .badge {
@@ -407,27 +772,18 @@ a {
   background: var(--in-progress);
 }
 
-/* The window: groups beside the clusters. */
+/* The window: the clusters, under a grouping. */
 
 .window-layout {
   display: grid;
-  grid-template-columns: var(--rail) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
   max-width: var(--page);
   margin: 0 auto;
   padding: var(--space-3) var(--space-6) 6rem;
 }
 
-.sources {
-  position: sticky;
-  top: calc(var(--bar-height) + var(--space-3));
-  align-self: start;
-  max-height: calc(100vh - var(--bar-height) - var(--space-6));
-  overflow-y: auto;
-  padding-top: var(--space-2);
-}
-
-/* The folder: a quiet line under the groups, and a path only when asked. */
+/* The folder: a quiet line, and a path only when asked. */
 
 .folder {
   display: grid;
@@ -493,45 +849,6 @@ a {
   margin: 0;
   color: var(--danger);
   font-size: var(--text-sm);
-}
-
-.group-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.group-link {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0.3125rem var(--space-2);
-  margin: 0 calc(-1 * var(--space-2));
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  text-decoration: none;
-}
-
-.group-link:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.group-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-faint);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
 }
 
 .window {
@@ -997,13 +1314,14 @@ a {
 .selection-bar {
   position: fixed;
   bottom: var(--space-4);
-  left: 50%;
+  /* Centred on the page beside the sidebar. */
+  left: calc(50% + var(--sidebar) / 2);
   z-index: 4;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
-  max-width: calc(100vw - 2 * var(--space-4));
+  max-width: calc(100vw - var(--sidebar) - 2 * var(--space-4));
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -1923,9 +2241,10 @@ a {
   color: var(--danger);
 }
 
-/* Narrow screens: the rails move inline, and rows wrap to two lines. */
+/* Narrow screens: the rails move inline, and rows wrap to two lines. The
+   sidebar takes room, so the region moves under the chat before the rows wrap. */
 
-@media (max-width: 1000px) {
+@media (max-width: 1180px) {
   .thread-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1957,38 +2276,9 @@ a {
 }
 
 @media (max-width: 760px) {
-  .bar-inner {
-    padding: 0 var(--space-4);
-  }
-
   .window-layout {
-    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3) 7rem;
-  }
-
-  .sources {
-    position: static;
-    max-height: none;
-    padding-top: 0;
-  }
-
-  .group-list {
-    display: flex;
-    gap: var(--space-2);
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
-  }
-
-  .group-link {
-    margin: 0;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    white-space: nowrap;
-  }
-
-  .group-name {
-    max-width: 12rem;
   }
 
   .page,
@@ -2139,6 +2429,8 @@ a {
 .drop-veil {
   position: fixed;
   inset: calc(var(--bar-height) + 0.5rem) 0.5rem 0.5rem;
+  /* Over the page only: leaving it for the sidebar is leaving the zone. */
+  left: calc(var(--sidebar, 0rem) + 0.5rem);
   z-index: 20;
   display: grid;
   place-items: center;

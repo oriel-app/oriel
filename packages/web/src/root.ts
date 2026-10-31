@@ -70,10 +70,12 @@ export type Msg =
   | { type: "streamReopened" }
   | Replied;
 
-const lists: Effect[] = [
-  get("/api/groups", { kind: "groups" }),
-  get("/api/threads", { kind: "inbox" }),
-];
+// What the sidebar shows, loaded on entering any page. The groups load again
+// when their counts may have moved, since the sidebar shows them beside the
+// page that moved them.
+const loadGroups: Effect = get("/api/groups", { kind: "groups" });
+const loadThreads: Effect = get("/api/threads", { kind: "inbox" });
+const lists: Effect[] = [loadGroups, loadThreads, loadFolder];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
@@ -121,7 +123,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists, loadFolder]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -130,7 +132,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists, loadFolder],
+        [...leaving, ...loads, ...lists],
       ];
     }
     case "group": {
@@ -183,17 +185,14 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "streamReopened": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = reconnected(model.thread);
-      return [{ ...model, thread }, [...effects, get("/api/threads", { kind: "inbox" })]];
+      return [{ ...model, thread }, [...effects, loadThreads]];
     }
     case "streamed": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = streamed(model.thread, msg.event);
       // A turn that ends may have moved the thread between inbox states.
       const ended = msg.event.type === "status" && !msg.event.running;
-      return [
-        { ...model, thread },
-        ended ? [...effects, get("/api/threads", { kind: "inbox" })] : effects,
-      ];
+      return [{ ...model, thread }, ended ? [...effects, loadThreads, loadGroups] : effects];
     }
     case "replied":
       return replied(model, msg);
@@ -230,9 +229,20 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "threadOpened": {
       if (model.group === null) return [model, []];
       const [group, effects] = groupReplied(model.group, msg);
-      const lists: Effect[] =
-        msg.tag.kind === "renamed" ? [get("/api/groups", { kind: "groups" })] : [];
-      return [{ ...model, group }, [...effects, ...lists]];
+      const moved = msg.tag.kind === "renamed" || msg.tag.kind === "groupChanged";
+      return [{ ...model, group }, moved ? [...effects, loadGroups] : effects];
+    }
+    // A drop changes its group's count wherever the user is by the time it
+    // answers. Its notice goes to the group's page or one of its threads,
+    // whichever is on screen: a group page's model stays after leaving it.
+    case "dropped": {
+      if (model.route.page === "group" && model.group !== null) {
+        const [group, effects] = groupReplied(model.group, msg);
+        return [{ ...model, group }, [...effects, loadGroups]];
+      }
+      if (model.route.page !== "thread" || model.thread === null) return [model, [loadGroups]];
+      const [thread, effects] = threadReplied(model.thread, msg);
+      return [{ ...model, thread }, [...effects, loadGroups]];
     }
     case "reviewOpened":
     case "reviewDecided": {
