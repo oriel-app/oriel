@@ -6,7 +6,7 @@ import { carries, type Dropped, readDrop } from "./drop.ts";
 import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
-import type { ItemRef, ItemRow, ThreadStateId } from "./view.ts";
+import type { ItemRef, ItemRow, ThreadStateId, WaitingOn } from "./view.ts";
 
 export type Dispatch = (msg: Msg) => void;
 
@@ -227,10 +227,19 @@ export const stateNames: Record<ThreadStateId, string> = {
   dropped: "Dropped",
 };
 
-export function StateChip({ state }: { state: ThreadStateId }) {
+// A working thread reads as what it waits on, so one whose agent has finished
+// doesn't look busy.
+export const waitingNames: Record<WaitingOn, string> = {
+  agent: "Agent working",
+  review: "Needs review",
+  reply: "Your turn",
+};
+
+export function StateChip(props: { state: ThreadStateId; waitingOn: WaitingOn | null }) {
+  const { state, waitingOn } = props;
   return (
-    <span class="state-chip" data-state={state}>
-      {stateNames[state]}
+    <span class="state-chip" data-state={state} data-waiting={waitingOn ?? undefined}>
+      {waitingOn ? waitingNames[waitingOn] : stateNames[state]}
     </span>
   );
 }

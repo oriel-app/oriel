@@ -209,8 +209,8 @@ test("a thread answers a question: text, a run's transcript, then done", async (
   assert.deepEqual(names(app).slice(-2), ["thread.opened", "question.asked"]);
   const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
   assert.deepEqual(
-    inbox.threads.map((s) => [s.id, s.state, s.group.id]),
-    [[app.threadId, "working", app.groupId]],
+    inbox.threads.map((s) => [s.id, s.state, s.group.id, s.waitingOn]),
+    [[app.threadId, "working", app.groupId, "reply"]],
   );
 });
 
@@ -272,8 +272,16 @@ async function proposed(t: TestContext) {
   return { ...app, changeSetId: id, diff };
 }
 
+// What the inbox and the group's page say the thread waits on.
+async function waits(app: Awaited<ReturnType<typeof proposed>>) {
+  const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
+  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
+  return [...inbox.threads, ...group.threads].map((s) => s.waitingOn);
+}
+
 test("a captured change set shows as a diff; read-only, approving says writing isn't configured", async (t) => {
   const app = await proposed(t);
+  assert.deepEqual(await waits(app), ["review", "review"]);
   const view = await app.view();
   assert.equal(view.writable, false);
   assert.deepEqual(
@@ -291,6 +299,8 @@ test("a captured change set shows as a diff; read-only, approving says writing i
   const reject = await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash: diff.hash });
   assert.equal(json<{ changeSet: ChangeSetView }>(reject).changeSet.status, "rejected");
   assert.ok(names(app).includes("changeset.decided"));
+  // Rejected, it waits on nothing; the thread waits on the user's next message.
+  assert.deepEqual(await waits(app), ["reply", "reply"]);
 });
 
 test("a line can be removed from a change set, which needs a fresh diff to decide", async (t) => {
@@ -471,6 +481,11 @@ test("one turn at a time per thread, and stopping one is explicit", async (t) =>
     );
     const busy = await app.post(`/api/threads/${id}/messages`, { text: "Second" });
     assert.equal(busy.status, 409);
+    const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
+    assert.deepEqual(
+      inbox.threads.map((s) => s.waitingOn),
+      ["agent"],
+    );
     assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: true });
     await app.app.settled();
     const view = json<ThreadView>(await app.get(`/api/threads/${id}`));

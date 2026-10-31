@@ -31,6 +31,7 @@ import type {
   ThreadSummaryView,
   ThreadView,
 } from "@oriel/web/view";
+import { waitingOn } from "@oriel/web/view";
 import { agentEvent, type AgentEvent } from "./agent.ts";
 
 export type ViewDeps = {
@@ -43,6 +44,7 @@ export type ViewDeps = {
   asOf: () => Instant;
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
+  changeSetsOf: (threadId: Ulid) => Promise<readonly ChangeSet[]>;
   writable: boolean;
 };
 
@@ -244,12 +246,21 @@ export function views(deps: ViewDeps) {
     return text.length > maxTitleChars ? `${text.slice(0, maxTitleChars - 1)}…` : text;
   };
 
-  const threadSummary = ({ thread, activityAt }: ThreadSummary): ThreadSummaryView => ({
+  const threadSummary = async ({
+    thread,
+    activityAt,
+  }: ThreadSummary): Promise<ThreadSummaryView> => ({
     id: thread.id,
     title: title(thread.id),
     group: { id: thread.groupId, name: groups.get(thread.groupId)?.name ?? "" },
     state: thread.state,
     doneBy: thread.doneBy,
+    waitingOn: waitingOn({
+      state: thread.state,
+      running: deps.running(thread.id),
+      changeSets:
+        thread.state === "working" ? (await deps.changeSetsOf(thread.id)).map(changeSetStatus) : [],
+    }),
     activityAt,
   });
 
@@ -334,19 +345,19 @@ export function views(deps: ViewDeps) {
       return groups.list(workspaceId).map((group) => groupSummary(group.id));
     },
 
-    group(id: Ulid): GroupView | null {
+    async group(id: Ulid): Promise<GroupView | null> {
       const group = groups.get(id);
       if (!group) return null;
       return {
         group: groupSummary(id),
         members: members(groups.region(id, group.version)?.items ?? []),
         changes: changeView(id, 0, group.version).toReversed(),
-        threads: threads.ofGroup(id, deps.now()).map(threadSummary),
+        threads: await Promise.all(threads.ofGroup(id, deps.now()).map(threadSummary)),
       };
     },
 
-    inbox(workspaceId: Ulid): ThreadSummaryView[] {
-      return threads.list(workspaceId, deps.now()).map(threadSummary);
+    inbox(workspaceId: Ulid): Promise<ThreadSummaryView[]> {
+      return Promise.all(threads.list(workspaceId, deps.now()).map(threadSummary));
     },
 
     entry(message: Message, threadId: Ulid): ChatEntry | null {

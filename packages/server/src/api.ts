@@ -484,7 +484,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id"),
       async run([id = ""]) {
         mustGroup(id);
-        return json(200, views.group(id as Ulid));
+        return json(200, await views.group(id as Ulid));
       },
     },
     {
@@ -493,7 +493,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         addMembers(group.id, indexed((await readJson(request, listBody, itemsBody)).items));
-        return json(200, views.group(group.id));
+        return json(200, await views.group(group.id));
       },
     },
     {
@@ -519,7 +519,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           what,
           why: synced && syncMightHelp ? `${why} ${synced}` : why,
         }));
-        return json(200, { group: views.group(group.id), added, refused });
+        return json(200, { group: await views.group(group.id), added, refused });
       },
     },
     {
@@ -538,7 +538,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           return member;
         });
         if (groups.remove(group.id, members, { kind: "user" }, deps.now())) follow(group.id);
-        return json(200, views.group(group.id));
+        return json(200, await views.group(group.id));
       },
     },
     {
@@ -575,7 +575,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       method: "GET",
       path: at("/threads"),
-      run: async () => json(200, { threads: views.inbox(deps.workspaceId) }),
+      run: async () => json(200, { threads: await views.inbox(deps.workspaceId) }),
     },
     {
       method: "GET",

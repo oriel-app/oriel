@@ -458,7 +458,15 @@ button.nav-disclose:hover {
 
 .state-dot[data-state="working"] {
   background: var(--in-progress);
+}
+
+/* Only an agent mid-turn pulses; a change set to review stands out. */
+.state-dot[data-waiting="agent"] {
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.state-dot[data-waiting="review"] {
+  background: var(--accent);
 }
 
 .state-dot[data-state="done"] {
@@ -634,7 +642,7 @@ button.nav-disclose:hover {
     transition: none;
   }
 
-  .state-dot[data-state="working"] {
+  .state-dot[data-waiting="agent"] {
     animation: none;
   }
 }
@@ -751,6 +759,11 @@ button.nav-disclose:hover {
 .state-chip[data-state="working"] {
   background: var(--in-progress-soft);
   color: var(--in-progress-text);
+}
+
+.state-chip[data-waiting="review"] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .state-chip[data-state="done"] {
@@ -1472,6 +1485,11 @@ button.nav-disclose:hover {
 
 .thread-link:has(.thread-link-group) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto;
+}
+
+/* In the inbox, a working thread also says what it waits on. */
+.thread-link:has(.thread-link-group):has(.state-chip) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto auto;
 }
 
 .thread-link:hover {
@@ -2394,7 +2412,8 @@ button.nav-disclose:hover {
   }
 
   .thread-link,
-  .thread-link:has(.thread-link-group) {
+  .thread-link:has(.thread-link-group),
+  .thread-link:has(.thread-link-group):has(.state-chip) {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 

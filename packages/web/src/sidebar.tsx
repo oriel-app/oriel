@@ -5,7 +5,7 @@
 import { useLayoutEffect, useState } from "preact/hooks";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Nav, type NavGroup, nav } from "./nav.ts";
-import { Chevron, type Dispatch, Link, Mark, plural, stateNames } from "./parts.tsx";
+import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 
 // A group shows this many of its threads; the rest are on its page.
@@ -61,9 +61,9 @@ export function Sidebar(props: {
         >
           <InboxIcon />
           <span class="sidebar-label">Inbox</span>
-          {where.working > 0 && (
-            <span class="badge" title={`${where.working} working`}>
-              {where.working}
+          {where.needsYou > 0 && (
+            <span class="badge" title={`${plural(where.needsYou, "thread")} waiting on you`}>
+              {where.needsYou}
             </span>
           )}
         </Link>
@@ -126,7 +126,7 @@ function GroupEntry(props: {
   const { entry, dispatch } = props;
   const { group, threads } = entry;
   const open = props.open && threads.length > 0;
-  const working = threads.filter((thread) => thread.state === "working").length;
+  const busy = threads.filter((thread) => thread.waitingOn === "agent").length;
   const listId = `nav-threads-${group.id}`;
   return (
     <li class="nav-group" data-current={entry.current || undefined}>
@@ -154,7 +154,7 @@ function GroupEntry(props: {
           aria-current={entry.current && props.thread === null ? "page" : undefined}
         >
           <span class="nav-name">{group.name}</span>
-          {working > 0 && <span class="working-dot" title={plural(working, "working thread")} />}
+          {busy > 0 && <span class="working-dot" title={`${plural(busy, "agent")} working`} />}
           <span class="nav-count" title={plural(group.size, "item")}>
             {group.size}
           </span>
@@ -173,7 +173,10 @@ function GroupEntry(props: {
                 <span
                   class="state-dot"
                   data-state={thread.state}
-                  title={stateNames[thread.state]}
+                  data-waiting={thread.waitingOn ?? undefined}
+                  title={
+                    thread.waitingOn ? waitingNames[thread.waitingOn] : stateNames[thread.state]
+                  }
                 />
                 <span class="nav-name">{thread.title ?? "New thread"}</span>
               </Link>

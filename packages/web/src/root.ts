@@ -190,9 +190,12 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "streamed": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = streamed(model.thread, msg.event);
-      // A turn that ends may have moved the thread between inbox states.
-      const ended = msg.event.type === "status" && !msg.event.running;
-      return [{ ...model, thread }, ended ? [...effects, loadThreads, loadGroups] : effects];
+      // A turn that starts or ends, or a change set that moves, changes what
+      // the thread waits on; one that ends may move it between inbox states.
+      const { event } = msg;
+      if (event.type === "status" && !event.running)
+        return [{ ...model, thread }, [...effects, loadThreads, loadGroups]];
+      return [{ ...model, thread }, event.type === "entry" ? effects : [...effects, loadThreads]];
     }
     case "replied":
       return replied(model, msg);
@@ -250,10 +253,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [review, effects] = reviewReplied(model.review, msg);
       return [{ ...model, review }, effects];
     }
+    // A decision on a change set changes what its thread waits on.
     default: {
       if (model.thread === null) return [model, []];
       const [thread, effects] = threadReplied(model.thread, msg);
-      return [{ ...model, thread }, effects];
+      return [
+        { ...model, thread },
+        msg.tag.kind === "changeSet" ? [...effects, loadThreads] : effects,
+      ];
     }
   }
 }

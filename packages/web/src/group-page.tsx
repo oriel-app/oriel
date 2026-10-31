@@ -167,7 +167,9 @@ export function Threads(props: {
           >
             <span class="thread-link-title">{thread.title ?? "New thread"}</span>
             {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
-            {!props.showGroup && <StateChip state={thread.state} />}
+            {(!props.showGroup || thread.waitingOn) && (
+              <StateChip state={thread.state} waitingOn={thread.waitingOn} />
+            )}
             <span class="thread-link-at">{when(thread.activityAt)}</span>
           </Link>
         </li>
