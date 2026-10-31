@@ -2,7 +2,7 @@
 // the user's groups with their threads under them, and the connected folder.
 // On a wide screen it folds to a strip of icons; on a narrow one it's a
 // drawer the menu opens.
-import { useEffect, useState } from "preact/hooks";
+import { useLayoutEffect, useState } from "preact/hooks";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Nav, type NavGroup, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames } from "./parts.tsx";
@@ -81,7 +81,8 @@ function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
   // the current one, and arriving at a group opens it whatever was set.
   const [set, setSet] = useState<ReadonlyMap<string, boolean>>(new Map());
   const current = where.groups?.find((entry) => entry.current)?.group.id ?? null;
-  useEffect(() => {
+  // Before paint, so an arrival never shows the group closed for a frame.
+  useLayoutEffect(() => {
     if (current === null) return;
     setSet((was) => {
       if (!was.has(current)) return was;

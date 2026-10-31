@@ -232,13 +232,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const moved = msg.tag.kind === "renamed" || msg.tag.kind === "groupChanged";
       return [{ ...model, group }, moved ? [...effects, loadGroups] : effects];
     }
-    // A drop lands on the group's page or one of its threads, whichever is open.
+    // A drop lands on the group's page or one of its threads, whichever is
+    // on screen: a group page's model stays after leaving it for a thread.
     case "dropped": {
-      if (model.group !== null) {
+      if (model.route.page === "group" && model.group !== null) {
         const [group, effects] = groupReplied(model.group, msg);
         return [{ ...model, group }, [...effects, loadGroups]];
       }
-      if (model.thread === null) return [model, []];
+      if (model.route.page !== "thread" || model.thread === null) return [model, []];
       const [thread, effects] = threadReplied(model.thread, msg);
       return [{ ...model, thread }, [...effects, loadGroups]];
     }

@@ -118,3 +118,24 @@ test("a turn that ends reloads the threads and the groups, whose dots and counts
   const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
   assert.ok(urls.includes("/api/threads") && urls.includes("/api/groups"));
 });
+
+test("a drop on a thread reaches the thread, even after a visit to its group's page", () => {
+  const thread = "01JBZ0000000000000000000T1";
+  const onGroup = init({ page: "group", id: groupA })[0];
+  const [entered] = update(onGroup, { type: "routed", route: { page: "thread", id: thread } });
+  assert.notEqual(entered.group, null);
+  // The thread has loaded, in group A.
+  const loaded = { ...entered.thread, view: { group: { id: groupA } } } as Model["thread"];
+  const [, effects] = update(
+    { ...entered, thread: loaded },
+    {
+      type: "replied",
+      tag: { kind: "dropped", groupId: groupA },
+      ok: true,
+      body: { group: {}, added: ["jira:OA-5"], refused: [] },
+    },
+  );
+  const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
+  assert.ok(urls.includes(`/api/threads/${thread}`), "the thread reloads to show its marker");
+  assert.ok(urls.includes("/api/groups"));
+});

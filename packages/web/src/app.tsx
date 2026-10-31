@@ -22,6 +22,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   }, []);
   const [folded, setFolded] = useState(() => readFolded());
   const [drawer, setDrawer] = useState(false);
+  // Closing the drawer by hand gives focus back to the menu that opened it.
+  const closeDrawer = () => {
+    if (!document.querySelector(".shell[data-drawer]")) return;
+    setDrawer(false);
+    document.querySelector<HTMLElement>(".bar-menu")?.focus();
+  };
   const fold = () =>
     setFolded((was) => {
       writeFolded(!was);
@@ -36,7 +42,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         if (!document.getElementById("sidebar") || matchMedia(narrow).matches) return;
         event.preventDefault();
         fold();
-      } else if (event.key === "Escape") setDrawer(false);
+      } else if (event.key === "Escape") closeDrawer();
     };
     addEventListener("keydown", pressed);
     return () => removeEventListener("keydown", pressed);
@@ -57,7 +63,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         class="drawer-backdrop"
         tabIndex={-1}
         aria-hidden="true"
-        onClick={() => setDrawer(false)}
+        onClick={closeDrawer}
       />
       <div class="shell-main">
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
