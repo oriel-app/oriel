@@ -101,6 +101,9 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   const shown = model.window;
   const stale = shown.grouping !== model.grouping;
   const derived = shown.clusters.some(({ row }) => row.origin.kind === "derived");
+  // Headings make room for an anchor's checkbox once any cluster has one, so
+  // they line up.
+  const anchored = shown.clusters.some(({ row }) => row.anchor !== null);
   return (
     <>
       {failed}
@@ -114,6 +117,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         class={stale ? "clusters stale" : "clusters"}
         data-grouping={shown.grouping}
         data-picking={model.selected.length > 0 || model.addTo !== null ? "" : undefined}
+        data-anchored={anchored ? "" : undefined}
         inert={stale}
       >
         {shown.clusters.map((view) => (
@@ -142,9 +146,25 @@ function Cluster(props: {
   const { row, list } = view;
   const open = zoom === "list";
   const listId = `items-${row.key}`;
+  const { anchor } = row;
+  const picked = anchor !== null && props.selected.includes(anchor.id);
   return (
     <section class="cluster" data-zoom={zoom}>
-      <h2 class="cluster-head">
+      <h2 class={picked ? "cluster-head picked" : "cluster-head"}>
+        {/* The anchor (the epic) is an item too, picked here: the heading is
+            where it shows, at both zoom levels, so it never shows twice. */}
+        {anchor && (
+          <label class="pick anchor-pick" title={`Pick ${anchor.key} itself, not its items`}>
+            <input
+              type="checkbox"
+              checked={picked}
+              aria-label={`Pick ${anchor.title}`}
+              onChange={() =>
+                dispatch({ type: "window", msg: { type: "itemToggled", id: anchor.id } })
+              }
+            />
+          </label>
+        )}
         <button
           type="button"
           class="cluster-toggle"
@@ -157,7 +177,7 @@ function Cluster(props: {
           <Chevron />
           <span class="cluster-name">
             <span class="cluster-label">{row.label}</span>
-            {row.anchor && <span class="key">{row.anchor.key}</span>}
+            {anchor && <span class="key">{anchor.key}</span>}
           </span>
           <span class="cluster-details">
             <Origin origin={row.origin} />

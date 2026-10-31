@@ -1,7 +1,13 @@
 // The window: clusters under a grouping, at two zoom levels, and the items
 // the user picks to make or grow a group.
 import { type Effect, errorOf, post, type Replied } from "./http.ts";
-import { type GroupingId, isGroupingId, type GroupSummary, type WindowView } from "./view.ts";
+import {
+  type ClusterView,
+  type GroupingId,
+  isGroupingId,
+  type GroupSummary,
+  type WindowView,
+} from "./view.ts";
 
 export type { Effect } from "./http.ts";
 
@@ -149,16 +155,18 @@ export function zoomOf(model: Model, key: string): Zoom {
 }
 
 // A name for a group of hand-picked items: the cluster they all came from,
-// if they did, else how many there are.
+// if they did, else how many there are. A cluster's anchor (its epic) comes
+// from that cluster.
 export function pickedName(model: Model): string {
   const clusters = model.window?.clusters ?? [];
-  const home = clusters.find(({ list }) =>
-    model.selected.every((id) => list.some((item) => item.id === id)),
+  const rows = ({ row, list }: ClusterView) => (row.anchor ? [row.anchor, ...list] : list);
+  const home = clusters.find((cluster) =>
+    model.selected.every((id) => rows(cluster).some((item) => item.id === id)),
   );
   if (home && model.selected.length > 1) return home.row.label;
   if (model.selected.length === 1) {
     const id = model.selected[0];
-    const item = clusters.flatMap(({ list }) => list).find((row) => row.id === id);
+    const item = clusters.flatMap(rows).find((row) => row.id === id);
     if (item) return item.title.slice(0, 120);
   }
   return model.selected.length === 1 ? "1 item" : `${model.selected.length} items`;
