@@ -18,8 +18,9 @@ export type Titler = (
 
 export const titleModel = "claude-haiku-5-5";
 
-// Longer than this, the answer isn't a title: the model answered the message.
-export const maxTitleChars = 80;
+// Longer than this, the answer isn't a title, or won't fit on one line of
+// the inbox: the server's clipped title stays.
+export const maxTitleChars = 60;
 
 export const titlePrompt = `You title threads in Oriel, a workspace where a product or engineering manager asks an agent about their work: issues, documents, notes.
 

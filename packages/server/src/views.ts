@@ -64,16 +64,22 @@ export function clippedTitle(text: string): string | null {
     .map((l) => l.trim().replace(/\s+/g, " "))
     .find(Boolean);
   if (!line) return null;
-  const tidy = (title: string) => title.replace(/[.:;,]+$/, "");
-  const chars = [...line];
+  const tidy = (title: string) => title.replace(/[.:;,。]+$/u, "") || null;
+  // By what a reader sees as one character, so an emoji is never split.
+  const chars = [...graphemes.segment(line)].map((g) => g.segment);
   if (chars.length <= maxTitleChars) return tidy(line);
-  const sentences = /^.*[.?!](?=\s)/u.exec(chars.slice(0, maxTitleChars + 1).join(""))?.[0];
-  if (sentences && [...sentences].length >= maxTitleChars / 2) return tidy(sentences);
+  const sentences = /^.*(?:[.?!](?=\s)|[。？！])/u.exec(
+    chars.slice(0, maxTitleChars + 1).join(""),
+  )?.[0];
+  if (sentences && [...graphemes.segment(sentences)].length >= maxTitleChars / 2)
+    return tidy(sentences);
   const head = chars.slice(0, maxTitleChars - 1).join("");
   const space = head.lastIndexOf(" ");
-  const words = space > 0 ? head.slice(0, space) : head;
-  return `${words.replace(/[\s.,;:\-–—]+$/u, "")}…`;
+  const words = (space > 0 ? head.slice(0, space) : head).replace(/[\s.,;:\-–—]+$/u, "");
+  return words ? `${words}…` : null;
 }
+
+const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 // Only an http(s) location becomes a link.
 export function webUrl(location: string): string | null {

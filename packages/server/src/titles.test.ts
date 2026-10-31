@@ -30,6 +30,19 @@ test("a title is the first line, or the sentences that fit, or words up to an el
     "I'm meeting the payments team tomorrow morning and want to…",
   );
   assert.equal(clippedTitle("\n \n"), null);
+  // Punctuation alone is no title.
+  assert.equal(clippedTitle("..."), null);
+  assert.equal(clippedTitle(".".repeat(80)), null);
+  // A family or a flag is one character, never split.
+  const family = "👨‍👩‍👧".repeat(70);
+  assert.equal(clippedTitle(family), `${"👨‍👩‍👧".repeat(59)}…`);
+  // Sentences end at full-width marks too.
+  const asked =
+    "チェックアウトのエピックで見積もりがまだないストーリーと担当者がいないストーリーはどれですか？";
+  assert.equal(
+    clippedTitle(`${asked}${"一覧にしてください。".repeat(4)}`),
+    `${asked}一覧にしてください`,
+  );
   // One long word is cut whole, by character, never inside an emoji.
   const word = "🙂".repeat(70);
   assert.equal(clippedTitle(word), `${"🙂".repeat(59)}…`);
