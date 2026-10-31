@@ -38,8 +38,10 @@ export type OpSpec = OpCatalogue[string] & {
   // The item IDs among its arguments, which must be in the run's region.
   refs(args: unknown): string[];
   // The arguments that may instead name an item an earlier create in the
-  // same change set makes, by its NewRef; apply sends that item's ID.
-  newRefArgs: readonly string[];
+  // same change set makes, by its NewRef, each with the op that create must
+  // be; apply sends that item's ID. A diff shows each as the field of the
+  // same name.
+  newRefArgs: Readonly<Record<string, string>>;
   // The fields a diff shows, with the values this op sets. Keys are field
   // names as the source's reader and writer report them.
   after(args: unknown): FieldValues;
@@ -73,7 +75,7 @@ export function op<T>(
     creates?: boolean;
     idempotent?: boolean;
     refs?(args: T): string[];
-    newRefArgs?: readonly string[];
+    newRefArgs?: Readonly<Record<string, string>>;
     after(args: T): FieldValues;
     describe(args: T, context: LineContext): Promise<string> | string;
     undo(args: T, applied: WriteResult): Undo;
@@ -90,7 +92,7 @@ export function op<T>(
     idempotent: spec.idempotent ?? false,
     revertOnly: entry.revertOnly,
     refs: (args) => spec.refs?.(parse(args)) ?? [],
-    newRefArgs: spec.newRefArgs ?? [],
+    newRefArgs: spec.newRefArgs ?? {},
     after: (args) => spec.after(parse(args)),
     describe: async (args, context) => spec.describe(parse(args), context),
     undo: (args, applied) => spec.undo(parse(args), applied),

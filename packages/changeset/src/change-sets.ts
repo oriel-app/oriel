@@ -250,7 +250,8 @@ function mustSpec(
 // set names. Returns the validated arguments, which are what gets stored and
 // replayed.
 function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
-  const named = new Set<NewRef>();
+  // Each new item's ref, with the op that creates it.
+  const named = new Map<NewRef, string>();
   return drafts.map((m, i) => {
     const where = `mutation ${i + 1} (${m.op})`;
     if (m.target !== null && isNewRef(m.target) && !named.has(m.target))
@@ -270,22 +271,28 @@ function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
     const args = spec.args(m.args, "$.args");
     if (!args.ok) throw invalid(where, args.issues);
     // Apply sends the item a ref's create made, so a ref may stand only
-    // where the op takes one.
+    // where the op takes one, and name an item of the kind it takes there.
     const given = args.value as Record<string, unknown>;
-    const placed = spec.newRefArgs.map((name) => given[name]);
     for (const ref of spec.refs(args.value).filter(isNewRef)) {
-      if (!placed.includes(ref))
+      const arg = Object.keys(spec.newRefArgs).find((name) => given[name] === ref);
+      if (arg === undefined)
         throw new ChangeSetError("invalid", `${where}: ${m.op} can't name a new item there`);
-      if (!named.has(ref))
+      const maker = named.get(ref);
+      if (maker === undefined)
         throw new ChangeSetError(
           "invalid",
           `${where}: ${ref} isn't created by an earlier mutation`,
+        );
+      if (maker !== spec.newRefArgs[arg])
+        throw new ChangeSetError(
+          "refused",
+          `${where}: ${ref} is made by ${maker}, and its ${arg} takes one made by ${spec.newRefArgs[arg]}`,
         );
     }
     if (m.ref !== null) {
       if (named.has(m.ref))
         throw new ChangeSetError("invalid", `${where}: ${m.ref} is named twice`);
-      named.add(m.ref);
+      named.set(m.ref, m.op);
     }
     return {
       op: m.op,
@@ -595,7 +602,17 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         mutationId: m.id,
         sentence: await spec.describe(m.args, context(subject, before)),
         target: m.target,
-        fields: Object.keys(after).map((f) => ({ name: f, before: before[f], after: after[f] })),
+        fields: Object.keys(after).map((f) => {
+          const value = after[f];
+          const created =
+            Object.hasOwn(spec.newRefArgs, f) && typeof value === "string" && isNewRef(value);
+          return {
+            name: f,
+            before: before[f],
+            after: value,
+            ...(created ? { createdAbove: true as const } : {}),
+          };
+        }),
       });
       const carry = item ?? m.target ?? m.ref;
       if (carry !== null) state.set(carry, { ...values, ...after });
@@ -763,7 +780,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     set: ChangeSet,
   ): { args: Record<string, unknown> } | { failed: string } => {
     const args: Record<string, unknown> = { ...(m.args as Record<string, unknown>) };
-    for (const name of mustSpec(specs, m, set.mutations).spec.newRefArgs) {
+    for (const name of Object.keys(mustSpec(specs, m, set.mutations).spec.newRefArgs)) {
       const value = args[name];
       if (typeof value !== "string" || !isNewRef(value)) continue;
       const create = set.mutations.find((c) => c.ref === value && c.seq < m.seq);

@@ -7,7 +7,6 @@ import {
   type Diff,
   type GroupMember,
   type IndexRecord,
-  isNewRef,
   type Instant,
   type ItemId,
   type NextStep,
@@ -89,8 +88,6 @@ function display(
 ): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string" && field === "assignee") return person(value) ?? value;
-  // An item an earlier line of the same change set creates.
-  if (typeof value === "string" && isNewRef(value)) return "created above";
   if (typeof value === "string") return parseItemId(value) ? keyOf(value) : value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value === "object" && "title" in value && typeof value.title === "string")
@@ -448,7 +445,9 @@ export function views(deps: ViewDeps) {
             fields: line.fields.map((field) => ({
               name: field.name,
               before: display(field.name, field.before, person),
-              after: display(field.name, field.after, person),
+              after: field.createdAbove
+                ? "created above"
+                : display(field.name, field.after, person),
             })),
           };
         }),

@@ -97,14 +97,12 @@ test("a change set reaches only its region: targets and item IDs in arguments", 
     changeSets.capture(run, [story("new:1", "Gate change alerts", "jira:SYN-2")]),
     { code: "refused" },
   );
-  // An item the change set creates is its own: an argument may name it once
-  // an earlier mutation has, and never before.
   await assert.rejects(
     changeSets.capture(run, [
-      story("new:1", "Gate change sounds", "new:2"),
-      story("new:2", "Gate change alerts", "jira:SYN-1"),
+      story("new:1", "Gate change alerts", "jira:SYN-1"),
+      story("new:2", "Gate change sounds", "new:1"),
     ]),
-    { code: "invalid" },
+    { code: "refused" },
   );
   assert.equal(count(db, "change_sets"), 0);
 
@@ -833,12 +831,33 @@ test("a story can go in an epic the same change set creates, and is reverted bef
       "Create a story “new:1” in the new epic “Kiosk wallets”.",
     ],
   );
+  // Only the epic is marked as an item made above, not a title that reads like one.
+  const fields = nth((await changeSets.diff(set.id)).lines, 2).fields;
+  assert.deepEqual(
+    fields.map((f) => [f.name, f.after, f.createdAbove ?? false]),
+    [
+      ["summary", "new:1", false],
+      ["epic", "new:1", true],
+    ],
+  );
   await approve(changeSets, set.id);
   assert.deepEqual((await changeSets.apply(set.id)).failed, []);
   assert.deepEqual(jira.created, ["SYN-900", "SYN-901", "SYN-902"]);
   assert.equal(jira.issue("SYN-901")?.epic, "jira:SYN-900");
   assert.equal(jira.issue("SYN-902")?.epic, "jira:SYN-900");
   assert.equal(jira.issue("SYN-902")?.summary, "new:1");
+  // A new epic must come first, and a new story can't hold another.
+  await assert.rejects(
+    changeSets.capture(run, [
+      story("new:1", "Gate change sounds", "new:2"),
+      { op: "createEpic", target: null, ref: "new:2", args: { summary: "Gate changes" } },
+    ]),
+    { code: "invalid" },
+  );
+  const edit = changeSets.edit(set.id, {
+    set: [{ mutationId: nth(set.mutations, 2).id, args: { summary: "x", epic: "new:2" } }],
+  });
+  await assert.rejects(edit, { code: "refused" });
   // What was approved is kept as it was captured.
   const stored = await changeSets.get(set.id);
   assert.deepEqual(nth(stored?.mutations ?? [], 1).args, {

@@ -106,7 +106,8 @@ export type Diff = {
     mutationId: Ulid;
     sentence: string;
     target: ItemId | NewRef | null;
-    fields: { name: string; before: unknown; after: unknown }[];
+    // `createdAbove`: the value names an item an earlier line creates.
+    fields: { name: string; before: unknown; after: unknown; createdAbove?: true }[];
   }[];
 };
 

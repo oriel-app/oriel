@@ -99,7 +99,7 @@ const ops: Record<JiraOp, OpSpec> = {
   createStory: op(jiraOps.createStory, {
     creates: true,
     refs: (a) => (a.epic === null ? [] : [a.epic]),
-    newRefArgs: ["epic"],
+    newRefArgs: { epic: "createEpic" },
     after: (a) => ({
       summary: a.summary,
       ...(a.description === undefined ? {} : { description: a.description }),
