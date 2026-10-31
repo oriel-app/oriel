@@ -25,7 +25,9 @@ import {
   type Validator,
 } from "@oriel/core";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import type { SlackFixture } from "@oriel/slack";
 import { diskDependent, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
@@ -72,7 +74,8 @@ const goldenPath = refine(
 
 // Each grader's expectation. `text` is quoted to the user as the content of
 // `item`, an item ID, or of `file`, a file from the folder fixture by its
-// path, and the reply names it: an item by its key, a file by its title.
+// path, and the reply names it: an item by its key, a file by its title, a
+// Slack message by its author's name.
 // `mentions` is text the reply contains, such as the name of a control in
 // Oriel. `claims` are a rubric for the judge, each one checkable on its own.
 const surfacedItem = object({
@@ -117,7 +120,7 @@ const expectation: Validator<Expectation> = (input, path = "$") => {
 };
 
 // The region holds a Jira fixture region's items, files from the folder
-// fixture, or both.
+// fixture, messages from the Slack fixture, or any mix of them.
 const evalCaseShape = object({
   id: caseId,
   split,
@@ -127,6 +130,16 @@ const evalCaseShape = object({
   // Paths from fixtures/folder/tree.json: a file before any edit, or the
   // name an edit renames one to.
   files: optional(atLeastOne(text)),
+  // Item IDs of messages in the Slack fixture's picked channel.
+  messages: optional(
+    atLeastOne(
+      refine(
+        string,
+        (id): id is ItemId<"slack"> => isItemId(id) && id.startsWith("slack:"),
+        "expected a Slack item ID like slack:C0123456789-1788444000.000100",
+      ),
+    ),
+  ),
   // How many of the Jira fixture's source edits are applied before the case
   // runs. Absent means none.
   edited: optional(whole),
@@ -154,12 +167,19 @@ export function parseEvalCase(input: unknown): Result<EvalCase> {
 
 function rules(evalCase: EvalCase): Issue[] {
   const found: Issue[] = [];
-  if (evalCase.region === undefined && evalCase.files === undefined)
+  if (
+    evalCase.region === undefined &&
+    evalCase.files === undefined &&
+    evalCase.messages === undefined
+  )
     found.push({ path: "$", message: "a case's region needs a fixture region, files, or both" });
-  const files = evalCase.files ?? [];
-  files.forEach((file, i) => {
-    if (files.indexOf(file) !== i) found.push({ path: `$.files[${i}]`, message: "listed twice" });
-  });
+  for (const key of ["files", "messages"] as const) {
+    const listed: readonly string[] = evalCase[key] ?? [];
+    listed.forEach((entry, i) => {
+      if (listed.indexOf(entry) !== i)
+        found.push({ path: `$.${key}[${i}]`, message: "listed twice" });
+    });
+  }
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
     found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
@@ -214,11 +234,13 @@ export type LoadedCase = {
 // Reads every `*.json` in `dir` as a case, in file-name order, resolving each
 // region against the fixtures and each golden diff against `root`. A missing
 // `dir` holds no cases. Without `folder`, a case that uses it is refused.
+// Messages are checked against `slack`, the repo's Slack fixture by default.
 export function loadCases(
   dir: URL,
   fixture: JiraFixture,
   root: URL,
   folder: FolderFixture | null = null,
+  slack: SlackFixture = loadSlackFixture(),
 ): { cases: LoadedCase[]; problems: string[] } {
   const cases: LoadedCase[] = [];
   const problems: string[] = [];
@@ -227,7 +249,7 @@ export function loadCases(
     .filter((name) => name.endsWith(".json"))
     .sort();
   for (const name of files) {
-    const found = loadCase(new URL(name, dir), name, fixture, root, folder);
+    const found = loadCase(new URL(name, dir), name, fixture, root, folder, slack);
     if ("problems" in found) problems.push(...found.problems.map((p) => `${name}: ${p}`));
     else cases.push(found);
   }
@@ -240,6 +262,7 @@ function loadCase(
   fixture: JiraFixture,
   root: URL,
   folder: FolderFixture | null,
+  slack: SlackFixture,
 ): LoadedCase | { problems: string[] } {
   const json = readJson(file);
   if (!json.ok) return { problems: [json.error] };
@@ -256,17 +279,42 @@ function loadCase(
   if ((evalCase.edited ?? 0) > fixture.edits.length)
     problems.push(`$.edited: the fixture has ${fixture.edits.length} source edits`);
   problems.push(...fileProblems(evalCase, folder));
+  const messages: readonly string[] = evalCase.messages ?? [];
+  const posted = new Set(slackMessages(slack));
+  messages.forEach((id, i) => {
+    if (!posted.has(id))
+      problems.push(`$.messages[${i}]: not a message in the Slack fixture's picked channel`);
+  });
   evalCase.expect.forEach((e, i) => {
     if (e.grader !== "surfaced") return;
-    if ("item" in e && region !== undefined && !region?.items.some((id) => id === e.item))
+    if ("file" in e) {
+      if (!evalCase.files?.includes(e.file))
+        problems.push(`$.expect[${i}].file: not one of the case's files`);
+      return;
+    }
+    if (e.item.startsWith("slack:")) {
+      if (!messages.includes(e.item))
+        problems.push(`$.expect[${i}].item: not one of the case's messages`);
+    } else if (region !== undefined && !region?.items.some((id) => id === e.item))
       problems.push(`$.expect[${i}].item: not in region ${region?.name ?? "(none)"}`);
-    if ("file" in e && !evalCase.files?.includes(e.file))
-      problems.push(`$.expect[${i}].file: not one of the case's files`);
   });
   const golden = loadGolden(evalCase, root);
   if ("problems" in golden) problems.push(...golden.problems);
   if (problems.length || region === undefined || "problems" in golden) return { problems };
   return { case: evalCase, region, golden: golden.mutations };
+}
+
+// The item IDs of the messages people posted in the Slack fixture's picked
+// channels: not replies, joins or the placeholder a deleted message leaves.
+export function slackMessages(slack: SlackFixture): string[] {
+  const posts = new Set([undefined, "bot_message", "file_share", "me_message"]);
+  return slack.channels
+    .filter((channel) => slack.picked.includes(channel.id))
+    .flatMap((channel) =>
+      channel.messages
+        .filter((m) => posts.has(m.subtype))
+        .map((m) => `slack:${channel.id}-${m.ts}`),
+    );
 }
 
 // A case's files are in the folder fixture, before its edits or under a name

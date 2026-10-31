@@ -7,7 +7,8 @@
 // in memory, each to its own, so one scene's writes don't show in another's
 // diffs; one is read-only, as Oriel is without credentials. Before any
 // screenshot they get groups and threads, with runs, change sets, a search
-// and a marker, through the same JSON routes the window uses.
+// and a marker, through the same JSON routes the window uses. One also reads
+// the Slack fixture's picked channel, read-only.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,6 +17,7 @@ import { chromium, type Page } from "playwright-core";
 import { instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
+import type { SlackMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
@@ -63,8 +65,9 @@ const planning = (input: TurnInput): Step[] => {
   return devPlan(input);
 };
 
-// A server that writes to its own SYN site in memory.
-const writing = async () => {
+// A server that writes to its own SYN site in memory, and reads Slack when
+// given it.
+const writing = async (slack?: SlackMode) => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
   const serving = await serve(0, {
     db: ":memory:",
@@ -77,6 +80,7 @@ const writing = async () => {
         fetch: site.fetch,
       },
     },
+    ...(slack ? { slack } : {}),
     agent: (deps) => scriptedAgent(deps, planning),
   });
   return { site, serving };
@@ -86,6 +90,7 @@ const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
 const readOnly = await serve(0);
+const chatty = (await writing({ kind: "fixture" })).serving;
 
 // A request as the window sends it.
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
@@ -239,6 +244,24 @@ const mixed = await post<{ id: string }>("/api/groups", {
 });
 const mixedThread = await ask("What's in here?", server, mixed.id);
 
+// Slack messages beside Jira items: the fare decision, with its replies, and
+// the SMS wording thread, in a group with the stories they're about.
+const fares = await post<{ id: string }>(
+  "/api/groups",
+  {
+    kind: "picked",
+    name: "Fares after cancellations",
+    items: [
+      "jira:SYN-45",
+      "jira:SYN-61",
+      "slack:C0FW1WEATHR-1788444000.000100",
+      "slack:C0FW1WEATHR-1788782400.000100",
+    ],
+  },
+  chatty,
+);
+const faresThread = await ask("What's in here?", chatty, fares.id);
+
 // A group of one item, and one with none left, for how the page counts them.
 const single = await post<{ id: string }>("/api/groups", {
   kind: "picked",
@@ -321,6 +344,31 @@ const scenes: Scene[] = [
     name: "group-mixed",
     path: `/groups/${mixed.id}`,
     act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "slack-window",
+    path: "/?grouping=epic",
+    on: chatty,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "No epics in this source" }).click();
+      await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+    },
+  },
+  {
+    name: "group-slack",
+    path: `/groups/${fares.id}`,
+    on: chatty,
+    act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "thread-slack",
+    path: `/threads/${faresThread}`,
+    on: chatty,
+    act: async (page) => {
+      await page.locator(".run summary").first().click();
+      await page.locator(".run[open] .output").first().waitFor();
+    },
   },
   {
     name: "group-one",
@@ -518,6 +566,7 @@ try {
   await inFlight.approving;
   await holding.serving.close();
   await readOnly.close();
+  await chatty.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 
