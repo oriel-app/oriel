@@ -158,31 +158,48 @@ async function threads(only?: string): Promise<void> {
 
 // Only a person approves a change set (decision 0003). Against a server that
 // writes to a real site, the driver won't press a control that approves,
-// applies or reverts one; the maintainer does, in the same window. On the
+// applies or reverts one, or submit a form that has one, and won't act on a
+// review link's page at all: the maintainer does, in the same window. On the
 // fixture, nothing real is written, so mock PMs may.
 const writes = /^(approve|apply|try again|revert)/i;
-async function refused(name: string): Promise<boolean> {
-  if (!writes.test(name.trim())) return false;
-  const window = await get<{ fixture: boolean }>("/api/window").catch(() => null);
-  if (window?.fixture) return false;
-  console.error(
-    `"${name.trim()}" writes to a real site, and only a person approves that. Ask the maintainer to press it.`,
-  );
+const live = async () =>
+  !(await get<{ fixture: boolean }>("/api/window?grouping=epic").catch(() => null))?.fixture;
+function refuse(why: string): true {
+  console.error(`${why} Only a person approves a change to a real site; ask the maintainer.`);
   process.exitCode = 3;
   return true;
+}
+async function refused(names: readonly string[]): Promise<boolean> {
+  const write = names.map((name) => name.trim()).find((name) => writes.test(name));
+  return write !== undefined && (await live()) && refuse(`"${write}" can write to a real site.`);
+}
+async function onReviewPage(path: string): Promise<boolean> {
+  return path.startsWith("/review/") && (await live()) && refuse("This is a review link's page.");
 }
 
 // An element's accessible name, near enough: its label, else its text. It
 // runs in the page; these are the two DOM members it uses.
 type Named = { getAttribute(name: string): string | null; textContent: string | null };
 const nameOf = (el: Named | null): string =>
-  el ? (el.getAttribute("aria-label") ?? el.textContent ?? "") : "";
+  el ? (el.getAttribute("aria-label") ?? (el.textContent || el.getAttribute("value")) ?? "") : "";
+// The focused element's name, and its form's submit buttons', which Enter presses.
+const focusedNames = `(() => {
+  const nameOf = ${nameOf.toString()};
+  const el = document.activeElement;
+  const submits = el?.form?.querySelectorAll("button:not([type]), button[type=submit], input[type=submit]") ?? [];
+  return [nameOf(el), ...Array.from(submits, nameOf)];
+})()`;
 
 const commands = ["open", "look", "click", "fill", "press", "wait", "shot", "threads", "close"];
 const [command = "look", ...args] = process.argv.slice(2);
+// What each command needs, checked before Chrome opens.
+const needs: Record<string, number> = { click: 1, fill: 2, press: 1, wait: 1 };
 // Output is left to drain: exiting at once could cut a long transcript.
 if (!commands.includes(command)) {
   console.error(`unknown command ${command}; see the comment at the top of scripts/drive.ts`);
+  process.exitCode = 2;
+} else if (args.length < (needs[command] ?? 0)) {
+  console.error(`${command} needs ${needs[command]} argument(s); see scripts/drive.ts`);
   process.exitCode = 2;
 } else if (command === "threads") await threads(args[0]);
 else if (command === "close") {
@@ -195,6 +212,9 @@ async function drive(): Promise<void> {
   const on = await browser();
   try {
     const tab = await page(on);
+    const going = command === "open" ? new URL(args[0] ?? "/", app) : URL.parse(tab.url());
+    if (command !== "look" && command !== "shot" && command !== "wait")
+      if (await onReviewPage(going?.pathname ?? "")) return;
     switch (command) {
       case "open":
         await tab.goto(args[0] ? new URL(args[0], app).href : app);
@@ -205,7 +225,7 @@ async function drive(): Promise<void> {
         break;
       case "click": {
         const target = tab.locator(need(args[0], "a selector")).first();
-        if (await refused(await target.evaluate(nameOf))) return;
+        if (await refused([await target.evaluate(nameOf)])) return;
         await target.click();
         await tab.waitForLoadState();
         await look(tab);
@@ -216,8 +236,8 @@ async function drive(): Promise<void> {
         await look(tab);
         break;
       case "press": {
-        const focused = await tab.evaluate(`(${nameOf.toString()})(document.activeElement)`);
-        if (await refused(String(focused))) return;
+        const focused: unknown = await tab.evaluate(focusedNames);
+        if (await refused(Array.isArray(focused) ? focused.map(String) : [])) return;
         await tab.keyboard.press(need(args[0], "a key"));
         await look(tab);
         break;
