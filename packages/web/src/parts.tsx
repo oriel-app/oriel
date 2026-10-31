@@ -1,8 +1,9 @@
 // Small pieces every page uses. Source text is always rendered as text;
 // nothing here sets HTML.
 import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { carries, type Dropped, readDrop } from "./drop.ts";
+import { type Inline, parse, type Prose } from "./markdown.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
 import type { ItemRef, ItemRow, ThreadStateId } from "./view.ts";
@@ -107,6 +108,99 @@ export function ItemKey({ item }: { item: ItemRef }) {
       {label}
     </a>
   );
+}
+
+// An agent's reply as formatted text. A heading starts at h3: the thread's
+// title and its sections hold h1 and h2. Read once per text: the page redraws
+// every reply as the latest one streams in.
+export function Markdown({ text }: { text: string }) {
+  const read = useMemo(() => parse(text), [text]);
+  return <>{read.map(block)}</>;
+}
+
+function block(prose: Prose, key: number) {
+  switch (prose.kind) {
+    case "paragraph":
+      return <p key={key}>{prose.children.map(span)}</p>;
+    case "heading": {
+      const Heading = `h${Math.min(prose.level + 2, 6)}` as "h3";
+      return <Heading key={key}>{prose.children.map(span)}</Heading>;
+    }
+    case "list": {
+      const items = prose.items.map((item, i) => (
+        <li key={i}>
+          {item.map((inner, j) =>
+            prose.tight && inner.kind === "paragraph" ? (
+              <span key={j}>{inner.children.map(span)}</span>
+            ) : (
+              block(inner, j)
+            ),
+          )}
+        </li>
+      ));
+      return prose.ordered ? (
+        <ol key={key} start={prose.start === 1 ? undefined : prose.start}>
+          {items}
+        </ol>
+      ) : (
+        <ul key={key}>{items}</ul>
+      );
+    }
+    case "quote":
+      return <blockquote key={key}>{prose.children.map(block)}</blockquote>;
+    case "code":
+      return (
+        <pre key={key}>
+          <code>{prose.text}</code>
+        </pre>
+      );
+    case "table":
+      return (
+        <div key={key} class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                {prose.head.map((cell, i) => (
+                  <th key={i}>{cell.map(span)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {prose.rows.map((row, i) => (
+                <tr key={i}>
+                  {prose.head.map((_, j) => (
+                    <td key={j}>{(row[j] ?? []).map(span)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    case "rule":
+      return <hr key={key} />;
+  }
+}
+
+function span(inline: Inline, key: number) {
+  switch (inline.kind) {
+    case "text":
+      return inline.text;
+    case "break":
+      return <br key={key} />;
+    case "code":
+      return <code key={key}>{inline.text}</code>;
+    case "strong":
+      return <strong key={key}>{inline.children.map(span)}</strong>;
+    case "em":
+      return <em key={key}>{inline.children.map(span)}</em>;
+    case "link":
+      return (
+        <a key={key} href={inline.href} target="_blank" rel="noopener noreferrer">
+          {inline.children.map(span)}
+        </a>
+      );
+  }
 }
 
 // What a person reads for an item's key. A file's key is a hash, which means

@@ -1319,8 +1319,103 @@ a {
 .reply {
   font-size: var(--text-lg);
   line-height: 1.55;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.reply > :first-child {
+  margin-top: 0;
+}
+
+.reply > :last-child {
+  margin-bottom: 0;
+}
+
+.reply :is(p, ul, ol, blockquote, pre, .table-scroll, hr) {
+  margin: 0 0 var(--space-3);
+}
+
+.reply :is(h3, h4, h5, h6) {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.reply h3 {
+  font-size: var(--text-xl);
+}
+
+.reply :is(ul, ol) {
+  padding-left: var(--space-6);
+}
+
+.reply li + li {
+  margin-top: var(--space-1);
+}
+
+.reply li > :is(ul, ol) {
+  margin: var(--space-1) 0 0;
+}
+
+.reply blockquote {
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--line-strong);
+  color: var(--text-muted);
+}
+
+.reply code {
+  padding: 0.1em 0.3em;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.reply pre {
+  padding: var(--space-3);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  font: var(--text-sm) / 1.5 var(--font-mono);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.reply pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.reply a {
+  color: var(--accent);
+}
+
+.reply hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.reply table {
+  border-collapse: collapse;
+  font-size: var(--text-md);
+  overflow-wrap: normal;
+}
+
+.reply :is(th, td) {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.reply th {
+  background: var(--surface-sunk);
+  font-weight: 600;
 }
 
 .marker {
