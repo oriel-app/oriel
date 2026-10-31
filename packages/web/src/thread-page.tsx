@@ -1,7 +1,16 @@
 // A thread: the chat in the middle, the region it works in on the right.
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
-import { type Dispatch, DropZone, ItemKey, Link, plural, StateChip, TypeMark } from "./parts.tsx";
+import {
+  type Dispatch,
+  DropZone,
+  ItemKey,
+  Link,
+  Markdown,
+  plural,
+  StateChip,
+  TypeMark,
+} from "./parts.tsx";
 import {
   type Block,
   blocks,
@@ -99,7 +108,11 @@ function ChatBlock(props: {
     case "user":
       return <li class="user-message">{block.text}</li>;
     case "reply":
-      return <li class="reply">{block.text}</li>;
+      return (
+        <li class="reply">
+          <Markdown text={block.text} linksTo={sites(props.view)} />
+        </li>
+      );
     case "marker":
       return (
         <li class="marker" role="note">
@@ -162,6 +175,10 @@ function ChatBlock(props: {
       );
   }
 }
+
+// Where the thread's items live: the only sites a reply's links open to.
+const sites = (view: ThreadView): ReadonlySet<string> =>
+  new Set(view.members.flatMap(({ ref }) => URL.parse(ref.url ?? "")?.origin ?? []));
 
 function refList(refs: readonly ItemRef[]) {
   return refs.map((ref, i) => (
