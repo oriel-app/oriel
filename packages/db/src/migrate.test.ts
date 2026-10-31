@@ -223,3 +223,51 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
   );
   assert.deepEqual(indexStore(db).source("w1" as Ulid, "jira"), { cursor: null, syncedAt: now });
 });
+
+test("groups made before names were attributed are the user's, unless the name is still Oriel's", () => {
+  const db = open(":memory:");
+  const migrations = loadMigrations();
+  const before = migrations.findIndex((m) => m.name === "user_named_groups");
+  assert.ok(before > 0);
+  migrate(db, migrations.slice(0, before), now);
+  const workspaceId = "01JBZ00000000000000000000W";
+  const cluster = (stableId: string) =>
+    JSON.stringify({
+      kind: "cluster",
+      grouping: "epic",
+      cluster: stableId,
+      anchor: { id: `jira:SYN-${stableId}`, stableId },
+    });
+  db.prepare("insert into workspaces (id, name, created_at) values (?, 'w', ?)").run(
+    workspaceId,
+    now,
+  );
+  const item = db.prepare(`
+    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at,
+      attrs, snapshot, gone_at)
+    values (?, 'jira', ?, ?, ?, 'https://example.com', ?, '{}', 1, ?)`);
+  item.run(workspaceId, "1", "jira:SYN-1", "Checkout", now, null);
+  item.run(workspaceId, "2", "jira:SYN-2", "Search, renamed", now, null);
+  item.run(workspaceId, "3", "jira:SYN-3", "Billing", now, now);
+  item.run(workspaceId, "4", "jira:SYN-4", "x".repeat(130), now, null);
+  const group = db.prepare(
+    "insert into groups (id, workspace_id, name, origin, created_at) values (?, ?, ?, ?, ?)",
+  );
+  group.run("still-epic", workspaceId, "Checkout", cluster("1"), now);
+  group.run("epic-renamed-or-user", workspaceId, "Search", cluster("2"), now);
+  group.run("epic-gone", workspaceId, "Billing", cluster("3"), now);
+  group.run("epic-long", workspaceId, "x".repeat(120), cluster("4"), now);
+  group.run("from-0002", workspaceId, "", cluster("2"), now);
+  group.run("untitled", workspaceId, "Untitled", cluster("1"), now);
+  group.run("thread-blank", workspaceId, "New group", '{"kind":"thread"}', now);
+  group.run("thread-named", workspaceId, "Launch", '{"kind":"thread"}', now);
+  group.run("picked", workspaceId, "2 items", '{"kind":"picked"}', now);
+  migrate(db, migrations, now);
+  assert.deepEqual(
+    db
+      .prepare("select group_id from user_named_groups order by group_id")
+      .all()
+      .map((row) => String(row.group_id)),
+    ["epic-renamed-or-user", "picked", "thread-named"],
+  );
+});

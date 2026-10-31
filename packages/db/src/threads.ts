@@ -202,6 +202,7 @@ export function threadStore(db: DatabaseSync) {
   const dropGroup = [
     "delete from group_members where group_id = ?",
     "delete from group_changes where group_id = ?",
+    "delete from user_named_groups where group_id = ?",
     "delete from groups where id = ?",
   ].map((sql) => db.prepare(sql));
 

@@ -154,20 +154,36 @@ export function zoomOf(model: Model, key: string): Zoom {
   return model.open[model.window.grouping].includes(key) ? "list" : "cluster";
 }
 
-// A name for a group of hand-picked items: the cluster they all came from,
-// if they did, else how many there are. A cluster's anchor (its epic) comes
-// from that cluster.
+// A name for a group of hand-picked items, from what they are: the epic
+// they all belong to, the one item's title, or the first one's and how many
+// more. Never another cluster's label: one like "No epic" or "Unestimated"
+// says what the items lack, not what the group is. A cluster's anchor (its
+// epic) comes from that cluster. Picked items no longer in the window are
+// named by how many there are.
 export function pickedName(model: Model): string {
+  const { selected } = model;
   const clusters = model.window?.clusters ?? [];
   const rows = ({ row, list }: ClusterView) => (row.anchor ? [row.anchor, ...list] : list);
-  const home = clusters.find((cluster) =>
-    model.selected.every((id) => rows(cluster).some((item) => item.id === id)),
+  const epic = clusters.find(
+    (cluster) =>
+      cluster.row.anchor !== null &&
+      selected.every((id) => rows(cluster).some((item) => item.id === id)),
   );
-  if (home && model.selected.length > 1) return home.row.label;
-  if (model.selected.length === 1) {
-    const id = model.selected[0];
-    const item = clusters.flatMap(rows).find((row) => row.id === id);
-    if (item) return item.title.slice(0, 120);
-  }
-  return model.selected.length === 1 ? "1 item" : `${model.selected.length} items`;
+  if (epic && selected.length > 1) return cut(epic.row.label, maxNameChars);
+  const first = clusters
+    .flatMap(rows)
+    .find((row) => row.id === selected[0] && row.title.trim() !== "");
+  if (first && selected.length === 1) return cut(first.title, maxNameChars);
+  const more = ` and ${selected.length - 1} more`;
+  if (first) return `${cut(first.title, maxNameChars - more.length)}${more}`;
+  return selected.length === 1 ? "1 item" : `${selected.length} items`;
 }
+
+// The server's cap on a group's name, in characters.
+const maxNameChars = 120;
+
+// At most `max` characters, the last an ellipsis when the text was cut.
+const cut = (text: string, max: number): string => {
+  const chars = [...text.trim()];
+  return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("")}…`;
+};

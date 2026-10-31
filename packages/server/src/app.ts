@@ -64,10 +64,11 @@ import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/vi
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { api, blankGroupName, type JiraDetails, maxNameChars } from "./api.ts";
+import { api, blankGroupName, type JiraDetails } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
+import { followAnchors, nameOf } from "./names.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
@@ -244,6 +245,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
 
+  const records = (): IndexRecord[] => [
+    ...index.records(workspaceId, "jira", jiraAttrs),
+    ...index.records(workspaceId, "folder", folderAttrs),
+  ];
+
   // One sync at a time, of any source, through the generic sync worker.
   let syncing: Promise<unknown> = Promise.resolve();
   const syncInto = <K extends SourceKind, A>(
@@ -256,7 +262,15 @@ export async function createApp(options: AppOptions): Promise<App> {
       .catch(() => {})
       .then(() =>
         syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
-      );
+      )
+      .then(() => {
+        // A group that can't follow its epic is no reason to call the sync failed.
+        try {
+          followAnchors(groups, workspaceId, records());
+        } catch (error) {
+          log("following epics failed", { error: String(error) });
+        }
+      });
     syncing = run;
     return run;
   };
@@ -316,10 +330,6 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   if (folder) await syncFolder();
 
-  const records = (): IndexRecord[] => [
-    ...index.records(workspaceId, "jira", jiraAttrs),
-    ...index.records(workspaceId, "folder", folderAttrs),
-  ];
   const folderView = (): FolderView | null =>
     folder && {
       path: folder.path,
@@ -465,9 +475,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // What a change set created joins its thread's group, so later turns can
   // work on it (decision 0018); the group's working threads follow. A group
   // made for a thread from nothing takes the name of the first epic created
-  // in it. A live index syncs, reading what the change set wrote by key, as
-  // Jira's search finds a write only a while after it: what landed shows at
-  // once, and what it deleted goes.
+  // in it, unless the user has named it. A live index syncs, reading what
+  // the change set wrote by key, as Jira's search finds a write only a while
+  // after it: what landed shows at once, and what it deleted goes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
@@ -478,10 +488,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
       const summary = (epic?.args as { summary?: unknown } | undefined)?.summary;
       const blank =
-        group?.name === blankGroupName &&
+        group?.origin.kind === "thread" &&
+        group.name === blankGroupName &&
         groups.region(group.id, group.version)?.items.length === 0;
       if (blank && typeof summary === "string")
-        groups.rename(thread.groupId, [...summary.trim()].slice(0, maxNameChars).join(""));
+        groups.rename(thread.groupId, nameOf(summary), "oriel");
       const at = now();
       const change = created.length
         ? groups.add(thread.groupId, created, { kind: "change-set", changeSetId: set.id }, at)

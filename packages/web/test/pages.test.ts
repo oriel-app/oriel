@@ -107,7 +107,7 @@ function windowView(): WindowView {
           key: "10001",
           label: "Checkout",
           origin: { kind: "source", source: "Jira" },
-          anchor: null,
+          anchor: { ...row("SYN-1"), title: "Checkout", type: "Epic" },
           count: 2,
           points: 0,
           estimated: 0,
@@ -203,6 +203,47 @@ test("an epic is picked from its heading like any item, and names the group it s
       tag: { kind: "createGroup" },
     },
   ]);
+});
+
+// The window as a source with no epics shows it: its items in a derived
+// cluster that says what they lack.
+function noEpicsWindow(titles: string[]): WindowView {
+  const window = windowView();
+  const [epic] = window.clusters;
+  const [story] = epic?.list ?? [];
+  if (!epic || !story) throw new Error("no cluster");
+  const list = titles.map((title, i) => ({
+    ...story,
+    id: `folder:notes-${i + 1}`,
+    key: `notes-${i + 1}`,
+    title,
+    type: "Document",
+  }));
+  const derived = {
+    ...epic.row,
+    key: "no-epics-in-source",
+    label: "No epics in this source",
+    origin: { kind: "derived" as const, rule: "Items from sources that have no epics" },
+    anchor: null,
+    count: list.length,
+  };
+  return { ...window, clusters: [...window.clusters, { row: derived, list }] };
+}
+
+test("a picked group is named from its items, never a cluster label that says what they lack", () => {
+  const [initial] = init("epic");
+  const window = noEpicsWindow(["Roadmap.md", "Notes from the offsite.md", "x".repeat(200)]);
+  const model = update(initial, { type: "windowLoaded", request: initial.request, window })[0];
+  const named = (...selected: string[]) => pickedName({ ...model, selected });
+  assert.equal(named("folder:notes-1", "folder:notes-2"), "Roadmap.md and 1 more");
+  assert.equal(named("folder:notes-2"), "Notes from the offsite.md");
+  // Items from an epic and from elsewhere aren't the epic's.
+  assert.equal(named("jira:SYN-10", "folder:notes-1", "folder:notes-2"), "Title SYN-10 and 2 more");
+  // Within the server's 120 characters, cut where it shows.
+  const long = named("folder:notes-3", "folder:notes-1");
+  assert.equal([...long].length, 120);
+  assert.match(long, /^x+… and 1 more$/);
+  assert.equal([...named("folder:notes-3")].length, 120);
 });
 
 test("a cluster becomes a group in one click; picked items can join an existing group", () => {

@@ -289,6 +289,11 @@ const emptied = await post<{ id: string }>("/api/groups", {
 });
 await post(`/api/groups/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 
+// Notes picked in the window and made a group, on a server of their own: each
+// pass of the scenes makes another group, which no other scene should show.
+const picking = (await writing()).serving;
+await post("/api/folder", { path: notes }, picking);
+
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
 }
@@ -585,6 +590,23 @@ const scenes: Scene[] = [
     },
   },
   {
+    // In the epic grouping a folder's files are in "No epics in this source";
+    // the group made of two of them is named from what they are.
+    name: "picked-notes-group",
+    path: "/?grouping=epic",
+    on: picking,
+    act: async (page) => {
+      await shown(page, "epic");
+      const notes = page.locator(".cluster", { hasText: "No epics in this source" });
+      await notes.locator(".cluster-toggle").click();
+      const boxes = notes.locator('.item input[type="checkbox"]');
+      await boxes.nth(0).check();
+      await boxes.nth(1).check();
+      await page.locator(".selection-bar").getByRole("button", { name: "New group" }).click();
+      await page.locator(".group-page .members").waitFor();
+    },
+  },
+  {
     name: "review-partial",
     path: new URL(partlyReviewed.url).pathname,
     on: refusing.serving,
@@ -640,6 +662,7 @@ try {
   await readOnly.close();
   await connecting.close();
   await empty.close();
+  await picking.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 
