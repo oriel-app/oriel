@@ -5,10 +5,12 @@ import {
   type IndexRecord,
   type Instant,
   isInstant,
+  type ItemId,
   type Log,
   parseItemId,
   type Source,
   type SourceKind,
+  type SyncPage,
   type Ulid,
   type Validator,
 } from "@oriel/core";
@@ -24,6 +26,11 @@ export type SyncOptions<K extends SourceKind, A> = {
   // as gone. Otherwise the sync resumes from the stored cursor, and is a full
   // sweep anyway if there is none.
   full: boolean;
+  // Items to read one by one, with the stable IDs they were written with:
+  // what a change set just wrote, which a listing that lags its writes may
+  // not show yet, or may still show once deleted. One the source doesn't
+  // have is gone. Needs the source's `records`.
+  items?: readonly { id: ItemId<K>; stableId: string }[];
   // Read once when the sync starts and once when it finishes.
   clock: () => Instant;
   log: Log;
@@ -39,7 +46,9 @@ export type SyncReport = {
 
 // Run one at a time per workspace (the index store's rule). If the source
 // throws partway, nothing is marked gone and the error propagates; the next
-// sync reclaims the pages already applied.
+// sync reclaims the pages already applied. Items are read before the listing
+// starts, so a failed read applies nothing, and land after it, so what was
+// read by itself wins over a listing that lags.
 export async function syncSource<K extends SourceKind, A>(
   options: SyncOptions<K, A>,
 ): Promise<SyncReport> {
@@ -47,6 +56,10 @@ export async function syncSource<K extends SourceKind, A>(
   const stored = index.source(workspaceId, source.kind)?.cursor ?? null;
   const cursor = options.full ? null : stored;
   const full = cursor === null;
+  const items = options.items ?? [];
+  if (items.length && !source.records)
+    throw new Error(`sync: the ${source.kind} source can't read items one by one`);
+  const read = items.length && source.records ? await source.records(items.map((i) => i.id)) : [];
   const run = index.beginSync(workspaceId, source.kind, attrs, options.clock());
   // Every stable ID the source returned, skipped ones included: a record that
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
@@ -55,7 +68,7 @@ export async function syncSource<K extends SourceKind, A>(
   let records = 0;
   let skipped = 0;
   let gone = 0;
-  for await (const page of source.sync(cursor)) {
+  const keep = (page: SyncPage<K, A>) => {
     const valid = page.records.filter((record) => {
       if (record.stableId) seen.add(record.stableId);
       const problem = check(source.kind, attrs, record);
@@ -71,8 +84,18 @@ export async function syncSource<K extends SourceKind, A>(
     run.apply({ records: valid, gone: page.gone, cursor: page.cursor });
     records += valid.length;
     gone += page.gone.length;
+  };
+  for await (const page of source.sync(cursor)) {
+    keep(page);
     last = page.cursor ?? last;
   }
+  // The cursor stays the listing's: these reads say nothing of what else changed.
+  if (items.length)
+    keep({
+      records: read.filter((record) => record !== null),
+      gone: items.flatMap((item, i) => (read[i] ? [] : [item.stableId])),
+      cursor: null,
+    });
   if (full) {
     const missing = index.liveStableIds(workspaceId, source.kind).filter((id) => !seen.has(id));
     if (missing.length) run.apply({ records: [], gone: missing, cursor: last });

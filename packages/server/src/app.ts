@@ -171,14 +171,18 @@ export async function createApp(options: AppOptions): Promise<App> {
     from: Source<K, A>,
     attrs: Validator<A>,
     full: boolean,
+    items: readonly { id: ItemId<K>; stableId: string }[] = [],
   ): Promise<unknown> => {
     const run = syncing
       .catch(() => {})
-      .then(() => syncSource({ source: from, attrs, index, workspaceId, full, clock: now, log }));
+      .then(() =>
+        syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
+      );
     syncing = run;
     return run;
   };
-  const sync = (full: boolean) => syncInto(source, jiraAttrs, full);
+  const sync = (full: boolean, items: readonly { id: ItemId<"jira">; stableId: string }[] = []) =>
+    syncInto(source, jiraAttrs, full, items);
   // The first sync of a source into this workspace connects it.
   const connected = (kind: SourceKind) => {
     emit({ name: "source.connected", at: now(), workspaceId, source: kind });
@@ -352,7 +356,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // What a change set created joins its thread's group, so later turns can
   // work on it (decision 0018); the group's working threads follow. A group
   // made for a thread from nothing takes the name of the first epic created
-  // in it. A live index syncs, so the window shows what landed.
+  // in it. A live index syncs, and reads each item the change set wrote by
+  // itself, as Jira's search finds a write only a while after it: what
+  // landed shows at once, and what it deleted goes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
@@ -382,8 +388,16 @@ export async function createApp(options: AppOptions): Promise<App> {
         });
       if (change) conversation.moved(threads.follow(thread.groupId, at, newId));
     }
-    if (mode.kind === "live")
-      await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
+    if (mode.kind !== "live") return;
+    const written = set.mutations
+      .flatMap((m) => (m.applied ? [m.applied.item] : []))
+      .filter(
+        (item): item is typeof item & { id: ItemId<"jira"> } =>
+          parseItemId(item.id)?.source === "jira",
+      );
+    await sync(false, written).catch((error: unknown) =>
+      log("sync failed", { error: String(error) }),
+    );
   };
 
   const window = (grouping: GroupingId) =>
