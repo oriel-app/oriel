@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Instant, instant, type Log, type Source, type SyncPage, ulid } from "@oriel/core";
+import {
+  type IndexRecord,
+  type Instant,
+  instant,
+  type Log,
+  type Source,
+  type SyncPage,
+  ulid,
+} from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs } from "./attrs.ts";
@@ -162,4 +170,137 @@ test("a source that fails partway marks nothing gone, and the next sync reclaims
   const report = await sync(fixtureSource(fixture, { site, edited: allEdits }), true);
   assert.equal(report.version, 2);
   assert.ok(!index.liveStableIds(workspaceId, "jira").includes(deletedId));
+});
+
+// A record the fixture doesn't have, as a change set might create it, updated
+// after everything else.
+const created = (() => {
+  const base = fixtureSnapshot(fixture, site, 0).records.find((r) => r.facets.kind === "story");
+  assert.ok(base);
+  return {
+    ...structuredClone(base),
+    id: "jira:SYN-900" as const,
+    stableId: "20900",
+    title: "Tap to pay",
+    location: `${site}/browse/SYN-900`,
+    updatedAt: instant(new Date(Date.UTC(2026, 9, 30, 9))),
+  };
+})();
+
+// The fixture's listing, as Jira's search answers before it catches up with
+// a write; reading by key answers from `byKey`.
+function lagging(edited: number, byKey: Map<string, IndexRecord<"jira", unknown>>) {
+  const { source, cursors } = wrapped(edited, (page) => page);
+  const asked: string[][] = [];
+  const records: Source<"jira", unknown>["records"] = async (ids) => {
+    asked.push([...ids]);
+    return {
+      records: ids.flatMap((id) => byKey.get(id) ?? []),
+      gone: ids.filter((id) => !byKey.has(id)),
+    };
+  };
+  return { source: { ...source, records }, cursors, asked };
+}
+
+test("items read one by one land over a listing that lags: a new one shows, a deleted one goes", async () => {
+  const { sync, live, index, workspaceId } = fresh();
+  await sync(fixtureSource(fixture, { site, edited: 0 }));
+  const cursor = index.source(workspaceId, "jira")?.cursor;
+  // The listing still has this one, which a change set has just deleted.
+  const removed = live().find((r) => r.facets.kind === "story");
+  assert.ok(removed);
+  const { source, asked } = lagging(0, new Map([[created.id, created]]));
+  const report = await syncSource({
+    source,
+    attrs: jiraAttrs,
+    index,
+    workspaceId,
+    full: false,
+    items: [
+      { id: created.id, stableId: created.stableId },
+      { id: removed.id, stableId: removed.stableId },
+    ],
+    clock: () => t1,
+    log: () => {},
+  });
+  assert.deepEqual(asked, [[created.id, removed.id]]);
+  assert.deepEqual([report.version, report.gone], [2, 1]);
+  assert.deepEqual(
+    live().find((r) => r.id === created.id),
+    created,
+  );
+  assert.ok(!live().some((r) => r.id === removed.id));
+  // The cursor stays where the listing left it, not at the newer item read by key.
+  assert.equal(index.source(workspaceId, "jira")?.cursor, cursor);
+});
+
+test("a full sweep keeps an item read by itself that the listing doesn't have yet", async () => {
+  const { index, workspaceId, live } = fresh();
+  const { source } = lagging(0, new Map([[created.id, created]]));
+  const report = await syncSource({
+    source,
+    attrs: jiraAttrs,
+    index,
+    workspaceId,
+    full: true,
+    items: [{ id: created.id, stableId: created.stableId }],
+    clock: () => t1,
+    log: () => {},
+  });
+  assert.equal(report.gone, 0);
+  assert.equal(live().length, fixtureSnapshot(fixture, site, 0).records.length + 1);
+});
+
+test("items are read before the listing, so a failed read applies nothing", async () => {
+  const { index, workspaceId } = fresh();
+  const { source, cursors } = wrapped(0, (page) => page);
+  const options = {
+    attrs: jiraAttrs,
+    index,
+    workspaceId,
+    full: true,
+    items: [{ id: created.id, stableId: created.stableId }],
+    clock: () => t1,
+    log: () => {},
+  };
+  const failing: Source<"jira", unknown> = {
+    ...source,
+    records: async () => {
+      throw new Error("Jira went away");
+    },
+  };
+  await assert.rejects(syncSource({ ...options, source: failing }), /went away/);
+  // A source that can't read items one by one says so, rather than leaving them out.
+  await assert.rejects(syncSource({ ...options, source }), /can't read items one by one/);
+  assert.deepEqual(cursors, []);
+  assert.equal(index.snapshot(workspaceId), 0);
+});
+
+test("a read the listing has overtaken is left out, and an item already gone isn't counted again", async () => {
+  const { sync, live, index, workspaceId } = fresh();
+  await sync(fixtureSource(fixture, { site, edited: 0 }));
+  const listed = fixtureSnapshot(fixture, site, 0).records.find((r) => r.facets.kind === "story");
+  assert.ok(listed);
+  // Read before a teammate's edit that the listing then returned.
+  const older = {
+    ...listed,
+    title: "Before the edit",
+    updatedAt: instant(new Date(Date.parse(listed.updatedAt) - 60_000)),
+  };
+  const { source } = lagging(0, new Map([[listed.id, older]]));
+  const report = await syncSource({
+    source,
+    attrs: jiraAttrs,
+    index,
+    workspaceId,
+    full: true,
+    items: [
+      { id: listed.id, stableId: listed.stableId },
+      { id: "jira:SYN-901", stableId: "20901" },
+    ],
+    clock: () => t1,
+    log: () => {},
+  });
+  assert.equal(report.gone, 0);
+  assert.equal(live().find((r) => r.id === listed.id)?.title, listed.title);
 });

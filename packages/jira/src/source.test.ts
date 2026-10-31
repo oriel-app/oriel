@@ -406,3 +406,45 @@ test("project keys are checked before they reach JQL", () => {
   for (const projects of [[], ['SYN") OR project is not EMPTY OR ("'], ["syn"]])
     assert.throws(() => jiraSource({ transport, site, projects, log }), RangeError);
 });
+
+test("records reads each issue by key into the record a listing would make; a missing one is null", async () => {
+  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
+  const made = jiraIssue("SYN-900", {
+    summary: "Tap to pay",
+    parent: parent("SYN-1"),
+    updated: "2026-10-30T09:00:00.000+0000",
+    [pointsField]: 2,
+  });
+  const { transport, calls } = fakeJira({
+    ...discovery(),
+    [search]: pages([made]),
+    [`GET /rest/api/3/issue/SYN-900?fields=${fields}`]: ok(made),
+    [`GET /rest/api/3/issue/SYN-27?fields=${fields}`]: missing,
+    [`GET /rest/api/3/issue/SYN-28?fields=${fields}`]: { status: 403, body: { errorMessages: [] } },
+  });
+  const { log } = logged();
+  const source = jiraSource({ transport, site, projects: ["SYN"], log });
+  const listed = record(await listAll(source, null), "jira:SYN-900");
+  assert.ok(listed && source.records);
+  assert.deepEqual(await source.records(["jira:SYN-900", "jira:SYN-27", "jira:SYN-28"]), {
+    records: [listed],
+    gone: ["jira:SYN-27", "jira:SYN-28"],
+  });
+  // Only GETs: reading by key goes nowhere near the search.
+  assert.equal(searches(calls).length, 1);
+});
+
+test("records fails when Jira won't answer, and skips an issue it can't read, neither one gone", async () => {
+  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
+  const { transport } = fakeJira({
+    ...discovery(),
+    [`GET /rest/api/3/issue/SYN-1?fields=${fields}`]: { status: 401, body: "Unauthorized" },
+    [`GET /rest/api/3/issue/SYN-2?fields=${fields}`]: ok({ id: "10002", key: "SYN-2", fields: {} }),
+  });
+  const { lines, log } = logged();
+  const source = jiraSource({ transport, site, projects: ["SYN"], log });
+  assert.ok(source.records);
+  await assert.rejects(source.records(["jira:SYN-1"]), /401/);
+  assert.deepEqual(await source.records(["jira:SYN-2"]), { records: [], gone: [] });
+  assert.ok(lines.some((line) => line.message.includes("shape Oriel can't read")));
+});

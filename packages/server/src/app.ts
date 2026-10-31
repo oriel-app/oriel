@@ -123,6 +123,9 @@ export const limits: AgentLimits = {
 };
 
 const site = "https://oriel.atlassian.net";
+// How long Jira's search may take to find a write; it is usually seconds.
+const searchLagMs = 10 * 60 * 1000;
+const isJira = (id: string): id is ItemId<"jira"> => parseItemId(id)?.source === "jira";
 
 export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => instant(new Date()));
@@ -171,14 +174,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     from: Source<K, A>,
     attrs: Validator<A>,
     full: boolean,
+    items: readonly { id: ItemId<K>; stableId: string }[] = [],
   ): Promise<unknown> => {
     const run = syncing
       .catch(() => {})
-      .then(() => syncSource({ source: from, attrs, index, workspaceId, full, clock: now, log }));
+      .then(() =>
+        syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
+      );
     syncing = run;
     return run;
   };
-  const sync = (full: boolean) => syncInto(source, jiraAttrs, full);
+  // What applies wrote lately, by stable ID, read by key on every sync until
+  // Jira's search has surely caught up: until then it may list an item as it
+  // was before the write, or list one a revert deleted, and a listed record
+  // comes back to life in the index.
+  const written = new Map<string, { id: ItemId<"jira">; stableId: string; at: Instant }>();
+  const sync = (full: boolean) => {
+    const since = Date.parse(now()) - searchLagMs;
+    for (const [stableId, { at }] of written) if (Date.parse(at) < since) written.delete(stableId);
+    return syncInto(source, jiraAttrs, full, [...written.values()]);
+  };
   // The first sync of a source into this workspace connects it.
   const connected = (kind: SourceKind) => {
     emit({ name: "source.connected", at: now(), workspaceId, source: kind });
@@ -263,7 +278,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Reads go to each item's own source; search to the index (the escape hatch).
   const reader: Reader = {
     async read(ids) {
-      const jira = ids.filter((id): id is ItemId<"jira"> => parseItemId(id)?.source === "jira");
+      const jira = ids.filter(isJira);
       const files = ids.filter(
         (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
       );
@@ -352,7 +367,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // What a change set created joins its thread's group, so later turns can
   // work on it (decision 0018); the group's working threads follow. A group
   // made for a thread from nothing takes the name of the first epic created
-  // in it. A live index syncs, so the window shows what landed.
+  // in it. A live index syncs, reading what the change set wrote by key, as
+  // Jira's search finds a write only a while after it: what landed shows at
+  // once, and what it deleted goes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
@@ -382,8 +399,15 @@ export async function createApp(options: AppOptions): Promise<App> {
         });
       if (change) conversation.moved(threads.follow(thread.groupId, at, newId));
     }
-    if (mode.kind === "live")
-      await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
+    if (mode.kind !== "live") return;
+    for (const { applied: write } of set.mutations)
+      if (write && isJira(write.item.id))
+        written.set(write.item.stableId, {
+          id: write.item.id,
+          stableId: write.item.stableId,
+          at: write.at,
+        });
+    await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
   };
 
   const window = (grouping: GroupingId) =>
