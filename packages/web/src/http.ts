@@ -14,6 +14,7 @@ export type Tag =
   | { kind: "groupChanged"; id: string }
   | { kind: "renamed"; id: string }
   | { kind: "threadOpened"; groupId: string }
+  | { kind: "threadStarted" }
   | { kind: "thread"; id: string }
   | { kind: "sent"; threadId: string }
   | { kind: "threadAction"; threadId: string }

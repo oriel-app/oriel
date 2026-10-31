@@ -53,6 +53,8 @@ export type Model = {
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
   threads: ThreadSummaryView[] | null;
+  // A thread from nothing is being started, on a new group.
+  starting: boolean;
 };
 
 export type Msg =
@@ -71,6 +73,8 @@ export type Msg =
   // Some thread's turn started or ended, a change set of one moved, or one
   // was marked done.
   | { type: "threadsMoved" }
+  // "New thread" in the sidebar: a thread from nothing, on a new group.
+  | { type: "newThreadClicked" }
   | Replied;
 
 // What the sidebar shows, loaded on entering any page. The groups load again
@@ -90,6 +94,7 @@ export function init(route: Route): [Model, Effect[]] {
     folder: initFolder(),
     groups: null,
     threads: null,
+    starting: false,
   };
   return enter(empty, route);
 }
@@ -208,6 +213,9 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     // What each thread waits on is in both lists: the groups count by state.
     case "threadsMoved":
       return [model, [loadThreads, loadGroups]];
+    case "newThreadClicked":
+      if (model.starting) return [model, []];
+      return [{ ...model, starting: true }, [post("/api/threads", {}, { kind: "threadStarted" })]];
     case "replied":
       return replied(model, msg);
   }
@@ -222,6 +230,13 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
+    // The new group shows in the sidebar once the thread's page loads it.
+    case "threadStarted": {
+      const started = { ...model, starting: false };
+      if (!msg.ok) return [started, []];
+      const { id } = msg.body as { id: string };
+      return [started, [{ type: "navigate", route: { page: "thread", id } }]];
+    }
     // Once the folder synced, the window shows its files.
     case "folder":
     case "folderConnected":

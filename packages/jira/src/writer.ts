@@ -238,7 +238,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const project = epic ? projectOf(epic.key) : options.project;
     const fields: Record<string, unknown> = {
       project: { key: project },
-      issuetype: { id: await storyType(project) },
+      issuetype: { id: await issueType(project, "Story") },
       summary: args.summary,
     };
     if (args.description) fields.description = textToAdf(args.description);
@@ -252,21 +252,40 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { before: {}, ...(await afterwards(made.value.key, made.value.id, names)) };
   };
 
-  const storyTypes = new Map<string, Promise<string>>();
-  const storyType = (project: string) => {
-    const known = storyTypes.get(project);
+  // A new epic goes in the project the writer was made for.
+  const createEpic = async (
+    send: Send,
+    args: JiraArgs<"createEpic">,
+  ): Promise<WriteResult<"jira">> => {
+    const project = options.project;
+    const fields: Record<string, unknown> = {
+      project: { key: project },
+      issuetype: { id: await issueType(project, "Epic") },
+      summary: args.summary,
+    };
+    if (args.description) fields.description = textToAdf(args.description);
+    const response = await send({ method: "POST", path: `${api}/issue`, body: { fields } });
+    const made = created(response.body);
+    if (!made.ok) throw new Error("createEpic: Jira's answer had no issue ID and key");
+    const names = ["summary", "description"];
+    return { before: {}, ...(await afterwards(made.value.key, made.value.id, names)) };
+  };
+
+  const typeIds = new Map<string, Promise<string>>();
+  const issueType = (project: string, name: "Story" | "Epic") => {
+    const known = typeIds.get(`${project}/${name}`);
     if (known) return known;
     const found = call(
       transport,
       { method: "GET", path: `${api}/issue/createmeta/${project}/issuetypes` },
       issueTypes,
     ).then(({ issueTypes }) => {
-      const story = issueTypes.find((type) => type.name === "Story" && type.subtask !== true);
-      if (!story) throw new Error(`${project} has no Story issue type`);
-      return story.id;
+      const type = issueTypes.find((type) => type.name === name && type.subtask !== true);
+      if (!type) throw new Error(`${project} has no ${name} issue type`);
+      return type.id;
     });
-    found.catch(() => storyTypes.delete(project));
-    storyTypes.set(project, found);
+    found.catch(() => typeIds.delete(`${project}/${name}`));
+    typeIds.set(`${project}/${name}`, found);
     return found;
   };
 
@@ -277,6 +296,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     args: unknown,
   ): Promise<WriteResult<"jira">> => {
     switch (op) {
+      case "createEpic":
+        return createEpic(send, valid(jiraOps.createEpic.args, args, op));
       case "createStory":
         return createStory(send, valid(jiraOps.createStory.args, args, op));
       case "setSummary": {

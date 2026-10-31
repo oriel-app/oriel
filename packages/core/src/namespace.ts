@@ -17,8 +17,8 @@ export type Tombstone = { id: ItemId; gone: true; reason: "deleted" | "forbidden
 export type NamespaceHost = {
   // Whether an ID is one of the region's items, from any source.
   has(id: string): id is ItemId;
-  // Refs from creates this run has captured.
-  created: ReadonlySet<NewRef>;
+  // Refs from creates this run has captured, each with its op.
+  created: ReadonlyMap<NewRef, string>;
   // Reads items live, each shaped by `view`: a missing item is a tombstone,
   // never a throw, and a moved one is followed, since its identity is its
   // stable ID.
@@ -76,6 +76,9 @@ export type NamespaceSpec = {
   // Its functions, in declaration order, which is part of the byte-stable
   // output.
   fns(scope: NamespaceScope): NamespaceFn[];
+  // Whether a region with no items yet gets this namespace, so a plan can
+  // start from nothing: its `types` and `fns` then see a scope with no IDs.
+  blank?: boolean;
 };
 
 export const param = <T>(name: string, type: string, check: Validator<T>): Param<T> => ({

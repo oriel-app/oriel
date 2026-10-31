@@ -245,9 +245,10 @@ function mustSpec(
 }
 
 // Validates each mutation's arguments and its refs, in seq order: only a create
-// names a new item, each name once, and a target may name only an item that an
-// earlier create in the same change set names. Returns the validated arguments,
-// which are what gets stored and replayed.
+// names a new item, each name once, and a target, or an item among the
+// arguments, may name only an item that an earlier create in the same change
+// set names. Returns the validated arguments, which are what gets stored and
+// replayed.
 function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
   const named = new Set<NewRef>();
   return drafts.map((m, i) => {
@@ -266,13 +267,26 @@ function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
       throw new ChangeSetError("invalid", `${where}: needs an item to change`);
     if (!spec.creates && m.ref !== null)
       throw new ChangeSetError("invalid", `${where}: only a create can name a new item`);
+    const args = spec.args(m.args, "$.args");
+    if (!args.ok) throw invalid(where, args.issues);
+    // Apply sends the item a ref's create made, so a ref may stand only
+    // where the op takes one.
+    const given = args.value as Record<string, unknown>;
+    const placed = spec.newRefArgs.map((name) => given[name]);
+    for (const ref of spec.refs(args.value).filter(isNewRef)) {
+      if (!placed.includes(ref))
+        throw new ChangeSetError("invalid", `${where}: ${m.op} can't name a new item there`);
+      if (!named.has(ref))
+        throw new ChangeSetError(
+          "invalid",
+          `${where}: ${ref} isn't created by an earlier mutation`,
+        );
+    }
     if (m.ref !== null) {
       if (named.has(m.ref))
         throw new ChangeSetError("invalid", `${where}: ${m.ref} is named twice`);
       named.add(m.ref);
     }
-    const args = spec.args(m.args, "$.args");
-    if (!args.ok) throw invalid(where, args.issues);
     return {
       op: m.op,
       target: m.target,
@@ -284,9 +298,8 @@ function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
 }
 
 // What in these mutations lies outside the region: a target (when `targets`),
-// or an item ID among the arguments. `member` decides by stable ID. A NewRef
-// target was checked by `check`. Arguments are replayed exactly, so a NewRef
-// among them could never resolve and is refused as well.
+// or an item ID among the arguments. `member` decides by stable ID. A NewRef,
+// as a target or among the arguments, was checked by `check`.
 function outsideRegion(
   checked: readonly { m: Checked; seq: number }[],
   member: (handle: string) => boolean,
@@ -296,7 +309,7 @@ function outsideRegion(
     const where = `mutation ${seq} (${m.op})`;
     if (targets && m.target !== null && !isNewRef(m.target) && !member(m.target))
       return `${where}: ${key(m.target)} isn't in this thread's region`;
-    const stray = m.spec.refs(m.args).find((id) => !member(id));
+    const stray = m.spec.refs(m.args).find((id) => !isNewRef(id) && !member(id));
     if (stray !== undefined) return `${where}: ${key(stray)} isn't in this thread's region`;
   }
   return null;
@@ -484,16 +497,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         [...wanted].map(async ([item, entry]) => [item, await readLive(item, entry)] as const),
       ),
     );
-    const title = async (id: ItemId): Promise<string | null> => {
+    // Field values per item (or new item's ref) as earlier lines leave them.
+    const state = new Map<string, Record<string, unknown>>();
+    // A new item's title is the item's once its create applied, and else as
+    // the lines before leave it.
+    const title = async (id: ItemId | NewRef): Promise<string | null> => {
+      if (isNewRef(id)) {
+        const create = set.mutations.find((m) => m.ref === id);
+        if (create?.applied) return title(create.applied.item.id);
+        if (!create) return null;
+        const field = catalogueFor(specs, mustSpec(specs, create, set.mutations).kind).titleField;
+        return text(state.get(id)?.[field]);
+      }
       const kind = parseItemId(id)?.source;
       if (!kind) return null;
       const field = catalogueFor(specs, kind).titleField;
       const values = live.get(id) ?? (await reader(kind).current(id, [field]));
       return values === "gone" ? null : text(values[field]);
     };
-
-    // Field values per item (or new item's ref) as earlier lines leave them.
-    const state = new Map<string, Record<string, unknown>>();
     const lines: Diff["lines"] = [];
     const gone = new Set<Ulid>();
     for (const m of set.mutations) {
@@ -734,6 +755,24 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return { target: create.applied.item.id };
   };
 
+  // A mutation's arguments as sent: one the op lets name an item an earlier
+  // create in the same change set made becomes that item's ID, as the
+  // create's stored result says.
+  const resolveArgs = (
+    m: MutationRecord,
+    set: ChangeSet,
+  ): { args: Record<string, unknown> } | { failed: string } => {
+    const args: Record<string, unknown> = { ...(m.args as Record<string, unknown>) };
+    for (const name of mustSpec(specs, m, set.mutations).spec.newRefArgs) {
+      const value = args[name];
+      if (typeof value !== "string" || !isNewRef(value)) continue;
+      const create = set.mutations.find((c) => c.ref === value && c.seq < m.seq);
+      if (!create?.applied) return { failed: `it names ${value}, which hasn't been created` };
+      args[name] = create.applied.item.id;
+    }
+    return { args };
+  };
+
   // The change set as its rows are now, under a live approval, and one of its
   // mutations. Throws once an edit or a later decision voids the approval.
   const approved = (id: string, mutationId: Ulid) => {
@@ -904,7 +943,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     m: MutationRecord,
     set: ChangeSet,
     checked: "no" | "absent" | "unknown" = "no",
-  ): { refusal: Refusal } | { target: ItemId | null; stableId: string | null } => {
+  ): { refusal: Refusal } | { target: ItemId | null; stableId: string | null; args: unknown } => {
     const { kind, spec } = mustSpec(specs, m, set.mutations);
     if (!hasWriter(kind))
       return {
@@ -938,17 +977,19 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       );
     const where = resolve(m, set);
     if ("failed" in where) return stop(where.failed);
+    const args = resolveArgs(m, set);
+    if ("failed" in args) return stop(args.failed);
     // The writer refuses a target whose handle names another item by now.
     const stableId = where.target === null ? null : stableIdFor(m, set, where.target);
     if (sentBefore && spec.idempotent && where.target !== null && checked === "no")
-      return { target: where.target, stableId };
+      return { target: where.target, stableId, args: args.args };
     if (where.target !== null && stableId === null)
       return stop(
         `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
       );
     const away = leftGroup(m, set, where.target);
     if (away) return stop(away);
-    return { target: where.target, stableId };
+    return { target: where.target, stableId, args: args.args };
   };
 
   // Apply, and retry: approved as it stands, writable, something left to
@@ -1312,7 +1353,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         op: m.op,
         target: plan.target,
         expectedStableId: plan.stableId,
-        args: m.args,
+        args: plan.args,
       });
       const uncertain = mayHaveLanded(source);
       const notice = spec.idempotent

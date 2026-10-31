@@ -68,7 +68,8 @@ export function scopeOf(region: Region, namespaces: Namespaces): Scope {
   const sources = sourceKinds.flatMap((kind) => {
     const spec = namespaces[kind];
     const members = ids.filter((id) => parseItemId(id)?.source === kind);
-    if (!spec || !members.length) return [];
+    // A region with no items yet gets the namespaces that can start one.
+    if (!spec || (!members.length && (ids.length || !spec.blank))) return [];
     const own = anchor !== null && members.includes(anchor) ? anchor : null;
     return [{ kind, spec, scope: { ids: members, anchor: own } }];
   });

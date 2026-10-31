@@ -165,6 +165,28 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
 
   const land = (request: Request): WriteResult<"jira"> => {
     if (!isJiraOp(request.op)) throw new Error(`unknown op ${request.op}`);
+    if (request.op === "createEpic") {
+      const args = parsed(jiraOps.createEpic.args(request.args));
+      const issue: MemoryIssue = {
+        key: `${start.project}-${nextIssue}`,
+        id: String(20000 + nextIssue),
+        summary: args.summary,
+        description: args.description ?? "",
+        points: null,
+        accountId: null,
+        epic: null,
+        links: [],
+        updated: tick(),
+      };
+      nextIssue += 1;
+      issues.set(issue.key, issue);
+      created.push(issue.key);
+      return {
+        item: handle(issue),
+        before: {},
+        after: pick(issue, ["summary", "description", "updated"]),
+      };
+    }
     if (request.op === "createStory") {
       const args = parsed(jiraOps.createStory.args(request.args));
       const issue: MemoryIssue = {

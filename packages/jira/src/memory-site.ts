@@ -99,14 +99,15 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         estimation: { type: "field", field: { fieldId: pointsField, displayName: "Story Points" } },
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
-      return json(200, { issueTypes: [{ id: "10001", name: "Story", subtask: false }] });
+      return json(200, { issueTypes: [type("Epic"), type("Story")] });
     if (method === "POST" && path === "/rest/api/3/issue") {
       const fields = (body as { fields: Record<string, unknown> }).fields;
       const parent = fields.parent as { key: string } | undefined;
+      const typeId = (fields.issuetype as { id?: string } | undefined)?.id;
       const issue: Issue = {
         id: String(20000 + nextIssue),
         key: `${project}-${nextIssue}`,
-        issueType: "Story",
+        issueType: typeId === type("Epic").id ? "Epic" : "Story",
         summary: String(fields.summary),
         description: fields.description ? adfToText(fields.description) : "",
         epic: parent?.key ?? null,

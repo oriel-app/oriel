@@ -19,7 +19,8 @@ export type LineContext = {
   // Field values just before this mutation.
   before: FieldValues;
   person(accountId: string): Promise<string | null>;
-  title(id: ItemId): Promise<string | null>;
+  // An item's title, or a new item's as the change set creates it.
+  title(id: ItemId | NewRef): Promise<string | null>;
 };
 
 export type Undo = { op: string; args: unknown } | { refused: string };
@@ -36,6 +37,9 @@ export type OpSpec = OpCatalogue[string] & {
   idempotent: boolean;
   // The item IDs among its arguments, which must be in the run's region.
   refs(args: unknown): string[];
+  // The arguments that may instead name an item an earlier create in the
+  // same change set makes, by its NewRef; apply sends that item's ID.
+  newRefArgs: readonly string[];
   // The fields a diff shows, with the values this op sets. Keys are field
   // names as the source's reader and writer report them.
   after(args: unknown): FieldValues;
@@ -69,6 +73,7 @@ export function op<T>(
     creates?: boolean;
     idempotent?: boolean;
     refs?(args: T): string[];
+    newRefArgs?: readonly string[];
     after(args: T): FieldValues;
     describe(args: T, context: LineContext): Promise<string> | string;
     undo(args: T, applied: WriteResult): Undo;
@@ -85,6 +90,7 @@ export function op<T>(
     idempotent: spec.idempotent ?? false,
     revertOnly: entry.revertOnly,
     refs: (args) => spec.refs?.(parse(args)) ?? [],
+    newRefArgs: spec.newRefArgs ?? [],
     after: (args) => spec.after(parse(args)),
     describe: async (args, context) => spec.describe(parse(args), context),
     undo: (args, applied) => spec.undo(parse(args), applied),

@@ -97,12 +97,14 @@ test("a change set reaches only its region: targets and item IDs in arguments", 
     changeSets.capture(run, [story("new:1", "Gate change alerts", "jira:SYN-2")]),
     { code: "refused" },
   );
+  // An item the change set creates is its own: an argument may name it once
+  // an earlier mutation has, and never before.
   await assert.rejects(
     changeSets.capture(run, [
-      story("new:1", "Gate change alerts", "jira:SYN-1"),
-      story("new:2", "Gate change sounds", "new:1"),
+      story("new:1", "Gate change sounds", "new:2"),
+      story("new:2", "Gate change alerts", "jira:SYN-1"),
     ]),
-    { code: "refused" },
+    { code: "invalid" },
   );
   assert.equal(count(db, "change_sets"), 0);
 
@@ -813,6 +815,49 @@ test("NewRef chains resolve to the items earlier creates made", async () => {
   assert.equal(jira.issue("SYN-900")?.points, 3);
   assert.equal(jira.issue("SYN-900")?.accountId, "amara");
   assert.equal(jira.issue("SYN-901")?.links.length, 1);
+});
+
+test("a story can go in an epic the same change set creates, and is reverted before it", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    { op: "createEpic", target: null, ref: "new:1", args: { summary: "Kiosk wallets" } },
+    story("new:2", "Pay with a phone wallet at the kiosk", "new:1"),
+    // A title that reads like a ref stays a title.
+    story("new:3", "new:1", "new:1"),
+  ]);
+  assert.deepEqual(
+    (await changeSets.diff(set.id)).lines.map((line) => line.sentence),
+    [
+      "Create an epic “Kiosk wallets”.",
+      "Create a story “Pay with a phone wallet at the kiosk” in the new epic “Kiosk wallets”.",
+      "Create a story “new:1” in the new epic “Kiosk wallets”.",
+    ],
+  );
+  await approve(changeSets, set.id);
+  assert.deepEqual((await changeSets.apply(set.id)).failed, []);
+  assert.deepEqual(jira.created, ["SYN-900", "SYN-901", "SYN-902"]);
+  assert.equal(jira.issue("SYN-901")?.epic, "jira:SYN-900");
+  assert.equal(jira.issue("SYN-902")?.epic, "jira:SYN-900");
+  assert.equal(jira.issue("SYN-902")?.summary, "new:1");
+  // What was approved is kept as it was captured.
+  const stored = await changeSets.get(set.id);
+  assert.deepEqual(nth(stored?.mutations ?? [], 1).args, {
+    summary: "Pay with a phone wallet at the kiosk",
+    epic: "new:1",
+  });
+
+  const reverse = await changeSets.revert(set.id);
+  assert.ok("id" in reverse);
+  await approve(changeSets, reverse.id);
+  assert.deepEqual((await changeSets.apply(reverse.id)).failed, []);
+  assert.deepEqual(
+    jira.calls.slice(3).map((call) => [call.op, call.target]),
+    [
+      ["deleteItem", "jira:SYN-902"],
+      ["deleteItem", "jira:SYN-901"],
+      ["deleteItem", "jira:SYN-900"],
+    ],
+  );
 });
 
 test("after a crash, apply resumes and skips what already landed", async () => {

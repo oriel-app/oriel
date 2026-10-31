@@ -451,7 +451,11 @@ function Composer(props: { model: ThreadModel; view: ThreadView; send: (msg: Thr
       <textarea
         rows={2}
         value={model.draft}
-        placeholder={`Ask about ${plural(view.members.length, "item")}…`}
+        placeholder={
+          view.members.length === 0
+            ? "What are you planning? Describe it, and ask for an epic and its stories…"
+            : `Ask about ${plural(view.members.length, "item")}…`
+        }
         aria-label="Message"
         onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
         onKeyDown={(event) => {
@@ -495,6 +499,9 @@ function Region({ view }: { view: ThreadView }) {
         <p class="rail-note">
           The group is at v{view.group.version}. This thread catches up when you write again.
         </p>
+      )}
+      {view.members.length === 0 && !behind && (
+        <p class="rail-note">No items yet. What a change set here creates joins this group.</p>
       )}
       <ul class="members compact">
         {view.members.map((member) => (

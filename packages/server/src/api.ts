@@ -72,7 +72,7 @@ const smallBody = 4 * 1024;
 const listBody = 64 * 1024;
 const messageBody = 32 * 1024;
 const maxMessageChars = 8_000;
-const maxNameChars = 120;
+export const maxNameChars = 120;
 const maxItems = 500;
 
 const json = (status: number, value: unknown): Reply => ({
@@ -135,6 +135,9 @@ const droppedBody = object({
   ),
 });
 const renameBody = object({ name: nameValue });
+// What a group made for a thread from nothing is called, until a change set
+// creates its epic and it takes that epic's name.
+export const blankGroupName = "New group";
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
 const hashBody = object({ hash: string });
@@ -214,6 +217,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     const group = groups.get(id as Ulid);
     if (!group || group.workspaceId !== deps.workspaceId) throw new Refused(404, "no such group");
     return group;
+  };
+  // Opens a thread on a group's current version, and starts its first turn
+  // when it opens with a message.
+  const openThread = (groupId: Ulid, version: number, text: string | undefined): Ulid => {
+    const threadId = deps.newId();
+    const now = deps.now();
+    threads.open({ id: threadId, workspaceId: deps.workspaceId, groupId }, now);
+    deps.emit({
+      name: "thread.opened",
+      at: now,
+      workspaceId: deps.workspaceId,
+      threadId,
+      groupId,
+      regionSize: groups.region(groupId, version)?.items.length ?? 0,
+    });
+    if (text !== undefined) turns.say(threadId, text);
+    else turns.touched(threadId);
+    return threadId;
   };
   const mustThread = (id: string) => {
     const thread = threads.get(id as Ulid, deps.now());
@@ -581,26 +602,43 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         const { text } = await readJson(request, messageBody, openThreadBody);
-        const threadId = deps.newId();
-        const now = deps.now();
-        threads.open({ id: threadId, workspaceId: deps.workspaceId, groupId: group.id }, now);
-        deps.emit({
-          name: "thread.opened",
-          at: now,
-          workspaceId: deps.workspaceId,
-          threadId,
-          groupId: group.id,
-          regionSize: groups.region(group.id, group.version)?.items.length ?? 0,
-        });
-        if (text !== undefined) turns.say(threadId, text);
-        else turns.touched(threadId);
-        return json(201, { id: threadId });
+        return json(201, { id: openThread(group.id, group.version, text) });
       },
     },
     {
       method: "GET",
       path: at("/threads"),
       run: async () => json(200, { threads: await views.inbox(deps.workspaceId) }),
+    },
+    {
+      // A thread from nothing: on a new group with no items, where the agent
+      // may only create them, as when a plan starts with its epic.
+      method: "POST",
+      path: at("/threads"),
+      async run(_, request) {
+        const { text } = await readJson(request, messageBody, openThreadBody);
+        const now = deps.now();
+        const groupId = deps.newId();
+        const group = groups.create(
+          {
+            id: groupId,
+            workspaceId: deps.workspaceId,
+            name: blankGroupName,
+            origin: { kind: "picked" },
+          },
+          [],
+          now,
+        );
+        deps.emit({
+          name: "group.created",
+          at: now,
+          workspaceId: deps.workspaceId,
+          groupId,
+          origin: "picked",
+          size: 0,
+        });
+        return json(201, { id: openThread(group.id, group.version, text), groupId });
+      },
     },
     {
       method: "GET",

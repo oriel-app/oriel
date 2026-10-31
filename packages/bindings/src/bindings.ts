@@ -34,7 +34,7 @@ export function bindingsFor(
   const fns = describe(scope);
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
-  const created = new Set<NewRef>();
+  const created = new Map<NewRef, string>();
   const { reader } = options;
   // What creates items here, for messages: the namespaces' own names for it.
   const creates = fns.flatMap((fn) => (fn.kind === "write" && fn.creates ? [pathOf(fn)] : []));
@@ -100,7 +100,7 @@ export function bindingsFor(
           throw new TypeError(checked.issues.map((i) => `${i.path}: ${i.message}`).join("; "));
         if (typeof checked.value !== "object" || checked.value === null)
           throw new TypeError("an op's arguments are an object");
-        if (ref !== null) created.add(ref);
+        if (ref !== null) created.set(ref, entry.op);
         return { op: entry.op, target: built.target, ref, args: defined(checked.value) };
       } catch (error) {
         throw named(fn, error);
