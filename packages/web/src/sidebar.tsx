@@ -1,5 +1,6 @@
 // The sidebar, on every page but a review link: the window and the inbox,
-// the user's groups with their threads under them, and the connected folder.
+// the threads waiting on the user, the user's groups with their threads under
+// them, and the connected folder.
 // On a wide screen it folds to a strip of icons; on a narrow one it's a
 // drawer the menu opens.
 import { useLayoutEffect, useState } from "preact/hooks";
@@ -10,6 +11,8 @@ import type { Model } from "./root.ts";
 
 // A group shows this many of its threads; the rest are on its page.
 const shown = 5;
+// So many threads waiting on the user show; the rest are in the inbox.
+const shownWaiting = 8;
 
 export function Sidebar(props: {
   model: Model;
@@ -78,6 +81,7 @@ export function Sidebar(props: {
           )}
         </Link>
       </nav>
+      <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <Groups where={where} dispatch={dispatch} />
       <Folder folder={model.folder} dispatch={dispatch} />
     </aside>
@@ -85,6 +89,49 @@ export function Sidebar(props: {
 }
 
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
+
+// What needs the user, in sight on every page: each thread waiting on a
+// review or a reply, with what it waits on and its group. The groups below
+// say which page this is.
+function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
+  const { where, dispatch } = props;
+  if (!props.loaded) return null;
+  return (
+    <nav class="sidebar-needs" aria-label="Needs you">
+      <h2 class="rail-title">Needs you</h2>
+      {where.waiting.length === 0 && <p class="rail-empty">Nothing is waiting on you.</p>}
+      <ul class="nav-waiting">
+        {where.waiting.slice(0, shownWaiting).map((thread) => (
+          <li key={thread.id}>
+            <Link
+              route={{ page: "thread", id: thread.id }}
+              dispatch={dispatch}
+              class="nav-link nav-waiting-link"
+            >
+              <span class="state-dot" data-state={thread.state} data-waiting={thread.waitingOn} />
+              <span class="nav-waiting-text">
+                <span class="nav-name">{thread.title ?? "New thread"}</span>
+                <span class="nav-waiting-about">
+                  <span class="nav-waiting-on" data-waiting={thread.waitingOn}>
+                    {thread.waitingOn && waitingNames[thread.waitingOn]}
+                  </span>
+                  <span class="nav-waiting-group">{thread.group.name}</span>
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+        {where.waiting.length > shownWaiting && (
+          <li>
+            <Link route={{ page: "inbox" }} dispatch={dispatch} class="nav-link nav-more">
+              {where.waiting.length - shownWaiting} more in the inbox
+            </Link>
+          </li>
+        )}
+      </ul>
+    </nav>
+  );
+}
 
 function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
   // Groups the user opened or closed by hand. Any other is open while it's

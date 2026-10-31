@@ -310,6 +310,19 @@ const scenes: Scene[] = [
     },
   },
   {
+    // The threads waiting on the user, in the sidebar; on a narrow screen,
+    // in its drawer.
+    name: "needs-you",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      await page.locator(".nav-waiting-link").first().waitFor({ state: "attached" });
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
+    },
+  },
+  {
     name: "folder-add",
     path: "/?grouping=epic",
     act: async (page) => {

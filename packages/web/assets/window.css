@@ -379,7 +379,8 @@ button.nav-link:disabled {
 }
 
 .nav-groups,
-.nav-threads {
+.nav-threads,
+.nav-waiting {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -460,6 +461,61 @@ button.nav-disclose:hover {
   font-size: var(--text-sm);
 }
 
+/* A thread waiting on the user: its title, then what it waits on and its
+   group. */
+.nav-waiting {
+  display: grid;
+  gap: 1px;
+}
+
+.nav-waiting > li {
+  min-width: 0;
+}
+
+.nav-waiting-link {
+  align-items: baseline;
+  padding-block: 0.3125rem;
+}
+
+.nav-waiting-link .state-dot {
+  transform: translateY(-0.0625rem);
+}
+
+.nav-waiting-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-waiting-about {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.nav-waiting-on {
+  flex: none;
+  color: var(--in-progress-text);
+  font-weight: 500;
+}
+
+.nav-waiting-on[data-waiting="review"] {
+  color: var(--accent);
+}
+
+.nav-waiting-group {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+}
+
+.nav-waiting-group::before {
+  content: "· " / "";
+}
+
 /* A thread's state at a glance: working pulses, the rest hold still. */
 .state-dot {
   flex: none;
@@ -532,7 +588,7 @@ button.nav-disclose:hover {
     white-space: nowrap;
   }
 
-  .shell[data-folded] :is(.sidebar-groups, .sidebar .folder) {
+  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar .folder) {
     display: none;
   }
 
@@ -573,14 +629,21 @@ button.nav-disclose:hover {
   color: var(--text-muted);
 }
 
-.bar-working {
+/* How many threads wait on the user, on the menu that shows them. */
+.bar-count {
   position: absolute;
-  top: 0.3125rem;
-  right: 0.3125rem;
-  width: 0.4375rem;
-  height: 0.4375rem;
-  border-radius: 50%;
-  background: var(--in-progress);
+  top: -0.125rem;
+  right: -0.25rem;
+  min-width: 1rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .drawer-backdrop {

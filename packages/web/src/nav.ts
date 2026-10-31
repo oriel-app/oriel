@@ -1,6 +1,6 @@
-// What the sidebar shows, from the lists the app already keeps: the user's
-// groups, each with its threads, most recently active first, and where the
-// page is among them.
+// What the sidebar shows, from the lists the app already keeps: the threads
+// waiting on the user, the user's groups, each with its threads, most
+// recently active first, and where the page is among them.
 import type { Model } from "./root.ts";
 import type { GroupSummary, ThreadSummaryView } from "./view.ts";
 
@@ -16,7 +16,9 @@ export type Nav = {
   groups: NavGroup[] | null;
   // The thread on the page, if one is.
   thread: string | null;
-  // Threads waiting on the user: a change set to review, or a reply.
+  // Threads waiting on the user: a change set to review, or a reply. Empty
+  // until the threads have loaded.
+  waiting: ThreadSummaryView[];
   needsYou: number;
 };
 
@@ -35,6 +37,9 @@ export function nav(model: Model): Nav {
   const threads = [...(model.threads ?? [])].sort((a, b) =>
     b.activityAt.localeCompare(a.activityAt),
   );
+  const waiting = threads.filter(
+    (each) => each.waitingOn === "review" || each.waitingOn === "reply",
+  );
   return {
     groups:
       model.groups?.map((summary) => ({
@@ -43,7 +48,7 @@ export function nav(model: Model): Nav {
         current: summary.id === group,
       })) ?? null,
     thread,
-    needsYou: threads.filter((each) => each.waitingOn === "review" || each.waitingOn === "reply")
-      .length,
+    waiting,
+    needsYou: waiting.length,
   };
 }
