@@ -26,6 +26,7 @@ export function fixtureFields(fixture: JiraFixture, options: FixtureSourceOption
         points: found.points,
         assignee: found.assignee?.accountId ?? null,
         epic: found.epic,
+        status: found.status.name,
         updated: updated.get(id) ?? null,
         ...Object.fromEntries(
           found.links.map((link) => [`link:${link.linkId}`, { url: link.url, title: link.title }]),

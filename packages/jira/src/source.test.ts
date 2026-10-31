@@ -308,7 +308,7 @@ test("read returns live full content: plain-text description, every comment, lin
   const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
   const { transport } = fakeJira({
     ...discovery(),
-    [`GET /rest/api/3/issue/SYN-12?fields=${fields}`]: ok(
+    [`GET /rest/api/3/issue/SYN-12?fields=${fields}&expand=transitions`]: ok(
       jiraIssue("SYN-12", {
         parent: parent("SYN-1"),
         description: doc(
@@ -349,6 +349,7 @@ test("read returns live full content: plain-text description, every comment, lin
     content: {
       issueType: "Story",
       status: { name: "To Do", category: "todo" },
+      moves: [],
       epic: "jira:SYN-1",
       assignee: null,
       points: 5,
@@ -375,10 +376,13 @@ test("a missing ID is a result, never a throw: deleted, forbidden or moved", asy
   const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
   const { transport } = fakeJira({
     ...discovery(),
-    [`GET /rest/api/3/issue/SYN-27?fields=${fields}`]: missing,
-    [`GET /rest/api/3/issue/SYN-28?fields=${fields}`]: { status: 403, body: { errorMessages: [] } },
+    [`GET /rest/api/3/issue/SYN-27?fields=${fields}&expand=transitions`]: missing,
+    [`GET /rest/api/3/issue/SYN-28?fields=${fields}&expand=transitions`]: {
+      status: 403,
+      body: { errorMessages: [] },
+    },
     // Jira answers an old key with the issue under its new one.
-    [`GET /rest/api/3/issue/SYN-29?fields=${fields}`]: ok(jiraIssue("OA-4")),
+    [`GET /rest/api/3/issue/SYN-29?fields=${fields}&expand=transitions`]: ok(jiraIssue("OA-4")),
   });
   const { log } = logged();
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
@@ -393,7 +397,10 @@ test("a failed credential is an error, not a missing item", async () => {
   const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
   const { transport } = fakeJira({
     ...discovery(),
-    [`GET /rest/api/3/issue/SYN-1?fields=${fields}`]: { status: 401, body: "Unauthorized" },
+    [`GET /rest/api/3/issue/SYN-1?fields=${fields}&expand=transitions`]: {
+      status: 401,
+      body: "Unauthorized",
+    },
   });
   const { log } = logged();
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
@@ -407,44 +414,42 @@ test("project keys are checked before they reach JQL", () => {
     assert.throws(() => jiraSource({ transport, site, projects, log }), RangeError);
 });
 
-test("records reads each issue by key into the record a listing would make; a missing one is null", async () => {
-  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
-  const made = jiraIssue("SYN-900", {
-    summary: "Tap to pay",
-    parent: parent("SYN-1"),
-    updated: "2026-10-30T09:00:00.000+0000",
-    [pointsField]: 2,
+test("a read lists the statuses the item's workflow lets it move to, each once", async () => {
+  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
+  const way = (id: string, to: ReturnType<typeof status>, isAvailable = true) => ({
+    id,
+    name: `Move to ${to.name}`,
+    to,
+    hasScreen: false,
+    isAvailable,
   });
-  const { transport, calls } = fakeJira({
-    ...discovery(),
-    [search]: pages([made]),
-    [`GET /rest/api/3/issue/SYN-900?fields=${fields}`]: ok(made),
-    [`GET /rest/api/3/issue/SYN-27?fields=${fields}`]: missing,
-    [`GET /rest/api/3/issue/SYN-28?fields=${fields}`]: { status: 403, body: { errorMessages: [] } },
-  });
-  const { log } = logged();
-  const source = jiraSource({ transport, site, projects: ["SYN"], log });
-  const listed = record(await listAll(source, null), "jira:SYN-900");
-  assert.ok(listed && source.records);
-  assert.deepEqual(await source.records(["jira:SYN-900", "jira:SYN-27", "jira:SYN-28"]), {
-    records: [listed],
-    gone: ["jira:SYN-27", "jira:SYN-28"],
-  });
-  // Only GETs: reading by key goes nowhere near the search.
-  assert.equal(searches(calls).length, 1);
-});
-
-test("records fails when Jira won't answer, and skips an issue it can't read, neither one gone", async () => {
-  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
   const { transport } = fakeJira({
     ...discovery(),
-    [`GET /rest/api/3/issue/SYN-1?fields=${fields}`]: { status: 401, body: "Unauthorized" },
-    [`GET /rest/api/3/issue/SYN-2?fields=${fields}`]: ok({ id: "10002", key: "SYN-2", fields: {} }),
+    [`GET /rest/api/3/issue/SYN-12?fields=${fields}&expand=transitions`]: ok({
+      ...jiraIssue("SYN-12", { status: status("In Progress", "indeterminate") }),
+      transitions: [
+        way("11", status("To Do", "new")),
+        way("21", status("In Progress", "indeterminate")),
+        way("31", status("Done", "done")),
+        way("41", status("Done", "done")),
+        way("51", status("Won't Do", "done"), false),
+      ],
+    }),
+    "GET /rest/api/3/issue/SYN-12/comment?startAt=0&maxResults=100&orderBy=created": ok({
+      startAt: 0,
+      maxResults: 100,
+      total: 0,
+      comments: [],
+    }),
+    "GET /rest/api/3/issue/SYN-12/remotelink": ok([]),
   });
-  const { lines, log } = logged();
-  const source = jiraSource({ transport, site, projects: ["SYN"], log });
-  assert.ok(source.records);
-  await assert.rejects(source.records(["jira:SYN-1"]), /401/);
-  assert.deepEqual(await source.records(["jira:SYN-2"]), { records: [], gone: [] });
-  assert.ok(lines.some((line) => line.message.includes("shape Oriel can't read")));
+  const { log } = logged();
+  const [result] = await jiraSource({ transport, site, projects: ["SYN"], log }).read([
+    "jira:SYN-12",
+  ]);
+  assert.ok(result?.status === "ok");
+  assert.deepEqual(result.content.moves, [
+    { name: "To Do", category: "todo" },
+    { name: "Done", category: "done" },
+  ]);
 });

@@ -24,6 +24,9 @@ const httpsUrl = refine(
   "expected an https URL",
 );
 
+// A status as its workflow names it, such as "In Progress".
+const statusName = refine(string, (name) => name.trim() !== "", "expected a status name");
+
 // An issue's fields, by core's names: what the writer reads for a delete's
 // `before`, and what a diff lists for a delete.
 export const issueFields = ["summary", "description", "points", "assignee", "epic"] as const;
@@ -50,6 +53,9 @@ export const jiraOps = {
   setDescription: { args: object({ description: string }), revertOnly: false },
   setEstimate: { args: object({ points: nullable(number) }), revertOnly: false },
   setAssignee: { args: object({ accountId: nullable(string) }), revertOnly: false },
+  // Jira moves an issue through its workflow's transitions: the writer takes
+  // the one that leads to `status`, and refuses when there is none.
+  setStatus: { args: object({ status: statusName }), revertOnly: false },
   addLink: { args: object({ url: httpsUrl, title: string }), revertOnly: false },
   removeLink: { args: object({ linkId }), revertOnly: true },
   deleteItem: { args: object({}), revertOnly: true },

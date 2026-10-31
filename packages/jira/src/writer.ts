@@ -4,8 +4,8 @@
 //
 // Before and after values are keyed by core's field names (`FieldValues`):
 // "summary", "description"
-// (plain text), "points", "assignee" (an account ID), "epic" (an item ID), and
-// "link:<linkId>" ({ url, title }, or null when there is no such link). A
+// (plain text), "points", "assignee" (an account ID), "epic" (an item ID),
+// "status" (its name in the item's workflow), and "link:<linkId>" ({ url, title }, or null when there is no such link). A
 // create has no before values and a delete no after values.
 import {
   array,
@@ -58,9 +58,12 @@ export type JiraWriterOptions = {
 type Target = { id: ItemId<"jira">; stableId: string } | null;
 type Send = (request: JiraRequest) => Promise<JiraResponse>;
 
-type IssueField = (typeof issueFields)[number];
+// What the writer reads: an issue's fields, and its status, which a delete
+// doesn't empty and a create doesn't set.
+const readable = [...issueFields, "status"] as const;
+type IssueField = (typeof readable)[number];
 const isIssueField = (name: string): name is IssueField =>
-  (issueFields as readonly string[]).includes(name);
+  (readable as readonly string[]).includes(name);
 const linkField = (linkId: string) => `link:${linkId}`;
 
 const valuesIssue = issue(
@@ -71,11 +74,17 @@ const valuesIssue = issue(
     assignee: indexFieldShape.assignee,
     updated: indexFieldShape.updated,
     description: optional(unknown),
+    status: optional(indexFieldShape.status),
   }),
 );
 const remoteLink = object({ id: number, object: object({ url: string, title: optional(string) }) });
 const created = object({ id: numericId, key: issueKey });
 const createdLink = object({ id: number });
+const transitions = object({
+  transitions: array(
+    object({ id: string, to: object({ name: string }), isAvailable: optional(boolean) }),
+  ),
+});
 const issueTypes = object({
   issueTypes: array(object({ id: string, name: string, subtask: optional(boolean) })),
 });
@@ -136,9 +145,10 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     if (unknownName !== undefined) throw new RangeError(`not a Jira field: ${unknownName}`);
     const points = names.includes("points") ? await pointsField(projectOf(key)) : undefined;
     const fields = ["summary", "description", "issuetype", "parent", "assignee", "updated"];
+    const extra = [...(names.includes("status") ? ["status"] : []), ...(points ? [points] : [])];
     const request: JiraRequest = {
       method: "GET",
-      path: `${api}/issue/${key}?fields=${[...fields, ...(points ? [points] : [])].join(",")}`,
+      path: `${api}/issue/${key}?fields=${[...fields, ...extra].join(",")}`,
     };
     const response = await transport(request);
     if (response.status === 404 || response.status === 403) return "gone";
@@ -152,6 +162,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       points: () => pointsOf(rawField(response.body, points)),
       assignee: () => found.fields.assignee?.accountId ?? null,
       epic: () => epicOf(found.fields),
+      status: () => found.fields.status?.name ?? null,
     };
     const entries = await Promise.all(
       names.map(async (name): Promise<[string, unknown]> => {
@@ -323,6 +334,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           body: { accountId },
         }));
       }
+      case "setStatus":
+        return move(send, target, valid(jiraOps.setStatus.args, args, op));
       case "addLink":
         return addLink(send, target, valid(jiraOps.addLink.args, args, op));
       case "removeLink": {
@@ -337,6 +350,46 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
         valid(jiraOps.deleteItem.args, args, op);
         return deleteItem(send, target);
     }
+  };
+
+  // Jira moves an item only along its workflow: the transition that leads to
+  // `status` is sent, and with none, nothing is. An item already in `status`
+  // needs no move, so a retry of one that landed sends nothing again.
+  const move = async (
+    send: Send,
+    target: Target,
+    { status }: JiraArgs<"setStatus">,
+  ): Promise<WriteResult<"jira">> => {
+    const before = await existing(target, ["status"]);
+    const was = before.values.status;
+    if (was !== status) {
+      const offered = await call(
+        transport,
+        { method: "GET", path: `${api}/issue/${before.key}/transitions` },
+        transitions,
+      );
+      const open = offered.transitions.filter((t) => t.isAvailable !== false);
+      const way = open.find((t) => t.to.name === status);
+      if (!way) {
+        const allowed = [...new Set(open.map((t) => t.to.name))].filter((name) => name !== was);
+        throw new Error(
+          `${before.key} can't move from “${String(was)}” to “${status}”: ${
+            allowed.length
+              ? `its workflow allows only ${allowed.map((name) => `“${name}”`).join(", ")}`
+              : "its workflow allows no move from there"
+          }`,
+        );
+      }
+      await send({
+        method: "POST",
+        path: `${api}/issue/${before.key}/transitions`,
+        body: { transition: { id: way.id } },
+      });
+    }
+    return {
+      before: before.values,
+      ...(await afterwards(before.key, before.stableId, ["status"])),
+    };
   };
 
   const addLink = async (

@@ -2,8 +2,7 @@
 // writer makes over `fetch`, so a composition root can be tested writing
 // without a network. It starts from the fixture after its source edits, with
 // the same stable IDs the index has. Every write moves the item's `updated`
-// one second on from `clock`. It answers the source's search too, so an app
-// can sync from it as from a live site. Exported as `@oriel/jira/testing`.
+// one second on from `clock`. Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
 import { adfToText, textToAdf } from "./adf.ts";
@@ -11,8 +10,6 @@ import { applySourceEdits, type JiraFixture } from "./fixture.ts";
 
 export const memorySiteOrigin = "https://oriel.atlassian.net";
 const pointsField = "customfield_10016";
-const categoryKeys = { todo: "new", "in-progress": "indeterminate", done: "done" } as const;
-const searchPath = "/rest/api/3/search/jql";
 
 type Issue = {
   id: string;
@@ -20,11 +17,10 @@ type Issue = {
   issueType: string;
   summary: string;
   description: string;
-  status: { name: string; category: "todo" | "in-progress" | "done" };
-  labels: string[];
   epic: string | null;
   assignee: string | null;
   points: number | null;
+  status: string;
   links: { linkId: string; url: string; title: string }[];
   updated: Instant;
 };
@@ -42,17 +38,32 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         issueType: issue.issueType,
         summary: issue.summary,
         description: issue.description,
-        status: { ...issue.status },
-        labels: [...issue.labels],
         epic: issue.epic,
         assignee: issue.assignee,
         points: issue.points,
+        status: issue.status.name,
         links: issue.links.map((link) => ({ ...link })),
         updated: issue.updatedAt,
       },
     ]),
   );
   const people = new Map(fixture.people.map((person) => [person.id, person.displayName]));
+  // The statuses SYN uses, each with its category as Jira keys it. Any may
+  // follow any other, as in a workflow that allows every transition, except
+  // out of a status made final.
+  const keys = { todo: "new", "in-progress": "indeterminate", done: "done" } as const;
+  const statuses = new Map(fixture.issues.map((issue) => [issue.status.name, issue.status]));
+  const final = new Set<string>();
+  const statusView = (name: string) => ({
+    name,
+    statusCategory: { key: keys[statuses.get(name)?.category ?? "todo"] },
+  });
+  const transitions = (issue: Issue) =>
+    final.has(issue.status)
+      ? []
+      : [...statuses.keys()]
+          .map((name, i) => ({ id: String(11 + i), name, to: statusView(name) }))
+          .filter((way) => way.name !== issue.status);
   const project = fixture.project.key;
   let ticks = 0;
   let nextIssue = 900;
@@ -63,8 +74,6 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
   const unanswered = new Set<string>();
   // Every request, in order.
   const calls: { method: string; path: string }[] = [];
-  // What the search answers from while it lags the site; null once caught up.
-  let searchable: Map<string, Issue> | null = null;
 
   const tick = (): Instant => {
     ticks += 1;
@@ -83,25 +92,22 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     subtask: false,
     hierarchyLevel: name === "Epic" ? 1 : 0,
   });
-  const view = (issue: Issue, from = issues) => ({
+  const view = (issue: Issue) => ({
     id: issue.id,
     key: issue.key,
     fields: {
       summary: issue.summary,
       description: issue.description ? textToAdf(issue.description) : null,
       issuetype: type(issue.issueType),
-      status: {
-        name: issue.status.name,
-        statusCategory: { key: categoryKeys[issue.status.category] },
-      },
-      labels: issue.labels,
-      parent: issue.epic ? { id: from.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
+      parent: issue.epic ? { id: issues.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
       assignee: issue.assignee
         ? { accountId: issue.assignee, displayName: people.get(issue.assignee) ?? issue.assignee }
         : null,
+      status: statusView(issue.status),
       updated: issue.updated,
       [pointsField]: issue.points,
     },
+    transitions: transitions(issue),
   });
 
   const answer = (method: string, url: URL, body: unknown): Response => {
@@ -114,25 +120,6 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
-    if (method === "GET" && path === "/rest/api/3/myself") return json(200, { timeZone: "UTC" });
-    // Every issue, oldest update first, whatever the JQL's window: listing
-    // more than was asked for changes nothing in an index.
-    if (method === "POST" && path === searchPath) {
-      const { maxResults = 50, nextPageToken } = body as {
-        maxResults?: number;
-        nextPageToken?: string;
-      };
-      const at = Number(nextPageToken ?? 0);
-      const from = searchable ?? issues;
-      const listed = [...from.values()].toSorted(
-        (a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key),
-      );
-      const more = at + maxResults < listed.length;
-      return json(200, {
-        issues: listed.slice(at, at + maxResults).map((issue) => view(issue, from)),
-        ...(more ? { nextPageToken: String(at + maxResults) } : { isLast: true }),
-      });
-    }
     if (method === "POST" && path === "/rest/api/3/issue") {
       const fields = (body as { fields: Record<string, unknown> }).fields;
       const parent = fields.parent as { key: string } | undefined;
@@ -143,11 +130,10 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         issueType: typeId === type("Epic").id ? "Epic" : "Story",
         summary: String(fields.summary),
         description: fields.description ? adfToText(fields.description) : "",
-        status: { name: "To Do", category: "todo" },
-        labels: [],
         epic: parent?.key ?? null,
         assignee: null,
         points: typeof fields[pointsField] === "number" ? (fields[pointsField] as number) : null,
+        status: "To Do",
         links: [],
         updated: tick(),
       };
@@ -156,7 +142,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
       return json(201, { id: issue.id, key: issue.key });
     }
     const match =
-      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/remotelink(?:\/([0-9]+))?)?$/.exec(
+      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/transitions|\/remotelink(?:\/([0-9]+))?)?$/.exec(
         path,
       );
     const issue = match?.[1] ? issues.get(match[1]) : undefined;
@@ -183,6 +169,17 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     }
     if (sub === "/assignee" && method === "PUT") {
       issue.assignee = (body as { accountId: string | null }).accountId;
+      issue.updated = tick();
+      return json(204);
+    }
+    if (sub === "/transitions" && method === "GET")
+      return json(200, { transitions: transitions(issue) });
+    if (sub === "/transitions" && method === "POST") {
+      const { id } = (body as { transition: { id: string } }).transition;
+      const way = transitions(issue).find((t) => t.id === id);
+      if (!way)
+        return json(400, { errorMessages: [`Transition id '${id}' is not valid for this issue.`] });
+      issue.status = way.to.name;
       issue.updated = tick();
       return json(204);
     }
@@ -253,18 +250,13 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         },
       };
     },
+    // The workflow lets nothing leave this status from now on.
+    makeFinal(status: string) {
+      final.add(status);
+    },
     allow(key: string) {
       refused.delete(key);
       unanswered.delete(key);
-    },
-    // Jira's search catches up with writes a while after them: from here it
-    // answers as the site stands now, until `searchCatchesUp`. Reading an
-    // issue by key never lags.
-    searchLags() {
-      searchable = new Map(structuredClone([...issues]));
-    },
-    searchCatchesUp() {
-      searchable = null;
     },
     // A teammate edits the item directly in Jira.
     edit(key: string, change: Partial<Pick<Issue, "summary" | "points">>) {

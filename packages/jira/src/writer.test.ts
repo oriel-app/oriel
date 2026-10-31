@@ -10,6 +10,7 @@ import {
 import { textToAdf } from "./adf.ts";
 import {
   discovery,
+  fakeJira,
   issueType,
   jiraIssue,
   missing,
@@ -18,6 +19,7 @@ import {
   person,
   pointsField,
   site,
+  status,
 } from "./fake-jira.ts";
 import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
 import { jiraWriter, restTransport } from "./writer.ts";
@@ -548,4 +550,105 @@ test("read gives an item's values with the stable ID its key names now", async (
   const broken: Transport = async (req) =>
     req.method === "GET" ? { status: 503, body: "Unavailable" } : jira.transport(req);
   await assert.rejects(writer(broken).read("jira:SYN-12", ["summary"]), /GET \S+: 503/);
+});
+
+// SYN-12 under a workflow: To Do may go to In Progress, In Progress to Done,
+// and Done nowhere. Moves land in `at`, and every request is kept.
+function workflowSite(start = "To Do") {
+  const workflow: Record<string, [string, string, "new" | "indeterminate" | "done"][]> = {
+    "To Do": [["21", "In Progress", "indeterminate"]],
+    "In Progress": [["31", "Done", "done"]],
+    Done: [],
+  };
+  const categories = { "To Do": "new", "In Progress": "indeterminate", Done: "done" } as const;
+  const state = { status: start, updated: 0 };
+  const key = (status: string) => categories[status as keyof typeof categories];
+  const read = () =>
+    ok(
+      jiraIssue("SYN-12", {
+        status: status(state.status, key(state.status)),
+        updated: at(state.updated).replace("Z", "+0000"),
+      }),
+    );
+  const ways = () =>
+    (workflow[state.status] ?? []).map(([id, to, category]) => ({
+      id,
+      name: `To ${to}`,
+      to: status(to, category),
+      isAvailable: true,
+    }));
+  return {
+    state,
+    ...fakeJira({
+      "GET /rest/api/3/issue/SYN-12?fields=summary,description,issuetype,parent,assignee,updated,status":
+        read,
+      "GET /rest/api/3/issue/SYN-12/transitions": () => ok({ transitions: ways() }),
+      "POST /rest/api/3/issue/SYN-12/transitions": (req) => {
+        const id = (req.body as { transition: { id: string } }).transition.id;
+        const way = ways().find((w) => w.id === id);
+        if (!way) return { status: 400, body: { errorMessages: ["No such transition."] } };
+        state.status = way.to.name;
+        state.updated += 1;
+        return { status: 204, body: null };
+      },
+    }),
+  };
+}
+
+test("setStatus sends the transition that leads to the status, and reports it before and after", async () => {
+  const jira = workflowSite("In Progress");
+  assert.deepEqual(
+    await writer(jira.transport).apply(request("setStatus", "jira:SYN-12", { status: "Done" })),
+    {
+      item: { id: "jira:SYN-12", stableId: "10012" },
+      before: { status: "In Progress" },
+      after: { status: "Done", updated: at(1) },
+    },
+  );
+  assert.deepEqual(
+    jira.calls.filter((c) => c.method !== "GET"),
+    [
+      {
+        method: "POST",
+        path: "/rest/api/3/issue/SYN-12/transitions",
+        body: { transition: { id: "31" } },
+      },
+    ],
+  );
+  assert.deepEqual(await writer(jira.transport).current("jira:SYN-12", ["status"]), {
+    status: "Done",
+  });
+});
+
+test("a move the workflow doesn't allow is refused unsent, naming the moves it does", async () => {
+  const fromToDo = workflowSite("To Do");
+  await assert.rejects(
+    writer(fromToDo.transport).apply(request("setStatus", "jira:SYN-12", { status: "Done" })),
+    unsent(/^SYN-12 can't move from “To Do” to “Done”: its workflow allows only “In Progress”$/),
+  );
+  const fromDone = workflowSite("Done");
+  await assert.rejects(
+    writer(fromDone.transport).apply(request("setStatus", "jira:SYN-12", { status: "To Do" })),
+    unsent(/^SYN-12 can't move from “Done” to “To Do”: its workflow allows no move from there$/),
+  );
+  assert.deepEqual(
+    [...fromToDo.calls, ...fromDone.calls].filter((c) => c.method !== "GET"),
+    [],
+  );
+});
+
+test("an item already in the status isn't moved, so a retry of a move that landed sends nothing", async () => {
+  const jira = workflowSite("Done");
+  assert.deepEqual(
+    await writer(jira.transport).apply(request("setStatus", "jira:SYN-12", { status: "Done" })),
+    {
+      item: { id: "jira:SYN-12", stableId: "10012" },
+      before: { status: "Done" },
+      after: { status: "Done", updated: at(0) },
+    },
+  );
+  assert.deepEqual(
+    jira.calls.map((c) => c.path.split("?")[0]),
+    ["/rest/api/3/issue/SYN-12", "/rest/api/3/issue/SYN-12"],
+  );
 });

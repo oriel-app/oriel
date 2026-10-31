@@ -627,3 +627,77 @@ test("conflicts read in plain words, including what Oriel never learned", () => 
       "SYN-900 is no longer there.",
   );
 });
+
+const move = (target: `jira:${string}`, to: string): CapturedMutation => ({
+  op: "setStatus",
+  target,
+  ref: null,
+  args: { status: to },
+});
+
+test("a status move shows the old and new status, and its revert moves the item back", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [move("jira:SYN-21", "Done")]);
+  const line = nth((await changeSets.diff(set.id)).lines, 0);
+  assert.equal(
+    line.sentence,
+    "Move “Update the payment declined error message” (SYN-21) from In Progress to Done.",
+  );
+  assert.deepEqual(
+    line.fields.map((f) => [f.name, f.before, f.after]),
+    [["status", "In Progress", "Done"]],
+  );
+  await applied(changeSets, set);
+  assert.equal(jira.issue("SYN-21")?.status, "Done");
+
+  const back = await reverse(changeSets, set.id);
+  assert.deepEqual(
+    back.mutations.map((m) => [m.op, m.target, m.args]),
+    [["setStatus", "jira:SYN-21", { status: "In Progress" }]],
+  );
+  assert.equal(
+    nth((await changeSets.diff(back.id)).lines, 0).sentence,
+    "Move “Update the payment declined error message” (SYN-21) from Done to In Progress.",
+  );
+  await applied(changeSets, back);
+  assert.equal(jira.issue("SYN-21")?.status, "In Progress");
+});
+
+test("a status a teammate moved on since is a conflict, and the revert moves nothing", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [move("jira:SYN-117", "In Progress")]);
+  await applied(changeSets, set);
+  jira.move("SYN-117", "Done");
+  const writes = jira.calls.length;
+
+  const result = await changeSets.revert(set.id);
+  assert.ok("conflicts" in result);
+  assert.deepEqual(
+    result.conflicts.map((c) => [c.target, c.field, c.expected, c.actual]),
+    [["jira:SYN-117", "status", "In Progress", "Done"]],
+  );
+  assert.equal(jira.issue("SYN-117")?.status, "Done");
+  assert.equal(jira.calls.length, writes);
+});
+
+test("a revert the workflow has no way back for stops unsent, saying so", async () => {
+  const { changeSets, run, jira, db } = setup();
+  const set = await changeSets.capture(run, [move("jira:SYN-117", "Done")]);
+  await applied(changeSets, set);
+  // Done is final here: nothing leaves it.
+  jira.makeFinal("Done");
+
+  const back = await reverse(changeSets, set.id);
+  await approve(changeSets, back.id);
+  const report = await changeSets.apply(back.id);
+  const reverse0 = nth(back.mutations, 0).id;
+  assert.deepEqual(report.failed, [
+    {
+      mutationId: reverse0,
+      error:
+        "Nothing was sent: SYN-117 can't move from “Done” to “To Do”: its workflow allows no move from there.",
+    },
+  ]);
+  assert.equal(status(db, reverse0), "pending");
+  assert.equal(jira.issue("SYN-117")?.status, "Done");
+});

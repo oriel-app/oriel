@@ -3,8 +3,7 @@
 // name, and the test says what that name does with the region's real
 // bindings. Requests go through the same handler and guard as in production.
 // With `writes`, change sets write to SYN as a Jira site in memory, through
-// the writer @oriel/changeset builds; nothing here holds a writer. With
-// `live`, the app also syncs from that site, as from a live one.
+// the writer @oriel/changeset builds; nothing here holds a writer.
 import {
   type Bindings,
   type CapturedMutation,
@@ -87,8 +86,6 @@ export type TestOptions = {
   limits?: Partial<Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">>;
   // Change sets write to SYN in memory instead of being read-only.
   writes?: boolean;
-  // Jira is SYN in memory, synced through its API and written to.
-  live?: boolean;
   // A database file, so a second app can open what the first left.
   db?: string;
 };
@@ -102,20 +99,20 @@ export async function testApp(
   let clock = Date.parse(t0);
   const now = (): Instant => instant(new Date(clock));
   const plan = options.plan ?? (() => [{ text: "Hello." }]);
-  const site = options.writes || options.live ? memorySite(loadJiraFixture(), now()) : null;
-  const writeTo = site && {
-    site: memorySiteOrigin,
-    credential: { headers: async () => ({}) },
-    project: "SYN",
-    fetch: site.fetch,
-  };
+  const site = options.writes ? memorySite(loadJiraFixture(), now()) : null;
   const logged: Logged[] = [];
   const app: App = await createApp({
     db: options.db ?? ":memory:",
-    jira: writeTo
-      ? options.live
-        ? { kind: "live", ...writeTo }
-        : { kind: "fixture", writeTo }
+    jira: site
+      ? {
+          kind: "fixture",
+          writeTo: {
+            site: memorySiteOrigin,
+            credential: { headers: async () => ({}) },
+            project: "SYN",
+            fetch: site.fetch,
+          },
+        }
       : { kind: "fixture" },
     reviewBase: new URL(`${origin}/review/`),
     limits: { ...limits, ...options.limits },

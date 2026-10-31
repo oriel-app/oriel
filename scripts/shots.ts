@@ -42,10 +42,26 @@ const planScript = (all: boolean) =>
     'jira.createStory({ summary: "Show the gift card balance at checkout" });',
     "return null;",
   ].join("\n");
-const planning = (input: TurnInput): Step[] =>
-  /\bplan\b/i.test(input.text)
-    ? [{ run: planScript(/rename/i.test(input.text)) }, { text: "The proposed change is below." }]
-    : devPlan(input);
+// Asked to mark stories done: two moved to Done, the built ones or the fixes.
+const finishScript = (keys: readonly string[]) =>
+  [...keys.map((key) => `jira.setStatus("jira:${key}", "Done");`), "return null;"].join("\n");
+const planning = (input: TurnInput): Step[] => {
+  if (/\bplan\b/i.test(input.text))
+    return [
+      { run: planScript(/rename/i.test(input.text)) },
+      { text: "The proposed change is below." },
+    ];
+  if (/\bdone\b/i.test(input.text))
+    return [
+      {
+        run: finishScript(
+          /\bbuilt\b/i.test(input.text) ? ["SYN-23", "SYN-99"] : ["SYN-21", "SYN-104"],
+        ),
+      },
+      { text: "The proposed change is below." },
+    ];
+  return devPlan(input);
+};
 
 // A server that writes to its own SYN site in memory.
 const writing = async () => {
@@ -171,6 +187,17 @@ const plannedLink = await post<{ url: string }>(
 // New stories, approved, then reverted: the revert deletes them.
 const reverted = await (async () => {
   const threadId = await ask("Plan gift cards");
+  const setId = await changeSetOf(server, threadId);
+  const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {});
+  await post(`/api/change-sets/${setId}/approve`, { hash });
+  await post(`/api/change-sets/${setId}/revert`, {});
+  return threadId;
+})();
+
+// Stories moved to Done: proposed, and another approved, then reverted.
+const finished = await ask("Mark the built stories done");
+const unfinished = await (async () => {
+  const threadId = await ask("Mark the fixes done");
   const setId = await changeSetOf(server, threadId);
   const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {});
   await post(`/api/change-sets/${setId}/approve`, { hash });
@@ -374,6 +401,16 @@ const scenes: Scene[] = [
   {
     name: "thread-revert",
     path: `/threads/${reverted}`,
+    act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
+  },
+  {
+    name: "thread-status",
+    path: `/threads/${finished}`,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    name: "thread-status-revert",
+    path: `/threads/${unfinished}`,
     act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
   },
   {
