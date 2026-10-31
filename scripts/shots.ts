@@ -208,6 +208,19 @@ const mixed = await post<{ id: string }>("/api/groups", {
 });
 const mixedThread = await ask("What's in here?", server, mixed.id);
 
+// A group of one item, and one with none left, for how the page counts them.
+const single = await post<{ id: string }>("/api/groups", {
+  kind: "picked",
+  name: "Declined card retry",
+  items: ["jira:SYN-23"],
+});
+const emptied = await post<{ id: string }>("/api/groups", {
+  kind: "picked",
+  name: "Gift cards",
+  items: ["jira:SYN-99"],
+});
+await post(`/api/groups/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
+
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
 }
@@ -277,6 +290,16 @@ const scenes: Scene[] = [
     name: "group-mixed",
     path: `/groups/${mixed.id}`,
     act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "group-one",
+    path: `/groups/${single.id}`,
+    act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "group-empty",
+    path: `/groups/${emptied.id}`,
+    act: (page) => page.locator(".group-page .rail-empty").waitFor(),
   },
   {
     name: "thread-mixed",

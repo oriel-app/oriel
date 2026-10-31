@@ -130,3 +130,15 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
       return [model, []];
   }
 }
+
+// What a group or thread with no items asks for: there is nothing to ask
+// about, so the agent can only create items, as when planning an epic.
+export const planPrompt =
+  "What are you planning? Describe it, and ask for an epic and its stories…";
+
+// The group page's ask box, worded for how many items the group has.
+export function askPrompt(size: number): string {
+  if (size === 0) return planPrompt;
+  if (size === 1) return "Ask about this item…";
+  return `Ask about these ${size} items…`;
+}

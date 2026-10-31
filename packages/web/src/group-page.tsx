@@ -1,5 +1,5 @@
 // A group: ask about it, see its threads, and curate its items.
-import type { GroupModel, GroupMsg } from "./group.ts";
+import { askPrompt, type GroupModel, type GroupMsg } from "./group.ts";
 import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
 import type { GroupView, ThreadSummaryView } from "./view.ts";
@@ -58,7 +58,7 @@ export function GroupPage({ model, dispatch }: { model: GroupModel; dispatch: Di
           <textarea
             rows={2}
             value={model.draft}
-            placeholder={`Ask about these ${plural(group.size, "item")}…`}
+            placeholder={askPrompt(group.size)}
             aria-label="Ask about this group"
             onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
             onKeyDown={(event) => {

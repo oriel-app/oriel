@@ -12,6 +12,7 @@ import {
   StateChip,
   TypeMark,
 } from "./parts.tsx";
+import { planPrompt } from "./group.ts";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Block,
@@ -637,7 +638,7 @@ function Composer(props: { model: ThreadModel; view: ThreadView; send: (msg: Thr
         value={model.draft}
         placeholder={
           view.members.length === 0
-            ? "What are you planning? Describe it, and ask for an epic and its stories…"
+            ? planPrompt
             : `Ask about ${plural(view.members.length, "item")}…`
         }
         aria-label="Message"
