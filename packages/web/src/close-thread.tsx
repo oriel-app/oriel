@@ -3,38 +3,46 @@
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { type ClosingModel, type ClosingMsg, deletionWarning } from "./closing.ts";
+import { type CloseVia } from "./closing.ts";
 import { ContextMenu, type MenuItem } from "./menu.tsx";
+import { Swipeable } from "./swipe.tsx";
 import type { Dispatch } from "./parts.tsx";
 import type { ThreadSummaryView } from "./view.ts";
 
 // A thread's row with its menu: Mark done, unless it is done, and Delete.
+// With `swipe`, a swipe left shows the same actions, in that order.
 export function ThreadMenu(props: {
   thread: ThreadSummaryView;
   dispatch: Dispatch;
+  swipe?: boolean;
   class?: string;
   children: ComponentChildren;
 }) {
   const { thread, dispatch } = props;
   const send = (msg: ClosingMsg) => dispatch({ type: "closing", msg });
   const title = thread.title ?? "New thread";
-  const items: MenuItem[] = [
+  const items = (via: CloseVia): MenuItem[] => [
     ...(thread.state === "done"
       ? []
       : [
           {
             label: "Mark done",
-            onSelect: () => send({ type: "markDoneClicked", threadId: thread.id, via: "menu" }),
+            onSelect: () => send({ type: "markDoneClicked", threadId: thread.id, via }),
           },
         ]),
     {
       label: "Delete…",
       danger: true,
-      onSelect: () => send({ type: "deleteClicked", threadId: thread.id, title, via: "menu" }),
+      onSelect: () => send({ type: "deleteClicked", threadId: thread.id, title, via }),
     },
   ];
   return (
-    <ContextMenu label={`Actions for ${title}`} items={items} class={props.class}>
-      {props.children}
+    <ContextMenu label={`Actions for ${title}`} items={items("menu")} class={props.class}>
+      {props.swipe ? (
+        <Swipeable actions={items("swipe")}>{props.children}</Swipeable>
+      ) : (
+        props.children
+      )}
     </ContextMenu>
   );
 }

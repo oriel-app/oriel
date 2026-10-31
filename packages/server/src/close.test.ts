@@ -199,3 +199,12 @@ test("a thread deleted while its title is on the way takes none, and nothing fai
     [],
   );
 });
+
+test("a swipe closes a thread as the menu does, told apart in telemetry", async (t) => {
+  const app = await thread(t);
+  app.advance(1000);
+  await app.post(`/api/threads/${app.threadId}/done`, { via: "swipe" });
+  assert.deepEqual(app.lastEvent()?.data, { threadId: app.threadId, via: "swipe" });
+  await app.post(`/api/threads/${app.threadId}/delete`, { via: "swipe" });
+  assert.equal(app.lastEvent()?.data.via, "swipe");
+});

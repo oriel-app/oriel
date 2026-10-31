@@ -104,7 +104,7 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
       <ul class="nav-waiting">
         {where.waiting.slice(0, shownWaiting).map((thread) => (
           <li key={thread.id}>
-            <ThreadMenu thread={thread} dispatch={dispatch}>
+            <ThreadMenu thread={thread} dispatch={dispatch} swipe>
               <Link
                 route={{ page: "thread", id: thread.id }}
                 dispatch={dispatch}
@@ -224,7 +224,7 @@ function GroupEntry(props: {
         <ul id={listId} class="nav-threads">
           {threads.slice(0, shown).map((thread) => (
             <li key={thread.id}>
-              <ThreadMenu thread={thread} dispatch={dispatch}>
+              <ThreadMenu thread={thread} dispatch={dispatch} swipe>
                 <Link
                   route={{ page: "thread", id: thread.id }}
                   dispatch={dispatch}
