@@ -1,12 +1,18 @@
 // The composition root: where the adapters' declarations meet the packages
 // that use them. It opens the database, syncs Jira and the connected folder
-// into the index, and wires groupings, change sets, bindings, the sandbox and
+// into the index, connects Jira when the user does it from the window, and wires groupings, change sets, bindings, the sandbox and
 // the agent into the JSON routes. Only this file builds change sets, which
 // hold the writers; thread code gets `capture` and nothing else.
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { bindingsFor } from "@oriel/bindings";
-import { changeSets, explainConflicts, type WriterConfig } from "@oriel/changeset";
+import {
+  ChangeSetError,
+  changeSets,
+  explainConflicts,
+  type FieldReader,
+  type WriterConfig,
+} from "@oriel/changeset";
 import {
   type ChangeSet,
   type Credential,
@@ -41,6 +47,8 @@ import {
   threadStore,
 } from "@oriel/db";
 import {
+  basicAuth,
+  checkConnection,
   fixtureFields,
   fixtureSource,
   jiraAttrs,
@@ -52,11 +60,13 @@ import {
 } from "@oriel/jira";
 import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
 import { createSandbox } from "@oriel/sandbox";
-import type { FolderView, GroupingId, WindowView } from "@oriel/web/view";
+import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { api, blankGroupName, maxNameChars } from "./api.ts";
+import { api, blankGroupName, type JiraDetails, maxNameChars } from "./api.ts";
+import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
+import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
@@ -77,8 +87,13 @@ export type JiraWrites = {
 // Where Jira comes from. The fixture is SYN as `fixtures/jira/` freezes it,
 // read-only unless tests give it a site to write to that holds the same
 // items. Live is a site, read through the API and written to through
-// approved change sets.
-export type JiraMode = { kind: "fixture"; writeTo?: JiraWrites } | ({ kind: "live" } & JiraWrites);
+// approved change sets. From the window is live too, once the user connects
+// it there; the connection is kept in `store`, so it's there again the next
+// time the server starts. `fetch` is for tests, as above.
+export type JiraMode =
+  | { kind: "fixture"; writeTo?: JiraWrites }
+  | ({ kind: "live" } & JiraWrites)
+  | { kind: "window"; store: ConnectionStore; fetch?: typeof fetch };
 
 export type AppOptions = {
   // A SQLite file, or ":memory:".
@@ -103,6 +118,8 @@ export type AppOptions = {
 
 export type App = {
   window(grouping: GroupingId): WindowView;
+  // Jira as the window shows it: what's connected, and whether it can be.
+  jira(): JiraView;
   api(request: Request, url: URL): Promise<Reply | null>;
   workspaceId: Ulid;
   // Resolves once no turn is running and no title is being written.
@@ -110,6 +127,30 @@ export type App = {
   // The pilot telemetry stored so far, oldest first.
   telemetry(): StoredEvent[];
   close(): Promise<void>;
+};
+
+// Jira's fields while the window has it unconnected: a change set captured
+// before can't be shown until it's connected again.
+const disconnected: FieldReader<"jira"> = {
+  current: async () => {
+    throw new ChangeSetError(
+      "read-only",
+      "Jira isn't connected now, so Oriel can't show this change. Connect Jira in the window.",
+    );
+  },
+  person: async () => null,
+};
+
+// Why a connection the user typed wasn't kept, in their words.
+const refusals: Record<
+  "refused" | "no-project" | "unexpected" | "unreachable",
+  (project: string) => string
+> = {
+  refused: () => "Jira didn't accept that email with what you pasted. Check both and try again.",
+  "no-project": (project) =>
+    `There's no project ${project} on that site that this account can see.`,
+  unexpected: () => "Jira gave an answer Oriel didn't expect. Try again in a minute.",
+  unreachable: () => "Oriel couldn't reach that site. Is it right?",
 };
 
 export const limits: AgentLimits = {
@@ -153,21 +194,52 @@ export async function createApp(options: AppOptions): Promise<App> {
 
   const mode = options.jira;
   const fixture = mode.kind === "fixture" ? loadJiraFixture() : null;
-  const source = fixture
+  const transportTo = (to: JiraWrites) =>
+    readTransport({
+      site: to.site,
+      credential: to.credential,
+      ...(to.fetch ? { fetch: to.fetch } : {}),
+    });
+  const liveSource = (to: JiraWrites) =>
+    jiraSource({
+      transport: transportTo(to),
+      site: to.site,
+      projects: [to.project],
+      log,
+    });
+  // Where change sets write, and the source the index syncs. From the
+  // window, both are null until the user connects Jira.
+  const writesTo = (saved: JiraConnection, send?: typeof fetch): JiraWrites => ({
+    site: saved.site,
+    credential: basicAuth(saved.email, saved.token),
+    project: saved.project,
+    ...(send ? { fetch: send } : {}),
+  });
+  const saved = mode.kind === "window" ? mode.store.load() : null;
+  let writes: JiraWrites | null =
+    mode.kind === "live"
+      ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
+      : mode.kind === "fixture"
+        ? (mode.writeTo ?? null)
+        : saved && writesTo(saved, mode.fetch);
+  // A saved connection Jira no longer takes, as when its token was revoked,
+  // or to a site Oriel doesn't connect to, is dropped, so the window asks for
+  // Jira again. One that can't be reached now is kept.
+  if (mode.kind === "window" && writes) {
+    const check =
+      jiraSite(writes.site) !== throwawaySite
+        ? ("refused" as const)
+        : await checkConnection(transportTo(writes), writes.project).catch(
+            () => "unreachable" as const,
+          );
+    if (check === "refused" || check === "no-project") {
+      log("jira: the saved connection was refused", { check });
+      writes = null;
+    }
+  }
+  let source = fixture
     ? fixtureSource(fixture, { site, edited: fixture.edits.length })
-    : mode.kind === "live"
-      ? jiraSource({
-          transport: readTransport({
-            site: mode.site,
-            credential: mode.credential,
-            ...(mode.fetch ? { fetch: mode.fetch } : {}),
-          }),
-          site: mode.site,
-          projects: [mode.project],
-          log,
-        })
-      : null;
-  if (!source) throw new Error("no Jira source");
+    : writes && liveSource(writes);
   // The fixture is frozen as of its last edit, so its window is built for
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
@@ -193,18 +265,32 @@ export async function createApp(options: AppOptions): Promise<App> {
   // was before the write, or list one a revert deleted, and a listed record
   // comes back to life in the index.
   const written = new Map<string, { id: ItemId<"jira">; stableId: string; at: Instant }>();
-  const sync = (full: boolean) => {
-    const since = Date.parse(now()) - searchLagMs;
-    for (const [stableId, { at }] of written) if (Date.parse(at) < since) written.delete(stableId);
-    return syncInto(source, jiraAttrs, full, [...written.values()]);
-  };
-  // The first sync of a source into this workspace connects it.
+  // The first sync of a source into this workspace connects it, whenever
+  // that sync is. Jira's is announced once, though two syncs may both start
+  // as the first.
   const connected = (kind: SourceKind) => {
     emit({ name: "source.connected", at: now(), workspaceId, source: kind });
   };
-  const connecting = index.source(workspaceId, "jira") === null;
-  await sync(fixture !== null || connecting);
-  if (connecting) connected("jira");
+  let jiraAnnounced = false;
+  const jiraConnected = () => {
+    if (jiraAnnounced) return;
+    jiraAnnounced = true;
+    connected("jira");
+  };
+  const sync = async (full: boolean) => {
+    if (!source) return;
+    const first = index.source(workspaceId, "jira") === null;
+    const since = Date.parse(now()) - searchLagMs;
+    for (const [stableId, { at }] of written) if (Date.parse(at) < since) written.delete(stableId);
+    await syncInto(source, jiraAttrs, full || first, [...written.values()]);
+    if (first) jiraConnected();
+  };
+  // A connection made in the window that can't sync now leaves the index as
+  // it was, and the server starts anyway, as it does for a folder.
+  await sync(fixture !== null).catch((error: unknown) => {
+    if (mode.kind !== "window") throw error;
+    log("jira sync failed", { error: String(error) });
+  });
   const caps = options.limits ?? limits;
 
   // The folder the user connected, read-only (decision 0019). Its stored path
@@ -287,7 +373,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
       );
       const results: ReadResult[] = [
-        ...(jira.length ? await source.read(jira) : []),
+        ...(jira.length && source ? await source.read(jira) : []),
         ...(files.length && folder ? await folder.source.read(files) : []),
       ];
       const read = new Map<string, ReadResult>(results.map((result) => [result.id, result]));
@@ -307,26 +393,31 @@ export async function createApp(options: AppOptions): Promise<App> {
     return bindingsFor(region, { reader, namespaces: { jira: jiraNamespace(kinds) } });
   };
 
-  const writes: JiraWrites | null =
-    mode.kind === "live"
-      ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
-      : (mode.writeTo ?? null);
-  const writerConfig: WriterConfig = writes ? { jira: writes } : {};
   const specs = { jira: jiraSpecs };
-  const sets = changeSets({
-    db,
-    writerConfig,
-    readers:
-      fixture && !writes
-        ? { jira: fixtureFields(fixture, { site, edited: fixture.edits.length }) }
-        : {},
-    people: { jira: async (id) => people().get(id) ?? null },
-    specs,
-    reviewBase: options.reviewBase,
-    now,
-    emit,
-    log,
-  });
+  const buildSets = () => {
+    const writerConfig: WriterConfig = writes ? { jira: writes } : {};
+    return changeSets({
+      db,
+      writerConfig,
+      readers:
+        fixture && !writes
+          ? { jira: fixtureFields(fixture, { site, edited: fixture.edits.length }) }
+          : mode.kind === "window" && !writes
+            ? { jira: disconnected }
+            : {},
+      people: { jira: async (id) => people().get(id) ?? null },
+      specs,
+      reviewBase: options.reviewBase,
+      now,
+      emit,
+      log,
+    });
+  };
+  // The writers are built with the change sets. Connecting Jira from the
+  // window builds them again, into this same object, so everything holding
+  // it writes to Jira from then on. Nothing can be applying then: with no
+  // writer, no change set can be approved.
+  const sets = buildSets();
 
   let deno: Sandbox | null = null;
   const sandbox: Sandbox = options.sandbox ?? {
@@ -366,7 +457,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     running: conversation.running,
     changeSets: sets,
-    writable: writes !== null,
+    get writable() {
+      return writes !== null;
+    },
   });
 
   // What a change set created joins its thread's group, so later turns can
@@ -404,7 +497,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         });
       if (change) conversation.moved(threads.follow(thread.groupId, at, newId));
     }
-    if (mode.kind !== "live") return;
+    if (mode.kind === "fixture") return;
     for (const { applied: write } of set.mutations)
       if (write && isJira(write.item.id))
         written.set(write.item.stableId, {
@@ -415,12 +508,82 @@ export async function createApp(options: AppOptions): Promise<App> {
     await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
   };
 
+  const jiraView = (): JiraView => ({
+    connected:
+      source &&
+      (() => {
+        const synced = index.source(workspaceId, "jira");
+        return {
+          site: writes?.site ?? site,
+          project: writes?.project ?? fixture?.project.key ?? "",
+          items: index.records(workspaceId, "jira", jiraAttrs).length,
+          syncedAt: synced?.syncedAt ?? null,
+        };
+      })(),
+    connectable: mode.kind === "window" && source === null,
+  });
+  // Connects Jira with the details the user typed: checked against the site
+  // first, then synced, and kept only once both worked. The token goes into
+  // a credential and the store, and nowhere else: not a log line, an event,
+  // a reply or a message.
+  let joining = false;
+  const connectJira = async (
+    typed: JiraDetails,
+  ): Promise<{ jira: JiraView } | { problem: string }> => {
+    if (mode.kind !== "window" || source)
+      return { problem: "Jira is already connected to this window." };
+    if (joining) return { problem: "Oriel is connecting Jira already." };
+    const at = jiraSite(typed.site);
+    if (!at) return { problem: "Type your Jira site, like yourteam.atlassian.net." };
+    if (at !== throwawaySite)
+      return { problem: `For now, Oriel connects only to ${new URL(throwawaySite).host}.` };
+    const email = typed.email.trim();
+    const project = typed.project.trim().toUpperCase();
+    const chosen = writesTo({ site: at, email, token: typed.token.trim(), project }, mode.fetch);
+    joining = true;
+    try {
+      const check = await checkConnection(transportTo(chosen), project).catch((error: unknown) => {
+        log("jira check failed", { site: at, error: String(error) });
+        return "unreachable" as const;
+      });
+      if (check !== "ok") {
+        log("jira connect refused", { site: at, project, check });
+        return { problem: refusals[check](project) };
+      }
+      const next = liveSource(chosen);
+      const first = index.source(workspaceId, "jira") === null;
+      try {
+        await syncInto(next, jiraAttrs, true);
+      } catch (error) {
+        log("jira connect failed", { site: at, project, error: String(error) });
+        return {
+          problem: "Jira answered, but Oriel couldn't read the project just now. Try again.",
+        };
+      }
+      try {
+        mode.store.save({ site: at, email, token: typed.token.trim(), project });
+      } catch (error) {
+        log("jira connection not saved", { error: (error as NodeJS.ErrnoException).code ?? "" });
+        return { problem: "Oriel couldn't save the connection on this computer. Try again." };
+      }
+      source = next;
+      writes = chosen;
+      Object.assign(sets, buildSets());
+      if (first) jiraConnected();
+      log("jira connected", { site: at, project });
+      return { jira: jiraView() };
+    } finally {
+      joining = false;
+    }
+  };
+
   const window = (grouping: GroupingId) =>
     windowView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null);
 
   return {
     workspaceId,
     window,
+    jira: jiraView,
     api: api({
       workspaceId,
       groups,
@@ -436,7 +599,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       applied,
       refresh: async () => {
         const problems: string[] = [];
-        if (mode.kind === "live")
+        if (mode.kind !== "fixture" && source)
           await sync(false).catch((error: unknown) => {
             log("sync failed", { error: String(error) });
             problems.push("Jira didn't answer, so Oriel couldn't look for new items.");
@@ -446,6 +609,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         return problems.length > 0 ? problems.join(" ") : null;
       },
       explain: (conflicts) => explainConflicts(conflicts, specs),
+      jira: { view: jiraView, connect: connectJira },
       folder: {
         view: folderView,
         connect: connectFolder,

@@ -1,5 +1,7 @@
 // The window: clusters under a grouping, and items to pick into a group.
 // Controls stay out of the way until something is picked or hovered.
+import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
+import { type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
 import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural } from "./parts.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
@@ -21,9 +23,10 @@ const groupingNames: Record<GroupingId, string> = {
 export function WindowPage(props: {
   model: Model;
   groups: GroupSummary[] | null;
+  jira: JiraModel;
   dispatch: Dispatch;
 }) {
-  const { model, groups, dispatch } = props;
+  const { model, groups, jira, dispatch } = props;
   const adding = groups?.find((group) => group.id === model.addTo) ?? null;
   return (
     <div class="window-layout">
@@ -42,10 +45,87 @@ export function WindowPage(props: {
             Pick items to add to <strong>{adding.name}</strong>.
           </p>
         )}
+        {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
         <Body model={model} dispatch={dispatch} />
       </main>
       <Selection model={model} groups={groups} adding={adding} dispatch={dispatch} />
     </div>
+  );
+}
+
+// Until Jira is connected, the window asks for it first: the one place the
+// onboarding names the token, in its field's label.
+function ConnectJira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
+  const send = (msg: JiraMsg) => dispatch({ type: "jira", msg });
+  const field = (
+    name: JiraField,
+    label: string,
+    input: AccessibleInputHTMLAttributes<HTMLInputElement>,
+    hint?: ComponentChildren,
+  ) => (
+    <label class="jira-field">
+      <span>{label}</span>
+      <input
+        name={name}
+        value={jira.typed[name]}
+        spellcheck={false}
+        autoCapitalize="off"
+        {...input}
+        onInput={(event) =>
+          send({ type: "fieldChanged", field: name, value: event.currentTarget.value })
+        }
+      />
+      {hint && <span class="jira-hint">{hint}</span>}
+    </label>
+  );
+  return (
+    <form
+      class="connect-jira"
+      aria-labelledby="connect-jira-title"
+      onSubmit={(event) => {
+        event.preventDefault();
+        send({ type: "connectClicked" });
+      }}
+    >
+      <h2 id="connect-jira-title">Connect Jira</h2>
+      <p class="connect-note">
+        Your epics and stories show here. Oriel changes them only when you approve a change.
+      </p>
+      <div class="jira-fields">
+        {field("site", "Site", {
+          type: "text",
+          placeholder: "yourteam.atlassian.net",
+          autoComplete: "url",
+        })}
+        {field("project", "Project key", { type: "text", placeholder: "OA", autoComplete: "off" })}
+        {field("email", "Your Atlassian email", { type: "email", autoComplete: "email" })}
+        {field(
+          "token",
+          "API token",
+          { type: "password", autoComplete: "off" },
+          <>
+            <a
+              href="https://id.atlassian.com/manage-profile/security/api-tokens"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Make one in your Atlassian account
+            </a>
+            , then paste it here.
+          </>,
+        )}
+      </div>
+      <div class="connect-actions">
+        <button type="submit" class="button primary" disabled={jira.pending || !jiraReady(jira)}>
+          {jira.pending ? "Connecting…" : "Connect"}
+        </button>
+        {jira.problem && (
+          <p class="connect-problem" role="alert">
+            {jira.problem}
+          </p>
+        )}
+      </div>
+    </form>
   );
 }
 

@@ -7,7 +7,10 @@
 // in memory, each to its own, so one scene's writes don't show in another's
 // diffs; one is read-only, as Oriel is without credentials. Before any
 // screenshot they get groups and threads, with runs, change sets, a search
-// and a marker, through the same JSON routes the window uses.
+// and a marker, through the same JSON routes the window uses. Two start with
+// Jira unconnected, to connect it from the window to SYN in memory: one for
+// the form's shots, and one for the onboarding, timed from the first screen
+// to an approved change, which also counts the word "token" on each screen.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,12 +19,20 @@ import { chromium, type Page } from "playwright-core";
 import { instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
+import { memoryStore } from "../packages/server/src/connection.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 
 type Grouping = "epic" | "assignee" | "stuck";
-type Scene = { name: string; path: string; on?: Serving; act?(page: Page): Promise<void> };
+type Scene = {
+  name: string;
+  path: string;
+  on?: Serving;
+  act?(page: Page): Promise<void>;
+  // A refusal the scene asks for, which the browser logs as an error.
+  refused?: number;
+};
 
 const out = new URL("../shots/", import.meta.url);
 mkdirSync(out, { recursive: true });
@@ -86,6 +97,28 @@ const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
 const readOnly = await serve(0);
+
+// Jira not connected yet; the window connects it to SYN in memory, which
+// takes only this account.
+const account = { email: "pm@example.com", token: "shots-only-value" };
+const unconnected = () =>
+  serve(0, {
+    db: ":memory:",
+    jira: {
+      kind: "window",
+      store: memoryStore(),
+      fetch: memorySite(loadJiraFixture(), instant(new Date()), { account }).fetch,
+    },
+    agent: (deps) => scriptedAgent(deps, planning),
+  });
+const connecting = await unconnected();
+const fillJira = async (page: Page, token: string) => {
+  await page.locator(".connect-jira").waitFor();
+  await page.locator('input[name="site"]').fill("oriel.atlassian.net");
+  await page.locator('input[name="project"]').fill("SYN");
+  await page.locator('input[name="email"]').fill(account.email);
+  await page.locator('input[name="token"]').fill(token);
+};
 
 // A request as the window sends it.
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
@@ -273,6 +306,23 @@ async function openAll(page: Page): Promise<void> {
 }
 
 const scenes: Scene[] = [
+  {
+    name: "jira-connect",
+    path: "/?grouping=epic",
+    on: connecting,
+    act: (page) => fillJira(page, account.token),
+  },
+  {
+    name: "jira-refused",
+    path: "/?grouping=epic",
+    on: connecting,
+    refused: 400,
+    act: async (page) => {
+      await fillJira(page, "not-the-one");
+      await page.getByRole("button", { name: "Connect" }).click();
+      await page.locator(".connect-problem").waitFor();
+    },
+  },
   { name: "epic", path: "/?grouping=epic", act: (page) => shown(page, "epic") },
   {
     name: "epic-expanded",
@@ -494,13 +544,15 @@ try {
         timezoneId: "UTC",
       });
       const page = await context.newPage();
+      let scene: Scene | null = null;
       page.on("console", (message) => {
-        if (message.type() === "error" || message.type() === "warning") {
+        const expected = scene?.refused && message.text().includes(`status of ${scene.refused}`);
+        if ((message.type() === "error" || message.type() === "warning") && !expected) {
           problems.push(`${theme} ${width}: console ${message.type()}: ${message.text()}`);
         }
       });
       page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
-      for (const scene of scenes) {
+      for (scene of scenes) {
         await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
@@ -510,6 +562,7 @@ try {
       await context.close();
     }
   }
+  await onboarding();
 } finally {
   await browser.close();
   await server.close();
@@ -519,7 +572,64 @@ try {
   await inFlight.approving;
   await holding.serving.close();
   await readOnly.close();
+  await connecting.close();
   rmSync(dirname(notes), { recursive: true, force: true });
+}
+
+// The onboarding budget (SPEC §4), as fast as a script clicks: connect
+// Jira, see the epics, ask one question, approve one change. The clock
+// starts when Jira connects; the word "token" is counted on each screen,
+// in its text and in what it shows in fields and tooltips.
+async function onboarding(): Promise<void> {
+  const on = await unconnected();
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  const tokens: [string, number][] = [];
+  const count = async (screen: string) => {
+    const text = await page.evaluate<string>(`[
+      document.body.innerText,
+      ...[...document.querySelectorAll("[placeholder], [title], [aria-label]")].flatMap((el) =>
+        ["placeholder", "title", "aria-label"].map((name) => el.getAttribute(name) ?? ""),
+      ),
+    ].join("\\n")`);
+    tokens.push([screen, (text.match(/\btokens?\b/gi) ?? []).length]);
+  };
+  try {
+    const opened = performance.now();
+    await page.goto(on.url);
+    await fillJira(page, account.token);
+    await count("connect");
+    await page.getByRole("button", { name: "Connect" }).click();
+    await page.locator(".connect-jira").waitFor({ state: "detached" });
+    const connected = performance.now();
+    await shown(page, "epic");
+    await count("epics");
+    const checkoutEpic = page.locator(".cluster", { hasText: "Checkout" }).first();
+    await checkoutEpic.getByRole("button", { name: "Make group" }).click();
+    await page.locator(".group-page .members").waitFor();
+    await count("group");
+    await page.getByLabel("Ask about this group").fill("Plan gift cards in this epic");
+    await page.getByRole("button", { name: "Ask" }).click();
+    await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    await count("thread");
+    await page.getByRole("button", { name: "Approve and apply" }).click();
+    await page.locator('.change-set[data-status="applied"]').waitFor();
+    await count("approved");
+    const done = performance.now();
+    const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+    console.log(
+      `onboarding: ${seconds(connected - opened)} to connect, then ${seconds(done - connected)} from connect to an approved change`,
+    );
+    console.log(
+      `onboarding: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
+    );
+    const total = tokens.reduce((sum, [, n]) => sum + n, 0);
+    if (total > 1)
+      problems.push(`onboarding: "token" appears ${total} times, over the budget of 1`);
+  } finally {
+    await context.close();
+    await on.close();
+  }
 }
 
 for (const problem of problems) console.error(problem);

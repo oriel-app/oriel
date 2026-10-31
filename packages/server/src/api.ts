@@ -27,7 +27,13 @@ import {
   type Validator,
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
-import { type FolderView, type GroupingId, isGroupingId, type StreamEvent } from "@oriel/web/view";
+import {
+  type FolderView,
+  type GroupingId,
+  isGroupingId,
+  type JiraView,
+  type StreamEvent,
+} from "@oriel/web/view";
 import { resolveDropped } from "./dropped.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
@@ -64,8 +70,16 @@ export type ApiDeps = {
     connect(path: string): Promise<{ folder: FolderView } | { problem: string }>;
     sync(): Promise<{ folder: FolderView } | { problem: string }>;
   };
+  // Jira: its state, and connecting it with the details the user typed.
+  jira: {
+    view(): JiraView;
+    connect(details: JiraDetails): Promise<{ jira: JiraView } | { problem: string }>;
+  };
   log: Log;
 };
+
+// What the user types to connect Jira. Validation messages never quote a value.
+export type JiraDetails = { site: string; email: string; token: string; project: string };
 
 // Body caps, in bytes.
 const smallBody = 4 * 1024;
@@ -165,6 +179,14 @@ const folderBody = object({
     (path) => path.trim() !== "" && path.length <= 1024 && !path.includes("\0"),
     "expected a folder path",
   ),
+});
+const typedValue = (max: number, what: string) =>
+  refine(string, (text) => text.trim() !== "" && text.length <= max, `expected ${what}`);
+const jiraBody = object({
+  site: typedValue(200, "a site"),
+  email: typedValue(254, "an email address"),
+  token: typedValue(1024, "an API token"),
+  project: typedValue(32, "a project key"),
 });
 const tinyBody = 256;
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
@@ -437,6 +459,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const synced = await deps.folder.sync();
         if ("problem" in synced) throw new Refused(409, synced.problem);
         return json(200, synced);
+      },
+    },
+    {
+      method: "GET",
+      path: at("/jira"),
+      run: async () => json(200, { jira: deps.jira.view() }),
+    },
+    {
+      // Connects Jira with the details the user typed. They're checked
+      // against the site before anything is kept, and its items sync into
+      // the index at once. The token is never sent back.
+      method: "POST",
+      path: at("/jira"),
+      async run(_, request) {
+        const details = await readJson(request, smallBody, jiraBody);
+        const connected = await deps.jira.connect(details);
+        if ("problem" in connected) throw new Refused(400, connected.problem);
+        return json(200, connected);
       },
     },
     {

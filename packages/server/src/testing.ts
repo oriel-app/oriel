@@ -4,7 +4,9 @@
 // bindings. Requests go through the same handler and guard as in production.
 // With `writes`, change sets write to SYN as a Jira site in memory, through
 // the writer @oriel/changeset builds; nothing here holds a writer. With
-// `live`, the app also syncs from that site, as from a live one.
+// `live`, the app also syncs from that site, as from a live one. With
+// `connect`, Jira starts unconnected, and the window connects it to SYN in
+// memory, which answers only `account`.
 import {
   type Bindings,
   type CapturedMutation,
@@ -19,7 +21,8 @@ import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { type App, createApp, limits } from "./app.ts";
+import { type App, createApp, type JiraMode, limits } from "./app.ts";
+import type { ConnectionStore } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
 
@@ -94,7 +97,12 @@ export type TestOptions = {
   live?: boolean;
   // A database file, so a second app can open what the first left.
   db?: string;
+  // Jira is connected from the window, and kept in `store`.
+  connect?: { store: ConnectionStore };
 };
+
+// The account SYN in memory answers when the window connects it.
+export const account = { email: "pm@example.com", token: "memory-site-secret-value" };
 
 export type Logged = { message: string; fields: Record<string, unknown> };
 
@@ -105,21 +113,28 @@ export async function testApp(
   let clock = Date.parse(t0);
   const now = (): Instant => instant(new Date(clock));
   const plan = options.plan ?? (() => [{ text: "Hello." }]);
-  const site = options.writes || options.live ? memorySite(loadJiraFixture(), now()) : null;
+  const site = options.connect
+    ? memorySite(loadJiraFixture(), now(), { account })
+    : options.writes || options.live
+      ? memorySite(loadJiraFixture(), now())
+      : null;
   const writeTo = site && {
     site: memorySiteOrigin,
     credential: { headers: async () => ({}) },
     project: "SYN",
     fetch: site.fetch,
   };
-  const logged: Logged[] = [];
-  const app: App = await createApp({
-    db: options.db ?? ":memory:",
-    jira: writeTo
+  const jira: JiraMode = options.connect
+    ? { kind: "window", store: options.connect.store, ...(site ? { fetch: site.fetch } : {}) }
+    : writeTo
       ? options.live
         ? { kind: "live", ...writeTo }
         : { kind: "fixture", writeTo }
-      : { kind: "fixture" },
+      : { kind: "fixture" };
+  const logged: Logged[] = [];
+  const app: App = await createApp({
+    db: options.db ?? ":memory:",
+    jira,
     reviewBase: new URL(`${origin}/review/`),
     limits: { ...limits, ...options.limits },
     now,
