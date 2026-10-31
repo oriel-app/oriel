@@ -156,26 +156,29 @@ async function threads(only?: string): Promise<void> {
   }
 }
 
-// Only a person approves a change set (decision 0003). Against a server that
-// writes to a real site, the driver won't press a control that approves,
-// applies or reverts one, or submit a form that has one, and won't act on a
-// review link's page at all: the maintainer does, in the same window. On the
-// fixture, nothing real is written, so mock PMs may.
+// Only a person approves a change set (decision 0003). The driver never
+// presses a control that approves, applies or reverts one, or submits a form
+// that has one, and never acts on a review link's page, whatever the server:
+// the maintainer does that, in the same window.
 const writes = /^(approve|apply|try again|revert)/i;
-const live = async () =>
-  !(await get<{ fixture: boolean }>("/api/window?grouping=epic").catch(() => null))?.fixture;
 function refuse(why: string): true {
-  console.error(`${why} Only a person approves a change to a real site; ask the maintainer.`);
+  console.error(`${why} Only a person approves a change set; ask the maintainer.`);
   process.exitCode = 3;
   return true;
 }
-async function refused(names: readonly string[]): Promise<boolean> {
+function refused(names: readonly string[]): boolean {
   const write = names.map((name) => name.trim()).find((name) => writes.test(name));
-  return write !== undefined && (await live()) && refuse(`"${write}" can write to a real site.`);
+  return write !== undefined && refuse(`"${write}" can approve, apply or revert a change set.`);
 }
-async function onReviewPage(path: string): Promise<boolean> {
-  return path.startsWith("/review/") && (await live()) && refuse("This is a review link's page.");
-}
+const onReviewPage = (path: string): boolean =>
+  path.startsWith("/review/") && refuse("This is a review link's page.");
+// One key, after any modifiers: a chord like Tab+Enter would move focus onto
+// a control and press it before the guard could see it.
+const modifiers = new Set(["Shift", "Control", "Alt", "Meta", "ControlOrMeta"]);
+const oneKey = (chord: string): boolean => {
+  const keys = chord.split("+");
+  return keys.length > 0 && keys.slice(0, -1).every((key) => modifiers.has(key));
+};
 
 // An element's accessible name, near enough: its label, else its text. It
 // runs in the page; these are the two DOM members it uses.
@@ -212,12 +215,23 @@ async function drive(): Promise<void> {
   const on = await browser();
   try {
     const tab = await page(on);
-    const going = command === "open" ? new URL(args[0] ?? "/", app) : URL.parse(tab.url());
+    // Only Oriel's own pages: no other site, and no javascript: URL, which
+    // would run in the page past every check here.
+    const going = command === "open" ? URL.parse(args[0] ?? "/", app) : URL.parse(tab.url());
+    if (going?.origin !== new URL(app).origin) {
+      console.error(
+        command === "open"
+          ? `open goes only to Oriel's pages, at ${app}`
+          : `The tab isn't on Oriel; run \`open\` first.`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     if (command !== "look" && command !== "shot" && command !== "wait")
-      if (await onReviewPage(going?.pathname ?? "")) return;
+      if (onReviewPage(going.pathname)) return;
     switch (command) {
       case "open":
-        await tab.goto(args[0] ? new URL(args[0], app).href : app);
+        await tab.goto(going.href);
         await look(tab);
         break;
       case "look":
@@ -225,7 +239,7 @@ async function drive(): Promise<void> {
         break;
       case "click": {
         const target = tab.locator(need(args[0], "a selector")).first();
-        if (await refused([await target.evaluate(nameOf)])) return;
+        if (refused([await target.evaluate(nameOf)])) return;
         await target.click();
         await tab.waitForLoadState();
         await look(tab);
@@ -236,8 +250,13 @@ async function drive(): Promise<void> {
         await look(tab);
         break;
       case "press": {
+        if (!oneKey(args[0] ?? "")) {
+          console.error("press takes one key, after any modifiers, like Enter or Shift+Tab");
+          process.exitCode = 2;
+          return;
+        }
         const focused: unknown = await tab.evaluate(focusedNames);
-        if (await refused(Array.isArray(focused) ? focused.map(String) : [])) return;
+        if (refused(Array.isArray(focused) ? focused.map(String) : [])) return;
         await tab.keyboard.press(need(args[0], "a key"));
         await look(tab);
         break;
