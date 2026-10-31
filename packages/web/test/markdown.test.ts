@@ -212,3 +212,23 @@ test("a table under a line of text, a link with parentheses, and backticks in a 
     ),
   ]);
 });
+
+test("a link's target may have a title, spaces around it, or be in angle brackets", () => {
+  const to = (href: string) => [{ kind: "link", href, children: [text("a")] }];
+  assert.deepEqual(
+    inline('[a](https://x.example/OA-13 "Render markdown")'),
+    to("https://x.example/OA-13"),
+  );
+  assert.deepEqual(inline("[a]( https://x.example/ )"), to("https://x.example/"));
+  assert.deepEqual(inline("[a](https://x.example/ 'T')"), to("https://x.example/"));
+  assert.deepEqual(inline("[a](<https://x.example/a b>)"), to("https://x.example/a b"));
+  // A bracket ends the scan, so an address with one stays as typed.
+  assert.deepEqual(inline("[a](https://x.example/?f[s]=1)"), [
+    text("[a](https://x.example/?f[s]=1)"),
+  ]);
+  // One column needs a `|` under it too.
+  assert.deepEqual(parse("Pipe it through:\ncat x |\n---"), [
+    para(text("Pipe it through:"), { kind: "break" }, text("cat x |")),
+    { kind: "rule" },
+  ]);
+});

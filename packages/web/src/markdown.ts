@@ -45,6 +45,9 @@ function headingText(raw: string): string {
 
 // A table's second line: one `---` cell, aligned or not, for each heading.
 function tableRule(line: string, columns: number): boolean {
+  // One column needs a `|` on this line too, or any `---` under a line
+  // ending in `|` would make a table.
+  if (columns === 1 && !line.includes("|")) return false;
   const cells = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
   return cells.length === columns && cells.every((cell) => /^:?-+:?$/.test(cell.trim()));
 }
@@ -357,8 +360,12 @@ function closingTicks(line: Line, from: number, length: number): number {
 export const opens = (href: string, sites: ReadonlySet<string>): boolean =>
   sites.has(URL.parse(href)?.origin ?? "");
 
-// A link's target: up to its own `)`, without spaces, and no longer than this, so
-// a line of unclosed links is read in bounded steps.
+// What follows a link's label: `(`, its target, an optional title in quotes
+// or parentheses, and `)`, with spaces between them. The target is an address
+// without spaces, its parentheses in pairs as in `wiki/Foo_(bar)`, or any text
+// in `<…>`. A `[` or `]` ends the scan, and so does running past this many
+// characters, so each part of a line is read for one link at most. The cost:
+// an address with a bracket in it (`?f[a]=1`, `[::1]`) stays as typed.
 const longestTarget = 2_048;
 
 // `[label](https://…)`. A link that isn't to the web stays as typed.
@@ -366,25 +373,45 @@ function link(line: Line, from: number): { node: Inline; end: number } | null {
   const { text } = line;
   const close = line.brackets.get(from);
   if (close === undefined || text[close + 1] !== "(") return null;
-  const start = close + 2;
-  const last = Math.min(text.length, start + longestTarget);
-  // Parentheses inside it come in pairs, as in `wiki/Foo_(bar)`. A bracket
-  // ends it, as an address can't hold one: so each part of a line is scanned
-  // by one link at most.
-  let end = start;
-  let open = 0;
-  const stops = (char: string | undefined) => space(char) || char === "[" || char === "]";
-  while (end < last && !stops(text[end]) && (text[end] !== ")" || open > 0)) {
-    if (text[end] === "(") open++;
-    else if (text[end] === ")") open--;
-    end++;
+  const last = Math.min(text.length, close + 2 + longestTarget);
+  const stops = (char: string | undefined) => char === "[" || char === "]";
+  let at = close + 2;
+  const skipSpaces = () => {
+    while (at < last && (text[at] === " " || text[at] === "\t")) at++;
+  };
+  skipSpaces();
+  let target: string;
+  if (text[at] === "<") {
+    const begin = ++at;
+    while (at < last && text[at] !== ">" && text[at] !== "<" && !stops(text[at])) at++;
+    if (text[at] !== ">") return null;
+    target = text.slice(begin, at);
+    at++;
+  } else {
+    const begin = at;
+    let open = 0;
+    while (at < last && !space(text[at]) && !stops(text[at]) && (text[at] !== ")" || open > 0)) {
+      if (text[at] === "(") open++;
+      else if (text[at] === ")") open--;
+      at++;
+    }
+    target = text.slice(begin, at);
   }
-  if (text[end] !== ")") return null;
-  const href = safeHref(text.slice(start, end).replace(/^<(.*)>$/, "$1"));
+  skipSpaces();
+  const quote = text[at] === '"' || text[at] === "'" ? text[at] : text[at] === "(" ? ")" : null;
+  if (quote) {
+    at++;
+    while (at < last && text[at] !== quote && !stops(text[at])) at++;
+    if (text[at] !== quote) return null;
+    at++;
+    skipSpaces();
+  }
+  if (text[at] !== ")") return null;
+  const href = safeHref(target);
   if (!href) return null;
   return {
     node: { kind: "link", href, children: inline(text.slice(from + 1, close), line.depth + 1) },
-    end: end + 1,
+    end: at + 1,
   };
 }
 
