@@ -445,7 +445,9 @@ export function views(deps: ViewDeps) {
             fields: line.fields.map((field) => ({
               name: field.name,
               before: display(field.name, field.before, person),
-              after: display(field.name, field.after, person),
+              after: field.createdAbove
+                ? "created above"
+                : display(field.name, field.after, person),
             })),
           };
         }),

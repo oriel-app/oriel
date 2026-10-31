@@ -239,3 +239,30 @@ test("a thread page whose thread didn't load watches every thread instead", () =
   });
   assert.ok(effects.some((effect) => effect.type === "watchThreads"));
 });
+
+test("New thread starts one from nothing, once, and opens it", () => {
+  const [model] = init({ page: "inbox" });
+  const [starting, effects] = update(model, { type: "newThreadClicked" });
+  assert.deepEqual(effects, [
+    { type: "http", method: "POST", url: "/api/threads", body: {}, tag: { kind: "threadStarted" } },
+  ]);
+  // A second click while it starts sends nothing.
+  assert.deepEqual(update(starting, { type: "newThreadClicked" })[1], []);
+  const id = "01JBZ0000000000000000000T9";
+  const [started, opened] = update(starting, {
+    type: "replied",
+    tag: { kind: "threadStarted" },
+    ok: true,
+    body: { id, groupId: groupA },
+  });
+  assert.equal(started.starting, false);
+  assert.deepEqual(opened, [{ type: "navigate", route: { page: "thread", id } }]);
+  // A failure leaves the button ready again.
+  const [failed, none] = update(starting, {
+    type: "replied",
+    tag: { kind: "threadStarted" },
+    ok: false,
+    body: { error: "boom" },
+  });
+  assert.deepEqual([failed.starting, none], [false, []]);
+});

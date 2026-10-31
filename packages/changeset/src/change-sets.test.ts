@@ -815,6 +815,73 @@ test("NewRef chains resolve to the items earlier creates made", async () => {
   assert.equal(jira.issue("SYN-901")?.links.length, 1);
 });
 
+test("a story can go in an epic the same change set creates, and is reverted before it", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    { op: "createEpic", target: null, ref: "new:1", args: { summary: "Kiosk wallets" } },
+    story("new:2", "Pay with a phone wallet at the kiosk", "new:1"),
+    // A title that reads like a ref stays a title.
+    story("new:3", "new:1", "new:1"),
+  ]);
+  assert.deepEqual(
+    (await changeSets.diff(set.id)).lines.map((line) => line.sentence),
+    [
+      "Create an epic “Kiosk wallets”.",
+      "Create a story “Pay with a phone wallet at the kiosk” in the new epic “Kiosk wallets”.",
+      "Create a story “new:1” in the new epic “Kiosk wallets”.",
+    ],
+  );
+  // Only the epic is marked as an item made above, not a title that reads like one.
+  const fields = nth((await changeSets.diff(set.id)).lines, 2).fields;
+  assert.deepEqual(
+    fields.map((f) => [f.name, f.after, f.createdAbove ?? false]),
+    [
+      ["summary", "new:1", false],
+      ["epic", "new:1", true],
+    ],
+  );
+  // Nor can an edit put a story in another new story.
+  await assert.rejects(
+    changeSets.edit(set.id, {
+      set: [{ mutationId: nth(set.mutations, 2).id, args: { summary: "x", epic: "new:2" } }],
+    }),
+    { code: "refused", message: /new:2 is made by createStory/ },
+  );
+  await approve(changeSets, set.id);
+  assert.deepEqual((await changeSets.apply(set.id)).failed, []);
+  assert.deepEqual(jira.created, ["SYN-900", "SYN-901", "SYN-902"]);
+  assert.equal(jira.issue("SYN-901")?.epic, "jira:SYN-900");
+  assert.equal(jira.issue("SYN-902")?.epic, "jira:SYN-900");
+  assert.equal(jira.issue("SYN-902")?.summary, "new:1");
+  // A new epic must come first, and a new story can't hold another.
+  await assert.rejects(
+    changeSets.capture(run, [
+      story("new:1", "Gate change sounds", "new:2"),
+      { op: "createEpic", target: null, ref: "new:2", args: { summary: "Gate changes" } },
+    ]),
+    { code: "invalid" },
+  );
+  // What was approved is kept as it was captured.
+  const stored = await changeSets.get(set.id);
+  assert.deepEqual(nth(stored?.mutations ?? [], 1).args, {
+    summary: "Pay with a phone wallet at the kiosk",
+    epic: "new:1",
+  });
+
+  const reverse = await changeSets.revert(set.id);
+  assert.ok("id" in reverse);
+  await approve(changeSets, reverse.id);
+  assert.deepEqual((await changeSets.apply(reverse.id)).failed, []);
+  assert.deepEqual(
+    jira.calls.slice(3).map((call) => [call.op, call.target]),
+    [
+      ["deleteItem", "jira:SYN-902"],
+      ["deleteItem", "jira:SYN-901"],
+      ["deleteItem", "jira:SYN-900"],
+    ],
+  );
+});
+
 test("after a crash, apply resumes and skips what already landed", async () => {
   const { changeSets, instance, run, jira, advance } = setup();
   const set = await changeSets.capture(run, [

@@ -55,7 +55,7 @@ import { createSandbox } from "@oriel/sandbox";
 import type { FolderView, GroupingId, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { api } from "./api.ts";
+import { api, blankGroupName, maxNameChars } from "./api.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
@@ -350,14 +350,23 @@ export async function createApp(options: AppOptions): Promise<App> {
   });
 
   // What a change set created joins its thread's group, so later turns can
-  // work on it (decision 0018); the group's working threads follow. A live
-  // index syncs, so the window shows what landed.
+  // work on it (decision 0018); the group's working threads follow. A group
+  // made for a thread from nothing takes the name of the first epic created
+  // in it. A live index syncs, so the window shows what landed.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
       const created = set.mutations.flatMap((m) =>
         m.target === null && m.applied ? [m.applied.item] : [],
       );
+      const group = groups.get(thread.groupId);
+      const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
+      const summary = (epic?.args as { summary?: unknown } | undefined)?.summary;
+      const blank =
+        group?.name === blankGroupName &&
+        groups.region(group.id, group.version)?.items.length === 0;
+      if (blank && typeof summary === "string")
+        groups.rename(thread.groupId, [...summary.trim()].slice(0, maxNameChars).join(""));
       const at = now();
       const change = created.length
         ? groups.add(thread.groupId, created, { kind: "change-set", changeSetId: set.id }, at)

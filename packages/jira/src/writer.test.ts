@@ -90,8 +90,13 @@ function fakeSite() {
       const project = fields.project as { key: string };
       assert.equal(project.key, "SYN");
       const { parent: up, issuetype, project: _, ...rest } = fields;
-      assert.deepEqual(issuetype, { id: "10001" });
-      put(key, { ...rest, ...(up ? { parent: parent((up as { key: string }).key) } : {}) });
+      const epic = (issuetype as { id: string }).id === issueType("Epic").id;
+      if (!epic) assert.deepEqual(issuetype, { id: issueType("Story").id });
+      put(key, {
+        ...rest,
+        ...(epic ? { issuetype: issueType("Epic") } : {}),
+        ...(up ? { parent: parent((up as { key: string }).key) } : {}),
+      });
       return ok({ id: issues.get(key)?.id, key, self: `${site}/rest/api/3/issue/${key}` }, 201);
     }
     const match =
@@ -239,6 +244,37 @@ test("createStory goes under its epic with the board's points field, and deleteI
   });
   assert.deepEqual(removed.after, {});
   assert.deepEqual(jira.writes()[1], { method: "DELETE", path: "/rest/api/3/issue/SYN-125" });
+  assert.equal(await w.current("jira:SYN-125", ["summary"]), "gone");
+});
+
+test("createEpic makes an epic in the writer's project, and deleteItem undoes it", async () => {
+  const jira = fakeSite();
+  const w = writer(jira.transport);
+  const made = await w.apply(
+    request("createEpic", null, { summary: "Kiosk wallets", description: "Pay by phone." }),
+  );
+  assert.deepEqual(made, {
+    item: { id: "jira:SYN-125", stableId: "10125" },
+    before: {},
+    after: { summary: "Kiosk wallets", description: "Pay by phone.", updated: at(1) },
+  });
+  assert.deepEqual(jira.writes()[0]?.body, {
+    fields: {
+      project: { key: "SYN" },
+      issuetype: { id: issueType("Epic").id },
+      summary: "Kiosk wallets",
+      description: textToAdf("Pay by phone."),
+    },
+  });
+  // A story can then go in it.
+  const story = await w.apply(
+    request("createStory", null, { summary: "Tap to pay", epic: "jira:SYN-125" }),
+  );
+  assert.equal(story.after.epic, "jira:SYN-125");
+
+  await w.apply(request("deleteItem", "jira:SYN-126", {}));
+  const removed = await w.apply(request("deleteItem", "jira:SYN-125", {}));
+  assert.equal(removed.before.summary, "Kiosk wallets");
   assert.equal(await w.current("jira:SYN-125", ["summary"]), "gone");
 });
 

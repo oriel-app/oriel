@@ -27,8 +27,12 @@ const httpsUrl = refine(
 // Jira's catalogue of write operations. Bindings validate captured arguments
 // with these, the writer applies them, diffs describe them and revert inverts
 // them. The last two exist only as reverts: removeLink undoes addLink,
-// deleteItem undoes createStory.
+// deleteItem undoes createStory and createEpic.
 export const jiraOps = {
+  createEpic: {
+    args: object({ summary, description: optional(string) }),
+    revertOnly: false,
+  },
   createStory: {
     args: object({
       summary,

@@ -1,6 +1,7 @@
 // `items.*` reads any item in the region, whatever its source; a source's own
 // namespace exists only for a writable source the region holds items from,
-// and takes only those items (decision 0019).
+// and takes only those items (decision 0019), or, to start a plan, for a
+// region with no items yet, where it may only create.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -152,6 +153,48 @@ test("a region of read-only items has items.* and search(), and no source namesp
     kind: "done",
     value: [files.get(plan)?.text.length, files.get(notes)?.text.length],
   });
+});
+
+test("a region with no items yet gets Jira's creates alone: an epic, and stories in it", async () => {
+  const bindings = bindingsFor({ ...picked, items: [] }, { reader, namespaces });
+  assert.match(
+    bindings.dts,
+    /createEpic\(epic: \{ summary: string; description\?: string \}\): NewRef;/,
+  );
+  assert.match(bindings.dts, /createStory\(story: \{[^}]*epic\?: NewRef \| null \}\): NewRef;/);
+  assert.doesNotMatch(bindings.dts, /JiraId|Target|EpicId|listItems|setSummary/);
+  const script =
+    'const epic = jira.createEpic({ summary: "Kiosk wallets" });\njira.createStory({ summary: "Pay by phone", epic });\nreturn epic;';
+  assert.equal(await typecheck(script, bindings.dts), null);
+
+  assert.deepEqual(bindings.capture("jira.createEpic", [{ summary: "Kiosk wallets" }], "new:1"), {
+    op: "createEpic",
+    target: null,
+    ref: "new:1",
+    args: { summary: "Kiosk wallets" },
+  });
+  assert.deepEqual(
+    bindings.capture("jira.createStory", [{ summary: "Pay by phone", epic: "new:1" }], "new:2"),
+    {
+      op: "createStory",
+      target: null,
+      ref: "new:2",
+      args: { summary: "Pay by phone", epic: "new:1" },
+    },
+  );
+  // Only an epic made earlier in this run can hold a story.
+  for (const [i, epic] of ["new:2", "new:9", "jira:SYN-1"].entries())
+    assert.throws(
+      () => bindings.capture("jira.createStory", [{ summary: "Refunds", epic }], `new:${i + 3}`),
+      /isn't an epic created earlier in this run/,
+    );
+});
+
+test("a region with items gets no createEpic", () => {
+  for (const region of [picked, mixed]) {
+    const { dts } = bindingsFor(region, { reader, namespaces });
+    assert.doesNotMatch(dts, /createEpic/);
+  }
 });
 
 test("the declarations carry IDs and types only: no file name or body reaches them", () => {

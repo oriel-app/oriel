@@ -44,6 +44,16 @@ export function Sidebar(props: {
         </button>
       </div>
       <nav class="sidebar-pages" aria-label="Pages">
+        <button
+          type="button"
+          class="nav-link"
+          title="Start a thread from nothing, such as a plan for a new epic"
+          disabled={model.starting}
+          onClick={() => dispatch({ type: "newThreadClicked" })}
+        >
+          <PlusIcon />
+          <span class="sidebar-label">New thread</span>
+        </button>
         <Link
           route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
           dispatch={dispatch}
@@ -294,6 +304,14 @@ function WindowIcon() {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M2 6.5h12M5 9.5h6M5 11.5h4" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" />
     </svg>
   );
 }

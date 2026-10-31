@@ -2,7 +2,7 @@
 
 Accepted 2026-10-28.
 
-**Decision.** Agent code never writes to a source. Writes made in the sandbox are captured as mutations in a change set. A person approves it, in the thread or through its review link, and only then is it replayed. Replay sends exactly the captured arguments, never re-derived ones. Applied change sets keep their reverse diff and can be reverted; a revert is itself a change set.
+**Decision.** Agent code never writes to a source. Writes made in the sandbox are captured as mutations in a change set. A person approves it, in the thread or through its review link, and only then is it replayed. Replay sends exactly the captured arguments, never re-derived ones. One exception: an argument naming an item that an earlier mutation in the same change set creates, such as a new story's new epic, is sent as the ID the source returned for it, as a target naming one already is (added 2026-10-31). Applied change sets keep their reverse diff and can be reverted; a revert is itself a change set.
 
 **Why.** It is what lets a PM trust the agent, and the review link is how Oriel reaches people who aren't in it.
 

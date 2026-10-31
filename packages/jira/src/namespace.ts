@@ -1,7 +1,7 @@
 // The `jira` namespace of a region's module: Jira's read helpers, and a write
 // for each op in Jira's catalogue that a run may capture (decision 0019).
 // Bindings build it only for a region holding Jira items, and its functions
-// take only those. The composition root hands it to bindings.
+// take only those, or for a region with no items yet, which may only create. The composition root hands it to bindings.
 import {
   idUnion,
   type ItemId,
@@ -151,9 +151,10 @@ const epicField = optional(nullable(string));
 const field = (key: string, check: Validator<unknown>, type: string) =>
   `${key}${check(undefined).ok ? "?" : ""}: ${type}`;
 
-function storyType(withEpic: boolean): string {
+// `epic` names the type a story's epic is given as, when it may have one.
+function storyType(epic: string | null): string {
   const fields = storyKeys.map((key) => field(key, storyFields[key], storyTypes[key]));
-  if (withEpic) fields.push(field("epic", epicField, "EpicId | null"));
+  if (epic) fields.push(field("epic", epicField, `${epic} | null`));
   return `{ ${fields.join("; ")} }`;
 }
 
@@ -169,7 +170,7 @@ function createStory(scope: JiraScope): NamespaceWrite {
       doc: `Create a story in this region's epic. ${doc}`,
       op: "createStory",
       creates: true,
-      params: [param("story", storyType(false), object(storyFields))],
+      params: [param("story", storyType(null), object(storyFields))],
       // The epic is bound, whatever the guest sent.
       build: ([story]) => ({ target: null, args: { ...story, epic: anchor } }),
     });
@@ -181,7 +182,11 @@ function createStory(scope: JiraScope): NamespaceWrite {
     op: "createStory",
     creates: true,
     params: [
-      param("story", storyType(epics.length > 0), object({ ...storyFields, epic: epicField })),
+      param(
+        "story",
+        storyType(epics.length > 0 ? "EpicId" : null),
+        object({ ...storyFields, epic: epicField }),
+      ),
     ],
     build: ([story]) => {
       const parent = story.epic ?? null;
@@ -192,6 +197,38 @@ function createStory(scope: JiraScope): NamespaceWrite {
   });
 }
 
+// A region with no items yet offers only creates, to start a plan from
+// nothing: an epic, and stories in it or in none.
+const epicKeys = ["summary", "description"] as const;
+const createEpic = write({
+  name: "createEpic",
+  doc: "Create an epic. Returns its ref, which createStory can put stories in.",
+  op: "createEpic",
+  creates: true,
+  params: [
+    param(
+      "epic",
+      `{ ${epicKeys.map((key) => field(key, storyFields[key], storyTypes[key])).join("; ")} }`,
+      object({ summary: storyFields.summary, description: storyFields.description }),
+    ),
+  ],
+  build: ([epic]) => ({ target: null, args: { ...epic } }),
+});
+
+const createStoryInNewEpic = write({
+  name: "createStory",
+  doc: "Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref.",
+  op: "createStory",
+  creates: true,
+  params: [param("story", storyType("NewRef"), object({ ...storyFields, epic: epicField }))],
+  build: ([story], host) => {
+    const parent = story.epic ?? null;
+    if (parent !== null && !(isNewRef(parent) && host.created.get(parent) === "createEpic"))
+      throw new RangeError(`${JSON.stringify(parent)} isn't an epic created earlier in this run`);
+    return { target: null, args: { ...story, epic: parent } };
+  },
+});
+
 const target = param("id", "Target", string);
 
 // The ops a run may capture: every op in Jira's catalogue but its
@@ -200,9 +237,10 @@ type Offered = {
   [O in JiraOp]: (typeof jiraOps)[O]["revertOnly"] extends false ? O : never;
 }[JiraOp];
 
-// How each one is offered. Typed over Jira's catalogue, so an op added there
-// must be offered here or marked revert-only.
-const writes: { [O in Offered]: (scope: JiraScope) => NamespaceWrite } = {
+// How each one is offered in a region with items. Typed over Jira's
+// catalogue, so an op added there must be offered here or marked
+// revert-only; a new epic starts a plan, so only a blank region offers it.
+const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => NamespaceWrite } = {
   createStory,
   setSummary: () =>
     write({
@@ -255,11 +293,16 @@ const writes: { [O in Offered]: (scope: JiraScope) => NamespaceWrite } = {
 };
 
 const offered = (Object.keys(jiraOps) as JiraOp[]).filter(
-  (op): op is Offered => !jiraOps[op].revertOnly,
+  (op): op is Exclude<Offered, "createEpic"> => !jiraOps[op].revertOnly && op !== "createEpic",
 );
 
 // What the namespace adds to the declarations: IDs and types only.
 function types(scope: JiraScope): string[] {
+  if (!scope.ids.length)
+    return [
+      "/** An item created earlier in this run. It exists once the change set is approved. */",
+      "type NewRef = `new:${number}`;",
+    ];
   return [
     "/** This region's Jira items. */",
     "type JiraId = Extract<RegionId, `jira:${string}`>;",
@@ -304,10 +347,12 @@ export function jiraNamespace(kinds: ReadonlyMap<string, string | undefined>): N
   return {
     name: "Jira",
     ops: jiraOps,
+    blank: true,
     types: (scope) => types(jiraScope(scope)),
     // Region reads, then the writes in catalogue order.
     fns(given): NamespaceFn[] {
       const scope = jiraScope(given);
+      if (!scope.ids.length) return [createEpic, createStoryInNewEpic];
       const epic = scope.anchor;
       return [
         ...(epic ? [getEpic(epic), listStories(scope, epic)] : []),

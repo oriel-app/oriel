@@ -63,6 +63,61 @@ async function proposed(t: TestContext, script: Script = estimate) {
   };
 }
 
+test("a thread from nothing plans an epic and its stories, and its new group takes the epic's name", async (t) => {
+  const plan: Script = async () => ({
+    value: null,
+    writes: [
+      ["jira.createEpic", [{ summary: "Kiosk wallets" }], "new:1"],
+      ["jira.createStory", [{ summary: "Tap to pay", epic: "new:1" }], "new:2"],
+    ],
+  });
+  const app = await testApp(t, { writes: true, plan: () => [{ run: "plan" }], scripts: { plan } });
+  const started = await app.post("/api/threads", { text: "Plan kiosk wallets" });
+  assert.equal(started.status, 201);
+  const { id: threadId, groupId } = json<{ id: string; groupId: string }>(started);
+  await app.app.settled();
+  const group = async () => json<GroupView>(await app.get(`/api/groups/${groupId}`));
+  const before = await group();
+  assert.deepEqual([before.group.name, before.members.length], ["New group", 0]);
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "group.created" || e.name === "thread.opened")
+      .map(({ name, data }) =>
+        name === "group.created" ? [name, data.origin, data.size] : [name, data.regionSize],
+      ),
+    [
+      ["group.created", "picked", 0],
+      ["thread.opened", 0],
+    ],
+  );
+
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  const entry = view.entries.find((e) => e.kind === "change-set");
+  assert.ok(entry?.kind === "change-set", "the run captured a change set");
+  const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  assert.deepEqual(
+    diff.lines.map((line) => line.sentence),
+    [
+      "Create an epic “Kiosk wallets”.",
+      "Create a story “Tap to pay” in the new epic “Kiosk wallets”.",
+    ],
+  );
+  assert.deepEqual(diff.lines[1]?.fields.find((f) => f.name === "epic")?.after, "created above");
+  app.advance(1000);
+  const approved = await app.post(`/api/change-sets/${entry.changeSetId}/approve`, {
+    hash: diff.hash,
+  });
+  assert.equal(json<Acted>(approved).changeSet.status, "applied");
+
+  const after = await group();
+  assert.equal(after.group.name, "Kiosk wallets");
+  const [epic, story] = after.members.map((m) => m.ref.key);
+  assert.ok(epic && story);
+  assert.equal(app.site?.issue(epic)?.issueType, "Epic");
+  assert.equal(app.site?.issue(story)?.epic, epic);
+});
+
 test("approving applies through the writer, and the thread is done", async (t) => {
   const app = await proposed(t);
   assert.equal((await app.view()).writable, true);

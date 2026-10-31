@@ -42,7 +42,7 @@ Who controls what:
   - a write reachable without an approval whose hash matches the change set as reviewed;
   - a way around `Approved` or an adapter's `./writer`;
   - a review-link approval without a live token and a typed name, or one reachable by GET;
-  - replay sending anything other than the captured arguments;
+  - replay sending anything other than the captured arguments, beyond 0003's one exception: a ref to an item an earlier create in the same change set made, sent as that item's ID;
   - a mutation target, or a read other than `search()`, outside the region, which only the host can enforce.
 - **Browser:**
   - a state-changing request without an Origin or Host check;

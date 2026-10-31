@@ -1,6 +1,7 @@
 import {
   type FieldValues,
   isItemId,
+  isNewRef,
   type LineContext,
   op,
   type OpSpec,
@@ -86,9 +87,19 @@ function restore<T>(name: string, field: string, validator: Validator<T>, arg = 
 // One entry per op in Jira's own catalogue, which supplies each one's
 // arguments and whether it exists only as a revert.
 const ops: Record<JiraOp, OpSpec> = {
+  createEpic: op(jiraOps.createEpic, {
+    creates: true,
+    after: (a) => ({
+      summary: a.summary,
+      ...(a.description === undefined ? {} : { description: a.description }),
+    }),
+    describe: (a) => `Create an epic ${quoted(a.summary)}.`,
+    undo: () => ({ op: "deleteItem", args: {} }),
+  }),
   createStory: op(jiraOps.createStory, {
     creates: true,
     refs: (a) => (a.epic === null ? [] : [a.epic]),
+    newRefArgs: { epic: "createEpic" },
     after: (a) => ({
       summary: a.summary,
       ...(a.description === undefined ? {} : { description: a.description }),
@@ -97,7 +108,10 @@ const ops: Record<JiraOp, OpSpec> = {
     }),
     describe: async (a, context) => {
       let epic = "";
-      if (a.epic !== null) {
+      if (a.epic !== null && isNewRef(a.epic)) {
+        const title = await context.title(a.epic);
+        epic = title === null ? " in the new epic" : ` in the new epic ${quoted(title)}`;
+      } else if (a.epic !== null) {
         const title = isItemId(a.epic) ? await context.title(a.epic) : null;
         epic =
           title === null
