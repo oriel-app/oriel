@@ -109,6 +109,8 @@ export type Diff = {
     // What the line does to its item: makes it, changes some of its fields,
     // or deletes it.
     kind: "create" | "change" | "delete";
+    // What a create makes, as a person names it ("story"); null otherwise.
+    makes: string | null;
     // `createdAbove`: the value names an item an earlier line creates.
     // `titles`: on a field whose values name items (an epic), those items'
     // titles as the change set leaves them.

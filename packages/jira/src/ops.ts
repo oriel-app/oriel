@@ -24,6 +24,10 @@ const httpsUrl = refine(
   "expected an https URL",
 );
 
+// An issue's fields, by core's names: what the writer reads for a delete's
+// `before`, and what a diff lists for a delete.
+export const issueFields = ["summary", "description", "points", "assignee", "epic"] as const;
+
 // Jira's catalogue of write operations. Bindings validate captured arguments
 // with these, the writer applies them, diffs describe them and revert inverts
 // them. The last two exist only as reverts: removeLink undoes addLink,

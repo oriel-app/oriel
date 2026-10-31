@@ -1,7 +1,7 @@
 // What a diff's lines say about the items they name and the fields they list.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CapturedMutation } from "@oriel/core";
+import { type CapturedMutation, SourceRefused } from "@oriel/core";
 import { approve, nth, setup } from "./testing.ts";
 
 const rename = (target: string, summary: string): CapturedMutation => ({
@@ -68,7 +68,45 @@ test("an epic the change set creates is named by its title as the change set lea
     },
   );
   // Its own rename names it by its title before it.
-  assert.equal(nth(lines, 2).sentence, "Rename the new story “Kiosk” to “Kiosk wallets”.");
+  assert.match(nth(lines, 2).sentence, /“Kiosk” to “Kiosk wallets”\.$/);
+  assert.deepEqual(
+    lines.map((line) => [line.kind, line.makes]),
+    [
+      ["create", "epic"],
+      ["create", "story"],
+      ["change", null],
+    ],
+  );
+});
+
+test("applied lines of a set that stopped name an item by the title a pending line gives it", async () => {
+  const { changeSets, run, jira } = setup();
+  const set = await changeSets.capture(run, [
+    { op: "setEstimate", target: "jira:SYN-1", ref: null, args: { points: 8 } },
+    story("new:1", "Pay with a gift card", "jira:SYN-1"),
+    rename("jira:SYN-1", "Checkout v2: wallets, saved cards and gift cards"),
+  ]);
+  jira.hooks.before = (request) => {
+    if (request.op === "setSummary")
+      throw new SourceRefused("PUT /rest/api/3/issue/SYN-1: 400 can't be changed right now", {
+        sent: false,
+      });
+  };
+  await approve(changeSets, set.id);
+  await changeSets.apply(set.id).catch(() => null);
+  const { lines } = await changeSets.diff(set.id);
+  assert.deepEqual(
+    (await changeSets.get(set.id))?.mutations.map((m) => m.status),
+    ["applied", "applied", "pending"],
+  );
+  assert.deepEqual(
+    lines.map((line) => line.sentence),
+    [
+      `Estimate ${renamed} (SYN-1) at 8 points.`,
+      `Create a story “Pay with a gift card” in the epic ${renamed} (SYN-1).`,
+      `Rename “Checkout v2: phone wallets and saved cards” (SYN-1) to ${renamed}.`,
+    ],
+  );
 });
 
 test("a delete lists every field, empty ones too, before and after it applies", async () => {

@@ -463,6 +463,8 @@ function Edited({ field }: { field: Field }) {
       </>
     );
   const hunks = lines(field.before ?? "", field.after ?? "");
+  // Empty before and after: it stays empty.
+  if (hunks.length === 0) return <Side side="same">—</Side>;
   return (
     <>
       {hunks.map((hunk, i) =>
@@ -499,7 +501,7 @@ function NewItem({ line }: { line: Line }) {
     <>
       <p class="line-head">
         <span class="line-mark" data-kind="create">
-          New
+          {line.makes ? `New ${line.makes}` : "New"}
         </span>
         <span class="new-title">{field("summary")?.after ?? line.sentence}</span>
       </p>

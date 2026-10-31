@@ -32,6 +32,8 @@ export type Undo = { op: string; args: unknown } | { refused: string };
 export type OpSpec = OpCatalogue[string] & {
   // A create has no target and may give its item a NewRef.
   creates: boolean;
+  // What a create makes, as a person names it ("story"); null otherwise.
+  makes: string | null;
   // A delete removes its target, emptying every field the source lists.
   deletes: boolean;
   // Sending it twice leaves the source as sending it once does, so a failed
@@ -80,6 +82,7 @@ export function op<T>(
   entry: { args: Validator<T>; revertOnly: boolean },
   spec: {
     creates?: boolean;
+    makes?: string;
     deletes?: boolean;
     idempotent?: boolean;
     refs?(args: T): string[];
@@ -97,6 +100,7 @@ export function op<T>(
   return {
     args: entry.args,
     creates: spec.creates ?? false,
+    makes: spec.makes ?? null,
     deletes: spec.deletes ?? false,
     idempotent: spec.idempotent ?? false,
     revertOnly: entry.revertOnly,

@@ -173,8 +173,11 @@ test("a story in an epic created above names that epic as new, by its title", as
   assert.ok(entry?.kind === "change-set", "the run captured a change set");
   const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
   assert.deepEqual(
-    diff.lines.map((line) => line.kind),
-    ["create", "create"],
+    diff.lines.map((line) => [line.kind, line.makes]),
+    [
+      ["create", "epic"],
+      ["create", "story"],
+    ],
   );
   assert.deepEqual(diff.lines[1]?.fields.find((f) => f.name === "epic")?.items?.after, {
     title: "Kiosk wallets",

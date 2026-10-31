@@ -456,6 +456,7 @@ export function views(deps: ViewDeps) {
                 ? ref(byId.get(line.target as ItemId), line.target)
                 : null,
             kind: line.kind,
+            makes: line.makes,
             applied,
             error,
             fields: line.fields.map((field) => ({

@@ -97,11 +97,14 @@ function joined(pieces: readonly Piece[]): Piece[] {
     merge(pieces).flatMap((piece) => {
       if (!piece.changed) return [piece];
       if (isSpace(piece.text)) return [{ ...piece, changed: false }];
-      const [, lead = "", core = "", trail = ""] = /^(\s*)([\s\S]*?)(\s*)$/.exec(piece.text) ?? [];
+      // Measured by trimming, not a pattern, so a long run of space stays fast.
+      const { text } = piece;
+      const start = text.length - text.trimStart().length;
+      const end = text.trimEnd().length;
       return [
-        { text: lead, changed: false },
-        { text: core, changed: true },
-        { text: trail, changed: false },
+        { text: text.slice(0, start), changed: false },
+        { text: text.slice(start, end), changed: true },
+        { text: text.slice(end), changed: false },
       ];
     }),
   );
@@ -137,7 +140,7 @@ export function words(before: string, after: string): { before: Piece[]; after: 
 // The texts by line: runs of unchanged lines, and each change between them.
 // An empty text has no lines.
 export function lines(before: string, after: string): Hunk[] {
-  const split = (text: string) => (text === "" ? [] : text.split("\n"));
+  const split = (text: string) => (text === "" ? [] : text.replaceAll("\r\n", "\n").split("\n"));
   const hunks: Hunk[] = [];
   let removed: string[] = [];
   let added: string[] = [];

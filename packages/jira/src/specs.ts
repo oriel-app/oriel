@@ -12,7 +12,7 @@ import {
   type Validator,
   type WriteResult,
 } from "@oriel/core";
-import { type JiraOp, jiraOps } from "./ops.ts";
+import { issueFields, type JiraOp, jiraOps } from "./ops.ts";
 
 // How change sets treat Jira's ops. Field names are core's (`FieldValues`),
 // as the Jira writer reports them in `current`, `before` and `after`:
@@ -89,6 +89,7 @@ function restore<T>(name: string, field: string, validator: Validator<T>, arg = 
 const ops: Record<JiraOp, OpSpec> = {
   createEpic: op(jiraOps.createEpic, {
     creates: true,
+    makes: "epic",
     after: (a) => ({
       summary: a.summary,
       ...(a.description === undefined ? {} : { description: a.description }),
@@ -98,6 +99,7 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
   createStory: op(jiraOps.createStory, {
     creates: true,
+    makes: "story",
     refs: (a) => (a.epic === null ? [] : [a.epic]),
     newRefArgs: { epic: "createEpic" },
     after: (a) => ({
@@ -212,13 +214,6 @@ export const jiraSpecs: OpSpecs = {
   name: "Jira",
   titleField: "summary",
   updatedField: "updated",
-  // As the writer reads them for a delete's `before`.
-  fields: {
-    summary: "value",
-    description: "value",
-    points: "value",
-    assignee: "value",
-    epic: "item",
-  },
+  fields: Object.fromEntries(issueFields.map((f) => [f, f === "epic" ? "item" : "value"])),
   ops,
 };

@@ -105,3 +105,20 @@ test("texts too long to compare word by word are still diffed, marking the middl
   assert.equal(before.map((p) => p.text).join(""), was);
   assert.equal(after.map((p) => p.text).join(""), now);
 });
+
+test("line ends of either kind are the same line end", () => {
+  assert.deepEqual(lines("One\r\nTwo\r\nThe third line", "One\nTwo\nThe third line, and more"), [
+    { kind: "same", lines: ["One", "Two"] },
+    {
+      kind: "change",
+      before: [same("The third line")],
+      after: [same("The third line"), changed(", and more")],
+    },
+  ]);
+});
+
+test("a change holding a long run of space is marked in one pass", () => {
+  const spaces = " ".repeat(200_000);
+  const { after } = words("w1 w2 w3 A", `w1 w2 w3 C${spaces}D`);
+  assert.deepEqual(after, [same("w1 w2 w3 "), changed(`C${spaces}D`)]);
+});

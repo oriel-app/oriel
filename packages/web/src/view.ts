@@ -200,6 +200,8 @@ export type DiffView = {
     target: ItemRef | null;
     // What it does to its item: makes it, changes some fields, or deletes it.
     kind: "create" | "change" | "delete";
+    // What a create makes ("story"); null otherwise.
+    makes: string | null;
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;

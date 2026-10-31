@@ -569,6 +569,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           sentence: `${staleArgs}, so it can't be shown, applied or reverted.`,
           target: m.target,
           kind: lineKind,
+          makes: spec.makes,
           fields: [],
         });
         continue;
@@ -577,7 +578,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (m.applied && item !== null) {
         const { before, after } = m.applied;
         const now = live.get(item);
+        // As the change set leaves it, where an unapplied line renames it.
+        const later =
+          !Object.hasOwn(spec.after(m.args), catalogue.titleField) && titles.has(item)
+            ? (titles.get(item) ?? null)
+            : null;
         const name =
+          later ??
           (now && now !== "gone" ? text(now[catalogue.titleField]) : null) ??
           text(after[catalogue.titleField]) ??
           text(before[catalogue.titleField]);
@@ -590,6 +597,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           sentence: await spec.describe(m.args, context(subject, before)),
           target: m.target,
           kind: lineKind,
+          makes: spec.makes,
           fields: await Promise.all(
             fields.map(async (f) => ({
               name: f,
@@ -616,6 +624,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             sentence: `${key(item)} is no longer in ${catalogue.name}, so this change can't be made.`,
             target: m.target,
             kind: lineKind,
+            makes: spec.makes,
             fields: [],
           });
           continue;
@@ -639,6 +648,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         sentence: await spec.describe(m.args, context(subject, before)),
         target: m.target,
         kind: lineKind,
+        makes: spec.makes,
         fields: await Promise.all(
           Object.keys(after).map(async (f) => {
             const value = after[f];
