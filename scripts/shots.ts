@@ -251,6 +251,11 @@ const scenes: Scene[] = [
     path: "/?grouping=epic",
     act: async (page) => {
       await shown(page, "epic");
+      // On a narrow screen the folder is in the sidebar's drawer.
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
       await page.getByRole("button", { name: "Use another folder" }).click();
       await page.locator(".folder-form input").fill("~/notes/launch");
     },

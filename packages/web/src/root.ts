@@ -70,9 +70,11 @@ export type Msg =
   | { type: "streamReopened" }
   | Replied;
 
+// What the sidebar shows, loaded on entering any page.
 const lists: Effect[] = [
   get("/api/groups", { kind: "groups" }),
   get("/api/threads", { kind: "inbox" }),
+  loadFolder,
 ];
 
 export function init(route: Route): [Model, Effect[]] {
@@ -121,7 +123,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists, loadFolder]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -130,7 +132,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists, loadFolder],
+        [...leaving, ...loads, ...lists],
       ];
     }
     case "group": {
