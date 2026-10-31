@@ -13,6 +13,7 @@
     "evals": "node packages/evals/src/cli.ts",
     "test": "node --test",
     "dev": "pnpm --filter @oriel/web build && node packages/server/src/main.ts",
+    "drive": "node scripts/drive.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts"
   },
   "devDependencies": {
