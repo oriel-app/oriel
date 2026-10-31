@@ -91,7 +91,8 @@ export function Sidebar(props: {
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
 // What needs the user, in sight on every page: each thread waiting on a
-// review or a reply, with what it waits on and its group.
+// review or a reply, with what it waits on and its group. The groups below
+// say which page this is.
 function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
   if (!props.loaded) return null;
@@ -106,7 +107,6 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
               route={{ page: "thread", id: thread.id }}
               dispatch={dispatch}
               class="nav-link nav-waiting-link"
-              aria-current={thread.id === where.thread ? "page" : undefined}
             >
               <span class="state-dot" data-state={thread.state} data-waiting={thread.waitingOn} />
               <span class="nav-waiting-text">
