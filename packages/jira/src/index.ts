@@ -25,6 +25,7 @@ export { type JiraSource, type JiraSourceOptions, jiraSource, jqlDate } from "./
 export { type SyncOptions, type SyncReport, syncSource } from "./sync.ts";
 export {
   basicAuth,
+  JiraFailed,
   type JiraRequest,
   type JiraResponse,
   type ReadRequest,

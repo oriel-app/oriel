@@ -12,6 +12,8 @@ export type Tag =
   | { kind: "dropped"; groupId: string }
   | { kind: "group"; id: string }
   | { kind: "groupChanged"; id: string }
+  // The group loaded again after a sync: only its view changes.
+  | { kind: "groupSynced"; id: string }
   | { kind: "renamed"; id: string }
   | { kind: "threadOpened"; groupId: string }
   | { kind: "threadStarted"; draft: number }
@@ -32,7 +34,8 @@ export type Tag =
   | { kind: "folderConnected" }
   | { kind: "folderSynced" }
   | { kind: "jira" }
-  | { kind: "jiraConnected" };
+  | { kind: "jiraConnected" }
+  | { kind: "jiraSynced" };
 
 export type Effect =
   | { type: "loadWindow"; request: number; grouping: GroupingId }

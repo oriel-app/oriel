@@ -27,6 +27,7 @@ import {
   type Region,
   type Sandbox,
   type Source,
+  SourceRefused,
   type SourceKind,
   type Ulid,
   ulid,
@@ -52,6 +53,7 @@ import {
   fixtureFields,
   fixtureSource,
   jiraAttrs,
+  JiraFailed,
   jiraNamespace,
   jiraSource,
   jiraSpecs,
@@ -291,6 +293,49 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (mode.kind !== "window") throw error;
     log("jira sync failed", { error: String(error) });
   });
+  // What the user sees when Jira can't be synced. A sync that fails marks
+  // nothing gone; pages it had already read stay, as they're what Jira said.
+  const jiraProblem = (error: unknown) => {
+    if (
+      error instanceof SourceRefused ||
+      (error instanceof JiraFailed && [401, 403].includes(error.status))
+    )
+      return "Jira turned Oriel away, so the window may be behind it. Oriel's access to Jira may need renewing.";
+    // No answer, as fetch reports it, or one Jira gives while it's busy or down.
+    const unreachable =
+      (error instanceof TypeError && error.message === "fetch failed") ||
+      (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name)) ||
+      (error instanceof JiraFailed && (error.status === 429 || error.status >= 500));
+    if (unreachable)
+      return "Oriel couldn't reach Jira just now, so the window may be behind it. Try again in a moment.";
+    return error instanceof JiraFailed
+      ? "Jira answered in a way Oriel didn't expect, so the window may be behind it."
+      : "Oriel couldn't finish syncing Jira, so the window may be behind it.";
+  };
+  // The Sync the user asks for: a full sweep, as only one finds what was
+  // deleted in Jira. Syncs run one at a time; one asked for while another
+  // waits to start joins it, as it would list the same.
+  let waiting: Promise<string | null> | null = null;
+  const syncJira = (): Promise<string | null> =>
+    (waiting ??= syncing
+      .catch(() => {})
+      .then(() => {
+        waiting = null;
+        return sync(true);
+      })
+      .then(
+        () => null,
+        (error: unknown) => {
+          log("jira sync failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return jiraProblem(error);
+        },
+      ));
+  // The user asked for a sync: how often they do says whether Oriel should
+  // sync on its own.
+  const synced = (kind: SourceKind, problem: string | null) =>
+    emit({ name: "source.synced", at: now(), workspaceId, source: kind, ok: problem === null });
   const caps = options.limits ?? limits;
 
   // The folder the user connected, read-only (decision 0019). Its stored path
@@ -609,12 +654,21 @@ export async function createApp(options: AppOptions): Promise<App> {
         return problems.length > 0 ? problems.join(" ") : null;
       },
       explain: (conflicts) => explainConflicts(conflicts, specs),
-      jira: { view: jiraView, connect: connectJira },
+      jira: {
+        view: jiraView,
+        connect: connectJira,
+        sync: async () => {
+          const problem = await syncJira();
+          synced("jira", problem);
+          return problem ? { problem } : { jira: jiraView() };
+        },
+      },
       folder: {
         view: folderView,
         connect: connectFolder,
         sync: async () => {
           const problem = await syncFolder();
+          if (folder) synced("folder", problem);
           const view = folderView();
           return problem || !view
             ? { problem: problem ?? "No folder is connected." }
@@ -632,6 +686,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       for (const summary of threads.list(workspaceId, now())) conversation.stop(summary.thread.id);
       conversation.stopTitles();
       await conversation.settled();
+      await waiting;
       await syncing.catch(() => {});
       if (db.isOpen) db.close();
     },

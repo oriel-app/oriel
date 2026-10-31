@@ -72,10 +72,12 @@ export type ApiDeps = {
     connect(path: string): Promise<{ folder: FolderView } | { problem: string }>;
     sync(): Promise<{ folder: FolderView } | { problem: string }>;
   };
-  // Jira: its state, and connecting it with the details the user typed.
+  // Jira: its state, connecting it with the details the user typed, and
+  // syncing it on demand. A failure is a plain sentence.
   jira: {
     view(): JiraView;
     connect(details: JiraDetails): Promise<{ jira: JiraView } | { problem: string }>;
+    sync(): Promise<{ jira: JiraView } | { problem: string }>;
   };
   log: Log;
 };
@@ -486,6 +488,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const connected = await deps.jira.connect(details);
         if ("problem" in connected) throw new Refused(400, connected.problem);
         return json(200, connected);
+      },
+    },
+    {
+      // A full sweep of Jira, so what was made or deleted there since the
+      // last sync shows. Jira failing it is a 502: the request was fine.
+      method: "POST",
+      path: at("/jira/sync"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        if (!deps.jira.view().connected)
+          throw new Refused(409, "Jira isn't connected to this window yet.");
+        const synced = await deps.jira.sync();
+        if ("problem" in synced) throw new Refused(502, synced.problem);
+        return json(200, synced);
       },
     },
     {

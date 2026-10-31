@@ -14,6 +14,8 @@ export type CloseVia = "page" | "menu";
 
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
+  // The user asked for a sync, and whether it worked.
+  | { name: "source.synced"; source: SourceKind; ok: boolean }
   // `size` is how many items it started with.
   | { name: "group.created"; groupId: Ulid; origin: GroupOrigin["kind"]; size: number }
   // One per item, by the user or by a change set a thread on the group applied.

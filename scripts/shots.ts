@@ -97,6 +97,24 @@ const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
 const readOnly = await serve(0);
+// A server that syncs from a SYN site in memory as from a live one; this
+// one's site goes offline once it has started.
+const live = async () => {
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  const serving = await serve(0, {
+    db: ":memory:",
+    jira: {
+      kind: "live",
+      site: memorySiteOrigin,
+      credential: { headers: async () => ({}) },
+      project: "SYN",
+      fetch: site.fetch,
+    },
+  });
+  return { site, serving };
+};
+const offline = await live();
+offline.site.outage("offline");
 
 // Jira not connected yet; the window connects it to SYN in memory, which
 // takes only this account.
@@ -289,6 +307,13 @@ async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
 }
 
+// On a narrow screen the sources are in the sidebar's drawer.
+async function openSidebar(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) > 760) return;
+  await page.getByRole("button", { name: "Open the sidebar" }).click();
+  await page.locator(".shell[data-drawer] .sidebar").waitFor();
+}
+
 async function openFirstCluster(page: Page): Promise<void> {
   await page.locator(".cluster-toggle").first().click();
   await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
@@ -443,6 +468,36 @@ const scenes: Scene[] = [
     },
   },
   {
+    // Jira syncing: the request is held until the screenshot is taken.
+    name: "jira-syncing",
+    path: "/?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.route("**/api/jira/sync", () => {});
+      await openSidebar(page);
+      await page
+        .getByRole("region", { name: "Jira" })
+        .getByRole("button", { name: "Sync" })
+        .click();
+      await page.getByRole("button", { name: "Syncing…" }).waitFor();
+    },
+  },
+  {
+    name: "jira-sync-failed",
+    path: "/?grouping=epic",
+    on: offline.serving,
+    refused: 502,
+    act: async (page) => {
+      await shown(page, "epic");
+      await openSidebar(page);
+      await page
+        .getByRole("region", { name: "Jira" })
+        .getByRole("button", { name: "Sync" })
+        .click();
+      await page.locator(".jira .source-problem").waitFor();
+    },
+  },
+  {
     name: "thread",
     path: `/threads/${thread}`,
     act: async (page) => {
@@ -581,6 +636,7 @@ try {
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: true, animations: "disabled" });
+        await page.unrouteAll({ behavior: "ignoreErrors" });
         console.log(path);
       }
       await context.close();
@@ -591,6 +647,7 @@ try {
   await browser.close();
   await server.close();
   await refusing.serving.close();
+  await offline.serving.close();
   await unanswered.serving.close();
   inFlight.release();
   await inFlight.approving;

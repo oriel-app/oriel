@@ -544,13 +544,27 @@ button.nav-disclose:hover {
   }
 }
 
-/* The folder sits at the foot of the sidebar. */
-.sidebar .folder {
+/* The sources sit at the foot of the sidebar: Jira, then the folder. */
+.sidebar .sources {
+  display: grid;
+  gap: var(--space-3);
   margin-top: auto;
   padding: var(--space-3) var(--space-2) 0;
+  border-top: 1px solid var(--line);
 }
 
-.folder-line .icon {
+.sources .folder {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.jira {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.source-line .icon {
   color: var(--text-faint);
 }
 
@@ -575,7 +589,7 @@ button.nav-disclose:hover {
     white-space: nowrap;
   }
 
-  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar .folder) {
+  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar .sources) {
     display: none;
   }
 
@@ -869,7 +883,7 @@ button.nav-disclose:hover {
   border-top: 1px solid var(--line);
 }
 
-.folder-line {
+.source-line {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -877,7 +891,7 @@ button.nav-disclose:hover {
   color: var(--text-muted);
 }
 
-.folder-name {
+.source-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -921,7 +935,7 @@ button.nav-disclose:hover {
   font-size: var(--text-xs);
 }
 
-.folder-problem {
+.source-problem {
   margin: 0;
   color: var(--danger);
   font-size: var(--text-sm);

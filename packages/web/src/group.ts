@@ -106,6 +106,9 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
         ];
       return [{ ...model, view: msg.body as GroupView, status: "ready", pending: false }, []];
     }
+    case "groupSynced":
+      if (tag.id !== model.id || !msg.ok) return [model, []];
+      return [{ ...model, view: msg.body as GroupView, status: "ready" }, []];
     case "renamed": {
       if (tag.id !== model.id || model.view === null) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
