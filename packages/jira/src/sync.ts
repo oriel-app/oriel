@@ -59,7 +59,10 @@ export async function syncSource<K extends SourceKind, A>(
   const items = options.items ?? [];
   if (items.length && !source.records)
     throw new Error(`sync: the ${source.kind} source can't read items one by one`);
-  const read = items.length && source.records ? await source.records(items.map((i) => i.id)) : [];
+  const read =
+    items.length && source.records
+      ? await source.records(items.map((i) => i.id))
+      : { records: [], gone: [] };
   const run = index.beginSync(workspaceId, source.kind, attrs, options.clock());
   // Every stable ID the source returned, skipped ones included: a record that
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
@@ -97,12 +100,12 @@ export async function syncSource<K extends SourceKind, A>(
   if (items.length) {
     const live = new Set(index.liveStableIds(workspaceId, source.kind));
     keep({
-      records: read
-        .filter((record) => record !== null)
-        .filter((record) => !(record.updatedAt < (listed.get(record.stableId) ?? ""))),
-      gone: items.flatMap((item, i) =>
-        read[i] || !live.has(item.stableId) ? [] : [item.stableId],
+      records: read.records.filter(
+        (record) => !(record.updatedAt < (listed.get(record.stableId) ?? "")),
       ),
+      gone: items
+        .filter((item) => read.gone.includes(item.id) && live.has(item.stableId))
+        .map((item) => item.stableId),
       cursor: null,
     });
   }

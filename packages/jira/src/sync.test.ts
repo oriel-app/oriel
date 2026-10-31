@@ -194,7 +194,10 @@ function lagging(edited: number, byKey: Map<string, IndexRecord<"jira", unknown>
   const asked: string[][] = [];
   const records: Source<"jira", unknown>["records"] = async (ids) => {
     asked.push([...ids]);
-    return ids.map((id) => byKey.get(id) ?? null);
+    return {
+      records: ids.flatMap((id) => byKey.get(id) ?? []),
+      gone: ids.filter((id) => !byKey.has(id)),
+    };
   };
   return { source: { ...source, records }, cursors, asked };
 }

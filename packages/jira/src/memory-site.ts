@@ -83,7 +83,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     subtask: false,
     hierarchyLevel: name === "Epic" ? 1 : 0,
   });
-  const view = (issue: Issue) => ({
+  const view = (issue: Issue, from = issues) => ({
     id: issue.id,
     key: issue.key,
     fields: {
@@ -95,7 +95,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         statusCategory: { key: categoryKeys[issue.status.category] },
       },
       labels: issue.labels,
-      parent: issue.epic ? { id: issues.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
+      parent: issue.epic ? { id: from.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
       assignee: issue.assignee
         ? { accountId: issue.assignee, displayName: people.get(issue.assignee) ?? issue.assignee }
         : null,
@@ -122,14 +122,15 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         maxResults?: number;
         nextPageToken?: string;
       };
-      const from = Number(nextPageToken ?? 0);
-      const listed = [...(searchable ?? issues).values()].toSorted(
+      const at = Number(nextPageToken ?? 0);
+      const from = searchable ?? issues;
+      const listed = [...from.values()].toSorted(
         (a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key),
       );
-      const more = from + maxResults < listed.length;
+      const more = at + maxResults < listed.length;
       return json(200, {
-        issues: listed.slice(from, from + maxResults).map(view),
-        ...(more ? { nextPageToken: String(from + maxResults) } : { isLast: true }),
+        issues: listed.slice(at, at + maxResults).map((issue) => view(issue, from)),
+        ...(more ? { nextPageToken: String(at + maxResults) } : { isLast: true }),
       });
     }
     if (method === "POST" && path === "/rest/api/3/issue") {

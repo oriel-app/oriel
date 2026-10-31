@@ -426,25 +426,25 @@ test("records reads each issue by key into the record a listing would make; a mi
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
   const listed = record(await listAll(source, null), "jira:SYN-900");
   assert.ok(listed && source.records);
-  assert.deepEqual(await source.records(["jira:SYN-900", "jira:SYN-27", "jira:SYN-28"]), [
-    listed,
-    null,
-    null,
-  ]);
+  assert.deepEqual(await source.records(["jira:SYN-900", "jira:SYN-27", "jira:SYN-28"]), {
+    records: [listed],
+    gone: ["jira:SYN-27", "jira:SYN-28"],
+  });
   // Only GETs: reading by key goes nowhere near the search.
   assert.equal(searches(calls).length, 1);
 });
 
-test("records fails, rather than calling an issue missing, when Jira won't answer or answers oddly", async () => {
+test("records fails when Jira won't answer, and skips an issue it can't read, neither one gone", async () => {
   const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
   const { transport } = fakeJira({
     ...discovery(),
     [`GET /rest/api/3/issue/SYN-1?fields=${fields}`]: { status: 401, body: "Unauthorized" },
     [`GET /rest/api/3/issue/SYN-2?fields=${fields}`]: ok({ id: "10002", key: "SYN-2", fields: {} }),
   });
-  const { log } = logged();
+  const { lines, log } = logged();
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
   assert.ok(source.records);
   await assert.rejects(source.records(["jira:SYN-1"]), /401/);
-  await assert.rejects(source.records(["jira:SYN-2"]), /SYN-2 came back in a shape/);
+  assert.deepEqual(await source.records(["jira:SYN-2"]), { records: [], gone: [] });
+  assert.ok(lines.some((line) => line.message.includes("shape Oriel can't read")));
 });

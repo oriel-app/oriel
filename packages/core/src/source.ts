@@ -118,9 +118,9 @@ export interface Source<K extends SourceKind = SourceKind, A = unknown, C = unkn
   // Live, full content. A missing ID is a result, never a throw.
   read(ids: readonly ItemId<K>[]): Promise<ReadResult<K, C>[]>;
   // Index records for these items, each read on its own instead of listed,
-  // for a source whose listing lags its writes. In order; null for an item
-  // the source doesn't have.
-  records?(ids: readonly ItemId<K>[]): Promise<(IndexRecord<K, A> | null)[]>;
+  // for a source whose listing lags its writes. `gone` names those the source
+  // doesn't have; one it can't read is in neither, as a listing skips it.
+  records?(ids: readonly ItemId<K>[]): Promise<{ records: IndexRecord<K, A>[]; gone: ItemId<K>[] }>;
   // What can be written, if anything.
   readonly ops?: OpCatalogue;
 }
