@@ -171,12 +171,21 @@ test("Jira connected from the window syncs on demand, and can't before it's conn
   assert.equal((await app.post("/api/jira/sync")).status, 200);
   assert.ok(keys(app).has(epic));
   assert.ok(!keys(app).has("SYN-21"));
+
+  // Its token revoked: only a restart drops the connection, so it says so.
+  site.outage("signed-out");
+  const refused = await app.post("/api/jira/sync");
+  assert.equal(refused.status, 502);
+  assert.match(json<{ error: string }>(refused).error, /Restart Oriel to connect Jira again/);
   assert.deepEqual(
     app.app
       .telemetry()
       .filter((e) => e.name === "source.synced")
       .map((e) => e.data),
-    [{ source: "jira", ok: true }],
+    [
+      { source: "jira", ok: true },
+      { source: "jira", ok: false },
+    ],
   );
 });
 

@@ -99,7 +99,7 @@ Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains
 - Model access: one Anthropic key per instance, held by whoever runs it. It is never part of the user's onboarding.
 - Index content policy: store the minimum needed for grouping, summaries and search; fetch full content at run time. Bind IDs, never contents.
 - A `Credential` abstraction behind the API token so OAuth slots in later without touching the adapter.
-- Pilot telemetry events defined now, stored locally: source connected, first question asked, first change set approved (and elapsed time from connect, the onboarding budget), group created, item added to a group, thread opened, grouping switched, zoom in/out, change set approved/rejected/edited, review link opened, escape hatch used, revert, time to done.
+- Pilot telemetry events defined now, stored locally: source connected, first question asked, first change set approved (and elapsed time from connect, the onboarding budget), group created, item added to a group, thread opened, grouping switched, zoom in/out, sync asked for (and whether it worked), change set approved/rejected/edited, review link opened, escape hatch used, revert, time to done.
 - ADRs in `docs/decisions/`, one file each, starting with: web not desktop; TypeScript not Rust (phase 1); change sets not writes; region snapshot not live camera; own canvas; sandbox runtime choice; UI renderer; dependency policy.
 
 ## 8. Evals and tests (phase 1 deliverable, not a follow-up)

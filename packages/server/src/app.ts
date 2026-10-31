@@ -300,7 +300,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       error instanceof SourceRefused ||
       (error instanceof JiraFailed && [401, 403].includes(error.status))
     )
-      return "Jira turned Oriel away, so the window may be behind it. Oriel's access to Jira may need renewing.";
+      // A connection made in the window is dropped at the next start if Jira
+      // still refuses it, and the window asks for Jira again.
+      return mode.kind === "window"
+        ? "Jira turned Oriel away, so the window may be behind it. Restart Oriel to connect Jira again."
+        : "Jira turned Oriel away, so the window may be behind it. Oriel's access to Jira may need renewing.";
     // No answer, as fetch reports it, or one Jira gives while it's busy or down.
     const unreachable =
       (error instanceof TypeError && error.message === "fetch failed") ||
