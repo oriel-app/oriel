@@ -107,7 +107,12 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
     case "window":
       return (
         model.window && (
-          <WindowPage model={model.window} groups={model.groups} dispatch={dispatch} />
+          <WindowPage
+            model={model.window}
+            groups={model.groups}
+            jira={model.jira}
+            dispatch={dispatch}
+          />
         )
       );
     case "group":

@@ -1,12 +1,14 @@
-// For tests: SYN as a Jira site in memory, answering the REST calls the
-// writer makes over `fetch`, so a composition root can be tested writing
-// without a network. It starts from the fixture after its source edits, with
-// the same stable IDs the index has. Every write moves the item's `updated`
-// one second on from `clock`. Exported as `@oriel/jira/testing`.
+// For tests: SYN as a Jira site in memory, answering over `fetch` the REST
+// calls the writer makes, and those the source makes to sync and read, so a
+// composition root can be tested connecting and writing without a network.
+// It starts from the fixture after its source edits, with the same stable IDs
+// the index has. Every write moves the item's `updated` one second on from
+// `clock`. With an `account`, it answers only requests signed as that
+// account, and 401 to any other. Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
 import { adfToText, textToAdf } from "./adf.ts";
-import { applySourceEdits, type JiraFixture } from "./fixture.ts";
+import { applySourceEdits, type FixtureIssue, type JiraFixture } from "./fixture.ts";
 
 export const memorySiteOrigin = "https://oriel.atlassian.net";
 const pointsField = "customfield_10016";
@@ -21,13 +23,19 @@ type Issue = {
   assignee: string | null;
   points: number | null;
   status: string;
+  labels: string[];
+  comments: FixtureIssue["comments"];
   links: { linkId: string; url: string; title: string }[];
   updated: Instant;
 };
 
 export type MemorySite = ReturnType<typeof memorySite>;
 
-export function memorySite(fixture: JiraFixture, clock: Instant) {
+export function memorySite(
+  fixture: JiraFixture,
+  clock: Instant,
+  options: { account?: { email: string; token: string } } = {},
+) {
   const { issues: start } = applySourceEdits(fixture, fixture.edits.length);
   const issues = new Map<string, Issue>(
     start.map((issue) => [
@@ -42,6 +50,8 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         assignee: issue.assignee,
         points: issue.points,
         status: issue.status.name,
+        labels: [...issue.labels],
+        comments: issue.comments.map((comment) => ({ ...comment })),
         links: issue.links.map((link) => ({ ...link })),
         updated: issue.updatedAt,
       },
@@ -65,6 +75,9 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
           .map((name, i) => ({ id: String(11 + i), name, to: statusView(name) }))
           .filter((way) => way.name !== issue.status);
   const project = fixture.project.key;
+  const signature = options.account
+    ? `Basic ${Buffer.from(`${options.account.email}:${options.account.token}`).toString("base64")}`
+    : null;
   let ticks = 0;
   let nextIssue = 900;
   let nextLink = 90001;
@@ -104,14 +117,39 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         ? { accountId: issue.assignee, displayName: people.get(issue.assignee) ?? issue.assignee }
         : null,
       status: statusView(issue.status),
+      labels: issue.labels,
       updated: issue.updated,
       [pointsField]: issue.points,
     },
     transitions: transitions(issue),
   });
 
+  // The search, for the projects the source's JQL names: every issue in
+  // them, oldest update first, whatever the JQL's window, since listing more
+  // than was asked for changes nothing in an index. A page token is an offset.
+  const search = (body: { jql: string; maxResults?: number; nextPageToken?: string }) => {
+    const named = /project in \(([^)]*)\)/.exec(body.jql)?.[1] ?? "";
+    const projects = [...named.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    const listed = [...issues.values()]
+      .filter((issue) => projects.includes(issue.key.slice(0, issue.key.lastIndexOf("-"))))
+      .toSorted((a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key));
+    const at = Number(body.nextPageToken ?? 0);
+    const end = at + (body.maxResults ?? 50);
+    return json(200, {
+      issues: listed.slice(at, end).map(view),
+      ...(end < listed.length ? { nextPageToken: String(end) } : { isLast: true }),
+    });
+  };
+
   const answer = (method: string, url: URL, body: unknown): Response => {
     const path = url.pathname;
+    if (method === "GET" && path === "/rest/api/3/myself") return json(200, { timeZone: "UTC" });
+    if (method === "GET" && path.startsWith("/rest/api/3/project/"))
+      return path === `/rest/api/3/project/${project}`
+        ? json(200, { id: "10000", key: project, name: fixture.project.product })
+        : json(404, { errorMessages: ["No project could be found with that key."] });
+    if (method === "POST" && path === "/rest/api/3/search/jql")
+      return search(body as { jql: string; maxResults?: number; nextPageToken?: string });
     if (method === "GET" && path === "/rest/agile/1.0/board")
       return json(200, { values: [{ id: 1, type: "scrum" }] });
     if (method === "GET" && path === "/rest/agile/1.0/board/1/configuration")
@@ -134,6 +172,8 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         assignee: null,
         points: typeof fields[pointsField] === "number" ? (fields[pointsField] as number) : null,
         status: "To Do",
+        labels: [],
+        comments: [],
         links: [],
         updated: tick(),
       };
@@ -142,7 +182,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
       return json(201, { id: issue.id, key: issue.key });
     }
     const match =
-      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/transitions|\/remotelink(?:\/([0-9]+))?)?$/.exec(
+      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/transitions|\/comment|\/remotelink(?:\/([0-9]+))?)?$/.exec(
         path,
       );
     const issue = match?.[1] ? issues.get(match[1]) : undefined;
@@ -172,6 +212,16 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
       issue.updated = tick();
       return json(204);
     }
+    if (sub === "/comment" && method === "GET")
+      return json(200, {
+        startAt: 0,
+        total: issue.comments.length,
+        comments: issue.comments.map((comment) => ({
+          author: { displayName: people.get(comment.author) ?? comment.author },
+          body: textToAdf(comment.body),
+          created: comment.at,
+        })),
+      });
     if (sub === "/transitions" && method === "GET")
       return json(200, { transitions: transitions(issue) });
     if (sub === "/transitions" && method === "POST") {
@@ -185,6 +235,14 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     }
     if (sub?.startsWith("/remotelink")) {
       const link = issue.links.find((l) => l.linkId === linkId);
+      if (method === "GET" && linkId === undefined)
+        return json(
+          200,
+          issue.links.map((l) => ({
+            id: Number(l.linkId),
+            object: { url: l.url, title: l.title },
+          })),
+        );
       if (method === "GET")
         return link
           ? json(200, { id: Number(link.linkId), object: { url: link.url, title: link.title } })
@@ -214,6 +272,8 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     if (url.origin !== memorySiteOrigin) throw new Error(`no route to ${url.origin}`);
     const method = init?.method ?? "GET";
     calls.push({ method, path: `${url.pathname}${url.search}` });
+    if (signature !== null && new Headers(init?.headers).get("authorization") !== signature)
+      return json(401, { errorMessages: ["You are not authenticated."] });
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
     const key = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)/.exec(url.pathname)?.[1];
     const hold = method !== "GET" && key !== undefined ? holds.get(key) : undefined;
