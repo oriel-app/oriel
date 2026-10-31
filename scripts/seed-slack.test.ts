@@ -110,6 +110,10 @@ test("each name is one person's title, display name or full name, and mentions r
   assert.equal(roles.get("product manager")?.user, "U1");
   assert.equal(roles.get("avery")?.user, "U1");
   assert.equal(resolve("{@jordan}", roles), "<@U2>");
+  assert.equal(
+    resolve("p95 < 2s & a -> b, {@jordan}", roles),
+    "p95 &lt; 2s &amp; a -&gt; b, <@U2>",
+  );
   assert.equal(resolve(parsed.messages[0]?.text ?? "", roles), "<@U2> can you look at OA-12?");
 
   const missing = cast(
@@ -127,6 +131,13 @@ test("each name is one person's title, display name or full name, and mentions r
     parseScenario(scenario([{ as: "Engineer", text: "a" }])) as Scenario,
   );
   assert.ok("error" in twice);
+  // A name two people share is fine while the scenario doesn't use it.
+  const unused = cast(
+    [...people, { token: "xoxp-x", user: "U3", names: ["engineer", "Casey"] }],
+    parseScenario(scenario([{ as: "Casey", text: "{@Avery}" }])) as Scenario,
+  );
+  assert.ok(!("error" in unused) && unused.get("casey")?.user === "U3");
+  assert.ok(!("error" in unused) && !unused.has("engineer"));
   // The same person authorizing twice is one person.
   const again = cast(
     [...people, { token: "xoxp-eng2", user: "U2", names: ["Engineer"] }],
@@ -216,6 +227,10 @@ test("it posts nothing unless every token is the test workspace's and the channe
       error,
     );
     assert.ok(!sent.some((s) => s.method === "chat.postMessage"));
+    // Nobody but the first poster joins a channel it refuses.
+    assert.ok(
+      sent.filter((s) => s.method === "conversations.join").every((s) => s.token === "xoxp-pm"),
+    );
   }
   const { run, sent } = fakeSlack();
   await assert.rejects(

@@ -134,20 +134,21 @@ export function parseScenario(text: string): Scenario | { error: string } {
 export type Person = { token: string; user: string; names: string[] };
 
 // Who posts each name: the one person their profile gives it to. Every name a
-// message is posted as or mentions must be exactly one person's.
+// message is posted as or mentions must be exactly one person's; a name two
+// people share is fine while the scenario doesn't use it.
 export function cast(
   people: readonly Person[],
   scenario: Scenario,
 ): Map<string, Person> | { error: string } {
   const byUser = new Map(people.map((person) => [person.user, person]));
   const byRole = new Map<string, Person>();
+  const shared = new Set<string>();
   for (const person of byUser.values()) {
     for (const name of person.names) {
       const key = role(name);
       if (!key) continue;
       const other = byRole.get(key);
-      if (other && other.user !== person.user)
-        return { error: `two people go by "${name}"; a name must be one person's` };
+      if (other && other.user !== person.user) shared.add(key);
       byRole.set(key, person);
     }
   }
@@ -155,16 +156,20 @@ export function cast(
     m.as,
     ...[...m.text.matchAll(mention)].map((match) => match[1] ?? ""),
   ]);
-  for (const name of roles)
+  for (const name of roles) {
+    if (shared.has(role(name)))
+      return { error: `two people go by "${name}"; a name must be one person's` };
     if (!byRole.has(role(name)))
-      return {
-        error: `no one who authorized goes by "${name}" in their Slack profile`,
-      };
+      return { error: `no one who authorized goes by "${name}" in their Slack profile` };
+  }
+  for (const key of shared) byRole.delete(key);
   return byRole;
 }
 
+// The text as Slack reads it: &, < and > escaped, then mentions as user IDs.
 export function resolve(text: string, roles: ReadonlyMap<string, Person>): string {
-  return text.replace(mention, (whole, name: string) => {
+  const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return escaped.replace(mention, (whole, name: string) => {
     const person = roles.get(role(name));
     return person ? `<@${person.user}>` : whole;
   });
@@ -314,8 +319,9 @@ export async function seed(
     channel = created.channel.id;
     log(`created #${scenario.channel}`);
   }
-  const posters = [...new Set(scenario.messages.map(poster))];
-  for (const p of posters) await run("conversations.join", p.token, { channel });
+  // Only the first poster joins until the channel is known to be empty. A run
+  // that stops partway leaves the channel part-filled; seed a new one.
+  await run("conversations.join", first.token, { channel });
   const history = await send(
     run,
     "conversations.history",
@@ -326,6 +332,8 @@ export async function seed(
   // Joins, topics and the like have a subtype; a message anyone posted doesn't.
   if (history.messages.some((m) => m.subtype === undefined))
     throw new Error(`refusing: #${scenario.channel} already has messages`);
+  for (const p of new Set(scenario.messages.map(poster)))
+    if (p !== first) await run("conversations.join", p.token, { channel });
 
   const posted: string[] = [];
   for (const [i, m] of scenario.messages.entries()) {
