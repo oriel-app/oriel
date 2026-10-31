@@ -267,7 +267,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     default: {
       if (model.thread === null) return [model, []];
       const [thread, effects] = threadReplied(model.thread, msg);
-      return [{ ...model, thread }, effects];
+      // A thread that didn't load has no stream to say when others move.
+      const unwatched =
+        msg.tag.kind === "thread" && msg.tag.id === model.thread.id && !msg.ok && !thread.view;
+      return [{ ...model, thread }, unwatched ? [...effects, { type: "watchThreads" }] : effects];
     }
   }
 }

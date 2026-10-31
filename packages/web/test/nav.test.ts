@@ -227,3 +227,15 @@ test("a working thread waits on its agent mid-turn, then on a review or the user
       state,
     );
 });
+
+test("a thread page whose thread didn't load watches every thread instead", () => {
+  const id = "01JBZ0000000000000000000T1";
+  const [model] = init({ page: "thread", id });
+  const [, effects] = update(model, {
+    type: "replied",
+    tag: { kind: "thread", id },
+    ok: false,
+    body: { error: "not found" },
+  });
+  assert.ok(effects.some((effect) => effect.type === "watchThreads"));
+});
