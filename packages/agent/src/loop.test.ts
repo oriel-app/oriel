@@ -201,6 +201,29 @@ test("the escape hatch's hits are shown as their own block", async () => {
   );
 });
 
+test("an item two searches in one run both find is in the block once", async () => {
+  const { turn } = harness([
+    {
+      scripts: [
+        `const byKey = await search("SYN-45");
+         const byTitle = await search("rebooking");
+         return [...byKey, ...byTitle].map((found) => found.id);`,
+      ],
+    },
+    { text: ["Both searches found SYN-45."] },
+  ]);
+  const events = await turn({ region: weather, text: "Is SYN-45 about rebooking?" });
+
+  const ids = returned(events);
+  assert.ok(Array.isArray(ids));
+  assert.equal(ids.filter((id) => id === "jira:SYN-45").length, 2, JSON.stringify(ids));
+  const [search] = only(events, "search");
+  assert.deepEqual(
+    search?.hits.map((hit) => hit.id),
+    [...new Set(ids)],
+  );
+});
+
 test("a call that isn't a run gets an error result and starts no run", async () => {
   const { turn, model, records } = harness([
     { calls: [{ name: "shell", input: { command: "ls" } }] },

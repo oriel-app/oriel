@@ -157,9 +157,10 @@ async function* turn(
     const runId = deps.newId();
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
-    const hits: SearchHit[] = [];
     // The window shows what the escape hatch found as its own block; the
-    // sandbox keeps only each read's hash.
+    // sandbox keeps only each read's hash. A run's searches share the block,
+    // so an item two of them found is in it once, where it was first found.
+    const hits = new Map<string, SearchHit>();
     const watched: Bindings = {
       dts: bindings.dts,
       shim: bindings.shim,
@@ -167,7 +168,8 @@ async function* turn(
       read: async (fn, args) => {
         const answer = await bindings.read(fn, args);
         const found = fn === "search" ? searchHits(answer.value) : null;
-        if (found?.ok) hits.push(...found.value);
+        for (const hit of found?.ok ? found.value : [])
+          if (!hits.has(hit.id)) hits.set(hit.id, hit);
         return answer;
       },
     };
@@ -208,7 +210,7 @@ async function* turn(
     // A run-level cap (wall time, reads, mutations, output) shows here as the
     // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
-    if (hits.length) yield { kind: "search", runId, hits };
+    if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
     let replaced = 0;
     if (result.outcome === "ok" && result.mutations.length) {
       replaced = turnState.proposal?.mutations.length ?? 0;
