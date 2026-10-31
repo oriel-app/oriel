@@ -85,17 +85,27 @@ export async function syncSource<K extends SourceKind, A>(
     records += valid.length;
     gone += page.gone.length;
   };
+  // When the listing last saw each item updated, by stable ID.
+  const listed = new Map<string, Instant>();
   for await (const page of source.sync(cursor)) {
+    for (const record of page.records) listed.set(record.stableId, record.updatedAt);
     keep(page);
     last = page.cursor ?? last;
   }
-  // The cursor stays the listing's: these reads say nothing of what else changed.
-  if (items.length)
+  // A read the listing has since overtaken is left out. The cursor stays the
+  // listing's: these reads say nothing of what else changed.
+  if (items.length) {
+    const live = new Set(index.liveStableIds(workspaceId, source.kind));
     keep({
-      records: read.filter((record) => record !== null),
-      gone: items.flatMap((item, i) => (read[i] ? [] : [item.stableId])),
+      records: read
+        .filter((record) => record !== null)
+        .filter((record) => !(record.updatedAt < (listed.get(record.stableId) ?? ""))),
+      gone: items.flatMap((item, i) =>
+        read[i] || !live.has(item.stableId) ? [] : [item.stableId],
+      ),
       cursor: null,
     });
+  }
   if (full) {
     const missing = index.liveStableIds(workspaceId, source.kind).filter((id) => !seen.has(id));
     if (missing.length) run.apply({ records: [], gone: missing, cursor: last });

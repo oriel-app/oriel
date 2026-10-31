@@ -272,3 +272,32 @@ test("items are read before the listing, so a failed read applies nothing", asyn
   assert.deepEqual(cursors, []);
   assert.equal(index.snapshot(workspaceId), 0);
 });
+
+test("a read the listing has overtaken is left out, and an item already gone isn't counted again", async () => {
+  const { sync, live, index, workspaceId } = fresh();
+  await sync(fixtureSource(fixture, { site, edited: 0 }));
+  const listed = fixtureSnapshot(fixture, site, 0).records.find((r) => r.facets.kind === "story");
+  assert.ok(listed);
+  // Read before a teammate's edit that the listing then returned.
+  const older = {
+    ...listed,
+    title: "Before the edit",
+    updatedAt: instant(new Date(Date.parse(listed.updatedAt) - 60_000)),
+  };
+  const { source } = lagging(0, new Map([[listed.id, older]]));
+  const report = await syncSource({
+    source,
+    attrs: jiraAttrs,
+    index,
+    workspaceId,
+    full: true,
+    items: [
+      { id: listed.id, stableId: listed.stableId },
+      { id: "jira:SYN-901", stableId: "20901" },
+    ],
+    clock: () => t1,
+    log: () => {},
+  });
+  assert.equal(report.gone, 0);
+  assert.equal(live().find((r) => r.id === listed.id)?.title, listed.title);
+});

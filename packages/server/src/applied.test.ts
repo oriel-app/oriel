@@ -40,8 +40,8 @@ test("what a change set creates shows with its title at once, and goes when a re
   const epicCluster = (key: string) =>
     app.app.window("epic").clusters.find((c) => c.row.anchor?.key === key);
 
-  // Jira's search won't find what this change set creates, or stop finding
-  // what its revert deletes, until the test says so.
+  // Jira's search won't find what this change set creates until the test
+  // says so.
   site.searchLags();
   assert.equal((await approve(entry.changeSetId)).changeSet.status, "applied");
   const created = await members();
@@ -56,6 +56,9 @@ test("what a change set creates shows with its title at once, and goes when a re
     ["Kiosk wallets", [["SYN-901", "Tap to pay"]]],
   );
 
+  // Now it finds them, and won't stop when the revert deletes them.
+  site.searchCatchesUp();
+  site.searchLags();
   const { revert } = json<Acted>(
     await app.post(`/api/change-sets/${entry.changeSetId}/revert`, {}),
   );
@@ -69,8 +72,31 @@ test("what a change set creates shows with its title at once, and goes when a re
     ["SYN-900", null],
     ["SYN-901", null],
   ]);
-  assert.equal(epicCluster("SYN-900"), undefined);
-  assert.ok(
-    app.app.window("epic").clusters.every((c) => c.list.every((row) => row.key !== "SYN-901")),
-  );
+  const absent = () => {
+    assert.equal(epicCluster("SYN-900"), undefined);
+    assert.ok(
+      app.app.window("epic").clusters.every((c) => c.list.every((row) => row.key !== "SYN-901")),
+    );
+  };
+  absent();
+
+  // A later sync, while the search still lists both, doesn't bring them back:
+  // dropping a link to an item Oriel doesn't have yet syncs before refusing it.
+  const drop = () =>
+    app.post(`/api/groups/${groupId}/drop`, {
+      links: ["https://oriel.atlassian.net/browse/SYN-999"],
+      files: [],
+    });
+  app.advance(5 * 60 * 1000);
+  assert.equal((await drop()).status, 200);
+  assert.deepEqual(await members(), [
+    ["SYN-900", null],
+    ["SYN-901", null],
+  ]);
+  absent();
+  // Once the search has caught up, it no longer lists them.
+  site.searchCatchesUp();
+  app.advance(10 * 60 * 1000);
+  assert.equal((await drop()).status, 200);
+  absent();
 });
