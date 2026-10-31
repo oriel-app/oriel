@@ -254,7 +254,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   const records = (): IndexRecord[] => [
     ...index.records(workspaceId, "jira", jiraAttrs),
     ...index.records(workspaceId, "folder", folderAttrs),
-    ...index.records(workspaceId, "slack", slackAttrs),
+    // Slack's records only while it's connected: a server started without it
+    // keeps what an earlier one indexed, which nothing can read now.
+    ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
   ];
   const folderView = (): FolderView | null =>
     folder && {
@@ -320,7 +322,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      return index.search(workspaceId, query, limit).map((record) => ({
+      // Without Slack, as many more as the index has Slack records, so leaving
+      // them out still finds `limit`.
+      const extra = slack ? 0 : index.records(workspaceId, "slack", slackAttrs).length;
+      const found = index.search(workspaceId, query, limit + extra);
+      const kept = slack ? found : found.filter((r) => parseItemId(r.id)?.source !== "slack");
+      return kept.slice(0, limit).map((record) => ({
         id: record.id,
         title: record.title,
         location: record.location,

@@ -47,11 +47,15 @@ export type SlackSourceOptions = {
   workspaceUrl: string;
   // The channels the user picked, by ID. Nothing else is read.
   channels: readonly string[];
+  // How many messages a sync lists per channel; `maxMessagesPerChannel`
+  // when absent.
+  maxMessages?: number;
   log: Log;
 };
 
 // How much one sync or read takes in. A channel past its cap lists only its
-// latest messages; the rest read as gone until the cap moves.
+// latest messages; the rest read as forbidden, hidden from Oriel, until a
+// sync lists them again.
 export const maxChannels = 20;
 export const maxMessagesPerChannel = 2_000;
 export const maxReplies = 1_000;
@@ -60,8 +64,10 @@ const pageSize = "200";
 const tsShape = /^[0-9]{10}\.[0-9]{6}$/;
 const channelShape = /^[CG][A-Z0-9]{6,20}$/;
 
-const message = object({
-  ts: string,
+// Each field but `ts` is taken when it has the right type and left out
+// otherwise, so one odd field can't drop a message, which the sync worker's
+// full sweep would then mark gone.
+const fields = {
   subtype: optional(string),
   user: optional(string),
   text: optional(string),
@@ -72,8 +78,24 @@ const message = object({
   bot_profile: optional(object({ name: optional(string) })),
   edited: optional(object({ ts: string })),
   files: optional(array(object({ name: optional(string), title: optional(string) }))),
-});
+};
+const message = object({ ts: string, ...fields });
 type Message = Infer<typeof message>;
+
+function looseMessage(raw: unknown): { message: Message; odd: string[] } | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const { ts } = record;
+  if (typeof ts !== "string" || !tsShape.test(ts)) return null;
+  const odd: string[] = [];
+  const taken: Record<string, unknown> = { ts };
+  for (const [key, check] of Object.entries(fields)) {
+    const result = check(record[key]);
+    if (result.ok) taken[key] = result.value;
+    else odd.push(key);
+  }
+  return { message: taken as Message, odd };
+}
 
 const page = object({
   messages: array(unknown),
@@ -125,6 +147,10 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     throw new RangeError("slack: expected channel IDs, like C0123456789");
   if (channels.length > maxChannels)
     throw new RangeError(`slack: at most ${maxChannels} channels can be picked`);
+  const cap = Math.max(Math.trunc(options.maxMessages ?? maxMessagesPerChannel), 1);
+  // Per channel, the oldest message the last sync listed, when it stopped at
+  // the cap: older ones are left out of the index.
+  const cutoff = new Map<string, string>();
 
   // People's names, looked up once per sync or read: a name changed since
   // shows on the next one.
@@ -178,15 +204,17 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     return parsed.value.channel.name;
   };
 
-  // A page's messages that check out, each with its problem logged otherwise.
+  // A page's messages. One without a `ts` has no key and is skipped; odd
+  // fields are left out. Either is logged.
   const messagesOf = (reply: unknown, method: string) => {
     const parsed = page(reply);
     if (!parsed.ok) throw new Error(`slack: ${method}: unexpected reply`);
     const found: Message[] = [];
     for (const raw of parsed.value.messages) {
-      const checked = message(raw);
-      if (checked.ok && tsShape.test(checked.value.ts)) found.push(checked.value);
-      else log("slack: skipped a malformed message", { method });
+      const taken = looseMessage(raw);
+      if (!taken) log("slack: skipped a message with no ts", { method });
+      else found.push(taken.message);
+      if (taken?.odd.length) log("slack: left out odd fields", { method, fields: taken.odd });
     }
     return { found, next: parsed.value.response_metadata?.next_cursor ?? "" };
   };
@@ -202,6 +230,8 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
         const name = await channelName(channel);
         let cursor = "";
         let listed = 0;
+        let oldest: string | null = null;
+        let capped = false;
         do {
           const reply = await api("conversations.history", {
             channel,
@@ -213,7 +243,9 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           // their message, which reads them.
           const roots = found.filter(isRoot);
           const records: SlackRecord[] = [];
-          for (const m of roots.slice(0, maxMessagesPerChannel - listed)) {
+          if (roots.length > cap - listed) capped = true;
+          for (const m of roots.slice(0, cap - listed)) {
+            oldest = m.ts;
             const { author, body } = await named(m);
             const times = [m.ts, m.latest_reply, m.edited?.ts].filter(
               (ts): ts is string => ts !== undefined && tsShape.test(ts),
@@ -232,11 +264,14 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           listed += records.length;
           yield { records, gone: [], cursor: null };
           cursor = next;
-          if (listed >= maxMessagesPerChannel && cursor) {
-            log("slack: the listing stopped at a cap", { channel, messages: listed });
-            break;
-          }
+          if (listed >= cap && cursor) capped = true;
+          if (capped) break;
         } while (cursor);
+        // What the sweep is about to mark gone mustn't read as fine.
+        if (capped && oldest) {
+          log("slack: the listing stopped at a cap", { channel, messages: listed });
+          cutoff.set(channel, oldest);
+        } else cutoff.delete(channel);
       }
     },
 
@@ -261,7 +296,8 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
       for (const id of ids) {
         const parsed = parseItemId(id);
         const [channel = "", ts = ""] = parsed?.source === "slack" ? parsed.key.split("-") : [];
-        const name = channels.includes(channel) ? await nameOf(channel) : null;
+        const listed = channels.includes(channel) && ts >= (cutoff.get(channel) ?? "");
+        const name = listed ? await nameOf(channel) : null;
         if (typeof name !== "string") {
           results.push({ id, status: "gone", reason: "forbidden" });
           continue;

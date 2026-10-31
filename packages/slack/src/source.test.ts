@@ -244,3 +244,50 @@ test("it refuses a workspace URL that isn't https, and anything but channel IDs"
   assert.throws(make(url, ["weather-disruptions"]), RangeError);
   assert.doesNotThrow(make(url, [weather]));
 });
+
+test("past the cap, a channel lists its newest messages, and older ones read as forbidden, not fine", async () => {
+  const { api } = fixtureApi(fixture, { pageSize: 2 });
+  const source = slackSource({
+    api,
+    workspaceUrl: url,
+    channels: fixture.picked,
+    maxMessages: 5,
+    log: () => {},
+  });
+  const records: SlackRecord[] = [];
+  for await (const page of source.sync(null)) records.push(...page.records);
+  assert.equal(records.length, 5);
+  const newest = records[0]?.id;
+  assert.ok(newest);
+  const older = id(decision);
+  assert.ok(!records.some((r) => r.id === older));
+  const [listed, left] = await source.read([newest, older]);
+  assert.equal(listed?.status, "ok");
+  assert.deepEqual(left, { id: older, status: "gone", reason: "forbidden" });
+});
+
+test("an odd field is left out, not the message; one with no ts is skipped and logged", async () => {
+  const { api } = fixtureApi(fixture);
+  const lines: string[] = [];
+  const source = slackSource({
+    api: async (method, params) => {
+      const reply = (await api(method, params)) as { messages?: Record<string, unknown>[] };
+      if (method !== "conversations.history" || !reply.messages) return reply;
+      const [first, second, ...rest] = reply.messages;
+      return {
+        ...reply,
+        messages: [{ ...first, files: "not a list", user: null }, { ...second, ts: 7 }, ...rest],
+      };
+    },
+    workspaceUrl: url,
+    channels: fixture.picked,
+    log: (message) => lines.push(message),
+  });
+  const records: SlackRecord[] = [];
+  for await (const page of source.sync(null)) records.push(...page.records);
+  assert.equal(records.length, 17);
+  // Its `user` was null, so it reads as no one's: an app's.
+  assert.equal(records[0]?.title, "An app (app): is on the 07:30 to test the at-risk banner");
+  assert.ok(lines.includes("slack: left out odd fields"));
+  assert.ok(lines.includes("slack: skipped a message with no ts"));
+});
