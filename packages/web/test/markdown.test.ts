@@ -222,6 +222,8 @@ test("a link's target may have a title, spaces around it, or be in angle bracket
   assert.deepEqual(inline("[a]( https://x.example/ )"), to("https://x.example/"));
   assert.deepEqual(inline("[a](https://x.example/ 'T')"), to("https://x.example/"));
   assert.deepEqual(inline("[a](<https://x.example/a b>)"), to("https://x.example/a b"));
+  assert.deepEqual(inline("[a](https://x.example/ (T))"), to("https://x.example/"));
+  assert.deepEqual(inline('[a](\t<https://x.example/a b> "T")'), to("https://x.example/a b"));
   // A bracket ends the scan, so an address with one stays as typed.
   assert.deepEqual(inline("[a](https://x.example/?f[s]=1)"), [
     text("[a](https://x.example/?f[s]=1)"),

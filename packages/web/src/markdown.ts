@@ -365,7 +365,8 @@ export const opens = (href: string, sites: ReadonlySet<string>): boolean =>
 // without spaces, its parentheses in pairs as in `wiki/Foo_(bar)`, or any text
 // in `<…>`. A `[` or `]` ends the scan, and so does running past this many
 // characters, so each part of a line is read for one link at most. The cost:
-// an address with a bracket in it (`?f[a]=1`, `[::1]`) stays as typed.
+// a link whose address or title holds a bracket (`?f[a]=1`, `"[OA-13] …"`)
+// stays as typed.
 const longestTarget = 2_048;
 
 // `[label](https://…)`. A link that isn't to the web stays as typed.
