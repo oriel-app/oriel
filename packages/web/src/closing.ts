@@ -5,8 +5,8 @@
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { DeletedView, DeletionView } from "./view.ts";
 
-// Where the person closed it from: a menu on the thread's row.
-export type CloseVia = "menu";
+// Where the person closed it from: a menu on the thread's row, or a swipe.
+export type CloseVia = "menu" | "swipe";
 
 export type ClosingModel = {
   // The thread the person asked to delete, until they confirm or cancel, and

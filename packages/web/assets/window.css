@@ -2863,3 +2863,60 @@ button.nav-disclose:hover {
   color: var(--danger);
   transform: translateX(-50%);
 }
+
+/* A row that swipes left to show actions. Vertical pans stay the page's. */
+.swipe {
+  position: relative;
+  border-radius: var(--radius);
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
+}
+
+/* Clipped only while it moves or is open, so a closed row's focus ring and
+   current-page outline show in full. */
+.swipe:is([data-open], [data-dragging]) {
+  overflow: hidden;
+}
+
+.swipe-row {
+  transition: transform 180ms ease;
+}
+
+.swipe-actions {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  overflow: hidden;
+  transition: width 180ms ease;
+}
+
+/* While a finger or the trackpad holds it, the row follows at once. */
+.swipe[data-dragging] :is(.swipe-row, .swipe-actions) {
+  transition: none;
+}
+
+.swipe-action {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: var(--done);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.swipe-action[data-danger] {
+  background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-row,
+  .swipe-actions {
+    transition: none;
+  }
+}

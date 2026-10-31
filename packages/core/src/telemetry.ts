@@ -9,8 +9,9 @@ import type { ZoomId } from "./zoom.ts";
 //   budget): the earliest approving `changeset.decided` minus `source.connected`
 // - time to done: from `thread.opened` to the thread's first
 //   `changeset.applied` or `thread.marked-done`, whichever came first
-// Where the user closed a thread from: its page, or a menu on a list.
-export type CloseVia = "page" | "menu";
+// Where the user closed a thread from: its page, or a menu on a list, or a
+// swipe on one.
+export type CloseVia = "page" | "menu" | "swipe";
 
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
@@ -26,7 +27,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   | { name: "question.asked"; threadId: Ulid }
   // The user marked the thread done, as one over read-only items needs: on
-  // its page, or from a menu on a list of threads.
+  // its page, or from a menu or a swipe on a list of threads.
   | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
   // stay, out of sight. `groupRemoved`: its group, made for it, went too.

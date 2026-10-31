@@ -176,7 +176,9 @@ const reviewDismissal = object({
 });
 const emptyBody = object({});
 // Where the user closed a thread from.
-const closeBody = object({ via: optional(union(literal("page"), literal("menu"))) });
+const closeBody = object({
+  via: optional(union(literal("page"), literal("menu"), literal("swipe"))),
+});
 const folderBody = object({
   path: refine(
     string,

@@ -418,6 +418,29 @@ const scenes: Scene[] = [
     },
   },
   {
+    // A thread in the sidebar swiped left past its first stop, against
+    // resistance, to show Delete beside Mark done: a trackpad's sideways
+    // wheel, as on a wide screen, works in the drawer too.
+    name: "thread-swipe",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
+      // Once the sidebar has loaded, so the row holds still under the pointer.
+      await page.locator(".sidebar-groups .nav-group").first().waitFor();
+      const row = page.locator(".sidebar-needs .swipe").first();
+      await row.hover();
+      // At twice the pixel density each step moves half as far.
+      for (let i = 0; i < 48; i++) {
+        await page.mouse.wheel(10, 0);
+        await page.waitForTimeout(16);
+      }
+      await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
+    },
+  },
+  {
     // Deleting a thread whose change set wrote to Jira first says so.
     name: "thread-delete",
     path: "/inbox",
