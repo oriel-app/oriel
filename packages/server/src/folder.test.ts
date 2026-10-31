@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type { FolderView, GroupView, ThreadView, WindowView } from "@oriel/web/view";
+import type { DiffView, FolderView, GroupView, ThreadView, WindowView } from "@oriel/web/view";
 import { host, json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
@@ -219,4 +219,61 @@ test("a group mixes Jira and folder items; its thread's region binds items.* for
   const read = new Map(value.items.map((item) => [item.id, item]));
   assert.match(read.get(file)?.text ?? "", /Ship the phone wallet first/);
   assert.equal(read.get("jira:SYN-10")?.gone, false);
+});
+
+test("an epic picked beside a plan lets the agent create stories in it, and shows once per grouping", async (t) => {
+  const story: Script = async (bindings) => ({
+    value: bindings.dts,
+    writes: [
+      ["jira.createStory", [{ summary: "Pay with a gift card", epic: "jira:SYN-1" }], "new:1"],
+    ],
+  });
+  const app = await connected(t, {
+    writes: true,
+    plan: () => [{ run: "story" }],
+    scripts: { story },
+  });
+  // The epic shows once: as its cluster's heading, which picks it, under the
+  // epic grouping; as an item under its assignee; not at all as stuck work.
+  for (const [grouping, times] of [
+    ["epic", 1],
+    ["assignee", 1],
+    ["stuck", 0],
+  ] as const) {
+    const window = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
+    const shown = window.clusters.flatMap((c) => [
+      ...(c.row.anchor ? [c.row.anchor.id] : []),
+      ...c.list.map((row) => row.id),
+    ]);
+    assert.equal(shown.filter((id) => id === "jira:SYN-1").length, times, grouping);
+  }
+  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  assert.ok(window.clusters.some((c) => c.row.anchor?.id === "jira:SYN-1"));
+  const plan = window.clusters
+    .flatMap((c) => c.list)
+    .find((row) => row.title === "Launch plan" && row.id.startsWith("folder:"))?.id;
+  assert.ok(plan);
+  const { id: groupId } = json<{ id: string }>(
+    await app.post("/api/groups", { kind: "picked", name: "Launch", items: [plan, "jira:SYN-1"] }),
+  );
+  const { id } = json<{ id: string }>(
+    await app.post(`/api/groups/${groupId}/threads`, { text: "Turn the plan into stories" }),
+  );
+  await app.app.settled();
+  const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
+  const finished = thread.entries.find((e) => e.kind === "run.finished");
+  assert.ok(finished?.kind === "run.finished");
+  assert.match(
+    JSON.parse(finished.run.returned ?? "null") as string,
+    /type EpicId =\n {2}\| "jira:SYN-1";/,
+  );
+  const entry = thread.entries.find((e) => e.kind === "change-set");
+  assert.ok(entry?.kind === "change-set", "the run captured a change set");
+  const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  assert.deepEqual(
+    diff.lines.map((line) => line.sentence),
+    [
+      "Create a story “Pay with a gift card” in the epic “Checkout v2: phone wallets and saved cards” (SYN-1).",
+    ],
+  );
 });
