@@ -158,3 +158,29 @@ test("a Slack message's link dropped on a group adds it", async (t) => {
   assert.deepEqual(dropped.added, ["slack:C0FW1WEATHR-1788444000.000100"]);
   assert.deepEqual(dropped.refused, []);
 });
+
+test("started without Slack, the window and search leave out what an earlier start indexed", async (t) => {
+  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-slack-off-")));
+  t.after(() => rmSync(top, { recursive: true, force: true }));
+  const db = join(top, "oriel.db");
+  const first = await testApp(t, { db, slack: { kind: "fixture" } });
+  await first.app.close();
+  const found: Script = async (bindings) => ({
+    value: (await bindings.read("search", ["SMS"])).value,
+  });
+  const off = await testApp(t, { db, plan: () => [{ run: "found" }], scripts: { found } });
+  assert.deepEqual(slackRows(json<WindowView>(await off.get("/api/window?grouping=epic"))), []);
+  const { id: groupId } = json<{ id: string }>(
+    await off.post("/api/groups", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const { id } = json<{ id: string }>(
+    await off.post(`/api/groups/${groupId}/threads`, { text: "Anything about SMS?" }),
+  );
+  await off.app.settled();
+  const thread = json<ThreadView>(await off.get(`/api/threads/${id}`));
+  const finished = thread.entries.find((e) => e.kind === "run.finished");
+  assert.ok(finished?.kind === "run.finished");
+  const hits = JSON.parse(finished.run.returned ?? "[]") as { id: string }[];
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every((hit) => !hit.id.startsWith("slack:")));
+});

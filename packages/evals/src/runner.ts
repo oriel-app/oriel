@@ -417,12 +417,14 @@ export function exitCode(
   return broken ? 1 : 0;
 }
 
-// A Slack message's author as the Slack source names them, or null for an
-// item from another source. Their name is how a reply names the message.
+// A Slack message's author as the Slack source names them, a person or the
+// app that posted as itself, or null for an item from another source. Their
+// name is how a reply names the message.
 function slackAuthor(slack: SlackFixture | null, item: string): { title: string } | null {
   if (!slack || !item.startsWith("slack:")) return null;
   const [channel, ts] = item.slice("slack:".length).split("-");
   const message = slack.channels.find((c) => c.id === channel)?.messages.find((m) => m.ts === ts);
   const person = slack.users.find((user) => user.id === message?.user);
-  return person ? { title: person.real_name } : null;
+  if (person) return { title: person.real_name };
+  return message?.username ? { title: message.username } : null;
 }
