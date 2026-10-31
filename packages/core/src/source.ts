@@ -48,8 +48,8 @@ export type Facets = {
   // Where the item points, outside its source.
   links?: { url: string; title: string }[];
   // What the item is, in words any source can use: "epic", "story",
-  // "task", "bug", "subtask", "doc". An adapter maps its own types onto
-  // these.
+  // "task", "bug", "subtask", "doc", "message". An adapter maps its own
+  // types onto these.
   kind?: string;
   // Its estimate, or null when it has none yet. Absent when the source
   // doesn't estimate.

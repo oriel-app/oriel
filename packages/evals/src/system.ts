@@ -67,6 +67,8 @@ export function agentSystem(options: AgentSystemOptions = {}): SystemUnderTest {
       folder: input.folder,
       region: input.region,
       files: input.case.files ?? [],
+      messages: input.case.messages ?? [],
+      ...(input.slack ? { slack: input.slack } : {}),
       edited: input.case.edited ?? 0,
       folderEdited: input.case.folderEdited ?? 0,
     });

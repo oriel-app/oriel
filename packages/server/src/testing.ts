@@ -18,7 +18,7 @@ import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { type App, createApp, limits } from "./app.ts";
+import { type App, createApp, limits, type SlackMode } from "./app.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
 
@@ -91,6 +91,8 @@ export type TestOptions = {
   writes?: boolean;
   // A database file, so a second app can open what the first left.
   db?: string;
+  // Slack, off when absent.
+  slack?: SlackMode;
 };
 
 export type Logged = { message: string; fields: Record<string, unknown> };
@@ -117,6 +119,7 @@ export async function testApp(
           },
         }
       : { kind: "fixture" },
+    ...(options.slack ? { slack: options.slack } : {}),
     reviewBase: new URL(`${origin}/review/`),
     limits: { ...limits, ...options.limits },
     now,
