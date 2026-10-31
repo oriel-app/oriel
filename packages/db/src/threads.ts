@@ -44,6 +44,12 @@ const messageRow = object({
 // Rows written before 0003 hold a user's text as a bare JSON string.
 const userContent = union(object({ text: string }), string);
 const markerContent = object({ from: number, to: number });
+const wroteRow = object({
+  applied: number,
+  reverted: number,
+  unconfirmed: number,
+  sources: string,
+});
 
 // What can be added to a thread's chat. The agent's entries are its events
 // as the server receives them; the server checks their shape on the way out.
@@ -64,6 +70,19 @@ export type Move = { threadId: Ulid; from: number; to: number; seq: number };
 // A thread with the time anything last happened in it, markers aside.
 export type ThreadSummary = { thread: Thread; activityAt: Instant };
 
+// What a thread's change sets did to its sources: the changes that landed
+// and still stand, those a revert since undid, those sent with no answer,
+// which may have landed, and the sources anything landed in.
+export type Wrote = { applied: number; reverted: number; unconfirmed: number; sources: string[] };
+
+// A deleted thread: `kept` when it wrote to a source, so its records stay
+// out of sight; `groupRemoved` when its group went with it.
+export type Deleted = { groupId: Ulid; kept: boolean; groupRemoved: boolean };
+
+// A thread the user deleted is gone from every list and lookup; one kept for
+// what it wrote is in deleted_threads.
+const live = "not exists (select 1 from deleted_threads d where d.thread_id = threads.id)";
+
 // A working thread with no activity this long is dropped.
 const idleMs = 7 * 24 * 60 * 60 * 1000;
 
@@ -75,19 +94,19 @@ export function threadStore(db: DatabaseSync) {
     select ?, ?, group_id, max(version), ? from group_changes where group_id = ? group by group_id`);
   const select = db.prepare(`
     select id, workspace_id, group_id, region_version, marked_done_at, created_at
-    from threads where id = ?`);
-  const mark = db.prepare("update threads set marked_done_at = ? where id = ?");
+    from threads where id = ? and ${live}`);
+  const mark = db.prepare(`update threads set marked_done_at = ? where id = ? and ${live}`);
   const selectTitle = db.prepare("select title from thread_titles where thread_id = ?");
   const nameIt = db.prepare(`
     insert into thread_titles (thread_id, workspace_id, title, titled_at)
     select id, workspace_id, ?2, ?3 from threads where id = ?1
     on conflict (thread_id) do update set title = excluded.title, titled_at = excluded.titled_at`);
-  const selectByWorkspace = db.prepare(
-    "select id from threads where workspace_id = ? order by created_at desc, id desc",
-  );
-  const selectByGroup = db.prepare(
-    "select id from threads where group_id = ? order by created_at desc, id desc",
-  );
+  const selectByWorkspace = db.prepare(`
+    select id from threads where workspace_id = ? and ${live}
+    order by created_at desc, id desc`);
+  const selectByGroup = db.prepare(`
+    select id from threads where group_id = ? and ${live}
+    order by created_at desc, id desc`);
   const selectLatest = db.prepare(
     "select max(version) as version from group_changes where group_id = ?",
   );
@@ -130,6 +149,75 @@ export function threadStore(db: DatabaseSync) {
     where c.thread_id = ? group by c.id
     having count(*) = sum(m.status = 'applied')
     order by at desc, handed_off desc limit 1`);
+
+  // What the thread's change sets did to a source. A change that landed
+  // counts as reverted once an applied reverse mutation undid it; a revert's
+  // own changes count as nothing more. A row the engine left failed was sent
+  // with no answer, so it may have landed: a refusal before sending puts it
+  // back to pending. Sources are where anything landed.
+  const selectWrote = db.prepare(`
+    select
+      count(*) filter (where m.status = 'applied' and c.revert_of is null and not undone)
+        as applied,
+      count(*) filter (where m.status = 'applied' and c.revert_of is null and undone)
+        as reverted,
+      count(*) filter (where m.status = 'failed') as unconfirmed,
+      json_group_array(distinct substr(json_extract(m.applied, '$.item.id'), 1,
+        instr(json_extract(m.applied, '$.item.id'), ':') - 1))
+        filter (where m.status = 'applied') as sources
+    from change_sets c join (
+      select *, exists (
+        select 1 from mutations r where r.reverts = mutations.id and r.status = 'applied'
+      ) as undone from mutations
+    ) m on m.change_set_id = c.id
+    where c.thread_id = ?`);
+  const selectChangeSets = db.prepare("select id from change_sets where thread_id = ?");
+  const insertDeleted = db.prepare(
+    "insert into deleted_threads (thread_id, workspace_id, deleted_at) values (?, ?, ?)",
+  );
+  // A kept thread's change sets can't be reviewed from anywhere.
+  const revokeLinks = db.prepare(`
+    update review_links set revoked_at = ?2 where revoked_at is null
+      and change_set_id in (select id from change_sets where thread_id = ?1)`);
+  // Everything a thread holds, children first. Only a thread that wrote
+  // nothing goes this way, so no revert anywhere names its change sets.
+  const purge = [
+    "delete from decisions where change_set_id in (select id from change_sets where thread_id = ?)",
+    "delete from review_links where change_set_id in (select id from change_sets where thread_id = ?)",
+    "delete from mutations where change_set_id in (select id from change_sets where thread_id = ?)",
+    "delete from change_sets where thread_id = ?",
+    "delete from run_reads where run_id in (select id from runs where thread_id = ?)",
+    "delete from runs where thread_id = ?",
+    "delete from messages where thread_id = ?",
+    "delete from thread_titles where thread_id = ?",
+    "delete from threads where id = ?",
+  ].map((sql) => db.prepare(sql));
+  // A group made for a thread from nothing, once it holds no thread, kept or
+  // not, and no item, as when its one thread was abandoned.
+  const selectEmptyGroup = db.prepare(`
+    select g.id from groups g
+    where g.id = ?1 and json_extract(g.origin, '$.kind') = 'thread'
+      and not exists (select 1 from threads where group_id = ?1)
+      and not exists (select 1 from group_members where group_id = ?1 and removed_version is null)`);
+  const dropGroup = [
+    "delete from group_members where group_id = ?",
+    "delete from group_changes where group_id = ?",
+    "delete from groups where id = ?",
+  ].map((sql) => db.prepare(sql));
+
+  const wrote = (id: Ulid): Wrote => {
+    const row = wroteRow(selectWrote.get(id));
+    if (!row.ok) throw new Error(`corrupt mutations: ${JSON.stringify(row.issues)}`);
+    const sources: unknown = JSON.parse(row.value.sources);
+    return {
+      applied: row.value.applied,
+      reverted: row.value.reverted,
+      unconfirmed: row.value.unconfirmed,
+      sources: Array.isArray(sources)
+        ? sources.filter((s): s is string => typeof s === "string" && s !== "")
+        : [],
+    };
+  };
 
   const at = (statement: ReturnType<DatabaseSync["prepare"]>, id: Ulid): string | null => {
     const row = atRow(statement.get(id));
@@ -280,6 +368,36 @@ export function threadStore(db: DatabaseSync) {
     // The user marks the thread done, as one over read-only items needs to.
     markDone(id: Ulid, now: Instant): void {
       if (Number(mark.run(now, id).changes) !== 1) throw new RangeError(`no thread ${id}`);
+    },
+
+    // What deleting the thread would lose: what it wrote, which stays in
+    // its sources but can no longer be reverted from here.
+    wrote(id: Ulid): Wrote {
+      mustLoad(id);
+      return wrote(id);
+    },
+
+    // The user deletes the thread. One that wrote nothing to a source goes
+    // with everything in it, and so does its group, if that was made for it
+    // and is now empty. One that wrote is kept, out of sight, so what it
+    // wrote stays on record with its reverse diff, and its review links are
+    // revoked. Null, and nothing deleted, while `applying` says one of its
+    // change sets is being applied.
+    delete(id: Ulid, now: Instant, applying: (changeSetId: Ulid) => boolean): Deleted | null {
+      return transaction(db, () => {
+        const thread = mustLoad(id);
+        if (ids(selectChangeSets.all(id)).some(applying)) return null;
+        const { applied, reverted, unconfirmed } = wrote(id);
+        if (applied > 0 || reverted > 0 || unconfirmed > 0) {
+          insertDeleted.run(id, thread.workspace_id, now);
+          revokeLinks.run(id, now);
+          return { groupId: thread.group_id, kept: true, groupRemoved: false };
+        }
+        for (const statement of purge) statement.run(id);
+        const empty = selectEmptyGroup.get(thread.group_id) !== undefined;
+        if (empty) for (const statement of dropGroup) statement.run(thread.group_id);
+        return { groupId: thread.group_id, kept: false, groupRemoved: empty };
+      });
     },
 
     get,

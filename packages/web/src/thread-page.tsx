@@ -57,6 +57,17 @@ const statusNames: Record<ChangeSetView["status"], string> = {
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
   const { view } = model;
+  if (model.deleted)
+    return (
+      <main class="page">
+        <p class="failed" role="status">
+          This thread was deleted.
+        </p>
+        <Link route={{ page: "inbox" }} dispatch={dispatch} class="quiet-action">
+          Go to the inbox
+        </Link>
+      </main>
+    );
   if (view === null)
     return (
       <main class="page">

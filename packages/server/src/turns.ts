@@ -16,7 +16,8 @@ import {
 export type ThreadEvent =
   | { type: "message"; message: Message }
   | { type: "status"; running: boolean }
-  | { type: "change-set"; changeSetId: Ulid; applying: boolean };
+  | { type: "change-set"; changeSetId: Ulid; applying: boolean }
+  | { type: "deleted" };
 
 export class ThreadBusy extends Error {
   constructor() {
@@ -214,6 +215,8 @@ export function turns(deps: TurnDeps) {
           log("title: unusable answer", {});
           return;
         }
+        // One deleted meanwhile takes none.
+        if (!threads.get(threadId, deps.now())) return;
         threads.setTitle(threadId, written, deps.now());
         publish(threadId, { type: "status", running: running.has(threadId) });
       })
@@ -288,6 +291,12 @@ export function turns(deps: TurnDeps) {
     // message, or marked it done. Every page watching it hears.
     touched(threadId: Ulid): void {
       publish(threadId, { type: "status", running: running.has(threadId) });
+    },
+
+    // The user deleted the thread: every page watching it says so, and every
+    // list drops it.
+    deleted(threadId: Ulid): void {
+      publish(threadId, { type: "deleted" });
     },
 
     // A change set of the thread started or finished applying: every page

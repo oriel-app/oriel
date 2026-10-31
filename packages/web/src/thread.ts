@@ -31,6 +31,8 @@ export type ThreadModel = {
   // What dismissing a change set said to check, by change set.
   notes: Readonly<Record<string, readonly string[]>>;
   notice: string | null;
+  // The thread was deleted while its page was open.
+  deleted: boolean;
 };
 
 // A step offered for a whole change set. Removing a line is its own message.
@@ -62,6 +64,7 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       links: {},
       notes: {},
       notice: null,
+      deleted: false,
     },
     [get(`/api/threads/${id}`, { kind: "thread", id })],
   ];
@@ -337,6 +340,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
   // The lists' business, not the thread's.
   if (event.type === "threads") return [model, []];
+  // Its stream ends with this.
+  if (event.type === "deleted") return [{ ...model, deleted: true }, [{ type: "unsubscribe" }]];
   const { entry } = event;
   if (entry.seq <= view.lastSeq) return [model, []];
   const next = {

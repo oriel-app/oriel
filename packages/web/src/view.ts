@@ -262,8 +262,25 @@ export type StreamEvent =
   // (`applying`), or stopped, or a review link dismissed it.
   | { type: "change-set"; changeSetId: string; applying: boolean }
   // Another thread moved: its turn started or ended, a change set of it
-  // changed, or it was opened or marked done.
-  | { type: "threads" };
+  // changed, or it was opened, marked done or deleted.
+  | { type: "threads" }
+  // This thread was deleted; the stream ends.
+  | { type: "deleted" };
+
+// What deleting a thread would lose: the changes its change sets made in
+// their sources (by source kind) that still stand, which stay there but can
+// no longer be reverted from Oriel; those a revert undid; and those sent
+// with no answer, which may have been made. All zero: nothing it did
+// reached a source.
+export type DeletionView = {
+  applied: number;
+  reverted: number;
+  unconfirmed: number;
+  sources: string[];
+};
+
+// A thread just deleted: its group, and whether that went with it.
+export type DeletedView = { groupId: string; groupRemoved: boolean };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };
