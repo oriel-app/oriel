@@ -160,16 +160,41 @@ test("a drop that answers after the user moved on still reloads the groups", () 
   assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
 });
 
-test("every page but a review link watches the threads, and a move reloads both lists", () => {
-  const watches = (route: Route) => init(route)[1].some((effect) => effect.type === "watchThreads");
-  assert.ok(watches({ page: "inbox" }));
-  assert.ok(watches({ page: "thread", id: "01JBZ0000000000000000000T1" }));
-  assert.equal(watches({ page: "review", token: "abc_DEF-123" }), false);
-  const [, effects] = update(init({ page: "inbox" })[0], { type: "threadsMoved" });
-  assert.deepEqual(
-    effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : [])),
-    ["/api/threads", "/api/groups"],
-  );
+test("one stream per page says when any thread moves, and a move reloads both lists", () => {
+  const watching = (route: Route) =>
+    init(route)[1].flatMap((effect) =>
+      effect.type === "watchThreads" || effect.type === "unwatchThreads" ? [effect.type] : [],
+    );
+  for (const route of [
+    { page: "window", grouping: "epic", addTo: null },
+    { page: "group", id: groupA },
+    { page: "inbox" },
+  ] as const)
+    assert.deepEqual(watching(route), ["watchThreads"], route.page);
+  // A thread's own stream says, and a review link watches nothing.
+  assert.deepEqual(watching({ page: "thread", id: "01JBZ0000000000000000000T1" }), [
+    "unwatchThreads",
+  ]);
+  assert.deepEqual(watching({ page: "review", token: "abc_DEF-123" }), []);
+  const urls = (effects: ReturnType<typeof update>[1]) =>
+    effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
+  const [, moved] = update(init({ page: "inbox" })[0], { type: "threadsMoved" });
+  assert.deepEqual(urls(moved), ["/api/threads", "/api/groups"]);
+  const onThread = init({ page: "thread", id: "01JBZ0000000000000000000T1" })[0];
+  const [, told] = update(onThread, { type: "streamed", event: { type: "threads" } });
+  assert.deepEqual(urls(told), ["/api/threads", "/api/groups"]);
+  // The thread's own moves come as its own events, which reload them too.
+  const loaded = {
+    ...onThread,
+    thread: { ...onThread.thread, view: { running: false, regionVersion: 1 } },
+  } as Model;
+  for (const event of [
+    { type: "status", running: true, state: "working", regionVersion: 1 },
+    { type: "change-set", changeSetId: "C1", applying: false },
+  ] as const) {
+    const [, own] = update(loaded, { type: "streamed", event });
+    assert.ok(urls(own).includes("/api/threads") && urls(own).includes("/api/groups"), event.type);
+  }
 });
 
 test("a working thread waits on its agent mid-turn, then on a review or the user's reply", () => {

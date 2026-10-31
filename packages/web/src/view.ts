@@ -220,7 +220,10 @@ export type StreamEvent =
   | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number }
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
-  | { type: "change-set"; changeSetId: string; applying: boolean };
+  | { type: "change-set"; changeSetId: string; applying: boolean }
+  // Another thread moved: its turn started or ended, a change set of it
+  // changed, or it was opened or marked done.
+  | { type: "threads" };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };

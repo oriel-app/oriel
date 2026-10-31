@@ -5,7 +5,7 @@ import type { GroupingId, StreamEvent, WindowView } from "./view.ts";
 
 // The thread being watched, one at a time.
 let events: EventSource | null = null;
-// Every thread, watched for a move between what it waits on.
+// Every thread, watched for a move, on a page with no thread stream to say.
 let threadsMoved: EventSource | null = null;
 
 // The only code that touches the network, the address bar or the clipboard.
@@ -76,17 +76,19 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     }
     case "watchThreads": {
-      if (threadsMoved) return;
+      // One the browser gave up on, after an error answer, opens again.
+      if (threadsMoved && threadsMoved.readyState !== EventSource.CLOSED) return;
       threadsMoved = new EventSource("/api/threads/events");
       threadsMoved.onmessage = () => dispatch({ type: "threadsMoved" });
-      // A reconnect may have missed a move.
-      let opened = false;
-      threadsMoved.onopen = () => {
-        if (opened) dispatch({ type: "threadsMoved" });
-        opened = true;
-      };
+      // A move may have landed before the stream opened, or while it was
+      // down: the server tells only what happens while it's open.
+      threadsMoved.onopen = () => dispatch({ type: "threadsMoved" });
       return;
     }
+    case "unwatchThreads":
+      threadsMoved?.close();
+      threadsMoved = null;
+      return;
     case "unsubscribe":
       events?.close();
       events = null;

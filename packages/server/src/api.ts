@@ -346,13 +346,23 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
     // Watch first, then catch up, in one synchronous step, so no entry falls
     // between the two.
-    const stop = turns.watch(threadId, (event) =>
+    const unwatch = turns.watch(threadId, (event) =>
       event.type === "message"
         ? entry(event.message)
         : event.type === "change-set"
           ? send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying })
           : status(),
     );
+    // A thread's page hears other threads move on this stream too, so a tab
+    // holds one stream at most: browsers allow few per host. Its own thread's
+    // moves are the status and change-set events above.
+    const unwatchAny = turns.watchAny((moved) => {
+      if (moved !== threadId) send({ type: "threads" });
+    });
+    const stop = () => {
+      unwatch();
+      unwatchAny();
+    };
     out.push("retry: 2000\n\n");
     for (const message of threads.messages(threadId, after)) entry(message);
     status();
@@ -583,6 +593,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           regionSize: groups.region(group.id, group.version)?.items.length ?? 0,
         });
         if (text !== undefined) turns.say(threadId, text);
+        else turns.touched(threadId);
         return json(201, { id: threadId });
       },
     },
@@ -645,7 +656,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         const now = deps.now();
         threads.markDone(thread.id, now);
-        turns.markedDone(thread.id);
+        turns.touched(thread.id);
         deps.emit({
           name: "thread.marked-done",
           at: now,

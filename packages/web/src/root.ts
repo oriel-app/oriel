@@ -78,7 +78,7 @@ export type Msg =
 // page that moved them.
 const loadGroups: Effect = get("/api/groups", { kind: "groups" });
 const loadThreads: Effect = get("/api/threads", { kind: "inbox" });
-const lists: Effect[] = [loadGroups, loadThreads, loadFolder, { type: "watchThreads" }];
+const lists: Effect[] = [loadGroups, loadThreads, loadFolder];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
@@ -121,12 +121,17 @@ export function windowTelemetry(before: WindowModel, after: WindowModel): Effect
 // loads it fresh and watches again from its last entry.
 function enter(model: Model, route: Route): [Model, Effect[]] {
   const leaving: Effect[] = model.thread ? [{ type: "unsubscribe" }] : [];
+  // A thread's own stream says when any thread moves; every other page
+  // watches them all. A review link's page loads on its own, watching nothing.
+  const watching: Effect[] = [
+    { type: route.page === "thread" ? "unwatchThreads" : "watchThreads" },
+  ];
   const base = { ...model, route, thread: null };
   switch (route.page) {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists, ...watching]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -135,19 +140,19 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists],
+        [...leaving, ...loads, ...lists, ...watching],
       ];
     }
     case "group": {
       const [group, effects] = initGroup(route.id);
-      return [{ ...base, group }, [...leaving, ...effects, ...lists]];
+      return [{ ...base, group }, [...leaving, ...effects, ...lists, ...watching]];
     }
     case "thread": {
       const [thread, effects] = initThread(route.id);
-      return [{ ...base, thread }, [...leaving, ...effects, ...lists]];
+      return [{ ...base, thread }, [...leaving, ...effects, ...lists, ...watching]];
     }
     case "inbox":
-      return [base, [...leaving, ...lists]];
+      return [base, [...leaving, ...lists, ...watching]];
     case "review": {
       const [review, effects] = initReview(route.token);
       return [{ ...base, review }, [...leaving, ...effects]];
@@ -191,11 +196,14 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       return [{ ...model, thread }, [...effects, loadThreads]];
     }
     case "streamed": {
+      if (msg.event.type === "threads") return [model, [loadThreads, loadGroups]];
       if (model.thread === null) return [model, []];
       const [thread, effects] = streamed(model.thread, msg.event);
-      // A turn that ends may have moved the thread between inbox states.
-      const ended = msg.event.type === "status" && !msg.event.running;
-      return [{ ...model, thread }, ended ? [...effects, loadThreads, loadGroups] : effects];
+      // Its turn starting or ending, or a change set of it moving, changes what
+      // it waits on, and an end may move it between inbox states. The status
+      // the stream opens with covers what moved before it opened.
+      const moved = msg.event.type !== "entry";
+      return [{ ...model, thread }, moved ? [...effects, loadThreads, loadGroups] : effects];
     }
     // What each thread waits on is in both lists: the groups count by state.
     case "threadsMoved":

@@ -477,6 +477,20 @@ test("the threads' stream says when any thread's turn starts or ends, or it's ma
   assert.equal(told, false);
   await app.post(`/api/threads/${app.threadId}/done`);
   assert.equal((await next).value, moved);
+  // A thread opened with no message moves too.
+  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  assert.equal((await stream.next()).value, moved);
+  await stream.return?.();
+});
+
+test("a thread's own stream also says when another thread moves, so its page needs no other", async (t) => {
+  const app = await thread(t, "Hi");
+  const reply = await app.get(`/api/threads/${app.threadId}/events`);
+  assert.ok(reply.stream);
+  const stream = reply.stream[Symbol.asyncIterator]();
+  await read(stream, (e) => e.type === "status");
+  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  assert.deepEqual(await read(stream, () => true), [{ type: "threads" }]);
   await stream.return?.();
 });
 
