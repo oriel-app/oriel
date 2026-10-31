@@ -12,6 +12,14 @@ import {
 import { type GroupModel, type GroupMsg, groupReplied, initGroup, updateGroup } from "./group.ts";
 import { type Effect, get, post, type Replied } from "./http.ts";
 import {
+  initJira,
+  type JiraModel,
+  type JiraMsg,
+  jiraReplied,
+  loadJira,
+  updateJira,
+} from "./jira.ts";
+import {
   initReview,
   type ReviewModel,
   type ReviewMsg,
@@ -59,6 +67,8 @@ export type Model = {
   review: ReviewModel | null;
   // The connected folder, beside the groups.
   folder: FolderModel;
+  // Jira, which the window offers to connect until it is.
+  jira: JiraModel;
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
   threads: ThreadSummaryView[] | null;
@@ -71,6 +81,7 @@ export type Msg =
   | { type: "newThread"; msg: NewThreadMsg }
   | { type: "review"; msg: ReviewMsg }
   | { type: "folder"; msg: FolderMsg }
+  | { type: "jira"; msg: JiraMsg }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -100,6 +111,7 @@ export function init(route: Route): [Model, Effect[]] {
     drafts: 0,
     review: null,
     folder: initFolder(),
+    jira: initJira(),
     groups: null,
     threads: null,
   };
@@ -144,7 +156,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists, ...watching]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists, loadJira, ...watching]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -153,7 +165,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists, ...watching],
+        [...leaving, ...loads, ...lists, loadJira, ...watching],
       ];
     }
     case "group": {
@@ -209,6 +221,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const [folder, effects] = updateFolder(model.folder, msg.msg);
       return [{ ...model, folder }, effects];
     }
+    case "jira": {
+      const [jira, effects] = updateJira(model.jira, msg.msg);
+      return [{ ...model, jira }, effects];
+    }
     case "linkClicked":
       return [model, [{ type: "navigate", route: msg.route }]];
     case "routed":
@@ -261,6 +277,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       if (!synced || model.window === null) return [{ ...model, folder }, []];
       const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
       return [{ ...model, folder, window }, effects];
+    }
+    // Once Jira connected, the window shows its items.
+    case "jira":
+    case "jiraConnected": {
+      const { model: jira, synced } = jiraReplied(model.jira, msg);
+      if (!synced || model.window === null) return [{ ...model, jira }, []];
+      const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
+      return [{ ...model, jira, window }, effects];
     }
     case "createGroup":
     case "addToGroup": {
