@@ -2034,3 +2034,28 @@ a {
     padding: var(--space-4);
   }
 }
+
+/* Dropping on a group or a thread: a veil over the view says where it goes. */
+.drop-page {
+  min-height: calc(100vh - var(--bar-height));
+}
+.drop-veil {
+  position: fixed;
+  inset: calc(var(--bar-height) + 0.5rem) 0.5rem 0.5rem;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--accent-soft) 85%, transparent);
+}
+.drop-veil p {
+  pointer-events: none;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}

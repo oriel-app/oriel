@@ -1,6 +1,8 @@
 // Small pieces every page uses. Source text is always rendered as text;
 // nothing here sets HTML.
 import type { ComponentChildren } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { carries, type Dropped, readDrop } from "./drop.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
 import type { ItemRef, ItemRow, ThreadStateId } from "./view.ts";
@@ -30,6 +32,68 @@ export function Link(props: {
     >
       {props.children}
     </a>
+  );
+}
+
+// Where things dropped are added to a group: a Jira card dragged out of its
+// board, a link, an item's key, or a file from the connected folder. Only
+// drags from outside Oriel: one that starts in this page, like text moved
+// into the composer, is left to the browser. While one is over the zone, a
+// veil covers it, says where the drop goes and takes the drop, so leaving the
+// veil is leaving the zone.
+let dragFromHere = false;
+
+export function DropZone(props: {
+  label: string;
+  class?: string;
+  onDrop: (dropped: Dropped) => void;
+  children: ComponentChildren;
+}) {
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const started = () => {
+      dragFromHere = true;
+    };
+    const ended = () => {
+      dragFromHere = false;
+    };
+    document.addEventListener("dragstart", started);
+    document.addEventListener("dragend", ended);
+    return () => {
+      document.removeEventListener("dragstart", started);
+      document.removeEventListener("dragend", ended);
+    };
+  }, []);
+  const ours = (event: DragEvent) =>
+    !dragFromHere && event.dataTransfer !== null && carries(event.dataTransfer.types);
+  return (
+    <div
+      class={props.class}
+      onDragEnter={(event) => {
+        if (!ours(event)) return;
+        event.preventDefault();
+        setOver(true);
+      }}
+    >
+      {props.children}
+      {over && (
+        <div
+          class="drop-veil"
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setOver(false);
+            if (event.dataTransfer) props.onDrop(readDrop(event.dataTransfer));
+          }}
+        >
+          <p>{props.label}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

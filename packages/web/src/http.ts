@@ -9,6 +9,7 @@ export type Tag =
   | { kind: "groups" }
   | { kind: "createGroup" }
   | { kind: "addToGroup"; groupId: string }
+  | { kind: "dropped"; groupId: string }
   | { kind: "group"; id: string }
   | { kind: "groupChanged"; id: string }
   | { kind: "renamed"; id: string }

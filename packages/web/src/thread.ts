@@ -1,6 +1,8 @@
 // A thread's page: the chat, its change sets with their diffs, and the
 // region in the right rail. Entries arrive over the thread's event stream as
 // they're stored; change sets are acted on with explicit requests.
+import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
+import { nothingToAdd } from "./group.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type {
   ChangeSetView,
@@ -42,7 +44,9 @@ export type ThreadMsg =
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   | { type: "linkClicked"; changeSetId: string }
-  | { type: "linkCopied"; changeSetId: string };
+  | { type: "linkCopied"; changeSetId: string }
+  // Dropped on the thread: added to its group, which the thread then follows.
+  | { type: "dropped"; dropped: Dropped };
 
 export function initThread(id: string): [ThreadModel, Effect[]] {
   return [
@@ -187,6 +191,15 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       const link = model.links[msg.changeSetId];
       return [model, link ? [{ type: "copy", text: link }] : []];
     }
+    case "dropped": {
+      if (model.view === null) return [model, []];
+      if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
+      const groupId = model.view.group.id;
+      return [
+        { ...model, notice: null },
+        [post(`/api/groups/${groupId}/drop`, msg.dropped, { kind: "dropped", groupId })],
+      ];
+    }
   }
 }
 
@@ -221,6 +234,16 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       if (tag.threadId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, sending: false, notice: errorOf(msg.body) }, []];
       return [{ ...model, sending: false, draft: "" }, []];
+    case "dropped": {
+      if (tag.groupId !== model.view?.group.id) return [model, []];
+      if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
+      // The thread follows its group with a marker; the refresh shows it.
+      const reply = msg.body as DropReply;
+      return [
+        { ...model, notice: dropNotice(reply) },
+        reply.added.length > 0 ? [refresh(model)] : [],
+      ];
+    }
     case "threadAction":
       if (tag.threadId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];

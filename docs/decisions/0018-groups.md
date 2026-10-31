@@ -9,6 +9,7 @@ Adds: none
 - **A group** is a user-owned set of items from any source. In phase 1 its members change only in these ways:
   - the user picks items in the window, or turns a cluster into a group (a copy of its members at that moment; the group doesn't follow the cluster afterwards);
   - the user adds a file from a connected folder;
+  - the user drops something on a group or one of its threads that names an item the window has: its link, its key, or a connected-folder file with the same name and modified time (added 2026-10-30). Anything else dropped is refused, as links and outside files are below;
   - the user removes an item;
   - a change set applied in one of the group's threads creates an item, which joins the group so later turns can work on it.
 

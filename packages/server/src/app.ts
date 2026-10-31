@@ -395,6 +395,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       now,
       newId,
       applied,
+      refresh: async () => {
+        const problems: string[] = [];
+        if (mode.kind === "live")
+          await sync(false).catch((error: unknown) => {
+            log("sync failed", { error: String(error) });
+            problems.push("Jira didn't answer, so Oriel couldn't look for new items.");
+          });
+        const folderProblem = folder ? await syncFolder() : null;
+        if (folderProblem) problems.push(folderProblem);
+        return problems.length > 0 ? problems.join(" ") : null;
+      },
       explain: (conflicts) => explainConflicts(conflicts, specs),
       folder: {
         view: folderView,

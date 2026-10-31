@@ -12,6 +12,7 @@
 //   click <selector>         click; a Playwright selector, e.g. 'role=button[name="Approve"]'
 //   fill <selector> <text>   replace a field's text
 //   press <key>              press a key in the focused element, e.g. Enter
+//   drop <selector> <link>…  drop links or text on an element, as a drag from another tab does
 //   wait <selector>          wait for an element to be visible
 //   shot [name]              a full-page screenshot
 //   threads [id]             each thread as JSON lines, newest last; `person` lines are the maintainer's
@@ -201,10 +202,21 @@ const focusedNames = `(() => {
   return [nameOf(el), ...Array.from(submits, nameOf)];
 })()`;
 
-const commands = ["open", "look", "click", "fill", "press", "wait", "shot", "threads", "close"];
+const commands = [
+  "open",
+  "look",
+  "click",
+  "fill",
+  "press",
+  "drop",
+  "wait",
+  "shot",
+  "threads",
+  "close",
+];
 const [command = "look", ...args] = process.argv.slice(2);
 // What each command needs, checked before Chrome opens.
-const needs: Record<string, number> = { click: 1, fill: 2, press: 1, wait: 1 };
+const needs: Record<string, number> = { click: 1, fill: 2, press: 1, drop: 2, wait: 1 };
 // Output is left to drain: exiting at once could cut a long transcript.
 if (!commands.includes(command)) {
   console.error(`unknown command ${command}; see the comment at the top of scripts/drive.ts`);
@@ -301,6 +313,29 @@ async function drive(): Promise<void> {
         const focused: unknown = await tab.evaluate(focusedNames);
         if (refused(Array.isArray(focused) ? focused.map(String) : [])) return;
         await tab.keyboard.press(need(args[0], "a key"));
+        await look(tab);
+        break;
+      }
+      case "drop": {
+        const target = tab.locator(need(args[0], "a selector")).first();
+        const links = args.slice(1);
+        if (links.length === 0) need(undefined, "a link or text to drop");
+        // Built in the page, which has the DOM this script's types don't.
+        const data = await tab.evaluateHandle(`(() => {
+          const dropped = ${JSON.stringify(links)};
+          const transfer = new DataTransfer();
+          const urls = dropped.filter((each) => URL.canParse(each));
+          if (urls.length > 0) transfer.setData("text/uri-list", urls.join("\\r\\n"));
+          transfer.setData("text/plain", dropped.join("\\n"));
+          return transfer;
+        })()`);
+        // The zone shows its veil on dragenter, and the veil takes the drop.
+        await target.dispatchEvent("dragenter", { dataTransfer: data });
+        const veil = tab.locator(".drop-veil");
+        const onto = (await veil.count()) > 0 ? veil : target;
+        for (const type of ["dragover", "drop"])
+          await onto.dispatchEvent(type, { dataTransfer: data });
+        await tab.waitForLoadState();
         await look(tab);
         break;
       }
