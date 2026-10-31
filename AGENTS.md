@@ -22,6 +22,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 - Editing `fixtures/`, `tests/golden/`, `.github/workflows/` or `docs/decisions/`. Propose it; the maintainer approves.
 - Adding a dependency without an allowlist entry and an ADR.
 - Naming the products that inspired Oriel anywhere in the repo.
+- Squashing with `git reset --soft origin/main` after main has moved. Your branch keeps its stale copies of whatever merged since, and the PR silently reverts it. Squash onto `git merge-base HEAD origin/main`, then rebase. Before opening or merging a PR, `git diff --stat origin/main...HEAD` lists only your own files.
 
 ## Hit every surface
 
