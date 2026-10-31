@@ -167,6 +167,44 @@ test("picking items, then making a group of them, goes to the new group", () => 
   assert.deepEqual(refused.selected, ["jira:SYN-10", "jira:SYN-11"]);
 });
 
+test("an epic is picked from its heading like any item, and names the group it starts", () => {
+  const view = windowView();
+  const [checkout] = view.clusters;
+  assert.ok(checkout);
+  const epic = {
+    id: "jira:SYN-1",
+    key: "SYN-1",
+    title: "Checkout v2",
+    type: "Epic",
+    status: null,
+    assignee: null,
+    points: null,
+    idleDays: 0,
+  };
+  const anchored = { ...view, clusters: [{ ...checkout, row: { ...checkout.row, anchor: epic } }] };
+  const [initial] = init("epic");
+  let model = update(initial, {
+    type: "windowLoaded",
+    request: initial.request,
+    window: anchored,
+  })[0];
+  // Alone, it's named as an item is; with its stories, after their cluster.
+  model = update(model, { type: "itemToggled", id: "jira:SYN-1" })[0];
+  assert.equal(pickedName(model), "Checkout v2");
+  model = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
+  assert.equal(pickedName(model), "Checkout");
+  const [, effects] = update(model, { type: "selectionGrouped", name: pickedName(model) });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/groups",
+      body: { kind: "picked", name: "Checkout", items: ["jira:SYN-1", "jira:SYN-10"] },
+      tag: { kind: "createGroup" },
+    },
+  ]);
+});
+
 test("a cluster becomes a group in one click; picked items can join an existing group", () => {
   const model = shownWindow();
   assert.deepEqual(update(model, { type: "clusterGrouped", key: "10001" })[1], [

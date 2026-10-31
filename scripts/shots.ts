@@ -288,6 +288,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await shown(page, "epic");
       await openFirstCluster(page);
+      await page.locator('.anchor-pick input[type="checkbox"]').first().check();
       const boxes = page.locator('.item input[type="checkbox"]');
       await boxes.nth(1).check();
       await boxes.nth(2).check();
