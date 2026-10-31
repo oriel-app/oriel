@@ -2,7 +2,8 @@
 // writer makes over `fetch`, so a composition root can be tested writing
 // without a network. It starts from the fixture after its source edits, with
 // the same stable IDs the index has. Every write moves the item's `updated`
-// one second on from `clock`. Exported as `@oriel/jira/testing`.
+// one second on from `clock`. It answers the source's search too, so an app
+// can sync from it as from a live site. Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
 import { adfToText, textToAdf } from "./adf.ts";
@@ -10,6 +11,7 @@ import { applySourceEdits, type JiraFixture } from "./fixture.ts";
 
 export const memorySiteOrigin = "https://oriel.atlassian.net";
 const pointsField = "customfield_10016";
+const searchPath = "/rest/api/3/search/jql";
 
 type Issue = {
   id: string;
@@ -17,6 +19,7 @@ type Issue = {
   issueType: string;
   summary: string;
   description: string;
+  labels: string[];
   epic: string | null;
   assignee: string | null;
   points: number | null;
@@ -38,6 +41,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         issueType: issue.issueType,
         summary: issue.summary,
         description: issue.description,
+        labels: [...issue.labels],
         epic: issue.epic,
         assignee: issue.assignee,
         points: issue.points,
@@ -74,6 +78,8 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
   const unanswered = new Set<string>();
   // Every request, in order.
   const calls: { method: string; path: string }[] = [];
+  // What the search answers from while it lags the site; null once caught up.
+  let searchable: Map<string, Issue> | null = null;
 
   const tick = (): Instant => {
     ticks += 1;
@@ -92,14 +98,15 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     subtask: false,
     hierarchyLevel: name === "Epic" ? 1 : 0,
   });
-  const view = (issue: Issue) => ({
+  const view = (issue: Issue, from = issues) => ({
     id: issue.id,
     key: issue.key,
     fields: {
       summary: issue.summary,
       description: issue.description ? textToAdf(issue.description) : null,
       issuetype: type(issue.issueType),
-      parent: issue.epic ? { id: issues.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
+      labels: issue.labels,
+      parent: issue.epic ? { id: from.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
       assignee: issue.assignee
         ? { accountId: issue.assignee, displayName: people.get(issue.assignee) ?? issue.assignee }
         : null,
@@ -120,6 +127,25 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
+    if (method === "GET" && path === "/rest/api/3/myself") return json(200, { timeZone: "UTC" });
+    // Every issue, oldest update first, whatever the JQL's window: listing
+    // more than was asked for changes nothing in an index.
+    if (method === "POST" && path === searchPath) {
+      const { maxResults = 50, nextPageToken } = body as {
+        maxResults?: number;
+        nextPageToken?: string;
+      };
+      const at = Number(nextPageToken ?? 0);
+      const from = searchable ?? issues;
+      const listed = [...from.values()].toSorted(
+        (a, b) => a.updated.localeCompare(b.updated) || a.key.localeCompare(b.key),
+      );
+      const more = at + maxResults < listed.length;
+      return json(200, {
+        issues: listed.slice(at, at + maxResults).map((issue) => view(issue, from)),
+        ...(more ? { nextPageToken: String(at + maxResults) } : { isLast: true }),
+      });
+    }
     if (method === "POST" && path === "/rest/api/3/issue") {
       const fields = (body as { fields: Record<string, unknown> }).fields;
       const parent = fields.parent as { key: string } | undefined;
@@ -130,6 +156,7 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
         issueType: typeId === type("Epic").id ? "Epic" : "Story",
         summary: String(fields.summary),
         description: fields.description ? adfToText(fields.description) : "",
+        labels: [],
         epic: parent?.key ?? null,
         assignee: null,
         points: typeof fields[pointsField] === "number" ? (fields[pointsField] as number) : null,
@@ -257,6 +284,15 @@ export function memorySite(fixture: JiraFixture, clock: Instant) {
     allow(key: string) {
       refused.delete(key);
       unanswered.delete(key);
+    },
+    // Jira's search catches up with writes a while after them: from here it
+    // answers as the site stands now, until `searchCatchesUp`. Reading an
+    // issue by key never lags.
+    searchLags() {
+      searchable = new Map(structuredClone([...issues]));
+    },
+    searchCatchesUp() {
+      searchable = null;
     },
     // A teammate edits the item directly in Jira.
     edit(key: string, change: Partial<Pick<Issue, "summary" | "points">>) {
