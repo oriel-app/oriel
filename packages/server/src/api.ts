@@ -15,6 +15,7 @@ import {
   isUlid,
   type Log,
   literal,
+  number,
   object,
   optional,
   parseItemId,
@@ -50,9 +51,10 @@ export type ApiDeps = {
   // After a change set applied, partly or in full: what it created joins the
   // group, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
-  // Syncs the sources that change outside Oriel, once: a dropped link to an
-  // item made since the last sync can then be found.
-  refresh(): Promise<void>;
+  // Syncs the sources that change outside Oriel, once, so a dropped link to
+  // an item made since the last sync can be found. What went wrong, in plain
+  // words, or null.
+  refresh(): Promise<string | null>;
   // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
   // The connected folder: its state, connecting one by its typed path, and
@@ -116,13 +118,22 @@ const newGroup = union(
 );
 const itemsBody = object({ items: itemList });
 const maxDropped = 50;
-const droppedList = (max: number) =>
-  refine(
-    array(refine(string, (each) => each.length <= max, `expected at most ${max} characters`)),
+const droppedFile = object({
+  name: refine(string, (name) => name.length <= 255, "expected at most 255 characters"),
+  modified: number,
+});
+const droppedBody = object({
+  links: refine(
+    array(refine(string, (link) => link.length <= 2048, "expected at most 2048 characters")),
     (list) => list.length <= maxDropped,
     `expected at most ${maxDropped}`,
-  );
-const droppedBody = object({ links: droppedList(2048), files: droppedList(255) });
+  ),
+  files: refine(
+    array(droppedFile),
+    (list) => list.length <= maxDropped,
+    `expected at most ${maxDropped}`,
+  ),
+});
 const renameBody = object({ name: nameValue });
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
@@ -496,12 +507,19 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const group = mustGroup(id);
         const dropped = await readJson(request, listBody, droppedBody);
         let resolved = resolveDropped(deps.records(), dropped);
-        if (resolved.refused.length > 0) {
-          await deps.refresh();
+        let synced: string | null = null;
+        if (resolved.refused.some((refusal) => refusal.syncMightHelp)) {
+          synced = await deps.refresh();
           resolved = resolveDropped(deps.records(), dropped);
         }
+        if (resolved.ids.length > maxItems)
+          throw new Refused(400, `expected at most ${maxItems} items`);
         const added = addMembers(group.id, indexed(resolved.ids));
-        return json(200, { group: views.group(group.id), added, refused: resolved.refused });
+        const refused = resolved.refused.map(({ what, why, syncMightHelp }) => ({
+          what,
+          why: synced && syncMightHelp ? `${why} ${synced}` : why,
+        }));
+        return json(200, { group: views.group(group.id), added, refused });
       },
     },
     {

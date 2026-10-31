@@ -1,9 +1,10 @@
 // Dropping things on a group or a thread adds them to the group. A browser
-// hands a page links, text and files by name only (never a file's path); the
+// hands a page links, text, and files by name and time only (never a path); the
 // server finds the items they name (packages/server/src/dropped.ts).
 import type { GroupView } from "./view.ts";
 
-export type Dropped = { links: string[]; files: string[] };
+// A file by its name and when it was last changed, in ms since the epoch.
+export type Dropped = { links: string[]; files: { name: string; modified: number }[] };
 
 // What the server says a drop did.
 export type DropReply = {
@@ -19,7 +20,7 @@ const most = 50;
 export type DropData = {
   types: readonly string[];
   getData(format: string): string;
-  files: ArrayLike<{ name: string }>;
+  files: ArrayLike<{ name: string; lastModified: number }>;
 };
 
 // Whether a drag carries anything a drop could add.
@@ -33,11 +34,14 @@ export function readDrop(data: DropData): Dropped {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
+  // Text only when there's no link: beside a link it describes the link, and
+  // a key in a card's title isn't the card.
   const text = data.getData("text/plain").trim();
-  const links = [...listed];
-  // Text that isn't one of the links already, such as a card's key and title.
-  if (text !== "" && !listed.includes(text)) links.push(text);
-  const files = Array.from(data.files, (file) => file.name);
+  const links = listed.length > 0 ? listed : text !== "" ? [text] : [];
+  const files = Array.from(data.files, (file) => ({
+    name: file.name,
+    modified: file.lastModified,
+  }));
   return { links: links.slice(0, most), files: files.slice(0, most) };
 }
 

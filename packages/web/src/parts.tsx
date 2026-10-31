@@ -1,7 +1,7 @@
 // Small pieces every page uses. Source text is always rendered as text;
 // nothing here sets HTML.
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { carries, type Dropped, readDrop } from "./drop.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
@@ -36,41 +36,60 @@ export function Link(props: {
 }
 
 // Where things dropped are added to a group: a Jira card dragged out of its
-// board, a link, an item's key, or a file from the connected folder. While
-// something droppable is over it, it says where it will go.
+// board, a link, an item's key, or a file from the connected folder. Only
+// drags from outside Oriel: one that starts in this page, like text moved
+// into the composer, is left to the browser. While one is over the zone, a
+// veil covers it, says where the drop goes and takes the drop, so leaving the
+// veil is leaving the zone.
+let dragFromHere = false;
+
 export function DropZone(props: {
   label: string;
   class?: string;
   onDrop: (dropped: Dropped) => void;
   children: ComponentChildren;
 }) {
-  // Enter and leave fire for every child crossed, so count them.
-  const [depth, setDepth] = useState(0);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const started = () => {
+      dragFromHere = true;
+    };
+    const ended = () => {
+      dragFromHere = false;
+    };
+    document.addEventListener("dragstart", started);
+    document.addEventListener("dragend", ended);
+    return () => {
+      document.removeEventListener("dragstart", started);
+      document.removeEventListener("dragend", ended);
+    };
+  }, []);
+  const ours = (event: DragEvent) =>
+    !dragFromHere && event.dataTransfer !== null && carries(event.dataTransfer.types);
   return (
     <div
       class={props.class}
-      data-dropping={depth > 0 || undefined}
       onDragEnter={(event) => {
-        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
+        if (!ours(event)) return;
         event.preventDefault();
-        setDepth((n) => n + 1);
-      }}
-      onDragOver={(event) => {
-        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={() => setDepth((n) => Math.max(0, n - 1))}
-      onDrop={(event) => {
-        setDepth(0);
-        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
-        event.preventDefault();
-        props.onDrop(readDrop(event.dataTransfer));
+        setOver(true);
       }}
     >
       {props.children}
-      {depth > 0 && (
-        <div class="drop-veil" aria-hidden="true">
+      {over && (
+        <div
+          class="drop-veil"
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setOver(false);
+            if (event.dataTransfer) props.onDrop(readDrop(event.dataTransfer));
+          }}
+        >
           <p>{props.label}</p>
         </div>
       )}

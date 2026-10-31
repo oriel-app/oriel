@@ -2048,9 +2048,9 @@ a {
   border: 2px dashed var(--accent);
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--accent-soft) 85%, transparent);
-  pointer-events: none;
 }
 .drop-veil p {
+  pointer-events: none;
   margin: 0;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-lg);

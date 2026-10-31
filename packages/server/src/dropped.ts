@@ -1,78 +1,117 @@
 // What the user dropped on a group or a thread, as the items it names. A
 // browser hands over links (a Jira card dragged out of its board is a link to
-// the issue), text, and files by name only: it never gives a page a file's
-// path. So a link matches an item's location, a handle in text matches an
-// item's handle, and a file matches a folder item by name when exactly one
-// has it. What matches nothing is refused with a plain reason (decision 0018:
-// links and files outside a connected folder wait for their own sources).
-import { type IndexRecord, type ItemId, parseItemId } from "@oriel/core";
+// the issue), text, and files by name and modification time only: it never
+// gives a page a file's path. So:
+// - a link names the item at its location, or one whose handle is a whole
+//   path segment or query value of a link to a site Oriel indexes, like a
+//   board with an issue open;
+// - text names the items whose handles are words in it;
+// - a file is the one folder file with its name and modification time.
+// What names nothing is refused with a plain reason (decision 0018: links and
+// files outside a connected folder wait for their own sources), and says
+// whether a sync might find it.
+import type { IndexRecord, ItemId } from "@oriel/core";
 
-export type Dropped = { links: readonly string[]; files: readonly string[] };
-export type Resolved = { ids: ItemId[]; refused: { what: string; why: string }[] };
+export type DroppedFile = { name: string; modified: number };
+export type Dropped = { links: readonly string[]; files: readonly DroppedFile[] };
+export type Refusal = { what: string; why: string; syncMightHelp: boolean };
+export type Resolved = { ids: ItemId[]; refused: Refusal[] };
 
-// A link without its query, fragment or trailing slash; null if it isn't one.
-function place(link: string): string | null {
-  const url = URL.parse(link.trim());
-  if (!url || (url.protocol !== "https:" && url.protocol !== "http:" && url.protocol !== "file:"))
-    return null;
-  return `${url.origin === "null" ? "file://" : url.origin}${url.pathname.replace(/\/+$/, "")}`;
-}
+// A file's time on disk and in the index can differ by rounding, and by up to
+// two seconds on some filesystems.
+const sameTime = 2_000;
 
-// A handle as it appears in text, like SYN-12: letters, a dash, a number.
-const handles = /\b[A-Z][A-Z0-9]+-[1-9][0-9]*\b/g;
+const webOrFile = (url: URL) =>
+  url.protocol === "https:" || url.protocol === "http:" || url.protocol === "file:";
+
+// A link without its query, fragment or trailing slash.
+const place = (url: URL) =>
+  `${url.protocol === "file:" ? "file://" : url.origin}${url.pathname.replace(/\/+$/, "")}`;
+
+const decoded = (part: string) => {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+};
 
 const fileName = (location: string): string | null => {
   const url = URL.parse(location);
   if (!url || url.protocol !== "file:") return null;
-  return decodeURIComponent(url.pathname.split("/").at(-1) ?? "").normalize("NFC");
+  return decoded(url.pathname.split("/").at(-1) ?? "").normalize("NFC");
 };
 
 export function resolveDropped(records: readonly IndexRecord[], dropped: Dropped): Resolved {
   const byPlace = new Map<string, ItemId>();
   const byHandle = new Map<string, ItemId>();
-  const byName = new Map<string, ItemId[]>();
+  const byName = new Map<string, IndexRecord[]>();
+  const origins = new Set<string>();
   for (const record of records) {
-    const at = place(record.location);
-    if (at) byPlace.set(at, record.id);
-    const key = parseItemId(record.id)?.key;
-    if (key) byHandle.set(key, record.id);
+    const url = URL.parse(record.location);
+    if (url && webOrFile(url)) {
+      byPlace.set(place(url), record.id);
+      if (url.protocol !== "file:") origins.add(url.origin);
+    }
+    byHandle.set(record.id.slice(record.id.indexOf(":") + 1), record.id);
     const name = fileName(record.location);
-    if (name) byName.set(name, [...(byName.get(name) ?? []), record.id]);
+    if (name) byName.set(name, [...(byName.get(name) ?? []), record]);
   }
+  const named = (words: Iterable<string>) => [...words].flatMap((w) => byHandle.get(w) ?? []);
+
   const ids = new Set<ItemId>();
-  const refused: Resolved["refused"] = [];
+  const refused: Refusal[] = [];
   for (const link of dropped.links) {
-    const at = place(link);
-    const found = at ? byPlace.get(at) : undefined;
-    if (found) {
-      ids.add(found);
+    const url = URL.parse(link.trim());
+    if (url && webOrFile(url)) {
+      const at = byPlace.get(place(url));
+      const known = origins.has(url.origin);
+      const found = at
+        ? [at]
+        : known
+          ? named([...url.pathname.split("/").map(decoded), ...url.searchParams.values()])
+          : [];
+      for (const id of found) ids.add(id);
+      if (found.length === 0)
+        refused.push({
+          what: link,
+          why: known
+            ? "Oriel doesn't have this item."
+            : "Only Jira items and files in the connected folder can be added, not other pages.",
+          syncMightHelp: known,
+        });
       continue;
     }
-    // Text, or a link to a page that names an item, like a board with an issue open.
-    const named = [...link.matchAll(handles)].flatMap(([handle]) => byHandle.get(handle) ?? []);
-    if (named.length > 0) {
-      for (const id of named) ids.add(id);
+    const words = link.split(/[^\p{L}\p{N}_-]+/u).filter((word) => word !== "");
+    const found = named(words);
+    for (const id of found) ids.add(id);
+    if (found.length === 0)
+      refused.push({
+        what: link,
+        why: "This doesn't name anything Oriel has.",
+        syncMightHelp: words.some((word) => /[0-9]/.test(word)),
+      });
+  }
+  for (const file of dropped.files) {
+    const sameName = byName.get(file.name.normalize("NFC")) ?? [];
+    const same = sameName.filter(
+      (record) => Math.abs(Date.parse(record.updatedAt) - file.modified) <= sameTime,
+    );
+    const [only] = same;
+    if (same.length === 1 && only) {
+      ids.add(only.id);
       continue;
     }
     refused.push({
-      what: link,
-      why: at
-        ? "Oriel doesn't have this page. Only Jira items and files in the connected folder can be added."
-        : "This doesn't name anything Oriel has.",
+      what: file.name,
+      why:
+        same.length > 1
+          ? "The connected folder has more than one file like this one. Add it from the window."
+          : sameName.length > 0
+            ? "This isn't the connected folder's file by this name; the two were changed at different times."
+            : "Only files in the connected folder can be added, and it has no file by this name.",
+      syncMightHelp: same.length === 0,
     });
-  }
-  for (const file of dropped.files) {
-    const matches = byName.get(file.normalize("NFC")) ?? [];
-    const [only] = matches;
-    if (matches.length === 1 && only) ids.add(only);
-    else
-      refused.push({
-        what: file,
-        why:
-          matches.length === 0
-            ? "Only files in the connected folder can be added, and it has no file by this name."
-            : "The connected folder has more than one file by this name. Add it from the window.",
-      });
   }
   return { ids: [...ids], refused };
 }

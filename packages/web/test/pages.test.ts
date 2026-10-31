@@ -569,7 +569,7 @@ test("a drop reads links, the text beside them and file names, at most fifty of 
   const data = (formats: Record<string, string>, files: string[] = []) => ({
     types: Object.keys(formats),
     getData: (format: string) => formats[format] ?? "",
-    files: files.map((name) => ({ name })),
+    files: files.map((name) => ({ name, lastModified: 1 })),
   });
   assert.deepEqual(
     readDrop(
@@ -582,15 +582,28 @@ test("a drop reads links, the text beside them and file names, at most fifty of 
   );
   assert.deepEqual(readDrop(data({ "text/plain": " test ticket OA-5 " }, ["plan.md"])), {
     links: ["test ticket OA-5"],
-    files: ["plan.md"],
+    files: [{ name: "plan.md", modified: 1 }],
   });
+  // Beside a link, text describes it; a key in a card's title isn't the card.
+  assert.deepEqual(
+    readDrop(
+      data({
+        "text/uri-list": "https://oriel.atlassian.net/browse/OA-5",
+        "text/plain": "OA-5 Split from OA-3",
+      }),
+    ).links,
+    ["https://oriel.atlassian.net/browse/OA-5"],
+  );
   const many = Array.from({ length: 60 }, (_, n) => `https://x.test/${n}`).join("\n");
   assert.equal(readDrop(data({ "text/uri-list": many })).links.length, 50);
 });
 
 test("what's dropped on a group's page is sent to it; the reply says only what wasn't added", () => {
   const [model] = initGroup(groupId);
-  const dropped = { links: ["https://oriel.atlassian.net/browse/OA-5"], files: ["plan.md"] };
+  const dropped = {
+    links: ["https://oriel.atlassian.net/browse/OA-5"],
+    files: [{ name: "plan.md", modified: 1 }],
+  };
   const [pending, sent] = updateGroup(model, { type: "dropped", dropped });
   assert.deepEqual(sent, [
     {

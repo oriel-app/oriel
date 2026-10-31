@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -153,6 +154,27 @@ test("a folder syncs again on demand, and when the server starts", async (t) => 
   app.dir.write("Later.md", "Written while Oriel was off.");
   const again = await testApp(t, { db });
   assert.equal(json<{ folder: FolderView }>(await again.get("/api/folder")).folder.items, 4);
+});
+
+test("a file dropped that the index doesn't have yet is found by syncing the folder once", async (t) => {
+  const app = await connected(t);
+  const created = await app.post("/api/groups", {
+    kind: "picked",
+    name: "Launch",
+    items: ["jira:SYN-10"],
+  });
+  const { id } = json<{ id: string }>(created);
+  app.dir.write("Retro.md", "What went well.");
+  const modified = Math.trunc(statSync(join(app.dir.root, "Retro.md")).mtimeMs);
+  const dropped = json<{ group: GroupView; added: string[]; refused: unknown[] }>(
+    await app.post(`/api/groups/${id}/drop`, {
+      links: [],
+      files: [{ name: "Retro.md", modified }],
+    }),
+  );
+  assert.equal(dropped.added.length, 1);
+  assert.deepEqual(dropped.refused, []);
+  assert.ok(dropped.group.members.some((m) => m.ref.title === "Retro"));
 });
 
 test("a group mixes Jira and folder items; its thread's region binds items.* for both, jira.* for Jira's", async (t) => {

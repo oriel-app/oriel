@@ -120,7 +120,7 @@ test("what's dropped on a group joins it as picking would; what names nothing is
       "SYN-10 and SYN-21",
       "https://example.com/x",
     ],
-    files: ["plan.md"],
+    files: [{ name: "plan.md", modified: 0 }],
   });
   assert.equal(dropped.status, 200);
   const body = json<{ group: GroupView; added: string[]; refused: { what: string }[] }>(dropped);
