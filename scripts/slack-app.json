@@ -1,0 +1,23 @@
+{
+  "display_information": {
+    "name": "Oriel Seed",
+    "description": "Seeds Oriel's test workspace: posts a scenario as each person who authorizes it."
+  },
+  "oauth_config": {
+    "redirect_urls": ["https://localhost/oriel-slack"],
+    "scopes": {
+      "user": [
+        "channels:history",
+        "channels:read",
+        "channels:write",
+        "chat:write",
+        "users.profile:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
