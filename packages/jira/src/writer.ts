@@ -25,7 +25,7 @@ import {
   type Validator,
   type WriteResult,
 } from "@oriel/core";
-import { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
+import { isJiraOp, issueFields, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 import { adfToText, textToAdf } from "./adf.ts";
 import {
   api,
@@ -58,7 +58,6 @@ export type JiraWriterOptions = {
 type Target = { id: ItemId<"jira">; stableId: string } | null;
 type Send = (request: JiraRequest) => Promise<JiraResponse>;
 
-const issueFields = ["summary", "description", "points", "assignee", "epic"] as const;
 type IssueField = (typeof issueFields)[number];
 const isIssueField = (name: string): name is IssueField =>
   (issueFields as readonly string[]).includes(name);
