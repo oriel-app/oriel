@@ -64,9 +64,12 @@ const pageSize = "200";
 const tsShape = /^[0-9]{10}\.[0-9]{6}$/;
 const channelShape = /^[CG][A-Z0-9]{6,20}$/;
 
-// Each field but `ts` is taken when it has the right type and left out
-// otherwise, so one odd field can't drop a message, which the sync worker's
-// full sweep would then mark gone.
+// A field with the wrong type is left out rather than dropping the message,
+// which the sync worker's full sweep would then mark gone. Except where
+// leaving it out would change what the message is: without a good `ts` it
+// has no key, and without a good `subtype` or `thread_ts` it could pass for a
+// person's post. Those are skipped; a message that never lists isn't swept.
+// An odd `user` leaves the author unknown, never an app.
 const fields = {
   subtype: optional(string),
   user: optional(string),
@@ -80,7 +83,7 @@ const fields = {
   files: optional(array(object({ name: optional(string), title: optional(string) }))),
 };
 const message = object({ ts: string, ...fields });
-type Message = Infer<typeof message>;
+type Message = Infer<typeof message> & { unknownAuthor?: true };
 
 function looseMessage(raw: unknown): { message: Message; odd: string[] } | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
@@ -94,6 +97,8 @@ function looseMessage(raw: unknown): { message: Message; odd: string[] } | null 
     if (result.ok) taken[key] = result.value;
     else odd.push(key);
   }
+  if (odd.includes("subtype") || odd.includes("thread_ts")) return null;
+  if (odd.includes("user")) taken.unknownAuthor = true;
   return { message: taken as Message, odd };
 }
 
@@ -185,9 +190,11 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
       // The author is the person in `user`, even when an app posted for them
       // and `bot_id` is set too (decision 0021). Only a message with no
       // person is the app's own.
-      const author: SlackPerson = m.user
-        ? { id: m.user, name: names.get(m.user) ?? `Unknown person (${m.user})` }
-        : { id: null, name: `${m.username ?? m.bot_profile?.name ?? "An app"} (app)` };
+      const author: SlackPerson = m.unknownAuthor
+        ? { id: null, name: "Unknown person" }
+        : m.user
+          ? { id: m.user, name: names.get(m.user) ?? `Unknown person (${m.user})` }
+          : { id: null, name: `${m.username ?? m.bot_profile?.name ?? "An app"} (app)` };
       const files = (m.files ?? []).map(
         (file) => `[File: ${file.title ?? file.name ?? "untitled"}]`,
       );
@@ -212,7 +219,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     const found: Message[] = [];
     for (const raw of parsed.value.messages) {
       const taken = looseMessage(raw);
-      if (!taken) log("slack: skipped a message with no ts", { method });
+      if (!taken) log("slack: skipped a message Oriel can't place", { method });
       else found.push(taken.message);
       if (taken?.odd.length) log("slack: left out odd fields", { method, fields: taken.odd });
     }

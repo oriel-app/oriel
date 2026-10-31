@@ -266,17 +266,23 @@ test("past the cap, a channel lists its newest messages, and older ones read as 
   assert.deepEqual(left, { id: older, status: "gone", reason: "forbidden" });
 });
 
-test("an odd field is left out, not the message; one with no ts is skipped and logged", async () => {
+test("an odd field is left out, not the message; one with no ts, subtype or thread_ts it can trust is skipped", async () => {
   const { api } = fixtureApi(fixture);
   const lines: string[] = [];
   const source = slackSource({
     api: async (method, params) => {
       const reply = (await api(method, params)) as { messages?: Record<string, unknown>[] };
       if (method !== "conversations.history" || !reply.messages) return reply;
-      const [first, second, ...rest] = reply.messages;
+      const [first, second, third, fourth, ...rest] = reply.messages;
       return {
         ...reply,
-        messages: [{ ...first, files: "not a list", user: null }, { ...second, ts: 7 }, ...rest],
+        messages: [
+          { ...first, files: "not a list", user: null },
+          { ...second, ts: 7 },
+          { ...third, subtype: 1 },
+          { ...fourth, thread_ts: false },
+          ...rest,
+        ],
       };
     },
     workspaceUrl: url,
@@ -285,9 +291,10 @@ test("an odd field is left out, not the message; one with no ts is skipped and l
   });
   const records: SlackRecord[] = [];
   for await (const page of source.sync(null)) records.push(...page.records);
-  assert.equal(records.length, 17);
-  // Its `user` was null, so it reads as no one's: an app's.
-  assert.equal(records[0]?.title, "An app (app): is on the 07:30 to test the at-risk banner");
+  assert.equal(records.length, 15);
+  // Its `user` was null: whose it is isn't known, and it isn't an app's.
+  assert.equal(records[0]?.title, "Unknown person: is on the 07:30 to test the at-risk banner");
+  assert.deepEqual(records[0]?.attrs.author, { id: null, name: "Unknown person" });
   assert.ok(lines.includes("slack: left out odd fields"));
-  assert.ok(lines.includes("slack: skipped a message with no ts"));
+  assert.ok(lines.includes("slack: skipped a message Oriel can't place"));
 });
