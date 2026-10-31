@@ -27,7 +27,9 @@ export type Tag =
   | { kind: "telemetry" }
   | { kind: "folder" }
   | { kind: "folderConnected" }
-  | { kind: "folderSynced" };
+  | { kind: "folderSynced" }
+  | { kind: "jira" }
+  | { kind: "jiraConnected" };
 
 export type Effect =
   | { type: "loadWindow"; request: number; grouping: GroupingId }

@@ -31,6 +31,15 @@ export type WindowView = {
 // how many files the index has from it, and when it last synced.
 export type FolderView = { path: string; items: number; syncedAt: string | null };
 
+// Jira: the site and project the index syncs, if any, with how many items
+// it has from them and when it last synced; and whether the user can
+// connect it from the window, which they can only while it isn't connected
+// and the server doesn't set it up itself.
+export type JiraView = {
+  connected: { site: string; project: string; items: number; syncedAt: string | null } | null;
+  connectable: boolean;
+};
+
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 

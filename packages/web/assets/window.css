@@ -931,6 +931,70 @@ button.nav-disclose:hover {
   min-width: 0;
 }
 
+/* Connecting Jira: asked for first, until it is. */
+
+.connect-jira {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+  margin: var(--space-2) 0 var(--space-6);
+  padding: var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.connect-jira h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.connect-note {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.jira-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.jira-field {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.jira-field input {
+  padding: 0.4375rem var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.jira-hint {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.connect-problem {
+  margin: 0;
+  color: var(--danger);
+}
+
 .window-head {
   display: flex;
   flex-wrap: wrap;
