@@ -2,7 +2,7 @@
 // the user's groups with their threads under them, and the connected folder.
 // On a wide screen it folds to a strip of icons; on a narrow one it's a
 // drawer the menu opens.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { type Nav, type NavGroup, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames } from "./parts.tsx";
@@ -77,14 +77,22 @@ export function Sidebar(props: {
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
 function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
-  // Groups the user opened or closed by hand; the current one starts open.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (id: string) =>
-    setToggled((was) => {
-      const next = new Set(was);
-      if (!next.delete(id)) next.add(id);
+  // Groups the user opened or closed by hand. Any other is open while it's
+  // the current one, and arriving at a group opens it whatever was set.
+  const [set, setSet] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const current = where.groups?.find((entry) => entry.current)?.group.id ?? null;
+  useEffect(() => {
+    if (current === null) return;
+    setSet((was) => {
+      if (!was.has(current)) return was;
+      const next = new Map(was);
+      next.delete(current);
       return next;
     });
+  }, [current]);
+  const isOpen = (entry: NavGroup) => set.get(entry.group.id) ?? entry.current;
+  const toggle = (entry: NavGroup) =>
+    setSet((was) => new Map(was).set(entry.group.id, !(was.get(entry.group.id) ?? entry.current)));
   return (
     <nav class="sidebar-groups" aria-label="Groups">
       <h2 class="rail-title">Groups</h2>
@@ -96,9 +104,9 @@ function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
           <GroupEntry
             key={entry.group.id}
             entry={entry}
-            open={entry.current !== toggled.has(entry.group.id)}
+            open={isOpen(entry)}
             thread={where.thread}
-            onToggle={() => toggle(entry.group.id)}
+            onToggle={() => toggle(entry)}
             dispatch={dispatch}
           />
         ))}
@@ -117,6 +125,7 @@ function GroupEntry(props: {
   const { entry, dispatch } = props;
   const { group, threads } = entry;
   const open = props.open && threads.length > 0;
+  const working = threads.filter((thread) => thread.state === "working").length;
   const listId = `nav-threads-${group.id}`;
   return (
     <li class="nav-group" data-current={entry.current || undefined}>
@@ -144,9 +153,7 @@ function GroupEntry(props: {
           aria-current={entry.current && props.thread === null ? "page" : undefined}
         >
           <span class="nav-name">{group.name}</span>
-          {group.threads.working > 0 && (
-            <span class="working-dot" title={plural(group.threads.working, "working thread")} />
-          )}
+          {working > 0 && <span class="working-dot" title={plural(working, "working thread")} />}
           <span class="nav-count" title={plural(group.size, "item")}>
             {group.size}
           </span>

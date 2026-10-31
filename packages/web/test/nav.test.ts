@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { nav } from "../src/nav.ts";
-import { init, type Model } from "../src/root.ts";
+import { init, type Model, update } from "../src/root.ts";
 import type { Route } from "../src/route.ts";
 import type { GroupSummary, ThreadSummaryView } from "../src/view.ts";
 
@@ -77,4 +77,44 @@ test("before the lists load, there are no groups to show", () => {
   const where = nav(at({ page: "window", grouping: "epic", addTo: null }, false));
   assert.equal(where.groups, null);
   assert.equal(where.working, 0);
+});
+
+test("every page but a review link loads what the sidebar shows, the folder included", () => {
+  const urls = (route: Route) =>
+    init(route)[1].flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
+  for (const route of [
+    { page: "window", grouping: "epic", addTo: null },
+    { page: "group", id: groupA },
+    { page: "thread", id: "01JBZ0000000000000000000T1" },
+    { page: "inbox" },
+  ] as const)
+    for (const url of ["/api/groups", "/api/threads", "/api/folder"])
+      assert.ok(urls(route).includes(url), `${route.page} loads ${url}`);
+  assert.deepEqual(
+    urls({ page: "review", token: "abc_DEF-123" }).filter((url) => !url.startsWith("/api/review")),
+    [],
+  );
+});
+
+test("a drop on a group's page updates the page, and the groups reload for their counts", () => {
+  const [model] = init({ page: "group", id: groupA });
+  const view = { group: group(groupA, "Launch"), members: [], changes: [], threads: [] };
+  const [after, effects] = update(model, {
+    type: "replied",
+    tag: { kind: "dropped", groupId: groupA },
+    ok: true,
+    body: { group: view, added: ["jira:OA-5"], refused: [] },
+  });
+  assert.equal(after.group?.view, view);
+  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
+});
+
+test("a turn that ends reloads the threads and the groups, whose dots and counts it may move", () => {
+  const [model] = init({ page: "thread", id: "01JBZ0000000000000000000T1" });
+  const [, effects] = update(model, {
+    type: "streamed",
+    event: { type: "status", running: false, state: "done", regionVersion: 1 },
+  });
+  const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
+  assert.ok(urls.includes("/api/threads") && urls.includes("/api/groups"));
 });

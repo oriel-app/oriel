@@ -2429,6 +2429,8 @@ button.nav-disclose:hover {
 .drop-veil {
   position: fixed;
   inset: calc(var(--bar-height) + 0.5rem) 0.5rem 0.5rem;
+  /* Over the page only: leaving it for the sidebar is leaving the zone. */
+  left: calc(var(--sidebar, 0rem) + 0.5rem);
   z-index: 20;
   display: grid;
   place-items: center;

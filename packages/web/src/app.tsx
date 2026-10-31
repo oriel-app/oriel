@@ -27,10 +27,13 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       writeFolded(!was);
       return !was;
     });
-  // ⌘\ or Ctrl+\ folds the sidebar; Escape closes the drawer.
+  // ⌘\ or Ctrl+\ folds the sidebar, where there is one to fold: not on a
+  // review link, and not on a narrow screen, where it's a drawer. Escape
+  // closes the drawer.
   useEffect(() => {
     const pressed = (event: KeyboardEvent) => {
       if (event.key === "\\" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+        if (!document.getElementById("sidebar") || matchMedia(narrow).matches) return;
         event.preventDefault();
         fold();
       } else if (event.key === "Escape") setDrawer(false);
@@ -38,8 +41,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     addEventListener("keydown", pressed);
     return () => removeEventListener("keydown", pressed);
   }, []);
-  // Going somewhere closes the drawer.
+  // Going somewhere closes the drawer. Opening it moves focus into it.
   useEffect(() => setDrawer(false), [model.route]);
+  useEffect(() => {
+    if (drawer) document.querySelector<HTMLElement>("#sidebar a")?.focus();
+  }, [drawer]);
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
@@ -54,12 +60,15 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         onClick={() => setDrawer(false)}
       />
       <div class="shell-main">
-        <Bar model={model} dispatch={dispatch} onMenu={() => setDrawer(true)} />
+        <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <Page model={model} dispatch={dispatch} />
       </div>
     </div>
   );
 }
+
+// Where the sidebar is a drawer; window.css says the same.
+const narrow = "(max-width: 760px)";
 
 // Whether the sidebar was left folded, kept in this browser only.
 const foldedKey = "oriel.sidebar.folded";
@@ -102,11 +111,18 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
 
 // On a narrow screen only: the menu, which opens the sidebar as a drawer, and
 // the brand. Wide screens have the sidebar instead.
-function Bar({ model, dispatch, onMenu }: { model: Model; dispatch: Dispatch; onMenu(): void }) {
+function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu(): void }) {
+  const { model, dispatch } = props;
   const working = model.threads?.filter((thread) => thread.state === "working").length ?? 0;
   return (
     <header class="bar">
-      <button type="button" class="bar-menu" aria-controls="sidebar" onClick={onMenu}>
+      <button
+        type="button"
+        class="bar-menu"
+        aria-controls="sidebar"
+        aria-expanded={props.open}
+        onClick={props.onMenu}
+      >
         <MenuIcon />
         <span class="visually-hidden">Open the sidebar</span>
         {working > 0 && <span class="bar-working" title={`${working} working`} />}
