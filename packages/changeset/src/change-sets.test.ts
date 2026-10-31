@@ -840,6 +840,13 @@ test("a story can go in an epic the same change set creates, and is reverted bef
       ["epic", "new:1", true],
     ],
   );
+  // Nor can an edit put a story in another new story.
+  await assert.rejects(
+    changeSets.edit(set.id, {
+      set: [{ mutationId: nth(set.mutations, 2).id, args: { summary: "x", epic: "new:2" } }],
+    }),
+    { code: "refused", message: /new:2 is made by createStory/ },
+  );
   await approve(changeSets, set.id);
   assert.deepEqual((await changeSets.apply(set.id)).failed, []);
   assert.deepEqual(jira.created, ["SYN-900", "SYN-901", "SYN-902"]);
@@ -854,10 +861,6 @@ test("a story can go in an epic the same change set creates, and is reverted bef
     ]),
     { code: "invalid" },
   );
-  const edit = changeSets.edit(set.id, {
-    set: [{ mutationId: nth(set.mutations, 2).id, args: { summary: "x", epic: "new:2" } }],
-  });
-  await assert.rejects(edit, { code: "refused" });
   // What was approved is kept as it was captured.
   const stored = await changeSets.get(set.id);
   assert.deepEqual(nth(stored?.mutations ?? [], 1).args, {
