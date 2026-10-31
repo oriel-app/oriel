@@ -301,7 +301,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       (error instanceof JiraFailed && [401, 403].includes(error.status))
     )
       // A connection made in the window is dropped at the next start if Jira
-      // still refuses it, and the window asks for Jira again.
+      // still refuses the account, as it does a revoked token, and the window
+      // asks for Jira again. One refused only the project's search is kept.
       return mode.kind === "window"
         ? "Jira turned Oriel away, so the window may be behind it. Restart Oriel to connect Jira again."
         : "Jira turned Oriel away, so the window may be behind it. Oriel's access to Jira may need renewing.";
