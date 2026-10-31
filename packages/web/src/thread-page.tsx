@@ -1,7 +1,7 @@
 // A thread: the chat in the middle, the region it works in on the right.
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
-import { type Dispatch, ItemKey, Link, plural, StateChip, TypeMark } from "./parts.tsx";
+import { type Dispatch, DropZone, ItemKey, Link, plural, StateChip, TypeMark } from "./parts.tsx";
 import {
   type Block,
   blocks,
@@ -47,7 +47,11 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
       </main>
     );
   return (
-    <div class="thread-layout">
+    <DropZone
+      class="thread-layout"
+      label={`Drop to add to ${view.group.name}`}
+      onDrop={(dropped) => send({ type: "dropped", dropped })}
+    >
       <main class="thread" aria-busy={view.running}>
         <header class="thread-head">
           <Link route={{ page: "group", id: view.group.id }} dispatch={dispatch} class="crumb">
@@ -80,7 +84,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
         <Composer model={model} view={view} send={send} />
       </main>
       <Region view={view} />
-    </div>
+    </DropZone>
   );
 }
 

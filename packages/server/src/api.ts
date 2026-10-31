@@ -27,6 +27,7 @@ import {
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
 import { type FolderView, type GroupingId, isGroupingId, type StreamEvent } from "@oriel/web/view";
+import { resolveDropped } from "./dropped.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
@@ -49,6 +50,9 @@ export type ApiDeps = {
   // After a change set applied, partly or in full: what it created joins the
   // group, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
+  // Syncs the sources that change outside Oriel, once: a dropped link to an
+  // item made since the last sync can then be found.
+  refresh(): Promise<void>;
   // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
   // The connected folder: its state, connecting one by its typed path, and
@@ -111,6 +115,14 @@ const newGroup = union(
   object({ kind: literal("picked"), name: nameValue, items: itemList }),
 );
 const itemsBody = object({ items: itemList });
+const maxDropped = 50;
+const droppedList = (max: number) =>
+  refine(
+    array(refine(string, (each) => each.length <= max, `expected at most ${max} characters`)),
+    (list) => list.length <= maxDropped,
+    `expected at most ${maxDropped}`,
+  );
+const droppedBody = object({ links: droppedList(2048), files: droppedList(255) });
 const renameBody = object({ name: nameValue });
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
@@ -212,6 +224,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (!record) throw new Refused(400, `${id} isn't in the window`);
       return { id: record.id, stableId: record.stableId };
     });
+  };
+
+  // Adds items as the user, with an event for each new one; their IDs.
+  const addMembers = (groupId: Ulid, members: GroupMember[]): string[] => {
+    if (members.length === 0) return [];
+    const now = deps.now();
+    const change = groups.add(groupId, members, { kind: "user" }, now);
+    for (const member of change?.added ?? [])
+      deps.emit({
+        name: "group.item-added",
+        at: now,
+        workspaceId: deps.workspaceId,
+        groupId,
+        source: parseItemId(member.id)?.source ?? "jira",
+        cause: "user",
+      });
+    if (change) follow(groupId);
+    return (change?.added ?? []).map((member) => member.id);
   };
 
   // After a group changed: its working threads follow it, with markers.
@@ -451,20 +481,27 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/add"),
       async run([id = ""], request) {
         const group = mustGroup(id);
-        const members = indexed((await readJson(request, listBody, itemsBody)).items);
-        const now = deps.now();
-        const change = groups.add(group.id, members, { kind: "user" }, now);
-        for (const member of change?.added ?? [])
-          deps.emit({
-            name: "group.item-added",
-            at: now,
-            workspaceId: deps.workspaceId,
-            groupId: group.id,
-            source: parseItemId(member.id)?.source ?? "jira",
-            cause: "user",
-          });
-        if (change) follow(group.id);
+        addMembers(group.id, indexed((await readJson(request, listBody, itemsBody)).items));
         return json(200, views.group(group.id));
+      },
+    },
+    {
+      // What the user dropped on the group or one of its threads: links, text
+      // and file names, as dropped.ts reads them. What names nothing in the
+      // index is retried once after a sync, then refused in plain words; the
+      // rest is added as the user picking it would be.
+      method: "POST",
+      path: at("/groups/:id/drop"),
+      async run([id = ""], request) {
+        const group = mustGroup(id);
+        const dropped = await readJson(request, listBody, droppedBody);
+        let resolved = resolveDropped(deps.records(), dropped);
+        if (resolved.refused.length > 0) {
+          await deps.refresh();
+          resolved = resolveDropped(deps.records(), dropped);
+        }
+        const added = addMembers(group.id, indexed(resolved.ids));
+        return json(200, { group: views.group(group.id), added, refused: resolved.refused });
       },
     },
     {

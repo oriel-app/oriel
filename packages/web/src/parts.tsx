@@ -1,6 +1,8 @@
 // Small pieces every page uses. Source text is always rendered as text;
 // nothing here sets HTML.
 import type { ComponentChildren } from "preact";
+import { useState } from "preact/hooks";
+import { carries, type Dropped, readDrop } from "./drop.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
 import type { ItemRef, ItemRow, ThreadStateId } from "./view.ts";
@@ -30,6 +32,49 @@ export function Link(props: {
     >
       {props.children}
     </a>
+  );
+}
+
+// Where things dropped are added to a group: a Jira card dragged out of its
+// board, a link, an item's key, or a file from the connected folder. While
+// something droppable is over it, it says where it will go.
+export function DropZone(props: {
+  label: string;
+  class?: string;
+  onDrop: (dropped: Dropped) => void;
+  children: ComponentChildren;
+}) {
+  // Enter and leave fire for every child crossed, so count them.
+  const [depth, setDepth] = useState(0);
+  return (
+    <div
+      class={props.class}
+      data-dropping={depth > 0 || undefined}
+      onDragEnter={(event) => {
+        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
+        event.preventDefault();
+        setDepth((n) => n + 1);
+      }}
+      onDragOver={(event) => {
+        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={() => setDepth((n) => Math.max(0, n - 1))}
+      onDrop={(event) => {
+        setDepth(0);
+        if (!event.dataTransfer || !carries(event.dataTransfer.types)) return;
+        event.preventDefault();
+        props.onDrop(readDrop(event.dataTransfer));
+      }}
+    >
+      {props.children}
+      {depth > 0 && (
+        <div class="drop-veil" aria-hidden="true">
+          <p>{props.label}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

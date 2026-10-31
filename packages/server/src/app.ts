@@ -395,6 +395,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       now,
       newId,
       applied,
+      refresh: async () => {
+        if (mode.kind === "live")
+          await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
+        if (folder) await syncFolder();
+      },
       explain: (conflicts) => explainConflicts(conflicts, specs),
       folder: {
         view: folderView,

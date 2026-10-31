@@ -106,6 +106,49 @@ test("hand-picked items make a group; adding and removing each take a version", 
   );
 });
 
+test("what's dropped on a group joins it as picking would; what names nothing is refused", async (t) => {
+  const app = await testApp(t);
+  const created = await app.post("/api/groups", {
+    kind: "picked",
+    name: "Launch risks",
+    items: ["jira:SYN-10"],
+  });
+  const { id } = json<GroupSummary>(created);
+  const dropped = await app.post(`/api/groups/${id}/drop`, {
+    links: [
+      "https://oriel.atlassian.net/browse/SYN-3",
+      "SYN-10 and SYN-21",
+      "https://example.com/x",
+    ],
+    files: ["plan.md"],
+  });
+  assert.equal(dropped.status, 200);
+  const body = json<{ group: GroupView; added: string[]; refused: { what: string }[] }>(dropped);
+  assert.deepEqual(body.added, ["jira:SYN-21", "jira:SYN-3"]);
+  assert.deepEqual(
+    body.group.members.map((m) => m.ref.key),
+    ["SYN-3", "SYN-10", "SYN-21"],
+  );
+  assert.equal(body.group.group.version, 2);
+  assert.deepEqual(
+    body.refused.map((r) => r.what),
+    ["https://example.com/x", "plan.md"],
+  );
+  assert.deepEqual(
+    names(app).filter((n) => n === "group.item-added"),
+    ["group.item-added", "group.item-added"],
+  );
+  // Nothing found changes nothing.
+  const none = json<{ group: GroupView; added: string[] }>(
+    await app.post(`/api/groups/${id}/drop`, { links: ["SYN-3"], files: [] }),
+  );
+  assert.deepEqual([none.added, none.group.group.version], [[], 2]);
+  assert.equal(
+    (await app.post(`/api/groups/${id}/drop`, { links: Array(51).fill("x"), files: [] })).status,
+    400,
+  );
+});
+
 test("every POST needs this server's Origin, JSON, and a body within its cap", async (t) => {
   const app = await testApp(t);
   const picked = { kind: "picked", name: "x", items: ["jira:SYN-10"] };

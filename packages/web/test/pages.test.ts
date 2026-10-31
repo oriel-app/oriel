@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { groupReplied, initGroup, updateGroup } from "../src/group.ts";
+import { dropNotice, readDrop } from "../src/drop.ts";
+import { groupReplied, initGroup, nothingToAdd, updateGroup } from "../src/group.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { initReview, reviewReplied, reviewSteps, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
@@ -562,6 +563,79 @@ test("asking on a group's page opens a thread and goes to it", () => {
   assert.deepEqual(updateGroup(model, { type: "addClicked" })[1], [
     { type: "navigate", route: { page: "window", grouping: "epic", addTo: groupId } },
   ]);
+});
+
+test("a drop reads links, the text beside them and file names, at most fifty of each", () => {
+  const data = (formats: Record<string, string>, files: string[] = []) => ({
+    types: Object.keys(formats),
+    getData: (format: string) => formats[format] ?? "",
+    files: files.map((name) => ({ name })),
+  });
+  assert.deepEqual(
+    readDrop(
+      data({
+        "text/uri-list": "# a comment\r\nhttps://oriel.atlassian.net/browse/OA-5\r\n",
+        "text/plain": "https://oriel.atlassian.net/browse/OA-5",
+      }),
+    ),
+    { links: ["https://oriel.atlassian.net/browse/OA-5"], files: [] },
+  );
+  assert.deepEqual(readDrop(data({ "text/plain": " test ticket OA-5 " }, ["plan.md"])), {
+    links: ["test ticket OA-5"],
+    files: ["plan.md"],
+  });
+  const many = Array.from({ length: 60 }, (_, n) => `https://x.test/${n}`).join("\n");
+  assert.equal(readDrop(data({ "text/uri-list": many })).links.length, 50);
+});
+
+test("what's dropped on a group's page is sent to it; the reply says only what wasn't added", () => {
+  const [model] = initGroup(groupId);
+  const dropped = { links: ["https://oriel.atlassian.net/browse/OA-5"], files: ["plan.md"] };
+  const [pending, sent] = updateGroup(model, { type: "dropped", dropped });
+  assert.deepEqual(sent, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/drop`,
+      body: dropped,
+      tag: { kind: "dropped", groupId },
+    },
+  ]);
+  const view = { group: { name: "Checkout" } } as GroupView;
+  const refused = [{ what: "plan.md", why: "It isn't in the connected folder." }];
+  const [after] = groupReplied(
+    pending,
+    ok({ kind: "dropped", groupId }, { group: view, added: ["jira:OA-5"], refused }),
+  );
+  assert.equal(after.view, view);
+  assert.equal(after.notice, "Couldn't add “plan.md”: It isn't in the connected folder.");
+  assert.deepEqual(updateGroup(model, { type: "dropped", dropped: { links: [], files: [] } }), [
+    { ...model, notice: nothingToAdd },
+    [],
+  ]);
+  assert.equal(dropNotice({ added: ["jira:OA-5"], refused: [] }), null);
+  assert.equal(dropNotice({ added: [], refused: [] }), "That's already in this group.");
+});
+
+test("what's dropped on a thread joins its group; the thread reloads to show the marker", () => {
+  const [model] = loadedThread(threadView([]));
+  const dropped = { links: ["OA-5"], files: [] };
+  const [, sent] = updateThread(model, { type: "dropped", dropped });
+  assert.deepEqual(sent, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/groups/${groupId}/drop`,
+      body: dropped,
+      tag: { kind: "dropped", groupId },
+    },
+  ]);
+  const reply = (added: string[]) =>
+    threadReplied(model, ok({ kind: "dropped", groupId }, { group: {}, added, refused: [] }));
+  assert.deepEqual(reply(["jira:OA-5"])[1], [
+    { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
+  ]);
+  assert.deepEqual(reply([]), [{ ...model, notice: "That's already in this group." }, []]);
 });
 
 test("a group is renamed only when the name changed", () => {
