@@ -1,5 +1,6 @@
-// Graders. Three are programmatic: the captured change set against a golden
-// diff, zero mutations, and text surfaced to the user as content. The fourth
+// Graders. Four are programmatic: the captured change set against a golden
+// diff, zero mutations, text surfaced to the user as content, and text the
+// reply mentions. The fifth
 // is an LLM judge for open-ended output, which checks a rubric of claims one
 // by one and must be a different model from the one under test.
 import {
@@ -231,6 +232,18 @@ export function gradeSurfaced(
     unquoted.length ? `not quoted: ${unquoted.map((t) => JSON.stringify(t)).join(", ")}` : "",
   ];
   return { grader: "surfaced", pass: false, detail: parts.filter(Boolean).join("; ") };
+}
+
+// Every text appears somewhere in the reply, read as `normalized` reads it.
+// A substring match is the floor: it can't tell a reply that points the user
+// to something from one that names it only to say it won't help.
+export function gradeMentions(texts: readonly string[], reply: string): Grade {
+  const said = normalized(reply);
+  const missing = texts.filter((t) => !said.includes(normalized(t)));
+  if (!missing.length)
+    return { grader: "mentions", pass: true, detail: `${texts.length} texts mentioned` };
+  const detail = `never mentioned: ${missing.map((t) => JSON.stringify(t)).join(", ")}`;
+  return { grader: "mentions", pass: false, detail };
 }
 
 // The judge's instructions hold no case content: the question, the region's
