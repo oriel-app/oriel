@@ -216,7 +216,7 @@ const commands = [
 ];
 const [command = "look", ...args] = process.argv.slice(2);
 // What each command needs, checked before Chrome opens.
-const needs: Record<string, number> = { click: 1, fill: 2, press: 1, wait: 1 };
+const needs: Record<string, number> = { click: 1, fill: 2, press: 1, drop: 2, wait: 1 };
 // Output is left to drain: exiting at once could cut a long transcript.
 if (!commands.includes(command)) {
   console.error(`unknown command ${command}; see the comment at the top of scripts/drive.ts`);
