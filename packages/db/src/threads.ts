@@ -30,6 +30,7 @@ const threadRow = object({
   created_at: instantValue,
 });
 const atRow = object({ at: nullable(string) });
+const titleRow = object({ title: string });
 const appliedRow = object({ at: string, handed_off: number });
 const idRow = object({ id: ulidValue });
 const nextRow = object({ next: number });
@@ -76,6 +77,11 @@ export function threadStore(db: DatabaseSync) {
     select id, workspace_id, group_id, region_version, marked_done_at, created_at
     from threads where id = ?`);
   const mark = db.prepare("update threads set marked_done_at = ? where id = ?");
+  const selectTitle = db.prepare("select title from thread_titles where thread_id = ?");
+  const nameIt = db.prepare(`
+    insert into thread_titles (thread_id, workspace_id, title, titled_at)
+    select id, workspace_id, ?2, ?3 from threads where id = ?1
+    on conflict (thread_id) do update set title = excluded.title, titled_at = excluded.titled_at`);
   const selectByWorkspace = db.prepare(
     "select id from threads where workspace_id = ? order by created_at desc, id desc",
   );
@@ -277,6 +283,19 @@ export function threadStore(db: DatabaseSync) {
     },
 
     get,
+
+    // The title the model wrote for the thread, or null before it did.
+    title(id: Ulid): string | null {
+      const raw = selectTitle.get(id);
+      if (!raw) return null;
+      const row = titleRow(raw);
+      if (!row.ok) throw new Error(`corrupt threads row: ${JSON.stringify(row.issues)}`);
+      return row.value.title;
+    },
+
+    setTitle(id: Ulid, title: string, now: Instant): void {
+      if (Number(nameIt.run(id, title, now).changes) !== 1) throw new RangeError(`no thread ${id}`);
+    },
 
     // A workspace's threads, newest first, with their latest activity.
     list(workspaceId: Ulid, now: Instant): ThreadSummary[] {

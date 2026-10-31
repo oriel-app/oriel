@@ -88,7 +88,7 @@ export type GroupChangeView = {
 
 export type ThreadSummaryView = {
   id: string;
-  // The first thing the user asked, or null before anything was.
+  // A few words on what the user first asked, or null before anything was.
   title: string | null;
   group: { id: string; name: string };
   state: ThreadStateId;
@@ -240,7 +240,15 @@ export type ThreadView = {
 // is running and the thread's state.
 export type StreamEvent =
   | { type: "entry"; entry: ChatEntry }
-  | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number }
+  | {
+      type: "status";
+      running: boolean;
+      state: ThreadStateId;
+      regionVersion: number;
+      // The thread's title, which the model may write after the first
+      // message arrives; absent, the title is as it was.
+      title?: string | null;
+    }
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
   | { type: "change-set"; changeSetId: string; applying: boolean }

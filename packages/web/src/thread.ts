@@ -323,6 +323,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
         running: event.running,
         state: event.state,
         regionVersion: event.regionVersion,
+        title: event.title ?? view.title,
       },
     };
     // A finished turn may have settled the thread; a new version changes the rail.

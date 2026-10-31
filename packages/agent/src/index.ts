@@ -11,3 +11,12 @@ export {
   fallbackBeta,
   messagesUrl,
 } from "./anthropic.ts";
+export {
+  anthropicTitler,
+  maxTitleChars,
+  titleFrom,
+  titleModel,
+  titlePrompt,
+  type Titler,
+  type TitlerOptions,
+} from "./title.ts";
