@@ -17,6 +17,7 @@ import { lines, type Piece } from "./text-diff.ts";
 import {
   type Block,
   blocks,
+  type NewThreadModel,
   removable,
   stepLabel,
   type ThreadModel,
@@ -109,10 +110,56 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
             </li>
           )}
         </ol>
-        <Composer model={model} view={view} send={send} />
+        <Composer
+          draft={model.draft}
+          sending={model.sending}
+          running={view.running}
+          notice={model.notice}
+          placeholder={
+            view.members.length === 0
+              ? planPrompt
+              : `Ask about ${plural(view.members.length, "item")}…`
+          }
+          onDraft={(text) => send({ type: "draftChanged", text })}
+          onSend={() => send({ type: "sendClicked" })}
+          onStop={() => send({ type: "stopClicked" })}
+        />
       </main>
       <Region view={view} />
     </DropZone>
+  );
+}
+
+// A thread from nothing, before its first message: only the composer. There
+// is no group yet; sending makes it, with the thread.
+export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; dispatch: Dispatch }) {
+  return (
+    <div class="thread-layout">
+      <main class="thread">
+        <header class="thread-head">
+          <div class="thread-title-row">
+            <h1 class="thread-title">New thread</h1>
+          </div>
+        </header>
+        <ol class="chat" />
+        <Composer
+          draft={model.draft}
+          sending={model.sending}
+          running={false}
+          notice={model.notice}
+          placeholder={planPrompt}
+          onDraft={(text) => dispatch({ type: "newThread", msg: { type: "draftChanged", text } })}
+          onSend={() => dispatch({ type: "newThread", msg: { type: "sendClicked" } })}
+        />
+      </main>
+      <aside class="rail" aria-label="This thread's items">
+        <h2 class="rail-title">No items</h2>
+        <p class="rail-note">
+          No group yet: your first message makes one, with this thread. What a change set here
+          creates joins it.
+        </p>
+      </aside>
+    </div>
   );
 }
 
@@ -623,49 +670,53 @@ export function Diff(props: {
   );
 }
 
-function Composer(props: { model: ThreadModel; view: ThreadView; send: (msg: ThreadMsg) => void }) {
-  const { model, view, send } = props;
+function Composer(props: {
+  draft: string;
+  sending: boolean;
+  running: boolean;
+  notice: string | null;
+  placeholder: string;
+  onDraft(text: string): void;
+  onSend(): void;
+  onStop?(): void;
+}) {
   return (
     <form
       class="composer"
       onSubmit={(event) => {
         event.preventDefault();
-        send({ type: "sendClicked" });
+        props.onSend();
       }}
     >
       <textarea
         rows={2}
-        value={model.draft}
-        placeholder={
-          view.members.length === 0
-            ? planPrompt
-            : `Ask about ${plural(view.members.length, "item")}…`
-        }
+        value={props.draft}
+        placeholder={props.placeholder}
         aria-label="Message"
-        onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
+        onInput={(event) => props.onDraft(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
             event.preventDefault();
-            send({ type: "sendClicked" });
+            props.onSend();
           }
         }}
       />
-      {view.running ? (
-        <button type="button" class="button" onClick={() => send({ type: "stopClicked" })}>
+      {props.running ? (
+        <button type="button" class="button" onClick={props.onStop}>
           Stop
         </button>
       ) : (
         <button
           type="submit"
           class="button primary"
-          disabled={model.sending || model.draft.trim() === ""}
+          disabled={props.sending || props.draft.trim() === ""}
         >
           Send
         </button>
       )}
-      {model.notice && (
+      {props.notice && (
         <p class="composer-notice" role="alert">
-          {model.notice}
+          {props.notice}
         </p>
       )}
     </form>

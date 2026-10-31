@@ -352,6 +352,54 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
   return [next, effects];
 }
 
+// A thread from nothing, before its first message: a draft in the browser
+// only. Sending it makes the group and the thread, once; leaving first makes
+// nothing. `id` tells this draft's reply from one sent from an earlier draft.
+export type NewThreadModel = {
+  id: number;
+  draft: string;
+  sending: boolean;
+  notice: string | null;
+};
+
+export type NewThreadMsg = { type: "draftChanged"; text: string } | { type: "sendClicked" };
+
+export const initNewThread = (id: number): NewThreadModel => ({
+  id,
+  draft: "",
+  sending: false,
+  notice: null,
+});
+
+export function updateNewThread(
+  model: NewThreadModel,
+  msg: NewThreadMsg,
+): [NewThreadModel, Effect[]] {
+  switch (msg.type) {
+    case "draftChanged":
+      return [{ ...model, draft: msg.text }, []];
+    case "sendClicked": {
+      const text = model.draft.trim();
+      if (text === "" || model.sending) return [model, []];
+      return [
+        { ...model, sending: true, notice: null },
+        [post("/api/threads", { text }, { kind: "threadStarted", draft: model.id })],
+      ];
+    }
+  }
+}
+
+// The thread started: it takes the draft's place, so Back doesn't return to
+// an empty one. It failed: the draft stays, with why.
+export function newThreadReplied(model: NewThreadModel, msg: Replied): [NewThreadModel, Effect[]] {
+  if (!msg.ok) return [{ ...model, sending: false, notice: errorOf(msg.body) }, []];
+  const { id } = msg.body as { id: string };
+  return [
+    { ...model, sending: false },
+    [{ type: "navigate", route: { page: "thread", id }, replace: true }],
+  ];
+}
+
 // The chat as blocks: a reply streamed in parts is one block, and a run's
 // start and finish are one block.
 export type Block =

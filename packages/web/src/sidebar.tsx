@@ -47,16 +47,16 @@ export function Sidebar(props: {
         </button>
       </div>
       <nav class="sidebar-pages" aria-label="Pages">
-        <button
-          type="button"
+        <Link
+          route={{ page: "new-thread" }}
+          dispatch={dispatch}
           class="nav-link"
           title="Start a thread from nothing, such as a plan for a new epic"
-          disabled={model.starting}
-          onClick={() => dispatch({ type: "newThreadClicked" })}
+          aria-current={page === "new-thread" ? "page" : undefined}
         >
           <PlusIcon />
           <span class="sidebar-label">New thread</span>
-        </button>
+        </Link>
         <Link
           route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
           dispatch={dispatch}

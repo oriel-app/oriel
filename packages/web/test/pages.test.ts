@@ -867,3 +867,8 @@ test("a diff that works clears an earlier diff's failure", () => {
   const [back] = threadReplied(down, ok(tag, diff));
   assert.equal(back.problems[setId], undefined);
 });
+
+test("a new thread's draft has its own address", () => {
+  assert.equal(routeUrl({ page: "new-thread" }), "/threads/new");
+  assert.deepEqual(parseRoute("/threads/new", ""), { page: "new-thread" });
+});

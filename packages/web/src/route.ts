@@ -1,11 +1,13 @@
 // Where the page is: the window (with a grouping, and maybe a group it is
-// adding items to), a group, a thread, the inbox, or a review link.
+// adding items to), a group, a thread, a new thread not started yet, the
+// inbox, or a review link.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
 export type Route =
   | { page: "window"; grouping: GroupingId; addTo: string | null }
   | { page: "group"; id: string }
   | { page: "thread"; id: string }
+  | { page: "new-thread" }
   | { page: "inbox" }
   | { page: "review"; token: string };
 
@@ -22,6 +24,7 @@ export function parseRoute(pathname: string, search: string): Route {
   if (thread) return { page: "thread", id: thread };
   const token = reviewPath.exec(pathname)?.[1];
   if (token) return { page: "review", token };
+  if (pathname === "/threads/new") return { page: "new-thread" };
   if (pathname === "/inbox") return { page: "inbox" };
   const grouping = query.get("grouping");
   const addTo = query.get("addTo");
@@ -43,6 +46,8 @@ export function routeUrl(route: Route): string {
       return `/groups/${route.id}`;
     case "thread":
       return `/threads/${route.id}`;
+    case "new-thread":
+      return "/threads/new";
     case "inbox":
       return "/inbox";
     case "review":

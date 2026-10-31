@@ -8,7 +8,7 @@ import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
 import type { Model, Msg } from "./root.ts";
-import { ThreadPage } from "./thread-page.tsx";
+import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import { useProgram } from "./use-program.ts";
 import { WindowPage } from "./window-page.tsx";
 
@@ -114,6 +114,8 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       return model.group && <GroupPage model={model.group} dispatch={dispatch} />;
     case "thread":
       return model.thread && <ThreadPage model={model.thread} dispatch={dispatch} />;
+    case "new-thread":
+      return model.newThread && <NewThreadPage model={model.newThread} dispatch={dispatch} />;
     case "inbox":
       return <InboxPage threads={model.threads} dispatch={dispatch} />;
     case "review":

@@ -240,31 +240,109 @@ test("a thread page whose thread didn't load watches every thread instead", () =
   assert.ok(effects.some((effect) => effect.type === "watchThreads"));
 });
 
-test("New thread starts one from nothing, once, and opens it", () => {
+test("New thread makes nothing until its first message, which starts it once", () => {
   const [model] = init({ page: "inbox" });
-  const [starting, effects] = update(model, { type: "newThreadClicked" });
-  assert.deepEqual(effects, [
-    { type: "http", method: "POST", url: "/api/threads", body: {}, tag: { kind: "threadStarted" } },
+  const [, clicked] = update(model, { type: "linkClicked", route: { page: "new-thread" } });
+  assert.deepEqual(clicked, [{ type: "navigate", route: { page: "new-thread" } }]);
+  const [draft, entered] = update(model, { type: "routed", route: { page: "new-thread" } });
+  assert.ok(draft.newThread);
+  assert.ok(
+    !entered.some((e) => e.type === "http" && e.method === "POST"),
+    "entering posts nothing",
+  );
+  // An empty draft sends nothing.
+  assert.deepEqual(update(draft, { type: "newThread", msg: { type: "sendClicked" } })[1], []);
+  const [typed] = update(draft, {
+    type: "newThread",
+    msg: { type: "draftChanged", text: " Plan kiosk wallets " },
+  });
+  const [sending, sent] = update(typed, { type: "newThread", msg: { type: "sendClicked" } });
+  assert.deepEqual(sent, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/threads",
+      body: { text: "Plan kiosk wallets" },
+      tag: { kind: "threadStarted", draft: 1 },
+    },
   ]);
-  // A second click while it starts sends nothing.
-  assert.deepEqual(update(starting, { type: "newThreadClicked" })[1], []);
+  // A second send while it starts sends nothing.
+  assert.deepEqual(update(sending, { type: "newThread", msg: { type: "sendClicked" } })[1], []);
   const id = "01JBZ0000000000000000000T9";
-  const [started, opened] = update(starting, {
+  const [, opened] = update(sending, {
     type: "replied",
-    tag: { kind: "threadStarted" },
+    tag: { kind: "threadStarted", draft: 1 },
     ok: true,
     body: { id, groupId: groupA },
   });
-  assert.equal(started.starting, false);
-  assert.deepEqual(opened, [{ type: "navigate", route: { page: "thread", id } }]);
-  // A failure leaves the button ready again.
-  const [failed, none] = update(starting, {
-    type: "replied",
-    tag: { kind: "threadStarted" },
-    ok: false,
-    body: { error: "boom" },
+  // The thread takes the draft's place, so Back doesn't return to it.
+  assert.deepEqual(opened, [{ type: "navigate", route: { page: "thread", id }, replace: true }]);
+});
+
+test("a first message that fails says why and keeps the draft", () => {
+  const [draft] = update(init({ page: "inbox" })[0], {
+    type: "routed",
+    route: { page: "new-thread" },
   });
-  assert.deepEqual([failed.starting, none], [false, []]);
+  const [typed] = update(draft, {
+    type: "newThread",
+    msg: { type: "draftChanged", text: "Plan kiosk wallets" },
+  });
+  const [sending] = update(typed, { type: "newThread", msg: { type: "sendClicked" } });
+  const [failed, none] = update(sending, {
+    type: "replied",
+    tag: { kind: "threadStarted", draft: 1 },
+    ok: false,
+    body: { error: "Oriel can't be reached. Is it still running?" },
+  });
+  assert.deepEqual(none, []);
+  assert.deepEqual(failed.newThread, {
+    id: 1,
+    draft: "Plan kiosk wallets",
+    sending: false,
+    notice: "Oriel can't be reached. Is it still running?",
+  });
+  // It can be sent again.
+  assert.equal(update(failed, { type: "newThread", msg: { type: "sendClicked" } })[1].length, 1);
+});
+
+test("a draft left before sending is dropped; one sent before leaving shows in the lists", () => {
+  const [draft] = update(init({ page: "inbox" })[0], {
+    type: "routed",
+    route: { page: "new-thread" },
+  });
+  const [typed] = update(draft, {
+    type: "newThread",
+    msg: { type: "draftChanged", text: "Plan kiosk wallets" },
+  });
+  const [left, leaving] = update(typed, { type: "routed", route: { page: "inbox" } });
+  assert.equal(left.newThread, null);
+  assert.ok(!leaving.some((e) => e.type === "http" && e.method === "POST"));
+  assert.equal(
+    update(left, { type: "routed", route: { page: "new-thread" } })[0].newThread?.draft,
+    "",
+  );
+
+  // Sent, then New thread again before it answered: the answer leaves the
+  // newer draft as it is.
+  const [sending] = update(typed, { type: "newThread", msg: { type: "sendClicked" } });
+  const [again] = update(sending, { type: "routed", route: { page: "new-thread" } });
+  const [newer] = update(again, {
+    type: "newThread",
+    msg: { type: "draftChanged", text: "Plan gift cards" },
+  });
+  const [kept, reloaded] = update(newer, {
+    type: "replied",
+    tag: { kind: "threadStarted", draft: 1 },
+    ok: true,
+    body: { id: "01JBZ0000000000000000000T9", groupId: groupA },
+  });
+  assert.deepEqual(
+    reloaded.map((e) => (e.type === "http" ? e.url : e.type)),
+    ["/api/groups", "/api/threads"],
+  );
+  assert.deepEqual(kept.newThread, newer.newThread);
+  assert.equal(kept.newThread?.draft, "Plan gift cards");
 });
 
 test("the sidebar lists the threads waiting on the user, most recently active first", () => {

@@ -64,9 +64,12 @@ export type MemberView = { ref: ItemRef; row: ItemRow | null };
 export type GroupSummary = {
   id: string;
   name: string;
-  // Where it came from: a copy of a cluster (its grouping's name for it), or
-  // items picked by hand.
-  origin: { kind: "cluster"; grouping: string; label: string | null } | { kind: "picked" };
+  // Where it came from: a copy of a cluster (its grouping's name for it),
+  // items picked by hand, or nothing, for a thread started from nothing.
+  origin:
+    | { kind: "cluster"; grouping: string; label: string | null }
+    | { kind: "picked" }
+    | { kind: "thread" };
   version: number;
   size: number;
   createdAt: string;

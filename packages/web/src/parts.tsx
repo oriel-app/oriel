@@ -16,6 +16,7 @@ export function Link(props: {
   route: Route;
   dispatch: Dispatch;
   class?: string;
+  title?: string;
   children: ComponentChildren;
   "aria-current"?: "page" | undefined;
 }) {
@@ -23,6 +24,7 @@ export function Link(props: {
     <a
       href={routeUrl(props.route)}
       class={props.class}
+      title={props.title}
       aria-current={props["aria-current"]}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
