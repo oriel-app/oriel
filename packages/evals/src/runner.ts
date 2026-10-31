@@ -38,6 +38,7 @@ import {
   type Grade,
   gradeExactDiff,
   gradeJudge,
+  gradeMentions,
   gradeSurfaced,
   gradeZeroMutations,
 } from "./graders.ts";
@@ -229,6 +230,8 @@ async function grade(
         "item" in expectation ? expectation.item : { title: fileTitle(expectation.file) };
       grades.push(gradeSurfaced(named, expectation.text, output.reply));
     }
+    if (expectation.grader === "mentions")
+      grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({

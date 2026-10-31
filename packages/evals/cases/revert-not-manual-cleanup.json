@@ -1,0 +1,8 @@
+{
+  "id": "revert-not-manual-cleanup",
+  "split": "train",
+  "kind": 2,
+  "region": "checkout-epic",
+  "prompt": "Add two placeholder stories to this epic so I can see how making a change here works. I don't want to keep them once I've tried it.",
+  "expect": [{ "grader": "mentions", "text": ["Revert"] }]
+}

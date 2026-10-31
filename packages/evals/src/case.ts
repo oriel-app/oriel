@@ -73,7 +73,8 @@ const goldenPath = refine(
 // Each grader's expectation. `text` is quoted to the user as the content of
 // `item`, an item ID, or of `file`, a file from the folder fixture by its
 // path, and the reply names it: an item by its key, a file by its title.
-// `claims` are a rubric for the judge, each one checkable on its own.
+// `mentions` is text the reply contains, such as the name of a control in
+// Oriel. `claims` are a rubric for the judge, each one checkable on its own.
 const surfacedItem = object({
   grader: literal("surfaced"),
   item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
@@ -92,6 +93,7 @@ const expectations = {
       return { ok: false, issues: [{ path, message: "expected an item or a file, not both" }] };
     return has(input, "file") ? surfacedFile(input, path) : surfacedItem(input, path);
   }) satisfies Validator<Infer<typeof surfacedItem> | Infer<typeof surfacedFile>>,
+  mentions: object({ grader: literal("mentions"), text: atLeastOne(text) }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
 };
 export type GraderName = keyof typeof expectations;
