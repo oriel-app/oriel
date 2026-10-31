@@ -16,6 +16,7 @@ import {
 } from "@oriel/core";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { type App, createApp, limits } from "./app.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
@@ -82,6 +83,8 @@ export type TestOptions = {
   plan?: (input: Parameters<Agent["turn"]>[0]) => Step[];
   scripts?: Record<string, Script>;
   agent?: (deps: ServerAgentDeps) => Agent;
+  // Writes threads' titles; without one, titles are first messages, clipped.
+  titler?: Titler;
   sandbox?: Sandbox;
   limits?: Partial<Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">>;
   // Change sets write to SYN in memory instead of being read-only.
@@ -119,6 +122,7 @@ export async function testApp(
     now,
     sandbox: options.sandbox ?? fakeSandbox(options.scripts ?? {}),
     agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)),
+    ...(options.titler ? { titler: options.titler } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });
   t.after(() => app.close());

@@ -54,6 +54,7 @@ import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@orie
 import { createSandbox } from "@oriel/sandbox";
 import type { FolderView, GroupingId, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { api, blankGroupName, maxNameChars } from "./api.ts";
 import { fixtureIndex } from "./fixture.ts";
@@ -86,6 +87,9 @@ export type AppOptions = {
   // Builds the agent from everything but a model provider: @oriel/agent's,
   // with one, or the scripted dev agent, which is the default.
   agent?: (deps: ServerAgentDeps) => Agent;
+  // Writes each thread's title from its first message. Without one, a
+  // thread's title is that message, clipped.
+  titler?: Titler;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -101,7 +105,7 @@ export type App = {
   window(grouping: GroupingId): WindowView;
   api(request: Request, url: URL): Promise<Reply | null>;
   workspaceId: Ulid;
-  // Resolves once no turn is running.
+  // Resolves once no turn is running and no title is being written.
   settled(): Promise<void>;
   // The pilot telemetry stored so far, oldest first.
   telemetry(): StoredEvent[];
@@ -330,6 +334,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     threads,
     groups,
     agent,
+    titler: options.titler ?? null,
     emit,
     caps,
     snapshot: () => index.snapshot(workspaceId),
@@ -437,6 +442,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     async close() {
       if (!db.isOpen) return;
       for (const summary of threads.list(workspaceId, now())) conversation.stop(summary.thread.id);
+      conversation.stopTitles();
       await conversation.settled();
       await syncing.catch(() => {});
       if (db.isOpen) db.close();

@@ -205,6 +205,10 @@ const unfinished = await (async () => {
   return threadId;
 })();
 
+// A long ask, as a PM writes one: its title is short enough to scan.
+const longAsk = await ask(
+  "I'm meeting the payments team tomorrow morning and want to walk in knowing where checkout stands. Which stories in this epic have nobody on them, and is anything stopping saved cards from shipping this quarter? A short list I can paste into the meeting notes would be ideal.",
+);
 // Answered, over items it needn't change: the user marks it done.
 await post(`/api/threads/${await ask("What's in here?")}/done`, {});
 // A later change to the group shows in working threads as a marker.
@@ -389,6 +393,11 @@ const scenes: Scene[] = [
       await page.locator(".change-set .diff").waitFor();
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
     },
+  },
+  {
+    name: "thread-long-ask",
+    path: `/threads/${longAsk}`,
+    act: (page) => page.locator(".run").first().waitFor(),
   },
   {
     name: "new-thread",

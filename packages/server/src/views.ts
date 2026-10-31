@@ -50,7 +50,36 @@ export type ViewDeps = {
   writable: boolean;
 };
 
-const maxTitleChars = 120;
+// What fits on one line of the inbox beside a thread's group and time.
+const maxTitleChars = 60;
+
+// A thread's title until the model's arrives, or if it never does: the
+// first line of what the person asked, or as many of its sentences as fit
+// if they fill half the line, or else its words up to the limit, with an
+// ellipsis. A closing full stop
+// or colon goes; a question mark stays.
+export function clippedTitle(text: string): string | null {
+  const line = text
+    .split("\n")
+    .map((l) => l.trim().replace(/\s+/g, " "))
+    .find(Boolean);
+  if (!line) return null;
+  const tidy = (title: string) => title.replace(/[.:;,。]+$/u, "") || null;
+  // By what a reader sees as one character, so an emoji is never split.
+  const chars = [...graphemes.segment(line)].map((g) => g.segment);
+  if (chars.length <= maxTitleChars) return tidy(line);
+  const sentences = /^.*(?:[.?!](?=\s)|[。？！])/u.exec(
+    chars.slice(0, maxTitleChars + 1).join(""),
+  )?.[0];
+  if (sentences && [...graphemes.segment(sentences)].length >= maxTitleChars / 2)
+    return tidy(sentences);
+  const head = chars.slice(0, maxTitleChars - 1).join("");
+  const space = head.lastIndexOf(" ");
+  const words = (space > 0 ? head.slice(0, space) : head).replace(/[\s.,;:\-–—]+$/u, "");
+  return words ? `${words}…` : null;
+}
+
+const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 // Only an http(s) location becomes a link.
 export function webUrl(location: string): string | null {
@@ -243,10 +272,10 @@ export function views(deps: ViewDeps) {
   };
 
   const title = (threadId: Ulid): string | null => {
+    const titled = threads.title(threadId);
+    if (titled !== null) return titled;
     const first = threads.messages(threadId).find((m) => m.role === "user");
-    if (first?.role !== "user") return null;
-    const text = first.text.trim().replace(/\s+/g, " ");
-    return text.length > maxTitleChars ? `${text.slice(0, maxTitleChars - 1)}…` : text;
+    return first?.role === "user" ? clippedTitle(first.text) : null;
   };
 
   // Where each of a thread's change sets stands, and what the engine says
@@ -371,6 +400,8 @@ export function views(deps: ViewDeps) {
     inbox(workspaceId: Ulid): Promise<ThreadSummaryView[]> {
       return Promise.all(threads.list(workspaceId, deps.now()).map(threadSummary));
     },
+
+    title,
 
     entry(message: Message, threadId: Ulid): ChatEntry | null {
       const thread = threads.get(threadId, deps.now());

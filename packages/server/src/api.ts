@@ -357,6 +357,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         running: turns.running(threadId),
         state: thread.state,
         regionVersion: thread.regionVersion,
+        title: views.title(threadId),
       });
     };
     const entry = (message: Message) => {

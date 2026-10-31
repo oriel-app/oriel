@@ -4,6 +4,7 @@
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
 import type { Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
+import type { Titler } from "@oriel/agent";
 import {
   type Agent,
   agentEvent,
@@ -64,6 +65,9 @@ export type TurnDeps = {
   threads: ThreadStore;
   groups: GroupStore;
   agent: Agent;
+  // Writes a thread's title from its first message; with none, the window
+  // shows that message, clipped.
+  titler: Titler | null;
   caps: Caps;
   emit: (event: TelemetryEvent) => void;
   // The index snapshot a turn reads.
@@ -152,6 +156,9 @@ export function turns(deps: TurnDeps) {
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
   // Pages watching every thread for a move between what they wait on.
   const anyWatchers = new Set<(threadId: Ulid) => void>();
+  // Titles being written, which outlive a stopped turn; closing stops them.
+  const titling = new Set<Promise<void>>();
+  const closing = new AbortController();
 
   const publish = (threadId: Ulid, event: ThreadEvent) => {
     for (const watcher of watchers.get(threadId) ?? []) watcher(event);
@@ -190,6 +197,32 @@ export function turns(deps: TurnDeps) {
           runId: event.runId,
         });
     }
+  };
+
+  // Titles the thread from its first message, beside its first turn. The
+  // title lands whenever it arrives, and every page watching hears; if it
+  // never does, the thread keeps the clipped message as its title.
+  const title = (threadId: Ulid, text: string) => {
+    const { titler } = deps;
+    if (!titler) return;
+    const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: threadId });
+    const { signal } = closing;
+    const done = titler(text, { signal, log })
+      .then((written) => {
+        if (signal.aborted) return;
+        if (written === null) {
+          log("title: unusable answer", {});
+          return;
+        }
+        threads.setTitle(threadId, written, deps.now());
+        publish(threadId, { type: "status", running: running.has(threadId) });
+      })
+      .catch((error: unknown) => {
+        if (!signal.aborted)
+          log("title: failed", { error: error instanceof Error ? error.message : String(error) });
+      });
+    titling.add(done);
+    void done.finally(() => titling.delete(done));
   };
 
   // The agent ends each turn with one `done`, stopped or not, so the turn
@@ -282,6 +315,7 @@ export function turns(deps: TurnDeps) {
           record(threadId, { kind: "limit", reason });
         throw new ThreadLimit(reason);
       }
+      const first = !earlier.some((m) => m.role === "user");
       const now = deps.now();
       const said = threads.say(
         threadId,
@@ -301,6 +335,7 @@ export function turns(deps: TurnDeps) {
       });
       running.set(threadId, { controller, done });
       publish(threadId, { type: "status", running: true });
+      if (first) title(threadId, text);
       return { seq: said.seq };
     },
 
@@ -311,9 +346,16 @@ export function turns(deps: TurnDeps) {
       return turn !== undefined;
     },
 
-    // Resolves once no turn is running: for shutdown, and for tests.
+    // Stops writing titles, for shutdown.
+    stopTitles(): void {
+      closing.abort(new Error("Closing."));
+    },
+
+    // Resolves once no turn is running and no title is being written: for
+    // shutdown, and for tests.
     async settled(): Promise<void> {
-      while (running.size) await Promise.all([...running.values()].map((turn) => turn.done));
+      while (running.size || titling.size)
+        await Promise.all([...[...running.values()].map((turn) => turn.done), ...titling]);
     },
   };
 }
