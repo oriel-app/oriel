@@ -358,6 +358,7 @@ export function memorySite(
         description: "",
         status: "To Do",
         labels: [],
+        comments: [],
         epic: made.epic ?? null,
         assignee: null,
         points: null,

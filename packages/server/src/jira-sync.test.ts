@@ -10,7 +10,8 @@ import type {
   JiraView,
   ThreadView,
 } from "@oriel/web/view";
-import { json, type Script, testApp } from "./testing.ts";
+import { memoryStore } from "./connection.ts";
+import { account, json, type Script, testApp } from "./testing.ts";
 
 type Synced = { jira: JiraView };
 
@@ -153,6 +154,30 @@ test("an unexpected answer from Jira isn't called an outage", async (t) => {
   assert.equal(reply.status, 502);
   assert.match(json<{ error: string }>(reply).error, /in a way Oriel didn't expect/);
   assert.deepEqual(keys(app), shown);
+});
+
+test("Jira connected from the window syncs on demand, and can't before it's connected", async (t) => {
+  const app = await testApp(t, { connect: { store: memoryStore() } });
+  const { site } = app;
+  assert.ok(site);
+  const early = await app.post("/api/jira/sync");
+  assert.equal(early.status, 409);
+  assert.match(json<{ error: string }>(early).error, /isn't connected/);
+  const details = { site: "oriel.atlassian.net", ...account, project: "SYN" };
+  assert.equal((await app.post("/api/jira", details)).status, 200);
+
+  const epic = site.add({ issueType: "Epic", summary: "Kiosk wallets" });
+  site.remove("SYN-21");
+  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.ok(keys(app).has(epic));
+  assert.ok(!keys(app).has("SYN-21"));
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "source.synced")
+      .map((e) => e.data),
+    [{ source: "jira", ok: true }],
+  );
 });
 
 const plan: Script = async () => ({

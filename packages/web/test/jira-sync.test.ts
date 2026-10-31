@@ -45,10 +45,7 @@ test("Jira syncs on demand, once at a time, and says why when it can't", () => {
   assert.deepEqual([again[0].problem, again[1]], [null, [sync]]);
   const more = { connected: { ...syn.connected, items: 122 } };
   const done = jiraReplied(again[0], replied({ kind: "jiraSynced" }, true, { jira: more }));
-  assert.deepEqual(
-    [done.model, done.synced],
-    [{ view: more, syncing: false, problem: null }, true],
-  );
+  assert.deepEqual([done.model, done.synced], [{ ...initJira(), view: more }, true]);
 });
 
 test("once Jira synced, the window and the group or thread on screen load again", () => {
