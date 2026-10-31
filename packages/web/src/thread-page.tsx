@@ -40,6 +40,7 @@ const fieldNames: Record<string, string> = {
   points: "Estimate",
   assignee: "Assignee",
   epic: "Epic",
+  status: "Status",
 };
 const fieldName = (name: string) => fieldNames[name] ?? (name.startsWith("link:") ? "Link" : name);
 

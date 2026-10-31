@@ -1,7 +1,6 @@
 // The Jira source over Cloud REST v3: `sync` pages the search endpoint from an
-// `updated` cursor, `read` fetches full content live, and `records` reads
-// index records by key. It never writes; the writer lives behind this
-// package's `./writer` subpath.
+// `updated` cursor, `read` fetches full content live. It never writes; the
+// writer lives behind this package's `./writer` subpath.
 import {
   array,
   boolean,
@@ -38,10 +37,14 @@ import {
   indexFieldShape,
   indexFields,
   issue,
+  issueKey,
+  movesOf,
+  numericId,
   projectKey,
   projectOf,
   rawField,
   time,
+  transitionsShape,
 } from "./rest.ts";
 import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
@@ -74,7 +77,12 @@ const searchPage = object({
   isLast: optional(nullable(boolean)),
 });
 const myself = object({ timeZone: optional(string) });
-const readIssue = issue(object({ ...indexFieldShape, description: optional(unknown) }));
+const readIssue = object({
+  id: numericId,
+  key: issueKey,
+  fields: object({ ...indexFieldShape, description: optional(unknown) }),
+  transitions: transitionsShape,
+});
 const commentPage = object({
   startAt: number,
   total: number,
@@ -150,7 +158,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     if (parsed?.source !== "jira") return { id, status: "gone", reason: "deleted" };
     const request = {
       method: "GET" as const,
-      path: `${api}/issue/${parsed.key}?fields=${[...fieldList(points), "description"].join(",")}`,
+      path: `${api}/issue/${parsed.key}?fields=${[...fieldList(points), "description"].join(",")}&expand=transitions`,
     };
     const response = await transport(request);
     // Jira answers 404 both for a deleted issue and for one this account can't see.
@@ -170,6 +178,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       status: "ok",
       content: {
         ...fieldsOf(found.fields, rawField(response.body, points.get(projectOf(found.key)))),
+        moves: movesOf(found.transitions, found.fields.status.name),
         summary,
         description,
         comments,
@@ -182,28 +191,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         text: jiraText({ summary, description, comments }),
       },
     };
-  };
-
-  // Reading an issue by key sees a write at once; the search sees it later.
-  // Null for one in a shape Oriel can't read.
-  const recordOf = async (
-    id: ItemId<"jira">,
-    points: Map<string, string>,
-  ): Promise<IndexRecord<"jira", JiraAttrs> | "gone" | null> => {
-    const parsed = parseItemId(id);
-    if (parsed?.source !== "jira") return "gone";
-    const request = {
-      method: "GET" as const,
-      path: `${api}/issue/${parsed.key}?fields=${fieldList(points).join(",")}`,
-    };
-    const response = await transport(request);
-    if (response.status === 404 || response.status === 403) return "gone";
-    const record = toRecord(await call(async () => response, request, unknown), points);
-    if (record.ok) return record.value;
-    log("jira: skipped an issue in a shape Oriel can't read", {
-      issues: record.issues.slice(0, 5),
-    });
-    return null;
   };
 
   const readComments = async (key: string) => {
@@ -280,17 +267,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     async read(ids) {
       const points = await pointsFields(false);
       return mapLimit(ids, readConcurrency, (id) => readOne(id, points));
-    },
-
-    // A deleted issue and one this account can't see are both null: Jira
-    // answers 404 for either, and 403 for some.
-    async records(ids) {
-      const points = await pointsFields(false);
-      const read = await mapLimit(ids, readConcurrency, (id) => recordOf(id, points));
-      return {
-        records: read.filter((record) => record !== null && record !== "gone"),
-        gone: ids.filter((_, i) => read[i] === "gone"),
-      };
     },
   };
 }

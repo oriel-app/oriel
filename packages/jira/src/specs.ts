@@ -16,8 +16,8 @@ import { issueFields, type JiraOp, jiraOps } from "./ops.ts";
 
 // How change sets treat Jira's ops. Field names are core's (`FieldValues`),
 // as the Jira writer reports them in `current`, `before` and `after`:
-// - `summary`, `description` ("" when empty), `points`, `epic` (an item ID)
-//   and `assignee` (an account ID);
+// - `summary`, `description` ("" when empty), `points`, `epic` (an item ID),
+//   `assignee` (an account ID) and `status` (its name in the workflow);
 // - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed;
 // - `updated`: the item's last update time, an instant. Every `after` carries
 //   it except deleteItem's, and `current(id, ["updated"])` returns it.
@@ -172,6 +172,20 @@ const ops: Record<JiraOp, OpSpec> = {
       return `Reassign ${item} from ${await who(context, was)} to ${await who(context, a.accountId)}.`;
     },
     undo: restore("setAssignee", "assignee", jiraOps.setAssignee.args, "accountId"),
+  }),
+  // Revert moves the item back, which its workflow may not allow; the
+  // writer then refuses and says which moves it does.
+  setStatus: op(jiraOps.setStatus, {
+    idempotent: true,
+    after: (a) => ({ status: a.status }),
+    describe: (a, context) => {
+      const was = context.before.status;
+      const item = named(context.subject);
+      if (typeof was !== "string") return `Move ${item} to ${a.status}.`;
+      if (was === a.status) return `Leave ${item} in ${a.status}.`;
+      return `Move ${item} from ${was} to ${a.status}.`;
+    },
+    undo: restore("setStatus", "status", jiraOps.setStatus.args),
   }),
   addLink: op(jiraOps.addLink, {
     // Jira names the link when it adds it; until then it is `link:new`.

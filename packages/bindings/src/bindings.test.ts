@@ -253,3 +253,28 @@ test("a region with a malformed ID is refused, and one without its anchor has no
   assert.doesNotMatch(dts, /getEpic|listStories/);
   assert.match(dts, /Create a story\. This region holds no epic/);
 });
+
+test("an item's read lists the statuses it can move to, and setStatus captures a move by name", async () => {
+  const bindings = boarding();
+  const item = (await bindings.read("jira.getItem", ["jira:SYN-13"])).value as {
+    status: { name: string };
+    moves: { name: string; category: string }[];
+  };
+  assert.equal(item.status.name, "Done");
+  assert.deepEqual(item.moves, [
+    { name: "To Do", category: "todo" },
+    { name: "In Progress", category: "in-progress" },
+  ]);
+  assert.deepEqual(bindings.capture("jira.setStatus", ["jira:SYN-13", "To Do"], null), {
+    op: "setStatus",
+    target: "jira:SYN-13",
+    ref: null,
+    args: { status: "To Do" },
+  });
+  assert.throws(
+    () => bindings.capture("jira.setStatus", ["jira:SYN-13", " "], null),
+    /expected a status name/,
+  );
+  assert.match(bindings.dts, /readonly moves: readonly Status\[\];/);
+  assert.match(bindings.dts, /setStatus\(id: Target, status: string\): void;/);
+});

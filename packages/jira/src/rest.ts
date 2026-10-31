@@ -172,6 +172,29 @@ export function fieldsOf(
   };
 }
 
+// An issue's transitions, as `expand=transitions` returns them.
+export const transitionsShape = optional(
+  array(
+    object({
+      to: object({ name: string, statusCategory: object({ key: string }) }),
+      isAvailable: optional(boolean),
+    }),
+  ),
+);
+
+// The statuses an issue's workflow lets it move to now, each once, in the
+// order Jira lists them: not the one it is in.
+export function movesOf(
+  transitions: Infer<typeof transitionsShape>,
+  current: string,
+): JiraContent["moves"] {
+  const moves = new Map<string, State>();
+  for (const { to, isAvailable } of transitions ?? [])
+    if (isAvailable !== false && to.name !== current && !moves.has(to.name))
+      moves.set(to.name, categories[to.statusCategory.key] ?? "todo");
+  return [...moves].map(([name, category]) => ({ name, category }));
+}
+
 // Sends a request, refuses anything but a 2xx, and validates the body.
 export async function call<T, R extends JiraRequest>(
   transport: (request: R) => Promise<JiraResponse>,

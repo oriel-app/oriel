@@ -40,6 +40,8 @@ export type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 export type JiraContent = {
   issueType: string;
   status: { name: string; category: State };
+  // The statuses its workflow lets it move to now.
+  moves: { name: string; category: State }[];
   epic: ItemId<"jira"> | null;
   assignee: { accountId: string; name: string } | null;
   points: number | null;
@@ -72,6 +74,7 @@ const state = union(literal("todo"), literal("in-progress"), literal("done"));
 export const jiraContent = object({
   issueType: string,
   status: object({ name: string, category: state }),
+  moves: array(object({ name: string, category: state })),
   epic: nullable(jiraId),
   assignee: nullable(object({ accountId: string, name: string })),
   points: nullable(number),

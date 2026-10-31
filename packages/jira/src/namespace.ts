@@ -45,6 +45,7 @@ function itemView(id: ItemId, content: unknown) {
     summary: c.summary,
     description: c.description,
     status: { name: c.status.name, category: c.status.category },
+    moves: c.moves.map((m) => ({ name: m.name, category: m.category })),
     epic: c.epic,
     assignee: c.assignee && { accountId: c.assignee.accountId, name: c.assignee.name },
     points: c.points,
@@ -281,6 +282,15 @@ const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => Nam
       params: [target, param("accountId", "string | null", nullable(string))],
       build: ([id, accountId], host) => ({ target: writable(id, host), args: { accountId } }),
     }),
+  setStatus: () =>
+    write({
+      name: "setStatus",
+      doc: "Move an item to one of its `moves`, by status name: its workflow allows no other.",
+      op: "setStatus",
+      creates: false,
+      params: [target, param("status", "string", string)],
+      build: ([id, status], host) => ({ target: writable(id, host), args: { status } }),
+    }),
   addLink: () =>
     write({
       name: "addLink",
@@ -322,6 +332,8 @@ function types(scope: JiraScope): string[] {
     "  readonly summary: string;",
     "  readonly description: string;",
     "  readonly status: Status;",
+    "  /** The statuses its workflow lets it move to now: what setStatus takes. */",
+    "  readonly moves: readonly Status[];",
     "  readonly epic: string | null;",
     "  readonly assignee: Person | null;",
     "  readonly points: number | null;",

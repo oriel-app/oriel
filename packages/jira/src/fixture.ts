@@ -325,6 +325,12 @@ export function fixtureSnapshot(
   // Stable IDs never change, and no edit deletes an epic that has children.
   const stableIds = new Map(fixture.issues.map((issue) => [issue.key, issue.id]));
   const { issues, gone } = applySourceEdits(fixture, edited);
+  // The fixture has no workflows: any status SYN uses may follow any other,
+  // as in a workflow that allows every transition. Listed from to-do to done.
+  const order = { todo: 0, "in-progress": 1, done: 2 };
+  const statuses = [
+    ...new Map(fixture.issues.map((issue) => [issue.status.name, issue.status])).values(),
+  ].toSorted((a, b) => order[a.category] - order[b.category] || a.name.localeCompare(b.name));
   const records: JiraRecord[] = [];
   const content = new Map<ItemId<"jira">, JiraContent>();
   for (const issue of issues) {
@@ -363,6 +369,9 @@ export function fixtureSnapshot(
     content.set(id, {
       issueType: issue.issueType,
       status: { ...issue.status },
+      moves: statuses
+        .filter((status) => status.name !== issue.status.name)
+        .map((status) => ({ ...status })),
       epic: epic?.id ?? null,
       assignee: assignee(),
       points: issue.points,

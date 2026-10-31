@@ -33,6 +33,7 @@ export type MemoryIssue = {
   points: number | null;
   accountId: string | null;
   epic: ItemId<"jira"> | null;
+  status: string;
   links: { linkId: string; url: string; title: string }[];
   updated: Instant;
 };
@@ -81,6 +82,7 @@ function buildFixtureJira(): MemorySnapshot {
         points: c.points,
         accountId: c.assignee?.accountId ?? null,
         epic: c.epic,
+        status: c.status.name,
         links: c.links.map((link) => ({ ...link })),
         updated: record.updatedAt,
       };
@@ -93,7 +95,13 @@ type Request = WriteRequest<"jira">;
 export type MemoryJira = ReturnType<typeof memoryJira>;
 
 // What a copy of Jira in memory carries on from the one it copies.
-type Carried = { hidden: string[]; nextIssue: number; nextLink: number; ticks: number };
+type Carried = {
+  hidden: string[];
+  final: string[];
+  nextIssue: number;
+  nextLink: number;
+  ticks: number;
+};
 
 // Every write and every touch from outside moves the clock one second on from
 // `clock`, and stamps the item's `updated` with it. A write that never
@@ -111,6 +119,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     }
   const people = new Map(start.people.map((p) => [p.accountId, p.name]));
   const hidden = new Set<string>(carried?.hidden);
+  // The statuses the start uses. Any may move to any other, except out of
+  // one the workflow lets nothing leave.
+  const statuses = new Set(start.issues.map((issue) => issue.status));
+  const final = new Set<string>(carried?.final);
   let nextIssue = carried?.nextIssue ?? firstNewIssue;
   let nextLink = carried?.nextLink ?? firstNewLink;
   let ticks = carried?.ticks ?? 0;
@@ -147,6 +159,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     points: issue.points,
     assignee: issue.accountId,
     epic: issue.epic,
+    status: issue.status,
     updated: issue.updated,
     ...Object.fromEntries(
       issue.links.map((l) => [`link:${l.linkId}`, { url: l.url, title: l.title }]),
@@ -175,6 +188,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
         points: null,
         accountId: null,
         epic: null,
+        status: "To Do",
         links: [],
         updated: tick(),
       };
@@ -200,6 +214,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
           args.epic !== null && parseItemId(args.epic)?.source === "jira"
             ? (args.epic as ItemId<"jira">)
             : null,
+        status: "To Do",
         links: [],
         updated: tick(),
       };
@@ -217,7 +232,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     // As the Jira writer does: a handle that names another item now is refused.
     if (issue.id !== request.expectedStableId)
       throw unsent(`${request.target} names another item now (stable ID ${issue.id})`);
-    const set = <F extends "summary" | "description" | "points" | "accountId">(
+    const set = <F extends "summary" | "description" | "points" | "accountId" | "status">(
       property: F,
       value: MemoryIssue[F],
     ) => {
@@ -237,6 +252,29 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
         return set("points", parsed(jiraOps.setEstimate.args(request.args)).points);
       case "setAssignee":
         return set("accountId", parsed(jiraOps.setAssignee.args(request.args)).accountId);
+      case "setStatus": {
+        // As the Jira writer does: an item already there isn't moved, and a
+        // move the workflow doesn't allow is refused before it is sent.
+        const { status } = parsed(jiraOps.setStatus.args(request.args));
+        if (issue.status === status)
+          return {
+            item: handle(issue),
+            before: pick(issue, ["status"]),
+            after: pick(issue, ["status", "updated"]),
+          };
+        const allowed = final.has(issue.status)
+          ? []
+          : [...statuses].filter((name) => name !== issue.status);
+        if (!allowed.includes(status))
+          throw unsent(
+            `${issue.key} can't move from “${issue.status}” to “${status}”: ${
+              allowed.length
+                ? `its workflow allows only ${allowed.map((name) => `“${name}”`).join(", ")}`
+                : "its workflow allows no move from there"
+            }`,
+          );
+        return set("status", status);
+      }
       case "addLink": {
         const args = parsed(jiraOps.addLink.args(request.args));
         const field = `link:${nextLink}`;
@@ -259,7 +297,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
         return { item: handle(issue), before, after: pick(issue, [field, "updated"]) };
       }
       case "deleteItem": {
+        // As the Jira writer does: a delete reports every field but the
+        // status, which no create sets.
         const before = values(issue);
+        delete before.status;
         issues.delete(issue.key);
         return { item: handle(issue), before, after: {} };
       }
@@ -344,6 +385,14 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     reuse(key: string, stableId: string) {
       touch(key).id = stableId;
     },
+    // A teammate moves the item in Jira.
+    move(key: string, status: string) {
+      touch(key).status = status;
+    },
+    // The workflow lets nothing leave this status from now on.
+    makeFinal(status: string) {
+      final.add(status);
+    },
     // The item can't be seen (deleted, moved or forbidden), then can again.
     hide(key: string) {
       hidden.add(key);
@@ -355,7 +404,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
     state: (): { snapshot: MemorySnapshot; clock: Instant; carried: Carried } => ({
       snapshot: { ...start, issues: [...issues.values()] },
       clock,
-      carried: { hidden: [...hidden], nextIssue, nextLink, ticks },
+      carried: { hidden: [...hidden], final: [...final], nextIssue, nextLink, ticks },
     }),
   };
 }

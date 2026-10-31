@@ -642,3 +642,54 @@ test("a review link's rejection tells the thread's stream", async (t) => {
   });
   await events.return?.();
 });
+
+// SYN-99 is To Do; marking it done is what a PM asks once it's built.
+const finish: Script = async () => ({
+  value: null,
+  writes: [["jira.setStatus", ["jira:SYN-99", "Done"]]],
+});
+
+test("a status move shows the old and new status, applies through the workflow, and reverts", async (t) => {
+  const app = await proposed(t, finish);
+  const [line] = (await app.diff()).lines;
+  assert.equal(line?.sentence, "Move “Save a card for next time” (SYN-99) from To Do to Done.");
+  assert.deepEqual(
+    line?.fields.map((f) => [f.name, f.before, f.after]),
+    [["status", "To Do", "Done"]],
+  );
+  assert.equal((await app.approve()).body.changeSet.status, "applied");
+  assert.equal(app.site.issue("SYN-99")?.status, "Done");
+  assert.ok(
+    app.site.calls.some((c) => c.method === "POST" && c.path.endsWith("/SYN-99/transitions")),
+  );
+
+  const reverted = await app.act("revert");
+  const revertId = reverted.body.revert;
+  assert.ok(revertId);
+  assert.equal(
+    (await app.diff(revertId)).lines[0]?.sentence,
+    "Move “Save a card for next time” (SYN-99) from Done to To Do.",
+  );
+  assert.equal((await app.approve(revertId)).body.changeSet.status, "applied");
+  assert.equal(app.site.issue("SYN-99")?.status, "To Do");
+});
+
+test("a revert the workflow has no way back for stops, says why, and moves nothing", async (t) => {
+  const app = await proposed(t, finish);
+  await app.approve();
+  app.site.makeFinal("Done");
+  const revertId = (await app.act("revert")).body.revert;
+  assert.ok(revertId);
+  const stopped = (await app.approve(revertId)).body.changeSet;
+  assert.equal(stopped.status, "stopped");
+  assert.deepEqual(
+    stopped.errors.map((e) => [e.error, e.sent]),
+    [
+      [
+        "Nothing was sent: SYN-99 can't move from “Done” to “To Do”: its workflow allows no move from there.",
+        false,
+      ],
+    ],
+  );
+  assert.equal(app.site.issue("SYN-99")?.status, "Done");
+});
