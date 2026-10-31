@@ -16,7 +16,8 @@ export type Nav = {
   groups: NavGroup[] | null;
   // The thread on the page, if one is.
   thread: string | null;
-  working: number;
+  // Threads waiting on the user: a change set to review, or a reply.
+  needsYou: number;
 };
 
 export function nav(model: Model): Nav {
@@ -42,6 +43,7 @@ export function nav(model: Model): Nav {
         current: summary.id === group,
       })) ?? null,
     thread,
-    working: threads.filter((each) => each.state === "working").length,
+    needsYou: threads.filter((each) => each.waitingOn === "review" || each.waitingOn === "reply")
+      .length,
   };
 }

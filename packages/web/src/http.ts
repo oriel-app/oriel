@@ -38,6 +38,10 @@ export type Effect =
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }
+  // Watch every thread for a move, from any page but a thread's, whose own
+  // stream says, or a review link's.
+  | { type: "watchThreads" }
+  | { type: "unwatchThreads" }
   | { type: "copy"; text: string };
 
 // A server's reply to an `http` effect. `body` is our own server's JSON in

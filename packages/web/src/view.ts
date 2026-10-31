@@ -34,6 +34,24 @@ export type FolderView = { path: string; items: number; syncedAt: string | null 
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 
+// What a working thread waits on: its agent, mid-turn; the user, on a change
+// set being applied or offering a step besides a revert, which any applied
+// one offers; or else the user's next message. A thread in any other state
+// waits on nothing.
+export type WaitingOn = "agent" | "review" | "reply";
+
+export function waitingOn(thread: {
+  state: ThreadStateId;
+  running: boolean;
+  changeSets: readonly { status: ChangeSetStatus; nextSteps: readonly { kind: string }[] }[];
+}): WaitingOn | null {
+  if (thread.state !== "working") return null;
+  if (thread.running) return "agent";
+  const open = (set: (typeof thread.changeSets)[number]) =>
+    set.status === "applying" || set.nextSteps.some((step) => step.kind !== "revert");
+  return thread.changeSets.some(open) ? "review" : "reply";
+}
+
 // An item named somewhere: in a group, a marker, a search result. `title` is
 // null when the index doesn't have the item (deleted, or not synced yet).
 // `url` is set only for an http(s) location.
@@ -72,6 +90,7 @@ export type ThreadSummaryView = {
   group: { id: string; name: string };
   state: ThreadStateId;
   doneBy: "applied" | "marked" | null;
+  waitingOn: WaitingOn | null;
   activityAt: string;
 };
 
@@ -201,7 +220,10 @@ export type StreamEvent =
   | { type: "status"; running: boolean; state: ThreadStateId; regionVersion: number }
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
-  | { type: "change-set"; changeSetId: string; applying: boolean };
+  | { type: "change-set"; changeSetId: string; applying: boolean }
+  // Another thread moved: its turn started or ended, a change set of it
+  // changed, or it was opened or marked done.
+  | { type: "threads" };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };

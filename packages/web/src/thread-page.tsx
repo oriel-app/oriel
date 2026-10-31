@@ -19,7 +19,15 @@ import {
   type ThreadModel,
   type ThreadMsg,
 } from "./thread.ts";
-import type { ChangeSetView, DiffView, ItemRef, MemberView, RunView, ThreadView } from "./view.ts";
+import {
+  type ChangeSetView,
+  type DiffView,
+  type ItemRef,
+  type MemberView,
+  type RunView,
+  type ThreadView,
+  waitingOn,
+} from "./view.ts";
 
 const fieldNames: Record<string, string> = {
   summary: "Title",
@@ -68,7 +76,14 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
           </Link>
           <div class="thread-title-row">
             <h1 class="thread-title">{view.title ?? "New thread"}</h1>
-            <StateChip state={view.state} />
+            <StateChip
+              state={view.state}
+              waitingOn={waitingOn({
+                state: view.state,
+                running: view.running,
+                changeSets: view.changeSets,
+              })}
+            />
             {view.state !== "done" && (
               <button
                 type="button"

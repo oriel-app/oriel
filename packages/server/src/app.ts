@@ -345,6 +345,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     asOf: () => asOf ?? now(),
     now,
     running: conversation.running,
+    changeSets: sets,
     writable: writes !== null,
   });
 

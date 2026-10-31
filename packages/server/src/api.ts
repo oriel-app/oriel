@@ -346,16 +346,40 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
     // Watch first, then catch up, in one synchronous step, so no entry falls
     // between the two.
-    const stop = turns.watch(threadId, (event) =>
+    const unwatch = turns.watch(threadId, (event) =>
       event.type === "message"
         ? entry(event.message)
         : event.type === "change-set"
           ? send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying })
           : status(),
     );
+    // A thread's page hears other threads move on this stream too, so a tab
+    // holds one stream at most: browsers allow few per host. Its own thread's
+    // moves are the status and change-set events above.
+    const unwatchAny = turns.watchAny((moved) => {
+      if (moved !== threadId) send({ type: "threads" });
+    });
+    const stop = () => {
+      unwatch();
+      unwatchAny();
+    };
     out.push("retry: 2000\n\n");
     for (const message of threads.messages(threadId, after)) entry(message);
     status();
+    return {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no" },
+      body: "",
+      stream: out.iterator,
+    };
+  };
+
+  // The workspace's threads moved: one empty event each time, which pages
+  // answer by reloading the threads list.
+  const anyStream = (): Reply => {
+    const out = channel<string>(() => stop());
+    const stop = turns.watchAny(() => out.push('data: {"type":"threads"}\n\n'));
+    out.push("retry: 2000\n\n");
     return {
       status: 200,
       headers: { "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no" },
@@ -484,7 +508,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id"),
       async run([id = ""]) {
         mustGroup(id);
-        return json(200, views.group(id as Ulid));
+        return json(200, await views.group(id as Ulid));
       },
     },
     {
@@ -493,7 +517,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         addMembers(group.id, indexed((await readJson(request, listBody, itemsBody)).items));
-        return json(200, views.group(group.id));
+        return json(200, await views.group(group.id));
       },
     },
     {
@@ -519,7 +543,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           what,
           why: synced && syncMightHelp ? `${why} ${synced}` : why,
         }));
-        return json(200, { group: views.group(group.id), added, refused });
+        return json(200, { group: await views.group(group.id), added, refused });
       },
     },
     {
@@ -538,7 +562,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           return member;
         });
         if (groups.remove(group.id, members, { kind: "user" }, deps.now())) follow(group.id);
-        return json(200, views.group(group.id));
+        return json(200, await views.group(group.id));
       },
     },
     {
@@ -569,13 +593,19 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           regionSize: groups.region(group.id, group.version)?.items.length ?? 0,
         });
         if (text !== undefined) turns.say(threadId, text);
+        else turns.touched(threadId);
         return json(201, { id: threadId });
       },
     },
     {
       method: "GET",
       path: at("/threads"),
-      run: async () => json(200, { threads: views.inbox(deps.workspaceId) }),
+      run: async () => json(200, { threads: await views.inbox(deps.workspaceId) }),
+    },
+    {
+      method: "GET",
+      path: at("/threads/events"),
+      run: async () => anyStream(),
     },
     {
       method: "GET",
@@ -626,6 +656,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         const now = deps.now();
         threads.markDone(thread.id, now);
+        turns.touched(thread.id);
         deps.emit({
           name: "thread.marked-done",
           at: now,

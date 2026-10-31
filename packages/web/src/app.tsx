@@ -2,7 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import { GroupPage } from "./group-page.tsx";
 import { parseRoute } from "./route.ts";
 import { InboxPage, ReviewPage } from "./other-pages.tsx";
-import { type Dispatch, Link, Mark } from "./parts.tsx";
+import { nav } from "./nav.ts";
+import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
@@ -124,7 +125,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
 // the brand. Wide screens have the sidebar instead.
 function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu(): void }) {
   const { model, dispatch } = props;
-  const working = model.threads?.filter((thread) => thread.state === "working").length ?? 0;
+  const { needsYou } = nav(model);
   return (
     <header class="bar">
       <button
@@ -136,7 +137,9 @@ function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu():
       >
         <MenuIcon />
         <span class="visually-hidden">Open the sidebar</span>
-        {working > 0 && <span class="bar-working" title={`${working} working`} />}
+        {needsYou > 0 && (
+          <span class="bar-working" title={`${plural(needsYou, "thread")} waiting on you`} />
+        )}
       </button>
       <Link
         route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}

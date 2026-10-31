@@ -209,8 +209,8 @@ test("a thread answers a question: text, a run's transcript, then done", async (
   assert.deepEqual(names(app).slice(-2), ["thread.opened", "question.asked"]);
   const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
   assert.deepEqual(
-    inbox.threads.map((s) => [s.id, s.state, s.group.id]),
-    [[app.threadId, "working", app.groupId]],
+    inbox.threads.map((s) => [s.id, s.state, s.group.id, s.waitingOn]),
+    [[app.threadId, "working", app.groupId, "reply"]],
   );
 });
 
@@ -272,8 +272,16 @@ async function proposed(t: TestContext) {
   return { ...app, changeSetId: id, diff };
 }
 
+// What the inbox and the group's page say the thread waits on.
+async function waits(app: Awaited<ReturnType<typeof proposed>>) {
+  const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
+  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
+  return [...inbox.threads, ...group.threads].map((s) => s.waitingOn);
+}
+
 test("a captured change set shows as a diff; read-only, approving says writing isn't configured", async (t) => {
   const app = await proposed(t);
+  assert.deepEqual(await waits(app), ["review", "review"]);
   const view = await app.view();
   assert.equal(view.writable, false);
   assert.deepEqual(
@@ -291,6 +299,8 @@ test("a captured change set shows as a diff; read-only, approving says writing i
   const reject = await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash: diff.hash });
   assert.equal(json<{ changeSet: ChangeSetView }>(reject).changeSet.status, "rejected");
   assert.ok(names(app).includes("changeset.decided"));
+  // Rejected, it waits on nothing; the thread waits on the user's next message.
+  assert.deepEqual(await waits(app), ["reply", "reply"]);
 });
 
 test("a line can be removed from a change set, which needs a fresh diff to decide", async (t) => {
@@ -445,6 +455,45 @@ test("a thread's events stream: what's stored first, then each new entry as it l
   await rest.return?.();
 });
 
+test("the threads' stream says when any thread's turn starts or ends, or it's marked done", async (t) => {
+  const app = await thread(t, "Hi");
+  const reply = await app.get("/api/threads/events");
+  assert.equal(reply.headers["content-type"], "text/event-stream; charset=utf-8");
+  assert.ok(reply.stream);
+  const stream = reply.stream[Symbol.asyncIterator]();
+  assert.equal((await stream.next()).value, "retry: 2000\n\n");
+  const moved = 'data: {"type":"threads"}\n\n';
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Again" });
+  await app.app.settled();
+  assert.equal((await stream.next()).value, moved);
+  assert.equal((await stream.next()).value, moved);
+  // The turn's entries aren't told: nothing more until the thread is marked done.
+  let told = false;
+  const next = stream.next().then((result) => {
+    told = true;
+    return result;
+  });
+  await new Promise(setImmediate);
+  assert.equal(told, false);
+  await app.post(`/api/threads/${app.threadId}/done`);
+  assert.equal((await next).value, moved);
+  // A thread opened with no message moves too.
+  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  assert.equal((await stream.next()).value, moved);
+  await stream.return?.();
+});
+
+test("a thread's own stream also says when another thread moves, so its page needs no other", async (t) => {
+  const app = await thread(t, "Hi");
+  const reply = await app.get(`/api/threads/${app.threadId}/events`);
+  assert.ok(reply.stream);
+  const stream = reply.stream[Symbol.asyncIterator]();
+  await read(stream, (e) => e.type === "status");
+  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  assert.deepEqual(await read(stream, () => true), [{ type: "threads" }]);
+  await stream.return?.();
+});
+
 // Thinks until stopped, then ends with its `done`, as the contract asks; or,
 // breaking it, throws.
 function waiting(keepsContract: boolean): Agent {
@@ -471,6 +520,11 @@ test("one turn at a time per thread, and stopping one is explicit", async (t) =>
     );
     const busy = await app.post(`/api/threads/${id}/messages`, { text: "Second" });
     assert.equal(busy.status, 409);
+    const inbox = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
+    assert.deepEqual(
+      inbox.threads.map((s) => s.waitingOn),
+      ["agent"],
+    );
     assert.deepEqual(json(await app.post(`/api/threads/${id}/stop`)), { stopped: true });
     await app.app.settled();
     const view = json<ThreadView>(await app.get(`/api/threads/${id}`));

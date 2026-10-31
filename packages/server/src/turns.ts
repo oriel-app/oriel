@@ -150,9 +150,12 @@ export function turns(deps: TurnDeps) {
   const { threads, groups } = deps;
   const running = new Map<Ulid, { controller: AbortController; done: Promise<void> }>();
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
+  // Pages watching every thread for a move between what they wait on.
+  const anyWatchers = new Set<(threadId: Ulid) => void>();
 
   const publish = (threadId: Ulid, event: ThreadEvent) => {
     for (const watcher of watchers.get(threadId) ?? []) watcher(event);
+    if (event.type !== "message") for (const watcher of anyWatchers) watcher(threadId);
   };
   // Passes on the chat entry just stored at `seq`.
   const published = (threadId: Ulid, seq: number) => {
@@ -238,6 +241,20 @@ export function turns(deps: TurnDeps) {
         set.delete(listener);
         if (set.size === 0) watchers.delete(threadId);
       };
+    },
+
+    // Calls `listener` with a thread's ID whenever its turn starts or ends, a
+    // change set of it changes, or it changes outside a turn, for every
+    // thread, until the returned function is called.
+    watchAny(listener: (threadId: Ulid) => void): () => void {
+      anyWatchers.add(listener);
+      return () => anyWatchers.delete(listener);
+    },
+
+    // The thread changed outside a turn: the user opened it without a
+    // message, or marked it done. Every page watching it hears.
+    touched(threadId: Ulid): void {
+      publish(threadId, { type: "status", running: running.has(threadId) });
     },
 
     // A change set of the thread started or finished applying: every page

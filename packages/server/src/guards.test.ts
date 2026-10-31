@@ -142,7 +142,7 @@ test("the window reports grouping and zoom changes, and nothing else", async (t)
   assert.equal(app.app.telemetry().length, 3);
 });
 
-test("an item that moved keeps its title in a group's history and a thread's markers", () => {
+test("an item that moved keeps its title in a group's history and a thread's markers", async () => {
   const db = open(":memory:");
   const at = t0 as Instant;
   migrate(db, loadMigrations(), at);
@@ -172,9 +172,10 @@ test("an item that moved keeps its title in a group's history and a thread's mar
     asOf: () => at,
     now: () => at,
     running: () => false,
+    changeSets: { ofThread: async () => [], nextSteps: async () => [], applying: () => false },
     writable: false,
   });
-  const added = shown.group(id(2))?.changes[0]?.added[0];
+  const added = (await shown.group(id(2)))?.changes[0]?.added[0];
   assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
   const marker = shown
     .thread(id(3), [], new Map(), () => false)

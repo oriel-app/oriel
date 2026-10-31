@@ -334,6 +334,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
   // the thread.
   if (event.type === "change-set")
     return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
+  // The lists' business, not the thread's.
+  if (event.type === "threads") return [model, []];
   const { entry } = event;
   if (entry.seq <= view.lastSeq) return [model, []];
   const next = {
