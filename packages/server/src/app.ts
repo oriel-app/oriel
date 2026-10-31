@@ -22,6 +22,7 @@ import {
   type Sandbox,
   type Source,
   type SourceKind,
+  sourceKinds,
   type Ulid,
   ulid,
   type Validator,
@@ -322,12 +323,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      // Without Slack, as many more as the index has Slack records, so leaving
-      // them out still finds `limit`.
-      const extra = slack ? 0 : index.records(workspaceId, "slack", slackAttrs).length;
-      const found = index.search(workspaceId, query, limit + extra);
-      const kept = slack ? found : found.filter((r) => parseItemId(r.id)?.source !== "slack");
-      return kept.slice(0, limit).map((record) => ({
+      // Slack only while it's connected.
+      const sources = sourceKinds.filter((kind) => kind !== "slack" || slack);
+      return index.search(workspaceId, query, limit, sources).map((record) => ({
         id: record.id,
         title: record.title,
         location: record.location,

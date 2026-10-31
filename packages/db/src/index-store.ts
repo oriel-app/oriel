@@ -206,7 +206,14 @@ export function indexStore(db: DatabaseSync) {
     // item ID works as a query. An exact key comes first, then titles starting
     // with the first term, then the most recently updated. At most 256
     // characters, 8 distinct terms and 50 results.
-    search(workspaceId: Ulid, query: string, limit: number): IndexRecord<SourceKind, unknown>[] {
+    // Only the `sources` given, when given: a source the workspace no longer
+    // reads is left out before ranking, so it can't crowd out the rest.
+    search(
+      workspaceId: Ulid,
+      query: string,
+      limit: number,
+      sources?: readonly SourceKind[],
+    ): IndexRecord<SourceKind, unknown>[] {
       const bounded = fold(query.slice(0, maxQueryChars));
       const stripped = bounded
         .split(/\s+/)
@@ -218,6 +225,10 @@ export function indexStore(db: DatabaseSync) {
       if (!first) return [];
       const whole = bounded.trim().replace(sourcePrefix, "");
       return live(workspaceId, null, unknown)
+        .filter((record) => {
+          const source = parseItemId(record.id)?.source;
+          return !sources || (source !== undefined && sources.includes(source));
+        })
         .map((record) => {
           const key = fold(parseItemId(record.id)?.key ?? "");
           const title = fold(record.title);
