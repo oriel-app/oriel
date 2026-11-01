@@ -118,8 +118,19 @@ function parse(text: string): unknown {
   }
 }
 
+// A request Jira answered with something other than a 2xx, with its status,
+// so a caller can tell a refused sign-in from a site that's down.
+export class JiraFailed extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "JiraFailed";
+    this.status = status;
+  }
+}
+
 // Jira's own words for a failed request, bounded, for error messages.
-export function failure(request: JiraRequest, response: JiraResponse): Error {
+export function failure(request: JiraRequest, response: JiraResponse): JiraFailed {
   const body = response.body;
   const messages =
     typeof body === "object" && body !== null
@@ -133,7 +144,8 @@ export function failure(request: JiraRequest, response: JiraResponse): Error {
         ]
       : [String(body ?? "")];
   const detail = messages.join("; ").slice(0, 300);
-  return new Error(
+  return new JiraFailed(
     `${request.method} ${request.path.split("?")[0]}: ${response.status}${detail ? ` ${detail}` : ""}`,
+    response.status,
   );
 }

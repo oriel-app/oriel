@@ -75,7 +75,7 @@ export type Model = {
   review: ReviewModel | null;
   // The connected folder, beside the groups.
   folder: FolderModel;
-  // Jira, which the window offers to connect until it is.
+  // Jira, which the window offers to connect until it is, then to sync.
   jira: JiraModel;
   // For the chrome: the workspace's groups and threads.
   groups: GroupSummary[] | null;
@@ -110,7 +110,7 @@ export type Msg =
 // page that moved them.
 const loadGroups: Effect = get("/api/groups", { kind: "groups" });
 const loadThreads: Effect = get("/api/threads", { kind: "inbox" });
-const lists: Effect[] = [loadGroups, loadThreads, loadFolder];
+const lists: Effect[] = [loadGroups, loadThreads, loadFolder, loadJira];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
@@ -168,7 +168,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo);
-        return [{ ...base, window }, [...leaving, ...effects, ...lists, loadJira, ...watching]];
+        return [{ ...base, window }, [...leaving, ...effects, ...lists, ...watching]];
       }
       const [window, effects] =
         route.grouping === model.window.grouping
@@ -177,7 +177,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const loads = effects.filter((effect) => effect.type === "loadWindow");
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
-        [...leaving, ...loads, ...lists, loadJira, ...watching],
+        [...leaving, ...loads, ...lists, ...watching],
       ];
     }
     case "group": {
@@ -306,13 +306,25 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
       return [{ ...model, folder, window }, effects];
     }
-    // Once Jira connected, the window shows its items.
+    // Once Jira connected or synced, what's on screen shows what changed there: new items
+    // in the window, and a member deleted in Jira as gone on a group's page
+    // or in a thread's rail.
     case "jira":
-    case "jiraConnected": {
+    case "jiraConnected":
+    case "jiraSynced": {
       const { model: jira, synced } = jiraReplied(model.jira, msg);
-      if (!synced || model.window === null) return [{ ...model, jira }, []];
-      const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
-      return [{ ...model, jira, window }, effects];
+      if (!synced) return [{ ...model, jira }, []];
+      const [window, effects] = model.window
+        ? updateWindow(model.window, { type: "retryClicked" })
+        : [null, []];
+      const { group, thread } = model;
+      const reload =
+        model.route.page === "group" && group
+          ? [get(`/api/groups/${group.id}`, { kind: "groupSynced", id: group.id })]
+          : model.route.page === "thread" && thread
+            ? [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })]
+            : [];
+      return [{ ...model, jira, window }, [...effects, ...reload]];
     }
     case "createGroup":
     case "addToGroup": {
@@ -322,6 +334,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     }
     case "group":
     case "groupChanged":
+    case "groupSynced":
     case "renamed":
     case "threadOpened": {
       if (model.group === null) return [model, []];

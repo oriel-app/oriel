@@ -88,9 +88,28 @@ export async function syncSource<K extends SourceKind, A>(
     records += valid.length;
     gone += page.gone.length;
   };
+  // What the index holds as gone, a listing that lags its source may still
+  // return, as Jira's search lists a deleted issue for a while. A source that
+  // can read by key is asked first, and only what it still has comes back; one
+  // that can't is taken at its word. The items above are read already.
+  const tombstoned = new Set(source.records ? index.goneStableIds(workspaceId, source.kind) : []);
+  const ours = new Set(items.map((item) => item.stableId));
+  const confirmed = async (page: SyncPage<K, A>): Promise<SyncPage<K, A>> => {
+    const back = page.records.filter((r) => tombstoned.has(r.stableId) && !ours.has(r.stableId));
+    if (!page.records.some((r) => tombstoned.has(r.stableId)) || !source.records) return page;
+    const found = back.length ? (await source.records(back.map((r) => r.id))).records : [];
+    const still = new Map(found.map((record) => [record.stableId, record]));
+    const kept = page.records.flatMap((r) =>
+      tombstoned.has(r.stableId) ? (still.get(r.stableId) ?? []) : [r],
+    );
+    const stale = back.filter((r) => !still.has(r.stableId)).length;
+    if (stale) log("sync: the listing returned items the source no longer has", { stale });
+    return { ...page, records: kept };
+  };
   // When the listing last saw each item updated, by stable ID.
   const listed = new Map<string, Instant>();
-  for await (const page of source.sync(cursor)) {
+  for await (const returned of source.sync(cursor)) {
+    const page = await confirmed(returned);
     for (const record of page.records) listed.set(record.stableId, record.updatedAt);
     keep(page);
     last = page.cursor ?? last;

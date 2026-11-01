@@ -1,11 +1,12 @@
 // The sidebar, on every page but a review link: the window and the inbox,
 // the threads waiting on the user, the user's groups with their threads under
-// them, and the connected folder.
+// them, and the sources: Jira and the connected folder.
 // On a wide screen it folds to a strip of icons; on a narrow one it's a
 // drawer the menu opens.
 import { useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
+import type { JiraModel } from "./jira.ts";
 import { type Nav, type NavGroup, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
@@ -84,7 +85,10 @@ export function Sidebar(props: {
       </nav>
       <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <Groups where={where} dispatch={dispatch} />
-      <Folder folder={model.folder} dispatch={dispatch} />
+      <div class="sources">
+        <Jira jira={model.jira} dispatch={dispatch} />
+        <Folder folder={model.folder} dispatch={dispatch} />
+      </div>
     </aside>
   );
 }
@@ -261,6 +265,36 @@ function GroupEntry(props: {
   );
 }
 
+// Jira, at the foot: its project as one quiet line, and Sync, which looks
+// for what was made or deleted there since. While Jira can't be reached the
+// window keeps what it had, and the line says so.
+function Jira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
+  const connected = jira.view?.connected;
+  if (!connected) return null;
+  return (
+    <section class="jira" aria-label="Jira">
+      <p class="source-line" title={`${connected.project} on ${new URL(connected.site).host}`}>
+        <TrackerIcon />
+        <span class="source-name">{connected.project}</span>
+        <span class="nav-count">{plural(connected.items, "item")}</span>
+        <button
+          type="button"
+          class="quiet-action"
+          disabled={jira.syncing}
+          onClick={() => dispatch({ type: "jira", msg: { type: "syncClicked" } })}
+        >
+          {jira.syncing ? "Syncing…" : "Sync"}
+        </button>
+      </p>
+      {jira.problem && (
+        <p class="source-problem" role="alert">
+          {jira.problem}
+        </p>
+      )}
+    </section>
+  );
+}
+
 // The folder, at the foot: one quiet line, and a path to type only when the
 // user asks to add one.
 function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
@@ -270,9 +304,9 @@ function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch 
   return (
     <section class="folder" aria-label="Folder">
       {view && !folder.open && (
-        <p class="folder-line" title={view.path}>
+        <p class="source-line" title={view.path}>
           <FolderIcon />
-          <span class="folder-name">{name}</span>
+          <span class="source-name">{name}</span>
           <span class="nav-count">{plural(view.items, "file")}</span>
           <button
             type="button"
@@ -326,7 +360,7 @@ function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch 
         </form>
       )}
       {folder.problem && (
-        <p class="folder-problem" role="alert">
+        <p class="source-problem" role="alert">
           {folder.problem}
         </p>
       )}
@@ -373,6 +407,15 @@ function InboxIcon() {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2 9l1.6-5.2A1.5 1.5 0 0 1 5 2.75h6a1.5 1.5 0 0 1 1.4 1.05L14 9v3a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z" />
       <path d="M2 9h3.5l1 1.75h3L10.5 9H14" />
+    </svg>
+  );
+}
+
+function TrackerIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+      <path d="M5 6l1 1 2-2M5 10.5h6M9.5 6.5H11" />
     </svg>
   );
 }

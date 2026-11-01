@@ -93,6 +93,9 @@ export function indexStore(db: DatabaseSync) {
   const selectLiveIds = db.prepare(
     "select stable_id from items where workspace_id = ? and source = ? and gone_at is null order by stable_id",
   );
+  const selectGoneIds = db.prepare(
+    "select stable_id from items where workspace_id = ? and source = ? and gone_at is not null order by stable_id",
+  );
   const selectSource = db.prepare(
     "select cursor, synced_at from sources where workspace_id = ? and kind = ?",
   );
@@ -237,6 +240,12 @@ export function indexStore(db: DatabaseSync) {
     // For the sync worker's full sweep: whatever the source no longer returns is gone.
     liveStableIds(workspaceId: Ulid, source: SourceKind): string[] {
       return selectLiveIds.all(workspaceId, source).map((row) => String(row.stable_id));
+    },
+
+    // For the sync worker: what the index holds as gone, which a listing that
+    // lags may still return.
+    goneStableIds(workspaceId: Ulid, source: SourceKind): string[] {
+      return selectGoneIds.all(workspaceId, source).map((row) => String(row.stable_id));
     },
 
     source(

@@ -91,6 +91,9 @@ export function memorySite(
   const calls: { method: string; path: string }[] = [];
   // What the search answers from while it lags the site; null once caught up.
   let searchable: Map<string, Issue> | null = null;
+  // How the site fails every request, if it does: the network is down, it no
+  // longer takes the credential, or it answers as if the project were gone.
+  let outage: "offline" | "signed-out" | "unexpected" | null = null;
 
   const tick = (): Instant => {
     ticks += 1;
@@ -274,12 +277,22 @@ export function memorySite(
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin !== memorySiteOrigin) throw new Error(`no route to ${url.origin}`);
     const method = init?.method ?? "GET";
+    if (outage === "offline") throw new TypeError("fetch failed");
     calls.push({ method, path: `${url.pathname}${url.search}` });
     if (signature !== null && new Headers(init?.headers).get("authorization") !== signature)
       return json(401, { errorMessages: ["You are not authenticated."] });
+    if (outage === "signed-out")
+      return json(401, {
+        errorMessages: ["Client must be authenticated to access this resource."],
+      });
+    if (outage === "unexpected")
+      return json(400, {
+        errorMessages: [`The value '${project}' does not exist for the field 'project'.`],
+      });
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
     const key = /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)/.exec(url.pathname)?.[1];
-    const hold = method !== "GET" && key !== undefined ? holds.get(key) : undefined;
+    const held = url.pathname === searchPath ? "search" : key;
+    const hold = method !== "GET" && held !== undefined ? holds.get(held) : undefined;
     if (hold) {
       hold.reached.resolve();
       await hold.release;
@@ -300,7 +313,8 @@ export function memorySite(
     // or work again.
     refuse: (key: string) => refused.add(key),
     loseAnswers: (key: string) => unanswered.add(key),
-    // Writes to this item wait, in flight, until released.
+    // Writes to this item wait, in flight, until released; or, held as
+    // "search", every search does.
     hold(key: string) {
       const reached = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
@@ -329,6 +343,35 @@ export function memorySite(
     },
     searchCatchesUp() {
       searchable = null;
+    },
+    // From here every request fails, as `outage` says; null works again.
+    outage(kind: typeof outage) {
+      outage = kind;
+    },
+    // A teammate makes an epic or a story directly in Jira. Its key.
+    add(made: { issueType: "Epic" | "Story"; summary: string; epic?: string }): string {
+      const issue: Issue = {
+        id: String(20000 + nextIssue),
+        key: `${project}-${nextIssue}`,
+        issueType: made.issueType,
+        summary: made.summary,
+        description: "",
+        status: "To Do",
+        labels: [],
+        comments: [],
+        epic: made.epic ?? null,
+        assignee: null,
+        points: null,
+        links: [],
+        updated: tick(),
+      };
+      nextIssue += 1;
+      issues.set(issue.key, issue);
+      return issue.key;
+    },
+    // A teammate deletes the item directly in Jira.
+    remove(key: string) {
+      if (!issues.delete(key)) throw new Error(`no issue ${key}`);
     },
     // A teammate edits the item directly in Jira.
     edit(key: string, change: Partial<Pick<Issue, "summary" | "points">>) {
