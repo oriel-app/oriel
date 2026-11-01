@@ -11,3 +11,4 @@ export * from "./telemetry.ts";
 export * from "./thread.ts";
 export * from "./validate.ts";
 export * from "./zoom.ts";
+export * from "./shape.ts";

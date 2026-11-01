@@ -24,6 +24,7 @@ import {
   type TelemetryEvent,
   type Ulid,
   union,
+  unknown,
   type Validator,
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
@@ -36,12 +37,14 @@ import {
   type JiraView,
   type StreamEvent,
 } from "@oriel/web/view";
+import { type ActionDeps, ActionError, dispatch } from "./actions/action.ts";
+import { groupRemove } from "./actions/group-remove.ts";
 import { resolveDropped } from "./dropped.ts";
 import { maxNameChars, nameOf } from "./names.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
-import { changeSetView, memberOf, type Views } from "./views.ts";
+import { changeSetView, type Views } from "./views.ts";
 import { presentations } from "./window.ts";
 
 export type ApiDeps = {
@@ -311,6 +314,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
 
   // After a group changed: its working threads follow it, with markers.
   const follow = (groupId: Ulid) => turns.moved(threads.follow(groupId, deps.now(), deps.newId));
+  const actionDeps: ActionDeps = { ...deps, changed: follow };
 
   // A change set as the window shows it, with what can be done with it, as
   // the change set engine says.
@@ -640,19 +644,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/groups/:id/remove"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
-        const { items } = await readJson(request, listBody, itemsBody);
-        // By identity: a moved item is removed under its current handle, and
-        // one the index no longer has under the handle the group shows.
-        const held = groups.region(group.id, group.version)?.items ?? [];
-        const records = deps.records();
-        const members = items.map((item) => {
-          const member = memberOf(item, held, records);
-          if (!member) throw new Refused(400, `${item} isn't in this group`);
-          return member;
-        });
-        if (groups.remove(group.id, members, { kind: "user" }, deps.now())) follow(group.id);
-        return json(200, await views.group(group.id));
+        // SPIKE (OA-74): decode, dispatch, map errors; nothing more.
+        const body = await readJson(request, listBody, object({ items: unknown }));
+        try {
+          dispatch(groupRemove, { group: id, items: body.items }, { kind: "person" }, actionDeps);
+        } catch (error) {
+          if (error instanceof ActionError)
+            throw new Refused(error.code === "not-found" ? 404 : 400, error.message);
+          throw error;
+        }
+        return json(200, await views.group(id as Ulid));
       },
     },
     {

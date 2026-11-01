@@ -26,6 +26,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       source: SourceKind;
       cause: GroupChange["cause"]["kind"];
     }
+  // SPIKE (OA-74): one per action call, through any door.
+  | { name: "action.called"; action: string; actor: "person" | "agent" | "tool" }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   | { name: "question.asked"; threadId: Ulid }
   // The user marked the thread done, as one over read-only items needs: on

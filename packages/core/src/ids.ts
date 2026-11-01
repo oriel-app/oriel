@@ -14,7 +14,7 @@ export type Instant = string & { readonly __brand: "Instant" };
 // Keys reach generated code (the region's `.d.ts` and guest stubs), so each
 // source's key shape is strict, and no key carries text a person wrote.
 
-const keyShapes: Record<SourceKind, RegExp> = {
+export const keyShapes: Record<SourceKind, RegExp> = {
   jira: /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/,
   // A fixed-length hash of the folder's ID and the file's canonical relative
   // path (decision 0019): a file's name is its title, never its key.
