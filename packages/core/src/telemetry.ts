@@ -41,8 +41,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // `rejected`: the message was the reason given for rejecting that change set.
   | { name: "question.asked"; threadId: Ulid; rejected?: Ulid }
   // The thread was marked done, as one over read-only items needs: by the
-  // user, on its page, or from a menu or a swipe on a list of threads.
-  | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia; by?: Actor }
+  // user, on its page, or from a menu or a swipe on a list of threads; or by
+  // someone else, who closed nothing in the window.
+  | { name: "thread.marked-done"; threadId: Ulid; via?: CloseVia; by?: Actor }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
   // stay, out of sight. `groupRemoved`: its group, made for it, went too.
   | {

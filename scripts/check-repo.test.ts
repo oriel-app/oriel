@@ -5,6 +5,7 @@ import {
   allowlist,
   exemptRoutes,
   lockedPackages,
+  partlyMovedRoutes,
   postRoutes,
   problems,
   unmovedRoutes,
@@ -335,14 +336,20 @@ test("CLAUDE.md must link to exactly AGENTS.md", () => {
   assert.match(found[0] ?? "", /CLAUDE\.md must be a symlink/);
 });
 
-// A routes file declaring every exempt and unmoved route, as api.ts does,
-// plus `extra`.
-const routes = (extra: string) => ({
+// A routes file declaring every listed route as its list says, as api.ts
+// does, plus `extra`.
+const route = (path: string, code: string) =>
+  `{ method: "POST", path: at("${path}"), async run() { ${code} } },`;
+const listed = (
+  lists = { exempt: exemptRoutes, unmoved: unmovedRoutes, part: partlyMovedRoutes },
+) => [
+  ...Object.keys(lists.exempt).map((path) => route(path, "work();")),
+  ...Object.keys(lists.unmoved).map((path) => route(path, "work();")),
+  ...Object.keys(lists.part).map((path) => route(path, "work(); await deps.dispatch(x);")),
+];
+const routes = (extra: string, lines = listed()) => ({
   path: "packages/server/src/api.ts",
-  text: [...Object.keys(exemptRoutes), ...Object.keys(unmovedRoutes)]
-    .map((path) => `{ method: "POST", path: at("${path}"), async run() { work(); } },`)
-    .concat(extra)
-    .join("\n"),
+  text: [...lines, extra].join("\n"),
 });
 
 test("a POST route that changes state without the dispatcher is reported", () => {
@@ -369,15 +376,30 @@ test("a POST route that changes state without the dispatcher is reported", () =>
   assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(""), test] }), []);
 });
 
-test("an exempt or unmoved route that no longer exists is reported, so the lists only shrink", () => {
+test("a listed route that's gone, or no longer as its list says, is reported, so the lists only shrink", () => {
   const [first = "", ...rest] = Object.keys(unmovedRoutes);
-  const text = [...Object.keys(exemptRoutes), ...rest]
-    .map((path) => `{ method: "POST", path: at("${path}"), async run() {} },`)
-    .join("\n");
-  assert.deepEqual(
-    problems({ ...clean, sources: [{ path: "packages/server/src/api.ts", text }] }),
-    [`scripts/check-repo.ts: lists POST ${first}, which no route declares`],
+  const [part = ""] = Object.keys(partlyMovedRoutes);
+  const gone = listed({
+    exempt: exemptRoutes,
+    unmoved: Object.fromEntries(rest.map((path) => [path, ""])),
+    part: partlyMovedRoutes,
+  });
+  assert.deepEqual(problems({ ...clean, sources: [routes("", gone)] }), [
+    `scripts/check-repo.ts: lists POST ${first}, which no route declares`,
+  ]);
+  const moved = listed().map((line) =>
+    line.includes(`at("${first}")`) ? route(first, "await deps.dispatch(x);") : line,
   );
+  assert.deepEqual(problems({ ...clean, sources: [routes("", moved)] }), [
+    `scripts/check-repo.ts: POST ${first} calls the dispatcher now; take it off the unmoved routes, or list it as moved in part`,
+  ]);
+  const unmoved = listed().map((line) =>
+    line.includes(`at("${part}")`) ? route(part, "work();") : line,
+  );
+  assert.deepEqual(problems({ ...clean, sources: [routes("", unmoved)] }), [
+    `scripts/check-repo.ts: POST ${part} no longer calls the dispatcher, as the routes moved in part say it does`,
+    `packages/server/src/api.ts: POST ${part} changes state without calling the dispatcher (decision 0024)`,
+  ]);
 });
 
 test("postRoutes reads each POST route's path and whether it dispatches", () => {

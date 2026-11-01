@@ -58,6 +58,8 @@ const items = refine(
   (list) => list.length > 0 && list.length <= maxItems,
   `expected 1 to ${maxItems} items`,
 );
+// Where in the window the user closed a thread from.
+export const closeVia = optional(union(literal("page"), literal("menu"), literal("swipe")));
 const name = refine(
   string,
   (text) => text.trim() !== "" && [...text].length <= maxNameChars,
@@ -90,16 +92,14 @@ export const actions = {
   },
   "group.rename": {
     doc: "Names a group.",
-    input: object({ group: groupId, name }),
+    // `oriel`: the name is Oriel's, as it was before the user's rename this
+    // undoes, so Oriel may name the group again.
+    input: object({ group: groupId, name, oriel: optional(literal(true)) }),
     class: { kind: "direct", inverse: "group.rename" },
   },
   "thread.done": {
     doc: "Marks a thread done.",
-    // `via`: where in the window the user closed it from.
-    input: object({
-      thread: threadId,
-      via: optional(union(literal("page"), literal("menu"), literal("swipe"))),
-    }),
+    input: object({ thread: threadId, via: closeVia }),
     class: {
       kind: "direct",
       inverse: null,
@@ -109,9 +109,20 @@ export const actions = {
 } as const satisfies Record<string, ActionDeclaration>;
 
 export type ActionName = keyof typeof actions;
-export type ActionInput<N extends ActionName> = Infer<(typeof actions)[N]["input"]>;
+// A field that may be undefined may be left out, as JSON leaves it.
+type Omissible<T> = T extends object
+  ? { [K in keyof T as undefined extends T[K] ? K : never]?: T[K] } & {
+      [K in keyof T as undefined extends T[K] ? never : K]: T[K];
+    }
+  : T;
+export type ActionInput<N extends ActionName> = Omissible<Infer<(typeof actions)[N]["input"]>>;
 
 // One call of an action: what a direct action's Undo is.
 export type Call = { [N in ActionName]: { action: N; input: ActionInput<N> } }[ActionName];
 
-export const isActionName = (name: string): name is ActionName => Object.hasOwn(actions, name);
+// Whether `name` undoes some action: what an Undo may call.
+export const isInverse = (name: string): name is ActionName =>
+  Object.values(actions).some(
+    (declared: ActionDeclaration) =>
+      declared.class.kind === "direct" && declared.class.inverse === name,
+  );

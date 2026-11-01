@@ -5,13 +5,14 @@
 import {
   type Actor,
   array,
+  closeVia,
   type ChangeSet,
   type ChangeSets,
   type Conflict,
   type IndexRecord,
   type Instant,
   type ItemId,
-  isActionName,
+  isInverse,
   isItemId,
   isUlid,
   type Log,
@@ -183,10 +184,18 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
-// Where the user closed a thread from.
-const closeBody = object({
-  via: optional(union(literal("page"), literal("menu"), literal("swipe"))),
-});
+const closeBody = object({ via: closeVia });
+// The window makes a group from a cluster or from picked items; a group from
+// nothing comes only with its thread.
+const windowGroup = refine(
+  unknown,
+  (body) =>
+    typeof body === "object" &&
+    body !== null &&
+    "kind" in body &&
+    (body.kind === "cluster" || body.kind === "picked"),
+  "expected a cluster or picked items",
+);
 const folderBody = object({
   path: refine(
     string,
@@ -573,12 +582,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Any of Oriel's own actions by its name, as an Undo sends back the
-      // call it was given. The reply is that call's own undo.
+      // An Undo: the call the server gave for one of Oriel's own actions,
+      // sent back as it is, so only an action that undoes another. The reply
+      // is that call's own undo.
       method: "POST",
       path: /^\/api\/actions\/([a-z]+\.[a-z]+)$/,
       async run([name = ""], request) {
-        if (!isActionName(name)) throw new Refused(404, "no such action");
+        if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
         const { undo } = await deps.dispatch(name, input, user);
         return json(200, { undo });
@@ -593,7 +603,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/groups"),
       async run(_, request) {
-        const body = await readJson(request, listBody, unknown);
+        const body = await readJson(request, listBody, windowGroup);
         const { group } = await deps.dispatch("group.create", body, user);
         return json(201, views.groupSummary(group));
       },

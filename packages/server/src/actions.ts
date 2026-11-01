@@ -24,7 +24,7 @@ import {
 import type { GroupStore, ThreadStore } from "@oriel/db";
 import { type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
-import { memberOf } from "./views.ts";
+import { identity, memberOf } from "./views.ts";
 
 // What a group made for a thread from nothing is called, until a change set
 // creates its epic and it takes that epic's name.
@@ -84,9 +84,6 @@ const mustGroup = (deps: ActionDeps, id: Ulid) => {
     throw new ActionError("not-found", "no such group");
   return group;
 };
-
-const identity = (item: { id: string; stableId: string }) =>
-  `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
 
 // Items as the index has them now. One it doesn't have is refused, unless
 // the change set acting created it, as it joins before the next sync.
@@ -207,21 +204,23 @@ const handlers = {
     };
   },
 
-  "group.rename": async ({ group: id, name }, actor, deps) => {
-    const group = mustGroup(deps, id);
+  "group.rename": async ({ group: id, name, oriel }, actor, deps) => {
+    const before = mustGroup(deps, id);
     // A change set names a group as Oriel does, never over the user's name.
-    const renamed = deps.groups.rename(
-      group.id,
-      name.trim(),
-      actor.kind === "change-set" ? "oriel" : "user",
-    );
+    if (oriel) deps.groups.giveBack(before.id, name.trim());
+    else deps.groups.rename(before.id, name.trim(), actor.kind === "change-set" ? "oriel" : "user");
+    const after = mustGroup(deps, id);
+    const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
+    // Back to the name it had, and to whoever gave it.
+    const back = {
+      group: before.id,
+      name: before.name,
+      ...(before.namedBy === "oriel" ? { oriel: true as const } : {}),
+    };
     return {
       output: {},
-      undo:
-        renamed && group.name.trim() !== ""
-          ? { action: "group.rename", input: { group: group.id, name: group.name } }
-          : null,
-      changed: renamed ? { group: group.id, members: false } : null,
+      undo: renamed && before.name.trim() !== "" ? { action: "group.rename", input: back } : null,
+      changed: renamed ? { group: before.id, members: false } : null,
       events: [],
     };
   },
@@ -236,7 +235,14 @@ const handlers = {
       undo: null,
       changed: { thread: thread.id },
       events: [
-        { name: "thread.marked-done", threadId: thread.id, via: via ?? "page", ...by(actor) },
+        {
+          name: "thread.marked-done",
+          threadId: thread.id,
+          // Only the user closes it from somewhere in the window.
+          ...(actor.kind === "user"
+            ? { via: via ?? "page" }
+            : { ...(via === undefined ? {} : { via }), by: actor }),
+        },
       ],
     };
   },

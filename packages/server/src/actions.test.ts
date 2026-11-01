@@ -114,16 +114,37 @@ test("a removal undoes as adding back what the index still has", async () => {
   assert.equal(gone.undo, null);
 });
 
-test("a rename undoes as renaming it back; one that changes nothing has no undo", async () => {
+test("a rename undoes as renaming it back, to whoever named it; one that changes nothing has no undo", async () => {
   const w = world();
+  const named = () => {
+    const group = w.groups.get(w.groupId);
+    return [group?.name, group?.namedBy];
+  };
+  // Oriel named it; once the user does, Oriel can't, until the Undo gives
+  // the name back.
+  assert.deepEqual(named(), ["Launch", "oriel"]);
   const renamed = await w.dispatch("group.rename", { group: w.groupId, name: " Beta " }, user);
-  assert.equal(w.groups.get(w.groupId)?.name, "Beta");
+  assert.deepEqual(named(), ["Beta", "user"]);
   assert.deepEqual(renamed.undo, {
     action: "group.rename",
-    input: { group: w.groupId, name: "Launch" },
+    input: { group: w.groupId, name: "Launch", oriel: true },
   });
+  assert.ok(renamed.undo);
+  const redo = await w.dispatch(renamed.undo.action, renamed.undo.input, user);
+  assert.deepEqual(named(), ["Launch", "oriel"]);
+  const changeSet: Actor = { kind: "change-set", changeSetId: w.changeSetId };
+  await w.dispatch("group.rename", { group: w.groupId, name: "Kiosk wallets" }, changeSet);
+  assert.deepEqual(named(), ["Kiosk wallets", "oriel"]);
+  // Redone, the name is the user's again, and Oriel's naming leaves it be.
+  assert.deepEqual(redo.undo, {
+    action: "group.rename",
+    input: { group: w.groupId, name: "Beta" },
+  });
+  await w.dispatch("group.rename", { group: w.groupId, name: "Beta" }, user);
   const same = await w.dispatch("group.rename", { group: w.groupId, name: "Beta" }, user);
   assert.equal(same.undo, null);
+  await w.dispatch("group.rename", { group: w.groupId, name: "Other" }, changeSet);
+  assert.deepEqual(named(), ["Beta", "user"]);
 });
 
 test("who acted is in the group's log, the done record and telemetry", async () => {
@@ -153,7 +174,8 @@ test("who acted is in the group's log, the done record and telemetry", async () 
     [
       { name: "group.item-added", groupId: w.groupId, source: "jira", cause: "agent" },
       { name: "action.called", action: "group.remove", by: user },
-      { name: "thread.marked-done", threadId: w.threadId, via: "page", by: agent },
+      // The agent closed nothing in the window.
+      { name: "thread.marked-done", threadId: w.threadId, by: agent },
       { name: "group.created", groupId: made, origin: "picked", size: 1, by: agent },
     ],
   );

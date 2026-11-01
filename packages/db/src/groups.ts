@@ -104,6 +104,7 @@ export function groupStore(db: DatabaseSync) {
   const markUserNamed = db.prepare(
     "insert or ignore into user_named_groups (workspace_id, group_id) select workspace_id, id from groups where id = ?",
   );
+  const unmarkUserNamed = db.prepare("delete from user_named_groups where group_id = ?");
   const nameByOriel = db.prepare(`
     update groups set name = ? where id = ? and name != ?
       and not exists (select 1 from user_named_groups where group_id = groups.id)`);
@@ -217,6 +218,16 @@ export function groupStore(db: DatabaseSync) {
         nameByUser.run(name, groupId);
         markUserNamed.run(groupId);
         return before !== name;
+      });
+    },
+
+    // Gives a group's name back to Oriel, as it was before the user named
+    // it, so Oriel may name it again: what undoing the user's rename does.
+    giveBack(groupId: Ulid, name: string): void {
+      transaction(db, () => {
+        mustGet(groupId);
+        nameByUser.run(name, groupId);
+        unmarkUserNamed.run(groupId);
       });
     },
 

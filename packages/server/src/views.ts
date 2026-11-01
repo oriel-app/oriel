@@ -89,7 +89,7 @@ export function webUrl(location: string): string | null {
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 
-const identity = (item: { id: string; stableId: string }) =>
+export const identity = (item: { id: string; stableId: string }) =>
   `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
 
 // The member of a group a handle names. Through the index, by identity, so

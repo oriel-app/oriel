@@ -80,7 +80,12 @@ test("a removal is counted in telemetry; an action by a name Oriel hasn't is not
     [last?.name, last?.data],
     ["action.called", { action: "group.remove", by: { kind: "user" } }],
   );
+  // Only an Undo goes this way, so only an action that undoes another.
   assert.equal((await app.post("/api/actions/group.delete", { group: id })).status, 404);
+  assert.equal((await app.post("/api/actions/group.create", { kind: "thread" })).status, 404);
+  // A group from nothing comes only with its thread.
+  assert.equal((await app.post("/api/groups", { kind: "thread" })).status, 400);
+  assert.equal(json<{ groups: unknown[] }>(await app.get("/api/groups")).groups.length, 1);
   assert.equal((await app.post("/api/actions/group.add", { group: id, items: [] })).status, 400);
   assert.equal(
     (
