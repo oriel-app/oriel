@@ -27,7 +27,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       cause: GroupChange["cause"]["kind"];
     }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
-  | { name: "question.asked"; threadId: Ulid }
+  // `rejected`: the message was the reason given for rejecting that change set.
+  | { name: "question.asked"; threadId: Ulid; rejected?: Ulid }
   // The user marked the thread done, as one over read-only items needs: on
   // its page, or from a menu or a swipe on a list of threads.
   | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia }

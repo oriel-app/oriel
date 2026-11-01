@@ -42,8 +42,9 @@ mkdirSync(out, { recursive: true });
 
 // What the scripted agent proposes when asked to plan: the checkout epic
 // renamed, a story's description reworded, an estimate, and two new stories
-// in the epic. Asked to plan only, it proposes just the new stories.
-const planScript = (all: boolean) =>
+// in the epic. Asked to plan only, it proposes just the new stories; asked
+// for only one, the first.
+const planScript = (all: boolean, one = false) =>
   [
     ...(all
       ? [
@@ -53,7 +54,7 @@ const planScript = (all: boolean) =>
         ]
       : []),
     'jira.createStory({ summary: "Pay with a gift card", description: "Enter the code from the card. A balance that doesn\'t cover the fare is topped up with another way to pay.", points: 3 });',
-    'jira.createStory({ summary: "Show the gift card balance at checkout" });',
+    ...(one ? [] : ['jira.createStory({ summary: "Show the gift card balance at checkout" });']),
     "return null;",
   ].join("\n");
 // Asked to mark stories done: two moved to Done, the built ones or the fixes.
@@ -62,7 +63,7 @@ const finishScript = (keys: readonly string[]) =>
 const planning = (input: TurnInput): Step[] => {
   if (/\bplan\b/i.test(input.text))
     return [
-      { run: planScript(/rename/i.test(input.text)) },
+      { run: planScript(/rename/i.test(input.text), /\bonly\b/i.test(input.text)) },
       { text: "The proposed change is below." },
     ];
   if (/\bdone\b/i.test(input.text))
@@ -293,6 +294,34 @@ const longAsk = await ask(
 await post(`/api/threads/${await ask("What's in here?")}/done`, {});
 // A later change to the group shows in working threads as a marker.
 await post(`/api/groups/${group.id}/add`, { items: ["jira:SYN-3"] });
+
+// Gift cards planned, then rejected: with no reason, the thread asks what was
+// wrong; with one, the agent proposes a revised change set below the
+// rejected one; and with one from a review link, it says who gave it.
+const rejected = async (reason?: string, reviewer?: string) => {
+  const threadId = await ask("Plan gift cards");
+  const setId = await changeSetOf(server, threadId);
+  const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {});
+  const why = reason === undefined ? {} : { reason };
+  if (reviewer === undefined) await post(`/api/change-sets/${setId}/reject`, { hash, ...why });
+  else {
+    const minted = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {});
+    const token = new URL(minted.url).pathname.split("/").at(-1);
+    await post("/api/review/open", { token });
+    const decision = { token, changeSet: setId, kind: "rejected", name: reviewer, hash };
+    await post("/api/review/decide", { ...decision, ...why });
+  }
+  await server.app.settled();
+  return threadId;
+};
+const rejectedBare = await rejected();
+const revised = await rejected('One story too many: plan only "Pay with a gift card".');
+const revisedFromLink = await rejected("Plan only the gift card story, please.", "Dana");
+// A change set whose review link someone is about to reject, with a reason.
+const toReject = await post<{ url: string }>(
+  `/api/change-sets/${await changeSetOf(server, await ask("Plan gift cards"))}/review-link`,
+  {},
+);
 
 // Without credentials: change sets can be reviewed and rejected only.
 const readOnlyGroup = await post<{ id: string }>("/api/groups", checkout, readOnly);
@@ -813,6 +842,38 @@ const scenes: Scene[] = [
     },
   },
   {
+    // A reason typed to go with Reject.
+    name: "thread-reject-reason",
+    path: `/threads/${planned}`,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await page
+        .getByRole("textbox", { name: "Why reject it (optional)" })
+        .fill('Title should be "Checkout v2: wallets and gift cards"');
+    },
+  },
+  {
+    // Rejected with no reason: the thread asks what was wrong; Your turn.
+    name: "thread-rejected-asks",
+    path: `/threads/${rejectedBare}`,
+    act: async (page) => {
+      await page.locator('.change-set[data-status="rejected"]').waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
+    // Rejected with a reason: the revised change set below the rejected one.
+    name: "thread-revised",
+    path: `/threads/${revised}`,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    // Rejected from a review link with a reason, which says who gave it.
+    name: "thread-revised-from-link",
+    path: `/threads/${revisedFromLink}`,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
     name: "thread-read-only",
     path: `/threads/${readOnlyThread}`,
     on: readOnly,
@@ -847,6 +908,18 @@ const scenes: Scene[] = [
       await hang(page, "/api/review/decide");
       await page.getByRole("button", { name: "Approve" }).click();
       await page.getByText("Approving and applying…").waitFor();
+    },
+  },
+  {
+    // About to reject from a review link, saying what's wrong.
+    name: "review-reject-reason",
+    path: new URL(toReject.url).pathname,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.getByRole("textbox", { name: "Your name" }).fill("Dana");
+      await page
+        .getByRole("textbox", { name: "If you reject it, what's wrong? (optional)" })
+        .fill("One story too many: the balance can wait.");
     },
   },
   {

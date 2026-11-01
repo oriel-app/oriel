@@ -184,6 +184,9 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
                 : "You rejected this change"}
           </h1>
           <p>Thanks, {model.decided?.decision?.by}.</p>
+          {model.outcome === "rejected" && model.reason.trim() && !model.problem && (
+            <p>What you said is in the thread, for a revised change.</p>
+          )}
           {model.warnings.length > 0 && (
             <ul class="may-have-landed" role="note">
               {model.warnings.map((warning) => (
@@ -205,6 +208,7 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
           <ReviewChange
             view={model.view}
             name={model.name}
+            reason={model.reason}
             deciding={model.stage === "deciding"}
             applying={model.stage === "deciding" && model.outcome === "approved"}
             problem={model.problem}
@@ -222,13 +226,14 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
 function ReviewChange(props: {
   view: NonNullable<ReviewModel["view"]>;
   name: string;
+  reason: string;
   deciding: boolean;
   // Approving here, and being applied: the click landed.
   applying: boolean;
   problem: string | null;
   send: (msg: ReviewMsg) => void;
 }) {
-  const { view, name, deciding, problem, send } = props;
+  const { view, name, reason, deciding, problem, send } = props;
   const steps = reviewSteps(view);
   const dismissing = view.changeSet.nextSteps.find((step) => step.kind === "dismiss");
   const approving = steps.find((step) => step === "approve" || step === "approve-rest");
@@ -257,6 +262,19 @@ function ReviewChange(props: {
             if (approving) send({ type: "decideClicked", kind: "approved" });
           }}
         >
+          {steps.includes("reject") && !view.changeSet.revertOf && (
+            <label class="name-field reason">
+              If you reject it, what's wrong? (optional)
+              <textarea
+                value={reason}
+                rows={2}
+                maxLength={8000}
+                onInput={(event) =>
+                  send({ type: "reasonChanged", reason: event.currentTarget.value })
+                }
+              />
+            </label>
+          )}
           <label class="name-field">
             Your name
             <input

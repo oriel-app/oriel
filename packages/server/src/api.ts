@@ -164,13 +164,21 @@ const editBody = object({
   remove: refine(array(ulidValue), (ids) => ids.length > 0, "nothing to remove"),
 });
 const tokenBody = object({ token: string });
-const reviewDecision = object({
-  token: string,
-  changeSet: ulidValue,
-  kind: union(literal("approved"), literal("rejected")),
-  name: nameValue,
-  hash: string,
-});
+// A reason goes with a rejection only: it becomes the thread's next message.
+const reasonValue = optional(textValue);
+const rejectBody = object({ hash: string, reason: reasonValue });
+const reviewDecision = refine(
+  object({
+    token: string,
+    changeSet: ulidValue,
+    kind: union(literal("approved"), literal("rejected")),
+    name: nameValue,
+    hash: string,
+    reason: reasonValue,
+  }),
+  (body) => body.kind === "rejected" || body.reason === undefined,
+  "only a rejection takes a reason",
+);
 const reviewDismissal = object({
   token: string,
   changeSet: ulidValue,
@@ -353,17 +361,33 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   };
 
   // Decides, and on approval applies at once: approving is what lets Oriel
-  // write, so replay follows it (decision 0003).
+  // write, so replay follows it (decision 0003). A rejection is the thread's
+  // to answer: it asks what was wrong, and a reason given with it is the
+  // answer, which starts a turn. A reason that can't be said, mid-turn or
+  // past the thread's caps, leaves the rejection standing, and says why.
   const decide = async (
     id: Ulid,
     kind: "approved" | "rejected",
     approver: Parameters<ChangeSets["decide"]>[2],
     hash: string,
+    reason: string | null = null,
   ) => {
     const decided = await changeSets.decide(id, kind, approver, hash);
     if (kind === "rejected") {
       tell(decided, false);
-      return { report: null, problem: null };
+      try {
+        turns.rejected(decided, approver.via === "review-link" ? approver.by : null, reason);
+        return { report: null, problem: null };
+      } catch (error) {
+        if (!(error instanceof ThreadBusy || error instanceof ThreadLimit)) throw error;
+        // A reviewer can't stop the agent or start a thread: whoever shared
+        // the link can.
+        const problem =
+          approver.via === "review-link"
+            ? "Rejected, but the thread can't take your reason now. Send it to whoever shared this link."
+            : error.message;
+        return { report: null, problem };
+      }
     }
     // The decision stands even if applying it is refused (another apply is
     // under way, say): the change set says where it stands, and why.
@@ -854,9 +878,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/change-sets/:id/reject"),
       async run([id = ""], request) {
         const set = await mustChangeSet(id);
-        const { hash } = await readJson(request, smallBody, hashBody);
-        await decide(set.id, "rejected", { via: "thread", by: "user" }, hash);
-        return changeSetReply(set.id);
+        const { hash, reason } = await readJson(request, messageBody, rejectBody);
+        const decided = await decide(
+          set.id,
+          "rejected",
+          { via: "thread", by: "user" },
+          hash,
+          reason ?? null,
+        );
+        return changeSetReply(set.id, decided);
       },
     },
     {
@@ -939,13 +969,14 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/review/decide"),
       async run(_, request) {
-        const body = await readJson(request, smallBody, reviewDecision);
+        const body = await readJson(request, messageBody, reviewDecision);
         // The decision checks that the token is live for this change set.
         const { problem } = await decide(
           body.changeSet,
           body.kind,
           { via: "review-link", token: body.token, by: body.name.trim() },
           body.hash,
+          body.reason ?? null,
         );
         const set = await mustChangeSet(body.changeSet);
         return json(200, {

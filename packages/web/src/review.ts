@@ -8,6 +8,8 @@ export type ReviewModel = {
   stage: "closed" | "opening" | "open" | "deciding" | "decided" | "dead";
   view: ReviewView | null;
   name: string;
+  // What's wrong with it, to go with rejecting it: the thread's next message.
+  reason: string;
   decided: ChangeSetView | null;
   // What the reviewer did, once decided; and, for a dismissal, what it said
   // may have landed.
@@ -26,6 +28,7 @@ export type ReviewStep = Extract<
 export type ReviewMsg =
   | { type: "openClicked" }
   | { type: "nameChanged"; name: string }
+  | { type: "reasonChanged"; reason: string }
   | { type: "decideClicked"; kind: "approved" | "rejected" }
   | { type: "dismissClicked" };
 
@@ -47,6 +50,7 @@ export function initReview(token: string): [ReviewModel, Effect[]] {
       stage: "closed",
       view: null,
       name: "",
+      reason: "",
       decided: null,
       outcome: null,
       warnings: [],
@@ -66,6 +70,8 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
       ];
     case "nameChanged":
       return [{ ...model, name: msg.name }, []];
+    case "reasonChanged":
+      return [{ ...model, reason: msg.reason }, []];
     case "decideClicked":
     case "dismissClicked": {
       const name = model.name.trim();
@@ -85,6 +91,7 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
         return [model, []];
       if (name === "") return [{ ...model, problem: "Type your name first." }, []];
       const changeSet = view.changeSet.id;
+      const reason = outcome === "rejected" ? model.reason.trim() : "";
       const request =
         outcome === "dismissed"
           ? post(
@@ -94,7 +101,14 @@ export function updateReview(model: ReviewModel, msg: ReviewMsg): [ReviewModel, 
             )
           : post(
               "/api/review/decide",
-              { token: model.token, changeSet, kind: outcome, name, hash: view.diff.hash },
+              {
+                token: model.token,
+                changeSet,
+                kind: outcome,
+                name,
+                hash: view.diff.hash,
+                ...(reason ? { reason } : {}),
+              },
               { kind: "reviewDecided" },
             );
       return [{ ...model, stage: "deciding", outcome, problem: null }, [request]];
