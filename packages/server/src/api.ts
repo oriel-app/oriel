@@ -37,6 +37,7 @@ import {
   type StreamEvent,
 } from "@oriel/web/view";
 import { resolveDropped } from "./dropped.ts";
+import { maxNameChars, nameOf } from "./names.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
@@ -90,7 +91,6 @@ const smallBody = 4 * 1024;
 const listBody = 64 * 1024;
 const messageBody = 32 * 1024;
 const maxMessageChars = 8_000;
-export const maxNameChars = 120;
 const maxItems = 500;
 
 const json = (status: number, value: unknown): Reply => ({
@@ -549,7 +549,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
             {
               id,
               workspaceId: deps.workspaceId,
-              name: cluster.label.slice(0, maxNameChars) || "Untitled",
+              name: nameOf(cluster.label) || "Untitled",
               origin: {
                 kind: "cluster",
                 grouping: body.grouping,
@@ -660,7 +660,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         const { name } = await readJson(request, smallBody, renameBody);
-        groups.rename(group.id, name.trim());
+        groups.rename(group.id, name.trim(), "user");
         return json(200, views.groupSummary(group.id));
       },
     },

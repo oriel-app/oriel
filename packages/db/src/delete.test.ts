@@ -257,3 +257,15 @@ test("a deleted thread doesn't follow its group", () => {
     [id(20)],
   );
 });
+
+test("a group made for a thread from nothing goes with it even after the user named it", () => {
+  const { groups, groupId, threads, threadId, workspaceId, count } = fresh({
+    origin: { kind: "thread" },
+    members: 0,
+  });
+  assert.equal(groups.rename(groupId, "Kiosk wallets"), true);
+  assert.equal(groups.get(groupId)?.namedBy, "user");
+  assert.equal(threads.delete(threadId, after(1000), () => false)?.groupRemoved, true);
+  assert.deepEqual(groups.list(workspaceId), []);
+  assert.equal(count("user_named_groups"), 0);
+});

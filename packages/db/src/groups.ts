@@ -51,6 +51,7 @@ const groupRow = object({
   origin: string,
   created_at: refine(string, isInstant, "expected an instant"),
   version: number,
+  user_named: number,
 });
 const changeRow = object({
   version: number,
@@ -92,9 +93,17 @@ export function groupStore(db: DatabaseSync) {
     "insert into groups (id, workspace_id, name, origin, created_at) values (?, ?, ?, ?, ?)",
   );
   const selectGroup = db.prepare(`
-    select g.id, g.workspace_id, g.name, g.origin, g.created_at, max(c.version) as version
+    select g.id, g.workspace_id, g.name, g.origin, g.created_at, max(c.version) as version,
+      exists (select 1 from user_named_groups u where u.group_id = g.id) as user_named
     from groups g join group_changes c on c.group_id = g.id
     where g.id = ? group by g.id`);
+  const nameByUser = db.prepare("update groups set name = ? where id = ?");
+  const markUserNamed = db.prepare(
+    "insert or ignore into user_named_groups (workspace_id, group_id) select workspace_id, id from groups where id = ?",
+  );
+  const nameByOriel = db.prepare(`
+    update groups set name = ? where id = ? and name != ?
+      and not exists (select 1 from user_named_groups where group_id = groups.id)`);
   const insertChange = db.prepare(
     "insert into group_changes (workspace_id, group_id, version, at, cause) values (?, ?, ?, ?, ?)",
   );
@@ -133,6 +142,7 @@ export function groupStore(db: DatabaseSync) {
       id: row.id,
       workspaceId: row.workspace_id,
       name: row.name,
+      namedBy: row.user_named ? "user" : "oriel",
       origin: parse(groupOrigin, JSON.parse(row.origin), "group origin"),
       version: row.version,
       createdAt: row.created_at,
@@ -193,11 +203,18 @@ export function groupStore(db: DatabaseSync) {
   return {
     get,
 
-    // A group's name is the user's label for it, not part of its membership,
-    // so renaming takes no version.
-    rename(groupId: Ulid, name: string): void {
-      const { changes } = db.prepare("update groups set name = ? where id = ?").run(name, groupId);
-      if (Number(changes) !== 1) throw new RangeError(`no group ${groupId}`);
+    // A group's name is a label for it, not part of its membership, so
+    // renaming takes no version. Once the user names a group, the name is
+    // theirs: Oriel renaming it then changes nothing. A rename is the user's
+    // unless it says otherwise. Says whether the name changed.
+    rename(groupId: Ulid, name: string, by: Group["namedBy"] = "user"): boolean {
+      if (by === "oriel") return Number(nameByOriel.run(name, groupId, name).changes) === 1;
+      return transaction(db, () => {
+        const before = mustGet(groupId).name;
+        nameByUser.run(name, groupId);
+        markUserNamed.run(groupId);
+        return before !== name;
+      });
     },
 
     // A workspace's groups, newest first.

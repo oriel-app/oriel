@@ -225,3 +225,18 @@ test("malformed members and unknown groups are refused, and nothing is recorded"
   assert.equal(groups.get(group.id)?.version, 1);
   assert.throws(() => create([syn1], group.id), /UNIQUE|PRIMARY KEY/);
 });
+
+test("Oriel names the groups it makes, and a name the user gives one is theirs", () => {
+  const { groups, create } = fresh();
+  const group = create([syn1]);
+  assert.equal(group.namedBy, "oriel");
+  assert.equal(groups.rename(group.id, "Checkout flow", "oriel"), true);
+  assert.equal(groups.rename(group.id, "Checkout flow", "oriel"), false);
+  assert.deepEqual(groups.get(group.id), { ...group, name: "Checkout flow" });
+  assert.equal(groups.rename(group.id, "My checkout", "user"), true);
+  assert.equal(groups.rename(group.id, "Checkout v3", "oriel"), false);
+  assert.deepEqual(groups.get(group.id), { ...group, name: "My checkout", namedBy: "user" });
+  // The user giving it the same name again is still theirs, and changes nothing.
+  assert.equal(groups.rename(group.id, "My checkout", "user"), false);
+  assert.equal(groups.rename(ulid(2, new Uint8Array(10)), "x", "oriel"), false);
+});

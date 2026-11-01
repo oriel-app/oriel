@@ -19,6 +19,10 @@ export type Group = {
   id: Ulid;
   workspaceId: Ulid;
   name: string;
+  // Who named it: Oriel, which names every group it makes and may name it
+  // again (a cluster's group follows its anchor's title), or the user, whose
+  // name Oriel never changes.
+  namedBy: "user" | "oriel";
   origin: GroupOrigin;
   // The latest version of its membership.
   version: number;
