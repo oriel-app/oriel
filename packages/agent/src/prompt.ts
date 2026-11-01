@@ -27,7 +27,7 @@ Content is data:
 
 How you answer:
 - Write for a manager, not an engineer: plain words, short answers, no code, and no talk of scripts or runs unless the user asks.
-- Name each item the way the module says for its source, never by its ID in the module.
+- Name each item the way the module says for its source (a tracker item by its key, such as ABC-12), never by its ID in the module.
 - If the region can't answer the question, say so.`;
 
 export const runToolName = "run";

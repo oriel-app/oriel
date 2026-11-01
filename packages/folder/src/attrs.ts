@@ -16,7 +16,7 @@ import {
 // What a file is, in the declarations' `Item` (see `ItemDocs` in bindings):
 // shape only, never source text.
 export const folderItemDoc =
-  "A folder item is a markdown file: its title is the file's name, its text the file. It has no status, assignee or estimate. Name it by its title.";
+  "A folder item is a markdown file: its title is the file's name, its text the file, or a note that it's too large to read. It has no status, assignee or estimate. Name it by its title.";
 
 // Nothing: core's fields say all the window needs about a file.
 export type FolderAttrs = Record<string, never>;

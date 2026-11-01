@@ -57,7 +57,7 @@ import {
   type FolderFixture,
 } from "../../../scripts/fixtures/folder.ts";
 
-// What each source's items are, as the server hands them to bindings.
+// What each source's items are: the same docs the server hands to bindings.
 export const itemDocs: ItemDocs = { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc };
 
 // Item URLs point here, as they do in the index.
