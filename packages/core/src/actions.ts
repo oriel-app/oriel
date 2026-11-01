@@ -11,6 +11,7 @@ import {
   type Described,
   type Infer,
   literal,
+  number,
   object,
   optional,
   refine,
@@ -56,7 +57,8 @@ export const maxReasonChars = 2_000;
 
 const workstreamId = refine(string, isUlid, "expected a workstream ID", { type: "WorkstreamId" });
 const threadId = refine(string, isUlid, "expected a thread ID", { type: "ThreadId" });
-const changeSetId = refine(string, isUlid, "expected a change set ID", { type: "ChangeSetId" });
+// An entry's place in its thread's chat.
+const seq = refine(number, (n) => Number.isInteger(n) && n > 0, "expected a chat entry's place");
 const itemId = refine(string, isItemId, "expected an item ID", { type: "ItemId" });
 const items = refine(
   array(itemId),
@@ -125,22 +127,23 @@ export const actions = {
       why: "Reopening a thread is its Undo, which comes with the story that shows what the agent did under its reply.",
     },
   },
-  // A review-link holder's reason for rejecting a change set waits in its
-  // thread, and reaches the agent only as the user sends it (OA-87).
-  "reason.send": {
-    doc: "Sends a reason a review link's holder gave for rejecting a change set, held in its thread, to the agent as the user's message: as it is, or as `text`, the user's edit of it.",
-    input: object({ changeSet: changeSetId, text: optional(messageText) }),
+  // A held message: words from anyone but the user, such as a review link's
+  // holder, which wait in the thread and reach the agent only as the user
+  // sends them (decision 0024). Whoever sent it, these settle it.
+  "held.send": {
+    doc: "Sends a message held in a thread, from anyone but the user, to the agent as the user's message: as it is, or as `text`, the user's edit of it. `seq` is its place in the thread's chat.",
+    input: object({ thread: threadId, seq, text: optional(messageText) }),
     class: {
       kind: "person-only",
-      why: "Whether the agent hears what a review link's holder said is the user's call, and sent on, the words are the user's.",
+      why: "Whether the agent hears words from outside the thread is the user's call, and sent on, the words are the user's.",
     },
   },
-  "reason.discard": {
-    doc: "Discards a reason a review link's holder gave for rejecting a change set, held in its thread, so the agent never sees it.",
-    input: object({ changeSet: changeSetId }),
+  "held.discard": {
+    doc: "Discards a message held in a thread, from anyone but the user, so the agent never sees it. `seq` is its place in the thread's chat.",
+    input: object({ thread: threadId, seq }),
     class: {
       kind: "person-only",
-      why: "Whether the agent hears what a review link's holder said is the user's call.",
+      why: "Whether the agent hears words from outside the thread is the user's call.",
     },
   },
 } as const satisfies Record<string, ActionDeclaration>;

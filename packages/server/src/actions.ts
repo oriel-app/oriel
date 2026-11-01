@@ -43,7 +43,7 @@ export class ActionError extends Error {
 
 // What a call changed, for the window's streams: a group, and whether its
 // members changed, which moves its working threads; or a thread, and
-// whether an entry already in its chat changed, as a held reason settles.
+// whether an entry already in its chat changed, as a held message settles.
 export type Changed = { group: Ulid; members: boolean } | { thread: Ulid; chat?: true };
 
 export type ActionDeps = {
@@ -56,9 +56,7 @@ export type ActionDeps = {
   clusters(grouping: GroupingId): Cluster[];
   // What a change set created, which joins its group before the index has it.
   created(changeSetId: Ulid): Promise<GroupMember[]>;
-  // A change set: the thread it belongs to and whether it undoes another.
-  changeSet(id: Ulid): Promise<{ workspaceId: Ulid; threadId: Ulid; revertOf: Ulid | null } | null>;
-  // What becomes of a review-link holder's reason, held in a thread.
+  // What becomes of a message held in a thread, whoever it is from.
   held: Pick<Turns, "sendHeld" | "discardHeld">;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
@@ -97,12 +95,12 @@ const mustGroup = (deps: ActionDeps, id: Ulid) => {
   return group;
 };
 
-// A change set of a thread this workspace has.
-const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
-  const set = await deps.changeSet(id);
-  if (!set || set.workspaceId !== deps.workspaceId || !deps.threads.get(set.threadId, deps.now()))
-    throw new ActionError("not-found", "no such change set");
-  return { id, threadId: set.threadId, revertOf: set.revertOf };
+// A thread this workspace has.
+const mustThread = (deps: ActionDeps, id: Ulid) => {
+  const thread = deps.threads.get(id, deps.now());
+  if (!thread || thread.workspaceId !== deps.workspaceId)
+    throw new ActionError("not-found", "no such thread");
+  return thread;
 };
 
 // Items as the index has them now. One it doesn't have is refused, unless
@@ -254,9 +252,7 @@ const handlers = {
   },
 
   "thread.done": async ({ thread: id, via }, actor, deps) => {
-    const thread = deps.threads.get(id, deps.now());
-    if (!thread || thread.workspaceId !== deps.workspaceId)
-      throw new ActionError("not-found", "no such thread");
+    const thread = mustThread(deps, id);
     deps.threads.markDone(thread.id, deps.now(), actor);
     return {
       output: {},
@@ -273,25 +269,34 @@ const handlers = {
     };
   },
 
-  "reason.send": async ({ changeSet, text }, _actor, deps) => {
-    const set = await mustChangeSet(deps, changeSet);
-    const { seq, held } = deps.held.sendHeld(set, text);
+  "held.send": async ({ thread: id, seq, text }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    const sent = deps.held.sendHeld(thread.id, seq, text);
+    // A review link's holder's message is why they rejected the change set.
+    const rejected = sent.from.kind === "review-link" ? { rejected: sent.from.changeSet } : {};
     return {
-      output: { seq },
+      output: { seq: sent.seq },
       undo: null,
-      changed: { thread: set.threadId, chat: true },
-      events: [{ name: "question.asked", threadId: set.threadId, rejected: set.id, held }],
+      changed: { thread: thread.id, chat: true },
+      events: [
+        {
+          name: "question.asked",
+          threadId: thread.id,
+          ...rejected,
+          held: { from: sent.from.kind, edited: sent.edited },
+        },
+      ],
     };
   },
 
-  "reason.discard": async ({ changeSet }, _actor, deps) => {
-    const set = await mustChangeSet(deps, changeSet);
-    deps.held.discardHeld(set.threadId, set.id);
+  "held.discard": async ({ thread: id, seq }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    const from = deps.held.discardHeld(thread.id, seq);
     return {
-      output: { thread: set.threadId },
+      output: {},
       undo: null,
-      changed: { thread: set.threadId, chat: true },
-      events: [{ name: "held-reason.discarded", threadId: set.threadId, changeSetId: set.id }],
+      changed: { thread: thread.id, chat: true },
+      events: [{ name: "held-message.discarded", threadId: thread.id, from: from.kind }],
     };
   },
 } satisfies { [N in ActionName]: Handler<N> };

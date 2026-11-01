@@ -1,5 +1,5 @@
-// A review-link holder's reason, held in a thread's chat until the person
-// sends it on or discards it (decision 0024).
+// A held message: words from anyone but the user, kept in a thread's chat
+// until the user sends them on or discards them (decision 0024).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type Ulid, ulid } from "@oriel/core";
@@ -29,34 +29,40 @@ function fresh() {
   return { threads, threadId };
 }
 
-test("a held reason waits on the person until it is settled, once", () => {
+// A review link's holder, as the sender of a held message.
+const fromLink = (by: string, changeSet: Ulid, askFirst = false) =>
+  ({ kind: "review-link", by, changeSet, askFirst }) as const;
+
+test("a held message waits on the user until it is settled, once, by its place in the chat", () => {
   const { threads, threadId } = fresh();
   const [first, second] = [id(10), id(11)];
   threads.append(threadId, { role: "user", text: "Rename SYN-1" }, id(20), t0);
   threads.append(
     threadId,
-    { role: "held", changeSet: first, by: "Ana", text: "Wrong title.", asked: true },
+    { role: "held", from: fromLink("Ana", first), text: "Wrong title." },
     id(21),
     t0,
   );
   threads.append(
     threadId,
-    { role: "held", changeSet: second, by: "Ben", text: "Too many.", asked: false },
+    { role: "held", from: fromLink("Ben", second, true), text: "Too many." },
     id(22),
     t0,
   );
   assert.deepEqual(
-    threads.held(threadId).map((h) => [h.changeSet, h.by, h.text, h.asked, h.outcome]),
+    threads.held(threadId).map((h) => [h.seq, h.from, h.text, h.outcome]),
     [
-      [first, "Ana", "Wrong title.", true, null],
-      [second, "Ben", "Too many.", false, null],
+      [2, fromLink("Ana", first), "Wrong title.", null],
+      [3, fromLink("Ben", second, true), "Too many.", null],
     ],
   );
-  assert.equal(threads.settle(threadId, first, "discarded"), true);
-  assert.equal(threads.settle(threadId, first, "sent"), false);
+  assert.equal(threads.settle(threadId, 2, "discarded"), true);
+  assert.equal(threads.settle(threadId, 2, "sent"), false);
+  // Only a held entry settles: the user's message at 1 isn't one.
+  assert.equal(threads.settle(threadId, 1, "sent"), false);
   assert.deepEqual(
-    threads.held(threadId).map((h) => h.changeSet),
-    [second],
+    threads.held(threadId).map((h) => h.seq),
+    [3],
   );
   // The chat keeps it where it was, with what became of it.
   const chat = threads.messages(threadId);
@@ -68,16 +74,16 @@ test("a held reason waits on the person until it is settled, once", () => {
       [3, null],
     ],
   );
-  assert.equal(threads.settle(threadId, second, "sent"), true);
+  assert.equal(threads.settle(threadId, 3, "sent"), true);
   assert.deepEqual(threads.held(threadId), []);
 });
 
-test("a held reason's name and text are capped, as a review link's holder types both", () => {
+test("a review link's holder's name and reason are capped, as they type both", () => {
   const { threads, threadId } = fresh();
   const held = (by: string, text: string) => () =>
     threads.append(
       threadId,
-      { role: "held", changeSet: id(10), by, text, asked: true },
+      { role: "held", from: fromLink(by, id(10)), text },
       id(20 + by.length + text.length),
       t0,
     );
@@ -86,6 +92,42 @@ test("a held reason's name and text are capped, as a review link's holder types 
   assert.deepEqual(threads.messages(threadId), []);
   held("A".repeat(120), "x".repeat(2_000))();
   assert.equal(threads.held(threadId).length, 1);
+});
+
+test("0011 moves what a review link's holder sent under who it is from, and whether Oriel asks first", () => {
+  const db = open(":memory:");
+  const migrations = loadMigrations();
+  migrate(
+    db,
+    migrations.filter((m) => m.version < 11),
+    t0,
+  );
+  ensureWorkspace(db, { id: id(0), name: "test" }, t0);
+  groupStore(db).create(
+    { id: id(1), workspaceId: id(0), name: "Checkout", origin: { kind: "picked" } },
+    [{ id: "jira:SYN-1", stableId: "10001" }],
+    t0,
+  );
+  threadStore(db).open({ id: id(2), workspaceId: id(0), groupId: id(1) }, t0);
+  const insert = db.prepare(
+    "insert into messages (id, workspace_id, thread_id, seq, role, content, at) values (?, ?, ?, ?, ?, ?, ?)",
+  );
+  const was = (changeSet: Ulid, asked: boolean, outcome: string | null) =>
+    JSON.stringify({ changeSet, by: "Ana", text: "Wrong title.", asked, outcome });
+  insert.run(id(20), id(0), id(2), 1, "user", '{"text":"hi"}', t0);
+  insert.run(id(21), id(0), id(2), 2, "held", was(id(10), true, "sent"), t0);
+  insert.run(id(22), id(0), id(2), 3, "held", was(id(11), false, null), t0);
+  migrate(db, migrations, t0);
+  const chat = threadStore(db).messages(id(2));
+  assert.deepEqual(
+    chat.map((m) => (m.role === "held" ? [m.from, m.text, m.outcome] : m.role)),
+    [
+      "user",
+      [fromLink("Ana", id(10)), "Wrong title.", "sent"],
+      // Not asked as it was held: Oriel asks first.
+      [fromLink("Ana", id(11), true), "Wrong title.", null],
+    ],
+  );
 });
 
 test("0010 keeps every chat entry as it was", () => {

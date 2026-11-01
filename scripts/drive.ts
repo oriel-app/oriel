@@ -177,7 +177,7 @@ async function threads(only?: string): Promise<void> {
 }
 
 // Only a person approves a change set (decision 0003), and only a person
-// sends a review-link holder's held reason to the agent, or discards it
+// sends a message held for the user to the agent, or discards it
 // (decision 0024). The driver never presses a control that does either, or
 // submits a form that has one, and never acts on a review link's page,
 // whatever the server: the maintainer does that, in the same window.
@@ -194,8 +194,7 @@ function refused(names: readonly string[]): boolean {
   if (write !== undefined) return refuse(`"${write}" can approve, apply or revert a change set.`);
   const settle = trimmed.find((name) => held.test(name));
   return (
-    settle !== undefined &&
-    refuse(`"${settle}" sends or discards a reason held from a review link.`)
+    settle !== undefined && refuse(`"${settle}" sends or discards a message held for the user.`)
   );
 }
 const onReviewPage = (path: string): boolean =>

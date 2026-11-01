@@ -3,7 +3,7 @@
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
-import type { Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
+import type { HeldSender, Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
 import type { Titler } from "@oriel/agent";
 import {
   type Agent,
@@ -18,7 +18,7 @@ export type ThreadEvent =
   | { type: "status"; running: boolean }
   | { type: "change-set"; changeSetId: Ulid; applying: boolean }
   | { type: "group" }
-  // An entry already in the thread's chat changed, as a held reason settles.
+  // An entry already in the thread's chat changed, as a held message settles.
   | { type: "chat" }
   | { type: "deleted" };
 
@@ -53,18 +53,18 @@ function endedOnLimit(messages: readonly Message[]): boolean {
   });
 }
 
-// A held reason the person was to send or discard is gone: they already
-// did one or the other, or there never was one.
+// A held message the user was to send or discard is gone: they already did
+// one or the other, or there never was one.
 export class NothingHeld extends Error {
   constructor() {
-    super("That reason was already sent or discarded.");
+    super("That message was already sent or discarded.");
     this.name = "NothingHeld";
   }
 }
 
 // Characters that show as nothing but that a model reads (Unicode's default
 // ignorables: variation selectors, tag characters, bidi controls, fillers
-// and the like). A held reason loses them, so what the person reads is all
+// and the like). A held message loses them, so what the user reads is all
 // they send. Only where emoji and joining scripts need them do variation
 // selectors 15 and 16 and the joiners stay. A subdivision flag, made with
 // tag characters, is held as a plain black flag.
@@ -362,6 +362,19 @@ export function turns(deps: TurnDeps) {
     !running.has(set.threadId) &&
     capReached(threads.messages(set.threadId), deps.caps) === null;
 
+  // Words from anyone but the user, held in the thread for them, whatever
+  // the turn or the caps: the one way such words reach the agent, once the
+  // user sends them (decision 0024). What shows as nothing is dropped, and
+  // words that are nothing else hold nothing.
+  const hold = (threadId: Ulid, from: HeldSender, words: string): void => {
+    const text = words.replace(hidden, "");
+    if (text.trim() === "") return;
+    const held = { role: "held" as const, from, text };
+    published(threadId, threads.append(threadId, held, deps.newId(), deps.now()));
+    // It waits on the user now: every list hears.
+    publish(threadId, { type: "status", running: running.has(threadId) });
+  };
+
   // Oriel's line asking what was wrong, with no model call. It ends as a
   // turn does, so a line after it starts its own paragraph.
   const ask = (threadId: Ulid, yours: boolean) => {
@@ -460,37 +473,45 @@ export function turns(deps: TurnDeps) {
         say(threadId, reason, { rejected: set.id });
         return;
       }
-      const text = reason.replace(hidden, "");
-      if (text.trim() === "") return;
-      const held = { role: "held" as const, changeSet: set.id, by, text, asked };
-      published(threadId, threads.append(threadId, held, deps.newId(), deps.now()));
-      // It waits on the person now: every list hears.
-      publish(threadId, { type: "status", running: running.has(threadId) });
+      const from = {
+        kind: "review-link",
+        by,
+        changeSet: set.id,
+        askFirst: !asked && set.revertOf === null,
+      } as const;
+      hold(threadId, from, reason);
     },
 
-    // The person sends a reason held from a review link to the agent, as it
-    // was or as they edited it. It goes as their message, as a typed one
-    // does, so the turn and the words are theirs. One held while Oriel
-    // couldn't ask what was wrong, mid-turn, is asked first, so the agent
-    // reads the reason as the answer about a rejected change set. Refused
-    // mid-turn or past the caps, it stays held. Counting it and telling the
-    // thread's pages are the dispatcher's (decision 0024).
-    sendHeld(set: Rejected, text?: string): { seq: number; held: "sent" | "edited" } {
-      const { threadId } = set;
-      const held = threads.held(threadId).find((h) => h.changeSet === set.id);
+    // The user sends the message held at `seq` to the agent, as it was or as
+    // they edited it, whoever it is from. It goes as their message, as a
+    // typed one does, so the turn and the words are theirs. Refused mid-turn
+    // or past the caps, it stays held. Counting it and telling the thread's
+    // pages are the dispatcher's (decision 0024).
+    sendHeld(
+      threadId: Ulid,
+      at: number,
+      text?: string,
+    ): { seq: number; from: HeldSender; edited: boolean } {
+      const held = threads.held(threadId).find((h) => h.seq === at);
       if (!held) throw new NothingHeld();
       if (running.has(threadId)) throw new ThreadBusy();
-      if (!held.asked && asks(set)) ask(threadId, false);
+      // A review link's holder answers what was wrong with the change set
+      // they rejected: held while Oriel couldn't ask, mid-turn, it asks
+      // first, so the agent reads the reason as that answer.
+      const capped = capReached(threads.messages(threadId), deps.caps) !== null;
+      if (held.from.kind === "review-link" && held.from.askFirst && !capped) ask(threadId, false);
       const sent = text ?? held.text;
       const { seq } = start(threadId, sent);
-      threads.settle(threadId, set.id, "sent");
-      return { seq, held: sent === held.text ? "sent" : "edited" };
+      threads.settle(threadId, at, "sent");
+      return { seq, from: held.from, edited: sent !== held.text };
     },
 
-    // The person discards a reason held from a review link: it never reaches
-    // the agent.
-    discardHeld(threadId: Ulid, changeSet: Ulid): void {
-      if (!threads.settle(threadId, changeSet, "discarded")) throw new NothingHeld();
+    // The user discards the message held at `seq`: it never reaches the
+    // agent.
+    discardHeld(threadId: Ulid, seq: number): HeldSender {
+      const held = threads.held(threadId).find((h) => h.seq === seq);
+      if (!held || !threads.settle(threadId, seq, "discarded")) throw new NothingHeld();
+      return held.from;
     },
 
     // The index changed, as a sync changes it, and with it maybe a group's

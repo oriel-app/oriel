@@ -333,8 +333,11 @@ export function views(deps: ViewDeps) {
     const at = { seq: message.seq, at: message.at };
     if (message.role === "user") return { ...at, kind: "user", text: message.text };
     if (message.role === "held") {
-      const { changeSet, by, text, outcome } = message;
-      return { ...at, kind: "held", changeSetId: changeSet, by, text, outcome };
+      const { from, text, outcome } = message;
+      // Who it is from, as the user reads it: what each sender says of
+      // itself, less Oriel's own bookkeeping.
+      const sender = { kind: from.kind, by: from.by, changeSetId: from.changeSet };
+      return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "marker") {
       const changes = changeView(groupId, message.from, message.to);

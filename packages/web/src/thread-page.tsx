@@ -33,6 +33,7 @@ import {
 import {
   type ChangeSetView,
   type DiffView,
+  type HeldFrom,
   type ItemRef,
   type ItemValue,
   type MemberView,
@@ -273,7 +274,7 @@ function ChatBlock(props: {
     case "held":
       return (
         <li class="held-block" data-outcome={block.outcome ?? "held"}>
-          <HeldReason block={block} model={props.model} view={props.view} send={props.send} />
+          <HeldMessage block={block} model={props.model} view={props.view} send={props.send} />
         </li>
       );
     // A limit is a per-thread cap that ended the turn; a run's own cap stays
@@ -299,26 +300,41 @@ function ChatBlock(props: {
 const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
-// A review-link holder's reason for rejecting a change set. Whoever holds a
-// link may be anyone, so the agent never sees it until the person sends it,
-// as it is or edited, as their own message; or they discard it.
-function HeldReason(props: {
+// Who a held message is from, each kind of sender in its own words, and
+// whose words the edit box holds. A review link may be held by anyone.
+function heldFrom(from: HeldFrom) {
+  switch (from.kind) {
+    case "review-link":
+      return {
+        line: (
+          <>
+            <strong>{from.by}</strong> rejected this on the review link:
+          </>
+        ),
+        whose: `${from.by}'s reason`,
+      };
+  }
+}
+
+// A message from anyone but the user. The agent never sees it until the
+// user sends it, as it is or edited, as their own message; or they discard
+// it (decision 0024).
+function HeldMessage(props: {
   block: Extract<Block, { kind: "held" }>;
   model: ThreadModel;
   view: ThreadView;
   send: (msg: ThreadMsg) => void;
 }) {
   const { block, model, view, send } = props;
-  const { changeSetId } = block;
+  const { seq } = block;
+  const from = heldFrom(block.from);
   // Settled, here or elsewhere, it is shown as it was held.
-  const editing = block.outcome === null ? model.editing[changeSetId] : undefined;
-  const busy = model.busy.includes(changeSetId);
+  const editing = block.outcome === null ? model.editing[seq] : undefined;
+  const busy = model.settling.includes(seq);
   const sendable = !busy && !view.running && editing?.trim() !== "";
   return (
-    <section class="held-reason" aria-busy={busy}>
-      <p class="held-by">
-        <strong>{block.by}</strong> rejected this on the review link:
-      </p>
+    <section class="held-message" aria-busy={busy}>
+      <p class="held-by">{from.line}</p>
       {editing === undefined ? (
         <blockquote class="held-text">{block.text}</blockquote>
       ) : (
@@ -327,11 +343,9 @@ function HeldReason(props: {
           value={editing}
           rows={3}
           maxLength={8000}
-          aria-label={`Edit ${block.by}'s reason`}
+          aria-label={`Edit ${from.whose}`}
           disabled={busy}
-          onInput={(event) =>
-            send({ type: "heldEdited", changeSetId, text: event.currentTarget.value })
-          }
+          onInput={(event) => send({ type: "heldEdited", seq, text: event.currentTarget.value })}
         />
       )}
       {block.outcome === null ? (
@@ -341,7 +355,7 @@ function HeldReason(props: {
             type="button"
             class="button primary"
             disabled={!sendable}
-            onClick={() => send({ type: "heldSendClicked", changeSetId })}
+            onClick={() => send({ type: "heldSendClicked", seq })}
           >
             Send to agent
           </button>
@@ -350,7 +364,7 @@ function HeldReason(props: {
               type="button"
               class="button"
               disabled={busy}
-              onClick={() => send({ type: "heldEditClicked", changeSetId })}
+              onClick={() => send({ type: "heldEditClicked", seq })}
             >
               Edit
             </button>
@@ -359,7 +373,7 @@ function HeldReason(props: {
               type="button"
               class="button"
               disabled={busy}
-              onClick={() => send({ type: "heldEditCancelled", changeSetId })}
+              onClick={() => send({ type: "heldEditCancelled", seq })}
             >
               Cancel
             </button>
@@ -368,7 +382,7 @@ function HeldReason(props: {
             type="button"
             class="quiet-action"
             disabled={busy}
-            onClick={() => send({ type: "heldDiscardClicked", changeSetId })}
+            onClick={() => send({ type: "heldDiscardClicked", seq })}
           >
             Discard
           </button>

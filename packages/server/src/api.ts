@@ -267,8 +267,12 @@ type Route = {
 const ulidPart = "([0-9A-HJKMNP-TV-Z]{26})";
 // An item ID, as one path segment (`jira%3ASYN-12`).
 const itemPart = "([^/]{1,512})";
+// A chat entry's place in its thread.
+const seqPart = "([1-9][0-9]{0,8})";
 const at = (path: string) =>
-  new RegExp(`^/api${path.replaceAll(":id", ulidPart).replaceAll(":item", itemPart)}$`);
+  new RegExp(
+    `^/api${path.replaceAll(":id", ulidPart).replaceAll(":item", itemPart).replaceAll(":seq", seqPart)}$`,
+  );
 
 export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Reply | null> {
   const { groups, threads, changeSets, turns, views } = deps;
@@ -857,23 +861,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // A review-link holder's reason for rejecting the change set, held in
-      // its thread: the person sends it to the agent, as it is or edited.
+      // A message held in the thread, from anyone but the user: they send it
+      // to the agent, as it is or edited, or discard it.
       method: "POST",
-      path: at("/change-sets/:id/held-reason/send"),
-      async run([id = ""], request) {
+      path: at("/threads/:id/held/:seq/send"),
+      async run([id = "", place = ""], request) {
         const { text } = await readJson(request, messageBody, object({ text: unknown }));
-        const { seq } = await deps.dispatch("reason.send", { changeSet: id, text }, user);
+        const input = { thread: id, seq: Number(place), text };
+        const { seq } = await deps.dispatch("held.send", input, user);
         return json(202, { seq });
       },
     },
     {
       method: "POST",
-      path: at("/change-sets/:id/held-reason/discard"),
-      async run([id = ""], request) {
+      path: at("/threads/:id/held/:seq/discard"),
+      async run([id = "", place = ""], request) {
         await readJson(request, smallBody, emptyBody);
-        const { thread } = await deps.dispatch("reason.discard", { changeSet: id }, user);
-        return json(200, await threadView(thread));
+        await deps.dispatch("held.discard", { thread: id, seq: Number(place) }, user);
+        return json(200, await threadView(id as Ulid));
       },
     },
     {

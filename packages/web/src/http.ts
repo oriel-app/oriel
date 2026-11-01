@@ -25,7 +25,7 @@ export type Tag =
   | { kind: "threadAction"; threadId: string }
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
-  | { kind: "held"; threadId: string; changeSetId: string }
+  | { kind: "held"; threadId: string; seq: number }
   | { kind: "reviewLink"; changeSetId: string }
   | { kind: "threads" }
   | { kind: "markedDone"; threadId: string }

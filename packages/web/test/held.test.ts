@@ -1,6 +1,6 @@
-// A review-link holder's reason, held in the thread: the person sends it to
-// the agent as it is, edits it first, or discards it, and until then the
-// thread waits on them, in Needs you.
+// A held message, from anyone but the user, here a review link's holder: the
+// user sends it to the agent as it is, edits it first, or discards it, and
+// until then the thread waits on them, in Needs you.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
@@ -27,6 +27,8 @@ const id = "01JBZ0000000000000000000T1";
 const groupId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-11-01T09:00:00.000Z";
+// Where the held message is in the chat.
+const seq = 3;
 
 const rejectedSet: ChangeSetView = {
   id: setId,
@@ -42,11 +44,10 @@ const rejectedSet: ChangeSetView = {
 };
 
 const held = (outcome: "sent" | "discarded" | null): ChatEntry => ({
-  seq: 3,
+  seq,
   at,
   kind: "held",
-  changeSetId: setId,
-  by: "Ana",
+  from: { kind: "review-link", by: "Ana", changeSetId: setId },
   text: "One story too many.",
   outcome,
 });
@@ -92,11 +93,11 @@ function onPage(view = viewWith(held(null))): Model {
 const send = (model: Model, msg: ThreadMsg): [Model, Effect[]] =>
   update(model, { type: "thread", msg });
 const thread = (model: Model) => model.thread as ThreadModel;
-const tag = { kind: "held", threadId: id, changeSetId: setId } as const;
+const tag = { kind: "held", threadId: id, seq } as const;
 const posted = (action: "send" | "discard", body: unknown): Effect => ({
   type: "http",
   method: "POST",
-  url: `/api/change-sets/${setId}/held-reason/${action}`,
+  url: `/api/threads/${id}/held/${seq}/${action}`,
   body,
   tag,
 });
@@ -107,20 +108,19 @@ const reload: Effect = {
   tag: { kind: "thread", id },
 };
 
-test("a held reason is a block of its own, under the reviewer's name", () => {
+test("a held message is a block of its own, under who it is from", () => {
   const [, block] = blocks(viewWith(held(null)).entries);
   assert.deepEqual(block, {
-    seq: 3,
+    seq,
     at,
     kind: "held",
-    changeSetId: setId,
-    by: "Ana",
+    from: { kind: "review-link", by: "Ana", changeSetId: setId },
     text: "One story too many.",
     outcome: null,
   });
 });
 
-test("while a reason is held the thread waits on the person, in Needs you; once settled, it doesn't", () => {
+test("while a message is held the thread waits on the user, in Needs you; once settled, it doesn't", () => {
   const working = { state: "working" as const, running: false, changeSets: [rejectedSet] };
   assert.equal(holding(viewWith(held(null)).entries), true);
   assert.equal(holding(viewWith(held("sent")).entries), false);
@@ -138,74 +138,70 @@ test("while a reason is held the thread waits on the person, in Needs you; once 
   assert.equal(nav(model).needsYou, 1);
 });
 
-test("Send posts the reason as it is, and the reply reloads the thread", () => {
-  const [sending, effects] = send(onPage(), { type: "heldSendClicked", changeSetId: setId });
+test("Send posts the message as it is, and the reply reloads the thread", () => {
+  const [sending, effects] = send(onPage(), { type: "heldSendClicked", seq });
   assert.deepEqual(effects, [posted("send", {})]);
-  assert.deepEqual(thread(sending).busy, [setId]);
+  assert.deepEqual(thread(sending).settling, [seq]);
   // A second click while it's on its way does nothing.
-  assert.deepEqual(send(sending, { type: "heldSendClicked", changeSetId: setId })[1], []);
+  assert.deepEqual(send(sending, { type: "heldSendClicked", seq })[1], []);
   const [done, after] = update(sending, replied(tag, { seq: 4 }));
-  assert.deepEqual(thread(done).busy, []);
+  assert.deepEqual(thread(done).settling, []);
   assert.deepEqual(after, [reload]);
 });
 
-test("Edit starts from the reason, and Send posts what the person made of it", () => {
-  let [model] = send(onPage(), { type: "heldEditClicked", changeSetId: setId });
-  assert.equal(thread(model).editing[setId], "One story too many.");
+test("Edit starts from the message, and Send posts what the user made of it", () => {
+  let [model] = send(onPage(), { type: "heldEditClicked", seq });
+  assert.equal(thread(model).editing[seq], "One story too many.");
   [model] = send(model, {
     type: "heldEdited",
-    changeSetId: setId,
+    seq,
     text: "  Drop the third story. ",
   });
-  const [sent, effects] = send(model, { type: "heldSendClicked", changeSetId: setId });
+  const [sent, effects] = send(model, { type: "heldSendClicked", seq });
   assert.deepEqual(effects, [posted("send", { text: "Drop the third story." })]);
   const [done] = update(sent, replied(tag, { seq: 4 }));
   assert.deepEqual(thread(done).editing, {});
 });
 
-test("an edit emptied out sends nothing; Cancel goes back to the reason as it was", () => {
-  let [model] = send(onPage(), { type: "heldEditClicked", changeSetId: setId });
-  [model] = send(model, { type: "heldEdited", changeSetId: setId, text: "   " });
-  assert.deepEqual(send(model, { type: "heldSendClicked", changeSetId: setId })[1], []);
-  [model] = send(model, { type: "heldEditCancelled", changeSetId: setId });
+test("an edit emptied out sends nothing; Cancel goes back to the message as it was", () => {
+  let [model] = send(onPage(), { type: "heldEditClicked", seq });
+  [model] = send(model, { type: "heldEdited", seq, text: "   " });
+  assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], []);
+  [model] = send(model, { type: "heldEditCancelled", seq });
   assert.deepEqual(thread(model).editing, {});
-  assert.deepEqual(send(model, { type: "heldSendClicked", changeSetId: setId })[1], [
-    posted("send", {}),
-  ]);
+  assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], [posted("send", {})]);
 });
 
 test("Send waits for the agent to finish; Discard doesn't", () => {
   const model = onPage(viewWith(held(null), true));
-  assert.deepEqual(send(model, { type: "heldSendClicked", changeSetId: setId })[1], []);
-  assert.deepEqual(send(model, { type: "heldDiscardClicked", changeSetId: setId })[1], [
-    posted("discard", {}),
-  ]);
+  assert.deepEqual(send(model, { type: "heldSendClicked", seq })[1], []);
+  assert.deepEqual(send(model, { type: "heldDiscardClicked", seq })[1], [posted("discard", {})]);
 });
 
-test("a refusal says why, and a reason already settled offers nothing", () => {
-  const [sending] = send(onPage(), { type: "heldSendClicked", changeSetId: setId });
+test("a refusal says why, and a message already settled offers nothing", () => {
+  const [sending] = send(onPage(), { type: "heldSendClicked", seq });
   const [refused, effects] = update(
     sending,
-    replied(tag, { error: "That reason was already sent or discarded." }, false),
+    replied(tag, { error: "That message was already sent or discarded." }, false),
   );
-  assert.equal(thread(refused).notice, "That reason was already sent or discarded.");
+  assert.equal(thread(refused).notice, "That message was already sent or discarded.");
   assert.deepEqual(effects, [reload]);
   const settled = onPage(viewWith(held("discarded")));
   for (const type of ["heldSendClicked", "heldDiscardClicked", "heldEditClicked"] as const)
-    assert.deepEqual(send(settled, { type, changeSetId: setId }), [settled, []]);
+    assert.deepEqual(send(settled, { type, seq }), [settled, []]);
 });
 
-test("an edit of a reason another page sent is dropped when the thread reloads", () => {
-  const [editing] = send(onPage(), { type: "heldEditClicked", changeSetId: setId });
-  assert.ok(setId in thread(editing).editing);
+test("an edit of a message another page sent is dropped when the thread reloads", () => {
+  const [editing] = send(onPage(), { type: "heldEditClicked", seq });
+  assert.ok(seq in thread(editing).editing);
   const [reloaded] = update(editing, replied({ kind: "thread", id }, viewWith(held("sent"))));
   assert.deepEqual(thread(reloaded).editing, {});
   // Still held, the edit stays.
   const [kept] = update(editing, replied({ kind: "thread", id }, viewWith(held(null))));
-  assert.ok(setId in thread(kept).editing);
+  assert.ok(seq in thread(kept).editing);
 });
 
-test("a held reason settled on another page reloads this one, and only the thread", () => {
+test("a held message settled on another page reloads this one, and only the thread", () => {
   const model = onPage();
   assert.deepEqual(streamed(thread(model), { type: "chat" })[1], [reload]);
   // The workspace's own event, right after, loads the lists; this one doesn't.
