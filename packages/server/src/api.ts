@@ -3,19 +3,21 @@
 // server's own Origin. On top of that, a POST must send JSON, within its
 // route's size cap. GETs read; nothing a GET does opens, decides or writes.
 import {
+  type Actor,
   array,
   type ChangeSet,
   type ChangeSets,
-  type Cluster,
   type Conflict,
-  type GroupMember,
   type IndexRecord,
   type Instant,
-  isItemId,
   type ItemId,
+  isActionName,
+  isItemId,
   isUlid,
   type Log,
   literal,
+  maxItems,
+  maxNameChars,
   number,
   object,
   optional,
@@ -25,6 +27,7 @@ import {
   type TelemetryEvent,
   type Ulid,
   union,
+  unknown,
   type Validator,
 } from "@oriel/core";
 import type { GroupStore, Message, ThreadStore } from "@oriel/db";
@@ -33,18 +36,17 @@ import {
   type DeletedView,
   type DeletionView,
   type FolderView,
-  type GroupingId,
   isGroupingId,
   type JiraView,
   type StreamEvent,
 } from "@oriel/web/view";
+import { ActionError, type Dispatch } from "./actions.ts";
 import { resolveDropped } from "./dropped.ts";
-import { maxNameChars, nameOf } from "./names.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
-import { changeSetView, memberOf, type Views } from "./views.ts";
+import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
@@ -52,8 +54,8 @@ export type ApiDeps = {
   threads: ThreadStore;
   // The index's live records, from every source.
   records(): readonly IndexRecord[];
-  // A grouping's clusters as the window shows them now.
-  clusters(grouping: GroupingId): Cluster[];
+  // Oriel's own actions, through the one dispatcher (decision 0024).
+  dispatch: Dispatch;
   changeSets: ChangeSets;
   turns: Turns;
   views: Views;
@@ -97,7 +99,6 @@ const smallBody = 4 * 1024;
 const listBody = 64 * 1024;
 const messageBody = 32 * 1024;
 const maxMessageChars = 8_000;
-const maxItems = 500;
 
 const json = (status: number, value: unknown): Reply => ({
   status,
@@ -135,26 +136,12 @@ const textValue = refine(
   (text) => text.trim() !== "" && text.length <= maxMessageChars,
   `expected a message of 1 to ${maxMessageChars} characters`,
 );
-const itemList = refine(
-  array(itemIdValue),
-  (items) => items.length > 0 && items.length <= maxItems,
-  `expected 1 to ${maxItems} items`,
-);
-
-const newGroup = union(
-  object({
-    kind: literal("cluster"),
-    grouping: refine(string, isGroupingId, "expected epic, assignee or stuck"),
-    cluster: string,
-  }),
-  object({ kind: literal("picked"), name: nameValue, items: itemList }),
-);
-const itemsBody = object({ items: itemList });
 const maxDropped = 50;
 const droppedFile = object({
   name: refine(string, (name) => name.length <= 255, "expected at most 255 characters"),
   modified: number,
 });
+const itemsBody = object({ items: unknown });
 const droppedBody = object({
   links: refine(
     array(refine(string, (link) => link.length <= 2048, "expected at most 2048 characters")),
@@ -167,10 +154,6 @@ const droppedBody = object({
     `expected at most ${maxDropped}`,
   ),
 });
-const renameBody = object({ name: nameValue });
-// What a group made for a thread from nothing is called, until a change set
-// creates its epic and it takes that epic's name.
-export const blankGroupName = "New group";
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
 const hashBody = object({ hash: string });
@@ -253,6 +236,12 @@ async function readJson<T>(request: Request, limit: number, validator: Validator
   return result.value;
 }
 
+// An action's refusal as an HTTP status.
+const actionStatus = { invalid: 400, refused: 403, "not-found": 404 } as const;
+
+// The window's door is the user's.
+const user: Actor = { kind: "user" };
+
 // A change-set refusal (`ChangeSetError`, by its name and code) as an HTTP
 // status; null for any other error.
 function changeSetStatus(error: unknown): number | null {
@@ -319,37 +308,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!parsed) throw new Refused(400, "expected an item ID");
     return { id: text as ItemId, source: parsed.source };
   };
-
-  // Items as the index has them now; one it doesn't have is refused.
-  const indexed = (ids: readonly string[]): GroupMember[] => {
-    const byId = new Map(deps.records().map((r) => [r.id, r]));
-    return ids.map((id) => {
-      const record = byId.get(id as IndexRecord["id"]);
-      if (!record) throw new Refused(400, `${id} isn't in the window`);
-      return { id: record.id, stableId: record.stableId };
-    });
-  };
-
-  // Adds items as the user, with an event for each new one; their IDs.
-  const addMembers = (groupId: Ulid, members: GroupMember[]): string[] => {
-    if (members.length === 0) return [];
-    const now = deps.now();
-    const change = groups.add(groupId, members, { kind: "user" }, now);
-    for (const member of change?.added ?? [])
-      deps.emit({
-        name: "group.item-added",
-        at: now,
-        workspaceId: deps.workspaceId,
-        groupId,
-        source: parseItemId(member.id)?.source ?? "jira",
-        cause: "user",
-      });
-    if (change) follow(groupId);
-    return (change?.added ?? []).map((member) => member.id);
-  };
-
-  // After a group changed: its working threads follow it, with markers.
-  const follow = (groupId: Ulid) => turns.moved(threads.follow(groupId, deps.now(), deps.newId));
 
   // A change set as the window shows it, with what can be done with it, as
   // the change set engine says.
@@ -615,6 +573,18 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // Any of Oriel's own actions by its name, as an Undo sends back the
+      // call it was given. The reply is that call's own undo.
+      method: "POST",
+      path: /^\/api\/actions\/([a-z]+\.[a-z]+)$/,
+      async run([name = ""], request) {
+        if (!isActionName(name)) throw new Refused(404, "no such action");
+        const input = await readJson(request, listBody, unknown);
+        const { undo } = await deps.dispatch(name, input, user);
+        return json(200, { undo });
+      },
+    },
+    {
       method: "GET",
       path: at("/groups"),
       run: async () => json(200, { groups: views.groups(deps.workspaceId) }),
@@ -623,65 +593,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/groups"),
       async run(_, request) {
-        const body = await readJson(request, listBody, newGroup);
-        const now = deps.now();
-        const id = deps.newId();
-        if (body.kind === "cluster") {
-          const cluster = deps.clusters(body.grouping).find((c) => c.key === body.cluster);
-          if (!cluster) throw new Refused(404, "no such cluster in that grouping");
-          const ids =
-            cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds];
-          const byId = new Map(deps.records().map((r) => [r.id, r]));
-          const members = [...new Set(ids)].flatMap((item) => {
-            const record = byId.get(item);
-            return record ? [{ id: record.id, stableId: record.stableId }] : [];
-          });
-          const anchor = cluster.anchor === null ? null : byId.get(cluster.anchor);
-          groups.create(
-            {
-              id,
-              workspaceId: deps.workspaceId,
-              name: nameOf(cluster.label) || "Untitled",
-              origin: {
-                kind: "cluster",
-                grouping: body.grouping,
-                cluster: cluster.key,
-                anchor: anchor ? { id: anchor.id, stableId: anchor.stableId } : null,
-              },
-            },
-            members,
-            now,
-          );
-          deps.emit({
-            name: "group.created",
-            at: now,
-            workspaceId: deps.workspaceId,
-            groupId: id,
-            origin: "cluster",
-            size: members.length,
-          });
-        } else {
-          const members = indexed(body.items);
-          groups.create(
-            {
-              id,
-              workspaceId: deps.workspaceId,
-              name: body.name.trim(),
-              origin: { kind: "picked" },
-            },
-            members,
-            now,
-          );
-          deps.emit({
-            name: "group.created",
-            at: now,
-            workspaceId: deps.workspaceId,
-            groupId: id,
-            origin: "picked",
-            size: new Set(members.map((m) => `${m.id}`)).size,
-          });
-        }
-        return json(201, views.groupSummary(id));
+        const body = await readJson(request, listBody, unknown);
+        const { group } = await deps.dispatch("group.create", body, user);
+        return json(201, views.groupSummary(group));
       },
     },
     {
@@ -696,9 +610,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/groups/:id/add"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
-        addMembers(group.id, indexed((await readJson(request, listBody, itemsBody)).items));
-        return json(200, await views.group(group.id));
+        const { items } = await readJson(request, listBody, itemsBody);
+        const { undo } = await deps.dispatch("group.add", { group: id, items }, user);
+        return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
     {
@@ -719,41 +633,32 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         }
         if (resolved.ids.length > maxItems)
           throw new Refused(400, `expected at most ${maxItems} items`);
-        const added = addMembers(group.id, indexed(resolved.ids));
+        const { added, undo } = resolved.ids.length
+          ? await deps.dispatch("group.add", { group: group.id, items: resolved.ids }, user)
+          : { added: [], undo: null };
         const refused = resolved.refused.map(({ what, why, syncMightHelp }) => ({
           what,
           why: synced && syncMightHelp ? `${why} ${synced}` : why,
         }));
-        return json(200, { group: await views.group(group.id), added, refused });
+        return json(200, { group: await views.group(group.id), added, refused, undo });
       },
     },
     {
       method: "POST",
       path: at("/groups/:id/remove"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
         const { items } = await readJson(request, listBody, itemsBody);
-        // By identity: a moved item is removed under its current handle, and
-        // one the index no longer has under the handle the group shows.
-        const held = groups.region(group.id, group.version)?.items ?? [];
-        const records = deps.records();
-        const members = items.map((item) => {
-          const member = memberOf(item, held, records);
-          if (!member) throw new Refused(400, `${item} isn't in this group`);
-          return member;
-        });
-        if (groups.remove(group.id, members, { kind: "user" }, deps.now())) follow(group.id);
-        return json(200, await views.group(group.id));
+        const { undo } = await deps.dispatch("group.remove", { group: id, items }, user);
+        return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
     {
       method: "POST",
       path: at("/groups/:id/rename"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
-        const { name } = await readJson(request, smallBody, renameBody);
-        groups.rename(group.id, name.trim(), "user");
-        return json(200, views.groupSummary(group.id));
+        const { name } = await readJson(request, smallBody, object({ name: unknown }));
+        const { undo } = await deps.dispatch("group.rename", { group: id, name }, user);
+        return json(200, { ...views.groupSummary(id as Ulid), undo });
       },
     },
     {
@@ -779,26 +684,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads"),
       async run(_, request) {
         const { text } = await readJson(request, messageBody, messageBodyValue);
-        const now = deps.now();
-        const groupId = deps.newId();
-        const group = groups.create(
-          {
-            id: groupId,
-            workspaceId: deps.workspaceId,
-            name: blankGroupName,
-            origin: { kind: "thread" },
-          },
-          [],
-          now,
-        );
-        deps.emit({
-          name: "group.created",
-          at: now,
-          workspaceId: deps.workspaceId,
-          groupId,
-          origin: "thread",
-          size: 0,
-        });
+        const { group: groupId } = await deps.dispatch("group.create", { kind: "thread" }, user);
+        const group = mustGroup(groupId);
         return json(201, { id: openThread(group.id, group.version, text), groupId });
       },
     },
@@ -853,19 +740,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads/:id/done"),
       async run([id = ""], request) {
         // The body first: the thread may go while it's read.
-        const { via } = await readJson(request, smallBody, closeBody);
-        const thread = mustThread(id);
-        const now = deps.now();
-        threads.markDone(thread.id, now);
-        turns.touched(thread.id);
-        deps.emit({
-          name: "thread.marked-done",
-          at: now,
-          workspaceId: deps.workspaceId,
-          threadId: thread.id,
-          via: via ?? "page",
-        });
-        return json(200, await threadView(thread.id));
+        const { via } = await readJson(request, smallBody, object({ via: unknown }));
+        await deps.dispatch("thread.done", { thread: id, via }, user);
+        return json(200, await threadView(id as Ulid));
       },
     },
     {
@@ -1098,6 +975,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (error instanceof Refused) return problem(error.status, error.message);
       if (error instanceof ThreadBusy || error instanceof ThreadLimit)
         return problem(409, error.message);
+      if (error instanceof ActionError) return problem(actionStatus[error.code], error.message);
       const status = changeSetStatus(error);
       if (status !== null && error instanceof Error) return problem(status, error.message);
       deps.log("api: failed", { path: url.pathname, error: String(error) });

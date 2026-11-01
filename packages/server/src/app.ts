@@ -78,7 +78,8 @@ import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { api, blankGroupName, type JiraDetails } from "./api.ts";
+import { blankGroupName, dispatcher } from "./actions.ts";
+import { api, type JiraDetails } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
@@ -585,41 +586,52 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
   });
 
+  // Oriel's own actions, through one dispatcher (decision 0024). What a
+  // call changed reaches the window's streams: a group's working threads
+  // follow it, with markers; a thread's pages hear it changed.
+  const created = (set: ChangeSet) =>
+    set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
+  const dispatch = dispatcher({
+    workspaceId,
+    groups,
+    threads,
+    records,
+    clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now()),
+    created: async (id) => {
+      const set = await sets.get(id);
+      return set ? created(set) : [];
+    },
+    emit,
+    publish: (changed) => {
+      if ("thread" in changed) conversation.touched(changed.thread);
+      else if (changed.members) conversation.moved(threads.follow(changed.group, now(), newId));
+    },
+    now,
+    newId,
+  });
+
   // What a change set created joins its thread's group, so later turns can
   // work on it (decision 0018); the group's working threads follow. A group
   // made for a thread from nothing takes the name of the first epic created
-  // in it, unless the user has named it. A live index syncs, reading what
-  // the change set wrote by key, as Jira's search finds a write only a while
-  // after it: what landed shows at once, and what it deleted goes.
+  // in it, unless the user has named it. Both are actions the change set
+  // takes. A live index syncs, reading what the change set wrote by key, as
+  // Jira's search finds a write only a while after it: what landed shows at
+  // once, and what it deleted goes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
-      const created = set.mutations.flatMap((m) =>
-        m.target === null && m.applied ? [m.applied.item] : [],
-      );
+      const by = { kind: "change-set", changeSetId: set.id } as const;
       const group = groups.get(thread.groupId);
       const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
       const summary = (epic?.args as { summary?: unknown } | undefined)?.summary;
+      const name = typeof summary === "string" ? nameOf(summary) : "";
       const blank =
         group?.origin.kind === "thread" &&
         group.name === blankGroupName &&
         groups.region(group.id, group.version)?.items.length === 0;
-      if (blank && typeof summary === "string")
-        groups.rename(thread.groupId, nameOf(summary), "oriel");
-      const at = now();
-      const change = created.length
-        ? groups.add(thread.groupId, created, { kind: "change-set", changeSetId: set.id }, at)
-        : null;
-      for (const member of change?.added ?? [])
-        emit({
-          name: "group.item-added",
-          at,
-          workspaceId,
-          groupId: thread.groupId,
-          source: parseItemId(member.id)?.source ?? "jira",
-          cause: "change-set",
-        });
-      if (change) conversation.moved(threads.follow(thread.groupId, at, newId));
+      if (blank && name !== "") await dispatch("group.rename", { group: thread.groupId, name }, by);
+      const items = created(set).map((member) => member.id);
+      if (items.length) await dispatch("group.add", { group: thread.groupId, items }, by);
     }
     if (mode.kind === "fixture") return;
     for (const { applied: write } of set.mutations)
@@ -715,7 +727,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       groups,
       threads,
       records,
-      clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now()),
+      dispatch,
       changeSets: sets,
       turns: conversation,
       views: viewer,

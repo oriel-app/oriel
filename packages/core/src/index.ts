@@ -1,3 +1,4 @@
+export * from "./actions.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
 export * from "./group.ts";
@@ -7,6 +8,7 @@ export * from "./namespace.ts";
 export * from "./ops.ts";
 export * from "./panel.ts";
 export * from "./run.ts";
+export * from "./shape.ts";
 export * from "./sandbox.ts";
 export * from "./source.ts";
 export * from "./telemetry.ts";

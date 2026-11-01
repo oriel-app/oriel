@@ -2,6 +2,7 @@
 // A group is a set of items from any source. Its membership is a versioned
 // log: each change takes the next version, and a region is one version. Every
 // thread on a group shares its log, so nothing is copied per thread.
+import type { Actor } from "./actions.ts";
 import type { Instant, ItemId, Ulid } from "./ids.ts";
 
 // Where a group came from: a copy of a cluster's members at that moment (it
@@ -34,15 +35,16 @@ export type Group = {
 // it was added.
 export type GroupMember = { id: ItemId; stableId: string };
 
-// One version's change to a group's membership: what the user did, or the
-// item a change set applied in one of its threads created.
+// One version's change to a group's membership, and who made it: the user,
+// the agent or an outside tool, or a change set applied in one of its
+// threads, which adds what it created.
 export type GroupChange = {
   groupId: Ulid;
   version: number;
   at: Instant;
   added: GroupMember[];
   removed: GroupMember[];
-  cause: { kind: "user" } | { kind: "change-set"; changeSetId: Ulid };
+  cause: Actor;
 };
 
 // One version of a group's membership: what a thread works in, what a run

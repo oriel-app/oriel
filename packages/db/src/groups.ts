@@ -41,6 +41,9 @@ const groupOrigin: Validator<GroupOrigin> = union(
 );
 const cause: Validator<GroupChange["cause"]> = union(
   object({ kind: literal("user") }),
+  object({ kind: literal("agent"), threadId: ulidValue }),
+  object({ kind: literal("tool"), name: string }),
+  object({ kind: literal("review-link"), by: string }),
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
 );
 
@@ -225,17 +228,20 @@ export function groupStore(db: DatabaseSync) {
       });
     },
 
-    // A new group at version 1, holding `members`.
+    // A new group at version 1, holding `members`; its first version
+    // records who made it, the user unless it says otherwise.
     create(
       group: { id: Ulid; workspaceId: Ulid; name: string; origin: GroupOrigin },
       members: readonly GroupMember[],
       now: Instant,
+      why: GroupChange["cause"] = { kind: "user" },
     ): Group {
       const origin = parse(groupOrigin, group.origin, "group origin");
+      const checked = parse(cause, why, "cause");
       const added = distinct(members);
       transaction(db, () => {
         insertGroup.run(group.id, group.workspaceId, group.name, JSON.stringify(origin), now);
-        insertChange.run(group.workspaceId, group.id, 1, now, JSON.stringify({ kind: "user" }));
+        insertChange.run(group.workspaceId, group.id, 1, now, JSON.stringify(checked));
         for (const m of added)
           insertMember.run(group.workspaceId, group.id, m.source, m.stableId, m.id, 1);
       });

@@ -1,9 +1,10 @@
 // Threads, their chat and their states (SPEC §1.3, decision 0018). A
-// thread's state is derived from what happened in it, never stored; only the
-// user marking it done has no other record, so that time is kept. `now` is
-// passed in.
+// thread's state is derived from what happened in it, never stored; only
+// marking it done has no other record, so that time is kept, and who did it.
+// `now` is passed in.
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type Actor,
   type Instant,
   isInstant,
   isUlid,
@@ -96,6 +97,10 @@ export function threadStore(db: DatabaseSync) {
     select id, workspace_id, group_id, region_version, marked_done_at, created_at
     from threads where id = ? and ${live}`);
   const mark = db.prepare(`update threads set marked_done_at = ? where id = ? and ${live}`);
+  const markedBy = db.prepare(`
+    insert into done_marks (workspace_id, thread_id, marked_by)
+    select workspace_id, id, ?2 from threads where id = ?1
+    on conflict (thread_id) do update set marked_by = excluded.marked_by`);
   const selectTitle = db.prepare("select title from thread_titles where thread_id = ?");
   const nameIt = db.prepare(`
     insert into thread_titles (thread_id, workspace_id, title, titled_at)
@@ -190,6 +195,7 @@ export function threadStore(db: DatabaseSync) {
     "delete from runs where thread_id = ?",
     "delete from messages where thread_id = ?",
     "delete from thread_titles where thread_id = ?",
+    "delete from done_marks where thread_id = ?",
     "delete from threads where id = ?",
   ].map((sql) => db.prepare(sql));
   // A group made for a thread from nothing, once it holds no thread, kept or
@@ -366,9 +372,13 @@ export function threadStore(db: DatabaseSync) {
       if (Number(changes) !== 1) throw new RangeError(`no group ${thread.groupId}`);
     },
 
-    // The user marks the thread done, as one over read-only items needs to.
-    markDone(id: Ulid, now: Instant): void {
-      if (Number(mark.run(now, id).changes) !== 1) throw new RangeError(`no thread ${id}`);
+    // Marks the thread done, as one over read-only items needs, and records
+    // who did: the user unless it says otherwise.
+    markDone(id: Ulid, now: Instant, by: Actor = { kind: "user" }): void {
+      transaction(db, () => {
+        if (Number(mark.run(now, id).changes) !== 1) throw new RangeError(`no thread ${id}`);
+        markedBy.run(id, JSON.stringify(by));
+      });
     },
 
     // What deleting the thread would lose: what it wrote, which stays in

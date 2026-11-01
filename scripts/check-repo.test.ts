@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { allowlist, lockedPackages, problems } from "./check-repo.ts";
+import {
+  actionProblems,
+  allowlist,
+  exemptRoutes,
+  lockedPackages,
+  postRoutes,
+  problems,
+  unmovedRoutes,
+} from "./check-repo.ts";
 
 const lockfile = `lockfileVersion: '9.0'
 
@@ -325,4 +333,89 @@ test("CLAUDE.md must link to exactly AGENTS.md", () => {
   const found = problems({ ...clean, claudeLink: "AGENTS.md\n" });
   assert.equal(found.length, 1);
   assert.match(found[0] ?? "", /CLAUDE\.md must be a symlink/);
+});
+
+// A routes file declaring every exempt and unmoved route, as api.ts does,
+// plus `extra`.
+const routes = (extra: string) => ({
+  path: "packages/server/src/api.ts",
+  text: [...Object.keys(exemptRoutes), ...Object.keys(unmovedRoutes)]
+    .map((path) => `{ method: "POST", path: at("${path}"), async run() { work(); } },`)
+    .concat(extra)
+    .join("\n"),
+});
+
+test("a POST route that changes state without the dispatcher is reported", () => {
+  const moved = `{
+    method: "POST",
+    path: at("/groups/:id/remove"),
+    async run([id = ""], request) {
+      const { undo } = await deps.dispatch("group.remove", { group: id }, user);
+    },
+  },
+  { method: "GET", path: at("/groups/:id"), async run() { groups.remove(); } },
+  { method: "POST", path: /^\\/api\\/actions\\/([a-z.]+)$/, async run() { dispatch(name); } },`;
+  assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(moved)] }), []);
+  const sneaky = `{
+    method: "POST",
+    path: at("/groups/:id/rename"),
+    async run([id = ""]) { groups.rename(id, "x"); },
+  },`;
+  assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(sneaky)] }), [
+    "packages/server/src/api.ts: POST /groups/:id/rename changes state without calling the dispatcher (decision 0024)",
+  ]);
+  // Tests may post anything.
+  const test = { path: "packages/server/src/testing.ts", text: sneaky };
+  assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(""), test] }), []);
+});
+
+test("an exempt or unmoved route that no longer exists is reported, so the lists only shrink", () => {
+  const [first = "", ...rest] = Object.keys(unmovedRoutes);
+  const text = [...Object.keys(exemptRoutes), ...rest]
+    .map((path) => `{ method: "POST", path: at("${path}"), async run() {} },`)
+    .join("\n");
+  assert.deepEqual(
+    problems({ ...clean, sources: [{ path: "packages/server/src/api.ts", text }] }),
+    [`scripts/check-repo.ts: lists POST ${first}, which no route declares`],
+  );
+});
+
+test("postRoutes reads each POST route's path and whether it dispatches", () => {
+  assert.deepEqual(
+    postRoutes(`[
+      { method: "POST", path: at("/a"), run: () => deps.dispatch("x") },
+      { method: "GET", path: at("/b"), run: () => dispatch("y") },
+      { method: "POST", path: /^\\/api\\/c$/u, run: () => change() },
+    ]`),
+    [
+      { path: "/a", dispatches: true },
+      { path: "/^\\/api\\/c$/", dispatches: false },
+    ],
+  );
+});
+
+test("an action closed to a door, a person's, or one with no inverse must say why", () => {
+  const input = Object.assign(() => ({ ok: true as const, value: {} }), {
+    shape: { kind: "unknown" as const },
+  });
+  assert.deepEqual(
+    actionProblems({
+      "group.add": { doc: "Adds.", input, class: { kind: "direct", inverse: "group.remove" } },
+      "group.remove": {
+        doc: "Removes.",
+        input,
+        class: { kind: "direct", inverse: "group.add" },
+        closed: { agent: " ", tool: "outside tools wait on OA-75" },
+      },
+      "thread.delete": { doc: "Deletes.", input, class: { kind: "person-only", why: "" } },
+      "thread.done": { doc: "Done.", input, class: { kind: "direct", inverse: null, why: "" } },
+      "group.rename": { doc: "Names.", input, class: { kind: "direct", inverse: "group.unname" } },
+    }),
+    [
+      "packages/core/src/actions.ts: group.remove is closed to the agent without a reason (decision 0024)",
+      "packages/core/src/actions.ts: thread.delete is a person's without a reason (decision 0024)",
+      "packages/core/src/actions.ts: thread.done has no inverse and doesn't say why (decision 0024)",
+      "packages/core/src/actions.ts: group.rename's inverse group.unname isn't an action (decision 0024)",
+    ],
+  );
 });

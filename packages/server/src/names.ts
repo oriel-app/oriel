@@ -1,9 +1,7 @@
 // What Oriel names a group, and when it names one again. A name the user gave
 // a group is never changed (the group store's `rename` keeps it).
-import { type IndexRecord, parseItemId, type Ulid } from "@oriel/core";
+import { type IndexRecord, maxNameChars, parseItemId, type Ulid } from "@oriel/core";
 import type { GroupStore } from "@oriel/db";
-
-export const maxNameChars = 120;
 
 // A title as a group's name: trimmed, and cut to the longest name allowed.
 export const nameOf = (title: string): string => [...title.trim()].slice(0, maxNameChars).join("");

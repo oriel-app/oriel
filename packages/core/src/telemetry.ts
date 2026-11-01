@@ -1,3 +1,4 @@
+import type { Actor } from "./actions.ts";
 import type { GroupChange, GroupOrigin } from "./group.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { ZoomId } from "./zoom.ts";
@@ -13,13 +14,23 @@ import type { ZoomId } from "./zoom.ts";
 // swipe on one.
 export type CloseVia = "page" | "menu" | "swipe";
 
+// Events that can come from an Oriel action say who acted in `by`, which only
+// an actor other than the user fills in; or, by their `cause`, who changed a
+// group (decision 0024).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
   // `size` is how many items it started with.
-  | { name: "group.created"; groupId: Ulid; origin: GroupOrigin["kind"]; size: number }
-  // One per item, by the user or by a change set a thread on the group applied.
+  | {
+      name: "group.created";
+      groupId: Ulid;
+      origin: GroupOrigin["kind"];
+      size: number;
+      by?: Actor;
+    }
+  // One per item, by whoever added it, as the group's log has it: the user,
+  // say, or a change set a thread on the group applied.
   | {
       name: "group.item-added";
       groupId: Ulid;
@@ -29,9 +40,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
   | { name: "question.asked"; threadId: Ulid; rejected?: Ulid }
-  // The user marked the thread done, as one over read-only items needs: on
-  // its page, or from a menu or a swipe on a list of threads.
-  | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia }
+  // The thread was marked done, as one over read-only items needs: by the
+  // user, on its page, or from a menu or a swipe on a list of threads.
+  | { name: "thread.marked-done"; threadId: Ulid; via: CloseVia; by?: Actor }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
   // stay, out of sight. `groupRemoved`: its group, made for it, went too.
   | {
@@ -64,4 +75,6 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
+  // A call of an Oriel action that no event above counts.
+  | { name: "action.called"; action: string; by: Actor }
 );
