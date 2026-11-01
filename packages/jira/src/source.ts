@@ -115,19 +115,22 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // failed discovery isn't kept.
   let discovered: Promise<Map<string, string>> | null = null;
   let unestimating: ReadonlySet<string> | null = null;
+  // Only the latest discovery, of two running at once, is kept.
   const pointsFields = (fresh: boolean) => {
-    if (fresh || !discovered)
-      discovered = discoverPoints(transport, projects, log).then(
-        (found) => {
+    if (discovered && !fresh) return discovered;
+    const run: Promise<Map<string, string>> = discoverPoints(transport, projects, log).then(
+      (found) => {
+        if (discovered === run)
           unestimating = new Set(projects.filter((project) => !found.has(project)));
-          return found;
-        },
-        (error: unknown) => {
-          discovered = null;
-          throw error;
-        },
-      );
-    return discovered;
+        return found;
+      },
+      (error: unknown) => {
+        if (discovered === run) discovered = null;
+        throw error;
+      },
+    );
+    discovered = run;
+    return run;
   };
   const fieldList = (points: Map<string, string>) => [
     ...new Set([...indexFieldNames, ...points.values()]),
