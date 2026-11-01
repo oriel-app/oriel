@@ -1,10 +1,13 @@
 // Where the page is: the window (with a grouping, and maybe a group it is
 // adding items to), a group, a thread, a new thread not started yet, the
 // Done page (the threads no longer working, in two tabs, a page at a time),
-// or a review link.
+// or a review link. On any page but a review link's, `item` is the item open
+// in the panel beside it, by its ID.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
-export type Route =
+export type Route = Page & { item?: string };
+
+export type Page =
   | { page: "window"; grouping: GroupingId; addTo: string | null }
   | { page: "group"; id: string }
   | { page: "thread"; id: string }
@@ -19,7 +22,16 @@ const groupPath = new RegExp(`^/groups/(${ulid})$`);
 const threadPath = new RegExp(`^/threads/(${ulid})$`);
 const reviewPath = /^\/review\/([A-Za-z0-9_-]{1,64})$/;
 
+// An item ID's shape, loosely: the server checks each source's key.
+const itemShape = /^[a-z]+:[^\s/]{1,500}$/;
+
 export function parseRoute(pathname: string, search: string): Route {
+  const page = parsePage(pathname, search);
+  const item = new URLSearchParams(search).get("item");
+  return page.page !== "review" && item !== null && itemShape.test(item) ? { ...page, item } : page;
+}
+
+function parsePage(pathname: string, search: string): Page {
   const query = new URLSearchParams(search);
   const group = groupPath.exec(pathname)?.[1];
   if (group) return { page: "group", id: group };
@@ -46,6 +58,13 @@ export function parseRoute(pathname: string, search: string): Route {
 }
 
 export function routeUrl(route: Route): string {
+  const url = pageUrl(route);
+  if (route.item === undefined || route.page === "review") return url;
+  const item = new URLSearchParams({ item: route.item });
+  return `${url}${url.includes("?") ? "&" : "?"}${item}`;
+}
+
+function pageUrl(route: Page): string {
   switch (route.page) {
     case "window": {
       const query = new URLSearchParams({ grouping: route.grouping });

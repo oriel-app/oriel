@@ -13,6 +13,7 @@ import {
   nullable,
   number,
   object,
+  type PanelOf,
   parseItemId,
   type Presentation,
   type SourceDeclaration,
@@ -119,11 +120,44 @@ export const slackPresentation: Presentation = {
 export const slackItemDoc =
   "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic. Name it by who wrote it, where and when.";
 
+// A message as the panel beside the page shows it, from a live read: its
+// channel, then the message and each reply in its thread, with its author and
+// time, all inside the one item (decision 0021). Slack's text is plain here,
+// shown as written.
+export const slackPanel: PanelOf = (content) => {
+  const read = slackContent(content);
+  if (!read.ok) return null;
+  const message = read.value;
+  return [
+    {
+      kind: "facts",
+      facts: [
+        { name: "Channel", value: `#${message.channel.name}` },
+        { name: "Replies", value: String(message.replies.length) },
+      ],
+    },
+    {
+      kind: "messages",
+      heading: null,
+      messages: [
+        { author: message.author.name, at: message.postedAt, text: message.body },
+        ...message.replies.map((reply) => ({
+          author: reply.author.name,
+          at: reply.at,
+          text: reply.body,
+        })),
+      ],
+      empty: "No messages.",
+    },
+  ];
+};
+
 // Slack as it declares itself to the composition root: read-only for now, so
 // it has no namespace and no op specs.
 export const slackDeclaration = {
   ...slackPresentation,
   itemDoc: slackItemDoc,
+  panel: slackPanel,
 } satisfies SourceDeclaration;
 
 const titleChars = 120;

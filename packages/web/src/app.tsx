@@ -3,7 +3,8 @@ import { GroupPage } from "./group-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
 import { doneTab, groupThreads, nav } from "./nav.ts";
-import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
+import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx";
+import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
 import type { Program } from "./program.ts";
@@ -44,7 +45,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         if (!document.getElementById("sidebar") || matchMedia(narrow).matches) return;
         event.preventDefault();
         fold();
-      } else if (event.key === "Escape") closeDrawer();
+      } else if (event.key === "Escape") {
+        // The drawer closes first, over the panel; then the panel.
+        if (document.querySelector(".shell[data-drawer]")) closeDrawer();
+        else if (document.querySelector(".item-panel")) dispatch({ type: "panelClosed" });
+      }
     };
     addEventListener("keydown", pressed);
     return () => removeEventListener("keydown", pressed);
@@ -63,7 +68,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
   return (
-    <div class="shell" data-folded={folded || undefined} data-drawer={drawer || undefined}>
+    <div
+      class="shell"
+      data-folded={folded || undefined}
+      data-drawer={drawer || undefined}
+      data-panel={model.panel ? "" : undefined}
+    >
       <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
       <button
         type="button"
@@ -74,12 +84,23 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       />
       <div class="shell-main">
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
-        <Page model={model} dispatch={dispatch} />
+        <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+          <Page model={model} dispatch={dispatch} />
+        </ItemLinksContext.Provider>
       </div>
+      {model.panel && (
+        <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+          <ItemPanel model={model.panel} dispatch={dispatch} />
+        </ItemLinksContext.Provider>
+      )}
       <Closing model={model.closing} dispatch={dispatch} />
     </div>
   );
 }
+
+// Links to items on any page, and in the panel, open the panel; a thread's
+// page knows its items' addresses too.
+const noItems: ReadonlyMap<string, string> = new Map();
 
 // Where the sidebar is a drawer; window.css says the same.
 const narrow = "(max-width: 760px)";

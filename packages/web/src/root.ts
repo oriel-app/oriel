@@ -18,7 +18,7 @@ import {
   updateFolder,
 } from "./folder.ts";
 import { type GroupModel, type GroupMsg, groupReplied, initGroup, updateGroup } from "./group.ts";
-import { type Effect, get, post, type Replied } from "./http.ts";
+import { type Effect, get, type Replied, report } from "./http.ts";
 import {
   initJira,
   type JiraModel,
@@ -27,6 +27,15 @@ import {
   loadJira,
   updateJira,
 } from "./jira.ts";
+import { samePage, withItem } from "./nav.ts";
+import {
+  checkPanel,
+  openPanel,
+  type PanelModel,
+  type PanelMsg,
+  panelReplied,
+  updatePanel,
+} from "./panel.ts";
 import {
   initReview,
   type ReviewModel,
@@ -82,6 +91,8 @@ export type Model = {
   threads: ThreadSummaryView[] | null;
   // Threads being marked done or deleted from a list of them.
   closing: ClosingModel;
+  // The item open in the panel beside the page, as the route names it.
+  panel: PanelModel | null;
 };
 
 export type Msg =
@@ -93,6 +104,13 @@ export type Msg =
   | { type: "folder"; msg: FolderMsg }
   | { type: "jira"; msg: JiraMsg }
   | { type: "closing"; msg: ClosingMsg }
+  | { type: "panel"; msg: PanelMsg }
+  // A plain click on a link to an item: it opens in the panel.
+  | { type: "itemOpened"; id: string }
+  | { type: "panelClosed" }
+  // The user left for an item's source: from its panel, or by a Cmd/Ctrl or
+  // middle click on a link to it. The browser goes; this only tells.
+  | { type: "sourceOpened"; id: string; via: "panel" | "link" }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -126,8 +144,19 @@ export function init(route: Route): [Model, Effect[]] {
     groups: null,
     threads: null,
     closing: initClosing(),
+    panel: null,
   };
-  return enter(empty, route);
+  return withPanel(...enter(empty, route));
+}
+
+// The panel follows the route: it opens, reading the item, when the route
+// names another item, and closes when it names none.
+function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
+  const { item } = model.route;
+  if (item === undefined) return [{ ...model, panel: null }, effects];
+  if (model.panel?.id === item) return [model, effects];
+  const [panel, opened] = openPanel(item);
+  return [{ ...model, panel }, [...effects, ...opened]];
 }
 
 // Sets up the page `route` names. The window keeps its state between visits,
@@ -135,7 +164,6 @@ export function init(route: Route): [Model, Effect[]] {
 // What only the window knows happened, for pilot telemetry: the grouping
 // switched, or a cluster zoomed in or out.
 export function windowTelemetry(before: WindowModel, after: WindowModel): Effect[] {
-  const report = (body: unknown): Effect => post("/api/telemetry", body, { kind: "telemetry" });
   if (after.grouping !== before.grouping)
     return [report({ name: "grouping.switched", grouping: after.grouping })];
   const shown = after.window?.grouping;
@@ -202,7 +230,18 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
   }
 }
 
+// When the window or the lists load again, something may have moved in the
+// index, so an open panel asks whether its item changed since its read.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
+  const [next, effects] = updated(model, msg);
+  const moved = effects.some(
+    (effect) =>
+      effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
+  );
+  return moved && next.panel ? [next, [...effects, ...checkPanel(next.panel)]] : [next, effects];
+}
+
+function updated(model: Model, msg: Msg): [Model, Effect[]] {
   switch (msg.type) {
     case "window": {
       if (model.window === null) return [model, []];
@@ -241,10 +280,39 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const [closing, effects] = updateClosing(model.closing, msg.msg);
       return [{ ...model, closing }, effects];
     }
+    case "panel": {
+      if (model.panel === null) return [model, []];
+      const [panel, effects] = updatePanel(model.panel, msg.msg);
+      return [{ ...model, panel }, effects];
+    }
+    // Opening the panel adds to history, so Back closes it; another item
+    // takes its place.
+    case "itemOpened": {
+      const route = withItem(model.route, msg.id);
+      // The item already open stays as it is, and so does the page.
+      if (route.item === undefined || model.route.item === msg.id) return [model, []];
+      const replace = model.route.item !== undefined ? { replace: true as const } : {};
+      return [model, [{ type: "navigate", route, stay: true, ...replace }]];
+    }
+    case "panelClosed":
+      if (model.route.item === undefined) return [model, []];
+      return [
+        model,
+        [{ type: "navigate", route: withItem(model.route, null), replace: true, stay: true }],
+      ];
+    case "sourceOpened":
+      return [model, [report({ name: "item.source-opened", item: msg.id, via: msg.via })]];
     case "linkClicked":
       return [model, [{ type: "navigate", route: msg.route }]];
-    case "routed":
-      return enter(model, msg.route);
+    // Only the panel changing leaves the page as it is; the same address
+    // again loads it again.
+    case "routed": {
+      const [routed, effects] =
+        samePage(model.route, msg.route) && model.route.item !== msg.route.item
+          ? [{ ...model, route: msg.route }, []]
+          : enter(model, msg.route);
+      return withPanel(routed, effects);
+    }
     case "streamReopened": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = reconnected(model.thread);
@@ -285,6 +353,12 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
+    case "item":
+    case "itemStamp": {
+      if (model.panel === null) return [model, []];
+      const [panel, effects] = panelReplied(model.panel, msg);
+      return [{ ...model, panel }, effects];
+    }
     case "markedDone":
     case "deletion":
     case "deleted":

@@ -5,7 +5,7 @@
 // The Done page and a group's page read the same list, so all three move
 // together.
 import type { Model } from "./root.ts";
-import type { Route } from "./route.ts";
+import { type Route, routeUrl } from "./route.ts";
 import { expected } from "./thread.ts";
 import { type GroupSummary, type ThreadSummaryView, waitingOn } from "./view.ts";
 
@@ -170,4 +170,36 @@ export function doneShown(
 export function groupThreads(model: Model, groupId: string): ThreadSummaryView[] {
   if (model.threads === null) return model.group?.view?.threads ?? [];
   return model.threads.filter((each) => each.group.id === groupId);
+}
+
+// Where a click on a link goes: a plain click stays in the page, as an
+// in-app link or an item's panel; a Cmd/Ctrl, Shift or middle click goes to a
+// new tab or window, as any link's does; any other button, or Alt, is the
+// browser's own. One rule for every link, so every surface agrees.
+export type ClickTo = "page" | "new-tab" | "browser";
+
+export function clickTo(click: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): ClickTo {
+  if (click.altKey) return "browser";
+  if (click.button === 1) return "new-tab";
+  if (click.button !== 0) return "browser";
+  return click.metaKey || click.ctrlKey || click.shiftKey ? "new-tab" : "page";
+}
+
+// The page `route` names, with `item` open in the panel beside it, or with
+// none. A review link's page has no panel.
+export function withItem(route: Route, item: string | null): Route {
+  const page = { ...route };
+  delete page.item;
+  return item === null || page.page === "review" ? page : { ...page, item };
+}
+
+// Whether two routes name the same page, whatever is open in the panel.
+export function samePage(a: Route, b: Route): boolean {
+  return routeUrl(withItem(a, null)) === routeUrl(withItem(b, null));
 }

@@ -33,6 +33,9 @@ export type Tag =
   | { kind: "reviewOpened" }
   | { kind: "reviewDecided" }
   | { kind: "telemetry" }
+  // An item read for the panel, and when the index last saw it change.
+  | { kind: "item"; id: string }
+  | { kind: "itemStamp"; id: string }
   | { kind: "folder" }
   | { kind: "folderConnected" }
   | { kind: "folderSynced" }
@@ -46,8 +49,9 @@ export type Effect =
   | { type: "showGrouping"; grouping: GroupingId }
   | { type: "http"; method: "GET" | "POST"; url: string; body?: unknown; tag: Tag }
   // Goes to another page, as a link would, and adds it to history, or with
-  // `replace`, takes the current page's place in it.
-  | { type: "navigate"; route: Route; replace?: true }
+  // `replace`, takes the current page's place in it. `stay`: the page stays
+  // where it is scrolled, as when only the panel beside it changes.
+  | { type: "navigate"; route: Route; replace?: true; stay?: true }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }
@@ -71,6 +75,17 @@ export const post = (url: string, body: unknown, tag: Tag): Effect => ({
   body,
   tag,
 });
+
+// Pilot telemetry only the page knows happened, as the server takes it.
+export type Report =
+  | { name: "grouping.switched"; grouping: GroupingId }
+  | { name: "zoom.changed"; from: "cluster" | "list"; to: "cluster" | "list" }
+  | { name: "item.panel-opened"; item: string }
+  | { name: "item.source-opened"; item: string; via: "panel" | "link" };
+
+// Best effort: its reply changes nothing.
+export const report = (event: Report): Effect =>
+  post("/api/telemetry", event, { kind: "telemetry" });
 
 // What a failed reply says, for the person.
 export function errorOf(body: unknown): string {

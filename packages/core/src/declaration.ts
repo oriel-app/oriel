@@ -1,5 +1,6 @@
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
+import type { PanelOf } from "./panel.ts";
 import type { IndexRecord } from "./source.ts";
 import type { Presentation } from "./zoom.ts";
 
@@ -15,6 +16,9 @@ export type SourceDeclaration<C = never> = Presentation & {
   // What its items are, in the declarations' `Item` (see `ItemDocs` in
   // bindings): shape only, never source text.
   itemDoc: string;
+  // Its own view of one item, for the panel beside the page, from what a
+  // live read returned.
+  panel: PanelOf;
   // Its namespace, from the index and `C`, what only the composition root
   // knows about it, such as where a new item goes.
   namespace?: (records: readonly IndexRecord[], context: C) => NamespaceSpec;

@@ -5,6 +5,7 @@ export * from "./grouping.ts";
 export * from "./ids.ts";
 export * from "./namespace.ts";
 export * from "./ops.ts";
+export * from "./panel.ts";
 export * from "./run.ts";
 export * from "./sandbox.ts";
 export * from "./source.ts";

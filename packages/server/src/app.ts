@@ -83,6 +83,7 @@ import { type ConnectionStore, type JiraConnection, jiraSite } from "./connectio
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
+import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
@@ -718,6 +719,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       changeSets: sets,
       turns: conversation,
       views: viewer,
+      items: itemPanels({ reader, records, sources, now }),
       emit,
       now,
       newId,

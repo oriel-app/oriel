@@ -3,9 +3,11 @@
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
 import {
+  addressOf,
   type Dispatch,
   DropZone,
   ItemKey,
+  ItemLinksContext,
   Link,
   Markdown,
   plural,
@@ -99,64 +101,66 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
       </main>
     );
   return (
-    <DropZone
-      class="thread-layout"
-      label={`Drop to add to ${view.group.name}`}
-      onDrop={(dropped) => send({ type: "dropped", dropped })}
-    >
-      <main class="thread" aria-busy={view.running}>
-        <header class="thread-head">
-          <Link route={{ page: "group", id: view.group.id }} dispatch={dispatch} class="crumb">
-            {view.group.name}
-          </Link>
-          <div class="thread-title-row">
-            <h1 class="thread-title">{view.title ?? "New thread"}</h1>
-            <StateChip
-              state={view.state}
-              waitingOn={waitingOn({
-                state: view.state,
-                running: view.running,
-                changeSets: view.changeSets,
-              })}
-            />
-            {view.state !== "done" && (
-              <button
-                type="button"
-                class="quiet-action"
-                onClick={() => send({ type: "doneClicked" })}
-              >
-                Mark done
-              </button>
+    <ItemLinksContext.Provider value={{ dispatch, items: itemsOf(view) }}>
+      <DropZone
+        class="thread-layout"
+        label={`Drop to add to ${view.group.name}`}
+        onDrop={(dropped) => send({ type: "dropped", dropped })}
+      >
+        <main class="thread" aria-busy={view.running}>
+          <header class="thread-head">
+            <Link route={{ page: "group", id: view.group.id }} dispatch={dispatch} class="crumb">
+              {view.group.name}
+            </Link>
+            <div class="thread-title-row">
+              <h1 class="thread-title">{view.title ?? "New thread"}</h1>
+              <StateChip
+                state={view.state}
+                waitingOn={waitingOn({
+                  state: view.state,
+                  running: view.running,
+                  changeSets: view.changeSets,
+                })}
+              />
+              {view.state !== "done" && (
+                <button
+                  type="button"
+                  class="quiet-action"
+                  onClick={() => send({ type: "doneClicked" })}
+                >
+                  Mark done
+                </button>
+              )}
+            </div>
+          </header>
+          <ol class="chat">
+            {blocks(view.entries).map((block) => (
+              <ChatBlock key={block.seq} block={block} model={model} view={view} send={send} />
+            ))}
+            {view.running && (
+              <li class="working" role="status">
+                <span class="working-dot" /> Working…
+              </li>
             )}
-          </div>
-        </header>
-        <ol class="chat">
-          {blocks(view.entries).map((block) => (
-            <ChatBlock key={block.seq} block={block} model={model} view={view} send={send} />
-          ))}
-          {view.running && (
-            <li class="working" role="status">
-              <span class="working-dot" /> Working…
-            </li>
-          )}
-        </ol>
-        <Composer
-          draft={model.draft}
-          sending={model.sending}
-          running={view.running}
-          notice={model.notice}
-          placeholder={
-            view.members.length === 0
-              ? planPrompt
-              : `Ask about ${plural(view.members.length, "item")}…`
-          }
-          onDraft={(text) => send({ type: "draftChanged", text })}
-          onSend={() => send({ type: "sendClicked" })}
-          onStop={() => send({ type: "stopClicked" })}
-        />
-      </main>
-      <Region view={view} />
-    </DropZone>
+          </ol>
+          <Composer
+            draft={model.draft}
+            sending={model.sending}
+            running={view.running}
+            notice={model.notice}
+            placeholder={
+              view.members.length === 0
+                ? planPrompt
+                : `Ask about ${plural(view.members.length, "item")}…`
+            }
+            onDraft={(text) => send({ type: "draftChanged", text })}
+            onSend={() => send({ type: "sendClicked" })}
+            onStop={() => send({ type: "stopClicked" })}
+          />
+        </main>
+        <Region view={view} />
+      </DropZone>
+    </ItemLinksContext.Provider>
   );
 }
 
@@ -271,6 +275,11 @@ function ChatBlock(props: {
       );
   }
 }
+
+// The thread's items by address, so a link to one in a reply, or in a diff's
+// value, opens its panel.
+const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
+  new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
 // Where the thread's items live: the only sites a reply's links open to.
 const sites = (view: ThreadView): ReadonlySet<string> =>
@@ -490,9 +499,7 @@ function Value({ text, item }: { text: string | null; item: ItemValue | null | u
       {item.created ? (
         <span class="new-mark">new</span>
       ) : (
-        item.key && (
-          <ItemKey item={{ id: item.key, key: item.key, title: item.title, url: item.url }} />
-        )
+        item.key && <ItemKey item={{ id: null, key: item.key, url: item.url }} />
       )}
     </span>
   );
@@ -824,7 +831,7 @@ export function Member({ member, onRemove }: { member: MemberView; onRemove?: ()
           {row.status.name}
         </span>
       ) : (
-        row?.replies && <Replies replies={row.replies} />
+        row?.replies && <Replies id={ref.id} replies={row.replies} />
       )}
       {onRemove && (
         <button

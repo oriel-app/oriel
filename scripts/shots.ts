@@ -593,6 +593,54 @@ const scenes: Scene[] = [
       await page.locator(".run[open] .output").first().waitFor();
     },
   },
+  // The panel beside the page, one per source's view, and from the window at
+  // both zoom levels: a plain click opens it, an address can too.
+  {
+    name: "panel-jira-list",
+    path: "/?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page.locator(".item a.key", { hasText: "SYN-23" }).click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  {
+    name: "panel-jira-cluster",
+    path: "/?grouping=epic&item=jira%3ASYN-1",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  {
+    name: "panel-slack",
+    path: `/groups/${fares.id}`,
+    on: chatty,
+    act: async (page) => {
+      await page.locator(".group-page .members").waitFor();
+      await page.locator(".group-page a.replies").first().click();
+      await page.locator(".item-panel .panel-thread").waitFor();
+    },
+  },
+  {
+    name: "panel-folder",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      await page.locator(".group-page .members").waitFor();
+      await page.locator(".group-page .key.item-link").first().click();
+      await page.locator(".item-panel .panel-text").waitFor();
+    },
+  },
+  {
+    name: "panel-thread-rail",
+    path: `/threads/${thread}`,
+    act: async (page) => {
+      await page.locator(".rail .members").waitFor();
+      await page.locator(".rail a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
   {
     name: "group-one",
     path: `/groups/${single.id}`,
