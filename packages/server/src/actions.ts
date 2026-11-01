@@ -114,7 +114,7 @@ async function members(
 // of a cluster's members, its anchor included; picked items; or nothing.
 // `size` is how many items it starts with.
 async function newGroup(
-  input: ActionInput<"group.create">,
+  input: ActionInput<"workstream.create">,
   actor: Actor,
   deps: ActionDeps,
 ): Promise<{ name: string; origin: GroupOrigin; list: GroupMember[]; size: number }> {
@@ -152,14 +152,14 @@ async function newGroup(
 }
 
 const handlers = {
-  "group.add": async ({ group: id, items }, actor, deps) => {
+  "workstream.add": async ({ workstream: id, items }, actor, deps) => {
     const group = mustGroup(deps, id);
     const change = deps.groups.add(group.id, await members(deps, items, actor), actor, deps.now());
     const added = (change?.added ?? []).map((member) => member.id);
     return {
       output: { added },
       undo: added.length
-        ? { action: "group.remove", input: { group: group.id, items: added } }
+        ? { action: "workstream.remove", input: { workstream: group.id, items: added } }
         : null,
       changed: change && { group: group.id, members: true },
       events: (change?.added ?? []).map((member) => ({
@@ -171,7 +171,7 @@ const handlers = {
     };
   },
 
-  "group.remove": async ({ group: id, items }, actor, deps) => {
+  "workstream.remove": async ({ workstream: id, items }, actor, deps) => {
     const group = mustGroup(deps, id);
     // By identity: a moved item is removed under its current handle, and
     // one the index no longer has under the handle the group shows.
@@ -189,13 +189,15 @@ const handlers = {
     const back = (change?.removed ?? []).flatMap((member) => live.get(identity(member)) ?? []);
     return {
       output: {},
-      undo: back.length ? { action: "group.add", input: { group: group.id, items: back } } : null,
+      undo: back.length
+        ? { action: "workstream.add", input: { workstream: group.id, items: back } }
+        : null,
       changed: change && { group: group.id, members: true },
       events: [],
     };
   },
 
-  "group.create": async (input, actor, deps) => {
+  "workstream.create": async (input, actor, deps) => {
     const { name, origin, list, size } = await newGroup(input, actor, deps);
     const id = deps.newId();
     deps.groups.create(
@@ -205,14 +207,14 @@ const handlers = {
       actor,
     );
     return {
-      output: { group: id },
+      output: { workstream: id },
       undo: null,
       changed: { group: id, members: false },
       events: [{ name: "group.created", groupId: id, origin: origin.kind, size, ...by(actor) }],
     };
   },
 
-  "group.rename": async ({ group: id, name, oriel }, actor, deps) => {
+  "workstream.rename": async ({ workstream: id, name, oriel }, actor, deps) => {
     const before = mustGroup(deps, id);
     // A change set names a group as Oriel does, never over the user's name.
     if (oriel) {
@@ -224,13 +226,14 @@ const handlers = {
     const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
     // Back to the name it had, and to whoever gave it.
     const back = {
-      group: before.id,
+      workstream: before.id,
       name: before.name,
       ...(before.namedBy === "oriel" ? { oriel: true as const } : {}),
     };
     return {
       output: {},
-      undo: renamed && before.name.trim() !== "" ? { action: "group.rename", input: back } : null,
+      undo:
+        renamed && before.name.trim() !== "" ? { action: "workstream.rename", input: back } : null,
       changed: renamed ? { group: before.id, members: false } : null,
       events: [],
     };

@@ -643,9 +643,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         group?.origin.kind === "thread" &&
         group.name === blankGroupName &&
         groups.region(group.id, group.version)?.items.length === 0;
-      if (blank && name !== "") await dispatch("group.rename", { group: thread.groupId, name }, by);
+      if (blank && name !== "")
+        await dispatch("workstream.rename", { workstream: thread.groupId, name }, by);
       const items = created(set).map((member) => member.id);
-      if (items.length) await dispatch("group.add", { group: thread.groupId, items }, by);
+      if (items.length) await dispatch("workstream.add", { workstream: thread.groupId, items }, by);
     }
     if (mode.kind === "fixture") return;
     for (const { applied: write } of set.mutations)
