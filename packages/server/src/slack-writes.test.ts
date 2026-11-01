@@ -210,9 +210,14 @@ test("the dev server's scripted agent posts or replies when asked, beside the gr
   const { id: groupId } = json<{ id: string }>(
     await app.post("/api/groups", { kind: "picked", name: "SMS", items: ["jira:SYN-61", sms] }),
   );
-  for (const [text, sentence] of [
-    ["post: Ready to pick up.", /^Post in #weather-disruptions as Amara Okafor\./],
-    ["reply: Thanks!", /^Reply in the conversation “Chen Yuting: /],
+  for (const [text, sentence, field, posts] of [
+    [
+      "post: Ready to pick up.",
+      /^Post in #weather-disruptions as Amara Okafor\./,
+      "description",
+      "Ready to pick up.",
+    ],
+    ["reply: Thanks!", /^Reply in the conversation “Chen Yuting: /, "reply:new", "Thanks!"],
   ] as const) {
     const { id } = json<{ id: string }>(await app.post(`/api/groups/${groupId}/threads`, { text }));
     await app.app.settled();
@@ -221,5 +226,10 @@ test("the dev server's scripted agent posts or replies when asked, beside the gr
     assert.ok(entry?.kind === "change-set", text);
     const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
     assert.match(diff.lines[0]?.sentence ?? "", sentence);
+    // What it posts is the text after the colon, exactly.
+    assert.deepEqual(
+      diff.lines[0]?.fields.map((f) => [f.name, f.after]),
+      [[field, posts]],
+    );
   }
 });
