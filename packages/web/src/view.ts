@@ -48,6 +48,11 @@ export type JiraView = {
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 
+// Who a held message is from: a review link's holder, by the name they
+// typed, giving why they rejected a change set. Each kind of sender is one
+// variant, as the server's HeldSender has them.
+export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
+
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
 // sources, on a change set being applied, which needs nothing from the user
@@ -55,9 +60,9 @@ export type ThreadStateId = (typeof threadStates)[number];
 // waits on nothing.
 export type WaitingOn = "agent" | "held" | "review" | "apply" | "reply";
 
-// `held`: a review-link holder's reason waits on the person to send it to
-// the agent or discard it.
-// Whether a held reason in the chat waits on the person.
+// `held`: a message from anyone but the user waits on them to send it to the
+// agent or discard it.
+// Whether a held message in the chat waits on the user.
 export const holding = (entries: readonly ChatEntry[]): boolean =>
   entries.some((entry) => entry.kind === "held" && entry.outcome === null);
 
@@ -187,16 +192,9 @@ export type ChatEntry = { seq: number; at: string } & (
   | { kind: "run.finished"; runId: string; run: RunView }
   | { kind: "search"; runId: string; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; changeSetId: string }
-  // A review-link holder's reason for rejecting a change set, under the name
-  // they typed, which only the person can send to the agent. `outcome` is
-  // null while it waits on them.
-  | {
-      kind: "held";
-      changeSetId: string;
-      by: string;
-      text: string;
-      outcome: "sent" | "discarded" | null;
-    }
+  // A message from anyone but the user, which only they can send to the
+  // agent, edited or not. `outcome` is null while it waits on them.
+  | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
   | { kind: "limit"; reason: string }
   | { kind: "error"; message: string }
   | { kind: "done" }
@@ -325,7 +323,7 @@ export type StreamEvent =
   // The thread's group changed: its name, its members, or what the index has
   // of them, whether or not the thread moved to the new version.
   | { type: "group" }
-  // An entry already in the thread's chat changed: a held reason was sent on
+  // An entry already in the thread's chat changed: a held message was sent on
   // or discarded, here or elsewhere.
   | { type: "chat" }
   // The rest of the workspace changed: another thread moved (its turn

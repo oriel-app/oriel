@@ -5,9 +5,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   type Actor,
-  boolean,
-  holderName,
-  holderReason,
+  type HeldSender,
+  heldSender,
+  heldText,
   type Instant,
   isInstant,
   isUlid,
@@ -48,14 +48,16 @@ const messageRow = object({
 // Rows written before 0003 hold a user's text as a bare JSON string.
 const userContent = union(object({ text: string }), string);
 const markerContent = object({ from: number, to: number });
-// A review-link holder controls both their name and their reason.
-const heldContent = object({
-  changeSet: ulidValue,
-  by: holderName,
-  text: holderReason,
-  asked: boolean,
-  outcome: nullable(union(literal("sent"), literal("discarded"))),
-});
+// A held message, who it is from, and its text within that sender's limit.
+const heldContent = refine(
+  object({
+    from: heldSender,
+    text: string,
+    outcome: nullable(union(literal("sent"), literal("discarded"))),
+  }),
+  (held) => heldText(held.from, held.text),
+  "expected a held message within its sender's limit",
+);
 const wroteRow = object({
   applied: number,
   reverted: number,
@@ -67,23 +69,21 @@ const wroteRow = object({
 // as the server receives them; the server checks their shape on the way out.
 // A marker says the thread moved from one version of its group to a later
 // one; what changed between them is in the group's own log, so it isn't
-// copied here. A held entry is a review-link holder's reason for rejecting a
-// change set, under the name they typed (decision 0024).
+// copied here. A held entry is a message from anyone but the user, which
+// waits for them (decision 0024).
 export type NewMessage =
   | { role: "user"; text: string }
   | { role: "agent"; event: unknown }
   | { role: "marker"; from: number; to: number }
   | Omit<Held, "outcome">;
 
-// A held reason, and what the person did with it: sent it to the agent, as
-// it was or edited, or discarded it. Null while it waits on them. `asked`:
-// Oriel asked what was wrong with the change set as it was held.
+// A held message, who it is from, and what the user did with it: sent it to
+// the agent, as it was or edited, or discarded it. Null while it waits on
+// them.
 export type Held = {
   role: "held";
-  changeSet: Ulid;
-  by: string;
+  from: HeldSender;
   text: string;
-  asked: boolean;
   outcome: "sent" | "discarded" | null;
 };
 
@@ -153,20 +153,20 @@ export function threadStore(db: DatabaseSync) {
   const selectMessages = db.prepare(
     "select seq, role, content, at from messages where thread_id = ? and seq > ? order by seq",
   );
-  // The person's latest message, or a reason held for them: either makes a
-  // settled thread working again, the second because it waits on them.
+  // The user's latest message, or one held for them: either makes a settled
+  // thread working again, the second because it waits on them.
   const lastMessage = db.prepare(
     "select max(at) as at from messages where thread_id = ? and role in ('user', 'held')",
   );
-  // Held reasons the person hasn't sent or discarded yet.
+  // Held messages the user hasn't sent or discarded yet.
   const selectHeld = db.prepare(`
     select seq, role, content, at from messages
     where thread_id = ? and role = 'held' and json_extract(content, '$.outcome') is null
     order by seq`);
   const settleHeld = db.prepare(`
     update messages set content = json_set(content, '$.outcome', ?3)
-    where thread_id = ?1 and role = 'held' and json_extract(content, '$.outcome') is null
-      and json_extract(content, '$.changeSet') = ?2`);
+    where thread_id = ?1 and seq = ?2 and role = 'held'
+      and json_extract(content, '$.outcome') is null`);
   // Anything that happened in the thread, for the idle rule. A marker alone
   // isn't activity (decision 0018).
   const lastActivity = db.prepare(`
@@ -306,16 +306,10 @@ export function threadStore(db: DatabaseSync) {
         : message.role === "user"
           ? { text: message.text }
           : message.role === "held"
-            ? {
-                changeSet: message.changeSet,
-                by: message.by,
-                text: message.text,
-                asked: message.asked,
-                outcome: null,
-              }
+            ? { from: message.from, text: message.text, outcome: null }
             : { from: message.from, to: message.to };
     if (message.role === "held" && !heldContent(content).ok)
-      throw new RangeError("a held reason's name or text is too long");
+      throw new RangeError("a held message's sender or text is past its limits");
     const json = JSON.stringify(content);
     if (json === undefined) throw new TypeError("a message's content must be JSON");
     insertMessage.run(id, thread.workspace_id, thread.id, next.value.next, message.role, json, now);
@@ -357,7 +351,7 @@ export function threadStore(db: DatabaseSync) {
     }
     if (role === "held") {
       const held = heldContent(content);
-      if (!held.ok) throw new Error(`corrupt held reason ${seq}`);
+      if (!held.ok) throw new Error(`corrupt held message ${seq}`);
       return { seq, at: when, role, ...held.value };
     }
     const marker = markerContent(content);
@@ -529,7 +523,7 @@ export function threadStore(db: DatabaseSync) {
       return selectMessages.all(id, after).map(message);
     },
 
-    // The reasons held in the thread that wait on the person, oldest first.
+    // The messages held in the thread that wait on the user, oldest first.
     held(id: Ulid): (Held & { seq: number; at: Instant })[] {
       return selectHeld.all(id).flatMap((raw) => {
         const held = message(raw);
@@ -537,10 +531,10 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // The person sent or discarded the reason held for rejecting
-    // `changeSet`. False, and nothing changed, if none waits on them.
-    settle(id: Ulid, changeSet: Ulid, outcome: "sent" | "discarded"): boolean {
-      return Number(settleHeld.run(id, changeSet, outcome).changes) === 1;
+    // The user sent or discarded the message held at `seq`. False, and
+    // nothing changed, if none waits on them there.
+    settle(id: Ulid, seq: number, outcome: "sent" | "discarded"): boolean {
+      return Number(settleHeld.run(id, seq, outcome).changes) === 1;
     },
   };
 }

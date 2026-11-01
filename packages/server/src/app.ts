@@ -621,7 +621,6 @@ export async function createApp(options: AppOptions): Promise<App> {
       return set ? created(set) : [];
     },
     emit,
-    changeSet: (id) => sets.get(id),
     held: conversation,
     publish: (changed) => {
       conversation.acted(

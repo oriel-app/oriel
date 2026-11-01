@@ -57,8 +57,7 @@ function world() {
     records: () => records,
     clusters: () => [],
     created: async (set) => (set === changeSetId ? [m("SYN-9", "10009")] : []),
-    // No change set holds a reason here; held.test.ts sends and discards them.
-    changeSet: async () => null,
+    // Nothing is held here; held.test.ts sends and discards held messages.
     held: {
       sendHeld: () => assert.fail("nothing is held"),
       discardHeld: () => assert.fail("nothing is held"),

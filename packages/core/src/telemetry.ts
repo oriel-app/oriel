@@ -1,6 +1,7 @@
 import type { Actor } from "./actions.ts";
 import type { GroupChange, GroupOrigin } from "./group.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
+import type { HeldSender } from "./thread.ts";
 import type { ZoomId } from "./zoom.ts";
 
 // Pilot telemetry, stored locally. Only raw events are stored; these are
@@ -39,12 +40,16 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
     }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
-  // `held`: that reason was a review-link holder's, held until the person
-  // sent it to the agent, as it was or edited (decision 0024).
-  | { name: "question.asked"; threadId: Ulid; rejected?: Ulid; held?: "sent" | "edited" }
-  // The person discarded a review-link holder's held reason for rejecting
-  // that change set, so it never reached the agent.
-  | { name: "held-reason.discarded"; threadId: Ulid; changeSetId: Ulid }
+  // `held`: it was a message held from someone else, which the user sent to
+  // the agent, as it was or edited (decision 0024).
+  | {
+      name: "question.asked";
+      threadId: Ulid;
+      rejected?: Ulid;
+      held?: { from: HeldSender["kind"]; edited: boolean };
+    }
+  // The user discarded a held message, so it never reached the agent.
+  | { name: "held-message.discarded"; threadId: Ulid; from: HeldSender["kind"] }
   // The thread was marked done, as one over read-only items needs: by the
   // user, on its page, or from a menu or a swipe on a list of threads; or by
   // someone else, who closed nothing in the window.

@@ -3440,9 +3440,9 @@ a.replies:hover {
   color: var(--text-faint);
 }
 
-/* A review-link holder's reason, held for the person: set apart from what
-   the person and the agent said, since neither said it. */
-.held-reason {
+/* A message held for the user, from anyone else: set apart from what the
+   user and the agent said, since neither said it. */
+.held-message {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
