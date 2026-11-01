@@ -7,7 +7,7 @@
 import {
   array,
   boolean,
-  type GroupOrigin,
+  type WorkstreamOrigin,
   type Infer,
   type Issue,
   isInstant,
@@ -76,14 +76,13 @@ export const fixtureEdit = union(
 );
 
 // Item IDs snapshotted against the base state, as a region would be, with an
-// origin as stored: `fixtures/jira/` predates decision 0018 and calls a
-// cluster a "group". For the epic grouping, `cluster` is the epic's stable ID
+// origin as stored. For the epic grouping, `cluster` is the epic's stable ID
 // and `anchor` its item ID.
 export const fixtureRegion = object({
   name: string,
   origin: union(
     object({
-      kind: literal("group"),
+      kind: literal("cluster"),
       grouping: string,
       cluster: string,
       anchor: nullable(jiraItemId),
@@ -108,7 +107,7 @@ export type FixtureEdit = Infer<typeof fixtureEdit>;
 export type JiraFixtureFile = Infer<typeof jiraFixtureFile>;
 
 // A frozen region as Oriel uses it, with its origin in core's terms.
-export type FixtureRegion = { name: string; origin: GroupOrigin; items: ItemId<"jira">[] };
+export type FixtureRegion = { name: string; origin: WorkstreamOrigin; items: ItemId<"jira">[] };
 export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureRegion[] };
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
@@ -131,8 +130,7 @@ export function parseJiraFixtureFile(input: unknown): Result<JiraFixtureFile> {
 }
 
 // The fixture as Oriel uses it: checked as stored, then each region's origin
-// in core's terms, where a "group" origin is a "cluster" (decision 0018). The
-// files are maintainer-owned, so the mapping lives here.
+// in core's terms.
 export function parseJiraFixture(input: unknown): Result<JiraFixture> {
   const parsed = parseJiraFixtureFile(input);
   if (!parsed.ok) return parsed;
@@ -142,10 +140,9 @@ export function parseJiraFixture(input: unknown): Result<JiraFixture> {
   const regions = parsed.value.regions.map(({ name, origin, items }): FixtureRegion => ({
     name,
     origin:
-      origin.kind === "group"
+      origin.kind === "cluster"
         ? {
             ...origin,
-            kind: "cluster",
             anchor:
               origin.anchor === null
                 ? null
@@ -261,7 +258,7 @@ function consistency(fixture: JiraFixtureFile): Issue[] {
       if (!byKey.has(parseItemId(id)?.key ?? "")) problem(`${at}.items[${j}]`, "not in the base");
     });
     const { origin } = region;
-    if (origin.kind !== "group" || origin.grouping !== "epic") return;
+    if (origin.kind !== "cluster" || origin.grouping !== "epic") return;
     const epic = byKey.get(parseItemId(origin.anchor ?? "")?.key ?? "");
     if (epic?.issueType !== "Epic") {
       problem(`${at}.origin.anchor`, "expected an epic in the base");

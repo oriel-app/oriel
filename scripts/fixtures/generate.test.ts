@@ -37,7 +37,7 @@ test("SYN is a backlog of about 120 issues in 6 to 8 epics", () => {
 
 test("mess: duplicate titles", () => {
   const counts = Map.groupBy(base, (issue) => issue.summary);
-  assert.ok([...counts.values()].some((group) => group.length > 1));
+  assert.ok([...counts.values()].some((same) => same.length > 1));
 });
 
 test("mess: stale assignees, on open work", () => {
@@ -119,7 +119,7 @@ test("mess: the injection story", () => {
   assert.equal(injection?.issueType, "Story");
 });
 
-test("frozen regions: epic groups anchored on their epic, and a hand-picked one", () => {
+test("frozen regions: epic workstreams anchored on their epic, and a hand-picked one", () => {
   const origins = fixture.regions.map((region) => region.origin);
   assert.ok(origins.some((o) => o.kind === "cluster" && o.grouping === "epic" && o.anchor));
   assert.ok(origins.some((o) => o.kind === "picked"));

@@ -124,7 +124,7 @@ const identical = (n: number): CapturedMutation[] =>
     args: { summary: "Spike: retry policy", epic: "jira:SYN-1" },
   }));
 
-test("identical creates are interchangeable, up to a group of six", () => {
+test("identical creates are interchangeable, up to a batch of six", () => {
   // Two stories no one can tell apart, estimated 3 and 5 either way round.
   const golden = [...identical(2), estimateRef("new:1", 3), estimateRef("new:2", 5)];
   const swapped = [...identical(2), estimateRef("new:1", 5), estimateRef("new:2", 3)];
@@ -137,7 +137,7 @@ test("identical creates are interchangeable, up to a group of six", () => {
     return gradeExactDiff(golden, actual).pass;
   };
   assert.equal(reversed(6), true);
-  // Past six, a group keeps its order rather than try 5040 orders.
+  // Past six, a batch keeps its order rather than try 5040 orders.
   assert.equal(reversed(7), false);
 });
 

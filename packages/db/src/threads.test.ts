@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type Ulid, ulid } from "@oriel/core";
-import { groupStore } from "./groups.ts";
+import { workstreamStore } from "./workstreams.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { threadStore } from "./threads.ts";
@@ -12,16 +12,16 @@ const day = 24 * 60 * 60 * 1000;
 const after = (ms: number): Instant => instant(new Date(Date.parse(t0) + ms));
 const id = (n: number): Ulid => ulid(n, new Uint8Array(10));
 
-// A workspace with a group of two items at version 1, and a thread on it.
+// A workspace with a workstream of two items at version 1, and a thread on it.
 function fresh() {
   const db = open(":memory:");
   migrate(db, loadMigrations(), t0);
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  const groups = groupStore(db);
-  const groupId = id(1);
-  groups.create(
-    { id: groupId, workspaceId, name: "Checkout", origin: { kind: "picked" } },
+  const workstreams = workstreamStore(db);
+  const workstreamId = id(1);
+  workstreams.create(
+    { id: workstreamId, workspaceId, name: "Checkout", origin: { kind: "picked" } },
     [
       { id: "jira:SYN-1", stableId: "10001" },
       { id: "jira:SYN-2", stableId: "10002" },
@@ -30,7 +30,7 @@ function fresh() {
   );
   const threads = threadStore(db);
   const threadId = id(2);
-  threads.open({ id: threadId, workspaceId, groupId }, t0);
+  threads.open({ id: threadId, workspaceId, workstreamId }, t0);
   let seq = 0;
   const message = (at: Instant) =>
     db
@@ -70,16 +70,34 @@ function fresh() {
     const thread = threads.get(threadId, now);
     return [thread?.state, thread?.doneBy];
   };
-  return { db, groups, groupId, threads, threadId, workspaceId, message, changeSet, state };
+  return {
+    db,
+    workstreams,
+    workstreamId,
+    threads,
+    threadId,
+    workspaceId,
+    message,
+    changeSet,
+    state,
+  };
 }
 
-test("a new thread is working, in its group's latest version", () => {
-  const { groups, groupId, threads, workspaceId, state } = fresh();
+test("a new thread is working, in its workstream's latest version", () => {
+  const { workstreams, workstreamId, threads, workspaceId, state } = fresh();
   assert.deepEqual(state(t0), ["working", null]);
-  groups.add(groupId, [{ id: "jira:SYN-3", stableId: "10003" }], { kind: "user" }, after(1));
-  threads.open({ id: id(9), workspaceId, groupId }, after(2));
+  workstreams.add(
+    workstreamId,
+    [{ id: "jira:SYN-3", stableId: "10003" }],
+    { kind: "user" },
+    after(1),
+  );
+  threads.open({ id: id(9), workspaceId, workstreamId }, after(2));
   assert.equal(threads.get(id(9), after(2))?.regionVersion, 2);
-  assert.throws(() => threads.open({ id: id(10), workspaceId, groupId: id(99) }, t0), /no group/);
+  assert.throws(
+    () => threads.open({ id: id(10), workspaceId, workstreamId: id(99) }, t0),
+    /no workstream/,
+  );
 });
 
 test("a change set applied in full makes it done; one partly applied doesn't", () => {
@@ -168,7 +186,7 @@ test("a thread 0002 carried over from a region derives its state like any other"
   migrate(db, [first, ...rest], t0);
   const thread = threadStore(db).get(t, after(1000));
   assert.deepEqual(
-    [thread?.state, thread?.doneBy, thread?.groupId, thread?.regionVersion],
+    [thread?.state, thread?.doneBy, thread?.workstreamId, thread?.regionVersion],
     ["working", null, r, 1],
   );
   assert.equal(threadStore(db).get(t, after(8 * day))?.state, "dropped");

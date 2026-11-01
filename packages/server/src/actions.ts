@@ -13,23 +13,23 @@ import {
   type Actor,
   type Call,
   type Cluster,
-  type GroupMember,
-  type GroupOrigin,
+  type WorkstreamMember,
+  type WorkstreamOrigin,
   type IndexRecord,
   type Instant,
   parseItemId,
   type TelemetryEvent,
   type Ulid,
 } from "@oriel/core";
-import type { GroupStore, ThreadStore } from "@oriel/db";
+import type { WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import type { Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
-// What a group made for a thread from nothing is called, until a change set
+// What a workstream made for a thread from nothing is called, until a change set
 // creates its epic and it takes that epic's name.
-export const blankGroupName = "New group";
+export const blankWorkstreamName = "New workstream";
 
 // A refusal the doors map: the window's routes to 400, 403 or 404.
 export class ActionError extends Error {
@@ -41,21 +41,21 @@ export class ActionError extends Error {
   }
 }
 
-// What a call changed, for the window's streams: a group, and whether its
+// What a call changed, for the window's streams: a workstream, and whether its
 // members changed, which moves its working threads; or a thread, and
 // whether an entry already in its chat changed, as a held message settles.
-export type Changed = { group: Ulid; members: boolean } | { thread: Ulid; chat?: true };
+export type Changed = { workstream: Ulid; members: boolean } | { thread: Ulid; chat?: true };
 
 export type ActionDeps = {
   workspaceId: Ulid;
-  groups: GroupStore;
+  workstreams: WorkstreamStore;
   threads: ThreadStore;
   // The index's live records, from every source.
   records(): readonly IndexRecord[];
   // A grouping's clusters as the window shows them now.
   clusters(grouping: GroupingId): Cluster[];
-  // What a change set created, which joins its group before the index has it.
-  created(changeSetId: Ulid): Promise<GroupMember[]>;
+  // What a change set created, which joins its workstream before the index has it.
+  created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a message held in a thread, whoever it is from.
   held: Pick<Turns, "sendHeld" | "discardHeld">;
   emit(event: TelemetryEvent): void;
@@ -88,11 +88,11 @@ const userOnly = (actor: Actor, what: string) => {
   if (actor.kind !== "user") throw new ActionError("refused", `only the user ${what}`);
 };
 
-const mustGroup = (deps: ActionDeps, id: Ulid) => {
-  const group = deps.groups.get(id);
-  if (!group || group.workspaceId !== deps.workspaceId)
-    throw new ActionError("not-found", "no such group");
-  return group;
+const mustWorkstream = (deps: ActionDeps, id: Ulid) => {
+  const workstream = deps.workstreams.get(id);
+  if (!workstream || workstream.workspaceId !== deps.workspaceId)
+    throw new ActionError("not-found", "no such workstream");
+  return workstream;
 };
 
 // A thread this workspace has.
@@ -109,8 +109,8 @@ async function members(
   deps: ActionDeps,
   ids: readonly string[],
   actor: Actor,
-): Promise<GroupMember[]> {
-  const byId = new Map<string, GroupMember>(
+): Promise<WorkstreamMember[]> {
+  const byId = new Map<string, WorkstreamMember>(
     deps.records().map((r) => [r.id, { id: r.id, stableId: r.stableId }]),
   );
   if (actor.kind === "change-set")
@@ -122,17 +122,17 @@ async function members(
   });
 }
 
-// What a new group is called, where it came from and what it holds: a copy
+// What a new workstream is called, where it came from and what it holds: a copy
 // of a cluster's members, its anchor included; picked items; or nothing.
 // `size` is how many items it starts with.
-async function newGroup(
+async function newWorkstream(
   input: ActionInput<"workstream.create">,
   actor: Actor,
   deps: ActionDeps,
-): Promise<{ name: string; origin: GroupOrigin; list: GroupMember[]; size: number }> {
+): Promise<{ name: string; origin: WorkstreamOrigin; list: WorkstreamMember[]; size: number }> {
   if (input.kind === "thread") {
     userOnly(actor, "starts a thread from nothing");
-    return { name: blankGroupName, origin: { kind: "thread" }, list: [], size: 0 };
+    return { name: blankWorkstreamName, origin: { kind: "thread" }, list: [], size: 0 };
   }
   if (input.kind === "picked") {
     const list = await members(deps, input.items, actor);
@@ -165,18 +165,23 @@ async function newGroup(
 
 const handlers = {
   "workstream.add": async ({ workstream: id, items }, actor, deps) => {
-    const group = mustGroup(deps, id);
-    const change = deps.groups.add(group.id, await members(deps, items, actor), actor, deps.now());
+    const workstream = mustWorkstream(deps, id);
+    const change = deps.workstreams.add(
+      workstream.id,
+      await members(deps, items, actor),
+      actor,
+      deps.now(),
+    );
     const added = (change?.added ?? []).map((member) => member.id);
     return {
       output: { added },
       undo: added.length
-        ? { action: "workstream.remove", input: { workstream: group.id, items: added } }
+        ? { action: "workstream.remove", input: { workstream: workstream.id, items: added } }
         : null,
-      changed: change && { group: group.id, members: true },
+      changed: change && { workstream: workstream.id, members: true },
       events: (change?.added ?? []).map((member) => ({
-        name: "group.item-added",
-        groupId: group.id,
+        name: "workstream.item-added",
+        workstreamId: workstream.id,
         source: parseItemId(member.id)?.source ?? "jira",
         cause: actor.kind,
       })),
@@ -184,17 +189,17 @@ const handlers = {
   },
 
   "workstream.remove": async ({ workstream: id, items }, actor, deps) => {
-    const group = mustGroup(deps, id);
+    const workstream = mustWorkstream(deps, id);
     // By identity: a moved item is removed under its current handle, and
-    // one the index no longer has under the handle the group shows.
-    const held = deps.groups.region(group.id, group.version)?.items ?? [];
+    // one the index no longer has under the handle the workstream shows.
+    const held = deps.workstreams.region(workstream.id, workstream.version)?.items ?? [];
     const records = deps.records();
     const named = items.map((item) => {
       const member = memberOf(item, held, records);
-      if (!member) throw new ActionError("invalid", `${item} isn't in this group`);
+      if (!member) throw new ActionError("invalid", `${item} isn't in this workstream`);
       return member;
     });
-    const change = deps.groups.remove(group.id, named, actor, deps.now());
+    const change = deps.workstreams.remove(workstream.id, named, actor, deps.now());
     // Back under the handle the index has now; one it no longer has can't
     // come back.
     const live = new Map(records.map((record) => [identity(record), record.id]));
@@ -202,17 +207,17 @@ const handlers = {
     return {
       output: {},
       undo: back.length
-        ? { action: "workstream.add", input: { workstream: group.id, items: back } }
+        ? { action: "workstream.add", input: { workstream: workstream.id, items: back } }
         : null,
-      changed: change && { group: group.id, members: true },
+      changed: change && { workstream: workstream.id, members: true },
       events: [],
     };
   },
 
   "workstream.create": async (input, actor, deps) => {
-    const { name, origin, list, size } = await newGroup(input, actor, deps);
+    const { name, origin, list, size } = await newWorkstream(input, actor, deps);
     const id = deps.newId();
-    deps.groups.create(
+    deps.workstreams.create(
       { id, workspaceId: deps.workspaceId, name, origin },
       list,
       deps.now(),
@@ -221,20 +226,26 @@ const handlers = {
     return {
       output: { workstream: id },
       undo: null,
-      changed: { group: id, members: false },
-      events: [{ name: "group.created", groupId: id, origin: origin.kind, size, ...by(actor) }],
+      changed: { workstream: id, members: false },
+      events: [
+        { name: "workstream.created", workstreamId: id, origin: origin.kind, size, ...by(actor) },
+      ],
     };
   },
 
   "workstream.rename": async ({ workstream: id, name, oriel }, actor, deps) => {
-    const before = mustGroup(deps, id);
-    // A change set names a group as Oriel does, never over the user's name.
+    const before = mustWorkstream(deps, id);
+    // A change set names a workstream as Oriel does, never over the user's name.
     if (oriel) {
-      userOnly(actor, "gives a group's name back to Oriel, by undoing a rename");
-      deps.groups.giveBack(before.id, name.trim());
+      userOnly(actor, "gives a workstream's name back to Oriel, by undoing a rename");
+      deps.workstreams.giveBack(before.id, name.trim());
     } else
-      deps.groups.rename(before.id, name.trim(), actor.kind === "change-set" ? "oriel" : "user");
-    const after = mustGroup(deps, id);
+      deps.workstreams.rename(
+        before.id,
+        name.trim(),
+        actor.kind === "change-set" ? "oriel" : "user",
+      );
+    const after = mustWorkstream(deps, id);
     const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
     // Back to the name it had, and to whoever gave it.
     const back = {
@@ -246,7 +257,7 @@ const handlers = {
       output: {},
       undo:
         renamed && before.name.trim() !== "" ? { action: "workstream.rename", input: back } : null,
-      changed: renamed ? { group: before.id, members: false } : null,
+      changed: renamed ? { workstream: before.id, members: false } : null,
       events: [],
     };
   },
@@ -315,25 +326,46 @@ export function refusal(name: ActionName, actor: Actor): string | null {
 }
 
 type Output<N extends ActionName> = Awaited<ReturnType<(typeof handlers)[N]>>["output"];
-export type Dispatch = <N extends ActionName>(
-  name: N,
-  input: unknown,
-  actor: Actor,
-) => Promise<Output<N> & { undo: Call | null }>;
+type Result<N extends ActionName> = Output<N> & { undo: Call | null };
+// A call site names the action and passes its own input type, so a renamed
+// key fails to typecheck rather than at run time. `untyped` is the one door
+// whose action is known only at run time: an Undo sent back to
+// /api/actions/:name. Either way the dispatcher checks the input.
+export type Dispatch = {
+  <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
+  untyped(name: ActionName, input: unknown, actor: Actor): Promise<{ undo: Call | null }>;
+};
+
+// An action's input from what a request carried, checked as the dispatcher
+// checks it: each field is named, so a renamed key fails to typecheck too.
+export type Fields<N extends ActionName> =
+  ActionInput<N> extends infer I
+    ? I extends unknown
+      ? { [K in keyof I]: unknown }
+      : never
+    : never;
+export function checked<N extends ActionName>(name: N, fields: Fields<N>): ActionInput<N> {
+  const declared: ActionDeclaration = actions[name];
+  const decoded = declared.input(fields);
+  if (!decoded.ok)
+    throw new ActionError(
+      "invalid",
+      decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+    );
+  return decoded.value as ActionInput<N>;
+}
 
 export function dispatcher(deps: ActionDeps): Dispatch {
-  return async (name, raw, actor) => {
+  const untyped = async <N extends ActionName>(
+    name: N,
+    raw: unknown,
+    actor: Actor,
+  ): Promise<Result<N>> => {
     const why = refusal(name, actor);
     if (why !== null) throw new ActionError("refused", why);
     const declared: ActionDeclaration = actions[name];
-    const decoded = declared.input(raw);
-    if (!decoded.ok)
-      throw new ActionError(
-        "invalid",
-        decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
-      );
     const handler = handlers[name] as Handler<typeof name>;
-    const outcome = await handler(decoded.value as ActionInput<typeof name>, actor, deps);
+    const outcome = await handler(checked(name, raw as Fields<N>), actor, deps);
     if (
       outcome.undo &&
       (declared.class.kind !== "direct" || outcome.undo.action !== declared.class.inverse)
@@ -348,4 +380,9 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     if (outcome.changed) deps.publish(outcome.changed);
     return { ...(outcome.output as Output<typeof name>), undo: outcome.undo };
   };
+  return Object.assign(
+    <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor) =>
+      untyped(name, input, actor),
+    { untyped },
+  );
 }

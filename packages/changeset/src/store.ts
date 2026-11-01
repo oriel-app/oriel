@@ -25,7 +25,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import { groupStore } from "@oriel/db";
+import { workstreamStore } from "@oriel/db";
 import { changeSetHash } from "./hash.ts";
 
 export const ulidValue = refine(string, isUlid, "expected a ULID");
@@ -91,7 +91,7 @@ const linkRow = object({
 });
 const nextRow = object({ next: number });
 const stableIdRow = object({ stable_id: string });
-const runRegionRow = object({ group_id: ulidValue, region_version: number });
+const runRegionRow = object({ workstream_id: ulidValue, region_version: number });
 const foundRow = object({ found: number });
 
 export type LinkRow = Infer<typeof linkRow>;
@@ -153,14 +153,14 @@ export function store(db: DatabaseSync) {
   const selectRun = db.prepare(
     "select count(*) as found from runs where id = ? and thread_id = ? and workspace_id = ?",
   );
-  // The group a run's thread is on, and the version of it the run used.
+  // The workstream a run's thread is on, and the version of it the run used.
   const selectRunRegion = db.prepare(`
-    select t.group_id, r.region_version from runs r join threads t on t.id = r.thread_id
+    select t.workstream_id, r.region_version from runs r join threads t on t.id = r.thread_id
     where r.id = ? and r.workspace_id = ?`);
-  const groups = groupStore(db);
-  const selectInGroup = db.prepare(`
+  const workstreams = workstreamStore(db);
+  const selectInWorkstream = db.prepare(`
     select exists (
-      select 1 from threads t join group_members m on m.group_id = t.group_id
+      select 1 from threads t join workstream_members m on m.workstream_id = t.workstream_id
       where t.id = ? and m.source = ? and m.stable_id = ? and m.removed_version is null
     ) as found`);
   // The item a handle names now: the live one, or else the latest tombstone.
@@ -306,14 +306,15 @@ export function store(db: DatabaseSync) {
 
     stableId: stableIdOf,
 
-    // Whether the thread's group holds an item now, in its latest version.
-    inGroupNow(threadId: Ulid, source: string, stableId: string): boolean {
+    // Whether the thread's workstream holds an item now, in its latest version.
+    inWorkstreamNow(threadId: Ulid, source: string, stableId: string): boolean {
       return (
-        parse(foundRow, selectInGroup.get(threadId, source, stableId), "group_members").found > 0
+        parse(foundRow, selectInWorkstream.get(threadId, source, stableId), "workstream_members")
+          .found > 0
       );
     },
 
-    // Handles as the region a run used sees them: its thread's group at the
+    // Handles as the region a run used sees them: its thread's workstream at the
     // run's version (decision 0018). A change set no run produced, a revert,
     // has no region. Membership is by stable ID (decision 0004). A handle
     // resolves through the index first, so one reused by another item names
@@ -323,7 +324,9 @@ export function store(db: DatabaseSync) {
     region(runId: Ulid | null, workspaceId: Ulid) {
       const raw = runId === null ? undefined : selectRunRegion.get(runId, workspaceId);
       const at = raw ? parse(runRegionRow, raw, "runs") : null;
-      const items = at ? (groups.region(at.group_id, at.region_version)?.items ?? []) : [];
+      const items = at
+        ? (workstreams.region(at.workstream_id, at.region_version)?.items ?? [])
+        : [];
       const rows = items.map((item) => ({
         source: parseItemId(item.id)?.source ?? "",
         stable_id: item.stableId,

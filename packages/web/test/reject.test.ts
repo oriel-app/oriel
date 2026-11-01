@@ -17,7 +17,7 @@ import {
 import type { ChangeSetView, ChatEntry, ThreadSummaryView, ThreadView } from "../src/view.ts";
 
 const id = "01JBZ0000000000000000000T1";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-10-31T09:00:00.000Z";
 
@@ -37,7 +37,7 @@ const openSet: ChangeSetView = {
 const threadView: ThreadView = {
   id,
   title: "Rename the practice story",
-  group: { id: groupId, name: "Practice", version: 1 },
+  workstream: { id: workstreamId, name: "Practice", version: 1 },
   state: "working",
   doneBy: null,
   regionVersion: 1,
@@ -52,7 +52,7 @@ const threadView: ThreadView = {
 const summary: ThreadSummaryView = {
   id,
   title: "Rename the practice story",
-  group: { id: groupId, name: "Practice" },
+  workstream: { id: workstreamId, name: "Practice" },
   state: "working",
   doneBy: null,
   waitingOn: "review",

@@ -28,7 +28,7 @@ const instantValue = refine(string, isInstant, "expected an instant");
 const threadRow = object({
   id: ulidValue,
   workspace_id: ulidValue,
-  group_id: ulidValue,
+  workstream_id: ulidValue,
   region_version: number,
   marked_done_at: nullable(instantValue),
   created_at: instantValue,
@@ -67,8 +67,8 @@ const wroteRow = object({
 
 // What can be added to a thread's chat. The agent's entries are its events
 // as the server receives them; the server checks their shape on the way out.
-// A marker says the thread moved from one version of its group to a later
-// one; what changed between them is in the group's own log, so it isn't
+// A marker says the thread moved from one version of its workstream to a later
+// one; what changed between them is in the workstream's own log, so it isn't
 // copied here. A held entry is a message from anyone but the user, which
 // waits for them (decision 0024).
 export type NewMessage =
@@ -93,7 +93,7 @@ export type Message = (Exclude<NewMessage, { role: "held" }> | Held) & {
   at: Instant;
 };
 
-// A thread that moved to a newer version of its group, and its marker's seq.
+// A thread that moved to a newer version of its workstream, and its marker's seq.
 export type Move = { threadId: Ulid; from: number; to: number; seq: number };
 
 // A thread with the time anything last happened in it, markers aside.
@@ -105,8 +105,8 @@ export type ThreadSummary = { thread: Thread; activityAt: Instant };
 export type Wrote = { applied: number; reverted: number; unconfirmed: number; sources: string[] };
 
 // A deleted thread: `kept` when it wrote to a source, so its records stay
-// out of sight; `groupRemoved` when its group went with it.
-export type Deleted = { groupId: Ulid; kept: boolean; groupRemoved: boolean };
+// out of sight; `workstreamRemoved` when its workstream went with it.
+export type Deleted = { workstreamId: Ulid; kept: boolean; workstreamRemoved: boolean };
 
 // A thread the user deleted is gone from every list and lookup; one kept for
 // what it wrote is in deleted_threads.
@@ -119,10 +119,10 @@ export type ThreadStore = ReturnType<typeof threadStore>;
 
 export function threadStore(db: DatabaseSync) {
   const insert = db.prepare(`
-    insert into threads (id, workspace_id, group_id, region_version, created_at)
-    select ?, ?, group_id, max(version), ? from group_changes where group_id = ? group by group_id`);
+    insert into threads (id, workspace_id, workstream_id, region_version, created_at)
+    select ?, ?, workstream_id, max(version), ? from workstream_changes where workstream_id = ? group by workstream_id`);
   const select = db.prepare(`
-    select id, workspace_id, group_id, region_version, marked_done_at, created_at
+    select id, workspace_id, workstream_id, region_version, marked_done_at, created_at
     from threads where id = ? and ${live}`);
   const mark = db.prepare(`update threads set marked_done_at = ? where id = ? and ${live}`);
   const markedBy = db.prepare(`
@@ -137,11 +137,11 @@ export function threadStore(db: DatabaseSync) {
   const selectByWorkspace = db.prepare(`
     select id from threads where workspace_id = ? and ${live}
     order by created_at desc, id desc`);
-  const selectByGroup = db.prepare(`
-    select id from threads where group_id = ? and ${live}
+  const selectByWorkstream = db.prepare(`
+    select id from threads where workstream_id = ? and ${live}
     order by created_at desc, id desc`);
   const selectLatest = db.prepare(
-    "select max(version) as version from group_changes where group_id = ?",
+    "select max(version) as version from workstream_changes where workstream_id = ?",
   );
   const moveTo = db.prepare("update threads set region_version = ? where id = ?");
   const nextSeq = db.prepare(
@@ -236,18 +236,18 @@ export function threadStore(db: DatabaseSync) {
     "delete from done_marks where thread_id = ?",
     "delete from threads where id = ?",
   ].map((sql) => db.prepare(sql));
-  // A group made for a thread from nothing, once it holds no thread, kept or
+  // A workstream made for a thread from nothing, once it holds no thread, kept or
   // not, and no item, as when its one thread was abandoned.
-  const selectEmptyGroup = db.prepare(`
-    select g.id from groups g
+  const selectEmptyWorkstream = db.prepare(`
+    select g.id from workstreams g
     where g.id = ?1 and json_extract(g.origin, '$.kind') = 'thread'
-      and not exists (select 1 from threads where group_id = ?1)
-      and not exists (select 1 from group_members where group_id = ?1 and removed_version is null)`);
-  const dropGroup = [
-    "delete from group_members where group_id = ?",
-    "delete from group_changes where group_id = ?",
-    "delete from user_named_groups where group_id = ?",
-    "delete from groups where id = ?",
+      and not exists (select 1 from threads where workstream_id = ?1)
+      and not exists (select 1 from workstream_members where workstream_id = ?1 and removed_version is null)`);
+  const dropWorkstream = [
+    "delete from workstream_members where workstream_id = ?",
+    "delete from workstream_changes where workstream_id = ?",
+    "delete from user_named_workstreams where workstream_id = ?",
+    "delete from workstreams where id = ?",
   ].map((sql) => db.prepare(sql));
 
   const wrote = (id: Ulid): Wrote => {
@@ -316,11 +316,11 @@ export function threadStore(db: DatabaseSync) {
     return next.value.next;
   };
 
-  // Moves a thread to its group's latest version, with a marker, if it is
+  // Moves a thread to its workstream's latest version, with a marker, if it is
   // behind. The caller holds the transaction.
   const move = (id: Ulid, now: Instant, markerId: Ulid): Move | null => {
     const thread = mustLoad(id);
-    const latest = versionRow(selectLatest.get(thread.group_id));
+    const latest = versionRow(selectLatest.get(thread.workstream_id));
     const to = latest.ok ? latest.value.version : null;
     if (to === null || to <= thread.region_version) return null;
     moveTo.run(to, id);
@@ -394,7 +394,7 @@ export function threadStore(db: DatabaseSync) {
     return {
       id: row.id,
       workspaceId: row.workspace_id,
-      groupId: row.group_id,
+      workstreamId: row.workstream_id,
       regionVersion: row.region_version,
       state: settled?.state ?? (idle ? "dropped" : "working"),
       doneBy: settled?.doneBy ?? null,
@@ -413,10 +413,10 @@ export function threadStore(db: DatabaseSync) {
   };
 
   return {
-    // A new thread on a group, working in the group's latest version.
-    open(thread: { id: Ulid; workspaceId: Ulid; groupId: Ulid }, now: Instant): void {
-      const { changes } = insert.run(thread.id, thread.workspaceId, now, thread.groupId);
-      if (Number(changes) !== 1) throw new RangeError(`no group ${thread.groupId}`);
+    // A new thread on a workstream, working in the workstream's latest version.
+    open(thread: { id: Ulid; workspaceId: Ulid; workstreamId: Ulid }, now: Instant): void {
+      const { changes } = insert.run(thread.id, thread.workspaceId, now, thread.workstreamId);
+      if (Number(changes) !== 1) throw new RangeError(`no workstream ${thread.workstreamId}`);
     },
 
     // Marks the thread done, as one over read-only items needs, and records
@@ -436,7 +436,7 @@ export function threadStore(db: DatabaseSync) {
     },
 
     // The user deletes the thread. One that wrote nothing to a source goes
-    // with everything in it, and so does its group, if that was made for it
+    // with everything in it, and so does its workstream, if that was made for it
     // and is now empty. One that wrote is kept, out of sight, so what it
     // wrote stays on record with its reverse diff, and its review links are
     // revoked. Null, and nothing deleted, while `applying` says one of its
@@ -449,12 +449,12 @@ export function threadStore(db: DatabaseSync) {
         if (applied > 0 || reverted > 0 || unconfirmed > 0) {
           insertDeleted.run(id, thread.workspace_id, now);
           revokeLinks.run(id, now);
-          return { groupId: thread.group_id, kept: true, groupRemoved: false };
+          return { workstreamId: thread.workstream_id, kept: true, workstreamRemoved: false };
         }
         for (const statement of purge) statement.run(id);
-        const empty = selectEmptyGroup.get(thread.group_id) !== undefined;
-        if (empty) for (const statement of dropGroup) statement.run(thread.group_id);
-        return { groupId: thread.group_id, kept: false, groupRemoved: empty };
+        const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
+        if (empty) for (const statement of dropWorkstream) statement.run(thread.workstream_id);
+        return { workstreamId: thread.workstream_id, kept: false, workstreamRemoved: empty };
       });
     },
 
@@ -478,9 +478,9 @@ export function threadStore(db: DatabaseSync) {
       return ids(selectByWorkspace.all(workspaceId)).map((id) => summary(id, now));
     },
 
-    // A group's threads, newest first.
-    ofGroup(groupId: Ulid, now: Instant): ThreadSummary[] {
-      return ids(selectByGroup.all(groupId)).map((id) => summary(id, now));
+    // A workstream's threads, newest first.
+    ofWorkstream(workstreamId: Ulid, now: Instant): ThreadSummary[] {
+      return ids(selectByWorkstream.all(workstreamId)).map((id) => summary(id, now));
     },
 
     // Adds to the chat; returns the entry's seq.
@@ -488,9 +488,9 @@ export function threadStore(db: DatabaseSync) {
       return transaction(db, () => append(mustLoad(id), message, messageId, now));
     },
 
-    // The person's message. A thread behind its group (one that settled, or
-    // was dropped, while the group changed) first catches up, with a marker,
-    // so the message is about the group as it is now (decision 0018).
+    // The person's message. A thread behind its workstream (one that settled, or
+    // was dropped, while the workstream changed) first catches up, with a marker,
+    // so the message is about the workstream as it is now (decision 0018).
     say(
       id: Ulid,
       text: string,
@@ -506,12 +506,12 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
-    // After the group changed: each of its working threads moves to the
+    // After the workstream changed: each of its working threads moves to the
     // latest version, with a marker. Settled and dropped ones keep theirs
     // until a new message. `newId` names each marker.
-    follow(groupId: Ulid, now: Instant, newId: () => Ulid): Move[] {
+    follow(workstreamId: Ulid, now: Instant, newId: () => Ulid): Move[] {
       return transaction(db, () =>
-        ids(selectByGroup.all(groupId)).flatMap((id) => {
+        ids(selectByWorkstream.all(workstreamId)).flatMap((id) => {
           if (get(id, now)?.state !== "working") return [];
           return move(id, now, newId()) ?? [];
         }),

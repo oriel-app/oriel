@@ -79,11 +79,14 @@ const ulidPath = "[0-9A-HJKMNP-TV-Z]{26}";
 const pagePaths = [
   /^\/$/,
   /^\/done$/,
-  new RegExp(`^/groups/${ulidPath}$`),
+  new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
   // A thread not started yet: a draft in the browser until its first message.
   /^\/threads\/new$/,
 ];
+// A workstream's page was /groups/:id until OA-98; a link to it still leads
+// there.
+const oldWorkstreamPath = new RegExp(`^/groups/(${ulidPath})$`);
 // A review link: the shell only. Its GET opens and decides nothing, because
 // chat apps unfurl links with GETs; the page asks with an explicit POST.
 const reviewPath = /^\/review\/[A-Za-z0-9_-]{1,64}$/;
@@ -166,6 +169,11 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
         allow: "GET, HEAD",
       });
     }
+    const moved = oldWorkstreamPath.exec(path)?.[1];
+    if (moved)
+      return reply(301, "text/plain; charset=utf-8", "moved\n", {
+        location: `/workstreams/${moved}${url.search}`,
+      });
     if (pagePaths.some((pattern) => pattern.test(path)))
       return reply(200, "text/html; charset=utf-8", page);
     if (reviewPath.test(path))

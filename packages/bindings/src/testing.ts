@@ -47,7 +47,7 @@ export function fixtureRegion(name: string): Region {
   if (!frozen) throw new RangeError(`no fixture region ${name}`);
   const stableIds = new Map(fixture.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   return {
-    groupId: fixedId,
+    workstreamId: fixedId,
     version: 1,
     workspaceId: fixedId,
     items: frozen.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),

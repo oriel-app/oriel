@@ -8,7 +8,7 @@ import type { ThreadSummaryView } from "../src/view.ts";
 const thread = (n: number, state: ThreadSummaryView["state"]): ThreadSummaryView => ({
   id: `T${n}`,
   title: `Thread ${n}`,
-  group: { id: "01JBZ0000000000000000000G1", name: "Launch" },
+  workstream: { id: "01JBZ0000000000000000000G1", name: "Launch" },
   state,
   doneBy: state === "done" ? "marked" : null,
   waitingOn: null,

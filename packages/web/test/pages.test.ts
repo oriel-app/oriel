@@ -3,12 +3,12 @@ import { test } from "node:test";
 import { dropNotice, readDrop } from "../src/drop.ts";
 import {
   askPrompt,
-  groupReplied,
-  initGroup,
+  workstreamReplied,
+  initWorkstream,
   nothingToAdd,
   planPrompt,
-  updateGroup,
-} from "../src/group.ts";
+  updateWorkstream,
+} from "../src/workstream.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { initReview, reviewReplied, reviewSteps, updateReview } from "../src/review.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
@@ -28,7 +28,7 @@ import type {
   ChangeSetView,
   ChatEntry,
   DiffView,
-  GroupView,
+  WorkstreamView,
   NextStepView,
   ReviewView,
   ThreadView,
@@ -36,7 +36,7 @@ import type {
 } from "../src/view.ts";
 
 const id = "01JBZ0000000000000000000T1";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-10-29T09:00:00.000Z";
 
@@ -56,8 +56,8 @@ const failed = (tag: Replied["tag"], error: string): Replied => ({
 test("routes read from and write to the address bar", () => {
   const routes = [
     { page: "window", grouping: "stuck", addTo: null },
-    { page: "window", grouping: "epic", addTo: groupId },
-    { page: "group", id: groupId },
+    { page: "window", grouping: "epic", addTo: workstreamId },
+    { page: "workstream", id: workstreamId },
     { page: "thread", id },
     { page: "done" },
     { page: "review", token: "abc_DEF-123" },
@@ -128,7 +128,7 @@ function shownWindow() {
   return update(model, { type: "windowLoaded", request: model.request, window: windowView() })[0];
 }
 
-test("the ask box and a picked group's name count items in good English", () => {
+test("the ask box and a picked workstream's name count items in good English", () => {
   assert.equal(askPrompt(0), planPrompt);
   assert.equal(askPrompt(1), "Ask about this item…");
   assert.equal(askPrompt(2), "Ask about these 2 items…");
@@ -138,36 +138,36 @@ test("the ask box and a picked group's name count items in good English", () => 
   assert.equal(pickedName({ ...model, selected: ["jira:SYN-404", "jira:SYN-405"] }), "2 items");
 });
 
-test("picking items, then making a group of them, goes to the new group", () => {
+test("picking items, then making a workstream of them, goes to the new workstream", () => {
   let model = shownWindow();
   model = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
   model = update(model, { type: "itemToggled", id: "jira:SYN-11" })[0];
   assert.deepEqual(model.selected, ["jira:SYN-10", "jira:SYN-11"]);
   assert.equal(pickedName(model), "Checkout");
-  const [pending, effects] = update(model, { type: "selectionGrouped", name: "Checkout" });
+  const [pending, effects] = update(model, { type: "selectionToWorkstream", name: "Checkout" });
   assert.deepEqual(effects, [
     {
       type: "http",
       method: "POST",
-      url: "/api/groups",
+      url: "/api/workstreams",
       body: { kind: "picked", name: "Checkout", items: ["jira:SYN-10", "jira:SYN-11"] },
-      tag: { kind: "createGroup" },
+      tag: { kind: "createWorkstream" },
     },
   ]);
   // A second click while it's pending does nothing.
-  assert.deepEqual(update(pending, { type: "selectionGrouped", name: "x" })[1], []);
-  const [made, next] = update(pending, ok({ kind: "createGroup" }, { id: groupId }));
+  assert.deepEqual(update(pending, { type: "selectionToWorkstream", name: "x" })[1], []);
+  const [made, next] = update(pending, ok({ kind: "createWorkstream" }, { id: workstreamId }));
   assert.deepEqual(made.selected, []);
-  assert.deepEqual(next, [{ type: "navigate", route: { page: "group", id: groupId } }]);
+  assert.deepEqual(next, [{ type: "navigate", route: { page: "workstream", id: workstreamId } }]);
   const [refused] = update(
     pending,
-    failed({ kind: "createGroup" }, "jira:SYN-11 isn't in the window"),
+    failed({ kind: "createWorkstream" }, "jira:SYN-11 isn't in the window"),
   );
   assert.deepEqual([refused.pending, refused.notice], [false, "jira:SYN-11 isn't in the window"]);
   assert.deepEqual(refused.selected, ["jira:SYN-10", "jira:SYN-11"]);
 });
 
-test("an epic is picked from its heading like any item, and names the group it starts", () => {
+test("an epic is picked from its heading like any item, and names the workstream it starts", () => {
   const view = windowView();
   const [checkout] = view.clusters;
   assert.ok(checkout);
@@ -193,14 +193,14 @@ test("an epic is picked from its heading like any item, and names the group it s
   assert.equal(pickedName(model), "Checkout v2");
   model = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
   assert.equal(pickedName(model), "Checkout");
-  const [, effects] = update(model, { type: "selectionGrouped", name: pickedName(model) });
+  const [, effects] = update(model, { type: "selectionToWorkstream", name: pickedName(model) });
   assert.deepEqual(effects, [
     {
       type: "http",
       method: "POST",
-      url: "/api/groups",
+      url: "/api/workstreams",
       body: { kind: "picked", name: "Checkout", items: ["jira:SYN-1", "jira:SYN-10"] },
-      tag: { kind: "createGroup" },
+      tag: { kind: "createWorkstream" },
     },
   ]);
 });
@@ -230,7 +230,7 @@ function noEpicsWindow(titles: string[]): WindowView {
   return { ...window, clusters: [...window.clusters, { row: derived, list }] };
 }
 
-test("a picked group is named from its items, never a cluster label that says what they lack", () => {
+test("a picked workstream is named from its items, never a cluster label that says what they lack", () => {
   const [initial] = init("epic");
   const window = noEpicsWindow(["Roadmap.md", "Notes from the offsite.md", "x".repeat(200)]);
   const model = update(initial, { type: "windowLoaded", request: initial.request, window })[0];
@@ -246,29 +246,29 @@ test("a picked group is named from its items, never a cluster label that says wh
   assert.equal([...named("folder:notes-3")].length, 120);
 });
 
-test("a cluster becomes a group in one click; picked items can join an existing group", () => {
+test("a cluster becomes a workstream in one click; picked items can join an existing workstream", () => {
   const model = shownWindow();
-  assert.deepEqual(update(model, { type: "clusterGrouped", key: "10001" })[1], [
+  assert.deepEqual(update(model, { type: "clusterToWorkstream", key: "10001" })[1], [
     {
       type: "http",
       method: "POST",
-      url: "/api/groups",
+      url: "/api/workstreams",
       body: { kind: "cluster", grouping: "epic", cluster: "10001" },
-      tag: { kind: "createGroup" },
+      tag: { kind: "createWorkstream" },
     },
   ]);
   const picked = update(model, { type: "itemToggled", id: "jira:SYN-10" })[0];
-  const [, effects] = update(picked, { type: "selectionAdded", groupId });
+  const [, effects] = update(picked, { type: "selectionAdded", workstreamId });
   assert.deepEqual(effects, [
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/add`,
+      url: `/api/workstreams/${workstreamId}/add`,
       body: { items: ["jira:SYN-10"] },
-      tag: { kind: "addToGroup", groupId },
+      tag: { kind: "addToWorkstream", workstreamId },
     },
   ]);
-  assert.deepEqual(update(model, { type: "selectionAdded", groupId })[1], []);
+  assert.deepEqual(update(model, { type: "selectionAdded", workstreamId })[1], []);
   assert.deepEqual(update(picked, { type: "selectionCleared" })[0].selected, []);
 });
 
@@ -276,7 +276,7 @@ function threadView(entries: ChatEntry[], changeSets: ChangeSetView[] = []): Thr
   return {
     id,
     title: "Hi",
-    group: { id: groupId, name: "Checkout", version: 1 },
+    workstream: { id: workstreamId, name: "Checkout", version: 1 },
     state: "working",
     doneBy: null,
     regionVersion: 1,
@@ -624,40 +624,40 @@ test("a run its turn never finished shows as stopped once the turn ends", () => 
   assert.equal(stopped?.kind === "run" && stopped.stopped, true);
 });
 
-test("asking on a group's page opens a thread and goes to it", () => {
-  const [model, effects] = initGroup(groupId);
+test("asking on a workstream's page opens a thread and goes to it", () => {
+  const [model, effects] = initWorkstream(workstreamId);
   assert.deepEqual(effects, [
     {
       type: "http",
       method: "GET",
-      url: `/api/groups/${groupId}`,
-      tag: { kind: "group", id: groupId },
+      url: `/api/workstreams/${workstreamId}`,
+      tag: { kind: "workstream", id: workstreamId },
     },
   ]);
-  const drafted = updateGroup(model, { type: "draftChanged", text: "What's stuck?" })[0];
-  const [pending, ask] = updateGroup(drafted, { type: "askClicked" });
+  const drafted = updateWorkstream(model, { type: "draftChanged", text: "What's stuck?" })[0];
+  const [pending, ask] = updateWorkstream(drafted, { type: "askClicked" });
   assert.deepEqual(ask, [
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/threads`,
+      url: `/api/workstreams/${workstreamId}/threads`,
       body: { text: "What's stuck?" },
-      tag: { kind: "threadOpened", groupId },
+      tag: { kind: "threadOpened", workstreamId },
     },
   ]);
-  const [, go] = groupReplied(pending, ok({ kind: "threadOpened", groupId }, { id }));
+  const [, go] = workstreamReplied(pending, ok({ kind: "threadOpened", workstreamId }, { id }));
   assert.deepEqual(go, [{ type: "navigate", route: { page: "thread", id } }]);
-  assert.deepEqual(updateGroup(model, { type: "memberRemoved", id: "jira:SYN-3" })[1], [
+  assert.deepEqual(updateWorkstream(model, { type: "memberRemoved", id: "jira:SYN-3" })[1], [
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/remove`,
+      url: `/api/workstreams/${workstreamId}/remove`,
       body: { items: ["jira:SYN-3"] },
-      tag: { kind: "groupChanged", id: groupId },
+      tag: { kind: "workstreamChanged", id: workstreamId },
     },
   ]);
-  assert.deepEqual(updateGroup(model, { type: "addClicked" })[1], [
-    { type: "navigate", route: { page: "window", grouping: "epic", addTo: groupId } },
+  assert.deepEqual(updateWorkstream(model, { type: "addClicked" })[1], [
+    { type: "navigate", route: { page: "window", grouping: "epic", addTo: workstreamId } },
   ]);
 });
 
@@ -694,39 +694,39 @@ test("a drop reads links, the text beside them and file names, at most fifty of 
   assert.equal(readDrop(data({ "text/uri-list": many })).links.length, 50);
 });
 
-test("what's dropped on a group's page is sent to it; the reply says only what wasn't added", () => {
-  const [model] = initGroup(groupId);
+test("what's dropped on a workstream's page is sent to it; the reply says only what wasn't added", () => {
+  const [model] = initWorkstream(workstreamId);
   const dropped = {
     links: ["https://oriel.atlassian.net/browse/OA-5"],
     files: [{ name: "plan.md", modified: 1 }],
   };
-  const [pending, sent] = updateGroup(model, { type: "dropped", dropped });
+  const [pending, sent] = updateWorkstream(model, { type: "dropped", dropped });
   assert.deepEqual(sent, [
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/drop`,
+      url: `/api/workstreams/${workstreamId}/drop`,
       body: dropped,
-      tag: { kind: "dropped", groupId },
+      tag: { kind: "dropped", workstreamId },
     },
   ]);
-  const view = { group: { name: "Checkout" } } as GroupView;
+  const view = { workstream: { name: "Checkout" } } as WorkstreamView;
   const refused = [{ what: "plan.md", why: "It isn't in the connected folder." }];
-  const [after] = groupReplied(
+  const [after] = workstreamReplied(
     pending,
-    ok({ kind: "dropped", groupId }, { group: view, added: ["jira:OA-5"], refused }),
+    ok({ kind: "dropped", workstreamId }, { workstream: view, added: ["jira:OA-5"], refused }),
   );
   assert.equal(after.view, view);
   assert.equal(after.notice, "Couldn't add “plan.md”: It isn't in the connected folder.");
-  assert.deepEqual(updateGroup(model, { type: "dropped", dropped: { links: [], files: [] } }), [
-    { ...model, notice: nothingToAdd },
-    [],
-  ]);
+  assert.deepEqual(
+    updateWorkstream(model, { type: "dropped", dropped: { links: [], files: [] } }),
+    [{ ...model, notice: nothingToAdd }, []],
+  );
   assert.equal(dropNotice({ added: ["jira:OA-5"], refused: [] }), null);
-  assert.equal(dropNotice({ added: [], refused: [] }), "That's already in this group.");
+  assert.equal(dropNotice({ added: [], refused: [] }), "That's already in this workstream.");
 });
 
-test("what's dropped on a thread joins its group; the thread reloads to show the marker", () => {
+test("what's dropped on a thread joins its workstream; the thread reloads to show the marker", () => {
   const [model] = loadedThread(threadView([]));
   const dropped = { links: ["OA-5"], files: [] };
   const [, sent] = updateThread(model, { type: "dropped", dropped });
@@ -734,32 +734,38 @@ test("what's dropped on a thread joins its group; the thread reloads to show the
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/drop`,
+      url: `/api/workstreams/${workstreamId}/drop`,
       body: dropped,
-      tag: { kind: "dropped", groupId },
+      tag: { kind: "dropped", workstreamId },
     },
   ]);
   const reply = (added: string[]) =>
-    threadReplied(model, ok({ kind: "dropped", groupId }, { group: {}, added, refused: [] }));
+    threadReplied(
+      model,
+      ok({ kind: "dropped", workstreamId }, { workstream: {}, added, refused: [] }),
+    );
   assert.deepEqual(reply(["jira:OA-5"])[1], [
     { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
   ]);
-  assert.deepEqual(reply([]), [{ ...model, notice: "That's already in this group." }, []]);
+  assert.deepEqual(reply([]), [{ ...model, notice: "That's already in this workstream." }, []]);
 });
 
-test("a group is renamed only when the name changed", () => {
-  const view = { group: { name: "Checkout" } } as GroupView;
-  const [model] = groupReplied(initGroup(groupId)[0], ok({ kind: "group", id: groupId }, view));
-  const same = updateGroup(model, { type: "nameEdited", name: " Checkout " })[0];
-  assert.deepEqual(updateGroup(same, { type: "nameSaved" })[1], []);
-  const changed = updateGroup(model, { type: "nameEdited", name: "Checkout v2" })[0];
-  assert.deepEqual(updateGroup(changed, { type: "nameSaved" })[1], [
+test("a workstream is renamed only when the name changed", () => {
+  const view = { workstream: { name: "Checkout" } } as WorkstreamView;
+  const [model] = workstreamReplied(
+    initWorkstream(workstreamId)[0],
+    ok({ kind: "workstream", id: workstreamId }, view),
+  );
+  const same = updateWorkstream(model, { type: "nameEdited", name: " Checkout " })[0];
+  assert.deepEqual(updateWorkstream(same, { type: "nameSaved" })[1], []);
+  const changed = updateWorkstream(model, { type: "nameEdited", name: "Checkout v2" })[0];
+  assert.deepEqual(updateWorkstream(changed, { type: "nameSaved" })[1], [
     {
       type: "http",
       method: "POST",
-      url: `/api/groups/${groupId}/rename`,
+      url: `/api/workstreams/${workstreamId}/rename`,
       body: { name: "Checkout v2" },
-      tag: { kind: "renamed", id: groupId },
+      tag: { kind: "renamed", id: workstreamId },
     },
   ]);
 });

@@ -1,9 +1,9 @@
 // Every change to the workspace reaches the pages watching it the same way,
-// whoever made it: each of Oriel's own actions publishes once, so a group's
+// whoever made it: each of Oriel's own actions publishes once, so a workstream's
 // page open in another tab hears a change made here (OA-78).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { GroupSummary, StreamEvent } from "@oriel/web/view";
+import type { WorkstreamSummary, StreamEvent } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
 const changed = 'data: {"type":"threads"}\n\n';
@@ -27,19 +27,19 @@ async function watch(app: Awaited<ReturnType<typeof testApp>>) {
   return { stream, quiet };
 }
 
-test("a change to a group no thread works on reaches every page, once", async (t) => {
+test("a change to a workstream no thread works on reaches every page, once", async (t) => {
   const app = await testApp(t);
-  const { id } = json<GroupSummary>(
-    await app.post("/api/groups", {
+  const { id } = json<WorkstreamSummary>(
+    await app.post("/api/workstreams", {
       kind: "picked",
       name: "Launch",
       items: ["jira:SYN-3", "jira:SYN-10"],
     }),
   );
   const { stream, quiet } = await watch(app);
-  await app.post(`/api/groups/${id}/remove`, { items: ["jira:SYN-10"] });
+  await app.post(`/api/workstreams/${id}/remove`, { items: ["jira:SYN-10"] });
   assert.equal((await stream.next()).value, changed);
-  await app.post(`/api/groups/${id}/rename`, { name: "Beta" });
+  await app.post(`/api/workstreams/${id}/rename`, { name: "Beta" });
   assert.equal((await stream.next()).value, changed);
   const after = await quiet();
   assert.equal(after.told, false);
@@ -48,11 +48,11 @@ test("a change to a group no thread works on reaches every page, once", async (t
 
 test("a move that only adds a marker reaches every page, and the thread's own its marker", async (t) => {
   const app = await testApp(t);
-  const { id: groupId } = json<GroupSummary>(
-    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
+  const { id: workstreamId } = json<WorkstreamSummary>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
   );
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Hi" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Hi" }),
   );
   await app.app.settled();
   const own = (await app.get(`/api/threads/${threadId}/events`)).stream;
@@ -65,25 +65,25 @@ test("a move that only adds a marker reaches every page, and the thread's own it
   // What it had, up to its status.
   while ((await event())?.type !== "status");
   const { stream, quiet } = await watch(app);
-  await app.post(`/api/groups/${groupId}/add`, { items: ["jira:SYN-10"] });
+  await app.post(`/api/workstreams/${workstreamId}/add`, { items: ["jira:SYN-10"] });
   assert.equal((await stream.next()).value, changed);
   assert.equal((await quiet()).told, false);
   // Its own page shows the marker, and hears the rest of the workspace changed.
   const marker = await event();
   assert.ok(marker?.type === "entry" && marker.entry.kind === "marker");
-  assert.deepEqual(await event(), { type: "group" });
+  assert.deepEqual(await event(), { type: "workstream" });
   assert.deepEqual(await event(), { type: "threads" });
   await stream.return?.();
   await ownStream.return?.();
 });
 
-test("a sync reaches every page, and an open thread's hears its group may have changed", async (t) => {
+test("a sync reaches every page, and an open thread's hears its workstream may have changed", async (t) => {
   const app = await testApp(t, { live: true });
-  const { id: groupId } = json<GroupSummary>(
-    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
+  const { id: workstreamId } = json<WorkstreamSummary>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
   );
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Hi" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Hi" }),
   );
   await app.app.settled();
   const own = (await app.get(`/api/threads/${threadId}/events`)).stream;
@@ -97,22 +97,22 @@ test("a sync reaches every page, and an open thread's hears its group may have c
   const { stream } = await watch(app);
   assert.equal((await app.post("/api/jira/sync")).status, 200);
   assert.equal((await stream.next()).value, changed);
-  assert.deepEqual(await event(), { type: "group" });
+  assert.deepEqual(await event(), { type: "workstream" });
   assert.deepEqual(await event(), { type: "threads" });
   await stream.return?.();
   await ownStream.return?.();
 });
 
-test("a thread's own page hears its group renamed, or changed, though the thread didn't move", async (t) => {
+test("a thread's own page hears its workstream renamed, or changed, though the thread didn't move", async (t) => {
   const app = await testApp(t);
-  const { id: groupId } = json<GroupSummary>(
-    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
+  const { id: workstreamId } = json<WorkstreamSummary>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
   );
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Hi" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Hi" }),
   );
   await app.app.settled();
-  // Done, it stays at its version when the group changes.
+  // Done, it stays at its version when the workstream changes.
   app.advance(1000);
   await app.post(`/api/threads/${threadId}/done`, {});
   const own = (await app.get(`/api/threads/${threadId}/events`)).stream;
@@ -123,11 +123,11 @@ test("a thread's own page hears its group renamed, or changed, though the thread
     return data === undefined ? null : (JSON.parse(data) as StreamEvent);
   };
   while ((await event())?.type !== "status");
-  await app.post(`/api/groups/${groupId}/rename`, { name: "Beta" });
-  assert.deepEqual(await event(), { type: "group" });
+  await app.post(`/api/workstreams/${workstreamId}/rename`, { name: "Beta" });
+  assert.deepEqual(await event(), { type: "workstream" });
   assert.deepEqual(await event(), { type: "threads" });
-  await app.post(`/api/groups/${groupId}/add`, { items: ["jira:SYN-10"] });
-  assert.deepEqual(await event(), { type: "group" });
+  await app.post(`/api/workstreams/${workstreamId}/add`, { items: ["jira:SYN-10"] });
+  assert.deepEqual(await event(), { type: "workstream" });
   assert.deepEqual(await event(), { type: "threads" });
   await ownStream.return?.();
 });

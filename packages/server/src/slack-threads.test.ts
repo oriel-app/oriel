@@ -1,9 +1,9 @@
 // A Slack conversation is one item (OA-49): its message, with its replies as
 // part of it. The window shows how many replies it has and links to them, and
-// a reply's link, dropped on a group, adds the conversation.
+// a reply's link, dropped on a workstream, adds the conversation.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { GroupView, WindowView } from "@oriel/web/view";
+import type { WorkstreamView, WindowView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
 const message = "slack:C0FW1WEATHR-1788444000.000100";
@@ -25,14 +25,14 @@ test("a message's row counts its replies and links to them, under every grouping
   }
 });
 
-test("a group's member shows its message's replies", async (t) => {
+test("a workstream's member shows its message's replies", async (t) => {
   const app = await testApp(t, { slack: { kind: "fixture" } });
   const { id } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Fares", items: [message] }),
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: [message] }),
   );
-  const group = json<GroupView>(await app.get(`/api/groups/${id}`));
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${id}`));
   assert.deepEqual(
-    group.members.map((m) => [m.ref.id, m.row?.replies]),
+    workstream.members.map((m) => [m.ref.id, m.row?.replies]),
     [[message, replies]],
   );
 });
@@ -40,15 +40,15 @@ test("a group's member shows its message's replies", async (t) => {
 test("a dropped reply link, as Slack copies it, adds its conversation", async (t) => {
   const app = await testApp(t, { slack: { kind: "fixture" } });
   const { id } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );
   const link = `${archive}/p1788445500000100?thread_ts=1788444000.000100&cid=C0FW1WEATHR`;
   const dropped = json<{ added: string[]; refused: unknown[] }>(
-    await app.post(`/api/groups/${id}/drop`, { links: [link], files: [] }),
+    await app.post(`/api/workstreams/${id}/drop`, { links: [link], files: [] }),
   );
   assert.deepEqual(dropped.added, [message]);
   assert.deepEqual(dropped.refused, []);
-  const added = app.app.telemetry().filter((e) => e.name === "group.item-added");
+  const added = app.app.telemetry().filter((e) => e.name === "workstream.item-added");
   assert.deepEqual(
     added.map((e) => [e.data.source, e.data.cause]),
     [["slack", "user"]],

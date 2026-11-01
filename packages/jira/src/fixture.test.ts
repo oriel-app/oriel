@@ -45,7 +45,7 @@ const input = () => ({
   regions: [
     {
       name: "first-epic",
-      origin: { kind: "group", grouping: "epic", cluster: "10001", anchor: "jira:SYN-1" },
+      origin: { kind: "cluster", grouping: "epic", cluster: "10001", anchor: "jira:SYN-1" },
       items: ["jira:SYN-1", "jira:SYN-3", "jira:SYN-5"],
     },
     { name: "picked", origin: { kind: "picked" }, items: ["jira:SYN-5"] },
@@ -68,7 +68,7 @@ test("a consistent fixture parses, and its region origins are core's", () => {
   assert.equal(fixture.issues.length, 4);
   const origins: Region["origin"][] = fixture.regions.map((region) => region.origin);
   assert.deepEqual(origins[1], { kind: "picked" });
-  // The files say "group"; Oriel says "cluster" (decision 0018).
+  // The files name the anchor by its item ID; core adds its stable ID.
   assert.deepEqual(origins[0], {
     kind: "cluster",
     grouping: "epic",
@@ -118,7 +118,7 @@ test("an edited summary keeps to Jira's 1 to 255 characters", () => {
 test("an epic region holds exactly its epic and that epic's children", () => {
   const region = (cluster: string, items: string[]) => ({
     name: "first-epic",
-    origin: { kind: "group", grouping: "epic", cluster, anchor: "jira:SYN-1" },
+    origin: { kind: "cluster", grouping: "epic", cluster, anchor: "jira:SYN-1" },
     items,
   });
   const missing = input();
@@ -134,7 +134,7 @@ test("an epic region holds exactly its epic and that epic's children", () => {
   const notEpic = input();
   notEpic.regions[0] = {
     name: "first-epic",
-    origin: { kind: "group", grouping: "epic", cluster: "10003", anchor: "jira:SYN-3" },
+    origin: { kind: "cluster", grouping: "epic", cluster: "10003", anchor: "jira:SYN-3" },
     items: ["jira:SYN-3"],
   };
   assert.deepEqual(paths(notEpic), ["$.regions[0].origin.anchor"]);

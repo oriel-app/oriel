@@ -5,7 +5,7 @@ import { type TestContext, test } from "node:test";
 import type {
   ChangeSetView,
   DiffView,
-  GroupView,
+  WorkstreamView,
   StreamEvent,
   ThreadSummaryView,
   ThreadView,
@@ -35,9 +35,9 @@ async function proposed(t: TestContext, script: Script = estimate) {
   });
   const site = app.site;
   assert.ok(site);
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate what's missing" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Estimate what's missing" }),
   );
   await app.app.settled();
   const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));
@@ -60,7 +60,7 @@ async function proposed(t: TestContext, script: Script = estimate) {
   return {
     ...app,
     site,
-    groupId,
+    workstreamId,
     threadId,
     view,
     changeSetId: entry.changeSetId,
@@ -70,7 +70,7 @@ async function proposed(t: TestContext, script: Script = estimate) {
   };
 }
 
-test("a thread from nothing plans an epic and its stories, and its new group takes the epic's name", async (t) => {
+test("a thread from nothing plans an epic and its stories, and its new workstream takes the epic's name", async (t) => {
   const plan: Script = async () => ({
     value: null,
     writes: [
@@ -81,20 +81,21 @@ test("a thread from nothing plans an epic and its stories, and its new group tak
   const app = await testApp(t, { writes: true, plan: () => [{ run: "plan" }], scripts: { plan } });
   const started = await app.post("/api/threads", { text: "Plan kiosk wallets" });
   assert.equal(started.status, 201);
-  const { id: threadId, groupId } = json<{ id: string; groupId: string }>(started);
+  const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(started);
   await app.app.settled();
-  const group = async () => json<GroupView>(await app.get(`/api/groups/${groupId}`));
-  const before = await group();
-  assert.deepEqual([before.group.name, before.members.length], ["New group", 0]);
+  const workstream = async () =>
+    json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
+  const before = await workstream();
+  assert.deepEqual([before.workstream.name, before.members.length], ["New workstream", 0]);
   assert.deepEqual(
     app.app
       .telemetry()
-      .filter((e) => e.name === "group.created" || e.name === "thread.opened")
+      .filter((e) => e.name === "workstream.created" || e.name === "thread.opened")
       .map(({ name, data }) =>
-        name === "group.created" ? [name, data.origin, data.size] : [name, data.regionSize],
+        name === "workstream.created" ? [name, data.origin, data.size] : [name, data.regionSize],
       ),
     [
-      ["group.created", "thread", 0],
+      ["workstream.created", "thread", 0],
       ["thread.opened", 0],
     ],
   );
@@ -117,8 +118,8 @@ test("a thread from nothing plans an epic and its stories, and its new group tak
   });
   assert.equal(json<Acted>(approved).changeSet.status, "applied");
 
-  const after = await group();
-  assert.equal(after.group.name, "Kiosk wallets");
+  const after = await workstream();
+  assert.equal(after.workstream.name, "Kiosk wallets");
   const [epic, story] = after.members.map((m) => m.ref.key);
   assert.ok(epic && story);
   assert.equal(app.site?.issue(epic)?.issueType, "Epic");
@@ -326,14 +327,14 @@ test("a write sent with no answer may have landed: revert waits, and a retry fin
   assert.equal(sends.length, 1);
 });
 
-test("a change whose item left the group since is stopped, and can be left out", async (t) => {
+test("a change whose item left the workstream since is stopped, and can be left out", async (t) => {
   const app = await proposed(t);
-  await app.post(`/api/groups/${app.groupId}/remove`, { items: ["jira:SYN-99"] });
+  await app.post(`/api/workstreams/${app.workstreamId}/remove`, { items: ["jira:SYN-99"] });
   const stopped = await app.approve();
   assert.equal(stopped.body.changeSet.status, "partial");
   assert.match(
     stopped.body.changeSet.errors[0]?.error ?? "",
-    /SYN-99 was removed from the group after this was captured/,
+    /SYN-99 was removed from the workstream after this was captured/,
   );
   assert.equal(stopped.body.changeSet.sentUnapplied, false);
   assert.equal(app.site.issue("SYN-99")?.points, null);
@@ -380,7 +381,7 @@ test("leaving out the last unapplied change completes the set, and the thread is
 
 test("a revert that drops unsent changes completes the set it reverts", async (t) => {
   const app = await proposed(t);
-  await app.post(`/api/groups/${app.groupId}/remove`, { items: ["jira:SYN-99"] });
+  await app.post(`/api/workstreams/${app.workstreamId}/remove`, { items: ["jira:SYN-99"] });
   await app.approve();
   app.advance(1000);
   const reverted = await app.act("revert");
@@ -463,27 +464,27 @@ test("while a change set applies, nothing is offered for it and every action wai
   assert.deepEqual(applied.body.changeSet.nextSteps, [{ kind: "revert" }]);
 });
 
-test("an item a change set creates joins the group, with markers in its threads", async (t) => {
+test("an item a change set creates joins the workstream, with markers in its threads", async (t) => {
   const app = await proposed(t, create);
-  // Another thread on the group, still working when the change set applies.
+  // Another thread on the workstream, still working when the change set applies.
   const { id: other } = json<{ id: string }>(
-    await app.post(`/api/groups/${app.groupId}/threads`, {}),
+    await app.post(`/api/workstreams/${app.workstreamId}/threads`, {}),
   );
   const applied = await app.approve();
   assert.equal(applied.body.changeSet.status, "applied");
   const made = [...app.site.calls].reverse().find((c) => c.method === "POST")?.path;
   assert.equal(made, "/rest/api/3/issue");
-  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
-  assert.equal(group.group.version, 2);
-  assert.equal(group.changes[0]?.cause, "change-set");
-  const key = group.changes[0]?.added[0]?.key;
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstreamId}`));
+  assert.equal(workstream.workstream.version, 2);
+  assert.equal(workstream.changes[0]?.cause, "change-set");
+  const key = workstream.changes[0]?.added[0]?.key;
   assert.equal(key, "SYN-900");
   assert.equal(app.site.issue("SYN-900")?.epic, "SYN-1");
   const markerOf = (thread: ThreadView) => {
     const marker = thread.entries.findLast((e) => e.kind === "marker");
     return marker?.kind === "marker" ? marker.added.map((r) => r.key) : null;
   };
-  // The working thread follows the group at once.
+  // The working thread follows the workstream at once.
   const working = json<ThreadView>(await app.get(`/api/threads/${other}`));
   assert.deepEqual([working.regionVersion, markerOf(working)], [2, ["SYN-900"]]);
   // The thread the change set settled keeps its version until the user writes.
@@ -494,7 +495,7 @@ test("an item a change set creates joins the group, with markers in its threads"
   const caught = await app.view();
   assert.deepEqual([caught.regionVersion, markerOf(caught)], [2, ["SYN-900"]]);
   assert.ok(caught.members.some((m) => m.ref.key === "SYN-900"));
-  const added = app.app.telemetry().find((e) => e.name === "group.item-added");
+  const added = app.app.telemetry().find((e) => e.name === "workstream.item-added");
   assert.equal(added?.data.cause, "change-set");
 });
 
@@ -703,11 +704,11 @@ test("a revert the workflow has no way back for stops, says why, and moves nothi
 
 test("while a change set applies, its thread needs nothing from the user; a failed apply needs them again", async (t) => {
   const app = await proposed(t);
-  // What the threads list and the group's page say, as a reload asks them.
+  // What the threads list and the workstream's page say, as a reload asks them.
   const waits = async () => {
     const threads = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
-    const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
-    return [...threads.threads, ...group.threads].map((s) => s.waitingOn);
+    const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstreamId}`));
+    return [...threads.threads, ...workstream.threads].map((s) => s.waitingOn);
   };
   assert.deepEqual(await waits(), ["review", "review"]);
   app.site.refuse("SYN-99");

@@ -1,5 +1,5 @@
 // The sidebar, on every page but a review link: the window, the threads
-// waiting on the user, the user's groups with their threads under them, the
+// waiting on the user, the user's workstreams with their threads under them, the
 // latest done threads, and the sources: Jira and the connected folder.
 // On a wide screen it folds to a strip of icons, where the fold button counts
 // the threads waiting on the user; on a narrow one it's a drawer the menu
@@ -8,11 +8,11 @@ import { useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import type { JiraModel } from "./jira.ts";
-import { doneRoute, doneTabs, type Nav, type NavGroup, nav } from "./nav.ts";
+import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 
-// A group shows this many of its threads; the rest are on its page.
+// A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
 // So many threads waiting on the user show until the user asks for the rest.
 const shownWaiting = 8;
@@ -83,7 +83,7 @@ export function Sidebar(props: {
         </Link>
       </nav>
       <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
-      <Groups where={where} dispatch={dispatch} />
+      <Workstreams where={where} dispatch={dispatch} />
       <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <div class="sources">
         <Jira jira={model.jira} dispatch={dispatch} />
@@ -96,7 +96,7 @@ export function Sidebar(props: {
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
 // What needs the user, in sight on every page: each thread waiting on a
-// review or a reply, with what it waits on and its group. The groups below
+// review or a reply, with what it waits on and its workstream. The workstreams below
 // say which page this is.
 // Past a few, the rest show here when asked for.
 function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
@@ -124,7 +124,7 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
                     <span class="nav-waiting-on" data-waiting={thread.waitingOn}>
                       {thread.waitingOn && waitingNames[thread.waitingOn]}
                     </span>
-                    <span class="nav-waiting-group">{thread.group.name}</span>
+                    <span class="nav-waiting-workstream">{thread.workstream.name}</span>
                   </span>
                 </span>
               </Link>
@@ -143,12 +143,12 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   );
 }
 
-function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
-  // Groups the user opened or closed by hand. Any other is open while it's
-  // the current one, and arriving at a group opens it whatever was set.
+function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
+  // Workstreams the user opened or closed by hand. Any other is open while it's
+  // the current one, and arriving at a workstream opens it whatever was set.
   const [set, setSet] = useState<ReadonlyMap<string, boolean>>(new Map());
-  const current = where.groups?.find((entry) => entry.current)?.group.id ?? null;
-  // Before paint, so an arrival never shows the group closed for a frame.
+  const current = where.workstreams?.find((entry) => entry.current)?.workstream.id ?? null;
+  // Before paint, so an arrival never shows the workstream closed for a frame.
   useLayoutEffect(() => {
     if (current === null) return;
     setSet((was) => {
@@ -158,19 +158,21 @@ function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
       return next;
     });
   }, [current]);
-  const isOpen = (entry: NavGroup) => set.get(entry.group.id) ?? entry.current;
-  const toggle = (entry: NavGroup) =>
-    setSet((was) => new Map(was).set(entry.group.id, !(was.get(entry.group.id) ?? entry.current)));
+  const isOpen = (entry: NavWorkstream) => set.get(entry.workstream.id) ?? entry.current;
+  const toggle = (entry: NavWorkstream) =>
+    setSet((was) =>
+      new Map(was).set(entry.workstream.id, !(was.get(entry.workstream.id) ?? entry.current)),
+    );
   return (
-    <nav class="sidebar-groups" aria-label="Groups">
-      <h2 class="rail-title">Groups</h2>
-      {where.groups !== null && where.groups.length === 0 && (
-        <p class="rail-empty">Pick items in the window, or make a group from a cluster.</p>
+    <nav class="sidebar-workstreams" aria-label="Workstreams">
+      <h2 class="rail-title">Workstreams</h2>
+      {where.workstreams !== null && where.workstreams.length === 0 && (
+        <p class="rail-empty">Pick items in the window, or make a workstream from a cluster.</p>
       )}
-      <ul class="nav-groups">
-        {where.groups?.map((entry) => (
-          <GroupEntry
-            key={entry.group.id}
+      <ul class="nav-workstreams">
+        {where.workstreams?.map((entry) => (
+          <WorkstreamEntry
+            key={entry.workstream.id}
             entry={entry}
             open={isOpen(entry)}
             thread={where.thread}
@@ -183,21 +185,21 @@ function Groups({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
   );
 }
 
-function GroupEntry(props: {
-  entry: NavGroup;
+function WorkstreamEntry(props: {
+  entry: NavWorkstream;
   open: boolean;
   thread: string | null;
   onToggle(): void;
   dispatch: Dispatch;
 }) {
   const { entry, dispatch } = props;
-  const { group, threads } = entry;
+  const { workstream, threads } = entry;
   const open = props.open && threads.length > 0;
   const busy = threads.filter((thread) => thread.waitingOn === "agent").length;
-  const listId = `nav-threads-${group.id}`;
+  const listId = `nav-threads-${workstream.id}`;
   return (
-    <li class="nav-group" data-current={entry.current || undefined}>
-      <div class="nav-group-row">
+    <li class="nav-workstream" data-current={entry.current || undefined}>
+      <div class="nav-workstream-row">
         {threads.length > 0 ? (
           <button
             type="button"
@@ -208,22 +210,22 @@ function GroupEntry(props: {
           >
             <Chevron />
             <span class="visually-hidden">
-              {open ? "Hide" : "Show"} threads in {group.name}
+              {open ? "Hide" : "Show"} threads in {workstream.name}
             </span>
           </button>
         ) : (
           <span class="nav-disclose" aria-hidden="true" />
         )}
         <Link
-          route={{ page: "group", id: group.id }}
+          route={{ page: "workstream", id: workstream.id }}
           dispatch={dispatch}
           class="nav-link"
           aria-current={entry.current && props.thread === null ? "page" : undefined}
         >
-          <span class="nav-name">{group.name}</span>
+          <span class="nav-name">{workstream.name}</span>
           {busy > 0 && <span class="working-dot" title={`${plural(busy, "agent")} working`} />}
-          <span class="nav-count" title={plural(group.size, "item")}>
-            {group.size}
+          <span class="nav-count" title={plural(workstream.size, "item")}>
+            {workstream.size}
           </span>
         </Link>
       </div>
@@ -254,7 +256,7 @@ function GroupEntry(props: {
           {threads.length > shown && (
             <li>
               <Link
-                route={{ page: "group", id: group.id }}
+                route={{ page: "workstream", id: workstream.id }}
                 dispatch={dispatch}
                 class="nav-link nav-more"
               >
@@ -305,7 +307,7 @@ function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
                   route={{ page: "thread", id: thread.id }}
                   dispatch={dispatch}
                   class="nav-link nav-thread"
-                  title={thread.group.name}
+                  title={thread.workstream.name}
                   aria-current={thread.id === where.thread ? "page" : undefined}
                 >
                   <span

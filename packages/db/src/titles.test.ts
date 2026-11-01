@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type Ulid, ulid } from "@oriel/core";
-import { groupStore } from "./groups.ts";
+import { workstreamStore } from "./workstreams.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { threadStore } from "./threads.ts";
@@ -15,13 +15,13 @@ test("a thread has no title until one is written, and a later one replaces it", 
   migrate(db, loadMigrations(), t0);
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  groupStore(db).create(
+  workstreamStore(db).create(
     { id: id(1), workspaceId, name: "Checkout", origin: { kind: "picked" } },
     [],
     t0,
   );
   const threads = threadStore(db);
-  threads.open({ id: id(2), workspaceId, groupId: id(1) }, t0);
+  threads.open({ id: id(2), workspaceId, workstreamId: id(1) }, t0);
   assert.equal(threads.title(id(2)), null);
   threads.setTitle(id(2), "Unowned checkout stories", t0);
   assert.equal(threads.title(id(2)), "Unowned checkout stories");

@@ -6,8 +6,8 @@ import type {
   DeletedView,
   DeletionView,
   DiffView,
-  GroupsView,
-  GroupView,
+  WorkstreamsView,
+  WorkstreamView,
   ThreadsView,
   StreamEvent,
   ThreadView,
@@ -23,15 +23,15 @@ const estimate: Script = async () => ({
 
 async function thread(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
   const app = await testApp(t, options);
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate SYN-23" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Estimate SYN-23" }),
   );
   await app.app.settled();
   const listed = async () =>
     json<ThreadsView>(await app.get("/api/threads")).threads.map((each) => each.id);
   const lastEvent = () => app.app.telemetry().at(-1);
-  return { ...app, groupId, threadId, listed, lastEvent };
+  return { ...app, workstreamId, threadId, listed, lastEvent };
 }
 
 // Reads a stream's events until it ends.
@@ -60,43 +60,46 @@ test("marking a thread done from a menu is marking it done, told apart in teleme
   assert.equal(refused.status, 400);
 });
 
-test("a thread that wrote nothing is deleted from everywhere, and its group stays", async (t) => {
+test("a thread that wrote nothing is deleted from everywhere, and its workstream stays", async (t) => {
   const app = await thread(t);
   const deletion = json<DeletionView>(await app.get(`/api/threads/${app.threadId}/deletion`));
   assert.deepEqual(deletion, { applied: 0, reverted: 0, unconfirmed: 0, sources: [] });
   const reply = await app.post(`/api/threads/${app.threadId}/delete`, { via: "menu" });
   assert.equal(reply.status, 200);
-  assert.deepEqual(json<DeletedView>(reply), { groupId: app.groupId, groupRemoved: false });
+  assert.deepEqual(json<DeletedView>(reply), {
+    workstreamId: app.workstreamId,
+    workstreamRemoved: false,
+  });
   assert.equal((await app.get(`/api/threads/${app.threadId}`)).status, 404);
   assert.equal((await app.get(`/api/threads/${app.threadId}/deletion`)).status, 404);
   assert.equal((await app.post(`/api/threads/${app.threadId}/delete`)).status, 404);
   assert.deepEqual(await app.listed(), []);
-  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
-  assert.deepEqual(group.threads, []);
-  assert.equal(group.group.threads.working, 0);
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstreamId}`));
+  assert.deepEqual(workstream.threads, []);
+  assert.equal(workstream.workstream.threads.working, 0);
   assert.deepEqual(app.lastEvent(), {
     name: "thread.deleted",
     at: app.lastEvent()?.at,
     data: {
       threadId: app.threadId,
-      groupId: app.groupId,
+      workstreamId: app.workstreamId,
       kept: false,
-      groupRemoved: false,
+      workstreamRemoved: false,
       via: "menu",
     },
   });
 });
 
-test("deleting a thread from nothing removes the group made for it", async (t) => {
+test("deleting a thread from nothing removes the workstream made for it", async (t) => {
   const app = await testApp(t);
-  const { id, groupId } = json<{ id: string; groupId: string }>(
+  const { id, workstreamId } = json<{ id: string; workstreamId: string }>(
     await app.post("/api/threads", { text: "Plan kiosk wallets" }),
   );
   await app.app.settled();
   const deleted = json<DeletedView>(await app.post(`/api/threads/${id}/delete`));
-  assert.deepEqual(deleted, { groupId, groupRemoved: true });
-  assert.equal((await app.get(`/api/groups/${groupId}`)).status, 404);
-  assert.deepEqual(json<GroupsView>(await app.get("/api/groups")).groups, []);
+  assert.deepEqual(deleted, { workstreamId, workstreamRemoved: true });
+  assert.equal((await app.get(`/api/workstreams/${workstreamId}`)).status, 404);
+  assert.deepEqual(json<WorkstreamsView>(await app.get("/api/workstreams")).workstreams, []);
 });
 
 test("a thread that wrote to Jira says so, and once deleted keeps its records out of reach", async (t) => {
@@ -122,8 +125,8 @@ test("a thread that wrote to Jira says so, and once deleted keeps its records ou
     sources: ["jira"],
   });
   assert.deepEqual(json<DeletedView>(await app.post(`/api/threads/${app.threadId}/delete`)), {
-    groupId: app.groupId,
-    groupRemoved: false,
+    workstreamId: app.workstreamId,
+    workstreamRemoved: false,
   });
   assert.equal(app.lastEvent()?.data.kept, true);
   assert.deepEqual(await app.listed(), []);
@@ -144,9 +147,9 @@ const answering: Agent = {
 
 test("a thread whose agent is answering isn't deleted", async (t) => {
   const app = await testApp(t, { agent: () => answering });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Think" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Think" }),
   );
   const refused = await app.post(`/api/threads/${id}/delete`);
   assert.equal(refused.status, 409);

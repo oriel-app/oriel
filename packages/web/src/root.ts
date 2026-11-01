@@ -1,6 +1,6 @@
 // The whole app as one program: where the page is, and each page's own
 // model. Pages update themselves; this routes messages and replies to them,
-// and keeps the groups and threads lists the chrome shows.
+// and keeps the workstreams and threads lists the chrome shows.
 import {
   type ClosingModel,
   type ClosingMsg,
@@ -17,7 +17,13 @@ import {
   loadFolder,
   updateFolder,
 } from "./folder.ts";
-import { type GroupModel, type GroupMsg, groupReplied, initGroup, updateGroup } from "./group.ts";
+import {
+  type WorkstreamModel,
+  type WorkstreamMsg,
+  workstreamReplied,
+  initWorkstream,
+  updateWorkstream,
+} from "./workstream.ts";
 import { type Effect, get, type Replied, report } from "./http.ts";
 import {
   initJira,
@@ -66,8 +72,8 @@ import {
   update as updateWindow,
 } from "./update.ts";
 import type {
-  GroupsView,
-  GroupSummary,
+  WorkstreamsView,
+  WorkstreamSummary,
   ThreadsView,
   StreamEvent,
   ThreadSummaryView,
@@ -76,19 +82,19 @@ import type {
 export type Model = {
   route: Route;
   window: WindowModel | null;
-  group: GroupModel | null;
+  workstream: WorkstreamModel | null;
   thread: ThreadModel | null;
   // A thread from nothing, until its first message starts it, and how many
   // such drafts were opened, which numbers them.
   newThread: NewThreadModel | null;
   drafts: number;
   review: ReviewModel | null;
-  // The connected folder, beside the groups.
+  // The connected folder, beside the workstreams.
   folder: FolderModel;
   // Jira, which the window offers to connect until it is, then to sync.
   jira: JiraModel;
-  // For the chrome: the workspace's groups and threads.
-  groups: GroupSummary[] | null;
+  // For the chrome: the workspace's workstreams and threads.
+  workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[] | null;
   // Threads being marked done or deleted from a list of them.
   closing: ClosingModel;
@@ -98,7 +104,7 @@ export type Model = {
 
 export type Msg =
   | { type: "window"; msg: WindowMsg }
-  | { type: "group"; msg: GroupMsg }
+  | { type: "workstream"; msg: WorkstreamMsg }
   | { type: "thread"; msg: ThreadMsg }
   | { type: "newThread"; msg: NewThreadMsg }
   | { type: "review"; msg: ReviewMsg }
@@ -120,49 +126,51 @@ export type Msg =
   // The thread's stream reconnected after dropping.
   | { type: "streamReopened" }
   // The workspace changed: some thread's turn started or ended, a change set
-  // of one moved, or one of Oriel's own actions changed a group or thread,
+  // of one moved, or one of Oriel's own actions changed a workstream or thread,
   // in this tab or another.
   | { type: "threadsMoved" }
   | Replied;
 
-// What the sidebar shows, loaded on entering any page. The groups load again
+// What the sidebar shows, loaded on entering any page. The workstreams load again
 // when their counts may have moved, since the sidebar shows them beside the
 // page that moved them.
-const loadGroups: Effect = get("/api/groups", { kind: "groups" });
+const loadWorkstreams: Effect = get("/api/workstreams", { kind: "workstreams" });
 const loadThreads: Effect = get("/api/threads", { kind: "threads" });
-const lists: Effect[] = [loadGroups, loadThreads, loadFolder, loadJira];
+const lists: Effect[] = [loadWorkstreams, loadThreads, loadFolder, loadJira];
 
-// The group or thread on screen, loaded again.
+// The workstream or thread on screen, loaded again.
 const reloadShown = (model: Model): Effect[] => {
-  const { route, group, thread } = model;
-  if (route.page === "group" && group)
-    return [get(`/api/groups/${group.id}`, { kind: "groupSynced", id: group.id })];
+  const { route, workstream, thread } = model;
+  if (route.page === "workstream" && workstream)
+    return [
+      get(`/api/workstreams/${workstream.id}`, { kind: "workstreamSynced", id: workstream.id }),
+    ];
   if (route.page === "thread" && thread)
     return [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })];
   return [];
 };
 
 // However the workspace changed, and whoever changed it, every page hears it
-// the same way: the lists load again, and so does a group's page on screen.
-// A thread's page hears its own thread, and its group, on its own stream.
+// the same way: the lists load again, and so does a workstream's page on screen.
+// A thread's page hears its own thread, and its workstream, on its own stream.
 const workspaceChanged = (model: Model): Effect[] => [
   loadThreads,
-  loadGroups,
-  ...(model.route.page === "group" ? reloadShown(model) : []),
+  loadWorkstreams,
+  ...(model.route.page === "workstream" ? reloadShown(model) : []),
 ];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
     route,
     window: null,
-    group: null,
+    workstream: null,
     thread: null,
     newThread: null,
     drafts: 0,
     review: null,
     folder: initFolder(),
     jira: initJira(),
-    groups: null,
+    workstreams: null,
     threads: null,
     closing: initClosing(),
     panel: null,
@@ -229,9 +237,9 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
         [...leaving, ...loads, ...lists, ...watching],
       ];
     }
-    case "group": {
-      const [group, effects] = initGroup(route.id);
-      return [{ ...base, group }, [...leaving, ...effects, ...lists, ...watching]];
+    case "workstream": {
+      const [workstream, effects] = initWorkstream(route.id);
+      return [{ ...base, workstream }, [...leaving, ...effects, ...lists, ...watching]];
     }
     case "thread": {
       const [thread, effects] = initThread(route.id);
@@ -271,10 +279,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [window, effects] = updateWindow(model.window, msg.msg);
       return [{ ...model, window }, [...effects, ...windowTelemetry(model.window, window)]];
     }
-    case "group": {
-      if (model.group === null) return [model, []];
-      const [group, effects] = updateGroup(model.group, msg.msg);
-      return [{ ...model, group }, effects];
+    case "workstream": {
+      if (model.workstream === null) return [model, []];
+      const [workstream, effects] = updateWorkstream(model.workstream, msg.msg);
+      return [{ ...model, workstream }, effects];
     }
     case "thread": {
       if (model.thread === null) return [model, []];
@@ -350,19 +358,19 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         const [thread, effects] = streamed(model.thread, msg.event);
         return [
           { ...model, thread },
-          [...effects, { type: "watchThreads" }, loadThreads, loadGroups],
+          [...effects, { type: "watchThreads" }, loadThreads, loadWorkstreams],
         ];
       }
       const [thread, effects] = streamed(model.thread, msg.event);
       // Its turn starting or ending, or a change set of it moving, changes what
       // it waits on, and an end may move it between thread states. The status
-      // the stream opens with covers what moved before it opened. Its group
+      // the stream opens with covers what moved before it opened. Its workstream
       // changing, or an entry of its chat, is told to every page right after,
       // which loads the lists.
-      const moved = !["entry", "group", "chat"].includes(msg.event.type);
-      return [{ ...model, thread }, moved ? [...effects, loadThreads, loadGroups] : effects];
+      const moved = !["entry", "workstream", "chat"].includes(msg.event.type);
+      return [{ ...model, thread }, moved ? [...effects, loadThreads, loadWorkstreams] : effects];
     }
-    // What each thread waits on is in both lists: the groups count by state.
+    // What each thread waits on is in both lists: the workstreams count by state.
     case "threadsMoved":
       return [model, workspaceChanged(model)];
     case "replied":
@@ -372,8 +380,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
 
 function replied(model: Model, msg: Replied): [Model, Effect[]] {
   switch (msg.tag.kind) {
-    case "groups":
-      return msg.ok ? [{ ...model, groups: (msg.body as GroupsView).groups }, []] : [model, []];
+    case "workstreams":
+      return msg.ok
+        ? [{ ...model, workstreams: (msg.body as WorkstreamsView).workstreams }, []]
+        : [model, []];
     case "threads":
       return msg.ok ? [{ ...model, threads: (msg.body as ThreadsView).threads }, []] : [model, []];
     // Telemetry is best effort; the window carries on either way.
@@ -389,11 +399,11 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "deletion":
     case "deleted":
       return closed({ ...model, closing: closingReplied(model.closing, msg) }, msg);
-    // The new group shows in the sidebar once the thread's page loads it.
+    // The new workstream shows in the sidebar once the thread's page loads it.
     // One started from a draft the person has since left shows there now.
     case "threadStarted": {
       if (model.newThread?.id !== msg.tag.draft)
-        return [model, msg.ok ? [loadGroups, loadThreads] : []];
+        return [model, msg.ok ? [loadWorkstreams, loadThreads] : []];
       const [newThread, effects] = newThreadReplied(model.newThread, msg);
       return [{ ...model, newThread }, effects];
     }
@@ -407,7 +417,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [{ ...model, folder, window }, effects];
     }
     // Once Jira connected or synced, what's on screen shows what changed there: new items
-    // in the window, and a member deleted in Jira as gone on a group's page
+    // in the window, and a member deleted in Jira as gone on a workstream's page
     // or in a thread's rail.
     case "jira":
     case "jiraConnected":
@@ -419,37 +429,37 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         : [null, []];
       return [{ ...model, jira, window }, [...effects, ...reloadShown(model)]];
     }
-    case "createGroup":
-    case "addToGroup": {
+    case "createWorkstream":
+    case "addToWorkstream": {
       if (model.window === null) return [model, []];
       const [window, effects] = updateWindow(model.window, msg);
       return [{ ...model, window }, effects];
     }
-    case "group":
-    case "groupChanged":
+    case "workstream":
+    case "workstreamChanged":
     case "restored":
-    case "groupSynced":
+    case "workstreamSynced":
     case "renamed":
     case "threadOpened": {
-      if (model.group === null) return [model, []];
-      const [group, effects] = groupReplied(model.group, msg);
+      if (model.workstream === null) return [model, []];
+      const [workstream, effects] = workstreamReplied(model.workstream, msg);
       const moved =
         msg.tag.kind === "renamed" ||
-        msg.tag.kind === "groupChanged" ||
+        msg.tag.kind === "workstreamChanged" ||
         msg.tag.kind === "restored";
-      return [{ ...model, group }, moved ? [...effects, loadGroups] : effects];
+      return [{ ...model, workstream }, moved ? [...effects, loadWorkstreams] : effects];
     }
-    // A drop changes its group's count wherever the user is by the time it
-    // answers. Its notice goes to the group's page or one of its threads,
-    // whichever is on screen: a group page's model stays after leaving it.
+    // A drop changes its workstream's count wherever the user is by the time it
+    // answers. Its notice goes to the workstream's page or one of its threads,
+    // whichever is on screen: a workstream page's model stays after leaving it.
     case "dropped": {
-      if (model.route.page === "group" && model.group !== null) {
-        const [group, effects] = groupReplied(model.group, msg);
-        return [{ ...model, group }, [...effects, loadGroups]];
+      if (model.route.page === "workstream" && model.workstream !== null) {
+        const [workstream, effects] = workstreamReplied(model.workstream, msg);
+        return [{ ...model, workstream }, [...effects, loadWorkstreams]];
       }
-      if (model.route.page !== "thread" || model.thread === null) return [model, [loadGroups]];
+      if (model.route.page !== "thread" || model.thread === null) return [model, [loadWorkstreams]];
       const [thread, effects] = threadReplied(model.thread, msg);
-      return [{ ...model, thread }, [...effects, loadGroups]];
+      return [{ ...model, thread }, [...effects, loadWorkstreams]];
     }
     case "reviewOpened":
     case "reviewDecided": {
@@ -469,29 +479,31 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
 }
 
 // Once a thread closed from a list: every list that shows it reloads, and
-// so does the page it's on. A page showing a thread or group that is gone
-// gives way, in history too, to the group's page or the Done page.
+// so does the page it's on. A page showing a thread or workstream that is gone
+// gives way, in history too, to the workstream's page or the Done page.
 function closed(model: Model, msg: Replied): [Model, Effect[]] {
   if (!msg.ok || msg.tag.kind === "deletion" || !("threadId" in msg.tag)) return [model, []];
   const { threadId } = msg.tag;
   const deleted = deletedOf(msg);
   const { route } = model;
-  const lists = [loadThreads, loadGroups];
+  const lists = [loadThreads, loadWorkstreams];
   if (deleted) {
     const gone = (page: Route): Effect => ({ type: "navigate", route: page, replace: true });
-    const away: Route = deleted.groupRemoved
+    const away: Route = deleted.workstreamRemoved
       ? { page: "done" }
-      : { page: "group", id: deleted.groupId };
+      : { page: "workstream", id: deleted.workstreamId };
     if (route.page === "thread" && route.id === threadId) return [model, [...lists, gone(away)]];
-    if (route.page === "group" && route.id === deleted.groupId)
+    if (route.page === "workstream" && route.id === deleted.workstreamId)
       return [
         model,
-        deleted.groupRemoved ? [...lists, gone(away)] : [...lists, ...initGroup(route.id)[1]],
+        deleted.workstreamRemoved
+          ? [...lists, gone(away)]
+          : [...lists, ...initWorkstream(route.id)[1]],
       ];
     return [model, lists];
   }
   if (route.page === "thread" && route.id === threadId && model.thread !== null)
     return [model, [...lists, get(`/api/threads/${threadId}`, { kind: "thread", id: threadId })]];
-  if (route.page === "group") return [model, [...lists, ...initGroup(route.id)[1]]];
+  if (route.page === "workstream") return [model, [...lists, ...initWorkstream(route.id)[1]]];
   return [model, lists];
 }

@@ -8,14 +8,21 @@ test("the app's pages are the same shell; anything else 404s", async (t) => {
   const shell = String((await get("/")).body);
   for (const path of [
     "/done",
-    "/groups/01JBZ0000000000000000000G1",
+    "/workstreams/01JBZ0000000000000000000G1",
     "/threads/01JBZ0000000000000000000T1",
   ]) {
     const reply = await get(path);
     assert.equal(reply.status, 200, path);
     assert.equal(String(reply.body), shell, path);
   }
-  for (const path of ["/groups/nope", "/threads/", "/inbox", "/done/x", "/review/", "/review/a/b"])
+  for (const path of [
+    "/workstreams/nope",
+    "/threads/",
+    "/inbox",
+    "/done/x",
+    "/review/",
+    "/review/a/b",
+  ])
     assert.equal((await get(path)).status, 404, path);
   assert.equal((await get("/api/nope")).status, 404);
 });
@@ -31,8 +38,8 @@ test("a review link's page is the shell, unindexed, never cached, sending no ref
 
 test("JSON replies carry the same security headers as pages", async (t) => {
   const { get } = await testApp(t);
-  const reply = await get("/api/groups");
-  assert.deepEqual(json(reply), { groups: [] });
+  const reply = await get("/api/workstreams");
+  assert.deepEqual(json(reply), { workstreams: [] });
   assert.equal(reply.headers["x-content-type-options"], "nosniff");
   assert.equal(reply.headers["cache-control"], "no-store");
   assert.match(reply.headers["content-security-policy"] ?? "", /default-src 'none'/);

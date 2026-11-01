@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { ProviderError, type Titler } from "@oriel/agent";
-import type { GroupView, StreamEvent, ThreadSummaryView, ThreadView } from "@oriel/web/view";
+import type { WorkstreamView, StreamEvent, ThreadSummaryView, ThreadView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 import { clippedTitle } from "./views.ts";
 
@@ -65,8 +65,8 @@ function heldTitler() {
 
 async function opened(t: TestContext, titler?: Titler) {
   const app = await testApp(t, titler ? { titler } : {});
-  const group = json<{ id: string }>(await app.post("/api/groups", checkout));
-  const reply = await app.post(`/api/groups/${group.id}/threads`, { text: longAsk });
+  const workstream = json<{ id: string }>(await app.post("/api/workstreams", checkout));
+  const reply = await app.post(`/api/workstreams/${workstream.id}/threads`, { text: longAsk });
   assert.equal(reply.status, 201);
   const { id } = json<{ id: string }>(reply);
   const titles = async () => ({
@@ -74,11 +74,11 @@ async function opened(t: TestContext, titler?: Titler) {
     list: json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.map(
       (thread) => thread.title,
     ),
-    group: json<GroupView>(await app.get(`/api/groups/${group.id}`)).threads.map(
-      (thread) => thread.title,
-    ),
+    workstream: json<WorkstreamView>(
+      await app.get(`/api/workstreams/${workstream.id}`),
+    ).threads.map((thread) => thread.title),
   });
-  return { ...app, id, groupId: group.id, titles };
+  return { ...app, id, workstreamId: workstream.id, titles };
 }
 
 test("the model's title replaces the clipped message on every list, and pages hear", async (t) => {
@@ -87,7 +87,7 @@ test("the model's title replaces the clipped message on every list, and pages he
   // Only the person's message goes to the titler.
   assert.deepEqual(held.asked, [longAsk]);
   const clipped = clippedTitle(longAsk);
-  assert.deepEqual(await app.titles(), { thread: clipped, list: [clipped], group: [clipped] });
+  assert.deepEqual(await app.titles(), { thread: clipped, list: [clipped], workstream: [clipped] });
 
   const reply = await app.get(`/api/threads/${app.id}/events`);
   const stream = reply.stream?.[Symbol.asyncIterator]();
@@ -113,7 +113,7 @@ test("the model's title replaces the clipped message on every list, and pages he
   assert.deepEqual(await app.titles(), {
     thread: "Unowned checkout stories",
     list: ["Unowned checkout stories"],
-    group: ["Unowned checkout stories"],
+    workstream: ["Unowned checkout stories"],
   });
   // The thread's page hears the new title; the lists hear a thread moved.
   assert.equal((await statuses()).title, "Unowned checkout stories");

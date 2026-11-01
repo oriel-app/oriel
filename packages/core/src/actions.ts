@@ -114,7 +114,7 @@ export const actions = {
   "workstream.rename": {
     doc: "Names a workstream.",
     // `oriel`: the name is Oriel's, as it was before the user's rename this
-    // undoes, so Oriel may name the group again. Only the user's Undo says so.
+    // undoes, so Oriel may name the workstream again. Only the user's Undo says so.
     input: object({ workstream: workstreamId, name, oriel: optional(literal(true)) }),
     class: { kind: "direct", inverse: "workstream.rename" },
   },

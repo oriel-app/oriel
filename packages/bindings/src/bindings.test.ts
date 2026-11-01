@@ -214,10 +214,10 @@ test("an epic that moved projects is still the anchor, by stable ID, under its n
   });
 });
 
-test("a group made from the SYN-1 cluster, with SYN-1 removed, still binds", async () => {
+test("a workstream made from the SYN-1 cluster, with SYN-1 removed, still binds", async () => {
   const checkout = fixtureRegion("checkout-epic");
   assert.equal(checkout.origin.kind === "cluster" && checkout.origin.anchor?.id, "jira:SYN-1");
-  // As the group store gives that version: the anchor gone from items and origin.
+  // As the workstream store gives that version: the anchor gone from items and origin.
   const region: Region = {
     ...checkout,
     version: 2,
@@ -247,7 +247,7 @@ test("a region with a malformed ID is refused, and one without its anchor has no
     ...region,
     items: region.items.filter((item) => item.id !== "jira:SYN-2"),
   };
-  // As after the epic was removed from the group: no epic functions, and a
+  // As after the epic was removed from the workstream: no epic functions, and a
   // new story isn't bound to the epic that left.
   const { dts } = bindingsFor(unanchored, { reader: base, namespaces });
   assert.doesNotMatch(dts, /getEpic|listStories/);

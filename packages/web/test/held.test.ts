@@ -24,7 +24,7 @@ import {
 } from "../src/view.ts";
 
 const id = "01JBZ0000000000000000000T1";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-11-01T09:00:00.000Z";
 // Where the held message is in the chat.
@@ -55,7 +55,7 @@ const held = (outcome: "sent" | "discarded" | null): ChatEntry => ({
 const viewWith = (entry: ChatEntry, running = false): ThreadView => ({
   id,
   title: "Plan gift cards",
-  group: { id: groupId, name: "Practice", version: 1 },
+  workstream: { id: workstreamId, name: "Practice", version: 1 },
   state: "working",
   doneBy: null,
   regionVersion: 1,
@@ -70,7 +70,7 @@ const viewWith = (entry: ChatEntry, running = false): ThreadView => ({
 const summary: ThreadSummaryView = {
   id,
   title: "Plan gift cards",
-  group: { id: groupId, name: "Practice" },
+  workstream: { id: workstreamId, name: "Practice" },
   state: "working",
   doneBy: null,
   waitingOn: "held",

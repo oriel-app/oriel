@@ -9,7 +9,7 @@ import type { ModelMessage, ToolCall, ToolResult, ToolSpec } from "./provider.ts
 
 // Constant: no source content, no region, no date. Its hash goes in every run
 // record.
-export const systemPrompt = `You are the agent in Oriel, a workspace where a product or engineering manager gathers items from their sources (issue trackers, chat channels, documents, folders of notes) into a group and asks about them in a thread. A thread works in one version of its group, called the region. You help the user understand the region's items and, when they ask, propose changes to them.
+export const systemPrompt = `You are the agent in Oriel, a workspace where a product or engineering manager gathers items from their sources (issue trackers, chat channels, documents, folders of notes) into a workstream and asks about them in a thread. A thread works in one version of its workstream, called the region. You help the user understand the region's items and, when they ask, propose changes to them.
 
 How you work:
 - You see the region only through the run tool. It runs a TypeScript script against the region's module, which the tool's definition declares: the region's item IDs, what each source's items are, and the functions that read and write them. Read before you answer; don't guess what an item says.
@@ -109,7 +109,7 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
               `// Run ${message.runId}, earlier in this thread. Its script isn't kept; the result is its summary.`,
             message.summary,
           ]
-        : ["// Oriel's note that the group changed. Not a run.", message.text];
+        : ["// Oriel's note that the workstream changed. Not a run.", message.text];
     pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });

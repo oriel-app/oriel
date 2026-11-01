@@ -2,7 +2,7 @@
 // once, though Jira's search catches up with writes only a while later.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ChangeSetView, DiffView, GroupView, ThreadView } from "@oriel/web/view";
+import type { ChangeSetView, DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 const plan: Script = async () => ({
@@ -19,7 +19,7 @@ test("what a change set creates shows with its title at once, and goes when a re
   const app = await testApp(t, { live: true, plan: () => [{ run: "plan" }], scripts: { plan } });
   const { site } = app;
   assert.ok(site);
-  const { id: threadId, groupId } = json<{ id: string; groupId: string }>(
+  const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(
     await app.post("/api/threads", { text: "Plan kiosk wallets" }),
   );
   await app.app.settled();
@@ -33,7 +33,7 @@ test("what a change set creates shows with its title at once, and goes when a re
     return json<Acted>(await app.post(`/api/change-sets/${id}/approve`, { hash }));
   };
   const members = async () =>
-    json<GroupView>(await app.get(`/api/groups/${groupId}`)).members.map((m) => [
+    json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`)).members.map((m) => [
       m.ref.key,
       m.row?.title ?? null,
     ]);
@@ -66,7 +66,7 @@ test("what a change set creates shows with its title at once, and goes when a re
   assert.equal((await approve(revert)).changeSet.status, "applied");
   assert.equal(site.issue("SYN-900"), null);
   assert.equal(site.issue("SYN-901"), null);
-  // Still members, as a group changes only when the user changes it; gone
+  // Still members, as a workstream changes only when the user changes it; gone
   // from the index, so neither shows as if it were there.
   assert.deepEqual(await members(), [
     ["SYN-900", null],
@@ -83,7 +83,7 @@ test("what a change set creates shows with its title at once, and goes when a re
   // A later sync, while the search still lists both, doesn't bring them back:
   // dropping a link to an item Oriel doesn't have yet syncs before refusing it.
   const drop = () =>
-    app.post(`/api/groups/${groupId}/drop`, {
+    app.post(`/api/workstreams/${workstreamId}/drop`, {
       links: ["https://oriel.atlassian.net/browse/SYN-999"],
       files: [],
     });

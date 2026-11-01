@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { fixtureApi, type FixtureWorkspace } from "@oriel/slack";
-import type { ChangeSetView, DiffView, GroupView, ThreadView } from "@oriel/web/view";
+import type { ChangeSetView, DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
 import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
@@ -38,15 +38,15 @@ async function proposed(t: TestContext, script: Script) {
     plan: () => [{ run: "script" }],
     scripts: { script },
   });
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", {
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
       kind: "picked",
       name: "SMS updates",
       items: ["jira:SYN-61", sms],
     }),
   );
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Hand SYN-61 to the team" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Hand SYN-61 to the team" }),
   );
   await app.app.settled();
   const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));
@@ -63,7 +63,7 @@ async function proposed(t: TestContext, script: Script) {
     return act("approve", { hash: (await diff(id)).hash }, id);
   };
   const posted = () => workspace.calls.filter((c) => c.method === "chat.postMessage");
-  return { ...app, workspace, groupId, view, diff, act, approve, posted };
+  return { ...app, workspace, workstreamId, view, diff, act, approve, posted };
 }
 
 const history = async (workspace: FixtureWorkspace) =>
@@ -105,14 +105,14 @@ test("one change set moves a Jira story and posts in Slack; one approval applies
   assert.deepEqual([message?.text, message?.user], [ready, "U0FWAMARA1"]);
   const created = `slack:${weather}-${message?.ts}`;
 
-  // The conversation it posted joins the group, with its title, as any
+  // The conversation it posted joins the workstream, with its title, as any
   // created item does; the thread follows.
-  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstreamId}`));
   assert.deepEqual(
-    group.members.map((m) => [m.ref.id, m.ref.title]),
+    workstream.members.map((m) => [m.ref.id, m.ref.title]),
     [
       ["jira:SYN-61", "Send disruption updates by SMS to passengers without the app"],
-      [sms, group.members[1]?.ref.title ?? ""],
+      [sms, workstream.members[1]?.ref.title ?? ""],
       [created, `Amara Okafor: ${ready}`],
     ],
   );
@@ -170,7 +170,7 @@ test("a revert stops, deleting nothing, once someone has replied to what it post
   assert.equal((await history(app.workspace))[0]?.ts, message.ts);
 });
 
-test("a reply goes in the conversation the group holds, and its revert stops on an edit", async (t) => {
+test("a reply goes in the conversation the workstream holds, and its revert stops on an edit", async (t) => {
   const app = await proposed(t, answer);
   const shown = await app.diff();
   assert.match(
@@ -200,15 +200,19 @@ test("a reply goes in the conversation the group holds, and its revert stops on 
 });
 
 // Its scripts run in the real sandbox, as `pnpm dev`'s do. This spawns Deno.
-test("the dev server's scripted agent posts or replies when asked, beside the group's conversation", async (t) => {
+test("the dev server's scripted agent posts or replies when asked, beside the workstream's conversation", async (t) => {
   const { createSandbox } = await import("@oriel/sandbox");
   const sandbox = createSandbox();
   const app = await testApp(t, {
     slack: { kind: "fixture" },
     agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan),
   });
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "SMS", items: ["jira:SYN-61", sms] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "picked",
+      name: "SMS",
+      items: ["jira:SYN-61", sms],
+    }),
   );
   for (const [text, sentence, field, posts] of [
     [
@@ -219,7 +223,9 @@ test("the dev server's scripted agent posts or replies when asked, beside the gr
     ],
     ["reply: Thanks!", /^Reply in the conversation “Chen Yuting: /, "reply:new", "Thanks!"],
   ] as const) {
-    const { id } = json<{ id: string }>(await app.post(`/api/groups/${groupId}/threads`, { text }));
+    const { id } = json<{ id: string }>(
+      await app.post(`/api/workstreams/${workstreamId}/threads`, { text }),
+    );
     await app.app.settled();
     const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
     const entry = thread.entries.find((e) => e.kind === "change-set");

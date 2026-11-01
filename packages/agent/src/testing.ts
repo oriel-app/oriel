@@ -78,20 +78,20 @@ const fixedId = counter()();
 export const thread: Thread = {
   id: fixedId,
   workspaceId: fixedId,
-  groupId: fixedId,
+  workstreamId: fixedId,
   regionVersion: 1,
   state: "working",
   doneBy: null,
   createdAt: t0,
 };
 
-// A frozen fixture region as version 1 of the thread's group.
+// A frozen fixture region as version 1 of the thread's workstream.
 export function fixtureRegion(name: string): Region {
   const frozen = fixture.regions.find((region) => region.name === name);
   if (!frozen) throw new RangeError(`no fixture region ${name}`);
   const stableIds = new Map(fixture.issues.map((issue) => [`jira:${issue.key}`, issue.id]));
   return {
-    groupId: thread.groupId,
+    workstreamId: thread.workstreamId,
     version: 1,
     workspaceId: thread.workspaceId,
     items: frozen.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),

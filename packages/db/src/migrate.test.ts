@@ -10,6 +10,9 @@ import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 
 const now = instant(new Date(Date.UTC(2026, 9, 29)));
+// Migrations before 0012 named workstreams groups: a test of one of them
+// stops before it.
+const beforeWorkstreams = () => loadMigrations().filter((m) => m.version < 12);
 const tables = (db: ReturnType<typeof open>) =>
   db
     .prepare("select name from sqlite_master where type = 'table' order by name")
@@ -87,7 +90,7 @@ test("a migration that leaves a dangling foreign key is rolled back", () => {
 
 test("0002 turns each region into a group at version 1, and keeps its threads and runs", () => {
   const db = open(":memory:");
-  const [first, ...rest] = loadMigrations();
+  const [first, ...rest] = beforeWorkstreams();
   assert.ok(first);
   migrate(db, [first], now);
   db.exec(`
@@ -226,7 +229,7 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
 
 test("groups made before names were attributed are the user's, unless the name is still Oriel's", () => {
   const db = open(":memory:");
-  const migrations = loadMigrations();
+  const migrations = beforeWorkstreams();
   const before = migrations.findIndex((m) => m.name === "user_named_groups");
   assert.ok(before > 0);
   migrate(db, migrations.slice(0, before), now);
@@ -270,4 +273,68 @@ test("groups made before names were attributed are the user's, unless the name i
       .map((row) => String(row.group_id)),
     ["epic-renamed-or-user", "picked", "thread-named"],
   );
+});
+
+test("0012 renames groups to workstreams and keeps every row", () => {
+  const db = open(":memory:");
+  migrate(db, beforeWorkstreams(), now);
+  const workspaceId = "01JBZ00000000000000000000W";
+  db.exec(`
+    insert into workspaces values ('${workspaceId}', 'w', '${now}');
+    insert into groups values ('blank', '${workspaceId}', 'New group', '{"kind":"thread"}', '${now}');
+    insert into groups values ('kept', '${workspaceId}', 'New group', '{"kind":"thread"}', '${now}');
+    insert into groups values ('picked', '${workspaceId}', 'New group', '{"kind":"picked"}', '${now}');
+    insert into user_named_groups values ('${workspaceId}', 'kept');
+    insert into group_changes values ('${workspaceId}', 'picked', 1, '${now}', '{"kind":"user"}');
+    insert into group_changes values ('${workspaceId}', 'picked', 2, '${now}', '{"kind":"user"}');
+    insert into group_changes values ('${workspaceId}', 'blank', 1, '${now}', '{"kind":"user"}');
+    insert into group_members values ('${workspaceId}', 'picked', 'jira', '1', 'jira:SYN-1', 1, 2);
+    insert into group_members values ('${workspaceId}', 'picked', 'jira', '2', 'jira:SYN-2', 1, null);
+    insert into threads (id, workspace_id, group_id, region_version, created_at)
+      values ('t1', '${workspaceId}', 'picked', 2, '${now}');
+  `);
+  const rows = (table: string) =>
+    db
+      .prepare(`select * from ${table} order by rowid`)
+      .all()
+      .map((row) => Object.values(row));
+  const before = ["groups", "group_changes", "group_members", "user_named_groups", "threads"].map(
+    rows,
+  );
+  assert.deepEqual(migrate(db, loadMigrations(), now), [12]);
+  const after = [
+    "workstreams",
+    "workstream_changes",
+    "workstream_members",
+    "user_named_workstreams",
+    "threads",
+  ].map(rows);
+  // Only Oriel's blank name for a thread's workstream changes.
+  const named = before[0]?.map((row) =>
+    row[0] === "blank" ? ["blank", ...row.slice(1, 2), "New workstream", ...row.slice(3)] : row,
+  );
+  assert.deepEqual(after, [named, ...before.slice(1)]);
+  assert.ok(!tables(db).some((table) => table.includes("group")));
+  const columns = (table: string) =>
+    db
+      .prepare(`select name from pragma_table_info('${table}')`)
+      .all()
+      .map((row) => String(row.name));
+  assert.ok(columns("threads").includes("workstream_id"));
+  assert.deepEqual(
+    db
+      .prepare(
+        "select name from sqlite_master where type = 'index' and name not like 'sqlite_%' and sql like '%workstream%' order by name",
+      )
+      .all()
+      .map((row) => String(row.name)),
+    ["threads_by_workstream", "workstream_members_live", "workstreams_by_workspace"],
+  );
+  // The foreign keys follow the renamed tables.
+  assert.throws(() =>
+    db.exec(
+      `insert into threads (id, workspace_id, workstream_id, region_version, created_at) values ('t2', '${workspaceId}', 'nope', 1, '${now}')`,
+    ),
+  );
+  assert.deepEqual(db.prepare("pragma foreign_key_check").all(), []);
 });

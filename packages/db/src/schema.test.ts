@@ -58,12 +58,12 @@ test("JSON columns reject malformed JSON", () => {
   );
 });
 
-// A group at version 1 and a working thread on it.
+// A workstream at version 1 and a working thread on it.
 function withThread() {
   const { db, workspaceId } = fresh();
   db.exec(`
-    insert into groups values ('g1', '${workspaceId}', 'Checkout', '{"kind":"picked"}', '${now}');
-    insert into group_changes values ('${workspaceId}', 'g1', 1, '${now}', '{"kind":"user"}');
+    insert into workstreams values ('g1', '${workspaceId}', 'Checkout', '{"kind":"picked"}', '${now}');
+    insert into workstream_changes values ('${workspaceId}', 'g1', 1, '${now}', '{"kind":"user"}');
     insert into threads values ('t1', '${workspaceId}', 'g1', 1, null, '${now}');
   `);
   return { db, workspaceId };
@@ -99,32 +99,32 @@ test("a thread's state isn't stored, only when the user marked it done", () => {
   assert.deepEqual(columns, [
     "id",
     "workspace_id",
-    "group_id",
+    "workstream_id",
     "region_version",
     "marked_done_at",
     "created_at",
   ]);
 });
 
-test("a thread and a member name versions their group has", () => {
+test("a thread and a member name versions their workstream has", () => {
   const { db, workspaceId } = withThread();
   assert.throws(
     () =>
       db
         .prepare(
-          "insert into threads (id, workspace_id, group_id, region_version, created_at) values ('t2', ?, 'g1', 2, ?)",
+          "insert into threads (id, workspace_id, workstream_id, region_version, created_at) values ('t2', ?, 'g1', 2, ?)",
         )
         .run(workspaceId, now),
     /FOREIGN KEY/,
   );
   const member = db.prepare(
-    "insert into group_members (workspace_id, group_id, source, stable_id, item_id, added_version, removed_version) values (?, 'g1', 'jira', ?, 'jira:SYN-1', ?, ?)",
+    "insert into workstream_members (workspace_id, workstream_id, source, stable_id, item_id, added_version, removed_version) values (?, 'g1', 'jira', ?, 'jira:SYN-1', ?, ?)",
   );
   member.run(workspaceId, "10001", 1, null);
   assert.throws(() => member.run(workspaceId, "10002", 2, null), /FOREIGN KEY/);
   assert.throws(() => member.run(workspaceId, "10003", 1, 1), /CHECK/);
   // One live row per member, whatever version adds it again.
-  db.prepare("insert into group_changes values (?, 'g1', 2, ?, '{\"kind\":\"user\"}')").run(
+  db.prepare("insert into workstream_changes values (?, 'g1', 2, ?, '{\"kind\":\"user\"}')").run(
     workspaceId,
     now,
   );

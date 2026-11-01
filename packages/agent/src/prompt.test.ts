@@ -9,7 +9,7 @@ import { t0 } from "./testing.ts";
 const runId = "01RUN" as Ulid;
 const stand =
   "// Run 01RUN, earlier in this thread. Its script isn't kept; the result is its summary.";
-const note = "// Oriel's note that the group changed. Not a run.";
+const note = "// Oriel's note that the workstream changed. Not a run.";
 
 // Each message as one line: who, its text, and its calls' scripts or its
 // results' contents.

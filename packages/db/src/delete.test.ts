@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type GroupOrigin, type Instant, instant, type Ulid, ulid } from "@oriel/core";
-import { groupStore } from "./groups.ts";
+import { type WorkstreamOrigin, type Instant, instant, type Ulid, ulid } from "@oriel/core";
+import { workstreamStore } from "./workstreams.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { threadStore } from "./threads.ts";
@@ -11,12 +11,12 @@ const t0 = instant(new Date(Date.UTC(2026, 9, 31, 9)));
 const after = (ms: number): Instant => instant(new Date(Date.parse(t0) + ms));
 const id = (n: number): Ulid => ulid(n, new Uint8Array(10));
 
-// A thread on a group, with a message, a run with a read, and a change set
+// A thread on a workstream, with a message, a run with a read, and a change set
 // with one mutation, a decision and a live review link. `status` and
 // `error` are that mutation's.
 function fresh(
   options: {
-    origin?: GroupOrigin;
+    origin?: WorkstreamOrigin;
     members?: number;
     status?: "pending" | "applied" | "failed";
     error?: string;
@@ -26,10 +26,10 @@ function fresh(
   migrate(db, loadMigrations(), t0);
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  const groups = groupStore(db);
-  const groupId = id(1);
-  groups.create(
-    { id: groupId, workspaceId, name: "Kiosk", origin: options.origin ?? { kind: "picked" } },
+  const workstreams = workstreamStore(db);
+  const workstreamId = id(1);
+  workstreams.create(
+    { id: workstreamId, workspaceId, name: "Kiosk", origin: options.origin ?? { kind: "picked" } },
     Array.from({ length: options.members ?? 1 }, (_, n) => ({
       id: `jira:SYN-${n + 1}` as const,
       stableId: `1000${n + 1}`,
@@ -38,7 +38,7 @@ function fresh(
   );
   const threads = threadStore(db);
   const threadId = id(2);
-  threads.open({ id: threadId, workspaceId, groupId }, t0);
+  threads.open({ id: threadId, workspaceId, workstreamId }, t0);
   threads.append(threadId, { role: "user", text: "Plan kiosk wallets" }, id(3), t0);
   const status = options.status ?? "pending";
   db.exec(`
@@ -73,7 +73,7 @@ function fresh(
   );
   const count = (table: string) =>
     Number(db.prepare(`select count(*) as n from ${table}`).get()?.n);
-  return { db, groups, groupId, threads, threadId, workspaceId, count };
+  return { db, workstreams, workstreamId, threads, threadId, workspaceId, count };
 }
 
 const tables = [
@@ -87,8 +87,8 @@ const tables = [
   "review_links",
 ];
 
-test("a thread that wrote nothing goes with everything in it, and leaves its group", () => {
-  const { groups, groupId, threads, threadId, workspaceId, count } = fresh();
+test("a thread that wrote nothing goes with everything in it, and leaves its workstream", () => {
+  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh();
   assert.deepEqual(threads.wrote(threadId), {
     applied: 0,
     reverted: 0,
@@ -98,9 +98,9 @@ test("a thread that wrote nothing goes with everything in it, and leaves its gro
   assert.deepEqual(
     threads.delete(threadId, after(1000), () => false),
     {
-      groupId,
+      workstreamId,
       kept: false,
-      groupRemoved: false,
+      workstreamRemoved: false,
     },
   );
   assert.deepEqual(
@@ -110,49 +110,56 @@ test("a thread that wrote nothing goes with everything in it, and leaves its gro
   assert.equal(count("deleted_threads"), 0);
   assert.equal(threads.get(threadId, after(1000)), null);
   assert.deepEqual(threads.list(workspaceId, after(1000)), []);
-  // A group the user picked is theirs: it stays, empty of threads or not.
-  assert.equal(groups.get(groupId)?.name, "Kiosk");
+  // A workstream the user picked is theirs: it stays, empty of threads or not.
+  assert.equal(workstreams.get(workstreamId)?.name, "Kiosk");
   assert.throws(() => threads.delete(threadId, after(2000), () => false), /no thread/);
 });
 
-test("a group made for a thread from nothing goes with it once it holds nothing", () => {
-  const { groups, groupId, threads, threadId, workspaceId, count } = fresh({
+test("a workstream made for a thread from nothing goes with it once it holds nothing", () => {
+  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh({
     origin: { kind: "thread" },
     members: 0,
   });
   assert.deepEqual(
     threads.delete(threadId, after(1000), () => false),
     {
-      groupId,
+      workstreamId,
       kept: false,
-      groupRemoved: true,
+      workstreamRemoved: true,
     },
   );
-  assert.equal(groups.get(groupId), null);
-  assert.deepEqual(groups.list(workspaceId), []);
-  for (const table of ["groups", "group_changes", "group_members"]) assert.equal(count(table), 0);
+  assert.equal(workstreams.get(workstreamId), null);
+  assert.deepEqual(workstreams.list(workspaceId), []);
+  for (const table of ["workstreams", "workstream_changes", "workstream_members"])
+    assert.equal(count(table), 0);
 });
 
-test("a group made for a thread from nothing stays while it holds an item or another thread", () => {
+test("a workstream made for a thread from nothing stays while it holds an item or another thread", () => {
   const items = fresh({ origin: { kind: "thread" }, members: 1 });
-  assert.equal(items.threads.delete(items.threadId, after(1000), () => false)?.groupRemoved, false);
-  assert.ok(items.groups.get(items.groupId));
+  assert.equal(
+    items.threads.delete(items.threadId, after(1000), () => false)?.workstreamRemoved,
+    false,
+  );
+  assert.ok(items.workstreams.get(items.workstreamId));
 
   const other = fresh({ origin: { kind: "thread" }, members: 0 });
   other.threads.open(
-    { id: id(20), workspaceId: other.workspaceId, groupId: other.groupId },
+    { id: id(20), workspaceId: other.workspaceId, workstreamId: other.workstreamId },
     after(500),
   );
-  assert.equal(other.threads.delete(other.threadId, after(1000), () => false)?.groupRemoved, false);
-  assert.ok(other.groups.get(other.groupId));
+  assert.equal(
+    other.threads.delete(other.threadId, after(1000), () => false)?.workstreamRemoved,
+    false,
+  );
+  assert.ok(other.workstreams.get(other.workstreamId));
   assert.deepEqual(
-    other.threads.ofGroup(other.groupId, after(1000)).map((s) => s.thread.id),
+    other.threads.ofWorkstream(other.workstreamId, after(1000)).map((s) => s.thread.id),
     [id(20)],
   );
 });
 
 test("a thread that wrote to a source is kept out of sight, with its records, and its links revoked", () => {
-  const { db, groupId, threads, threadId, workspaceId, count } = fresh({ status: "applied" });
+  const { db, workstreamId, threads, threadId, workspaceId, count } = fresh({ status: "applied" });
   assert.deepEqual(threads.wrote(threadId), {
     applied: 1,
     reverted: 0,
@@ -162,9 +169,9 @@ test("a thread that wrote to a source is kept out of sight, with its records, an
   assert.deepEqual(
     threads.delete(threadId, after(1000), () => false),
     {
-      groupId,
+      workstreamId,
       kept: true,
-      groupRemoved: false,
+      workstreamRemoved: false,
     },
   );
   assert.deepEqual(
@@ -180,7 +187,7 @@ test("a thread that wrote to a source is kept out of sight, with its records, an
   );
   assert.equal(threads.get(threadId, after(1000)), null);
   assert.deepEqual(threads.list(workspaceId, after(1000)), []);
-  assert.deepEqual(threads.ofGroup(groupId, after(1000)), []);
+  assert.deepEqual(threads.ofWorkstream(workstreamId, after(1000)), []);
   assert.throws(() => threads.markDone(threadId, after(2000)), /no thread/);
   assert.throws(() => threads.wrote(threadId), /no thread/);
   assert.throws(() => threads.delete(threadId, after(2000), () => false), /no thread/);
@@ -201,7 +208,7 @@ test("a change sent with no answer may have landed, so its thread is kept too", 
   assert.equal(threads.delete(threadId, after(1000), () => false)?.kept, true);
   assert.equal(count("mutations"), 1);
   // A refusal before sending puts the row back to pending: nothing written.
-  const refused = fresh({ status: "pending", error: "SYN-1 is no longer in the group." });
+  const refused = fresh({ status: "pending", error: "SYN-1 is no longer in the workstream." });
   assert.equal(refused.threads.delete(refused.threadId, after(1000), () => false)?.kept, false);
 });
 
@@ -246,26 +253,33 @@ test("nothing is deleted while one of its change sets is being applied", () => {
   assert.ok(threads.get(threadId, after(1000)));
 });
 
-test("a deleted thread doesn't follow its group", () => {
-  const { groups, groupId, threads, threadId, workspaceId } = fresh({ status: "applied" });
-  threads.open({ id: id(20), workspaceId, groupId }, t0);
+test("a deleted thread doesn't follow its workstream", () => {
+  const { workstreams, workstreamId, threads, threadId, workspaceId } = fresh({
+    status: "applied",
+  });
+  threads.open({ id: id(20), workspaceId, workstreamId }, t0);
   threads.delete(threadId, after(1000), () => false);
-  groups.add(groupId, [{ id: "jira:SYN-9", stableId: "10009" }], { kind: "user" }, after(2000));
+  workstreams.add(
+    workstreamId,
+    [{ id: "jira:SYN-9", stableId: "10009" }],
+    { kind: "user" },
+    after(2000),
+  );
   let n = 100;
   assert.deepEqual(
-    threads.follow(groupId, after(2000), () => id(n++)).map((move) => move.threadId),
+    threads.follow(workstreamId, after(2000), () => id(n++)).map((move) => move.threadId),
     [id(20)],
   );
 });
 
-test("a group made for a thread from nothing goes with it even after the user named it", () => {
-  const { groups, groupId, threads, threadId, workspaceId, count } = fresh({
+test("a workstream made for a thread from nothing goes with it even after the user named it", () => {
+  const { workstreams, workstreamId, threads, threadId, workspaceId, count } = fresh({
     origin: { kind: "thread" },
     members: 0,
   });
-  assert.equal(groups.rename(groupId, "Kiosk wallets"), true);
-  assert.equal(groups.get(groupId)?.namedBy, "user");
-  assert.equal(threads.delete(threadId, after(1000), () => false)?.groupRemoved, true);
-  assert.deepEqual(groups.list(workspaceId), []);
-  assert.equal(count("user_named_groups"), 0);
+  assert.equal(workstreams.rename(workstreamId, "Kiosk wallets"), true);
+  assert.equal(workstreams.get(workstreamId)?.namedBy, "user");
+  assert.equal(threads.delete(threadId, after(1000), () => false)?.workstreamRemoved, true);
+  assert.deepEqual(workstreams.list(workspaceId), []);
+  assert.equal(count("user_named_workstreams"), 0);
 });

@@ -1,5 +1,5 @@
 // A folder of markdown files, connected by its typed path: its items join
-// the window beside Jira's, and a group can mix both.
+// the window beside Jira's, and a workstream can mix both.
 import assert from "node:assert/strict";
 import {
   chmodSync,
@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type { DiffView, FolderView, GroupView, ThreadView, WindowView } from "@oriel/web/view";
+import type { DiffView, FolderView, WorkstreamView, ThreadView, WindowView } from "@oriel/web/view";
 import { host, json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
@@ -158,7 +158,7 @@ test("a folder syncs again on demand, and when the server starts", async (t) => 
 
 test("a file dropped that the index doesn't have yet is found by syncing the folder once", async (t) => {
   const app = await connected(t);
-  const created = await app.post("/api/groups", {
+  const created = await app.post("/api/workstreams", {
     kind: "picked",
     name: "Launch",
     items: ["jira:SYN-10"],
@@ -166,18 +166,18 @@ test("a file dropped that the index doesn't have yet is found by syncing the fol
   const { id } = json<{ id: string }>(created);
   app.dir.write("Retro.md", "What went well.");
   const modified = Math.trunc(statSync(join(app.dir.root, "Retro.md")).mtimeMs);
-  const dropped = json<{ group: GroupView; added: string[]; refused: unknown[] }>(
-    await app.post(`/api/groups/${id}/drop`, {
+  const dropped = json<{ workstream: WorkstreamView; added: string[]; refused: unknown[] }>(
+    await app.post(`/api/workstreams/${id}/drop`, {
       links: [],
       files: [{ name: "Retro.md", modified }],
     }),
   );
   assert.equal(dropped.added.length, 1);
   assert.deepEqual(dropped.refused, []);
-  assert.ok(dropped.group.members.some((m) => m.ref.title === "Retro"));
+  assert.ok(dropped.workstream.members.some((m) => m.ref.title === "Retro"));
 });
 
-test("a group mixes Jira and folder items; its thread's region binds items.* for both, jira.* for Jira's", async (t) => {
+test("a workstream mixes Jira and folder items; its thread's region binds items.* for both, jira.* for Jira's", async (t) => {
   const inspect: Script = async (bindings) => ({
     value: { dts: bindings.dts, items: (await bindings.read("items.list", [])).value },
   });
@@ -187,19 +187,23 @@ test("a group mixes Jira and folder items; its thread's region binds items.* for
     .flatMap((c) => c.list)
     .find((row) => row.title === "Launch plan" && row.id.startsWith("folder:"))?.id;
   assert.ok(file);
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-10", file] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "picked",
+      name: "Launch",
+      items: ["jira:SYN-10", file],
+    }),
   );
-  const group = json<GroupView>(await app.get(`/api/groups/${groupId}`));
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
   assert.deepEqual(
-    group.members.map((m) => [m.ref.id, m.row?.title]),
+    workstream.members.map((m) => [m.ref.id, m.row?.title]),
     [
       ["jira:SYN-10", "Remove the legacy web-view checkout"],
       [file, "Launch plan"],
     ],
   );
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "What's the plan?" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "What's the plan?" }),
   );
   await app.app.settled();
   const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
@@ -253,11 +257,17 @@ test("an epic picked beside a plan lets the agent create stories in it, and show
     .flatMap((c) => c.list)
     .find((row) => row.title === "Launch plan" && row.id.startsWith("folder:"))?.id;
   assert.ok(plan);
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Launch", items: [plan, "jira:SYN-1"] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "picked",
+      name: "Launch",
+      items: [plan, "jira:SYN-1"],
+    }),
   );
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Turn the plan into stories" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "Turn the plan into stories",
+    }),
   );
   await app.app.settled();
   const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));

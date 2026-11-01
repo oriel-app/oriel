@@ -540,7 +540,7 @@ test("the judge sees each search's queries and hits, a search that found nothing
   const card = { id: "jira:SYN-99", title: "Save a card for next time" };
   const answered: SystemUnderTest = async () => ({
     mutations: [],
-    reply: "Nothing in this group covers it; a search found SYN-99.",
+    reply: "Nothing in this workstream covers it; a search found SYN-99.",
     transcript: [
       { kind: "text", text: "Searching." },
       ...ran("run-1", [{ fn: "search", args: ["saved card payment"] }], []),

@@ -32,7 +32,7 @@ export type NamespaceHost = {
 export type NamespaceScope = {
   // The region's items from this source, in RegionId order.
   ids: readonly ItemId[];
-  // The item the region's group was made around, when it is from this source.
+  // The item the region's workstream was made around, when it is from this source.
   anchor: ItemId | null;
 };
 

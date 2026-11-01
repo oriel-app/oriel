@@ -568,7 +568,7 @@ test("a history that ends in a marker closes its tool round before the user's me
           type: "tool_use",
           id: "history_2",
           name: "run",
-          input: { script: "// Oriel's note that the group changed. Not a run." },
+          input: { script: "// Oriel's note that the workstream changed. Not a run." },
         },
       ],
     },

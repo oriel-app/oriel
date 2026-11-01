@@ -267,7 +267,7 @@ a {
   white-space: nowrap;
 }
 
-/* The sidebar: the pages, the groups with their threads, the folder. */
+/* The sidebar: the pages, the workstreams with their threads, the folder. */
 
 .sidebar {
   position: sticky;
@@ -378,7 +378,7 @@ a {
   font-size: var(--text-sm);
 }
 
-.nav-groups,
+.nav-workstreams,
 .nav-threads,
 .nav-waiting {
   margin: 0;
@@ -386,12 +386,12 @@ a {
   list-style: none;
 }
 
-.nav-group-row {
+.nav-workstream-row {
   display: flex;
   align-items: center;
 }
 
-.nav-group-row .nav-link {
+.nav-workstream-row .nav-link {
   flex: 1;
   padding-left: var(--space-1);
 }
@@ -462,7 +462,7 @@ button.nav-disclose:hover {
 }
 
 /* A thread waiting on the user: its title, then what it waits on and its
-   group. */
+   workstream. */
 .nav-waiting {
   display: grid;
   gap: 1px;
@@ -505,14 +505,14 @@ button.nav-disclose:hover {
   color: var(--accent);
 }
 
-.nav-waiting-group {
+.nav-waiting-workstream {
   min-width: 0;
   overflow: hidden;
   color: var(--text-faint);
   text-overflow: ellipsis;
 }
 
-.nav-waiting-group::before {
+.nav-waiting-workstream::before {
   content: "· " / "";
 }
 
@@ -673,7 +673,7 @@ button.nav-more {
     white-space: nowrap;
   }
 
-  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar-done, .sidebar .sources) {
+  .shell[data-folded] :is(.sidebar-needs, .sidebar-workstreams, .sidebar-done, .sidebar .sources) {
     display: none;
   }
 
@@ -1260,8 +1260,8 @@ button.nav-more {
   outline-offset: -2px;
 }
 
-/* "Make group" waits on the row's right until the row is pointed at. */
-.make-group {
+/* "Make workstream" waits on the row's right until the row is pointed at. */
+.make-workstream {
   position: absolute;
   top: 50%;
   right: var(--space-3);
@@ -1270,13 +1270,13 @@ button.nav-more {
   transition: opacity 120ms;
 }
 
-.cluster-head:hover .make-group,
-.make-group:focus-visible {
+.cluster-head:hover .make-workstream,
+.make-workstream:focus-visible {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .make-group {
+  .make-workstream {
     opacity: 1;
   }
 }
@@ -1688,13 +1688,13 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
-/* A group's page. */
+/* A workstream's page. */
 
-.group-head {
+.workstream-head {
   margin-bottom: var(--space-4);
 }
 
-.group-title {
+.workstream-title {
   width: 100%;
   height: var(--head-row);
   padding: 0.125rem var(--space-1);
@@ -1707,17 +1707,17 @@ a.replies:hover {
   letter-spacing: -0.01em;
 }
 
-.group-title:hover {
+.workstream-title:hover {
   border-color: var(--line);
 }
 
-.group-title:focus {
+.workstream-title:focus {
   border-color: var(--line-strong);
   background: var(--surface);
   outline: none;
 }
 
-.group-origin {
+.workstream-origin {
   margin: var(--space-1) 0 0;
   color: var(--text-faint);
   font-size: var(--text-sm);
@@ -1840,12 +1840,12 @@ a.replies:hover {
   text-decoration: none;
 }
 
-.thread-link:has(.thread-link-group) {
+.thread-link:has(.thread-link-workstream) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto;
 }
 
-/* Beside its group, a working thread also says what it waits on. */
-.thread-link:has(.thread-link-group):has(.state-chip) {
+/* Beside its workstream, a working thread also says what it waits on. */
+.thread-link:has(.thread-link-workstream):has(.state-chip) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto auto;
 }
 
@@ -1859,7 +1859,7 @@ a.replies:hover {
   white-space: nowrap;
 }
 
-.thread-link-group,
+.thread-link-workstream,
 .thread-link-at {
   overflow: hidden;
   color: var(--text-faint);
@@ -1981,7 +1981,7 @@ a.replies:hover {
   margin-top: var(--space-1);
 }
 
-/* With no group yet, the title is the head's first line. */
+/* With no workstream yet, the title is the head's first line. */
 .thread-head > .thread-title-row:first-child {
   min-height: var(--head-row);
   margin-top: 0;
@@ -2232,7 +2232,7 @@ a.replies:hover {
   color: var(--text-muted);
 }
 
-/* The escape hatch: what came from outside the group, read-only. */
+/* The escape hatch: what came from outside the workstream, read-only. */
 
 .search-block {
   padding: var(--space-2) var(--space-3);
@@ -2868,7 +2868,7 @@ a.replies:hover {
     height: calc(var(--space-2) * 2 + 1.5rem);
   }
 
-  .make-group {
+  .make-workstream {
     top: var(--space-2);
     transform: none;
     background: var(--surface);
@@ -2967,12 +2967,12 @@ a.replies:hover {
   }
 
   .thread-link,
-  .thread-link:has(.thread-link-group),
-  .thread-link:has(.thread-link-group):has(.state-chip) {
+  .thread-link:has(.thread-link-workstream),
+  .thread-link:has(.thread-link-workstream):has(.state-chip) {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .thread-link-group,
+  .thread-link-workstream,
   .thread-link-at {
     display: none;
   }
@@ -2996,7 +2996,7 @@ a.replies:hover {
   }
 }
 
-/* Dropping on a group or a thread: a veil over the view says where it goes. */
+/* Dropping on a workstream or a thread: a veil over the view says where it goes. */
 .drop-page {
   min-height: calc(100vh - var(--bar-height));
 }

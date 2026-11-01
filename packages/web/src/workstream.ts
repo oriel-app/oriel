@@ -1,11 +1,11 @@
-// A group's page: its members, its threads, and asking about it, which
+// A workstream's page: its members, its threads, and asking about it, which
 // opens a thread. Items are added from the window, or dropped here, and
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { GroupSummary, GroupView, MemberView, Undoable, UndoView } from "./view.ts";
+import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
 
-// A removal the user can still undo: the member as it showed, the group
+// A removal the user can still undo: the member as it showed, the workstream
 // version the removal made, which tells it from every other, and the call
 // that undoes it, as the server gave it, or null when it can't be undone.
 // `countdown` counts the times its countdown started; only the latest one's
@@ -20,9 +20,9 @@ export type Removal = {
 // How long a removal can be undone, while the user isn't on its Undo.
 export const undoMs = 8_000;
 
-export type GroupModel = {
+export type WorkstreamModel = {
   id: string;
-  view: GroupView | null;
+  view: WorkstreamView | null;
   status: "loading" | "ready" | "failed";
   draft: string;
   // The name being edited, or null.
@@ -41,19 +41,19 @@ export type GroupModel = {
 
 export type Hold = "pointer" | "focus";
 
-export type GroupMsg =
+export type WorkstreamMsg =
   | { type: "draftChanged"; text: string }
   | { type: "askClicked" }
   | { type: "memberRemoved"; id: string }
   | { type: "undoClicked"; version: number }
   | { type: "undoHeld"; by: Hold; held: boolean }
-  | { type: "undoExpired"; groupId: string; version: number; countdown: number }
+  | { type: "undoExpired"; workstreamId: string; version: number; countdown: number }
   | { type: "nameEdited"; name: string }
   | { type: "nameSaved" }
   | { type: "addClicked" }
   | { type: "dropped"; dropped: Dropped };
 
-export function initGroup(id: string): [GroupModel, Effect[]] {
+export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
   return [
     {
       id,
@@ -67,11 +67,14 @@ export function initGroup(id: string): [GroupModel, Effect[]] {
       removals: [],
       held: { pointer: false, focus: false },
     },
-    [get(`/api/groups/${id}`, { kind: "group", id })],
+    [get(`/api/workstreams/${id}`, { kind: "workstream", id })],
   ];
 }
 
-export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effect[]] {
+export function updateWorkstream(
+  model: WorkstreamModel,
+  msg: WorkstreamMsg,
+): [WorkstreamModel, Effect[]] {
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
@@ -82,9 +85,9 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
         { ...model, pending: true, notice: null },
         [
           post(
-            `/api/groups/${model.id}/threads`,
+            `/api/workstreams/${model.id}/threads`,
             { text },
-            { kind: "threadOpened", groupId: model.id },
+            { kind: "threadOpened", workstreamId: model.id },
           ),
         ],
       ];
@@ -124,7 +127,7 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
       return [{ ...model, held, removals }, restarts];
     }
     case "undoExpired": {
-      if (msg.groupId !== model.id || holding(model.held)) return [model, []];
+      if (msg.workstreamId !== model.id || holding(model.held)) return [model, []];
       const removals = model.removals.filter(
         (each) => each.version !== msg.version || each.countdown !== msg.countdown,
       );
@@ -134,10 +137,10 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
       return [{ ...model, name: msg.name }, []];
     case "nameSaved": {
       const name = model.name?.trim();
-      if (!name || name === model.view?.group.name) return [{ ...model, name: null }, []];
+      if (!name || name === model.view?.workstream.name) return [{ ...model, name: null }, []];
       return [
         { ...model, name: null },
-        [post(`/api/groups/${model.id}/rename`, { name }, { kind: "renamed", id: model.id })],
+        [post(`/api/workstreams/${model.id}/rename`, { name }, { kind: "renamed", id: model.id })],
       ];
     }
     case "addClicked":
@@ -149,29 +152,38 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
       if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
       return [
         { ...model, notice: null },
-        [post(`/api/groups/${model.id}/drop`, msg.dropped, { kind: "dropped", groupId: model.id })],
+        [
+          post(`/api/workstreams/${model.id}/drop`, msg.dropped, {
+            kind: "dropped",
+            workstreamId: model.id,
+          }),
+        ],
       ];
   }
 }
 
-const removal = (groupId: string, id: string): Effect =>
-  post(`/api/groups/${groupId}/remove`, { items: [id] }, { kind: "groupChanged", id: groupId });
+const removal = (workstreamId: string, id: string): Effect =>
+  post(
+    `/api/workstreams/${workstreamId}/remove`,
+    { items: [id] },
+    { kind: "workstreamChanged", id: workstreamId },
+  );
 
-const expiry = (groupId: string, { version, countdown }: Removal): Effect => ({
+const expiry = (workstreamId: string, { version, countdown }: Removal): Effect => ({
   type: "after",
   ms: undoMs,
-  msg: { type: "group", msg: { type: "undoExpired", groupId, version, countdown } },
+  msg: { type: "workstream", msg: { type: "undoExpired", workstreamId, version, countdown } },
 });
 
-const holding = (held: GroupModel["held"]): boolean => held.pointer || held.focus;
+const holding = (held: WorkstreamModel["held"]): boolean => held.pointer || held.focus;
 
 // Once neither pointer nor keyboard holds them, every removal held gets its
 // full time again.
 function letGo(
-  model: GroupModel,
+  model: WorkstreamModel,
   by: Hold,
   removals: readonly Removal[],
-): [GroupModel["held"], Removal[], Effect[]] {
+): [WorkstreamModel["held"], Removal[], Effect[]] {
   const held = { ...model.held, [by]: false };
   if (!holding(model.held) || holding(held)) return [held, [...removals], []];
   const restarted = removals.map((each) => ({ ...each, countdown: each.countdown + 1 }));
@@ -183,20 +195,23 @@ function letGo(
 export const undoable = (removal: Removal): boolean => removal.undo !== null;
 
 // What ⌘Z or Ctrl+Z undoes: the latest removal that can be.
-export const latestUndo = (model: GroupModel): Removal | null =>
+export const latestUndo = (model: WorkstreamModel): Removal | null =>
   model.removals.findLast(undoable) ?? null;
 
 // A reply's view, unless one already shown is newer: answers to a removal and
 // to an undo can cross.
-const newer = (model: GroupModel, view: GroupView): GroupView =>
-  model.view && model.view.group.version > view.group.version ? model.view : view;
+const newer = (model: WorkstreamModel, view: WorkstreamView): WorkstreamView =>
+  model.view && model.view.workstream.version > view.workstream.version ? model.view : view;
 
 export const nothingToAdd = "Nothing that was dropped names an item. Drop a Jira item or a file.";
 
-export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effect[]] {
+export function workstreamReplied(
+  model: WorkstreamModel,
+  msg: Replied,
+): [WorkstreamModel, Effect[]] {
   const { tag } = msg;
   switch (tag.kind) {
-    case "groupChanged": {
+    case "workstreamChanged": {
       if (tag.id !== model.id) return [model, []];
       // The first removal waiting is the one answered, and the next goes now;
       // unless the answer still holds it, as one to a removal sent before
@@ -204,12 +219,12 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
       const [done, ...rest] = model.removing;
       const next = rest[0] ? [removal(model.id, rest[0].id)] : [];
       if (!msg.ok) return [{ ...model, removing: rest, notice: errorOf(msg.body) }, next];
-      const { undo: call, ...answer } = msg.body as Undoable<GroupView>;
+      const { undo: call, ...answer } = msg.body as Undoable<WorkstreamView>;
       if (done && answer.members.some((each) => each.ref.id === done.id))
         return [{ ...model, view: newer(model, answer), status: "ready" }, []];
       const view = newer(model, answer);
       const undo = done?.member
-        ? { member: done.member, version: answer.group.version, countdown: 0, undo: call }
+        ? { member: done.member, version: answer.workstream.version, countdown: 0, undo: call }
         : null;
       return [
         {
@@ -222,40 +237,40 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
         [...next, ...(undo ? [expiry(model.id, undo)] : [])],
       ];
     }
-    // The undo landed: the group, as it is now, loads again.
+    // The undo landed: the workstream, as it is now, loads again.
     case "restored": {
       if (tag.id !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      return [model, [get(`/api/groups/${model.id}`, { kind: "group", id: model.id })]];
+      return [model, [get(`/api/workstreams/${model.id}`, { kind: "workstream", id: model.id })]];
     }
-    case "group": {
+    case "workstream": {
       if (tag.id !== model.id) return [model, []];
       if (!msg.ok)
         return [
           { ...model, status: model.view ? "ready" : "failed", notice: errorOf(msg.body) },
           [],
         ];
-      return [{ ...model, view: newer(model, msg.body as GroupView), status: "ready" }, []];
+      return [{ ...model, view: newer(model, msg.body as WorkstreamView), status: "ready" }, []];
     }
     // Loaded again after the workspace changed, maybe in another tab, which
     // may have deleted it: the page says why it can't go on.
-    case "groupSynced":
+    case "workstreamSynced":
       if (tag.id !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      return [{ ...model, view: newer(model, msg.body as GroupView), status: "ready" }, []];
+      return [{ ...model, view: newer(model, msg.body as WorkstreamView), status: "ready" }, []];
     case "renamed": {
       if (tag.id !== model.id || model.view === null) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      return [{ ...model, view: { ...model.view, group: msg.body as GroupSummary } }, []];
+      return [{ ...model, view: { ...model.view, workstream: msg.body as WorkstreamSummary } }, []];
     }
     case "dropped": {
-      if (tag.groupId !== model.id) return [model, []];
+      if (tag.workstreamId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
       const reply = msg.body as DropReply;
-      return [{ ...model, view: newer(model, reply.group), notice: dropNotice(reply) }, []];
+      return [{ ...model, view: newer(model, reply.workstream), notice: dropNotice(reply) }, []];
     }
     case "threadOpened": {
-      if (tag.groupId !== model.id) return [model, []];
+      if (tag.workstreamId !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, pending: false, notice: errorOf(msg.body) }, []];
       const { id } = msg.body as { id: string };
       return [
@@ -268,12 +283,12 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
   }
 }
 
-// What a group or thread with no items asks for: there is nothing to ask
+// What a workstream or thread with no items asks for: there is nothing to ask
 // about, so the agent can only create items, as when planning an epic.
 export const planPrompt =
   "What are you planning? Describe it, and ask for an epic and its stories…";
 
-// The group page's ask box, worded for how many items the group has.
+// The workstream page's ask box, worded for how many items the workstream has.
 export function askPrompt(size: number): string {
   if (size === 0) return planPrompt;
   if (size === 1) return "Ask about this item…";

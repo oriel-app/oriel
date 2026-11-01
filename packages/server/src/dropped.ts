@@ -1,4 +1,4 @@
-// What the user dropped on a group or a thread, as the items it names. A
+// What the user dropped on a workstream or a thread, as the items it names. A
 // browser hands over links (a Jira card dragged out of its board is a link to
 // the issue), text, and files by name and modification time only: it never
 // gives a page a file's path. So:

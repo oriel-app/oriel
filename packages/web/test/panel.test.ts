@@ -36,7 +36,7 @@ test("the open item is part of every page's address but a review link's", () => 
   const routes: Route[] = [
     { page: "window", grouping: "assignee", addTo: null, item },
     {
-      page: "group",
+      page: "workstream",
       id: "01JBZ0000000000000000000G1",
       item: "slack:C0FW1WEATHR-1788444000.000100",
     },

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import {
   type Actor,
   actions,
-  type GroupMember,
+  type WorkstreamMember,
   type IndexRecord,
   instant,
   shapeOf,
@@ -16,15 +16,22 @@ import {
   ulid,
   type Ulid,
 } from "@oriel/core";
-import { ensureWorkspace, groupStore, loadMigrations, migrate, open, threadStore } from "@oriel/db";
+import {
+  ensureWorkspace,
+  workstreamStore,
+  loadMigrations,
+  migrate,
+  open,
+  threadStore,
+} from "@oriel/db";
 import { ActionError, type Changed, dispatcher, refusal } from "./actions.ts";
 
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const id = (n: number) => ulid(n, new Uint8Array(10));
-const m = (key: string, stableId: string): GroupMember => ({ id: `jira:${key}`, stableId });
+const m = (key: string, stableId: string): WorkstreamMember => ({ id: `jira:${key}`, stableId });
 const user: Actor = { kind: "user" };
 
-// A workspace with a group holding SYN-1 and SYN-2, a working thread on it,
+// A workspace with a workstream holding SYN-1 and SYN-2, a working thread on it,
 // and SYN-3 in the index besides. A change set (id 50) created SYN-9, which
 // the index doesn't have yet.
 function world() {
@@ -32,18 +39,18 @@ function world() {
   migrate(db, loadMigrations(), t0);
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  const groups = groupStore(db);
+  const workstreams = workstreamStore(db);
   const threads = threadStore(db);
-  const groupId = id(1);
+  const workstreamId = id(1);
   const threadId = id(2);
   const changeSetId = id(50);
-  groups.create(
-    { id: groupId, workspaceId, name: "Launch", origin: { kind: "picked" } },
+  workstreams.create(
+    { id: workstreamId, workspaceId, name: "Launch", origin: { kind: "picked" } },
     [m("SYN-1", "10001"), m("SYN-2", "10002")],
     t0,
   );
-  threads.open({ id: threadId, workspaceId, groupId }, t0);
-  // Only what group membership reads of a record.
+  threads.open({ id: threadId, workspaceId, workstreamId }, t0);
+  // Only what workstream membership reads of a record.
   const records = [m("SYN-1", "10001"), m("SYN-2", "10002"), m("SYN-3", "10003")].map(
     (member) => member as unknown as IndexRecord,
   );
@@ -52,7 +59,7 @@ function world() {
   let next = 100;
   const dispatch = dispatcher({
     workspaceId,
-    groups,
+    workstreams,
     threads,
     records: () => records,
     clusters: () => [],
@@ -68,8 +75,20 @@ function world() {
     newId: () => id(next++),
   });
   const held = () =>
-    groups.region(groupId, groups.get(groupId)?.version ?? 1)?.items.map((item) => item.id);
-  return { db, dispatch, groups, groupId, threadId, changeSetId, events, published, held };
+    workstreams
+      .region(workstreamId, workstreams.get(workstreamId)?.version ?? 1)
+      ?.items.map((item) => item.id);
+  return {
+    db,
+    dispatch,
+    workstreams,
+    workstreamId,
+    threadId,
+    changeSetId,
+    events,
+    published,
+    held,
+  };
 }
 
 const refused = (code: ActionError["code"]) => (error: unknown) =>
@@ -79,13 +98,13 @@ test("adding what's already there undoes as removing only what was new", async (
   const w = world();
   const added = await w.dispatch(
     "workstream.add",
-    { workstream: w.groupId, items: ["jira:SYN-1", "jira:SYN-3"] },
+    { workstream: w.workstreamId, items: ["jira:SYN-1", "jira:SYN-3"] },
     user,
   );
   assert.deepEqual(added.added, ["jira:SYN-3"]);
   assert.deepEqual(added.undo, {
     action: "workstream.remove",
-    input: { workstream: w.groupId, items: ["jira:SYN-3"] },
+    input: { workstream: w.workstreamId, items: ["jira:SYN-3"] },
   });
   assert.ok(added.undo);
   const undone = await w.dispatch(added.undo.action, added.undo.input, user);
@@ -95,7 +114,7 @@ test("adding what's already there undoes as removing only what was new", async (
   // Nothing new to add changes nothing, so nothing undoes it.
   const again = await w.dispatch(
     "workstream.add",
-    { workstream: w.groupId, items: ["jira:SYN-1"] },
+    { workstream: w.workstreamId, items: ["jira:SYN-1"] },
     user,
   );
   assert.equal(again.undo, null);
@@ -105,23 +124,23 @@ test("a removal undoes as adding back what the index still has", async () => {
   const w = world();
   const removed = await w.dispatch(
     "workstream.remove",
-    { workstream: w.groupId, items: ["jira:SYN-2"] },
+    { workstream: w.workstreamId, items: ["jira:SYN-2"] },
     user,
   );
   assert.deepEqual(removed.undo, {
     action: "workstream.add",
-    input: { workstream: w.groupId, items: ["jira:SYN-2"] },
+    input: { workstream: w.workstreamId, items: ["jira:SYN-2"] },
   });
   // SYN-9 joined from a change set; the index doesn't have it, so once it's
   // removed it can't come back.
   await w.dispatch(
     "workstream.add",
-    { workstream: w.groupId, items: ["jira:SYN-9"] },
+    { workstream: w.workstreamId, items: ["jira:SYN-9"] },
     { kind: "change-set", changeSetId: w.changeSetId },
   );
   const gone = await w.dispatch(
     "workstream.remove",
-    { workstream: w.groupId, items: ["jira:SYN-9"] },
+    { workstream: w.workstreamId, items: ["jira:SYN-9"] },
     user,
   );
   assert.equal(gone.undo, null);
@@ -130,21 +149,21 @@ test("a removal undoes as adding back what the index still has", async () => {
 test("a rename undoes as renaming it back, to whoever named it; one that changes nothing has no undo", async () => {
   const w = world();
   const named = () => {
-    const group = w.groups.get(w.groupId);
-    return [group?.name, group?.namedBy];
+    const workstream = w.workstreams.get(w.workstreamId);
+    return [workstream?.name, workstream?.namedBy];
   };
   // Oriel named it; once the user does, Oriel can't, until the Undo gives
   // the name back.
   assert.deepEqual(named(), ["Launch", "oriel"]);
   const renamed = await w.dispatch(
     "workstream.rename",
-    { workstream: w.groupId, name: " Beta " },
+    { workstream: w.workstreamId, name: " Beta " },
     user,
   );
   assert.deepEqual(named(), ["Beta", "user"]);
   assert.deepEqual(renamed.undo, {
     action: "workstream.rename",
-    input: { workstream: w.groupId, name: "Launch", oriel: true },
+    input: { workstream: w.workstreamId, name: "Launch", oriel: true },
   });
   assert.ok(renamed.undo);
   const redo = await w.dispatch(renamed.undo.action, renamed.undo.input, user);
@@ -152,29 +171,37 @@ test("a rename undoes as renaming it back, to whoever named it; one that changes
   const changeSet: Actor = { kind: "change-set", changeSetId: w.changeSetId };
   await w.dispatch(
     "workstream.rename",
-    { workstream: w.groupId, name: "Kiosk wallets" },
+    { workstream: w.workstreamId, name: "Kiosk wallets" },
     changeSet,
   );
   assert.deepEqual(named(), ["Kiosk wallets", "oriel"]);
   // Redone, the name is the user's again, and Oriel's naming leaves it be.
   assert.deepEqual(redo.undo, {
     action: "workstream.rename",
-    input: { workstream: w.groupId, name: "Beta" },
+    input: { workstream: w.workstreamId, name: "Beta" },
   });
-  await w.dispatch("workstream.rename", { workstream: w.groupId, name: "Beta" }, user);
-  const same = await w.dispatch("workstream.rename", { workstream: w.groupId, name: "Beta" }, user);
+  await w.dispatch("workstream.rename", { workstream: w.workstreamId, name: "Beta" }, user);
+  const same = await w.dispatch(
+    "workstream.rename",
+    { workstream: w.workstreamId, name: "Beta" },
+    user,
+  );
   assert.equal(same.undo, null);
-  await w.dispatch("workstream.rename", { workstream: w.groupId, name: "Other" }, changeSet);
+  await w.dispatch("workstream.rename", { workstream: w.workstreamId, name: "Other" }, changeSet);
   assert.deepEqual(named(), ["Beta", "user"]);
 });
 
-test("who acted is in the group's log, the done record and telemetry", async () => {
+test("who acted is in the workstream's log, the done record and telemetry", async () => {
   const w = world();
   const agent: Actor = { kind: "agent", threadId: w.threadId };
-  await w.dispatch("workstream.add", { workstream: w.groupId, items: ["jira:SYN-3"] }, agent);
-  await w.dispatch("workstream.remove", { workstream: w.groupId, items: ["jira:SYN-1"] }, user);
+  await w.dispatch("workstream.add", { workstream: w.workstreamId, items: ["jira:SYN-3"] }, agent);
+  await w.dispatch(
+    "workstream.remove",
+    { workstream: w.workstreamId, items: ["jira:SYN-1"] },
+    user,
+  );
   assert.deepEqual(
-    w.groups.changes(w.groupId, 1).map((change) => change.cause),
+    w.workstreams.changes(w.workstreamId, 1).map((change) => change.cause),
     [agent, user],
   );
   await w.dispatch("thread.done", { thread: w.threadId }, agent);
@@ -187,37 +214,42 @@ test("who acted is in the group's log, the done record and telemetry", async () 
     { kind: "picked", name: "Risks", items: ["jira:SYN-2"] },
     agent,
   );
-  assert.deepEqual(w.groups.changes(made, 0)[0]?.cause, agent);
+  assert.deepEqual(w.workstreams.changes(made, 0)[0]?.cause, agent);
   // Each call counted once: by its SPEC §7 event, naming anyone but the
   // user, or by `action.called`.
   assert.deepEqual(
     w.events.map(({ at: _at, workspaceId: _ws, ...event }) => event),
     [
-      { name: "group.item-added", groupId: w.groupId, source: "jira", cause: "agent" },
+      {
+        name: "workstream.item-added",
+        workstreamId: w.workstreamId,
+        source: "jira",
+        cause: "agent",
+      },
       { name: "action.called", action: "workstream.remove", by: user },
       // The agent closed nothing in the window.
       { name: "thread.marked-done", threadId: w.threadId, by: agent },
-      { name: "group.created", groupId: made, origin: "picked", size: 1, by: agent },
+      { name: "workstream.created", workstreamId: made, origin: "picked", size: 1, by: agent },
     ],
   );
 });
 
 test("each call publishes once, and only what changed", async () => {
   const w = world();
-  await w.dispatch("workstream.add", { workstream: w.groupId, items: ["jira:SYN-3"] }, user);
-  await w.dispatch("workstream.add", { workstream: w.groupId, items: ["jira:SYN-3"] }, user);
-  await w.dispatch("workstream.rename", { workstream: w.groupId, name: "Beta" }, user);
+  await w.dispatch("workstream.add", { workstream: w.workstreamId, items: ["jira:SYN-3"] }, user);
+  await w.dispatch("workstream.add", { workstream: w.workstreamId, items: ["jira:SYN-3"] }, user);
+  await w.dispatch("workstream.rename", { workstream: w.workstreamId, name: "Beta" }, user);
   await w.dispatch("thread.done", { thread: w.threadId }, user);
   assert.deepEqual(w.published, [
-    { group: w.groupId, members: true },
-    { group: w.groupId, members: false },
+    { workstream: w.workstreamId, members: true },
+    { workstream: w.workstreamId, members: false },
     { thread: w.threadId },
   ]);
 });
 
 test("a change set adds what it created before the index has it; no one else can", async () => {
   const w = world();
-  const input = { workstream: w.groupId, items: ["jira:SYN-9"] };
+  const input = { workstream: w.workstreamId, items: ["jira:SYN-9" as const] };
   await assert.rejects(w.dispatch("workstream.add", input, user), refused("invalid"));
   await assert.rejects(
     w.dispatch("workstream.add", input, { kind: "agent", threadId: w.threadId }),
@@ -227,17 +259,17 @@ test("a change set adds what it created before the index has it; no one else can
   assert.deepEqual(w.held(), ["jira:SYN-1", "jira:SYN-2", "jira:SYN-9"]);
 });
 
-test("bad input, a missing group or thread, and a review link's holder are refused", async () => {
+test("bad input, a missing workstream or thread, and a review link's holder are refused", async () => {
   const w = world();
   await assert.rejects(
-    w.dispatch("workstream.remove", { workstream: w.groupId, items: [] }, user),
+    w.dispatch("workstream.remove", { workstream: w.workstreamId, items: [] }, user),
     (error) =>
       refused("invalid")(error) &&
       error instanceof Error &&
       error.message === "$.items: expected 1 to 500 items",
   );
   await assert.rejects(
-    w.dispatch("workstream.remove", { workstream: w.groupId, items: ["jira:SYN-3"] }, user),
+    w.dispatch("workstream.remove", { workstream: w.workstreamId, items: ["jira:SYN-3"] }, user),
     refused("invalid"),
   );
   await assert.rejects(
@@ -248,7 +280,7 @@ test("bad input, a missing group or thread, and a review link's holder are refus
   await assert.rejects(
     w.dispatch(
       "workstream.rename",
-      { workstream: w.groupId, name: "x" },
+      { workstream: w.workstreamId, name: "x" },
       { kind: "review-link", by: "Kim" },
     ),
     refused("refused"),
@@ -260,7 +292,7 @@ test("bad input, a missing group or thread, and a review link's holder are refus
     refused("refused"),
   );
   await assert.rejects(
-    w.dispatch("workstream.rename", { workstream: w.groupId, name: "X", oriel: true }, agent),
+    w.dispatch("workstream.rename", { workstream: w.workstreamId, name: "X", oriel: true }, agent),
     refused("refused"),
   );
   assert.equal(w.events.length, 0);

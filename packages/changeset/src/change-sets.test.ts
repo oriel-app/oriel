@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CapturedMutation } from "@oriel/core";
-import { groupStore } from "@oriel/db";
+import { workstreamStore } from "@oriel/db";
 import { ChangeSetError, sendLeaseMs } from "./change-sets.ts";
 import { approve, count, nth, preview, setup, status, t0 } from "./testing.ts";
 
@@ -205,21 +205,22 @@ test("an assignee is the field the Jira writer reports, `assignee`", async () =>
   ]);
 });
 
-test("an item removed from the group after capture is never written (decision 0018)", async () => {
-  const { db, changeSets, run, jira, groupId, indexed } = setup();
+test("an item removed from the workstream after capture is never written (decision 0018)", async () => {
+  const { db, changeSets, run, jira, workstreamId, indexed } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
-  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  workstreamStore(db).remove(workstreamId, [syn21], { kind: "user" }, t0);
   await approve(changeSets, set.id);
-  const why = /^SYN-21 was removed from the group after this was captured, so it wasn't sent\.$/;
+  const why =
+    /^SYN-21 was removed from the workstream after this was captured, so it wasn't sent\.$/;
   await assert.rejects(changeSets.apply(set.id), { code: "refused", message: why });
   // The row says why, as a stop partway through would.
   assert.match(String((await changeSets.get(set.id))?.mutations[0]?.error), why);
   assert.deepEqual(jira.calls, []);
 });
 
-test("a set op that landed with its answer lost is recorded on retry, even after its item left the group", async () => {
-  const { db, changeSets, run, jira, groupId, indexed } = setup();
+test("a set op that landed with its answer lost is recorded on retry, even after its item left the workstream", async () => {
+  const { db, changeSets, run, jira, workstreamId, indexed } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   await approve(changeSets, set.id);
@@ -230,7 +231,7 @@ test("a set op that landed with its answer lost is recorded on retry, even after
   assert.deepEqual((await changeSets.apply(set.id)).applied, []);
   jira.hooks.after = undefined;
   const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
-  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  workstreamStore(db).remove(workstreamId, [syn21], { kind: "user" }, t0);
   const retry = await changeSets.apply(set.id);
   assert.deepEqual(retry.applied, [mutationId]);
   assert.equal(status(db, mutationId), "applied");
@@ -266,8 +267,8 @@ test("a sent create keeps its own message, even with stored arguments the catalo
   assert.equal(jira.calls.length, 1);
 });
 
-test("a revert still reaches an item that left the group, and a new item is the set's own", async () => {
-  const { db, changeSets, run, jira, groupId, indexed } = setup();
+test("a revert still reaches an item that left the workstream, and a new item is the set's own", async () => {
+  const { db, changeSets, run, jira, workstreamId, indexed } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
     story("new:1", "Wallets", null),
@@ -276,7 +277,7 @@ test("a revert still reaches an item that left the group, and a new item is the 
   await approve(changeSets, set.id);
   assert.equal((await changeSets.apply(set.id)).applied.length, 3);
   const syn21 = { id: "jira:SYN-21" as const, stableId: indexed("SYN-21").stableId };
-  groupStore(db).remove(groupId, [syn21], { kind: "user" }, t0);
+  workstreamStore(db).remove(workstreamId, [syn21], { kind: "user" }, t0);
   const reverse = await changeSets.revert(set.id);
   assert.ok("id" in reverse);
   await approve(changeSets, reverse.id);

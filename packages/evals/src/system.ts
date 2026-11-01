@@ -5,7 +5,7 @@
 // the round's cassettes, so a live round records and CI replays.
 //
 // Runs and the change set are kept in memory. The change-set engine itself
-// needs the server's database (runs, groups and the index); the agent hands
+// needs the server's database (runs, workstreams and the index); the agent hands
 // it the same mutations either way.
 import {
   type AgentDeps,
@@ -89,7 +89,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const thread: Thread = {
     id: newId(),
     workspaceId: region.workspaceId,
-    groupId: region.groupId,
+    workstreamId: region.workstreamId,
     regionVersion: region.version,
     state: "working",
     doneBy: null,

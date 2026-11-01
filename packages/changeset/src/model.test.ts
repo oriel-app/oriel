@@ -21,7 +21,7 @@ import {
   type SourceWriter,
   type Ulid,
 } from "@oriel/core";
-import { groupStore, open } from "@oriel/db";
+import { workstreamStore, open } from "@oriel/db";
 import { ChangeSetError, changeSetsOver, type Specs } from "./change-sets.ts";
 import { sameValue } from "./hash.ts";
 import { store } from "./store.ts";
@@ -428,7 +428,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   // Invariant 7: takes one offered step on a copy of the database and of
   // Jira, and checks that it succeeds. A retry must send, or record in place,
   // its first change: only a revert's conflict check or (for a change sent
-  // before, once found not in place) the group may stop it, since those read
+  // before, once found not in place) the workstream may stop it, since those read
   // the source.
   const probe = async (id: Ulid, step: NextStep, mutationId?: Ulid) => {
     const copy = open(":memory:");
@@ -637,21 +637,21 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
     fault = null;
   };
 
-  // Pool stories taken out of the thread's group, which every sequence
+  // Pool stories taken out of the thread's workstream, which every sequence
   // shares, for as long as one move.
-  const outOfGroup = new Set<string>();
+  const outOfWorkstream = new Set<string>();
   const member = (item: string) => ({
     id: item as `jira:${string}`,
     stableId: shared.indexed(parseItemId(item)?.key ?? "").stableId,
   });
-  const leaveGroup = (item: string) => {
-    if (!(pool as readonly string[]).includes(item) || outOfGroup.has(item)) return;
-    groupStore(db).remove(shared.groupId, [member(item)], { kind: "user" }, clock);
-    outOfGroup.add(item);
+  const leaveWorkstream = (item: string) => {
+    if (!(pool as readonly string[]).includes(item) || outOfWorkstream.has(item)) return;
+    workstreamStore(db).remove(shared.workstreamId, [member(item)], { kind: "user" }, clock);
+    outOfWorkstream.add(item);
   };
-  const joinGroup = (item: string) => {
-    groupStore(db).add(shared.groupId, [member(item)], { kind: "user" }, clock);
-    outOfGroup.delete(item);
+  const joinWorkstream = (item: string) => {
+    workstreamStore(db).add(shared.workstreamId, [member(item)], { kind: "user" }, clock);
+    outOfWorkstream.delete(item);
   };
   let teammate = 0;
   // A summary no other row has: titles, numbered.
@@ -870,15 +870,15 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
             await applyOn(1, id);
             jira.hooks.read = undefined;
           }
-          // And now and then the item leaves the group meanwhile, so the first
+          // And now and then the item leaves the workstream meanwhile, so the first
           // finds the change absent but may not send it. It comes back after.
-          if (chance(0.5)) leaveGroup(item);
+          if (chance(0.5)) leaveWorkstream(item);
         };
       }
       await applyOn(0, id);
       whileSending = null;
       jira.hooks.answered = undefined;
-      for (const item of outOfGroup) joinGroup(item);
+      for (const item of outOfWorkstream) joinWorkstream(item);
     } else if (action === "edit") {
       const id = liveSet();
       const open = id ? (rows.load(id)?.mutations.filter((m) => m.status !== "applied") ?? []) : [];

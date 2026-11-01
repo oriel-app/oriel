@@ -14,14 +14,14 @@ function input(text: string, items: string[]): TurnInput {
     thread: {
       id: "01JBZ0000000000000000000T1" as never,
       workspaceId: "01JBZ0000000000000000000W1" as never,
-      groupId: "01JBZ0000000000000000000G1" as never,
+      workstreamId: "01JBZ0000000000000000000G1" as never,
       regionVersion: 1,
       state: "working",
       doneBy: null,
       createdAt: at,
     },
     region: {
-      groupId: "01JBZ0000000000000000000G1" as never,
+      workstreamId: "01JBZ0000000000000000000G1" as never,
       version: 1,
       workspaceId: "01JBZ0000000000000000000W1" as never,
       items: items.map((id, i) => ({ id: id as never, stableId: String(i + 1) })),
@@ -45,7 +45,7 @@ test("the dev plan proposes estimates only where there are Jira items", () => {
   assert.ok(plan.some((step) => "run" in step && step.run.includes("jira.setEstimate")));
   const none = devPlan(input("estimates?", ["folder:0123456789abcdef"]));
   assert.deepEqual(none, [
-    { text: "Nothing in this group can be estimated: it has no Jira items." },
+    { text: "Nothing in this workstream can be estimated: it has no Jira items." },
   ]);
 });
 
@@ -99,14 +99,14 @@ test("the dev plan's scripts typecheck and run in the sandbox", async (t) => {
   const { createSandbox } = await import("@oriel/sandbox");
   const sandbox = createSandbox();
   const app = await testApp(t, { agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan) });
-  const created = await app.post("/api/groups", {
+  const created = await app.post("/api/workstreams", {
     kind: "cluster",
     grouping: "epic",
     cluster: "10001",
   });
-  const { id: groupId } = JSON.parse(String(created.body)) as { id: string };
+  const { id: workstreamId } = JSON.parse(String(created.body)) as { id: string };
   const ask = async (text: string) => {
-    const opened = await app.post(`/api/groups/${groupId}/threads`, { text });
+    const opened = await app.post(`/api/workstreams/${workstreamId}/threads`, { text });
     await app.app.settled();
     const { id } = JSON.parse(String(opened.body)) as { id: string };
     return JSON.parse(String((await app.get(`/api/threads/${id}`)).body)) as {

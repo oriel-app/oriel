@@ -148,7 +148,7 @@ export const unmovedRoutes: Record<string, string> = {
   "/folder/sync": "syncs the folder",
   "/jira": "connects Jira",
   "/jira/sync": "syncs Jira",
-  "/groups/:id/threads": "opens a thread and says its first message",
+  "/workstreams/:id/threads": "opens a thread and says its first message",
   "/threads/:id/messages": "says a message",
   "/threads/:id/stop": "stops a turn",
   "/threads/:id/delete": "deletes a thread",
@@ -167,7 +167,7 @@ export const unmovedRoutes: Record<string, string> = {
 // POST routes that call the dispatcher for part of what they do, and what
 // they do besides.
 export const partlyMovedRoutes: Record<string, string> = {
-  "/groups/:id/drop": "syncs the sources when a dropped link names nothing yet",
+  "/workstreams/:id/drop": "syncs the sources when a dropped link names nothing yet",
   "/threads": "opens its thread and says its first message",
 };
 
@@ -183,7 +183,7 @@ export function postRoutes(text: string): { path: string; dispatches: boolean }[
     return [
       {
         path: path?.[1] ?? path?.[2] ?? "(unread path)",
-        dispatches: /\bdispatch\(/.test(code),
+        dispatches: /\bdispatch(?:\.untyped)?\(/.test(code),
       },
     ];
   });

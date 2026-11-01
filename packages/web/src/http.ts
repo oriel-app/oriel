@@ -7,18 +7,18 @@ import type { Route } from "./route.ts";
 import type { GroupingId } from "./view.ts";
 
 export type Tag =
-  | { kind: "groups" }
-  | { kind: "createGroup" }
-  | { kind: "addToGroup"; groupId: string }
-  | { kind: "dropped"; groupId: string }
-  | { kind: "group"; id: string }
-  | { kind: "groupChanged"; id: string }
+  | { kind: "workstreams" }
+  | { kind: "createWorkstream" }
+  | { kind: "addToWorkstream"; workstreamId: string }
+  | { kind: "dropped"; workstreamId: string }
+  | { kind: "workstream"; id: string }
+  | { kind: "workstreamChanged"; id: string }
   // A removal was undone, through the call the server gave for it.
   | { kind: "restored"; id: string }
-  // The group loaded again after a sync: only its view changes.
-  | { kind: "groupSynced"; id: string }
+  // The workstream loaded again after a sync: only its view changes.
+  | { kind: "workstreamSynced"; id: string }
   | { kind: "renamed"; id: string }
-  | { kind: "threadOpened"; groupId: string }
+  | { kind: "threadOpened"; workstreamId: string }
   | { kind: "threadStarted"; draft: number }
   | { kind: "thread"; id: string }
   | { kind: "sent"; threadId: string }

@@ -8,7 +8,7 @@ import type { ChangeSetView, ThreadSummaryView, ThreadView } from "../src/view.t
 
 const id = "01JBZ0000000000000000000T1";
 const other = "01JBZ0000000000000000000T2";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const secondSet = "01JBZ0000000000000000000C2";
 const at = "2026-10-31T09:00:00.000Z";
@@ -29,7 +29,7 @@ const open = (changeSetId: string): ChangeSetView => ({
 const threadView = (changeSets: ChangeSetView[]): ThreadView => ({
   id,
   title: "Estimate the launch",
-  group: { id: groupId, name: "Launch", version: 1 },
+  workstream: { id: workstreamId, name: "Launch", version: 1 },
   state: "working",
   doneBy: null,
   regionVersion: 1,
@@ -48,7 +48,7 @@ const summary = (
 ): ThreadSummaryView => ({
   id: threadId,
   title: "Estimate the launch",
-  group: { id: groupId, name: "Launch" },
+  workstream: { id: workstreamId, name: "Launch" },
   state,
   doneBy: state === "done" ? "applied" : null,
   waitingOn,
@@ -75,9 +75,9 @@ function onPage(changeSets = [open(setId)]): Model {
   return {
     ...init({ page: "thread", id })[0],
     thread,
-    groups: [
+    workstreams: [
       {
-        id: groupId,
+        id: workstreamId,
         name: "Launch",
         origin: { kind: "picked" },
         version: 1,
@@ -94,10 +94,10 @@ const click = (model: Model, step: "approve" | "reject", changeSetId = setId) =>
   update(model, { type: "thread", msg: { type: "changeSetClicked", changeSetId, step } })[0];
 
 const waiting = (model: Model) => nav(model).waiting.map((each) => each.id);
-// What the sidebar's group, and the group's page, say the thread waits on.
+// What the sidebar's workstream, and the workstream's page, say the thread waits on.
 const waitsOn = (model: Model, threadId = id) =>
   nav(model)
-    .groups?.flatMap((group) => group.threads)
+    .workstreams?.flatMap((workstream) => workstream.threads)
     .find((each) => each.id === threadId)?.waitingOn;
 
 const answered = (model: Model, body: unknown, ok = true) =>
