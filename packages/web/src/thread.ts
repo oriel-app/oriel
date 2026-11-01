@@ -407,6 +407,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
   // The lists' business, not the thread's.
   if (event.type === "threads") return [model, []];
+  // Its group changed, its name or members, whether or not the thread moved.
+  if (event.type === "group") return [model, [refresh(model)]];
   // Its stream ends with this.
   if (event.type === "deleted") return [{ ...model, deleted: true }, [{ type: "unsubscribe" }]];
   const { entry } = event;

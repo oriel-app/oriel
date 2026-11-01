@@ -237,8 +237,11 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
         ];
       return [{ ...model, view: newer(model, msg.body as GroupView), status: "ready" }, []];
     }
+    // Loaded again after the workspace changed, maybe in another tab, which
+    // may have deleted it: the page says why it can't go on.
     case "groupSynced":
-      if (tag.id !== model.id || !msg.ok) return [model, []];
+      if (tag.id !== model.id) return [model, []];
+      if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
       return [{ ...model, view: newer(model, msg.body as GroupView), status: "ready" }, []];
     case "renamed": {
       if (tag.id !== model.id || model.view === null) return [model, []];

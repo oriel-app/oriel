@@ -131,19 +131,23 @@ const loadGroups: Effect = get("/api/groups", { kind: "groups" });
 const loadThreads: Effect = get("/api/threads", { kind: "threads" });
 const lists: Effect[] = [loadGroups, loadThreads, loadFolder, loadJira];
 
-// A group's page on screen, loaded again.
-const groupReload = (model: Model): Effect[] =>
-  model.route.page === "group" && model.group
-    ? [get(`/api/groups/${model.group.id}`, { kind: "groupSynced", id: model.group.id })]
-    : [];
+// The group or thread on screen, loaded again.
+const reloadShown = (model: Model): Effect[] => {
+  const { route, group, thread } = model;
+  if (route.page === "group" && group)
+    return [get(`/api/groups/${group.id}`, { kind: "groupSynced", id: group.id })];
+  if (route.page === "thread" && thread)
+    return [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })];
+  return [];
+};
 
 // However the workspace changed, and whoever changed it, every page hears it
 // the same way: the lists load again, and so does a group's page on screen.
-// A thread's page hears its own thread on its stream.
+// A thread's page hears its own thread, and its group, on its own stream.
 const workspaceChanged = (model: Model): Effect[] => [
   loadThreads,
   loadGroups,
-  ...groupReload(model),
+  ...(model.route.page === "group" ? reloadShown(model) : []),
 ];
 
 export function init(route: Route): [Model, Effect[]] {
@@ -407,12 +411,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [window, effects] = model.window
         ? updateWindow(model.window, { type: "retryClicked" })
         : [null, []];
-      const { thread } = model;
-      const reload =
-        model.route.page === "thread" && thread
-          ? [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })]
-          : groupReload(model);
-      return [{ ...model, jira, window }, [...effects, ...reload]];
+      return [{ ...model, jira, window }, [...effects, ...reloadShown(model)]];
     }
     case "createGroup":
     case "addToGroup": {

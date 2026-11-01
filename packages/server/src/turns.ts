@@ -17,6 +17,7 @@ export type ThreadEvent =
   | { type: "message"; message: Message }
   | { type: "status"; running: boolean }
   | { type: "change-set"; changeSetId: Ulid; applying: boolean }
+  | { type: "group" }
   | { type: "deleted" };
 
 export class ThreadBusy extends Error {
@@ -166,8 +167,8 @@ export function turns(deps: TurnDeps) {
   const titling = new Set<Promise<void>>();
   const closing = new AbortController();
 
-  // Tells the pages watching a thread; and, unless it's an entry in its
-  // chat, every page watching the workspace.
+  // Tells the pages watching a thread; `broadcast`, every page watching the
+  // workspace; `publish`, both, unless it's an entry in the thread's chat.
   const tell = (threadId: Ulid, event: ThreadEvent) => {
     for (const watcher of watchers.get(threadId) ?? []) watcher(event);
   };
@@ -359,15 +360,19 @@ export function turns(deps: TurnDeps) {
     },
 
     // One of Oriel's own actions changed the workspace, by whoever (decision
-    // 0024): the pages watching a thread it changed hear its status, each
-    // thread that moved to its group's newer version shows its marker, and
-    // every page watching the workspace hears once, so whatever it shows,
-    // a list or a group, loads again.
-    acted(changed: { thread: Ulid | null; moves: readonly Move[] }): void {
+    // 0024): the pages watching a thread it changed hear its status; each
+    // thread that moved to its group's newer version shows its marker; the
+    // pages watching any thread of a group it changed hear that, moved or
+    // not; and every page watching the workspace hears once, so the lists,
+    // and a group's page, load again.
+    acted(changed: { thread: Ulid | null; group: Ulid | null; moves: readonly Move[] }): void {
       if (changed.thread)
         tell(changed.thread, { type: "status", running: running.has(changed.thread) });
       // An entry tells only its thread's pages.
       for (const move of changed.moves) published(move.threadId, move.seq);
+      if (changed.group)
+        for (const { thread } of threads.ofGroup(changed.group, deps.now()))
+          tell(thread.id, { type: "group" });
       broadcast(changed.thread);
     },
 
@@ -400,6 +405,12 @@ export function turns(deps: TurnDeps) {
       }
       if (reason !== null)
         say(threadId, by === null ? reason : `${by}, from the review link: ${reason}`, set.id);
+    },
+
+    // The index changed, as a sync changes it: every page watching the
+    // workspace hears, so an open panel can tell whether its item changed.
+    synced(): void {
+      broadcast(null);
     },
 
     // Stops the thread's turn, if one is running.

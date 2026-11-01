@@ -428,6 +428,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (event.type === "message") entry(event.message);
       else if (event.type === "change-set")
         send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying });
+      else if (event.type === "group") send({ type: "group" });
       else if (event.type === "deleted") {
         send({ type: "deleted" });
         out.end();

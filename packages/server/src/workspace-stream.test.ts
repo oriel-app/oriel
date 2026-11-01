@@ -71,7 +71,45 @@ test("a move that only adds a marker reaches every page, and the thread's own it
   // Its own page shows the marker, and hears the rest of the workspace changed.
   const marker = await event();
   assert.ok(marker?.type === "entry" && marker.entry.kind === "marker");
+  assert.deepEqual(await event(), { type: "group" });
   assert.deepEqual(await event(), { type: "threads" });
   await stream.return?.();
+  await ownStream.return?.();
+});
+
+test("a sync reaches every page, so an open panel can tell whether its item changed", async (t) => {
+  const app = await testApp(t, { live: true });
+  const { stream } = await watch(app);
+  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await stream.next()).value, changed);
+  await stream.return?.();
+});
+
+test("a thread's own page hears its group renamed, or changed, though the thread didn't move", async (t) => {
+  const app = await testApp(t);
+  const { id: groupId } = json<GroupSummary>(
+    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/groups/${groupId}/threads`, { text: "Hi" }),
+  );
+  await app.app.settled();
+  // Done, it stays at its version when the group changes.
+  app.advance(1000);
+  await app.post(`/api/threads/${threadId}/done`, {});
+  const own = (await app.get(`/api/threads/${threadId}/events`)).stream;
+  assert.ok(own);
+  const ownStream = own[Symbol.asyncIterator]();
+  const event = async () => {
+    const data = /^data: (.*)$/m.exec(String((await ownStream.next()).value))?.[1];
+    return data === undefined ? null : (JSON.parse(data) as StreamEvent);
+  };
+  while ((await event())?.type !== "status");
+  await app.post(`/api/groups/${groupId}/rename`, { name: "Beta" });
+  assert.deepEqual(await event(), { type: "group" });
+  assert.deepEqual(await event(), { type: "threads" });
+  await app.post(`/api/groups/${groupId}/add`, { items: ["jira:SYN-10"] });
+  assert.deepEqual(await event(), { type: "group" });
+  assert.deepEqual(await event(), { type: "threads" });
   await ownStream.return?.();
 });

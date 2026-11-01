@@ -301,6 +301,9 @@ export type StreamEvent =
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
   | { type: "change-set"; changeSetId: string; applying: boolean }
+  // The thread's group changed: its name, or its members, whether or not the
+  // thread moved to the new version.
+  | { type: "group" }
   // The rest of the workspace changed: another thread moved (its turn
   // started or ended, a change set of it changed, or it was opened, marked
   // done or deleted), or one of Oriel's own actions changed a group.

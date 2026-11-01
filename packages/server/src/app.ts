@@ -288,8 +288,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
   ];
 
-  // One sync at a time, of any source, through the generic sync worker.
+  // One sync at a time, of any source, through the generic sync worker. Once
+  // each ends, every page watching the workspace hears, as even one that
+  // failed may have kept pages it read; nobody is watching before the turns
+  // start.
   let syncing: Promise<unknown> = Promise.resolve();
+  let told = (): void => {};
   const syncInto = <K extends SourceKind, A>(
     from: Source<K, A>,
     attrs: Validator<A>,
@@ -308,7 +312,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         } catch (error) {
           log("following epics failed", { error: String(error) });
         }
-      });
+      })
+      .finally(() => told());
     syncing = run;
     return run;
   };
@@ -572,6 +577,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     newId,
     log,
   });
+  told = () => conversation.synced();
   const viewer = views({
     groups,
     threads,
@@ -606,9 +612,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     publish: (changed) => {
       conversation.acted(
         "thread" in changed
-          ? { thread: changed.thread, moves: [] }
+          ? { thread: changed.thread, group: null, moves: [] }
           : {
               thread: null,
+              group: changed.group,
               moves: changed.members ? threads.follow(changed.group, now(), newId) : [],
             },
       );

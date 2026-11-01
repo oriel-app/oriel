@@ -24,15 +24,36 @@ test("a group's page loads its group again when the workspace changes", () => {
   ]);
 });
 
-test("the window and a thread's page load only their lists; a thread's own stream says the rest", () => {
+test("a thread's page loads its thread again when its group changed, moved or not", () => {
+  const [opened] = init({ page: "thread", id: threadId });
+  const [shown] = update(opened, {
+    type: "replied",
+    tag: { kind: "thread", id: threadId },
+    ok: true,
+    body: { id: threadId, entries: [], changeSets: [], lastSeq: 3, running: false },
+  });
+  assert.deepEqual(requests(update(shown, { type: "streamed", event: { type: "group" } })[1]), [
+    `GET /api/threads/${threadId} thread`,
+    "GET /api/threads threads",
+    "GET /api/groups groups",
+  ]);
+});
+
+test("the window loads only its lists", () => {
   const [window] = init({ page: "window", grouping: "epic", addTo: null });
   assert.deepEqual(requests(update(window, { type: "threadsMoved" })[1]), [
     "GET /api/threads threads",
     "GET /api/groups groups",
   ]);
-  const [thread] = init({ page: "thread", id: threadId });
-  assert.deepEqual(requests(update(thread, { type: "streamed", event: { type: "threads" } })[1]), [
-    "GET /api/threads threads",
-    "GET /api/groups groups",
-  ]);
+});
+
+test("a group deleted in another tab says so on its page here", () => {
+  const [model] = init({ page: "group", id: groupId });
+  const [gone] = update(model, {
+    type: "replied",
+    tag: { kind: "groupSynced", id: groupId },
+    ok: false,
+    body: { error: "no such group" },
+  });
+  assert.equal(gone.group?.notice, "no such group");
 });
