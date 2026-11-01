@@ -1,38 +1,62 @@
-// The inbox, and a review link's page.
+// The Done page, and a review link's page.
 import { Threads } from "./group-page.tsx";
-import { type Dispatch, Mark, stateNames } from "./parts.tsx";
+import { donePage } from "./nav.ts";
+import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
 import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
-import { type ChangeSetView, type DiffView, threadStates, type ThreadSummaryView } from "./view.ts";
+import type { ChangeSetView, DiffView, ThreadSummaryView } from "./view.ts";
 
-// Threads by state: working first, then what settled.
-export function InboxPage(props: { threads: ThreadSummaryView[] | null; dispatch: Dispatch }) {
-  const { threads, dispatch } = props;
-  if (threads === null)
+// The threads no longer working, most recently active first, a page at a
+// time: done, and handed off or dropped, which say so. Threads that need the
+// user aren't here: the sidebar keeps them in sight.
+export function DonePage(props: {
+  finished: ThreadSummaryView[] | null;
+  number: number;
+  dispatch: Dispatch;
+}) {
+  const { dispatch } = props;
+  if (props.finished === null)
     return (
       <main class="page">
         <p class="loading">Loading…</p>
       </main>
     );
+  const page = donePage(props.finished, props.number);
+  const to = (number: number) => ({ page: "inbox" as const, number });
   return (
-    <main class="page inbox">
-      <h1 class="page-title">Inbox</h1>
-      {threads.length === 0 && (
-        <p class="rail-empty">No threads yet. Open a group and ask about it.</p>
+    <main class="page done-page">
+      <h1 class="page-title">Done</h1>
+      {page.total === 0 ? (
+        <p class="rail-empty">
+          No thread is done yet. One is once its change set is applied, or you mark it done.
+        </p>
+      ) : (
+        <>
+          <Threads threads={page.threads} dispatch={dispatch} showGroup />
+          {page.pages > 1 && (
+            <nav class="pager" aria-label="Pages of finished threads">
+              {page.number > 1 ? (
+                <Link route={to(page.number - 1)} dispatch={dispatch} class="quiet-action">
+                  Previous
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span class="pager-where">
+                Page {page.number} of {page.pages} · {plural(page.total, "thread")}
+              </span>
+              {page.number < page.pages ? (
+                <Link route={to(page.number + 1)} dispatch={dispatch} class="quiet-action">
+                  Next
+                </Link>
+              ) : (
+                <span />
+              )}
+            </nav>
+          )}
+        </>
       )}
-      {threadStates.map((state) => {
-        const these = threads.filter((thread) => thread.state === state);
-        if (these.length === 0) return null;
-        return (
-          <section key={state} class="section" data-state={state}>
-            <h2 class="section-title">
-              {stateNames[state]} <span class="section-count">{these.length}</span>
-            </h2>
-            <Threads threads={these} dispatch={dispatch} showGroup />
-          </section>
-        );
-      })}
     </main>
   );
 }

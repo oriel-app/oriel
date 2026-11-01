@@ -544,7 +544,72 @@ button.nav-disclose:hover {
   }
 }
 
+/* The done threads sit at the foot of the sidebar, above the sources. */
+.sidebar-done {
+  margin-top: auto;
+}
+
+.sidebar-done .rail-title {
+  margin: 0;
+  padding: 0;
+}
+
+.done-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 1.5rem;
+  padding: 0 var(--space-2) 0 0.125rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.done-toggle:hover {
+  color: var(--text);
+}
+
+.done-toggle .chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform 120ms ease;
+}
+
+.done-toggle[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+.done-toggle .nav-count {
+  margin-left: auto;
+  letter-spacing: 0;
+}
+
+.nav-done .rail-empty {
+  padding: 0 var(--space-2);
+}
+
+/* "More" in a list that grows in place. */
+button.nav-more {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
 /* The sources sit at the foot of the sidebar: Jira, then the folder. */
+.sidebar .sidebar-done + .sources {
+  margin-top: 0;
+}
+
 .sidebar .sources {
   display: grid;
   gap: var(--space-3);
@@ -589,7 +654,7 @@ button.nav-disclose:hover {
     white-space: nowrap;
   }
 
-  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar .sources) {
+  .shell[data-folded] :is(.sidebar-needs, .sidebar-groups, .sidebar-done, .sidebar .sources) {
     display: none;
   }
 
@@ -1666,6 +1731,25 @@ button.nav-disclose:hover {
   color: var(--danger);
 }
 
+/* The Done page's way to its other pages. */
+.pager {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.pager > :last-child {
+  justify-self: end;
+}
+
+.pager-where {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .thread-list {
   margin: 0;
   padding: 0;
@@ -1687,7 +1771,7 @@ button.nav-disclose:hover {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto;
 }
 
-/* In the inbox, a working thread also says what it waits on. */
+/* Beside its group, a working thread also says what it waits on. */
 .thread-link:has(.thread-link-group):has(.state-chip) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto auto;
 }

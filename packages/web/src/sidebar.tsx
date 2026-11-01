@@ -1,8 +1,9 @@
-// The sidebar, on every page but a review link: the window and the inbox,
-// the threads waiting on the user, the user's groups with their threads under
-// them, and the sources: Jira and the connected folder.
-// On a wide screen it folds to a strip of icons; on a narrow one it's a
-// drawer the menu opens.
+// The sidebar, on every page but a review link: the window, the threads
+// waiting on the user, the user's groups with their threads under them, the
+// latest done threads, and the sources: Jira and the connected folder.
+// On a wide screen it folds to a strip of icons, where the fold button counts
+// the threads waiting on the user; on a narrow one it's a drawer the menu
+// opens.
 import { useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
@@ -13,8 +14,10 @@ import type { Model } from "./root.ts";
 
 // A group shows this many of its threads; the rest are on its page.
 const shown = 5;
-// So many threads waiting on the user show; the rest are in the inbox.
+// So many threads waiting on the user show until the user asks for the rest.
 const shownWaiting = 8;
+// So many done threads show; the rest are on the Done page.
+const shownDone = 5;
 
 export function Sidebar(props: {
   model: Model;
@@ -45,7 +48,17 @@ export function Sidebar(props: {
           onClick={props.onFold}
         >
           <PanelIcon />
-          <span class="visually-hidden">{props.folded ? "Show sidebar" : "Hide sidebar"}</span>
+          <span class="visually-hidden">
+            {props.folded ? "Show sidebar" : "Hide sidebar"}
+            {props.folded &&
+              where.needsYou > 0 &&
+              `, ${plural(where.needsYou, "thread")} waiting on you`}
+          </span>
+          {props.folded && where.needsYou > 0 && (
+            <span class="bar-count" aria-hidden="true">
+              {where.needsYou}
+            </span>
+          )}
         </button>
       </div>
       <nav class="sidebar-pages" aria-label="Pages">
@@ -68,23 +81,15 @@ export function Sidebar(props: {
           <WindowIcon />
           <span class="sidebar-label">Window</span>
         </Link>
-        <Link
-          route={{ page: "inbox" }}
-          dispatch={dispatch}
-          class="nav-link"
-          aria-current={page === "inbox" ? "page" : undefined}
-        >
-          <InboxIcon />
-          <span class="sidebar-label">Inbox</span>
-          {where.needsYou > 0 && (
-            <span class="badge" title={`${plural(where.needsYou, "thread")} waiting on you`}>
-              {where.needsYou}
-            </span>
-          )}
-        </Link>
       </nav>
       <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <Groups where={where} dispatch={dispatch} />
+      <Done
+        where={where}
+        loaded={model.threads !== null}
+        onPage={page === "inbox"}
+        dispatch={dispatch}
+      />
       <div class="sources">
         <Jira jira={model.jira} dispatch={dispatch} />
         <Folder folder={model.folder} dispatch={dispatch} />
@@ -98,15 +103,18 @@ const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform
 // What needs the user, in sight on every page: each thread waiting on a
 // review or a reply, with what it waits on and its group. The groups below
 // say which page this is.
+// Past a few, the rest show here when asked for.
 function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
+  const [all, setAll] = useState(false);
   if (!props.loaded) return null;
+  const shown = all ? where.waiting : where.waiting.slice(0, shownWaiting);
   return (
     <nav class="sidebar-needs" aria-label="Needs you">
       <h2 class="rail-title">Needs you</h2>
       {where.waiting.length === 0 && <p class="rail-empty">Nothing is waiting on you.</p>}
       <ul class="nav-waiting">
-        {where.waiting.slice(0, shownWaiting).map((thread) => (
+        {shown.map((thread) => (
           <li key={thread.id}>
             <ThreadMenu thread={thread} dispatch={dispatch} swipe>
               <Link
@@ -128,11 +136,11 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
             </ThreadMenu>
           </li>
         ))}
-        {where.waiting.length > shownWaiting && (
+        {where.waiting.length > shown.length && (
           <li>
-            <Link route={{ page: "inbox" }} dispatch={dispatch} class="nav-link nav-more">
-              {where.waiting.length - shownWaiting} more in the inbox
-            </Link>
+            <button type="button" class="nav-link nav-more" onClick={() => setAll(true)}>
+              {where.waiting.length - shown.length} more
+            </button>
           </li>
         )}
       </ul>
@@ -263,6 +271,94 @@ function GroupEntry(props: {
       )}
     </li>
   );
+}
+
+// The latest threads no longer working (done, handed off or dropped), folded
+// until the user opens them, which this browser remembers. The rest are on
+// the Done page.
+function Done(props: { where: Nav; loaded: boolean; onPage: boolean; dispatch: Dispatch }) {
+  const { where, dispatch } = props;
+  const [open, setOpen] = useState(readDoneOpen);
+  if (!props.loaded) return null;
+  const done = where.finished;
+  const toggle = () => {
+    writeDoneOpen(!open);
+    setOpen(!open);
+  };
+  return (
+    <nav class="sidebar-done" aria-label="Done">
+      <h2 class="rail-title">
+        <button
+          type="button"
+          class="done-toggle"
+          aria-expanded={open}
+          aria-controls="nav-done"
+          onClick={toggle}
+        >
+          <Chevron />
+          Done
+          {done.length > 0 && <span class="nav-count">{done.length}</span>}
+        </button>
+      </h2>
+      {open && (
+        <ul id="nav-done" class="nav-threads nav-done">
+          {done.length === 0 && <li class="rail-empty">No thread is done yet.</li>}
+          {done.slice(0, shownDone).map((thread) => (
+            <li key={thread.id}>
+              <ThreadMenu thread={thread} dispatch={dispatch} swipe>
+                <Link
+                  route={{ page: "thread", id: thread.id }}
+                  dispatch={dispatch}
+                  class="nav-link nav-thread"
+                  title={thread.group.name}
+                  aria-current={thread.id === where.thread ? "page" : undefined}
+                >
+                  <span
+                    class="state-dot"
+                    data-state={thread.state}
+                    title={stateNames[thread.state]}
+                  />
+                  <span class="nav-name">{thread.title ?? "New thread"}</span>
+                </Link>
+              </ThreadMenu>
+            </li>
+          ))}
+          {done.length > shownDone && (
+            <li>
+              <Link
+                route={{ page: "inbox" }}
+                dispatch={dispatch}
+                class="nav-link nav-more"
+                aria-current={props.onPage ? "page" : undefined}
+              >
+                {done.length - shownDone} more
+              </Link>
+            </li>
+          )}
+        </ul>
+      )}
+    </nav>
+  );
+}
+
+// Whether the Done section was left open, kept in this browser only.
+const doneOpenKey = "oriel.sidebar.done";
+
+function readDoneOpen(): boolean {
+  try {
+    return localStorage.getItem(doneOpenKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeDoneOpen(open: boolean) {
+  try {
+    if (open) localStorage.setItem(doneOpenKey, "1");
+    else localStorage.removeItem(doneOpenKey);
+  } catch {
+    // Storage may be off; the section just opens folded next time.
+  }
 }
 
 // Jira, at the foot: its project as one quiet line, and Sync, which looks
@@ -398,15 +494,6 @@ function PlusIcon() {
   return (
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3v10M3 8h10" />
-    </svg>
-  );
-}
-
-function InboxIcon() {
-  return (
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2 9l1.6-5.2A1.5 1.5 0 0 1 5 2.75h6a1.5 1.5 0 0 1 1.4 1.05L14 9v3a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z" />
-      <path d="M2 9h3.5l1 1.75h3L10.5 9H14" />
     </svg>
   );
 }

@@ -78,7 +78,8 @@ export function securityHeaders(importMapHash: string): Record<string, string> {
 const ulidPath = "[0-9A-HJKMNP-TV-Z]{26}";
 const pagePaths = [
   /^\/$/,
-  /^\/inbox$/,
+  // The Done page, and /inbox, its old address.
+  /^\/(done|inbox)$/,
   new RegExp(`^/groups/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
   // A thread not started yet: a draft in the browser until its first message.

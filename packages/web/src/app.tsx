@@ -1,8 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
 import { GroupPage } from "./group-page.tsx";
 import { parseRoute } from "./route.ts";
-import { InboxPage, ReviewPage } from "./other-pages.tsx";
-import { nav } from "./nav.ts";
+import { DonePage, ReviewPage } from "./other-pages.tsx";
+import { groupThreads, nav } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
@@ -118,13 +118,27 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         )
       );
     case "group":
-      return model.group && <GroupPage model={model.group} dispatch={dispatch} />;
+      return (
+        model.group && (
+          <GroupPage
+            model={model.group}
+            threads={groupThreads(model, model.group.id)}
+            dispatch={dispatch}
+          />
+        )
+      );
     case "thread":
       return model.thread && <ThreadPage model={model.thread} dispatch={dispatch} />;
     case "new-thread":
       return model.newThread && <NewThreadPage model={model.newThread} dispatch={dispatch} />;
     case "inbox":
-      return <InboxPage threads={model.threads} dispatch={dispatch} />;
+      return (
+        <DonePage
+          finished={model.threads && nav(model).finished}
+          number={model.route.number ?? 1}
+          dispatch={dispatch}
+        />
+      );
     case "review":
       return null;
   }

@@ -1,6 +1,9 @@
 // What the sidebar shows, from the lists the app already keeps: the threads
 // waiting on the user, the user's groups, each with its threads, most
-// recently active first, and where the page is among them.
+// recently active first, the finished threads, and where the page is among
+// them.
+// The Done page and a group's page read the same list, so all three move
+// together.
 import type { Model } from "./root.ts";
 import type { GroupSummary, ThreadSummaryView } from "./view.ts";
 
@@ -20,6 +23,11 @@ export type Nav = {
   // until the threads have loaded.
   waiting: ThreadSummaryView[];
   needsYou: number;
+  // Threads no longer working: done, handed off or dropped, most recently
+  // active first. The Done page and the sidebar's Done section list them, so
+  // with Needs you and the groups every state stays in sight. Empty until the
+  // threads have loaded.
+  finished: ThreadSummaryView[];
 };
 
 export function nav(model: Model): Nav {
@@ -50,5 +58,39 @@ export function nav(model: Model): Nav {
     thread,
     waiting,
     needsYou: waiting.length,
+    finished: threads.filter((each) => each.state !== "working"),
   };
+}
+
+// The Done page shows this many threads at a time.
+export const perPage = 50;
+
+export type DonePage = {
+  threads: ThreadSummaryView[];
+  // This page's number, from 1, and how many there are: at least 1, so an
+  // empty page still says where it is.
+  number: number;
+  pages: number;
+  total: number;
+};
+
+// One page of the finished threads. A number past either end shows the nearest
+// page, so an address kept from before threads were deleted still shows some.
+export function donePage(finished: readonly ThreadSummaryView[], number: number): DonePage {
+  const pages = Math.max(1, Math.ceil(finished.length / perPage));
+  const at = Math.min(Math.max(1, Math.trunc(number) || 1), pages);
+  return {
+    threads: finished.slice((at - 1) * perPage, at * perPage),
+    number: at,
+    pages,
+    total: finished.length,
+  };
+}
+
+// A group's threads, newest first, from the list the sidebar keeps, so a new
+// thread or one finishing shows on the group's page as it does there. Until
+// that list loads, the group's own.
+export function groupThreads(model: Model, groupId: string): ThreadSummaryView[] {
+  if (model.threads === null) return model.group?.view?.threads ?? [];
+  return model.threads.filter((each) => each.group.id === groupId);
 }
