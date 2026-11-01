@@ -118,8 +118,9 @@ export type Msg =
   | { type: "streamed"; event: StreamEvent }
   // The thread's stream reconnected after dropping.
   | { type: "streamReopened" }
-  // Some thread's turn started or ended, a change set of one moved, or one
-  // was marked done.
+  // The workspace changed: some thread's turn started or ended, a change set
+  // of one moved, or one of Oriel's own actions changed a group or thread,
+  // in this tab or another.
   | { type: "threadsMoved" }
   | Replied;
 
@@ -129,6 +130,21 @@ export type Msg =
 const loadGroups: Effect = get("/api/groups", { kind: "groups" });
 const loadThreads: Effect = get("/api/threads", { kind: "threads" });
 const lists: Effect[] = [loadGroups, loadThreads, loadFolder, loadJira];
+
+// A group's page on screen, loaded again.
+const groupReload = (model: Model): Effect[] =>
+  model.route.page === "group" && model.group
+    ? [get(`/api/groups/${model.group.id}`, { kind: "groupSynced", id: model.group.id })]
+    : [];
+
+// However the workspace changed, and whoever changed it, every page hears it
+// the same way: the lists load again, and so does a group's page on screen.
+// A thread's page hears its own thread on its stream.
+const workspaceChanged = (model: Model): Effect[] => [
+  loadThreads,
+  loadGroups,
+  ...groupReload(model),
+];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
@@ -319,7 +335,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       return [{ ...model, thread }, [...effects, loadThreads]];
     }
     case "streamed": {
-      if (msg.event.type === "threads") return [model, [loadThreads, loadGroups]];
+      if (msg.event.type === "threads") return [model, workspaceChanged(model)];
       if (model.thread === null) return [model, []];
       // Its page says so; with no thread stream now, the page watches the rest.
       if (msg.event.type === "deleted") {
@@ -338,7 +354,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     }
     // What each thread waits on is in both lists: the groups count by state.
     case "threadsMoved":
-      return [model, [loadThreads, loadGroups]];
+      return [model, workspaceChanged(model)];
     case "replied":
       return replied(model, msg);
   }
@@ -391,13 +407,11 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [window, effects] = model.window
         ? updateWindow(model.window, { type: "retryClicked" })
         : [null, []];
-      const { group, thread } = model;
+      const { thread } = model;
       const reload =
-        model.route.page === "group" && group
-          ? [get(`/api/groups/${group.id}`, { kind: "groupSynced", id: group.id })]
-          : model.route.page === "thread" && thread
-            ? [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })]
-            : [];
+        model.route.page === "thread" && thread
+          ? [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })]
+          : groupReload(model);
       return [{ ...model, jira, window }, [...effects, ...reload]];
     }
     case "createGroup":

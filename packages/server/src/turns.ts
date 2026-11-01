@@ -160,15 +160,23 @@ export function turns(deps: TurnDeps) {
   const { threads, groups } = deps;
   const running = new Map<Ulid, { controller: AbortController; done: Promise<void> }>();
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
-  // Pages watching every thread for a move between what they wait on.
-  const anyWatchers = new Set<(threadId: Ulid) => void>();
+  // Pages watching the whole workspace: every list, and a group's page.
+  const anyWatchers = new Set<(threadId: Ulid | null) => void>();
   // Titles being written, which outlive a stopped turn; closing stops them.
   const titling = new Set<Promise<void>>();
   const closing = new AbortController();
 
-  const publish = (threadId: Ulid, event: ThreadEvent) => {
+  // Tells the pages watching a thread; and, unless it's an entry in its
+  // chat, every page watching the workspace.
+  const tell = (threadId: Ulid, event: ThreadEvent) => {
     for (const watcher of watchers.get(threadId) ?? []) watcher(event);
-    if (event.type !== "message") for (const watcher of anyWatchers) watcher(threadId);
+  };
+  const broadcast = (threadId: Ulid | null) => {
+    for (const watcher of anyWatchers) watcher(threadId);
+  };
+  const publish = (threadId: Ulid, event: ThreadEvent) => {
+    tell(threadId, event);
+    if (event.type !== "message") broadcast(threadId);
   };
   // Passes on the chat entry just stored at `seq`.
   const published = (threadId: Ulid, seq: number) => {
@@ -323,16 +331,17 @@ export function turns(deps: TurnDeps) {
       };
     },
 
-    // Calls `listener` with a thread's ID whenever its turn starts or ends, a
-    // change set of it changes, or it changes outside a turn, for every
-    // thread, until the returned function is called.
-    watchAny(listener: (threadId: Ulid) => void): () => void {
+    // Calls `listener` whenever the workspace changes, until the returned
+    // function is called: with a thread's ID when its turn starts or ends, a
+    // change set of it changes, or it changes outside a turn; and once for
+    // each of Oriel's own actions, with the thread it changed, if any.
+    watchAny(listener: (threadId: Ulid | null) => void): () => void {
       anyWatchers.add(listener);
       return () => anyWatchers.delete(listener);
     },
 
-    // The thread changed outside a turn: the user opened it without a
-    // message, or marked it done. Every page watching it hears.
+    // The user opened the thread without a message. Every page watching it
+    // hears.
     touched(threadId: Ulid): void {
       publish(threadId, { type: "status", running: running.has(threadId) });
     },
@@ -349,9 +358,17 @@ export function turns(deps: TurnDeps) {
       publish(threadId, { type: "change-set", changeSetId, applying });
     },
 
-    // Threads that moved to a newer version of their group: their markers.
-    moved(moves: readonly Move[]): void {
-      for (const move of moves) published(move.threadId, move.seq);
+    // One of Oriel's own actions changed the workspace, by whoever (decision
+    // 0024): the pages watching a thread it changed hear its status, each
+    // thread that moved to its group's newer version shows its marker, and
+    // every page watching the workspace hears once, so whatever it shows,
+    // a list or a group, loads again.
+    acted(changed: { thread: Ulid | null; moves: readonly Move[] }): void {
+      if (changed.thread)
+        tell(changed.thread, { type: "status", running: running.has(changed.thread) });
+      // An entry tells only its thread's pages.
+      for (const move of changed.moves) published(move.threadId, move.seq);
+      broadcast(changed.thread);
     },
 
     say,

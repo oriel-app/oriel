@@ -586,9 +586,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
   });
 
-  // Oriel's own actions, through one dispatcher (decision 0024). What a
-  // call changed reaches the window's streams: a group's working threads
-  // follow it, with markers; a thread's pages hear it changed.
+  // Oriel's own actions, through one dispatcher (decision 0024). Each call
+  // publishes once to the window's streams: a group's working threads
+  // follow it, with markers; a thread's pages hear it changed; and every
+  // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
   const dispatch = dispatcher({
@@ -603,8 +604,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     publish: (changed) => {
-      if ("thread" in changed) conversation.touched(changed.thread);
-      else if (changed.members) conversation.moved(threads.follow(changed.group, now(), newId));
+      conversation.acted(
+        "thread" in changed
+          ? { thread: changed.thread, moves: [] }
+          : {
+              thread: null,
+              moves: changed.members ? threads.follow(changed.group, now(), newId) : [],
+            },
+      );
     },
     now,
     newId,
