@@ -1,4 +1,5 @@
 export * from "./changeset.ts";
+export * from "./declaration.ts";
 export * from "./group.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";

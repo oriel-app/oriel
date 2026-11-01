@@ -1,4 +1,4 @@
-import type { Grouping, IndexRecord, Instant, Presentations } from "@oriel/core";
+import type { Grouping, IndexRecord, Instant } from "@oriel/core";
 import {
   assigneeGrouping,
   clusterZoom,
@@ -6,18 +6,8 @@ import {
   listZoom,
   stuckGrouping,
 } from "@oriel/groupings";
-import { folderPresentation } from "@oriel/folder";
-import { jiraPresentation } from "@oriel/jira";
-import { slackPresentation } from "@oriel/slack";
+import { sources } from "@oriel/sources";
 import type { GroupingId, WindowView } from "@oriel/web/view";
-
-// How each connected source shows in the window. The server is where the
-// adapters' declarations meet the packages that use them.
-export const presentations: Presentations = {
-  jira: jiraPresentation,
-  folder: folderPresentation,
-  slack: slackPresentation,
-};
 
 export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,
@@ -33,8 +23,8 @@ export function windowView(
   fixture: boolean,
 ): WindowView {
   const clusters = grouping.group(records, now);
-  const rows = clusterZoom(now, presentations);
-  const list = listZoom(now, presentations);
+  const rows = clusterZoom(now, sources);
+  const list = listZoom(now, sources);
   const known = new Set(records.map((record) => record.id));
   return {
     grouping: id,

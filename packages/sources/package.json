@@ -1,0 +1,17 @@
+{
+  "name": "@oriel/sources",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*",
+    "@oriel/folder": "workspace:*",
+    "@oriel/jira": "workspace:*",
+    "@oriel/slack": "workspace:*"
+  }
+}

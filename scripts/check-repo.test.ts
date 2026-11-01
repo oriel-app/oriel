@@ -152,6 +152,42 @@ test("importing a source adapter outside its package, the server, evals and test
   ]);
 });
 
+test("the list of sources imports every adapter; a package named like it doesn't", () => {
+  const sources = [
+    {
+      path: "packages/sources/src/index.ts",
+      text: 'import { jiraDeclaration } from "@oriel/jira";',
+    },
+    { path: "packages/sources/src/x.ts", text: 'import { slackDeclaration } from "@oriel/slack";' },
+    {
+      path: "packages/sourcesish/src/x.ts",
+      text: 'import { folderDeclaration } from "@oriel/folder";',
+    },
+  ];
+  assert.deepEqual(problems({ ...clean, sources }), [
+    "packages/sourcesish/src/x.ts: imports the folder adapter; outside packages/folder, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)",
+  ]);
+});
+
+test("the list of sources is imported only where its adapters may be", () => {
+  const sources = [
+    { path: "packages/changeset/src/x.ts", text: 'import { specs } from "@oriel/sources";' },
+    { path: "packages/web/src/y.ts", text: 'const s = await import("@oriel/sources");' },
+    // Allowed: the composition root, evals and tests.
+    { path: "packages/server/src/window.ts", text: 'import { sources } from "@oriel/sources";' },
+    { path: "packages/evals/src/world.ts", text: 'import { itemDocs } from "@oriel/sources";' },
+    { path: "packages/groupings/src/x.test.ts", text: 'import { sources } from "@oriel/sources";' },
+    // Not the list: a package whose name only starts like it.
+    { path: "packages/groupings/src/z.ts", text: 'import { x } from "@oriel/sourcesish";' },
+  ];
+  const where =
+    "imports @oriel/sources, which reaches every adapter; outside packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)";
+  assert.deepEqual(problems({ ...clean, sources }), [
+    `packages/changeset/src/x.ts: ${where}`,
+    `packages/web/src/y.ts: ${where}`,
+  ]);
+});
+
 test("a package reaches another only through its package name, never a relative path", () => {
   const sources = [
     {

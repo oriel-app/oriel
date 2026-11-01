@@ -30,28 +30,10 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import {
-  canonicalPath,
-  folderItemDoc,
-  folderKey,
-  folderSource,
-  resolveFolder,
-} from "@oriel/folder";
-import {
-  estimateless,
-  type FixtureRegion,
-  fixtureSnapshot,
-  jiraItemDoc,
-  jiraNamespace,
-  type JiraFixture,
-} from "@oriel/jira";
-import {
-  fixtureApi,
-  type SlackFixture,
-  type SlackRecord,
-  slackItemDoc,
-  slackSource,
-} from "@oriel/slack";
+import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
+import { estimateless, type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
+import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
+import { itemDocs, namespacesFor } from "@oriel/sources";
 import {
   buildFolder,
   diskDependent,
@@ -59,7 +41,7 @@ import {
 } from "../../../scripts/fixtures/folder.ts";
 
 // What each source's items are: the same docs the server hands to bindings.
-export const itemDocs: ItemDocs = { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc };
+export { itemDocs };
 
 // Item URLs point here, as they do in the index.
 export const evalSite = "https://oriel.atlassian.net";
@@ -125,12 +107,9 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     items: members,
     origin: input.region?.origin ?? { kind: "picked" },
   };
-  const namespaces: Namespaces = {
-    jira: jiraNamespace(new Map(snapshot.records.map((r) => [r.id, r.facets.kind])), {
-      none: estimateless(snapshot.records),
-      home: input.fixture.project.key,
-    }),
-  };
+  const namespaces = namespacesFor(snapshot.records, {
+    jira: { none: estimateless(snapshot.records), home: input.fixture.project.key },
+  });
 
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
   if (input.messages?.length && !input.slack)

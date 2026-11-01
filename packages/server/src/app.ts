@@ -56,31 +56,22 @@ import {
   fixtureFields,
   fixtureSource,
   jiraAttrs,
-  jiraItemDoc,
   JiraFailed,
-  jiraNamespace,
   jiraSource,
-  jiraSpecs,
   readTransport,
   syncSource,
 } from "@oriel/jira";
-import {
-  folderAttrs,
-  folderItemDoc,
-  type FolderPath,
-  folderSource,
-  resolveFolder,
-} from "@oriel/folder";
+import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
 import {
   connectSlack,
   fixtureApi,
   slackAttrs,
-  slackItemDoc,
   type SlackSource,
   slackSource,
   webApi,
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
+import { itemDocs, namespacesFor, sources, specs } from "@oriel/sources";
 import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
@@ -95,7 +86,7 @@ import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { views } from "./views.ts";
-import { groupings, presentations, windowView } from "./window.ts";
+import { groupings, windowView } from "./window.ts";
 
 // How change sets reach a Jira site to write: writer config, from which
 // @oriel/changeset builds the writer. `fetch` is for tests, which answer
@@ -506,19 +497,17 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   const regionBindings = (region: Region) => {
     const all = records();
-    const kinds = new Map(all.map((record) => [record.id, record.facets.kind]));
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
     // What the last sync found on the boards, or else what the index shows.
     const none = source?.unestimating?.() ?? estimateless(all);
     return bindingsFor(region, {
       reader,
-      namespaces: { jira: jiraNamespace(kinds, { none, home }) },
-      items: { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc },
+      namespaces: namespacesFor(all, { jira: { none, home } }),
+      items: itemDocs,
     });
   };
 
-  const specs = { jira: jiraSpecs };
   const buildSets = () => {
     const writerConfig: WriterConfig = writes ? { jira: writes } : {};
     return changeSets({
@@ -577,7 +566,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     groups,
     threads,
     records,
-    presentations,
+    presentations: sources,
     asOf: () => asOf ?? now(),
     now,
     running: conversation.running,

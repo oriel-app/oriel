@@ -5,9 +5,9 @@ export {
   folderAttrs,
   type FolderContent,
   folderContent,
+  folderDeclaration,
   folderDetails,
   folderFacets,
-  folderItemDoc,
   folderPresentation,
   type FolderRecord,
 } from "./attrs.ts";

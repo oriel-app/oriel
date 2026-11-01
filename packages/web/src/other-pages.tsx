@@ -1,6 +1,6 @@
 // The Done page, and a review link's page.
 import { Threads } from "./group-page.tsx";
-import { doneShown } from "./nav.ts";
+import { type DoneTab, doneRoute, doneShown } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
 import { stepLabel } from "./thread.ts";
@@ -13,7 +13,7 @@ import type { ChangeSetView, DiffView, ThreadSummaryView } from "./view.ts";
 // sidebar keeps them in sight.
 export function DonePage(props: {
   finished: ThreadSummaryView[] | null;
-  tab: "dropped" | undefined;
+  tab: DoneTab;
   number: number;
   dispatch: Dispatch;
 }) {
@@ -25,12 +25,12 @@ export function DonePage(props: {
       </main>
     );
   const { counts, page, previous, next } = doneShown(props.finished, {
-    ...(tab && { tab }),
+    tab,
     number: props.number,
   });
-  const tabLink = (which: "dropped" | undefined, name: string, count: number) => (
+  const tabLink = (which: DoneTab, name: string, count: number) => (
     <Link
-      route={{ page: "done", ...(which && { tab: which }) }}
+      route={doneRoute(which)}
       dispatch={dispatch}
       aria-current={which === tab ? "page" : undefined}
     >
@@ -41,25 +41,20 @@ export function DonePage(props: {
     <main class="page done-page">
       <h1 class="page-title">Done</h1>
       <nav class="tabs done-tabs" aria-label="Done or dropped">
-        {tabLink(undefined, "Done", counts.done)}
+        {tabLink("done", "Done", counts.done)}
         {tabLink("dropped", "Dropped", counts.dropped)}
       </nav>
       {page.total === 0 ? (
         <p class="rail-empty">
-          {tab
+          {tab === "dropped"
             ? "No thread is dropped. One is once a week goes by with nothing new in it."
             : "No thread is done yet. One is once its change set is applied, or you mark it done."}
         </p>
       ) : (
         <>
-          <Threads
-            threads={page.threads}
-            dispatch={dispatch}
-            showGroup
-            said={tab ? "dropped" : "done"}
-          />
+          <Threads threads={page.threads} dispatch={dispatch} showGroup said={tab} />
           {page.pages > 1 && (
-            <nav class="pager" aria-label={`Pages of ${tab ? "dropped" : "done"} threads`}>
+            <nav class="pager" aria-label={`Pages of ${tab} threads`}>
               {previous ? (
                 <Link route={previous} dispatch={dispatch} class="quiet-action">
                   Previous
