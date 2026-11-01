@@ -17,6 +17,9 @@
 //   shot [name]              a full-page screenshot
 //   threads [id]             each thread as JSON lines, newest last; `person` lines are the maintainer's
 //   close                    close Chrome
+//
+// ORIEL_URL, ORIEL_DRIVE_PORT and ORIEL_CHROME_PROFILE (a folder under
+// `.oriel/`) drive a second window, e.g. a fresh run on another port.
 import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { setTimeout as wait } from "node:timers/promises";
@@ -26,6 +29,11 @@ import { chromium, type Browser, type Page } from "playwright-core";
 const root = new URL("../", import.meta.url);
 const port = Number(process.env.ORIEL_DRIVE_PORT ?? 9333);
 const app = process.env.ORIEL_URL ?? "http://127.0.0.1:4310/";
+// A second window, e.g. a mock PM's fresh run beside the maintainer's, needs
+// its own profile as well as its own debugging port.
+const profileName = process.env.ORIEL_CHROME_PROFILE ?? "chrome";
+if (!/^[a-z0-9-]+$/.test(profileName))
+  throw new Error("ORIEL_CHROME_PROFILE is lowercase letters, digits and dashes");
 const chrome =
   process.env.ORIEL_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const shots = fileURLToPath(new URL("shots/drive/", root));
@@ -43,7 +51,7 @@ async function attach(): Promise<Browser | null> {
 async function browser(): Promise<Browser> {
   const running = await attach();
   if (running) return running;
-  const profile = fileURLToPath(new URL(".oriel/chrome/", root));
+  const profile = fileURLToPath(new URL(`.oriel/${profileName}/`, root));
   mkdirSync(profile, { recursive: true });
   const child = spawn(
     chrome,
@@ -90,9 +98,20 @@ async function shot(tab: Page, name?: string): Promise<string> {
   return path;
 }
 
+// The page as an accessibility outline, with every password field's value
+// masked: the outline carries what a field holds, and this one is printed.
+async function outline(tab: Page): Promise<string> {
+  const secrets = await tab
+    .locator('input[type="password"]')
+    .evaluateAll((fields) => fields.map((field) => (field as HTMLInputElement).value));
+  let text = await tab.locator("body").ariaSnapshot();
+  for (const secret of secrets) if (secret) text = text.split(secret).join("••••••••");
+  return text;
+}
+
 async function look(tab: Page): Promise<void> {
   console.log(`${await tab.title()} — ${tab.url()}`);
-  console.log(await tab.locator("body").ariaSnapshot());
+  console.log(await outline(tab));
   console.log(`screenshot: ${await shot(tab)}`);
 }
 
