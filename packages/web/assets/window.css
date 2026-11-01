@@ -995,6 +995,34 @@ button.nav-disclose:hover {
   color: var(--danger);
 }
 
+/* Jira connected to a project with no issues yet. */
+
+.empty-jira {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 40rem;
+  margin: var(--space-2) 0 var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.empty-jira h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.connected-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--done);
+}
+
 .window-head {
   display: flex;
   flex-wrap: wrap;

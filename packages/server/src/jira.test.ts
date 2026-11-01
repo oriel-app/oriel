@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { JiraView, ThreadView, WindowView } from "@oriel/web/view";
 import { fileStore, jiraSite, memoryStore } from "./connection.ts";
-import { account, json, type Script, testApp } from "./testing.ts";
+import { account, json, type Script, t0, testApp } from "./testing.ts";
 
 const details = {
   site: "oriel.atlassian.net",
@@ -242,4 +242,44 @@ test("after a dropped connection, a change set from before says to connect Jira 
   assert.match(json<{ error: string }>(diff).error, /Connect Jira in the window/);
   const thread = json<ThreadView>(await again.get(`/api/threads/${id}`));
   assert.equal(thread.writable, false);
+});
+
+test("a Jira project with no issues is connected, with none in the window", async (t) => {
+  const app = await unconnected(t, { issues: () => [] });
+  const reply = await app.post("/api/jira", details);
+  assert.equal(reply.status, 200);
+  const connected = {
+    connected: { site: "https://oriel.atlassian.net", project: "SYN", items: 0, syncedAt: t0 },
+    connectable: false,
+  };
+  assert.deepEqual(json<{ jira: JiraView }>(reply).jira, connected);
+  assert.deepEqual(json<{ jira: JiraView }>(await app.get("/api/jira")).jira, connected);
+  for (const grouping of ["epic", "assignee"])
+    assert.equal(json<WindowView>(await app.get(`/api/window?grouping=${grouping}`)).items, 0);
+  // Connecting an empty project starts the onboarding clock all the same.
+  assert.deepEqual(
+    app.app.telemetry().flatMap((e) => (e.name === "source.connected" ? [e.data.source] : [])),
+    ["jira"],
+  );
+});
+
+test("a Jira project whose issues are all done lists them, though nothing is stuck", async (t) => {
+  const done = { name: "Done", category: "done" } as const;
+  const app = await unconnected(t, {
+    issues: (syn) => syn.map((issue) => ({ ...issue, status: done })),
+  });
+  const { jira } = json<{ jira: JiraView }>(await app.post("/api/jira", details));
+  const items = jira.connected?.items ?? 0;
+  assert.ok(items > 100);
+  const epic = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  assert.ok(epic.items > 0);
+  assert.ok(epic.clusters.flatMap((c) => c.list).every((row) => row.status?.category === "done"));
+  const stuck = json<WindowView>(await app.get("/api/window?grouping=stuck"));
+  assert.deepEqual(
+    stuck.clusters.map((c) => [c.row.key, c.row.count]),
+    [
+      ["no-update-14-days", 0],
+      ["unestimated", 0],
+    ],
+  );
 });

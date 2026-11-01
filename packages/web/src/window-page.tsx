@@ -1,7 +1,7 @@
 // The window: clusters under a grouping, and items to pick into a group.
 // Controls stay out of the way until something is picked or hovered.
 import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
-import { type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
+import { emptyJira, type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
 import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural } from "./parts.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
@@ -28,6 +28,7 @@ export function WindowPage(props: {
 }) {
   const { model, groups, jira, dispatch } = props;
   const adding = groups?.find((group) => group.id === model.addTo) ?? null;
+  const empty = emptyJira(jira.view);
   return (
     <div class="window-layout">
       <main class="window" aria-busy={model.status === "loading"}>
@@ -46,6 +47,7 @@ export function WindowPage(props: {
           </p>
         )}
         {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
+        {empty && <EmptyJira site={empty.site} project={empty.project} />}
         <Body model={model} dispatch={dispatch} />
       </main>
       <Selection model={model} groups={groups} adding={adding} dispatch={dispatch} />
@@ -126,6 +128,23 @@ function ConnectJira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }
         )}
       </div>
     </form>
+  );
+}
+
+// Jira connected to a project with no issues yet: said in its place, so the
+// window doesn't look as if the connection failed.
+function EmptyJira({ site, project }: { site: string; project: string }) {
+  return (
+    <section class="empty-jira" aria-labelledby="empty-jira-title">
+      <h2 id="empty-jira-title">
+        <span class="connected-dot" aria-hidden="true" />
+        Jira is connected
+      </h2>
+      <p class="connect-note">
+        <strong>{project}</strong> on {site.replace(/^https?:\/\//, "")} has no issues yet. Epics
+        and stories made there show here when Oriel syncs Jira.
+      </p>
+    </section>
   );
 }
 

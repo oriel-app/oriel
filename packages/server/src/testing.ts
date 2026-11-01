@@ -17,6 +17,7 @@ import {
   type Sandbox,
   type TranscriptEntry,
 } from "@oriel/core";
+import type { JiraFixture } from "@oriel/jira";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
@@ -99,6 +100,9 @@ export type TestOptions = {
   db?: string;
   // Jira is connected from the window, and kept in `store`.
   connect?: { store: ConnectionStore };
+  // SYN's issues as its site in memory has them, with no edits; all of them
+  // by default. Only that site serves them, so this needs `connect` or `live`.
+  issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -113,10 +117,12 @@ export async function testApp(
   let clock = Date.parse(t0);
   const now = (): Instant => instant(new Date(clock));
   const plan = options.plan ?? (() => [{ text: "Hello." }]);
+  const syn = loadJiraFixture();
+  const served = options.issues ? { ...syn, issues: options.issues(syn.issues), edits: [] } : syn;
   const site = options.connect
-    ? memorySite(loadJiraFixture(), now(), { account })
+    ? memorySite(served, now(), { account })
     : options.writes || options.live
-      ? memorySite(loadJiraFixture(), now())
+      ? memorySite(served, now())
       : null;
   const writeTo = site && {
     site: memorySiteOrigin,
