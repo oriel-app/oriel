@@ -1,13 +1,13 @@
 # 0021 Slack, a real source, read-only first
 
-Accepted 2026-10-31.
+Accepted 2026-10-31. Amended 2026-11-01 (OA-28): Slack is writable through approved change sets, posting as the person Oriel reads Slack as.
 
 Adds: none
 
 **Decision.**
 
 - **Slack is phase 1's third source, and a real one.** It replaces the synthetic chat channel that SPEC §3 planned after the first slice. The adapter reads Slack's Web API directly, with no SDK, behind 0019's item contract.
-- **Read-only first.** The adapter starts with no write catalogue (OA-23). Replying in a thread comes later, and only as a change set the person approves (OA-28, decision 0003). Oriel is never a bot that listens in Slack or answers on its own.
+- **Read-only first.** The adapter starts with no write catalogue (OA-23). ~~Replying in a thread comes later, and only as a change set the person approves (OA-28, decision 0003).~~ Amended 2026-11-01 (OA-28): Slack is writable through approved change sets only (decision 0003). A change set may post a message in a channel Oriel reads, or reply in a conversation (one item), as the person whose token Oriel reads with; the approved change names that person, and the writer refuses under any other. Text is plain, sent exactly as shown. The live token needs the user scope `chat:write`. Revert deletes what was posted, says people may have seen it, and stops if anyone replied to or edited it since. Oriel is still never a bot that listens in Slack or answers on its own.
 - **The person picks what Oriel reads.** Like the folder, the source reads only the channels the person picks, with read-only scopes, and nothing else in the workspace.
 - **The author is the person in a message's `user`.** A message posted for a person by an app also carries `bot_id`; it is still that person's message.
 - **A channel isn't an epic.** Groupings use 0019's facets and never invent a hierarchy Slack doesn't have.
@@ -33,4 +33,4 @@ Adds: none
 - SPEC §3, §4 and §5 name Slack.
 - OA-23 builds the adapter, `fixtures/slack/` and its evals; the fixture is the maintainer's to approve.
 - A live Slack test job needs a token in an Actions environment, as the Jira job has. Until then, live checks are run by hand.
-- Sources beyond these three still need a decision; OA-27 tries MCP servers as one way to add them.
+- Sources beyond these three still need a decision. ~~OA-27 tries MCP servers as one way to add them.~~ Amended 2026-11-01: 0024 keeps MCP as a source punted (OA-27).
