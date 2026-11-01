@@ -926,7 +926,7 @@ export function generate(): Map<string, string> {
     const epic = key(region.epic);
     const children = issues.filter((issue) => issue.epic === epic).map((issue) => issue.key);
     const origin = {
-      kind: "group",
+      kind: "cluster",
       grouping: "epic",
       cluster: issues.find((issue) => issue.key === epic)?.id,
       anchor: `jira:${epic}`,

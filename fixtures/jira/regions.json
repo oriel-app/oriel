@@ -2,7 +2,7 @@
   {
     "name": "boarding-epic",
     "origin": {
-      "kind": "group",
+      "kind": "cluster",
       "grouping": "epic",
       "cluster": "10002",
       "anchor": "jira:SYN-2"
@@ -26,7 +26,7 @@
   {
     "name": "checkout-epic",
     "origin": {
-      "kind": "group",
+      "kind": "cluster",
       "grouping": "epic",
       "cluster": "10001",
       "anchor": "jira:SYN-1"
@@ -52,7 +52,7 @@
   {
     "name": "weather-epic",
     "origin": {
-      "kind": "group",
+      "kind": "cluster",
       "grouping": "epic",
       "cluster": "10003",
       "anchor": "jira:SYN-3"
