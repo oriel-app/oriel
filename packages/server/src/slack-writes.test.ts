@@ -83,10 +83,7 @@ test("one change set moves a Jira story and posts in Slack; one approval applies
         "change",
         "Move “Send disruption updates by SMS to passengers without the app” (SYN-61) from To Do to In Progress.",
       ],
-      [
-        "create",
-        "Post in #weather-disruptions as Amara Okafor. Everyone there can read it once it's posted; a revert deletes it.",
-      ],
+      ["create", "Post in #weather-disruptions as Amara Okafor."],
     ],
   );
   // The text exactly as it will read, as a field the diff shows.
@@ -178,7 +175,7 @@ test("a reply goes in the conversation the group holds, and its revert stops on 
   const shown = await app.diff();
   assert.match(
     shown.lines[0]?.sentence ?? "",
-    /^Reply in the conversation “Chen Yuting: @here the SMS copy for SYN-61 is ready for review.*” in #weather-disruptions as Amara Okafor\. Everyone there can read it once it's posted; a revert deletes it\.$/,
+    /^Reply in the conversation “Chen Yuting: @here the SMS copy for SYN-61 is ready for review.*” in #weather-disruptions as Amara Okafor\.$/,
   );
   assert.deepEqual(
     shown.lines[0]?.fields.map((f) => [f.name, f.before, f.after]),

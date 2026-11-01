@@ -63,7 +63,7 @@ const ops: Record<SlackOp, OpSpec> = {
     makes: "message",
     after: (a) => ({ description: a.text }),
     describe: async (a, context) =>
-      `Post in ${await channelOf(context, a.channel)} as ${await who(context, a.author)}. Everyone there can read it once it's posted; a revert deletes it.`,
+      `Post in ${await channelOf(context, a.channel)} as ${await who(context, a.author)}.`,
     undo: () => ({ op: "deleteMessage", args: {} }),
   }),
   reply: op(slackOps.reply, {
@@ -71,7 +71,7 @@ const ops: Record<SlackOp, OpSpec> = {
     after: (a) => ({ "reply:new": a.text }),
     describe: async (a, context) => {
       const { named, channel } = await conversation(context);
-      return `Reply in ${named} in ${channel} as ${await who(context, a.author)}. Everyone there can read it once it's posted; a revert deletes it.`;
+      return `Reply in ${named} in ${channel} as ${await who(context, a.author)}.`;
     },
     undo: (_a, applied) => {
       const field = Object.keys(applied.after).find((name) => name.startsWith("reply:"));

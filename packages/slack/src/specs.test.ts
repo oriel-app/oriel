@@ -42,7 +42,7 @@ test("a post's line names the channel and who posts, and shows the text as writt
   const post = spec("postMessage");
   assert.equal(
     await post.describe(args, context()),
-    "Post in #weather-disruptions as Amara Okafor. Everyone there can read it once it's posted; a revert deletes it.",
+    "Post in #weather-disruptions as Amara Okafor.",
   );
   assert.deepEqual(post.after(args), { description: args.text });
   assert.deepEqual([post.creates, post.makes, post.idempotent], [true, "message", false]);
@@ -65,7 +65,7 @@ test("a reply's line names the conversation, its channel and who posts", async (
   const args = { text: "On it.", author: "U0FWAMARA1" };
   assert.equal(
     await reply.describe(args, context(about)),
-    "Reply in the conversation “Amara Okafor: Status of SYN-47 (the disruption reason in plain words)?” in #weather-disruptions as Amara Okafor. Everyone there can read it once it's posted; a revert deletes it.",
+    "Reply in the conversation “Amara Okafor: Status of SYN-47 (the disruption reason in plain words)?” in #weather-disruptions as Amara Okafor.",
   );
   assert.deepEqual(reply.after(args), { "reply:new": "On it." });
   const applied = {
