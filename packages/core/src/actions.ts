@@ -50,7 +50,7 @@ export type ActionDeclaration = {
 export const maxNameChars = 120;
 export const maxItems = 500;
 
-const groupId = refine(string, isUlid, "expected a group ID", { type: "GroupId" });
+const workstreamId = refine(string, isUlid, "expected a workstream ID", { type: "WorkstreamId" });
 const threadId = refine(string, isUlid, "expected a thread ID", { type: "ThreadId" });
 const itemId = refine(string, isItemId, "expected an item ID", { type: "ItemId" });
 const items = refine(
@@ -67,18 +67,18 @@ const name = refine(
 );
 
 export const actions = {
-  "group.add": {
-    doc: "Adds items to a group. The items themselves don't change.",
-    input: object({ group: groupId, items }),
-    class: { kind: "direct", inverse: "group.remove" },
+  "workstream.add": {
+    doc: "Adds items to a workstream. The items themselves don't change.",
+    input: object({ workstream: workstreamId, items }),
+    class: { kind: "direct", inverse: "workstream.remove" },
   },
-  "group.remove": {
-    doc: "Takes items out of a group. The items themselves don't change.",
-    input: object({ group: groupId, items }),
-    class: { kind: "direct", inverse: "group.add" },
+  "workstream.remove": {
+    doc: "Takes items out of a workstream. The items themselves don't change.",
+    input: object({ workstream: workstreamId, items }),
+    class: { kind: "direct", inverse: "workstream.add" },
   },
-  "group.create": {
-    doc: "Makes a group: from a cluster of the window, from picked items, or empty, for a thread started from nothing.",
+  "workstream.create": {
+    doc: "Makes a workstream: from a cluster of the window, from picked items, or empty, for a thread started from nothing.",
     input: union(
       object({ kind: literal("cluster"), grouping: string, cluster: string }),
       object({ kind: literal("picked"), name, items }),
@@ -87,15 +87,15 @@ export const actions = {
     class: {
       kind: "direct",
       inverse: null,
-      why: "Deleting a group no thread uses is its Undo, which comes with the story that shows what the agent did under its reply.",
+      why: "Deleting a workstream no thread uses is its Undo, which comes with the story that shows what the agent did under its reply.",
     },
   },
-  "group.rename": {
-    doc: "Names a group.",
+  "workstream.rename": {
+    doc: "Names a workstream.",
     // `oriel`: the name is Oriel's, as it was before the user's rename this
     // undoes, so Oriel may name the group again. Only the user's Undo says so.
-    input: object({ group: groupId, name, oriel: optional(literal(true)) }),
-    class: { kind: "direct", inverse: "group.rename" },
+    input: object({ workstream: workstreamId, name, oriel: optional(literal(true)) }),
+    class: { kind: "direct", inverse: "workstream.rename" },
   },
   "thread.done": {
     doc: "Marks a thread done.",

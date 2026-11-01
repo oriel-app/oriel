@@ -606,8 +606,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups"),
       async run(_, request) {
         const body = await readJson(request, listBody, windowGroup);
-        const { group } = await deps.dispatch("group.create", body, user);
-        return json(201, views.groupSummary(group));
+        const { workstream } = await deps.dispatch("workstream.create", body, user);
+        return json(201, views.groupSummary(workstream));
       },
     },
     {
@@ -623,7 +623,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/add"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
-        const { undo } = await deps.dispatch("group.add", { group: id, items }, user);
+        const { undo } = await deps.dispatch("workstream.add", { workstream: id, items }, user);
         return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
@@ -646,7 +646,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         if (resolved.ids.length > maxItems)
           throw new Refused(400, `expected at most ${maxItems} items`);
         const { added, undo } = resolved.ids.length
-          ? await deps.dispatch("group.add", { group: group.id, items: resolved.ids }, user)
+          ? await deps.dispatch(
+              "workstream.add",
+              { workstream: group.id, items: resolved.ids },
+              user,
+            )
           : { added: [], undo: null };
         const refused = resolved.refused.map(({ what, why, syncMightHelp }) => ({
           what,
@@ -660,7 +664,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/remove"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
-        const { undo } = await deps.dispatch("group.remove", { group: id, items }, user);
+        const { undo } = await deps.dispatch("workstream.remove", { workstream: id, items }, user);
         return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
@@ -669,7 +673,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/rename"),
       async run([id = ""], request) {
         const { name } = await readJson(request, smallBody, object({ name: unknown }));
-        const { undo } = await deps.dispatch("group.rename", { group: id, name }, user);
+        const { undo } = await deps.dispatch("workstream.rename", { workstream: id, name }, user);
         return json(200, { ...views.groupSummary(id as Ulid), undo });
       },
     },
@@ -696,7 +700,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads"),
       async run(_, request) {
         const { text } = await readJson(request, messageBody, messageBodyValue);
-        const { group: groupId } = await deps.dispatch("group.create", { kind: "thread" }, user);
+        const { workstream: groupId } = await deps.dispatch(
+          "workstream.create",
+          { kind: "thread" },
+          user,
+        );
         const group = mustGroup(groupId);
         return json(201, { id: openThread(group.id, group.version, text), groupId });
       },

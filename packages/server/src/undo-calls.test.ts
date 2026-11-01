@@ -36,8 +36,8 @@ test("removing, adding, dropping and renaming each undo through the call they an
     await app.post(`/api/groups/${id}/remove`, { items: ["jira:SYN-10"] }),
   );
   assert.deepEqual(removed.undo, {
-    action: "group.add",
-    input: { group: id, items: ["jira:SYN-10"] },
+    action: "workstream.add",
+    input: { workstream: id, items: ["jira:SYN-10"] },
   });
   await undo(removed.undo);
   assert.deepEqual(keys(await view()), ["SYN-3", "SYN-10"]);
@@ -46,8 +46,8 @@ test("removing, adding, dropping and renaming each undo through the call they an
     await app.post(`/api/groups/${id}/add`, { items: ["jira:SYN-3", "jira:SYN-21"] }),
   );
   assert.deepEqual(added.undo, {
-    action: "group.remove",
-    input: { group: id, items: ["jira:SYN-21"] },
+    action: "workstream.remove",
+    input: { workstream: id, items: ["jira:SYN-21"] },
   });
   await undo(added.undo);
   assert.deepEqual(keys(await view()), ["SYN-3", "SYN-10"]);
@@ -66,7 +66,7 @@ test("removing, adding, dropping and renaming each undo through the call they an
   const redo = await undo(renamed.undo);
   assert.equal((await view()).group.name, "Launch");
   // An undo answers with its own: undoing it again is a redo.
-  assert.deepEqual(redo, { action: "group.rename", input: { group: id, name: "Beta" } });
+  assert.deepEqual(redo, { action: "workstream.rename", input: { workstream: id, name: "Beta" } });
 });
 
 test("a removal is counted in telemetry; an action by a name Oriel hasn't is not found", async (t) => {
@@ -78,20 +78,23 @@ test("a removal is counted in telemetry; an action by a name Oriel hasn't is not
   const last = app.app.telemetry().at(-1);
   assert.deepEqual(
     [last?.name, last?.data],
-    ["action.called", { action: "group.remove", by: { kind: "user" } }],
+    ["action.called", { action: "workstream.remove", by: { kind: "user" } }],
   );
   // Only an Undo goes this way, so only an action that undoes another.
-  assert.equal((await app.post("/api/actions/group.delete", { group: id })).status, 404);
-  assert.equal((await app.post("/api/actions/group.create", { kind: "thread" })).status, 404);
+  assert.equal((await app.post("/api/actions/workstream.delete", { workstream: id })).status, 404);
+  assert.equal((await app.post("/api/actions/workstream.create", { kind: "thread" })).status, 404);
   // A group from nothing comes only with its thread.
   assert.equal((await app.post("/api/groups", { kind: "thread" })).status, 400);
   assert.equal(json<{ groups: unknown[] }>(await app.get("/api/groups")).groups.length, 1);
-  assert.equal((await app.post("/api/actions/group.add", { group: id, items: [] })).status, 400);
+  assert.equal(
+    (await app.post("/api/actions/workstream.add", { workstream: id, items: [] })).status,
+    400,
+  );
   assert.equal(
     (
       await app.post(
-        `/api/actions/group.add`,
-        { group: id, items: ["jira:SYN-3"] },
+        `/api/actions/workstream.add`,
+        { workstream: id, items: ["jira:SYN-3"] },
         {
           origin: "https://attacker.example",
         },
@@ -129,7 +132,7 @@ test("a thread's blank group takes its epic's name and its items, as the change 
       .filter((e) => e.name === "action.called" || e.name === "group.item-added")
       .map((e) => e.data),
     [
-      { action: "group.rename", by },
+      { action: "workstream.rename", by },
       { groupId, source: "jira", cause: "change-set" },
     ],
   );
