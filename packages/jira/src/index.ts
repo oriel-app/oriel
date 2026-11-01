@@ -16,7 +16,7 @@ export {
 } from "./attrs.ts";
 export * from "./fixture.ts";
 export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
-export { jiraNamespace } from "./namespace.ts";
+export { jiraItemDoc, jiraNamespace } from "./namespace.ts";
 export { jiraSpecs } from "./specs.ts";
 export { cassette, type Exchange, exchange, recording, replay } from "./cassette.ts";
 export { checkConnection, type ConnectionCheck } from "./connect.ts";

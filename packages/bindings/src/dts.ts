@@ -45,7 +45,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...header,
     "/** The items in this region. */",
     ...idUnion("RegionId", scope.ids),
-    ...itemTypes,
+    ...itemTypes(scope.docs),
     ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
     "",
     ...spaceNames.flatMap((name) => namespace(name, fns)),

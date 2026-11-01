@@ -6,7 +6,7 @@ import {
   type Reader,
   type Region,
 } from "@oriel/core";
-import { describe, type Fn, type Namespaces, pathOf, scopeOf } from "./describe.ts";
+import { describe, type Fn, type ItemDocs, type Namespaces, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { type Host, live, outside } from "./fn.ts";
 import { shimFor } from "./shim.ts";
@@ -25,12 +25,13 @@ const defined = (args: object) =>
 // captured, never sent: a write must target a region item from its own source
 // or a story an earlier create in this run made, and its arguments must pass
 // that source's op catalogue. `namespaces` are the sources' own namespaces,
-// as their adapters declare them; the composition root passes them in.
+// and `items` what each source's items are, as their adapters declare them;
+// the composition root passes them in.
 export function bindingsFor(
   region: Region,
-  options: { reader: Reader; namespaces: Namespaces },
+  options: { reader: Reader; namespaces: Namespaces; items?: ItemDocs },
 ): Bindings {
-  const scope = scopeOf(region, options.namespaces);
+  const scope = scopeOf(region, options.namespaces, options.items);
   const fns = describe(scope);
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
