@@ -16,6 +16,11 @@ Adds: none
   - Prompt caching on the tool, the system prompt and the turn's growing tail.
   - One run per response, and strict tool input.
   - The key lives in the provider's closure. It's sent only as a header, scrubbed from errors, and never logged, kept on an object or written to a cassette.
+- **Thread titles** (added 2026-10-31, OA-17) are a second, separate use of a model, outside `Provider` and the agent loop.
+  - Each thread makes one request, to a small model (`claude-haiku-5-5`). The person's first message is its only input, in the user message; the system prompt is constant.
+  - The answer must be one short line, or it's dropped. If no key is set, or the request fails or is refused, the thread keeps the title the server clips from the first message.
+  - It uses the same key, plain `fetch`, and the same scrubbing as the provider. Its usage is logged but not counted toward the thread's token cap.
+  - The server receives it through the `Titler` seam (`AppOptions.titler`), so a later settings pane can choose another model or provider for it.
 - A local harness comes later, as a second `Provider`.
   - Oriel drives the user's own command-line agent on their machine, signed in however the user signed it in.
   - Oriel never sees, stores or relays subscription credentials, and never offers a vendor sign-in.
@@ -39,4 +44,5 @@ Adds: none
 - Each run records the model that served the response that asked for it.
 - Across turns, the history is rebuilt from the thread's messages. Only the tool and the system prompt hit the cache, and no earlier thinking is sent back.
 - No retries on 429, 5xx or overload yet: the turn ends with an error.
+- Thread titles have their own model constant, `titleModel`, in `packages/agent/src/title.ts`. Changing it, or making it configurable, is a change to this decision.
 - Revisit when the local harness lands, when a second vendor is wanted, or when the latency eval calls for another effort.
