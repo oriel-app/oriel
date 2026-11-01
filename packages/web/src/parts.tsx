@@ -216,10 +216,12 @@ function span(inline: Inline, key: number, to: ReadonlySet<string>): ComponentCh
   }
 }
 
-// What a person reads for an item's key. A file's key is a hash, which means
-// nothing to anyone, so it reads as what the item is; its title says which.
+// What a person reads for an item's key. A file's key is a hash and a
+// message's is a channel ID and a time, which mean nothing to anyone, so each
+// reads as what the item is; its title says which.
 export function keyLabel(item: { id: string; key: string }): string {
-  return item.id.startsWith("folder:") ? "File" : item.key;
+  if (item.id.startsWith("folder:")) return "File";
+  return item.id.startsWith("slack:") ? "Message" : item.key;
 }
 
 export const stateNames: Record<ThreadStateId, string> = {

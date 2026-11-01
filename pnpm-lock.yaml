@@ -93,6 +93,9 @@ importers:
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@oriel/slack':
+        specifier: workspace:*
+        version: link:../slack
 
   packages/folder:
     dependencies:
@@ -161,9 +164,18 @@ importers:
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@oriel/slack':
+        specifier: workspace:*
+        version: link:../slack
       '@oriel/web':
         specifier: workspace:*
         version: link:../web
+
+  packages/slack:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/web:
     dependencies:

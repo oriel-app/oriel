@@ -75,7 +75,7 @@ test("every function lives under a name the guest hands the script, and each nam
     // Every name but a namespace for a source the region holds nothing from,
     // which the guest still hands the script, empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder"]);
+    assert.deepEqual(unused, ["folder", "slack"]);
     assert.ok([...homes].every((home) => (globals as readonly string[]).includes(home)));
   }
 });

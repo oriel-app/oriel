@@ -1,6 +1,7 @@
 // The composition root: where the adapters' declarations meet the packages
-// that use them. It opens the database, syncs Jira and the connected folder
-// into the index, connects Jira when the user does it from the window, and wires groupings, change sets, bindings, the sandbox and
+// that use them. It opens the database, syncs Jira, the connected folder and
+// Slack's picked channels into the index, connects Jira when the user does it
+// from the window, and wires groupings, change sets, bindings, the sandbox and
 // the agent into the JSON routes. Only this file builds change sets, which
 // hold the writers; thread code gets `capture` and nothing else.
 import { homedir } from "node:os";
@@ -29,6 +30,7 @@ import {
   type Source,
   SourceRefused,
   type SourceKind,
+  sourceKinds,
   type Ulid,
   ulid,
   type Validator,
@@ -61,10 +63,19 @@ import {
   syncSource,
 } from "@oriel/jira";
 import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
+import {
+  connectSlack,
+  fixtureApi,
+  slackAttrs,
+  type SlackSource,
+  slackSource,
+  webApi,
+} from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
 import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
+import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { api, blankGroupName, type JiraDetails } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
@@ -98,10 +109,20 @@ export type JiraMode =
   | ({ kind: "live" } & JiraWrites)
   | { kind: "window"; store: ConnectionStore; fetch?: typeof fetch };
 
+// Where Slack comes from, read-only (decision 0021). The fixture is the
+// synthetic workspace in `fixtures/slack/`, with the channel picked there.
+// Live is the workspace a token is for, reading only the public channels
+// picked by name or ID; one it can't find stops the app from starting.
+export type SlackMode =
+  | { kind: "fixture" }
+  | { kind: "live"; credential: Credential; channels: string[]; fetch?: typeof fetch };
+
 export type AppOptions = {
   // A SQLite file, or ":memory:".
   db: string;
   jira: JiraMode;
+  // No Slack when absent.
+  slack?: SlackMode;
   // Builds the agent from everything but a model provider: @oriel/agent's,
   // with one, or the scripted dev agent, which is the default.
   agent?: (deps: ServerAgentDeps) => Agent;
@@ -247,9 +268,13 @@ export async function createApp(options: AppOptions): Promise<App> {
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
 
+  const slack = options.slack ? await slackFrom(options.slack, log) : null;
   const records = (): IndexRecord[] => [
     ...index.records(workspaceId, "jira", jiraAttrs),
     ...index.records(workspaceId, "folder", folderAttrs),
+    // Slack's records only while it's connected: a server started without it
+    // keeps what an earlier one indexed, which nothing can read now.
+    ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
   ];
 
   // One sync at a time, of any source, through the generic sync worker.
@@ -380,6 +405,22 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   if (folder) await syncFolder();
 
+  // Slack's picked channels, read-only (decision 0021). A sync that fails
+  // leaves its items as they were, and says so.
+  const syncSlack = async (): Promise<string | null> => {
+    if (!slack) return null;
+    const first = index.source(workspaceId, "slack") === null;
+    try {
+      await syncInto(slack, slackAttrs, true);
+    } catch (error) {
+      log("slack sync failed", { error: error instanceof Error ? error.message : String(error) });
+      return "Slack didn't answer, so Oriel couldn't look for new messages.";
+    }
+    if (first) connected("slack");
+    return null;
+  };
+  await syncSlack();
+
   const folderView = (): FolderView | null =>
     folder && {
       path: folder.path,
@@ -432,15 +473,21 @@ export async function createApp(options: AppOptions): Promise<App> {
       const files = ids.filter(
         (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
       );
+      const messages = ids.filter(
+        (id): id is ItemId<"slack"> => parseItemId(id)?.source === "slack",
+      );
       const results: ReadResult[] = [
         ...(jira.length && source ? await source.read(jira) : []),
         ...(files.length && folder ? await folder.source.read(files) : []),
+        ...(messages.length && slack ? await slack.read(messages) : []),
       ];
       const read = new Map<string, ReadResult>(results.map((result) => [result.id, result]));
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      return index.search(workspaceId, query, limit).map((record) => ({
+      // Slack only while it's connected.
+      const sources = sourceKinds.filter((kind) => kind !== "slack" || slack);
+      return index.search(workspaceId, query, limit, sources).map((record) => ({
         id: record.id,
         title: record.title,
         location: record.location,
@@ -667,6 +714,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           });
         const folderProblem = folder ? await syncFolder() : null;
         if (folderProblem) problems.push(folderProblem);
+        const slackProblem = await syncSlack();
+        if (slackProblem) problems.push(slackProblem);
         return problems.length > 0 ? problems.join(" ") : null;
       },
       explain: (conflicts) => explainConflicts(conflicts, specs),
@@ -707,4 +756,31 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (db.isOpen) db.close();
     },
   };
+}
+
+// The Slack source a mode reads from: the fixture's Web API with its picked
+// channel, or Slack's, with the picked channels found by name or ID.
+async function slackFrom(mode: SlackMode, log: Log): Promise<SlackSource> {
+  if (mode.kind === "fixture") {
+    const fixture = loadSlackFixture();
+    return slackSource({
+      api: fixtureApi(fixture).api,
+      workspaceUrl: fixture.team.url,
+      channels: fixture.picked,
+      log,
+    });
+  }
+  const api = webApi({ credential: mode.credential, ...(mode.fetch ? { fetch: mode.fetch } : {}) });
+  const workspace = await connectSlack(api, mode.channels);
+  if (workspace.missing.length)
+    throw new Error(
+      `Slack has no public channel Oriel can see named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
+    );
+  if (!workspace.channels.length) throw new Error("Pick at least one Slack channel to read");
+  return slackSource({
+    api,
+    workspaceUrl: workspace.url,
+    channels: workspace.channels.map((channel) => channel.id),
+    log,
+  });
 }

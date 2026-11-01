@@ -19,6 +19,7 @@ import {
 } from "@oriel/core";
 import type { AgentEvent } from "@oriel/agent";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import type { SlackFixture } from "@oriel/slack";
 import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
 import { canonicalJson } from "./canonical.ts";
@@ -54,6 +55,9 @@ export type SystemInput = {
   // The folder fixture; null when the round has none, and then no case holds
   // files.
   folder: FolderFixture | null;
+  // The Slack fixture; absent or null when the round has none, and then no
+  // case holds messages.
+  slack?: SlackFixture | null;
   // The Jira fixture region the case names, if any; its files are the case's.
   region: FixtureRegion | null;
   // The eval clock: fixed, so prompts that depend on time still replay.
@@ -112,6 +116,8 @@ export type RoundOptions = {
   fixture: JiraFixture;
   // Absent: none, so no case may hold files.
   folder?: FolderFixture | null;
+  // Absent: none, so no case may hold messages.
+  slack?: SlackFixture | null;
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
@@ -159,6 +165,7 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
       case: evalCase,
       fixture: options.fixture,
       folder: options.folder ?? null,
+      slack: options.slack ?? null,
       region: loaded.region,
       now: options.now,
       model: options.model,
@@ -225,9 +232,11 @@ async function grade(
     }
     if (expectation.grader === "zero-mutations") grades.push(gradeZeroMutations(output.mutations));
     if (expectation.grader === "surfaced") {
-      // A file is named by its title.
+      // A file is named by its title, and a Slack message by its author.
       const named =
-        "item" in expectation ? expectation.item : { title: fileTitle(expectation.file) };
+        "item" in expectation
+          ? (slackAuthor(options.slack ?? null, expectation.item) ?? expectation.item)
+          : { title: fileTitle(expectation.file) };
       grades.push(gradeSurfaced(named, expectation.text, output.reply));
     }
     if (expectation.grader === "mentions")
@@ -273,6 +282,8 @@ async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unkn
     folder: options.folder ?? null,
     region: loaded.region,
     files: loaded.case.files ?? [],
+    messages: loaded.case.messages ?? [],
+    ...(options.slack ? { slack: options.slack } : {}),
     edited: loaded.case.edited ?? 0,
     folderEdited: loaded.case.folderEdited ?? 0,
   });
@@ -404,4 +415,16 @@ export function exitCode(
     return r.outcome === "fail" && !isJudged(r.kind);
   });
   return broken ? 1 : 0;
+}
+
+// A Slack message's author as the Slack source names them, a person or the
+// app that posted as itself, or null for an item from another source. Their
+// name is how a reply names the message.
+function slackAuthor(slack: SlackFixture | null, item: string): { title: string } | null {
+  if (!slack || !item.startsWith("slack:")) return null;
+  const [channel, ts] = item.slice("slack:".length).split("-");
+  const message = slack.channels.find((c) => c.id === channel)?.messages.find((m) => m.ts === ts);
+  const person = slack.users.find((user) => user.id === message?.user);
+  if (person) return { title: person.real_name };
+  return message?.username ? { title: message.username } : null;
 }

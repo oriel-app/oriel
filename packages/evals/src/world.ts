@@ -3,7 +3,10 @@
 // folder is the folder fixture, built in a temporary directory after its own
 // edits and read by the real folder source. Both are connected whatever the
 // region holds, so search() reaches every indexed item, as in a workspace
-// with both sources.
+// with both sources. Slack is the Slack fixture's picked channel, read by the
+// real Slack source through the fixture's Web API, and is connected only for
+// a case whose region holds messages, so cases recorded before Slack was a
+// source see the index they were recorded with.
 //
 // Everything the agent can see must be the same on every run and every disk,
 // or cassettes won't replay: so the folder has a fixed ID, its files a fixed
@@ -29,6 +32,7 @@ import {
 } from "@oriel/core";
 import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
 import { type FixtureRegion, fixtureSnapshot, jiraNamespace, type JiraFixture } from "@oriel/jira";
+import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import {
   buildFolder,
   diskDependent,
@@ -58,13 +62,18 @@ export type WorldInput = {
   region: FixtureRegion | null;
   // Files from the folder fixture, by path, that the region also holds.
   files: readonly string[];
+  // Messages from the Slack fixture, by item ID, that the region also holds,
+  // and the fixture they come from.
+  messages?: readonly ItemId<"slack">[];
+  slack?: SlackFixture;
   // How many of each fixture's edits are applied.
   edited: number;
   folderEdited: number;
 };
 
 export type World = {
-  // Version 1 of a group holding the Jira region's items, then the files.
+  // Version 1 of a group holding the Jira region's items, then the files,
+  // then the messages.
   region: Region;
   reader: Reader;
   namespaces: Namespaces;
@@ -84,6 +93,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const members: GroupMember[] = [
     ...(input.region?.items ?? []).map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
     ...files.map(({ id }) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
+    ...(input.messages ?? []).map((id) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
   ];
   const region: Region = {
     groupId: fixedId,
@@ -97,7 +107,14 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   };
 
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
-  const index: SearchHit[] = [...snapshot.records, ...(folder?.index ?? [])].map((r) => ({
+  if (input.messages?.length && !input.slack)
+    throw new Error("the region holds messages, but no Slack fixture");
+  const slack = input.messages?.length && input.slack ? await connectSlack(input.slack) : null;
+  const index: SearchHit[] = [
+    ...snapshot.records,
+    ...(folder?.index ?? []),
+    ...(slack?.index ?? []),
+  ].map((r) => ({
     id: r.id,
     title: r.title,
     location: r.location,
@@ -109,11 +126,17 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const files = ids.filter(
         (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
       );
-      const read = folder && files.length ? await folder.source.read(files) : [];
+      const messages = ids.filter(
+        (id): id is ItemId<"slack"> => parseItemId(id)?.source === "slack",
+      );
+      const read = [
+        ...(folder && files.length ? await folder.source.read(files) : []),
+        ...(slack && messages.length ? await slack.source.read(messages) : []),
+      ];
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
       const gone = (id: ItemId): ReadResult => ({ id, status: "gone", reason: "deleted" });
       return ids.map((id): ReadResult => {
-        if (parseItemId(id)?.source === "folder") return byId.get(id) ?? gone(id);
+        if (parseItemId(id)?.source !== "jira") return byId.get(id) ?? gone(id);
         const content = snapshot.content.get(id as ItemId<"jira">);
         return content ? { id, status: "ok", content } : gone(id);
       });
@@ -185,4 +208,18 @@ async function connect(fixture: FolderFixture, edited: number) {
     close();
     throw error;
   }
+}
+
+// The Slack fixture's picked channel, synced: the source a run reads through,
+// and the index records search() finds.
+async function connectSlack(fixture: SlackFixture) {
+  const source = slackSource({
+    api: fixtureApi(fixture).api,
+    workspaceUrl: fixture.team.url,
+    channels: fixture.picked,
+    log: () => {},
+  });
+  const index: SlackRecord[] = [];
+  for await (const page of source.sync(null)) index.push(...page.records);
+  return { source, index };
 }

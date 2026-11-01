@@ -8,6 +8,7 @@ import {
 } from "@oriel/groupings";
 import { folderPresentation } from "@oriel/folder";
 import { jiraPresentation } from "@oriel/jira";
+import { slackPresentation } from "@oriel/slack";
 import type { GroupingId, WindowView } from "@oriel/web/view";
 
 // How each connected source shows in the window. The server is where the
@@ -15,6 +16,7 @@ import type { GroupingId, WindowView } from "@oriel/web/view";
 export const presentations: Presentations = {
   jira: jiraPresentation,
   folder: folderPresentation,
+  slack: slackPresentation,
 };
 
 export const groupings: Record<GroupingId, Grouping> = {
