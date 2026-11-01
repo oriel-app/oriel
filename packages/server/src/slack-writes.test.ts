@@ -8,6 +8,7 @@ import { type TestContext, test } from "node:test";
 import { fixtureApi, type FixtureWorkspace } from "@oriel/slack";
 import type { ChangeSetView, DiffView, GroupView, ThreadView } from "@oriel/web/view";
 import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
 // Chen Yuting's message that the SMS copy for SYN-61 is ready for review,
@@ -199,4 +200,29 @@ test("a reply goes in the conversation the group holds, and its revert stops on 
   const stopped = await app.act("revert");
   assert.equal(stopped.status, 409);
   assert.match(stopped.body.error ?? "", /the reply Oriel posted in “.+” was edited since\.$/);
+});
+
+// Its scripts run in the real sandbox, as `pnpm dev`'s do. This spawns Deno.
+test("the dev server's scripted agent posts or replies when asked, beside the group's conversation", async (t) => {
+  const { createSandbox } = await import("@oriel/sandbox");
+  const sandbox = createSandbox();
+  const app = await testApp(t, {
+    slack: { kind: "fixture" },
+    agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan),
+  });
+  const { id: groupId } = json<{ id: string }>(
+    await app.post("/api/groups", { kind: "picked", name: "SMS", items: ["jira:SYN-61", sms] }),
+  );
+  for (const [text, sentence] of [
+    ["post: Ready to pick up.", /^Post in #weather-disruptions as Amara Okafor\./],
+    ["reply: Thanks!", /^Reply in the conversation “Chen Yuting: /],
+  ] as const) {
+    const { id } = json<{ id: string }>(await app.post(`/api/groups/${groupId}/threads`, { text }));
+    await app.app.settled();
+    const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
+    const entry = thread.entries.find((e) => e.kind === "change-set");
+    assert.ok(entry?.kind === "change-set", text);
+    const diff = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
+    assert.match(diff.lines[0]?.sentence ?? "", sentence);
+  }
 });
