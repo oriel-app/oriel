@@ -12,7 +12,7 @@ Adds: none
   - the user drops something on a group or one of its threads that names an item the window has: its link, its key, or a connected-folder file with the same name and modified time (added 2026-10-30). Anything else dropped is refused, as links and outside files are below;
   - the user removes an item;
   - a change set applied in one of the group's threads creates an item, which joins the group so later turns can work on it;
-  - a change set applied in one of the group's threads adds or removes items its agent proposed (0024).
+  - a change set applied in one of the group's threads adds or removes items its agent proposed, or reverts such a change (0024).
 
   Links, files outside a connected folder, and notes shared between users wait for their own sources.
 
@@ -28,7 +28,7 @@ Adds: none
   - for adding an item to the group, one that the run's `search()` returned (0024);
   - for a revert, anything the reverted change set touched, whatever the group holds now.
 
-  If an unapplied mutation's target has since left the group, apply stops at it, as at any failure, and says why. A membership change is the exception: taking out an item already gone changes nothing (0024).
+  If an unapplied mutation's target has since left the group, apply stops at it, as at any failure, and says why. A membership change is the exception: one the group already shows changes nothing (0024).
 
 **Why.** The user curates as they go: what matters arrives over time and from anywhere, and a new thread for each new item would throw away the conversation. Versions keep 0004's guarantees: the agent never sees a silent change, and every run can be reproduced. Sharing one log per group keeps storage proportional to the changes, not to the number of threads.
 
