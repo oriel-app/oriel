@@ -1,6 +1,6 @@
 # 0018 Groups the user curates; threads follow their group
 
-Accepted 2026-10-29. Amends 0004.
+Accepted 2026-10-29. Amends 0004. Amended by 0024: the agent, in its own group, and outside tools add and remove members too, without approval and with Undo.
 
 Adds: none
 
