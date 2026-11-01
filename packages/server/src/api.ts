@@ -43,7 +43,7 @@ import {
   type JiraView,
   type StreamEvent,
 } from "@oriel/web/view";
-import { ActionError, type Dispatch } from "./actions.ts";
+import { ActionError, checked, type Dispatch, type Fields } from "./actions.ts";
 import { resolveDropped } from "./dropped.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
@@ -599,7 +599,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([name = ""], request) {
         if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
-        const { undo } = await deps.dispatch(name, input, user);
+        const { undo } = await deps.dispatch.untyped(name, input, user);
         return json(200, { undo });
       },
     },
@@ -613,7 +613,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups"),
       async run(_, request) {
         const body = await readJson(request, listBody, windowGroup);
-        const { workstream } = await deps.dispatch("workstream.create", body, user);
+        const { workstream } = await deps.dispatch(
+          "workstream.create",
+          checked("workstream.create", body as Fields<"workstream.create">),
+          user,
+        );
         return json(201, views.groupSummary(workstream));
       },
     },
@@ -630,7 +634,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/add"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
-        const { undo } = await deps.dispatch("workstream.add", { workstream: id, items }, user);
+        const input = checked("workstream.add", { workstream: id, items });
+        const { undo } = await deps.dispatch("workstream.add", input, user);
         return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
@@ -671,7 +676,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/remove"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
-        const { undo } = await deps.dispatch("workstream.remove", { workstream: id, items }, user);
+        const input = checked("workstream.remove", { workstream: id, items });
+        const { undo } = await deps.dispatch("workstream.remove", input, user);
         return json(200, { ...(await views.group(id as Ulid)), undo });
       },
     },
@@ -680,7 +686,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/groups/:id/rename"),
       async run([id = ""], request) {
         const { name } = await readJson(request, smallBody, object({ name: unknown }));
-        const { undo } = await deps.dispatch("workstream.rename", { workstream: id, name }, user);
+        const input = checked("workstream.rename", { workstream: id, name });
+        const { undo } = await deps.dispatch("workstream.rename", input, user);
         return json(200, { ...views.groupSummary(id as Ulid), undo });
       },
     },
@@ -768,7 +775,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         // The body first: the thread may go while it's read.
         const { via } = await readJson(request, smallBody, object({ via: unknown }));
-        await deps.dispatch("thread.done", { thread: id, via }, user);
+        await deps.dispatch("thread.done", checked("thread.done", { thread: id, via }), user);
         return json(200, await threadView(id as Ulid));
       },
     },
@@ -867,7 +874,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads/:id/held/:seq/send"),
       async run([id = "", place = ""], request) {
         const { text } = await readJson(request, messageBody, object({ text: unknown }));
-        const input = { thread: id, seq: Number(place), text };
+        const input = checked("held.send", { thread: id, seq: Number(place), text });
         const { seq } = await deps.dispatch("held.send", input, user);
         return json(202, { seq });
       },
@@ -877,7 +884,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads/:id/held/:seq/discard"),
       async run([id = "", place = ""], request) {
         await readJson(request, smallBody, emptyBody);
-        await deps.dispatch("held.discard", { thread: id, seq: Number(place) }, user);
+        const input = checked("held.discard", { thread: id, seq: Number(place) });
+        await deps.dispatch("held.discard", input, user);
         return json(200, await threadView(id as Ulid));
       },
     },

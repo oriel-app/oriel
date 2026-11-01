@@ -217,7 +217,7 @@ test("each call publishes once, and only what changed", async () => {
 
 test("a change set adds what it created before the index has it; no one else can", async () => {
   const w = world();
-  const input = { workstream: w.groupId, items: ["jira:SYN-9"] };
+  const input = { workstream: w.groupId, items: ["jira:SYN-9" as const] };
   await assert.rejects(w.dispatch("workstream.add", input, user), refused("invalid"));
   await assert.rejects(
     w.dispatch("workstream.add", input, { kind: "agent", threadId: w.threadId }),

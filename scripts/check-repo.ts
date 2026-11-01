@@ -183,7 +183,7 @@ export function postRoutes(text: string): { path: string; dispatches: boolean }[
     return [
       {
         path: path?.[1] ?? path?.[2] ?? "(unread path)",
-        dispatches: /\bdispatch\(/.test(code),
+        dispatches: /\bdispatch(?:\.untyped)?\(/.test(code),
       },
     ];
   });

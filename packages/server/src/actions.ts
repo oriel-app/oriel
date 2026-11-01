@@ -315,25 +315,46 @@ export function refusal(name: ActionName, actor: Actor): string | null {
 }
 
 type Output<N extends ActionName> = Awaited<ReturnType<(typeof handlers)[N]>>["output"];
-export type Dispatch = <N extends ActionName>(
-  name: N,
-  input: unknown,
-  actor: Actor,
-) => Promise<Output<N> & { undo: Call | null }>;
+type Result<N extends ActionName> = Output<N> & { undo: Call | null };
+// A call site names the action and passes its own input type, so a renamed
+// key fails to typecheck rather than at run time. `untyped` is the one door
+// whose action is known only at run time: an Undo sent back to
+// /api/actions/:name. Either way the dispatcher checks the input.
+export type Dispatch = {
+  <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
+  untyped(name: ActionName, input: unknown, actor: Actor): Promise<{ undo: Call | null }>;
+};
+
+// An action's input from what a request carried, checked as the dispatcher
+// checks it: each field is named, so a renamed key fails to typecheck too.
+export type Fields<N extends ActionName> =
+  ActionInput<N> extends infer I
+    ? I extends unknown
+      ? { [K in keyof I]: unknown }
+      : never
+    : never;
+export function checked<N extends ActionName>(name: N, fields: Fields<N>): ActionInput<N> {
+  const declared: ActionDeclaration = actions[name];
+  const decoded = declared.input(fields);
+  if (!decoded.ok)
+    throw new ActionError(
+      "invalid",
+      decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+    );
+  return decoded.value as ActionInput<N>;
+}
 
 export function dispatcher(deps: ActionDeps): Dispatch {
-  return async (name, raw, actor) => {
+  const untyped = async <N extends ActionName>(
+    name: N,
+    raw: unknown,
+    actor: Actor,
+  ): Promise<Result<N>> => {
     const why = refusal(name, actor);
     if (why !== null) throw new ActionError("refused", why);
     const declared: ActionDeclaration = actions[name];
-    const decoded = declared.input(raw);
-    if (!decoded.ok)
-      throw new ActionError(
-        "invalid",
-        decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
-      );
     const handler = handlers[name] as Handler<typeof name>;
-    const outcome = await handler(decoded.value as ActionInput<typeof name>, actor, deps);
+    const outcome = await handler(checked(name, raw as Fields<N>), actor, deps);
     if (
       outcome.undo &&
       (declared.class.kind !== "direct" || outcome.undo.action !== declared.class.inverse)
@@ -348,4 +369,9 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     if (outcome.changed) deps.publish(outcome.changed);
     return { ...(outcome.output as Output<typeof name>), undo: outcome.undo };
   };
+  return Object.assign(
+    <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor) =>
+      untyped(name, input, actor),
+    { untyped },
+  );
 }

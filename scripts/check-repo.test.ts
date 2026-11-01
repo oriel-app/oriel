@@ -441,3 +441,10 @@ test("an action closed to a door, a person's, or one with no inverse must say wh
     ],
   );
 });
+
+test("a route whose action is known only at run time dispatches through the untyped door", () => {
+  assert.deepEqual(
+    postRoutes(`[{ method: "POST", path: at("/a"), run: () => deps.dispatch.untyped(n, x) }]`),
+    [{ path: "/a", dispatches: true }],
+  );
+});
