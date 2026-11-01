@@ -98,3 +98,32 @@ test("a project with no items yet is known to take no estimates from its board",
     /SYN's board takes no estimates, so create the story without points/,
   );
 });
+
+test("the scripted agent says why a run failed instead of pointing to a change set", async (t) => {
+  const refused =
+    "jira.setEstimate was refused: jira.setEstimate: SYN's board takes no estimates, so jira:SYN-23 can't be estimated";
+  const app = await testApp(t, {
+    plan: () => [{ run: "estimate" }, { text: "The proposed change is below." }],
+    sandbox: {
+      run: async () => ({
+        reads: [],
+        mutations: [],
+        transcript: [{ kind: "error", error: { phase: "runtime", message: refused, logs: [] } }],
+        outcome: "threw",
+        wallMs: 1,
+        coldStartMs: null,
+      }),
+    },
+  });
+  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate the unestimated ones" }),
+  );
+  await app.app.settled();
+  const said = JSON.stringify(json<ThreadView>(await app.get(`/api/threads/${threadId}`)).entries);
+  assert.match(
+    said,
+    /Nothing to propose: SYN's board takes no estimates, so jira:SYN-23 can't be estimated\./,
+  );
+  assert.doesNotMatch(said, /The proposed change is below/);
+});

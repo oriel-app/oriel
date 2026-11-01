@@ -1358,9 +1358,14 @@ button.nav-more {
   font-size: 0.625rem;
 }
 
+/* The count, with the status bar under it, sits centered over the items'
+   status column, and the points over their assignee column: the heading's
+   7rem right padding and the points' 9rem cell match the item row's right
+   padding and its idle, points and assignee columns. */
 .cluster-meta {
   display: grid;
-  grid-template-columns: 4.5rem 9.5rem 5rem;
+  grid-template-columns: 6.5rem 9rem;
+  row-gap: var(--space-1);
   align-items: center;
   gap: var(--space-3);
   color: var(--text-muted);
@@ -1369,7 +1374,19 @@ button.nav-more {
 }
 
 .count {
-  text-align: right;
+  text-align: center;
+}
+
+.cluster-meta .status-bar {
+  grid-row: 2;
+  grid-column: 1;
+  justify-self: center;
+  width: 4.5rem;
+}
+
+.cluster-meta .points-sum {
+  grid-row: 1 / span 2;
+  grid-column: 2;
 }
 
 .unestimated {
