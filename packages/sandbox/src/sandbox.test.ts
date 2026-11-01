@@ -249,7 +249,8 @@ test("a write the bindings refuse ends the run", async () => {
   assert.equal(result.mutations.length, 1);
   const error = errorOf(result.transcript.at(-1));
   assert.equal(error.phase, "runtime");
-  assert.equal(error.message, "jira.setEstimate was refused: jira:SYN-99 is not in this region");
+  // The bindings' own words, which name the function: the sandbox adds nothing.
+  assert.equal(error.message, "jira.setEstimate: jira:SYN-99 is not in this region");
 });
 
 test("a ref can only be created once", async () => {

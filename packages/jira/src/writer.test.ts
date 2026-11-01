@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  instant,
   type ItemId,
   SourceRefused,
   type SourceWriter,
   ulid,
   type WriteRequest,
 } from "@oriel/core";
+import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { textToAdf } from "./adf.ts";
+import { jiraBoards } from "./boards.ts";
 import {
   discovery,
   fakeJira,
@@ -21,7 +24,9 @@ import {
   site,
   status,
 } from "./fake-jira.ts";
-import type { JiraRequest, JiraResponse, Transport } from "./transport.ts";
+import { memorySite, memorySiteOrigin } from "./memory-site.ts";
+import { jiraSource } from "./source.ts";
+import { type JiraRequest, type JiraResponse, readOnly, type Transport } from "./transport.ts";
 import { jiraWriter, restTransport } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
@@ -651,4 +656,48 @@ test("an item already in the status isn't moved, so a retry of a move that lande
     jira.calls.map((c) => c.path.split("?")[0]),
     ["/rest/api/3/issue/SYN-12", "/rest/api/3/issue/SYN-12"],
   );
+});
+
+test("a writer sharing the source's boards follows a board's estimation from the next sync", async () => {
+  const memory = memorySite(loadJiraFixture(), instant(new Date(Date.UTC(2026, 9, 29, 9))));
+  const credential = { headers: async () => ({}) };
+  const transport = restTransport({ site: memorySiteOrigin, credential, fetch: memory.fetch });
+  const read = readOnly(transport);
+  const boards = jiraBoards({ transport: read, projects: ["SYN"], log: () => {} });
+  const source = jiraSource({
+    transport: read,
+    site: memorySiteOrigin,
+    projects: ["SYN"],
+    log: () => {},
+    boards,
+  });
+  const w = jiraWriter({ transport, project: "SYN", log: () => {}, boards });
+  const sync = async () => {
+    for await (const page of source.sync(null)) assert.ok(page.records.length);
+  };
+  const estimate = (points: number) =>
+    w.apply(
+      approve({
+        mutationId: ulid(0, new Uint8Array(10).fill(seq++ % 256)),
+        op: "setEstimate",
+        target: "jira:SYN-23",
+        expectedStableId: memory.issue("SYN-23")?.id ?? null,
+        args: { points },
+      }),
+    );
+
+  await sync();
+  assert.equal((await estimate(2)).after.points, 2);
+  // Off: the writer refuses, with nothing sent, once the source has synced.
+  memory.estimation(false);
+  assert.equal((await estimate(3)).after.points, 3, "until the next sync");
+  await sync();
+  assert.deepEqual(boards.unestimating(), new Set(["SYN"]));
+  await assert.rejects(estimate(5), unsent(/SYN's board has no points field to estimate in/));
+  assert.equal(memory.issue("SYN-23")?.points, 3);
+  // On again, from the next sync.
+  memory.estimation(true);
+  await sync();
+  assert.deepEqual(boards.unestimating(), new Set());
+  assert.equal((await estimate(8)).after.points, 8);
 });

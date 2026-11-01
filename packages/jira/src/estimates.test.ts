@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { IndexRecord } from "@oriel/core";
+import { jiraBoards } from "./boards.ts";
 import { discovery, fakeJira, jiraIssue, ok, pointsField, site } from "./fake-jira.ts";
-import { estimateless } from "./namespace.ts";
 import { jiraSource } from "./source.ts";
 
 const search = "POST /rest/api/3/search/jql";
@@ -23,11 +23,13 @@ async function synced() {
       isLast: true,
     }),
   });
-  const source = jiraSource({ transport, site, projects: ["SYN", "OA"], log: () => {} });
-  const before = source.unestimating?.();
+  const projects = ["SYN", "OA"];
+  const boards = jiraBoards({ transport, projects, log: () => {} });
+  const source = jiraSource({ transport, site, projects, log: () => {}, boards });
+  const before = boards.unestimating();
   const records: IndexRecord[] = [];
   for await (const page of source.sync(null)) records.push(...page.records);
-  return { records, before, after: source.unestimating?.() };
+  return { records, before, after: boards.unestimating() };
 }
 
 test("an item whose board takes no estimates has no estimate facet, not a missing estimate", async () => {
@@ -48,13 +50,4 @@ test("the source says which boards its last sync found taking no estimates", asy
   const { before, after } = await synced();
   assert.equal(before, null);
   assert.deepEqual([...(after ?? [])], ["OA"]);
-});
-
-test("the projects that take no estimates are those whose items have no estimate facet", async () => {
-  const { records } = await synced();
-  assert.deepEqual([...estimateless(records)], ["OA"]);
-  // Another source's items, which never estimate, aren't projects.
-  const file = { ...records[0], id: "folder:0123456789abcdef", facets: {} } as IndexRecord;
-  assert.deepEqual([...estimateless([...records, file])], ["OA"]);
-  assert.deepEqual([...estimateless(records.filter((r) => r.id.startsWith("jira:SYN")))], []);
 });

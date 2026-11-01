@@ -21,11 +21,6 @@ export type Step = { text: string } | { run: string } | { search: string };
 const systemPrompt = "oriel scripted agent v1";
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-// A refused write's reason, without the function names the sandbox and the
-// bindings put before it.
-const reason = (message: string) =>
-  message.replace(/^\S+ was refused: /, "").replace(/^[\w.]+: /, "");
-
 function returned(result: RunResult): unknown {
   const entry = result.transcript.findLast((e) => e.kind === "return");
   return entry?.kind === "return" ? entry.value : undefined;
@@ -110,7 +105,7 @@ async function* steps(
     // assumed the run worked, so the turn ends here, saying why.
     const failed = result.transcript.findLast((e) => e.kind === "error");
     if (result.outcome !== "ok" && failed?.kind === "error") {
-      yield { kind: "text", text: `Nothing to propose: ${reason(failed.error.message)}.` };
+      yield { kind: "text", text: `Nothing to propose: ${failed.error.message}.` };
       return;
     }
     if ("search" in step) {

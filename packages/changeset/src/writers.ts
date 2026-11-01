@@ -5,7 +5,7 @@
 // `@oriel/<kind>/writer` import here and in an adapter's own writer files,
 // nowhere else.
 import type { Credential, Log, SourceKind, SourceWriter } from "@oriel/core";
-import { jiraWriter, restTransport } from "@oriel/jira/writer";
+import { type JiraBoards, jiraWriter, restTransport } from "@oriel/jira/writer";
 
 // How to reach each writable source to write to it. A source with no config
 // here is read-only to change sets.
@@ -20,6 +20,9 @@ export type WriterConfig = {
     // give one that answers from memory. The transport and the writer are
     // still built here, never by the caller.
     fetch?: typeof fetch;
+    // What each board estimates in, shared with the source that syncs it.
+    // Without it, the writer finds each board's once.
+    boards?: JiraBoards;
   };
 } & { [K in Exclude<SourceKind, "jira">]?: never };
 
@@ -37,6 +40,7 @@ export function buildWriters(config: WriterConfig, log: Log): Writers {
             ...(jira.fetch ? { fetch: jira.fetch } : {}),
           }),
           project: jira.project,
+          ...(jira.boards ? { boards: jira.boards } : {}),
           log,
         }),
       }

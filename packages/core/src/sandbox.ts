@@ -52,7 +52,8 @@ export type CapturedMutation = {
 // A region's bindings, built per run: the declarations the agent codes
 // against, the guest stubs generated from the same description, and the host
 // side. `read` proxies live. `capture` validates a write against the source's
-// op catalogue and throws if its target is outside the region.
+// op catalogue and throws if its target is outside the region. What either
+// throws names the function, and the sandbox passes it on as it is.
 export type Bindings = {
   dts: string;
   shim: string;

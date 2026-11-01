@@ -52,10 +52,11 @@ import {
 import {
   basicAuth,
   checkConnection,
-  estimateless,
   fixtureFields,
   fixtureSource,
   jiraAttrs,
+  type JiraBoards,
+  jiraBoards,
   JiraFailed,
   jiraSource,
   readTransport,
@@ -224,12 +225,19 @@ export async function createApp(options: AppOptions): Promise<App> {
       credential: to.credential,
       ...(to.fetch ? { fetch: to.fetch } : {}),
     });
-  const liveSource = (to: JiraWrites) =>
+  // What each board estimates in, one answer per connection: the source
+  // refreshes it on each sync, and the writer and the agent's module read it.
+  // With the fixture as the index, nothing syncs the site, so its boards are
+  // found once, at the first write that needs a points field.
+  const boardsOf = (to: JiraWrites) =>
+    jiraBoards({ transport: transportTo(to), projects: [to.project], log });
+  const liveSource = (to: JiraWrites, boards: JiraBoards) =>
     jiraSource({
       transport: transportTo(to),
       site: to.site,
       projects: [to.project],
       log,
+      boards,
     });
   // Where change sets write, and the source the index syncs. From the
   // window, both are null until the user connects Jira.
@@ -261,9 +269,10 @@ export async function createApp(options: AppOptions): Promise<App> {
       writes = null;
     }
   }
+  let boards = writes && boardsOf(writes);
   let source = fixture
     ? fixtureSource(fixture, { site, edited: fixture.edits.length })
-    : writes && liveSource(writes);
+    : writes && boards && liveSource(writes, boards);
   // The fixture is frozen as of its last edit, so its window is built for
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
@@ -496,20 +505,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
   };
   const regionBindings = (region: Region) => {
-    const all = records();
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
-    // What the last sync found on the boards, or else what the index shows.
-    const none = source?.unestimating?.() ?? estimateless(all);
+    // What the last sync found on the boards; nothing before one.
+    const none = boards?.unestimating() ?? new Set<string>();
     return bindingsFor(region, {
       reader,
-      namespaces: namespacesFor(all, { jira: { none, home } }),
+      namespaces: namespacesFor(records(), { jira: { none, home } }),
       items: itemDocs,
     });
   };
 
   const buildSets = () => {
-    const writerConfig: WriterConfig = writes ? { jira: writes } : {};
+    const writerConfig: WriterConfig = writes && boards ? { jira: { ...writes, boards } } : {};
     return changeSets({
       db,
       writerConfig,
@@ -665,7 +673,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         log("jira connect refused", { site: at, project, check });
         return { problem: refusals[check](project) };
       }
-      const next = liveSource(chosen);
+      const nextBoards = boardsOf(chosen);
+      const next = liveSource(chosen, nextBoards);
       const first = index.source(workspaceId, "jira") === null;
       try {
         await syncInto(next, jiraAttrs, true);
@@ -683,6 +692,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
       source = next;
       writes = chosen;
+      boards = nextBoards;
       Object.assign(sets, buildSets());
       if (first) jiraConnected();
       log("jira connected", { site: at, project });
