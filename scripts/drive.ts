@@ -103,7 +103,7 @@ async function shot(tab: Page, name?: string): Promise<string> {
 async function outline(tab: Page): Promise<string> {
   const secrets = await tab
     .locator('input[type="password"]')
-    .evaluateAll((fields) => fields.map((field) => (field as HTMLInputElement).value));
+    .evaluateAll((fields) => fields.map((field) => (field as unknown as { value: string }).value));
   let text = await tab.locator("body").ariaSnapshot();
   for (const secret of secrets) if (secret) text = text.split(secret).join("••••••••");
   return text;
