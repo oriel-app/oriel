@@ -1,6 +1,6 @@
 # 0019 Any source: a small item contract, and a local folder source
 
-Accepted 2026-10-29.
+Accepted 2026-10-29. Amended by 0024: an agent may mark a thread done too.
 
 Adds: none
 

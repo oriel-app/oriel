@@ -95,7 +95,7 @@ Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains
 - An item's identity is the source's stable ID (Jira's numeric issue ID); `jira:ORL-12` is its handle. A region follows an item that moves projects.
 - Mutation records carry `status: pending | applied | failed` and the external ID the source returned, written immediately, so a retried replay skips what already landed. Jira has no idempotency keys; this is ours.
 - Revert detects that the item changed in the source since the change set applied, and stops rather than clobbers. Concurrent edits are the normal case. Reverting a created item deletes it, only if nobody has touched it since.
-- Review links: an unguessable token that dies after 7 days or once the change set is decided, revocable from the thread; the approver types a name, recorded with the decision.
+- Review links: an unguessable token that dies after 7 days or once the change set is decided, revocable from the thread; the approver types a name, recorded with the decision. A reason given with a rejection is held in the thread until the user sends it to the agent, edits it or discards it (decision 0024).
 - Model access: one Anthropic key per instance, held by whoever runs it. It is never part of the user's onboarding.
 - Index content policy: store the minimum needed for grouping, summaries and search; fetch full content at run time. Bind IDs, never contents.
 - A `Credential` abstraction behind the API token so OAuth slots in later without touching the adapter.

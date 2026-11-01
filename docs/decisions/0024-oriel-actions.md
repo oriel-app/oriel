@@ -28,6 +28,7 @@ Adds: none
   - **Person only:** an action that needs a person in the loop, and it says why. An action is a person's when it is approval, erases what was said, or holds credentials:
     - approve, reject, edit, apply, dismiss and revert of a change set (0003: approval is a person's, in the thread or through a review link);
     - creating and revoking review links (a link hands approval to whoever holds it);
+    - sending, editing or discarding a review-link holder's held reason (what reaches the agent from outside is the person's call);
     - connecting a source (it holds credentials and decides what Oriel reads);
     - deleting a thread (it erases what was said).
 - **Three doors onto one dispatcher.**
@@ -40,7 +41,7 @@ Adds: none
   - Every action that adds members (adding, creating a group with items, dropping keys or links on a group) takes only items in the agent's own region or that its `search()` found in that run, as the host checks. Each group's first version records who created it, as later versions do.
   - **One exception, for now:** opening a thread and saying something in one stay closed. Text the agent writes must show where it came from (which agent, in which thread) before it reaches a thread, or it would read as the user's words. A follow-up story adds that provenance and opens both, with turns it starts counted against the per-thread caps (SPEC §9).
 
-- **The dispatcher** checks the input and refuses an action from an actor its class or doors rule out, whatever door the call came through. It runs the action and records who acted: a person; the agent in a thread; an outside tool; or whoever holds a review link. A review-link holder may only decide or dismiss the change set the link names. Their reason for rejecting is said in the thread under their name, as today. It goes to the model as their quoted words, never as the user's message, in that turn and every later one, and the turn it starts applies no intents. Who acted is recorded wherever Oriel already records a cause:
+- **The dispatcher** checks the input and refuses an action from an actor its class or doors rule out, whatever door the call came through. It runs the action and records who acted: a person; the agent in a thread; an outside tool; or whoever holds a review link. A review-link holder may only decide or dismiss the change set the link names. Their reason for rejecting never reaches the agent on its own. It is held in the thread under their name until the person sends it to the agent as it is, edits it first, or discards it, as they would a change set. Sending is the person's action: the turn it starts is theirs, and so are the words. Trusting some holders to skip the hold is a later decision. Who acted is recorded wherever Oriel already records a cause:
   - the group log;
   - a thread's done record;
   - telemetry.
@@ -59,7 +60,7 @@ Adds: none
     - Removing an item from a group, while a pending or approved change set in any of the group's threads names it, or while a turn runs in another of its threads. 0018 would stop that change set's apply partway.
   - **The host says what it did.** Under the agent's reply, the host lists every intent it applied or refused, naming the thread or group each touched. Each applied one has its Undo, and each refused one says why. The model's own reply is never the record. The thread or group it touched shows a marker that names the agent's thread.
 
-  - Intents apply only in a turn a person started. In a turn started by a review-link holder's reason, they are dropped, and the thread says so. Until OA-75 settles the matter, the same goes for an outside tool's words.
+  - Intents apply only in a turn a person started. Until OA-75 settles the matter, a turn started by an outside tool's words applies none, and the thread says so.
   - The turn loop pins one region version for the whole turn, so the agent's change shows from its next turn, after the marker.
 
 - **The agent may change any group's members** (amends 0018).
@@ -81,6 +82,7 @@ Adds: none
 - A change set exists so that a person approves what Oriel writes to other people's systems. Oriel's own data is the user's workspace. Undo protects it well enough, and a second kind of approval would ask the person to review bookkeeping.
 - Handling intents like mutations (one run's, at the end of the turn, capped) adds no new timing to learn. It keeps the sandbox's only channel the host, and it keeps the loop's promise that a turn sees one region. Capturing the change set first lets the dispatcher refuse a removal that would break it.
 - The user wants to tell the agent to do anything they can do in the window. The line is the person in the loop: approval, what has no Undo, and credentials stay theirs. Everything else the agent does is visible, undoable and recorded as the agent's.
+- A review link can be forwarded, so its holder may be anyone. Holding their words until the person sends them means nobody with only the link can steer the agent.
 - The agent's input can be steered by source content (SPEC §5). So its actions apply only in a turn a person started, the diff marks each item an agent added, and nothing it does reaches a source without approval.
 - Without the check, a door can fall behind the window and nothing notices. Generating the doors from the registry leaves only the reasons to write by hand.
 - The spike (OA-74, branch `spike/effect-actions`) built group remove both ways. Both gave the same check and behaviour.
@@ -108,6 +110,6 @@ Adds: none
 - The group log's cause, a thread's done record and `thread.marked-done` gain the agent, with its thread, and outside tools. A tool's name is what it says until OA-75.
 - Undo moves to where a change shows, including the marker in the thread and the host's list under a reply, and covers additions too. An item the index no longer has can't be added back, as today. Marking done gains its Undo, reopening, and creating a group gains its Undo, deleting one no thread uses.
 - Every region's module gains Oriel's namespaces, with their reads. The module-size base budget rises once, in the story that adds them, and every eval cassette is recorded again. The `.d.ts` header and `.claude/rules/bindings.md` say that `group.add` takes a search hit and is not a write.
-- A review-link holder's reason reaches the model as their quoted words, not as a user message. That changes the prompt, in the same story as those cassettes.
+- Today a review-link holder's reason starts a turn (OA-65). A story changes `turns.rejected` to hold the reason in the thread, with Send, Edit and Discard.
 - The window's state-changing routes move onto the dispatcher one by one, and the repo check lands with the first. `POST /groups/:id/remove`, which emits no telemetry today, gets its event then.
 - The MCP door waits on OA-75.
