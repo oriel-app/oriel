@@ -15,6 +15,7 @@ import {
   object,
   parseItemId,
   type Presentation,
+  type SourceDeclaration,
   refine,
   string,
   type Validator,
@@ -117,6 +118,13 @@ export const slackPresentation: Presentation = {
 // bindings): shape only, never source text. Its text is `slackText`'s.
 export const slackItemDoc =
   "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic. Name it by who wrote it, where and when.";
+
+// Slack as it declares itself to the composition root: read-only for now, so
+// it has no namespace and no op specs.
+export const slackDeclaration = {
+  ...slackPresentation,
+  itemDoc: slackItemDoc,
+} satisfies SourceDeclaration;
 
 const titleChars = 120;
 

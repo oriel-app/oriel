@@ -21,6 +21,8 @@ export type Nav = {
   groups: NavGroup[] | null;
   // The thread on the page, if one is.
   thread: string | null;
+  // The Done page's tab, if the Done page is on the page.
+  doneTab: DoneTab | null;
   // Threads waiting on the user: a change set to review, or a reply. Empty
   // until the threads have loaded.
   waiting: ThreadSummaryView[];
@@ -58,6 +60,7 @@ export function nav(model: Model): Nav {
         current: summary.id === group,
       })) ?? null,
     thread,
+    doneTab: route.page === "done" ? doneTab(route) : null,
     waiting,
     needsYou: waiting.length,
     finished: threads.filter((each) => each.state !== "working"),
@@ -83,6 +86,25 @@ function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryVie
 // The Done page's two tabs. Done holds handed-off threads too: neither needs
 // anything more from the user. Dropped holds the threads nobody settled, kept
 // apart so finished work doesn't bury one the user may come back to.
+export type DoneTab = "done" | "dropped";
+
+// The tab the Done page opens on at its address: Dropped when the address
+// asks for it, and otherwise Done.
+export function doneTab(route: Extract<Route, { page: "done" }>): DoneTab {
+  return route.tab ?? "done";
+}
+
+// The address of a page of a Done page tab. Done's carries no tab, and a
+// first page no number.
+export function doneRoute(tab: DoneTab, number = 1): Route {
+  return {
+    page: "done",
+    ...(tab === "dropped" && { tab }),
+    ...(number > 1 && { number }),
+  };
+}
+
+// The finished threads, in the Done page's tabs.
 export function doneTabs(finished: readonly ThreadSummaryView[]): {
   done: ThreadSummaryView[];
   dropped: ThreadSummaryView[];
@@ -123,7 +145,7 @@ export function donePage(threads: readonly ThreadSummaryView[], number: number):
 // tab.
 export function doneShown(
   finished: readonly ThreadSummaryView[],
-  at: { tab?: "dropped"; number?: number },
+  at: { tab?: DoneTab; number?: number },
 ): {
   counts: { done: number; dropped: number };
   page: DonePage;
@@ -131,12 +153,9 @@ export function doneShown(
   next: Route | null;
 } {
   const tabs = doneTabs(finished);
-  const page = donePage(at.tab ? tabs.dropped : tabs.done, at.number ?? 1);
-  const to = (number: number): Route => ({
-    page: "done",
-    ...(at.tab && { tab: at.tab }),
-    ...(number > 1 && { number }),
-  });
+  const tab = at.tab ?? "done";
+  const page = donePage(tabs[tab], at.number ?? 1);
+  const to = (number: number) => doneRoute(tab, number);
   return {
     counts: { done: tabs.done.length, dropped: tabs.dropped.length },
     page,

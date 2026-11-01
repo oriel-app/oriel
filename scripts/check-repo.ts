@@ -6,9 +6,10 @@
 // writer by any path. An adapter's own `src/writer.ts` and its test are the
 // exceptions; the test may stand in for an approval, which nothing else may
 // (decision 0003). And no package imports a source adapter except the
-// adapter itself, the composition root (packages/server), the eval harness
-// (packages/evals) and tests: other packages get a source's behaviour as
-// declarations typed by core (decision 0019). A writer import is refused by
+// adapter itself, the list of sources (packages/sources), the composition
+// root (packages/server), the eval harness (packages/evals) and tests, and
+// only the last three import the list: other packages get a source's
+// behaviour as declarations typed by core (decision 0019). A writer import is refused by
 // both rules, wherever 0003 refuses it. Packages reach each other only
 // through `@oriel/<name>` and its declared exports, never a relative path into
 // another package; a relative path into scripts/ (the fixture tooling) is
@@ -82,8 +83,14 @@ export function importedAdapters(path: string, text: string): { kind: string; wr
   return [...found.values()];
 }
 
-// Where a source adapter may be imported from: its own package, the
-// composition root, the eval harness, and tests and their support files. Its
+// Whether a file imports the list of sources, which imports every adapter,
+// so it may be imported only where they may.
+const importsSourceList = (text: string) =>
+  [...text.matchAll(packageSpecifier)].some(([, name]) => name === "sources");
+
+// Where a source adapter may be imported from: its own package, the list of
+// sources, the composition root, the eval harness, and tests and their
+// support files. Its
 // writer, only where decision 0003 allows: the file that builds writers, and
 // the adapter's own writer and its test.
 function mayImportAdapter(path: string, kind: string, writer: boolean): boolean {
@@ -92,7 +99,7 @@ function mayImportAdapter(path: string, kind: string, writer: boolean): boolean 
       path === writersFile || (path.startsWith(`packages/${kind}/`) && ownWriterFile.test(path))
     );
   if (path.startsWith(`packages/${kind}/`)) return true;
-  if (path.startsWith("packages/server/") || path.startsWith("packages/evals/")) return true;
+  if (/^packages\/(?:sources|server|evals)\//.test(path)) return true;
   return /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/.test(path);
 }
 
@@ -155,6 +162,10 @@ export function problems(repo: {
           : `${path}: imports the ${kind} adapter; outside packages/${kind}, packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
       );
     }
+    if (importsSourceList(text) && !mayImportAdapter(path, "sources", false))
+      found.add(
+        `${path}: imports @oriel/sources, which reaches every adapter; outside packages/server, packages/evals and tests, take its declarations from the composition root (decision 0019)`,
+      );
     for (const other of crossPackageImports(path, text))
       found.add(
         `${path}: imports packages/${other} by a relative path; packages reach each other only through @oriel/${other} and its exports`,

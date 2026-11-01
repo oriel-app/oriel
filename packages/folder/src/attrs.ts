@@ -9,6 +9,7 @@ import {
   nullable,
   object,
   type Presentation,
+  type SourceDeclaration,
   string,
   type Validator,
 } from "@oriel/core";
@@ -53,3 +54,10 @@ export const folderFacets = (): Facets => ({ kind: "doc" });
 export const folderDetails: DetailsOf = () => null;
 
 export const folderPresentation: Presentation = { name: "Folder", details: folderDetails };
+
+// The folder as it declares itself to the composition root: read-only, so it
+// has no namespace and no op specs.
+export const folderDeclaration = {
+  ...folderPresentation,
+  itemDoc: folderItemDoc,
+} satisfies SourceDeclaration;

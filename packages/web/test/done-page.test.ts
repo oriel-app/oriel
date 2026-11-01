@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { doneShown, perPage } from "../src/nav.ts";
-import { routeUrl } from "../src/route.ts";
+import { doneRoute, doneShown, doneTab, nav, perPage } from "../src/nav.ts";
+import { init } from "../src/root.ts";
+import { parseRoute, routeUrl } from "../src/route.ts";
 import type { ThreadSummaryView } from "../src/view.ts";
 
 const thread = (n: number, state: ThreadSummaryView["state"]): ThreadSummaryView => ({
@@ -49,4 +50,35 @@ test("Previous and Next keep the tab, and only go where there is a page", () => 
   const past = doneShown(finished, { tab: "dropped", number: 9 });
   assert.equal(past.page.number, 3);
   assert.deepEqual(past.previous, { page: "done", tab: "dropped", number: 2 });
+});
+
+test("the Done page opens on Dropped only when its address asks, and on Done otherwise", () => {
+  const opens = (search: string) => {
+    const route = parseRoute("/done", search);
+    assert.equal(route.page, "done");
+    return route.page === "done" ? doneTab(route) : null;
+  };
+  assert.equal(opens(""), "done");
+  assert.equal(opens("?page=2"), "done");
+  assert.equal(opens("?tab=dropped"), "dropped");
+  assert.equal(opens("?tab=dropped&page=3"), "dropped");
+  // A tab Oriel doesn't have opens Done.
+  assert.equal(opens("?tab=handed-off"), "done");
+});
+
+test("a tab's address opens that tab, at its page", () => {
+  for (const tab of ["done", "dropped"] as const)
+    for (const number of [1, 2]) {
+      const url = new URL(routeUrl(doneRoute(tab, number)), "http://oriel.invalid");
+      const route = parseRoute(url.pathname, url.search);
+      assert.deepEqual(route, doneRoute(tab, number));
+      assert.equal(route.page === "done" && doneTab(route), tab);
+    }
+  assert.equal(routeUrl(doneRoute("done")), "/done");
+});
+
+test("the sidebar knows the Done page's tab only while the Done page is on the page", () => {
+  assert.equal(nav(init({ page: "done" })[0]).doneTab, "done");
+  assert.equal(nav(init({ page: "done", tab: "dropped", number: 2 })[0]).doneTab, "dropped");
+  assert.equal(nav(init({ page: "new-thread" })[0]).doneTab, null);
 });

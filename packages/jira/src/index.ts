@@ -14,9 +14,10 @@ export {
   type JiraRecord,
   jiraText,
 } from "./attrs.ts";
+export { jiraDeclaration } from "./declaration.ts";
 export * from "./fixture.ts";
 export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
-export { type Estimates, estimateless, jiraItemDoc, jiraNamespace } from "./namespace.ts";
+export { type Estimates, estimateless, jiraNamespace } from "./namespace.ts";
 export { jiraSpecs } from "./specs.ts";
 export { cassette, type Exchange, exchange, recording, replay } from "./cassette.ts";
 export { checkConnection, type ConnectionCheck } from "./connect.ts";

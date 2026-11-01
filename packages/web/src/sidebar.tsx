@@ -8,7 +8,7 @@ import { useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import type { JiraModel } from "./jira.ts";
-import { doneTabs, type Nav, type NavGroup, nav } from "./nav.ts";
+import { doneRoute, doneTabs, type Nav, type NavGroup, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 
@@ -84,12 +84,7 @@ export function Sidebar(props: {
       </nav>
       <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <Groups where={where} dispatch={dispatch} />
-      <Done
-        where={where}
-        loaded={model.threads !== null}
-        onPage={model.route.page === "done" ? (model.route.tab ?? "done") : null}
-        dispatch={dispatch}
-      />
+      <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
       <div class="sources">
         <Jira jira={model.jira} dispatch={dispatch} />
         <Folder folder={model.folder} dispatch={dispatch} />
@@ -276,13 +271,7 @@ function GroupEntry(props: {
 // The latest done and handed-off threads, folded until the user opens them,
 // which this browser remembers. The rest are on the Done page, and dropped
 // ones on its Dropped tab, which a line under them leads to.
-function Done(props: {
-  where: Nav;
-  loaded: boolean;
-  // The Done page's tab on the page, if it is.
-  onPage: "done" | "dropped" | null;
-  dispatch: Dispatch;
-}) {
+function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
   const [open, setOpen] = useState(readDoneOpen);
   if (!props.loaded) return null;
@@ -332,10 +321,10 @@ function Done(props: {
           {done.length > shownDone && (
             <li>
               <Link
-                route={{ page: "done" }}
+                route={doneRoute("done")}
                 dispatch={dispatch}
                 class="nav-link nav-more"
-                aria-current={props.onPage === "done" ? "page" : undefined}
+                aria-current={where.doneTab === "done" ? "page" : undefined}
               >
                 {done.length - shownDone} more
               </Link>
@@ -344,10 +333,10 @@ function Done(props: {
           {dropped.length > 0 && (
             <li>
               <Link
-                route={{ page: "done", tab: "dropped" }}
+                route={doneRoute("dropped")}
                 dispatch={dispatch}
                 class="nav-link nav-more"
-                aria-current={props.onPage === "dropped" ? "page" : undefined}
+                aria-current={where.doneTab === "dropped" ? "page" : undefined}
               >
                 {dropped.length} dropped
               </Link>

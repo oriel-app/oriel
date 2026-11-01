@@ -16,6 +16,7 @@
     "@oriel/folder": "workspace:*",
     "@oriel/jira": "workspace:*",
     "@oriel/sandbox": "workspace:*",
-    "@oriel/slack": "workspace:*"
+    "@oriel/slack": "workspace:*",
+    "@oriel/sources": "workspace:*"
   }
 }

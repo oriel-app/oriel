@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { GroupPage } from "./group-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
-import { groupThreads, nav } from "./nav.ts";
+import { doneTab, groupThreads, nav } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
@@ -135,7 +135,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       return (
         <DonePage
           finished={model.threads && nav(model).finished}
-          tab={model.route.tab}
+          tab={doneTab(model.route)}
           number={model.route.number ?? 1}
           dispatch={dispatch}
         />
