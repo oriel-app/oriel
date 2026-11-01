@@ -79,7 +79,8 @@ function buildFixtureJira(): MemorySnapshot {
         id: record.stableId,
         summary: c.summary,
         description: c.description,
-        points: c.points,
+        // The fixture's board estimates, so every item has points or null.
+        points: c.points ?? null,
         accountId: c.assignee?.accountId ?? null,
         epic: c.epic,
         status: c.status.name,

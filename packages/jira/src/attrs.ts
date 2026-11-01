@@ -15,6 +15,7 @@ import {
   nullable,
   number,
   object,
+  optional,
   parseItemId,
   type Presentation,
   refine,
@@ -44,7 +45,8 @@ export type JiraContent = {
   moves: { name: string; category: State }[];
   epic: ItemId<"jira"> | null;
   assignee: { accountId: string; name: string } | null;
-  points: number | null;
+  // Null when not estimated yet; absent when its board takes no estimates.
+  points?: number | null;
   labels: string[];
   summary: string;
   description: string;
@@ -77,7 +79,7 @@ export const jiraContent = object({
   moves: array(object({ name: string, category: state })),
   epic: nullable(jiraId),
   assignee: nullable(object({ accountId: string, name: string })),
-  points: nullable(number),
+  points: optional(nullable(number)),
   labels: array(string),
   summary: string,
   description: string,

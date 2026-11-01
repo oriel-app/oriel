@@ -27,11 +27,11 @@ import {
 import { type JiraAttrs, type JiraContent, jiraText } from "./attrs.ts";
 import { jiraOps } from "./ops.ts";
 import { adfToText } from "./adf.ts";
+import { type JiraBoards, jiraBoards } from "./boards.ts";
 import {
   api,
   attrsOf,
   call,
-  discoverPoints,
   facetsOf,
   fieldsOf,
   indexFieldNames,
@@ -43,19 +43,12 @@ import {
   numericId,
   projectKey,
   projectOf,
-  rawField,
   time,
   transitionsShape,
 } from "./rest.ts";
 import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
-export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & {
-  readonly ops: typeof jiraOps;
-  // The projects whose boards the last discovery found no points field on,
-  // null before one. It knows a project with no items yet, and a board
-  // changed since the index last saw an item.
-  unestimating?(): ReadonlySet<string> | null;
-};
+export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & { readonly ops: typeof jiraOps };
 
 export type JiraSourceOptions = {
   transport: ReadTransport;
@@ -65,6 +58,9 @@ export type JiraSourceOptions = {
   projects: readonly string[];
   log: Log;
   pageSize?: number;
+  // What each project's board estimates in, shared with the writer and the
+  // agent's module; the source's own over `transport` when not given.
+  boards?: JiraBoards;
 };
 
 // Jira's search caps a page that returns fields at 100 issues.
@@ -111,34 +107,15 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
 
   // Rediscovered at the start of each sync, so a board's new estimate field
   // applies to the issues the next sync lists. Changing the field doesn't touch
-  // `updated`, so other issues keep their old points until a full sweep. A
-  // failed discovery isn't kept.
-  let discovered: Promise<Map<string, string>> | null = null;
-  let unestimating: ReadonlySet<string> | null = null;
-  // Only the latest discovery, of two running at once, is kept.
-  const pointsFields = (fresh: boolean) => {
-    if (discovered && !fresh) return discovered;
-    const run: Promise<Map<string, string>> = discoverPoints(transport, projects, log).then(
-      (found) => {
-        if (discovered === run)
-          unestimating = new Set(projects.filter((project) => !found.has(project)));
-        return found;
-      },
-      (error: unknown) => {
-        if (discovered === run) discovered = null;
-        throw error;
-      },
-    );
-    discovered = run;
-    return run;
-  };
-  const fieldList = (points: Map<string, string>) => [
+  // `updated`, so other issues keep their old points until a full sweep.
+  const boards = options.boards ?? jiraBoards({ transport, projects, log });
+  const fieldList = (points: ReadonlyMap<string, string>) => [
     ...new Set([...indexFieldNames, ...points.values()]),
   ];
 
   const toRecord = (
     raw: unknown,
-    points: Map<string, string>,
+    points: ReadonlyMap<string, string>,
   ): Result<IndexRecord<"jira", JiraAttrs>> => {
     const parsed = issue(indexFields)(raw);
     if (!parsed.ok) return parsed;
@@ -169,7 +146,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
 
   const readOne = async (
     id: ItemId<"jira">,
-    points: Map<string, string>,
+    points: ReadonlyMap<string, string>,
   ): Promise<ReadResult<"jira", JiraContent>> => {
     const parsed = parseItemId(id);
     if (parsed?.source !== "jira") return { id, status: "gone", reason: "deleted" };
@@ -194,7 +171,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
       id,
       status: "ok",
       content: {
-        ...fieldsOf(found.fields, rawField(response.body, points.get(projectOf(found.key)))),
+        ...fieldsOf(found.fields, response.body, points.get(projectOf(found.key))),
         moves: movesOf(found.transitions, found.fields.status.name),
         summary,
         description,
@@ -214,7 +191,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // Null for one in a shape Oriel can't read.
   const recordOf = async (
     id: ItemId<"jira">,
-    points: Map<string, string>,
+    points: ReadonlyMap<string, string>,
   ): Promise<IndexRecord<"jira", JiraAttrs> | "gone" | null> => {
     const parsed = parseItemId(id);
     if (parsed?.source !== "jira") return "gone";
@@ -256,7 +233,6 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   return {
     kind: "jira",
     ops: jiraOps,
-    unestimating: () => unestimating,
 
     // A null cursor lists everything. Otherwise the cursor is the latest
     // `updated` seen so far, and only issues updated since (less the overlap)
@@ -264,7 +240,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     // gone IDs: the sync worker's full sweep finds those.
     async *sync(cursor) {
       const since = cursor !== null && isInstant(cursor) ? cursor : null;
-      const points = await pointsFields(true);
+      const points = await boards.refresh();
       const scope = `project in (${projects.map((key) => `"${key}"`).join(", ")})`;
       const window = since ? await windowFrom(since) : "";
       const jql = `${scope}${window} ORDER BY updated ASC, key ASC`;
@@ -305,14 +281,14 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     },
 
     async read(ids) {
-      const points = await pointsFields(false);
+      const points = await boards.fields();
       return mapLimit(ids, readConcurrency, (id) => readOne(id, points));
     },
 
     // A deleted issue and one this account can't see are both null: Jira
     // answers 404 for either, and 403 for some.
     async records(ids) {
-      const points = await pointsFields(false);
+      const points = await boards.fields();
       const read = await mapLimit(ids, readConcurrency, (id) => recordOf(id, points));
       return {
         records: read.filter((record) => record !== null && record !== "gone"),

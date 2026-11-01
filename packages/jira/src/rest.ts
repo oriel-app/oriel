@@ -159,17 +159,20 @@ export function facetsOf(fields: IndexFields, raw: unknown, field: string | unde
   });
 }
 
-// What a read returns about the fields the index also keeps.
+// What a read returns about the fields the index also keeps. As in the
+// index, there are no points when the project's board takes no estimates:
+// `field`, its points field, is undefined.
 export function fieldsOf(
   fields: IndexFields,
-  points: unknown,
+  raw: unknown,
+  field: string | undefined,
 ): Pick<JiraContent, "issueType" | "status" | "epic" | "assignee" | "points" | "labels"> {
   return {
     issueType: fields.issuetype.name,
     status: { name: fields.status.name, category: categoryOf(fields) },
     epic: epicOf(fields),
     assignee: assigneeOf(fields),
-    points: pointsOf(points),
+    ...(field === undefined ? {} : { points: pointsOf(rawField(raw, field)) }),
     labels: fields.labels ?? [],
   };
 }

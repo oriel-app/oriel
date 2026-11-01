@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { estimateless, jiraNamespace } from "@oriel/jira";
+import { jiraNamespace } from "@oriel/jira";
 import { bindingsFor } from "./bindings.ts";
 import {
   fixtureReader,
@@ -78,7 +78,7 @@ test("on a board that takes no estimates, a new story is created without points"
 test("a board that estimates is untouched, and the module the agent sees is the same", () => {
   const region = fixtureRegion("picked");
   const estimating = {
-    jira: jiraNamespace(kinds, { none: estimateless(snapshot.records), home: "SYN" }),
+    jira: jiraNamespace(kinds, { none: new Set(), home: "SYN" }),
   };
   const [id] = region.items;
   assert.ok(id);

@@ -27,10 +27,10 @@ import {
 } from "@oriel/core";
 import { isJiraOp, issueFields, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 import { adfToText, textToAdf } from "./adf.ts";
+import { type JiraBoards, jiraBoards } from "./boards.ts";
 import {
   api,
   call,
-  discoverPoints,
   epicOf,
   indexFieldShape,
   issue,
@@ -42,16 +42,26 @@ import {
   projectOf,
   rawField,
 } from "./rest.ts";
-import { failure, type JiraRequest, type JiraResponse, type Transport } from "./transport.ts";
+import {
+  failure,
+  type JiraRequest,
+  type JiraResponse,
+  readOnly,
+  type Transport,
+} from "./transport.ts";
 
 // Only this entry hands out a transport that can write.
 export { restTransport, type Transport } from "./transport.ts";
+export type { JiraBoards } from "./boards.ts";
 
 export type JiraWriterOptions = {
   transport: Transport;
   // Where a story with no epic is created.
   project: string;
   log: Log;
+  // What each project's board estimates in, shared with the source, which
+  // refreshes it on each sync. Without it, the writer finds each board's once.
+  boards?: JiraBoards;
 };
 
 // A write's target: an item's handle and the stable ID it must have.
@@ -118,17 +128,11 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     return { send, state };
   };
 
-  const pointsFields = new Map<string, Promise<string | undefined>>();
-  const pointsField = (project: string) => {
-    const known = pointsFields.get(project);
-    if (known) return known;
-    const found = discoverPoints(transport, [project], log).then((map) => map.get(project));
-    found.catch(() => pointsFields.delete(project));
-    pointsFields.set(project, found);
-    return found;
-  };
+  const boards =
+    options.boards ??
+    jiraBoards({ transport: readOnly(transport), projects: [options.project], log });
   const requirePoints = async (project: string) => {
-    const field = await pointsField(project);
+    const field = await boards.field(project);
     if (!field) throw new Error(`${project}'s board has no points field to estimate in`);
     return field;
   };
@@ -143,7 +147,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       (name) => !isIssueField(name) && name !== "updated" && !name.startsWith("link:"),
     );
     if (unknownName !== undefined) throw new RangeError(`not a Jira field: ${unknownName}`);
-    const points = names.includes("points") ? await pointsField(projectOf(key)) : undefined;
+    const points = names.includes("points") ? await boards.field(projectOf(key)) : undefined;
     const fields = ["summary", "description", "issuetype", "parent", "assignee", "updated"];
     const extra = [...(names.includes("status") ? ["status"] : []), ...(points ? [points] : [])];
     const request: JiraRequest = {

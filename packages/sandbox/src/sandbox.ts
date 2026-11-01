@@ -354,10 +354,12 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               end("threw", fail("runtime", `${fn}: ${ref} was already created in this run`));
               return;
             }
+            // The bindings' refusal names the function already, as a failed
+            // read's does.
             try {
               mutations.push(bindings.capture(fn, args, ref));
             } catch (error) {
-              end("threw", fail("runtime", `${fn} was refused: ${errorText(error)}`));
+              end("threw", fail("runtime", errorText(error)));
               return;
             }
             if (ref !== null) refs.add(ref);

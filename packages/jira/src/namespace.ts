@@ -17,7 +17,6 @@ import {
   object,
   optional,
   param,
-  type IndexRecord,
   parseItemId,
   read,
   string,
@@ -50,7 +49,7 @@ function itemView(id: ItemId, content: unknown) {
     moves: c.moves.map((m) => ({ name: m.name, category: m.category })),
     epic: c.epic,
     assignee: c.assignee && { accountId: c.assignee.accountId, name: c.assignee.name },
-    points: c.points,
+    ...(c.points === undefined ? {} : { points: c.points }),
     labels: [...c.labels],
     comments: c.comments.map((comment) => ({
       author: comment.author,
@@ -91,22 +90,11 @@ type JiraScope = {
   estimates: Estimates;
 };
 
-// The projects whose boards take no estimates, and the project a story with
-// no epic is created in. Approval can't write an estimate there, so a run
-// can't propose one: the agent learns why from the refusal and can say so.
+// The projects whose boards take no estimates, as the last sync found them
+// (`JiraBoards`), and the project a story with no epic is created in.
+// Approval can't write an estimate there, so a run can't propose one: an
+// item read there has no points, and the refusal says why.
 export type Estimates = { none: ReadonlySet<string>; home: string | null };
-
-// The Jira projects whose items have no estimate facet in the index: their
-// boards take no estimates (see `jiraFacets`).
-export function estimateless(records: readonly IndexRecord[]): Set<string> {
-  const projects = records.flatMap((record) =>
-    isJiraId(record.id)
-      ? [{ project: projectOf(keyOf(record.id)), estimates: record.facets.estimate !== undefined }]
-      : [],
-  );
-  const estimating = new Set(projects.filter((p) => p.estimates).map((p) => p.project));
-  return new Set(projects.map((p) => p.project).filter((project) => !estimating.has(project)));
-}
 
 // The project a Jira item is in, or a new story goes in: an item's own, and
 // otherwise the region's epic's, or with none, the home project. A story
@@ -394,7 +382,8 @@ function types(scope: JiraScope): string[] {
     "  readonly moves: readonly Status[];",
     "  readonly epic: string | null;",
     "  readonly assignee: Person | null;",
-    "  readonly points: number | null;",
+    "  /** Null when not estimated yet. Absent when its board takes no estimates, which refuses setEstimate. */",
+    "  readonly points?: number | null;",
     "  readonly labels: readonly string[];",
     "  readonly comments: readonly Comment[];",
     "  readonly links: readonly Link[];",

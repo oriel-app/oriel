@@ -6,7 +6,8 @@
 // so an app can sync from it as from a live site. With an `account`, it
 // answers only requests signed as that account, and 401 to any other. With
 // `estimates: false`, its board counts issues instead, so it has no points
-// field, as a team-managed board without one doesn't.
+// field, as a team-managed board without one doesn't; `estimation` changes
+// that later.
 // Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
@@ -96,6 +97,7 @@ export function memorySite(
   // How the site fails every request, if it does: the network is down, it no
   // longer takes the credential, or it answers as if the project were gone.
   let outage: "offline" | "signed-out" | "unexpected" | null = null;
+  let estimates = options.estimates !== false;
 
   const tick = (): Instant => {
     ticks += 1;
@@ -139,10 +141,9 @@ export function memorySite(
       return json(200, { values: [{ id: 1, type: "scrum" }] });
     if (method === "GET" && path === "/rest/agile/1.0/board/1/configuration")
       return json(200, {
-        estimation:
-          options.estimates === false
-            ? { type: "issueCount" }
-            : { type: "field", field: { fieldId: pointsField, displayName: "Story Points" } },
+        estimation: estimates
+          ? { type: "field", field: { fieldId: pointsField, displayName: "Story Points" } }
+          : { type: "issueCount" },
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
@@ -348,6 +349,11 @@ export function memorySite(
     },
     searchCatchesUp() {
       searchable = null;
+    },
+    // The board starts or stops taking estimates in its points field, as
+    // when someone changes its estimation.
+    estimation(on: boolean) {
+      estimates = on;
     },
     // From here every request fails, as `outage` says; null works again.
     outage(kind: typeof outage) {

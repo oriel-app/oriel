@@ -31,7 +31,7 @@ import {
   ulid,
 } from "@oriel/core";
 import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
-import { estimateless, type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
+import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import { itemDocs, namespacesFor } from "@oriel/sources";
 import {
@@ -108,7 +108,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     origin: input.region?.origin ?? { kind: "picked" },
   };
   const namespaces = namespacesFor(snapshot.records, {
-    jira: { none: estimateless(snapshot.records), home: input.fixture.project.key },
+    jira: { none: new Set(), home: input.fixture.project.key },
   });
 
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
