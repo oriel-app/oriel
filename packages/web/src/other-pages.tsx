@@ -1,6 +1,6 @@
 // The Done page, and a review link's page.
 import { Threads } from "./group-page.tsx";
-import { doneTabs, donePage } from "./nav.ts";
+import { doneShown } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
 import { stepLabel } from "./thread.ts";
@@ -24,9 +24,10 @@ export function DonePage(props: {
         <p class="loading">Loading…</p>
       </main>
     );
-  const tabs = doneTabs(props.finished);
-  const page = donePage(tab ? tabs.dropped : tabs.done, props.number);
-  const to = (number: number) => ({ page: "done" as const, ...(tab && { tab }), number });
+  const { counts, page, previous, next } = doneShown(props.finished, {
+    ...(tab && { tab }),
+    number: props.number,
+  });
   const tabLink = (which: "dropped" | undefined, name: string, count: number) => (
     <Link
       route={{ page: "done", ...(which && { tab: which }) }}
@@ -40,8 +41,8 @@ export function DonePage(props: {
     <main class="page done-page">
       <h1 class="page-title">Done</h1>
       <nav class="tabs done-tabs" aria-label="Done or dropped">
-        {tabLink(undefined, "Done", tabs.done.length)}
-        {tabLink("dropped", "Dropped", tabs.dropped.length)}
+        {tabLink(undefined, "Done", counts.done)}
+        {tabLink("dropped", "Dropped", counts.dropped)}
       </nav>
       {page.total === 0 ? (
         <p class="rail-empty">
@@ -51,11 +52,16 @@ export function DonePage(props: {
         </p>
       ) : (
         <>
-          <Threads threads={page.threads} dispatch={dispatch} showGroup />
+          <Threads
+            threads={page.threads}
+            dispatch={dispatch}
+            showGroup
+            said={tab ? "dropped" : "done"}
+          />
           {page.pages > 1 && (
             <nav class="pager" aria-label={`Pages of ${tab ? "dropped" : "done"} threads`}>
-              {page.number > 1 ? (
-                <Link route={to(page.number - 1)} dispatch={dispatch} class="quiet-action">
+              {previous ? (
+                <Link route={previous} dispatch={dispatch} class="quiet-action">
                   Previous
                 </Link>
               ) : (
@@ -64,8 +70,8 @@ export function DonePage(props: {
               <span class="pager-where">
                 Page {page.number} of {page.pages} · {plural(page.total, "thread")}
               </span>
-              {page.number < page.pages ? (
-                <Link route={to(page.number + 1)} dispatch={dispatch} class="quiet-action">
+              {next ? (
+                <Link route={next} dispatch={dispatch} class="quiet-action">
                   Next
                 </Link>
               ) : (
@@ -205,6 +211,7 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
             view={model.view}
             name={model.name}
             deciding={model.stage === "deciding"}
+            applying={model.stage === "deciding" && model.outcome === "approved"}
             problem={model.problem}
             send={send}
           />
@@ -221,6 +228,8 @@ function ReviewChange(props: {
   view: NonNullable<ReviewModel["view"]>;
   name: string;
   deciding: boolean;
+  // Approving here, and being applied: the click landed.
+  applying: boolean;
   problem: string | null;
   send: (msg: ReviewMsg) => void;
 }) {
@@ -292,6 +301,9 @@ function ReviewChange(props: {
           </div>
         </form>
       )}
+      <p class="read-only-note" role="status">
+        {props.applying && "Approving and applying…"}
+      </p>
       {problem && (
         <p class="change-set-problem" role="alert">
           {problem}

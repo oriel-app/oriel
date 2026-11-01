@@ -249,6 +249,7 @@ export const stateNames: Record<ThreadStateId, string> = {
 export const waitingNames: Record<WaitingOn, string> = {
   agent: "Agent working",
   review: "Needs review",
+  apply: "Applying…",
   reply: "Your turn",
 };
 

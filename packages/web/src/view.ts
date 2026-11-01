@@ -44,10 +44,11 @@ export const threadStates = ["working", "done", "handed-off", "dropped"] as cons
 export type ThreadStateId = (typeof threadStates)[number];
 
 // What a working thread waits on: its agent, mid-turn; the user, on a change
-// set being applied or offering a step besides a revert, which any applied
-// one offers; or else the user's next message. A thread in any other state
+// set offering a step besides a revert, which any applied one offers; its
+// sources, on a change set being applied, which needs nothing from the user
+// until it ends; or else the user's next message. A thread in any other state
 // waits on nothing.
-export type WaitingOn = "agent" | "review" | "reply";
+export type WaitingOn = "agent" | "review" | "apply" | "reply";
 
 export function waitingOn(thread: {
   state: ThreadStateId;
@@ -57,8 +58,9 @@ export function waitingOn(thread: {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
   const open = (set: (typeof thread.changeSets)[number]) =>
-    set.status === "applying" || set.nextSteps.some((step) => step.kind !== "revert");
-  return thread.changeSets.some(open) ? "review" : "reply";
+    set.nextSteps.some((step) => step.kind !== "revert");
+  if (thread.changeSets.some(open)) return "review";
+  return thread.changeSets.some((set) => set.status === "applying") ? "apply" : "reply";
 }
 
 // An item named somewhere: in a group, a marker, a search result. `title` is

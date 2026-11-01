@@ -24,6 +24,9 @@ export type ThreadModel = {
   diffs: Readonly<Record<string, DiffView>>;
   // A change set with a request in flight.
   busy: readonly string[];
+  // A decision sent from this page and not yet answered, by change set. The
+  // page and the sidebar show what it will make of the thread (`expected`).
+  deciding: Readonly<Record<string, Decision>>;
   // What the last request about a change set said, when it failed.
   problems: Readonly<Record<string, string>>;
   // Review links minted here, by change set.
@@ -37,6 +40,8 @@ export type ThreadModel = {
 
 // A step offered for a whole change set. Removing a line is its own message.
 export type SetStep = Exclude<NextStepView["kind"], "remove">;
+
+export type Decision = "approved" | "rejected";
 
 export type ThreadMsg =
   | { type: "draftChanged"; text: string }
@@ -60,6 +65,7 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       sending: false,
       diffs: {},
       busy: [],
+      deciding: {},
       problems: {},
       links: {},
       notes: {},
@@ -140,16 +146,22 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       if (model.busy.includes(changeSetId) || !offered(model, changeSetId, step))
         return [model, []];
       const hash = model.diffs[changeSetId]?.hash;
-      const decides = step === "approve" || step === "approve-rest" || step === "reject";
-      if (decides && hash === undefined) return [model, []];
+      const decision: Decision | null =
+        step === "approve" || step === "approve-rest"
+          ? "approved"
+          : step === "reject"
+            ? "rejected"
+            : null;
+      if (decision && hash === undefined) return [model, []];
       return [
         {
           ...model,
           busy: [...model.busy, changeSetId],
+          deciding: decision ? { ...model.deciding, [changeSetId]: decision } : model.deciding,
           problems: without(model.problems, changeSetId),
         },
         [
-          post(`/api/change-sets/${changeSetId}/${routes[step]}`, decides ? { hash } : {}, {
+          post(`/api/change-sets/${changeSetId}/${routes[step]}`, decision ? { hash } : {}, {
             kind: "changeSet",
             threadId: model.id,
             changeSetId,
@@ -273,6 +285,8 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     case "changeSet": {
       if (tag.threadId !== model.id) return [model, []];
       const busy = model.busy.filter((id) => id !== tag.changeSetId);
+      // Answered: from here the thread shows what the server says.
+      const deciding = without(model.deciding, tag.changeSetId);
       // A refusal, or a decision that stood while applying it didn't.
       const problem = msg.ok ? problemOf(msg.body) : errorOf(msg.body);
       const problems =
@@ -286,7 +300,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       // reloads it here too. A refusal changed nothing, but what it was
       // refused on may have moved: reload.
       return [
-        { ...model, busy, problems, notes },
+        { ...model, busy, deciding, problems, notes },
         msg.ok ? [] : [diffOf(tag.changeSetId), refresh(model)],
       ];
     }
@@ -302,6 +316,26 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
     default:
       return [model, []];
   }
+}
+
+// The thread as the decisions sent from its page will leave it, so a click
+// shows at once: an approved change set applying, a rejected one rejected,
+// neither offering anything. Only while the server still shows a change set
+// undecided; once it shows the decision, or answers, the server's view
+// stands, and a failed apply offers its steps again.
+export function expected(model: ThreadModel): ThreadView | null {
+  const { view } = model;
+  if (view === null || Object.keys(model.deciding).length === 0) return view;
+  return {
+    ...view,
+    changeSets: view.changeSets.map((set) => {
+      const decision = model.deciding[set.id];
+      if (decision === undefined || set.decision !== null) return set;
+      return decision === "approved"
+        ? { ...set, status: "applying", applying: true, nextSteps: [] }
+        : { ...set, status: "rejected", nextSteps: [] };
+    }),
+  };
 }
 
 // The thread's event stream reconnected after dropping: whatever it missed

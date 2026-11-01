@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Page } from "playwright-core";
+import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
@@ -354,6 +354,30 @@ await post(`/api/groups/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 // pass of the scenes makes another group, which no other scene should show.
 const picking = (await writing()).serving;
 await post("/api/folder", { path: notes }, picking);
+// A group to remove items from, and undo that, on the same server: each pass
+// puts its items back first.
+const trimmed = await post<{ id: string }>(
+  "/api/groups",
+  {
+    kind: "picked",
+    name: "Checkout polish",
+    items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-99", "jira:SYN-104"],
+  },
+  picking,
+);
+const trim = async (page: Page) => {
+  await post(
+    `/api/groups/${trimmed.id}/add`,
+    { items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-99", "jira:SYN-104"] },
+    picking,
+  );
+  await page.reload();
+  await page.locator(".group-page .members").waitFor();
+  for (const key of ["SYN-23", "SYN-99"]) {
+    await page.getByRole("button", { name: `Remove ${key}` }).click();
+    await page.locator(".undo", { hasText: key }).waitFor();
+  }
+};
 
 // Threads on a server whose clock moves on eight days partway through: the
 // two asked before that and left unsettled are dropped, beside two done.
@@ -373,6 +397,16 @@ const idling = await (async () => {
 
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
+}
+
+// A request the page sends and never hears back about, so a shot shows what
+// a click shows before the server answers.
+// Aborted once the shot is taken, so the server never hears of it.
+const hung: Route[] = [];
+async function hang(page: Page, path: string): Promise<void> {
+  await page.route(`**${path}`, (route) => {
+    hung.push(route);
+  });
 }
 
 // On a narrow screen the sources are in the sidebar's drawer.
@@ -539,6 +573,24 @@ const scenes: Scene[] = [
     name: "group-empty",
     path: `/groups/${emptied.id}`,
     act: (page) => page.locator(".group-page .rail-empty").waitFor(),
+  },
+  {
+    // Two items removed with ×, each undoable for a few seconds.
+    name: "group-undo",
+    path: `/groups/${trimmed.id}`,
+    on: picking,
+    act: trim,
+  },
+  {
+    // One of them undone: back where it was.
+    name: "group-undone",
+    path: `/groups/${trimmed.id}`,
+    on: picking,
+    act: async (page) => {
+      await trim(page);
+      await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
+      await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
+    },
   },
   {
     name: "thread-mixed",
@@ -728,6 +780,39 @@ const scenes: Scene[] = [
     act: (page) => page.locator('.change-set[data-status="applying"]').waitFor(),
   },
   {
+    // Reloaded mid-apply, the thread is out of Needs you, applying.
+    name: "needs-you-applying",
+    path: `/threads/${inFlight.threadId}`,
+    on: holding.serving,
+    act: async (page) => {
+      await page.locator('.change-set[data-status="applying"]').waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
+    // The moment Approve and apply is clicked, before the server answers.
+    name: "thread-approving",
+    path: `/threads/${thread}`,
+    act: async (page) => {
+      await hang(page, "/approve");
+      await page.getByRole("button", { name: "Approve and apply" }).click();
+      await page.locator('.change-set[data-status="applying"]').waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
+    // The moment Reject is clicked: the thread waits on the user's reply.
+    name: "thread-rejecting",
+    path: `/threads/${thread}`,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await hang(page, "/reject");
+      await page.getByRole("button", { name: "Reject" }).click();
+      await page.locator('.change-set[data-status="rejected"]').waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
     name: "thread-read-only",
     path: `/threads/${readOnlyThread}`,
     on: readOnly,
@@ -750,6 +835,18 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    // Approving through the link, while it applies.
+    name: "review-applying",
+    path: new URL(link.url).pathname,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.getByRole("textbox", { name: "Your name" }).fill("Dana");
+      await hang(page, "/api/review/decide");
+      await page.getByRole("button", { name: "Approve" }).click();
+      await page.getByText("Approving and applying…").waitFor();
     },
   },
   {
@@ -857,6 +954,9 @@ try {
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: true, animations: "disabled" });
+        // Leaving first cancels a held request quietly; aborting it logs.
+        if (hung.length > 0) await page.goto("about:blank");
+        for (const route of hung.splice(0)) await route.abort().catch(() => {});
         await page.unrouteAll({ behavior: "ignoreErrors" });
         console.log(path);
       }

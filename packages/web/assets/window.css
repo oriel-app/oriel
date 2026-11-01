@@ -516,8 +516,9 @@ button.nav-disclose:hover {
   background: var(--in-progress);
 }
 
-/* Only an agent mid-turn pulses; a change set to review stands out. */
-.state-dot[data-waiting="agent"] {
+/* Only an agent mid-turn, or a change set applying, pulses; a change set to
+   review stands out. */
+.state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
@@ -784,7 +785,7 @@ button.nav-more {
     transition: none;
   }
 
-  .state-dot[data-waiting="agent"] {
+  .state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
     animation: none;
   }
 }
@@ -2334,6 +2335,11 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
+/* Kept in place while empty, so what it says next is read out. */
+.read-only-note:empty {
+  margin: 0;
+}
+
 .line-head {
   margin: 0;
   overflow-wrap: anywhere;
@@ -3035,6 +3041,52 @@ a.replies:hover {
   box-shadow: var(--shadow);
   color: var(--danger);
   transform: translateX(-50%);
+}
+
+/* "Removed OA-12 · Undo", newest at the bottom, over the page. */
+.undos {
+  position: fixed;
+  bottom: var(--space-4);
+  left: calc(50% + var(--sidebar) / 2);
+  z-index: 22;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  transform: translateX(-50%);
+}
+
+.undo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--text-md);
+  white-space: nowrap;
+}
+
+.undo-action {
+  padding: 0.125rem var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-md);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.undo-action:hover {
+  background: var(--accent-soft);
+}
+
+.undo-note {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
 }
 
 /* A row that swipes left to show actions. Vertical pans stay the page's. */

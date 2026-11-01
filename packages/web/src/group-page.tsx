@@ -1,9 +1,18 @@
 // A group: ask about it, see its threads, and curate its items.
+import { useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
-import { askPrompt, type GroupModel, type GroupMsg } from "./group.ts";
+import {
+  askPrompt,
+  type GroupModel,
+  type GroupMsg,
+  type Hold,
+  latestUndo,
+  type Removal,
+  undoable,
+} from "./group.ts";
 import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
-import type { GroupView, ThreadSummaryView } from "./view.ts";
+import type { GroupView, ThreadStateId, ThreadSummaryView } from "./view.ts";
 
 // `threads`: the group's, from the list the sidebar keeps, so they move as
 // it does.
@@ -15,6 +24,52 @@ export function GroupPage(props: {
   const { model, threads, dispatch } = props;
   const send = (msg: GroupMsg) => dispatch({ type: "group", msg });
   const { view } = model;
+  const list = useRef<HTMLUListElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  // The item an undo brings back: its × takes focus once it shows again.
+  const back = useRef<string | null>(null);
+  const undo = (removal: Removal) => {
+    back.current = removal.member.ref.id;
+    send({ type: "undoClicked", version: removal.version });
+  };
+  const latest = latestUndo(model);
+  useEffect(() => {
+    if (latest === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "z" || !(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      // A text field undoes its own typing.
+      const { target } = event;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest("input, textarea"))
+      )
+        return;
+      event.preventDefault();
+      undo(latest);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [latest]);
+  useEffect(() => {
+    const id = back.current;
+    const row = id && rowOf(list.current, id);
+    if (!row) return;
+    back.current = null;
+    row.querySelector<HTMLButtonElement>(".remove-member")?.focus();
+  }, [view]);
+  // A row's × that had focus hands it to the row below, or else above, so
+  // the keyboard stays in the list as rows go.
+  const remove = (id: string) => {
+    const row = rowOf(list.current, id);
+    if (row?.contains(document.activeElement)) {
+      const beside = [row.nextElementSibling, row.previousElementSibling]
+        .map((each) => each?.querySelector<HTMLButtonElement>(".remove-member"))
+        .find((each) => each);
+      (beside ?? addButton.current)?.focus();
+    }
+    send({ type: "memberRemoved", id });
+  };
   if (view === null)
     return (
       <main class="page">
@@ -28,6 +83,9 @@ export function GroupPage(props: {
       </main>
     );
   const { group } = view;
+  const members = view.members.filter(
+    (member) => !model.removing.some((each) => each.id === member.ref.id),
+  );
   return (
     <DropZone
       class="drop-page"
@@ -95,39 +153,99 @@ export function GroupPage(props: {
         {threads.length > 0 && (
           <section class="section">
             <h2 class="section-title">Threads</h2>
-            <Threads threads={threads} dispatch={dispatch} showGroup={false} />
+            <Threads threads={threads} dispatch={dispatch} showGroup={false} said={null} />
           </section>
         )}
 
         <section class="section">
           <div class="section-head">
             <h2 class="section-title">Items</h2>
-            <button type="button" class="quiet-action" onClick={() => send({ type: "addClicked" })}>
+            <button
+              type="button"
+              class="quiet-action"
+              ref={addButton}
+              onClick={() => send({ type: "addClicked" })}
+            >
               Add from the window
             </button>
           </div>
-          {view.members.length === 0 ? (
+          {members.length === 0 ? (
             <p class="rail-empty">No items. Add some from the window.</p>
           ) : (
-            <ul class="members">
-              {view.members.map((member) => (
+            <ul class="members" ref={list}>
+              {members.map((member) => (
                 <Member
                   key={member.ref.id}
                   member={member}
-                  onRemove={
-                    model.pending
-                      ? undefined
-                      : () => send({ type: "memberRemoved", id: member.ref.id })
-                  }
+                  onRemove={() => remove(member.ref.id)}
                 />
               ))}
             </ul>
           )}
+          <Undos
+            removals={model.removals}
+            latest={latest}
+            onUndo={undo}
+            onHold={(by, held) => send({ type: "undoHeld", by, held })}
+          />
         </section>
 
         <History view={view} />
       </main>
     </DropZone>
+  );
+}
+
+const rowOf = (list: HTMLUListElement | null, id: string) =>
+  list?.querySelector(`[data-item="${CSS.escape(id)}"]`) ?? null;
+
+const shortcut =
+  typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "Meta+Z" : "Control+Z";
+
+// "Removed OA-12 · Undo", one for each removal that can still be undone,
+// read out as it shows. None runs out while the pointer or focus is on them.
+// After the list, so the keyboard reaches them from the last row.
+function Undos(props: {
+  removals: readonly Removal[];
+  latest: Removal | null;
+  onUndo(removal: Removal): void;
+  onHold(by: Hold, held: boolean): void;
+}) {
+  const { onHold } = props;
+  return (
+    <div
+      class="undos"
+      role="status"
+      onMouseEnter={() => onHold("pointer", true)}
+      onMouseLeave={() => onHold("pointer", false)}
+      onFocusIn={() => onHold("focus", true)}
+      onFocusOut={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          onHold("focus", false);
+      }}
+    >
+      {props.removals.map((removal) => {
+        const { key } = removal.member.ref;
+        return (
+          <p class="undo" key={removal.version}>
+            <span>Removed {key}</span>
+            {undoable(removal) ? (
+              <button
+                type="button"
+                class="undo-action"
+                aria-label={`Undo removing ${key}`}
+                aria-keyshortcuts={removal === props.latest ? shortcut : undefined}
+                onClick={() => props.onUndo(removal)}
+              >
+                Undo
+              </button>
+            ) : (
+              <span class="undo-note">It's no longer in the window, so it can't come back.</span>
+            )}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 
@@ -161,10 +279,13 @@ function History({ view }: { view: GroupView }) {
   );
 }
 
+// `said`: the state the list itself says, as a Done page tab does, which a
+// row then names only when it waits on something.
 export function Threads(props: {
   threads: ThreadSummaryView[];
   dispatch: Dispatch;
   showGroup: boolean;
+  said: ThreadStateId | null;
 }) {
   return (
     <ul class="thread-list">
@@ -178,8 +299,7 @@ export function Threads(props: {
             >
               <span class="thread-link-title">{thread.title ?? "New thread"}</span>
               {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
-              {/* Beside its group, a thread names its state only when it isn't plainly done. */}
-              {(!props.showGroup || thread.waitingOn || thread.state !== "done") && (
+              {(thread.waitingOn || thread.state !== props.said) && (
                 <StateChip state={thread.state} waitingOn={thread.waitingOn} />
               )}
               <span class="thread-link-at">{when(thread.activityAt)}</span>

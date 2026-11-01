@@ -334,12 +334,16 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     }
     case "group":
     case "groupChanged":
+    case "restored":
     case "groupSynced":
     case "renamed":
     case "threadOpened": {
       if (model.group === null) return [model, []];
       const [group, effects] = groupReplied(model.group, msg);
-      const moved = msg.tag.kind === "renamed" || msg.tag.kind === "groupChanged";
+      const moved =
+        msg.tag.kind === "renamed" ||
+        msg.tag.kind === "groupChanged" ||
+        msg.tag.kind === "restored";
       return [{ ...model, group }, moved ? [...effects, loadGroups] : effects];
     }
     // A drop changes its group's count wherever the user is by the time it
