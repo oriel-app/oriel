@@ -1158,6 +1158,11 @@ const asked = parseArgs({
 });
 const widths = asked.values.width?.map(Number) ?? [1280, 390];
 const picked = asked.positionals;
+for (const width of widths)
+  if (!Number.isInteger(width) || width < 320) throw new Error(`Not a width in pixels: ${width}`);
+for (const start of picked)
+  if (!scenes.some((scene) => scene.name.startsWith(start)))
+    throw new Error(`No scene's name starts with ${start}`);
 const themes = ["light", "dark"] as const;
 
 const browser = await chromium.launch({ channel: "chrome" });
