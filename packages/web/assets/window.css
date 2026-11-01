@@ -2561,6 +2561,23 @@ a.replies:hover {
   min-width: 0;
 }
 
+/* Reject, with what's wrong typed beside it when there's something to say. */
+.reject-with {
+  display: inline-flex;
+  flex: 1 1 16rem;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reason-field {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3125rem var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
 .link-field {
   flex: 1;
   min-width: 0;
@@ -2675,7 +2692,13 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
-.name-field input {
+/* What's wrong, if rejecting: a row of its own, above the name. */
+.name-field.reason {
+  flex-basis: 100%;
+}
+
+.name-field input,
+.name-field textarea {
   padding: 0.3125rem var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);

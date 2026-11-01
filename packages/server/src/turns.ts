@@ -118,6 +118,7 @@ export function history(
 ): ChatMessage[] {
   const out: ChatMessage[] = [];
   const scripts = new Map<string, string>();
+  let ended = false;
   for (const message of messages) {
     if (message.role === "user") {
       out.push({ role: "user", text: message.text, at: message.at });
@@ -131,9 +132,13 @@ export function history(
     if (!event.ok) continue;
     const last = out.at(-1);
     if (event.value.kind === "text") {
-      if (last?.role === "assistant") last.text += event.value.text;
+      // Text after a turn ended, as Oriel's line after a rejection, is a new
+      // paragraph of what the agent last said.
+      if (last?.role === "assistant") last.text += `${ended ? "\n\n" : ""}${event.value.text}`;
       else out.push({ role: "assistant", text: event.value.text, at: message.at });
+      ended = false;
     }
+    if (event.value.kind === "done") ended = true;
     if (event.value.kind === "run.started") scripts.set(event.value.runId, event.value.script);
     if (event.value.kind === "run.finished") {
       const script = scripts.get(event.value.runId);
@@ -264,6 +269,45 @@ export function turns(deps: TurnDeps) {
     if (signal.aborted) record(thread.id, { kind: "error", message: "Stopped." });
   };
 
+  // The user's message, and a turn to answer it, which runs on after this
+  // returns. A settled thread catches up with its group first.
+  const say = (threadId: Ulid, text: string, rejected?: Ulid): { seq: number } => {
+    if (running.has(threadId)) throw new ThreadBusy();
+    // The per-thread caps hold whatever agent is plugged in (SPEC §9).
+    const earlier = threads.messages(threadId);
+    const reason = capReached(earlier, deps.caps);
+    if (reason !== null) {
+      const last = earlier.at(-1);
+      const said = last?.role === "agent" && agentEvent(last.event);
+      if (!(said && said.ok && said.value.kind === "limit" && said.value.reason === reason))
+        record(threadId, { kind: "limit", reason });
+      throw new ThreadLimit(reason);
+    }
+    const first = !earlier.some((m) => m.role === "user");
+    const now = deps.now();
+    const said = threads.say(threadId, text, { marker: deps.newId(), message: deps.newId() }, now);
+    if (said.move) published(threadId, said.move.seq);
+    published(threadId, said.seq);
+    const thread = threads.get(threadId, now);
+    if (!thread) throw new RangeError(`no thread ${threadId}`);
+    deps.emit({
+      name: "question.asked",
+      at: now,
+      workspaceId: thread.workspaceId,
+      threadId,
+      ...(rejected === undefined ? {} : { rejected }),
+    });
+    const controller = new AbortController();
+    const done = run(thread, text, said.seq, controller.signal).finally(() => {
+      running.delete(threadId);
+      publish(threadId, { type: "status", running: false });
+    });
+    running.set(threadId, { controller, done });
+    publish(threadId, { type: "status", running: true });
+    if (first) title(threadId, text);
+    return { seq: said.seq };
+  };
+
   return {
     running: (threadId: Ulid): boolean => running.has(threadId),
 
@@ -310,42 +354,35 @@ export function turns(deps: TurnDeps) {
       for (const move of moves) published(move.threadId, move.seq);
     },
 
-    // The user's message, and a turn to answer it, which runs on after this
-    // returns. A settled thread catches up with its group first.
-    say(threadId: Ulid, text: string): { seq: number } {
-      if (running.has(threadId)) throw new ThreadBusy();
-      // The per-thread caps hold whatever agent is plugged in (SPEC §9).
-      const earlier = threads.messages(threadId);
-      const reason = capReached(earlier, deps.caps);
-      if (reason !== null) {
-        const last = earlier.at(-1);
-        const said = last?.role === "agent" && agentEvent(last.event);
-        if (!(said && said.ok && said.value.kind === "limit" && said.value.reason === reason))
-          record(threadId, { kind: "limit", reason });
-        throw new ThreadLimit(reason);
+    say,
+
+    // A change set of the thread was rejected. The thread says so and asks
+    // what was wrong, in a line Oriel writes with no model call: the agent reads it
+    // in its history, so it answers with a revised change set rather than
+    // more on top of the rejected one. A reason is the answer, said as a
+    // typed message is; one from a review link says who gave it. Mid-turn,
+    // once the thread can take no more questions, or of an Undo, which Oriel
+    // made and the agent didn't, it doesn't ask.
+    rejected(
+      set: { id: Ulid; threadId: Ulid; revertOf: Ulid | null },
+      by: string | null,
+      reason: string | null,
+    ): void {
+      const { threadId } = set;
+      // It ends as a turn does, so a line after it starts its own paragraph.
+      if (
+        set.revertOf === null &&
+        !running.has(threadId) &&
+        capReached(threads.messages(threadId), deps.caps) === null
+      ) {
+        record(threadId, {
+          kind: "text",
+          text: `${by === null ? "You" : by} rejected this change set, so nothing in it will change. What was wrong with it? Say what to change, and I'll propose a revised one.`,
+        });
+        record(threadId, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
       }
-      const first = !earlier.some((m) => m.role === "user");
-      const now = deps.now();
-      const said = threads.say(
-        threadId,
-        text,
-        { marker: deps.newId(), message: deps.newId() },
-        now,
-      );
-      if (said.move) published(threadId, said.move.seq);
-      published(threadId, said.seq);
-      const thread = threads.get(threadId, now);
-      if (!thread) throw new RangeError(`no thread ${threadId}`);
-      deps.emit({ name: "question.asked", at: now, workspaceId: thread.workspaceId, threadId });
-      const controller = new AbortController();
-      const done = run(thread, text, said.seq, controller.signal).finally(() => {
-        running.delete(threadId);
-        publish(threadId, { type: "status", running: false });
-      });
-      running.set(threadId, { controller, done });
-      publish(threadId, { type: "status", running: true });
-      if (first) title(threadId, text);
-      return { seq: said.seq };
+      if (reason !== null)
+        say(threadId, by === null ? reason : `${by}, from the review link: ${reason}`, set.id);
     },
 
     // Stops the thread's turn, if one is running.

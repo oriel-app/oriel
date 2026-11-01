@@ -386,20 +386,49 @@ function ChangeSet(props: {
           const forward =
             step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";
           const decides = forward && step.kind !== "retry";
-          return (
+          const disabled = busy || ((decides || step.kind === "reject") && !diff);
+          const click = () =>
+            send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind });
+          const button = (
             <button
               key={step.kind}
               type="button"
               class={
                 forward ? "button primary" : step.kind === "dismiss" ? "quiet-action" : "button"
               }
-              disabled={busy || ((decides || step.kind === "reject") && !diff)}
-              onClick={() =>
-                send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind })
-              }
+              disabled={disabled}
+              onClick={click}
             >
               {stepLabel(step.kind, set)}
             </button>
+          );
+          // A reason is optional: it goes to the thread as the next message.
+          // An Undo is Oriel's, not the agent's, so it has nothing to revise.
+          if (step.kind !== "reject" || set.revertOf) return button;
+          return (
+            <span key={step.kind} class="reject-with">
+              <input
+                class="reason-field"
+                value={model.reasons[set.id] ?? ""}
+                placeholder="What's wrong? (optional)"
+                aria-label="Why reject it (optional)"
+                maxLength={8000}
+                disabled={busy}
+                onInput={(event) =>
+                  send({
+                    type: "reasonChanged",
+                    changeSetId: set.id,
+                    text: event.currentTarget.value,
+                  })
+                }
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || event.isComposing || disabled) return;
+                  event.preventDefault();
+                  click();
+                }}
+              />
+              {button}
+            </span>
           );
         })}
         {set.status === "open" && !view.writable && (
