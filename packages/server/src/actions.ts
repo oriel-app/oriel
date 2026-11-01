@@ -78,6 +78,12 @@ type Handler<N extends ActionName> = (
 // The user's own doing goes unsaid in an event; anyone else is named.
 const by = (actor: Actor): { by?: Actor } => (actor.kind === "user" ? {} : { by: actor });
 
+// What only the user may ask of an action, in the window: anyone else is
+// refused it, whatever door they came through.
+const userOnly = (actor: Actor, what: string) => {
+  if (actor.kind !== "user") throw new ActionError("refused", `only the user ${what}`);
+};
+
 const mustGroup = (deps: ActionDeps, id: Ulid) => {
   const group = deps.groups.get(id);
   if (!group || group.workspaceId !== deps.workspaceId)
@@ -112,8 +118,10 @@ async function newGroup(
   actor: Actor,
   deps: ActionDeps,
 ): Promise<{ name: string; origin: GroupOrigin; list: GroupMember[]; size: number }> {
-  if (input.kind === "thread")
+  if (input.kind === "thread") {
+    userOnly(actor, "starts a thread from nothing");
     return { name: blankGroupName, origin: { kind: "thread" }, list: [], size: 0 };
+  }
   if (input.kind === "picked") {
     const list = await members(deps, input.items, actor);
     const size = new Set(list.map((m) => `${m.id}`)).size;
@@ -207,8 +215,11 @@ const handlers = {
   "group.rename": async ({ group: id, name, oriel }, actor, deps) => {
     const before = mustGroup(deps, id);
     // A change set names a group as Oriel does, never over the user's name.
-    if (oriel) deps.groups.giveBack(before.id, name.trim());
-    else deps.groups.rename(before.id, name.trim(), actor.kind === "change-set" ? "oriel" : "user");
+    if (oriel) {
+      userOnly(actor, "gives a group's name back to Oriel, by undoing a rename");
+      deps.groups.giveBack(before.id, name.trim());
+    } else
+      deps.groups.rename(before.id, name.trim(), actor.kind === "change-set" ? "oriel" : "user");
     const after = mustGroup(deps, id);
     const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
     // Back to the name it had, and to whoever gave it.
@@ -239,9 +250,7 @@ const handlers = {
           name: "thread.marked-done",
           threadId: thread.id,
           // Only the user closes it from somewhere in the window.
-          ...(actor.kind === "user"
-            ? { via: via ?? "page" }
-            : { ...(via === undefined ? {} : { via }), by: actor }),
+          ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
         },
       ],
     };

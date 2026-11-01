@@ -228,8 +228,24 @@ test("bad input, a missing group or thread, and a review link's holder are refus
     w.dispatch("group.rename", { group: w.groupId, name: "x" }, { kind: "review-link", by: "Kim" }),
     refused("refused"),
   );
+  // What only the window asks of an action is the user's, at every door.
+  const agent: Actor = { kind: "agent", threadId: w.threadId };
+  await assert.rejects(w.dispatch("group.create", { kind: "thread" }, agent), refused("refused"));
+  await assert.rejects(
+    w.dispatch("group.rename", { group: w.groupId, name: "X", oriel: true }, agent),
+    refused("refused"),
+  );
   assert.equal(w.events.length, 0);
   assert.equal(w.published.length, 0);
+  // Nor does anyone but the user close a thread from somewhere in the window.
+  await w.dispatch("thread.done", { thread: w.threadId, via: "swipe" }, agent);
+  assert.deepEqual(w.events.at(-1)?.name === "thread.marked-done" && w.events.at(-1), {
+    name: "thread.marked-done",
+    at: t0,
+    workspaceId: id(0),
+    threadId: w.threadId,
+    by: agent,
+  });
 });
 
 test("every action is declared with a doc, its class and, if closed, why", () => {

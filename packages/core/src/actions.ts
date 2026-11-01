@@ -93,7 +93,7 @@ export const actions = {
   "group.rename": {
     doc: "Names a group.",
     // `oriel`: the name is Oriel's, as it was before the user's rename this
-    // undoes, so Oriel may name the group again.
+    // undoes, so Oriel may name the group again. Only the user's Undo says so.
     input: object({ group: groupId, name, oriel: optional(literal(true)) }),
     class: { kind: "direct", inverse: "group.rename" },
   },

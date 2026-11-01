@@ -18,8 +18,9 @@
 // inverse says why, and an inverse names an action; and every POST route in
 // packages/server changes state only through the dispatcher, apart from the
 // three exempt below and the routes not moved yet, or moved in part, which
-// OA-70 moves. A route on either list must be as the list says, so both
-// only shrink.
+// OA-70 moves. A route on a list must be as the list says, so the lists
+// only shrink. What a route does besides dispatching is its author's word:
+// the check sees only whether it dispatches.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
@@ -229,7 +230,11 @@ export function problems(repo: {
       for (const route of postRoutes(text)) {
         routed.add(route.path);
         const listed = route.path in exemptRoutes || route.path in unmovedRoutes;
-        if (route.dispatches && listed)
+        if (route.dispatches && route.path in exemptRoutes)
+          found.add(
+            `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the exempt routes`,
+          );
+        if (route.dispatches && route.path in unmovedRoutes)
           found.add(
             `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the unmoved routes, or list it as moved in part`,
           );
