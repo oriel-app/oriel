@@ -1552,6 +1552,18 @@ button.nav-more {
   white-space: nowrap;
 }
 
+/* A message's replies, in its assignee's place: a message has none. */
+a.replies {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+a.replies:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 .assignee.none {
   color: var(--text-faint);
 }

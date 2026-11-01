@@ -57,6 +57,7 @@ export function itemRow(record: IndexRecord, now: Instant, sources: Presentation
     assignee: assigneeOf(record)?.name ?? null,
     points: record.facets.estimate ?? null,
     idleDays: Math.max(0, Math.floor((Date.parse(now) - Date.parse(record.updatedAt)) / day)),
+    ...(details?.replies ? { replies: { count: details.replies, url: record.location } } : {}),
   };
 }
 

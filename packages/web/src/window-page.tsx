@@ -2,7 +2,16 @@
 // Controls stay out of the way until something is picked or hovered.
 import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
 import { emptyJira, type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
-import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural, points } from "./parts.tsx";
+import {
+  Assignee,
+  Chevron,
+  type Dispatch,
+  keyLabel,
+  Link,
+  plural,
+  points,
+  Replies,
+} from "./parts.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
   type ClusterRow,
@@ -407,8 +416,13 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       <span class="status" data-category={item.status?.category}>
         {item.status?.name}
       </span>
-      {/* A file or a message has no assignee or estimate to lack: those stay empty. */}
-      {tracked ? <Assignee name={item.assignee} /> : <span class="assignee" />}
+      {/* A file or a message has no assignee or estimate to lack: those stay
+          empty, or a message shows its replies there. */}
+      {tracked ? (
+        <Assignee name={item.assignee} />
+      ) : (
+        <span class="assignee">{item.replies && <Replies replies={item.replies} />}</span>
+      )}
       <span
         class="points"
         title={!tracked ? undefined : item.points === null ? "Unestimated" : points(item.points)}

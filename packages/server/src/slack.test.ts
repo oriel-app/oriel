@@ -33,6 +33,10 @@ test("the picked channel's messages are in the window, in clusters that say Slac
     points: null,
     // Its last reply, on 20 September, as of the SYN window's 2 October.
     idleDays: 12,
+    replies: {
+      count: 4,
+      url: "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100",
+    },
   });
   const byAssignee = json<WindowView>(await app.get("/api/window?grouping=assignee"));
   const none = byAssignee.clusters.find((c) => c.row.key === "no-assignees-in-source");

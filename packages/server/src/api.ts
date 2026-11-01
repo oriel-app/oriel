@@ -42,6 +42,7 @@ import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import { changeSetView, memberOf, type Views } from "./views.ts";
+import { presentations } from "./window.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
@@ -619,11 +620,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""], request) {
         const group = mustGroup(id);
         const dropped = await readJson(request, listBody, droppedBody);
-        let resolved = resolveDropped(deps.records(), dropped);
+        let resolved = resolveDropped(deps.records(), dropped, presentations);
         let synced: string | null = null;
         if (resolved.refused.some((refusal) => refusal.syncMightHelp)) {
           synced = await deps.refresh();
-          resolved = resolveDropped(deps.records(), dropped);
+          resolved = resolveDropped(deps.records(), dropped, presentations);
         }
         if (resolved.ids.length > maxItems)
           throw new Refused(400, `expected at most ${maxItems} items`);

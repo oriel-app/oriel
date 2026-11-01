@@ -112,6 +112,19 @@ export function ItemKey({ item }: { item: ItemRef }) {
   );
 }
 
+// A chat message's replies, as a link that opens them where they were
+// written: in Oriel they are part of the message, not items of their own.
+export function Replies({ replies }: { replies: { count: number; url: string } }) {
+  const label = `${replies.count} ${replies.count === 1 ? "reply" : "replies"}`;
+  const href = safeHref(replies.url);
+  if (!href) return <span class="replies">{label}</span>;
+  return (
+    <a class="replies source-link" href={href} target="_blank" rel="noopener noreferrer">
+      {label}
+    </a>
+  );
+}
+
 // An agent's reply as formatted text. A heading starts at h3: the thread's
 // title and its sections hold h1 and h2. Read once per text: the page redraws
 // every reply as the latest one streams in.

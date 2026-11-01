@@ -17,6 +17,9 @@ export type ItemRow = {
   points: number | null;
   // Whole days from the item's last update to the window's `asOf`.
   idleDays: number;
+  // A chat message's replies, and its link, which opens them. Absent when it
+  // has none.
+  replies?: { count: number; url: string };
 };
 
 // One item, as the "item" zoom level shows it: the fullscreen story. It holds

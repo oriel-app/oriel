@@ -81,13 +81,37 @@ export function slackAttrsOf(record: IndexRecord): SlackAttrs | null {
   return parsed.ok ? parsed.value : null;
 }
 
-// A message shows its channel as a label. Slack has no status.
+// A message shows its channel as a label, and how many replies it has. Slack
+// has no status.
 export const slackDetails: DetailsOf = (record) => {
   const attrs = slackAttrsOf(record);
-  return attrs && { type: "message", status: "", labels: [`#${attrs.channel.name}`] };
+  return (
+    attrs && {
+      type: "message",
+      status: "",
+      labels: [`#${attrs.channel.name}`],
+      replies: attrs.replies,
+    }
+  );
 };
 
-export const slackPresentation: Presentation = { name: "Slack", details: slackDetails };
+// The message a link into Slack points at, by key. A reply's link, as Slack
+// copies it, is `archives/<channel>/p<reply>?thread_ts=<message>`: a reply is
+// part of its message, so it names the message.
+export function slackLinked(link: URL): string | null {
+  const at = /^\/archives\/([CG][A-Z0-9]+)\/p(\d+)(\d{6})$/.exec(link.pathname.replace(/\/+$/, ""));
+  if (!at) return null;
+  const [, channel = "", seconds = "", micros = ""] = at;
+  const thread = link.searchParams.get("thread_ts");
+  const ts = thread && /^\d+\.\d{6}$/.test(thread) ? thread : `${seconds}.${micros}`;
+  return `${channel}-${ts}`;
+}
+
+export const slackPresentation: Presentation = {
+  name: "Slack",
+  details: slackDetails,
+  linked: slackLinked,
+};
 
 // What a message is, in the declarations' `Item` (see `ItemDocs` in
 // bindings): shape only, never source text. Its text is `slackText`'s.
