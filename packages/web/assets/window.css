@@ -1116,7 +1116,8 @@ button.nav-more {
   gap: var(--space-1);
 }
 
-.tabs button {
+.tabs button,
+.tabs a {
   padding: 0.25rem var(--space-3);
   border: 0;
   border-radius: var(--radius);
@@ -1126,11 +1127,13 @@ button.nav-more {
   cursor: pointer;
 }
 
-.tabs button:hover {
+.tabs button:hover,
+.tabs a:hover {
   color: var(--text);
 }
 
-.tabs button[aria-pressed="true"] {
+.tabs button[aria-pressed="true"],
+.tabs a[aria-current="page"] {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 0 0 1px var(--line);
@@ -1741,6 +1744,14 @@ a.replies:hover {
 .remove-line:hover {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.tabs a {
+  text-decoration: none;
+}
+
+.done-tabs {
+  margin-bottom: var(--space-3);
 }
 
 /* The Done page's way to its other pages. */

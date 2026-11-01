@@ -135,6 +135,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       return (
         <DonePage
           finished={model.threads && nav(model).finished}
+          tab={model.route.tab}
           number={model.route.number ?? 1}
           dispatch={dispatch}
         />
