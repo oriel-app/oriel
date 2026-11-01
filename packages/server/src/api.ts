@@ -676,7 +676,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       method: "GET",
       path: at("/threads"),
-      run: async () => json(200, { threads: await views.inbox(deps.workspaceId) }),
+      run: async () => json(200, { threads: await views.threads(deps.workspaceId) }),
     },
     {
       // A thread from nothing, with its first message: on a new group with no

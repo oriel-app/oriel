@@ -115,7 +115,7 @@ export type GroupView = {
 
 export type GroupsView = { groups: GroupSummary[] };
 
-export type InboxView = { threads: ThreadSummaryView[] };
+export type ThreadsView = { threads: ThreadSummaryView[] };
 
 // A run's record, as its transcript shows it.
 export type RunView = {

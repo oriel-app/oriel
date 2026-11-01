@@ -2,7 +2,7 @@
 // Controls stay out of the way until something is picked or hovered.
 import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
 import { emptyJira, type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
-import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural } from "./parts.tsx";
+import { Assignee, Chevron, type Dispatch, keyLabel, Link, plural, points } from "./parts.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
   type ClusterRow,
@@ -329,7 +329,7 @@ function ClusterPoints({ row }: { row: ClusterRow }) {
   );
   return (
     <span class="points-sum">
-      {estimated > 0 && plural(row.points, "pt")}
+      {estimated > 0 && points(row.points, true)}
       {estimated > 0 && unestimated && " · "}
       {unestimated}
     </span>
@@ -411,9 +411,7 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       {tracked ? <Assignee name={item.assignee} /> : <span class="assignee" />}
       <span
         class="points"
-        title={
-          !tracked ? undefined : item.points === null ? "Unestimated" : `${item.points} points`
-        }
+        title={!tracked ? undefined : item.points === null ? "Unestimated" : points(item.points)}
       >
         {tracked ? (item.points ?? "–") : ""}
       </span>

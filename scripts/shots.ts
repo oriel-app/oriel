@@ -538,12 +538,14 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Deleting a thread whose change set wrote to Jira first says so.
+    // Deleting a thread whose change set wrote to Jira first says so: from
+    // its group's list of threads.
     name: "thread-delete",
-    path: "/inbox",
+    path: `/threads/${partial}`,
     on: refusing.serving,
     act: async (page) => {
-      await page.locator(`.inbox a[href="/threads/${partial}"]`).click({ button: "right" });
+      await page.locator(".thread-head .crumb").click();
+      await page.locator(`.thread-list a[href="/threads/${partial}"]`).click({ button: "right" });
       await page.getByRole("menuitem", { name: "Delete…" }).click();
       await page.locator(".confirm-body", { hasText: "revert" }).waitFor();
     },
@@ -672,9 +674,9 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".read-only-note").waitFor(),
   },
   {
-    name: "inbox",
-    path: "/inbox",
-    act: (page) => page.locator(".inbox .thread-list").first().waitFor(),
+    name: "done",
+    path: "/done",
+    act: (page) => page.locator(".done-page .thread-list").waitFor(),
   },
   {
     name: "review",
@@ -716,6 +718,33 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.getByRole("button", { name: "Dismiss" }).waitFor();
+    },
+  },
+  // These two last: the sidebar remembers them in the browser, and every
+  // scene of a width and theme shares one.
+  {
+    // The latest done threads, opened at the foot of the sidebar.
+    name: "sidebar-done",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
+      await page.locator(".sidebar-done").getByRole("button", { name: /^Done/ }).click();
+      await page.locator(".nav-done").waitFor();
+    },
+  },
+  {
+    // Folded on a wide screen, the fold button counts the threads waiting on
+    // the user; a narrow screen's menu does.
+    name: "sidebar-folded",
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      await page.locator(".nav-waiting-link").first().waitFor({ state: "attached" });
+      if ((page.viewportSize()?.width ?? 0) <= 760) return;
+      await page.getByRole("button", { name: "Hide sidebar" }).click();
+      await page.locator(".sidebar-fold .bar-count").waitFor();
     },
   },
 ];

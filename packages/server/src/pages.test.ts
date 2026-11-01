@@ -7,7 +7,7 @@ test("the app's pages are the same shell; anything else 404s", async (t) => {
   const { get } = await testApp(t);
   const shell = String((await get("/")).body);
   for (const path of [
-    "/inbox",
+    "/done",
     "/groups/01JBZ0000000000000000000G1",
     "/threads/01JBZ0000000000000000000T1",
   ]) {
@@ -15,7 +15,7 @@ test("the app's pages are the same shell; anything else 404s", async (t) => {
     assert.equal(reply.status, 200, path);
     assert.equal(String(reply.body), shell, path);
   }
-  for (const path of ["/groups/nope", "/threads/", "/inbox/x", "/review/", "/review/a/b"])
+  for (const path of ["/groups/nope", "/threads/", "/inbox", "/done/x", "/review/", "/review/a/b"])
     assert.equal((await get(path)).status, 404, path);
   assert.equal((await get("/api/nope")).status, 404);
 });

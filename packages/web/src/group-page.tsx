@@ -5,7 +5,14 @@ import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.
 import { Member } from "./thread-page.tsx";
 import type { GroupView, ThreadSummaryView } from "./view.ts";
 
-export function GroupPage({ model, dispatch }: { model: GroupModel; dispatch: Dispatch }) {
+// `threads`: the group's, from the list the sidebar keeps, so they move as
+// it does.
+export function GroupPage(props: {
+  model: GroupModel;
+  threads: ThreadSummaryView[];
+  dispatch: Dispatch;
+}) {
+  const { model, threads, dispatch } = props;
   const send = (msg: GroupMsg) => dispatch({ type: "group", msg });
   const { view } = model;
   if (view === null)
@@ -85,10 +92,10 @@ export function GroupPage({ model, dispatch }: { model: GroupModel; dispatch: Di
           </p>
         )}
 
-        {view.threads.length > 0 && (
+        {threads.length > 0 && (
           <section class="section">
             <h2 class="section-title">Threads</h2>
-            <Threads threads={view.threads} dispatch={dispatch} showGroup={false} />
+            <Threads threads={threads} dispatch={dispatch} showGroup={false} />
           </section>
         )}
 
@@ -171,7 +178,8 @@ export function Threads(props: {
             >
               <span class="thread-link-title">{thread.title ?? "New thread"}</span>
               {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
-              {(!props.showGroup || thread.waitingOn) && (
+              {/* Beside its group, a thread names its state only when it isn't plainly done. */}
+              {(!props.showGroup || thread.waitingOn || thread.state !== "done") && (
                 <StateChip state={thread.state} waitingOn={thread.waitingOn} />
               )}
               <span class="thread-link-at">{when(thread.activityAt)}</span>

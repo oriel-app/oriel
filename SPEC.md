@@ -17,7 +17,7 @@ Core ideas, in priority order:
 0. **The window.** Everything from every connected source in one place, where the user curates items into groups. Groupings (by epic, project, person, "stuck") are lenses for finding things, and a cluster becomes a group in one click. A thread is one click away from any group. In phase 1 the window is a grouped list; the canvas (phase 2) is a second layout for the same window, not a different product.
 1. **Group-scoped chat.** A thread is pinned to a group, never the live camera. Its region is one version of the group's membership. When the group changes, its working threads move to the new version with a visible marker in the chat, never silently and never because the camera moved. The agent gets a typed TypeScript module whose functions are partially applied over the region's IDs (`jira.listStories()` already has `epicKey` bound; `items.read()` works for any item in the region, from any source) and writes code against it in a sandbox. No long tool lists.
 2. **Change sets, not writes.** In the sandbox, reads proxy live; writes are captured (create story, update description, set estimate). The user sees a diff, approves, we replay. No approve, no write, ever. Every applied change set stores its reverse diff and is revertible. Every change set has a shareable review link that opens the diff and an approve button; this is how Oriel reaches Slack, Teams and email without a bot.
-3. **Thread states:** working / done (change set applied, or the user marked it done, so a thread over read-only items can settle) / handed off (assignee changed or external link attached) / dropped (auto after 7 days idle). The inbox is these threads.
+3. **Thread states:** working / done (change set applied, or the user marked it done, so a thread over read-only items can settle) / handed off (assignee changed or external link attached) / dropped (auto after 7 days idle). Every thread stays in sight in its state: a working one under its group in the sidebar, and in Needs you while it waits on the user; a done, handed-off or dropped one on the Done page, the latest few in the sidebar.
 4. **Semantic zoom.** Epic card ↔ story list ↔ fullscreen story. A zoomed-out view is a generated summary, so trust at the coarse level is the central product risk. Flag any place you invent a hierarchy or summary the source doesn't have.
 5. **Right rail:** one generated summary per region with links that open each item in its source, and a stale marker when the index lags.
 6. **Escape hatch:** `search()` reaches the rest of the window (anything indexed outside the region). Results are read-only and render as a distinct block in the transcript.
@@ -36,7 +36,7 @@ Core ideas, in priority order:
 ## 3. Phases
 
 - **Phase 0 — repo setup** (§10). Done first, as its own PR, so every later agent inherits it.
-- **Phase 1 — the engine and the window, no canvas.** Jira and folder sync → the window as a grouped list → a group from a cluster or hand-picked items → a thread on the group → generated per-region `.d.ts` → sandbox run with read proxy and write capture → change-set diff, approve, replay, revert, review link → inbox with four states → right-rail summary → eval harness. The pilot deliverable is the window page.
+- **Phase 1 — the engine and the window, no canvas.** Jira and folder sync → the window as a grouped list → a group from a cluster or hand-picked items → a thread on the group → generated per-region `.d.ts` → sandbox run with read proxy and write capture → change-set diff, approve, replay, revert, review link → the four thread states in the sidebar and the Done page → right-rail summary → eval harness. The pilot deliverable is the window page.
 - **The first end-to-end slice has two sources,** Jira and a local folder of markdown files, so no Jira shape leaks into core, groupings or bindings. Slack follows as the third source, read-only first, for conversation-shaped content: threads, no hierarchy (decision 0021).
 - **Phase 2 — canvas** (own implementation) and a local-first client layer. Only if phase 1 feels magical to pilot PMs rather than like a Jira filter with extra steps.
 
@@ -50,7 +50,7 @@ Core ideas, in priority order:
 - **The window:** one page, a grouped list across the index. Groupings in phase 1: by epic, by assignee, by "stuck" (no update in 14 days, or a Jira item with no estimate). Filters. Turn a cluster into a group in one click, or pick items by hand into a new or existing group; open a thread on any group.
 - Two zoom levels, hand-built, inside the list: epic row ↔ story list ↔ fullscreen story.
 - Group chat with scoped bindings, sandbox, change-set capture, approval, replay, revert, and a shareable review link that works without being logged into the thread.
-- Inbox with the four states. Right-rail summary with stale marker.
+- The four thread states in sight: Needs you and the groups in the sidebar, and the Done page. Right-rail summary with stale marker.
 - **Onboarding budget:** connect Jira → see your epics → ask one question → approve one change in under five minutes, with the word "token" appearing at most once. The clock starts when the first writable source connects. Measured, not aspired to.
 - Eval harness (§8).
 
@@ -138,7 +138,7 @@ Test mechanics:
 ## 10. Repo setup (phase 0 — do this first)
 
 - Root markdown files stay as terse as possible: if the repo already shows it, it doesn't go in. Never name the products that inspired Oriel in the repo.
-- `AGENTS.md` is canonical; `CLAUDE.md` is a symlink to it (CI checks `readlink`, no trailing newline). Under 80 lines: commands, gotchas, a pointer to the glossary, a "ways to hurt yourself" section, a "hit every surface" checklist (the window list and every grouping, both zoom levels, right rail, change-set diff, review link, inbox state, eval fixture, telemetry event), the dependency allowlist. Do not describe architecture; the repo is the architecture.
+- `AGENTS.md` is canonical; `CLAUDE.md` is a symlink to it (CI checks `readlink`, no trailing newline). Under 80 lines: commands, gotchas, a pointer to the glossary, a "ways to hurt yourself" section, a "hit every surface" checklist (the window list and every grouping, both zoom levels, right rail, change-set diff, review link, thread states (Needs you, Done), eval fixture, telemetry event), the dependency allowlist. Do not describe architecture; the repo is the architecture.
 - `.claude/rules/sandbox.md` (paths: `packages/sandbox/**`) and `.claude/rules/bindings.md` (paths: `packages/bindings/**`) hold the invariants from §5 and §7.
 - `.claude/skills/`: `add-source` (adapter + fixtures + evals), `add-eval` (case with golden diff), `unit-tests` (what makes tests slow or flaky), `add-adr`, `release` with `disable-model-invocation: true`.
 - `.claude/agents/`: two read-only reviewers (tools Read, Grep, Glob): `correctness-reviewer` and `security-reviewer` (decision 0013).

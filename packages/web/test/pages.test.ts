@@ -59,7 +59,7 @@ test("routes read from and write to the address bar", () => {
     { page: "window", grouping: "epic", addTo: groupId },
     { page: "group", id: groupId },
     { page: "thread", id },
-    { page: "inbox" },
+    { page: "done" },
     { page: "review", token: "abc_DEF-123" },
   ] as const;
   for (const route of routes) {

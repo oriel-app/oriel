@@ -26,7 +26,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 ## Hit every surface
 
-A change to items, threads or change sets is checked against: the window list under each grouping (epic, assignee, stuck), group editing and the region-version marker, both zoom levels, the right rail, the change-set diff, the review link, inbox states, an eval fixture and a telemetry event.
+A change to items, threads or change sets is checked against: the window list under each grouping (epic, assignee, stuck), group editing and the region-version marker, both zoom levels, the right rail, the change-set diff, the review link, thread states (Needs you, the Done page), an eval fixture and a telemetry event.
 
 ## Dependencies
 

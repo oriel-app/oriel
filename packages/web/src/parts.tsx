@@ -293,6 +293,12 @@ export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+// An estimate in story points, wherever the window shows one: "1 point",
+// "3 points", or "1 pt" and "3 pts" where a row has little room.
+export function points(count: number, short = false): string {
+  return plural(count, short ? "pt" : "point");
+}
+
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/);
   const first = Array.from(words[0] ?? "")[0] ?? "";

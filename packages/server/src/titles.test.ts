@@ -71,7 +71,7 @@ async function opened(t: TestContext, titler?: Titler) {
   const { id } = json<{ id: string }>(reply);
   const titles = async () => ({
     thread: json<ThreadView>(await app.get(`/api/threads/${id}`)).title,
-    inbox: json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.map(
+    list: json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.map(
       (thread) => thread.title,
     ),
     group: json<GroupView>(await app.get(`/api/groups/${group.id}`)).threads.map(
@@ -87,7 +87,7 @@ test("the model's title replaces the clipped message on every list, and pages he
   // Only the person's message goes to the titler.
   assert.deepEqual(held.asked, [longAsk]);
   const clipped = clippedTitle(longAsk);
-  assert.deepEqual(await app.titles(), { thread: clipped, inbox: [clipped], group: [clipped] });
+  assert.deepEqual(await app.titles(), { thread: clipped, list: [clipped], group: [clipped] });
 
   const reply = await app.get(`/api/threads/${app.id}/events`);
   const stream = reply.stream?.[Symbol.asyncIterator]();
@@ -112,7 +112,7 @@ test("the model's title replaces the clipped message on every list, and pages he
   await app.app.settled();
   assert.deepEqual(await app.titles(), {
     thread: "Unowned checkout stories",
-    inbox: ["Unowned checkout stories"],
+    list: ["Unowned checkout stories"],
     group: ["Unowned checkout stories"],
   });
   // The thread's page hears the new title; the lists hear a thread moved.

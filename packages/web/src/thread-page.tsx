@@ -9,6 +9,7 @@ import {
   Link,
   Markdown,
   plural,
+  points,
   StateChip,
   TypeMark,
 } from "./parts.tsx";
@@ -44,6 +45,16 @@ const fieldNames: Record<string, string> = {
 };
 const fieldName = (name: string) => fieldNames[name] ?? (name.startsWith("link:") ? "Link" : name);
 
+// An estimate reads in points; any other value as the server sent it.
+function withUnits(field: Field): Field {
+  if (field.name !== "points") return field;
+  const shown = (text: string | null) =>
+    text !== null && text.trim() !== "" && Number.isFinite(Number(text))
+      ? points(Number(text))
+      : text;
+  return { ...field, before: shown(field.before), after: shown(field.after) };
+}
+
 const statusNames: Record<ChangeSetView["status"], string> = {
   open: "Awaiting review",
   approved: "Ready to apply",
@@ -63,8 +74,12 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
         <p class="failed" role="status">
           This thread was deleted.
         </p>
-        <Link route={{ page: "inbox" }} dispatch={dispatch} class="quiet-action">
-          Go to the inbox
+        <Link
+          route={{ page: "window", grouping: "epic", addTo: null }}
+          dispatch={dispatch}
+          class="quiet-action"
+        >
+          Go to the window
         </Link>
       </main>
     );
@@ -595,9 +610,13 @@ export function Diff(props: {
 }) {
   const offered = (id: string) =>
     props.onRemove !== undefined && (props.removable ?? []).includes(id);
+  const shown = props.diff.lines.map((line) => ({
+    ...line,
+    fields: line.fields.map(withUnits),
+  }));
   return (
     <ul class="diff">
-      {props.diff.lines.map((line) => (
+      {shown.map((line) => (
         <li
           key={line.mutationId}
           class="diff-line"
