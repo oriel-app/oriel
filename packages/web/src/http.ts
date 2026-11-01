@@ -23,7 +23,7 @@ export type Tag =
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "reviewLink"; changeSetId: string }
-  | { kind: "inbox" }
+  | { kind: "threads" }
   | { kind: "markedDone"; threadId: string }
   | { kind: "deletion"; threadId: string }
   | { kind: "deleted"; threadId: string }

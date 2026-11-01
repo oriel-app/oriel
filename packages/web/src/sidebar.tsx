@@ -87,7 +87,7 @@ export function Sidebar(props: {
       <Done
         where={where}
         loaded={model.threads !== null}
-        onPage={page === "inbox"}
+        onPage={page === "done"}
         dispatch={dispatch}
       />
       <div class="sources">
@@ -326,7 +326,7 @@ function Done(props: { where: Nav; loaded: boolean; onPage: boolean; dispatch: D
           {done.length > shownDone && (
             <li>
               <Link
-                route={{ page: "inbox" }}
+                route={{ page: "done" }}
                 dispatch={dispatch}
                 class="nav-link nav-more"
                 aria-current={props.onPage ? "page" : undefined}

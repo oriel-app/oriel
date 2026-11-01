@@ -131,7 +131,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       return model.thread && <ThreadPage model={model.thread} dispatch={dispatch} />;
     case "new-thread":
       return model.newThread && <NewThreadPage model={model.newThread} dispatch={dispatch} />;
-    case "inbox":
+    case "done":
       return (
         <DonePage
           finished={model.threads && nav(model).finished}

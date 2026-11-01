@@ -240,7 +240,7 @@ test("telemetry keeps each raw event, oldest first", () => {
   ]);
 });
 
-test("the inbox and a thread's change sets are read through indexes", () => {
+test("the threads list and a thread's change sets are read through indexes", () => {
   const { db } = fresh();
   const plan = (sql: string) =>
     db

@@ -23,7 +23,7 @@ export function DonePage(props: {
       </main>
     );
   const page = donePage(props.finished, props.number);
-  const to = (number: number) => ({ page: "inbox" as const, number });
+  const to = (number: number) => ({ page: "done" as const, number });
   return (
     <main class="page done-page">
       <h1 class="page-title">Done</h1>

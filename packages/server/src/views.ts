@@ -50,7 +50,7 @@ export type ViewDeps = {
   writable: boolean;
 };
 
-// What fits on one line of the inbox beside a thread's group and time.
+// What fits on one line of a list of threads beside a thread's group and time.
 const maxTitleChars = 60;
 
 // A thread's title until the model's arrives, or if it never does: the
@@ -397,7 +397,7 @@ export function views(deps: ViewDeps) {
       };
     },
 
-    inbox(workspaceId: Ulid): Promise<ThreadSummaryView[]> {
+    threads(workspaceId: Ulid): Promise<ThreadSummaryView[]> {
       return Promise.all(threads.list(workspaceId, deps.now()).map(threadSummary));
     },
 

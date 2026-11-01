@@ -1,7 +1,7 @@
 // Where the page is: the window (with a grouping, and maybe a group it is
 // adding items to), a group, a thread, a new thread not started yet, the
-// inbox, or a review link. The inbox shows the done threads, a page at a
-// time, and the user knows it as the Done page, at /done.
+// Done page (the threads no longer working, a page at a time), or a review
+// link.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
 export type Route =
@@ -10,7 +10,7 @@ export type Route =
   | { page: "thread"; id: string }
   | { page: "new-thread" }
   // `number`: the page of done threads, from 1; absent for the first.
-  | { page: "inbox"; number?: number }
+  | { page: "done"; number?: number }
   | { page: "review"; token: string };
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
@@ -29,9 +29,7 @@ export function parseRoute(pathname: string, search: string): Route {
   if (pathname === "/threads/new") return { page: "new-thread" };
   if (pathname === "/done") {
     const number = Number(query.get("page"));
-    return Number.isSafeInteger(number) && number > 1
-      ? { page: "inbox", number }
-      : { page: "inbox" };
+    return Number.isSafeInteger(number) && number > 1 ? { page: "done", number } : { page: "done" };
   }
   const grouping = query.get("grouping");
   const addTo = query.get("addTo");
@@ -55,7 +53,7 @@ export function routeUrl(route: Route): string {
       return `/threads/${route.id}`;
     case "new-thread":
       return "/threads/new";
-    case "inbox":
+    case "done":
       return route.number && route.number > 1 ? `/done?page=${route.number}` : "/done";
     case "review":
       return `/review/${route.token}`;

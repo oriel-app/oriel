@@ -58,7 +58,7 @@ import {
 import type {
   GroupsView,
   GroupSummary,
-  InboxView,
+  ThreadsView,
   StreamEvent,
   ThreadSummaryView,
 } from "./view.ts";
@@ -109,7 +109,7 @@ export type Msg =
 // when their counts may have moved, since the sidebar shows them beside the
 // page that moved them.
 const loadGroups: Effect = get("/api/groups", { kind: "groups" });
-const loadThreads: Effect = get("/api/threads", { kind: "inbox" });
+const loadThreads: Effect = get("/api/threads", { kind: "threads" });
 const lists: Effect[] = [loadGroups, loadThreads, loadFolder, loadJira];
 
 export function init(route: Route): [Model, Effect[]] {
@@ -193,7 +193,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
         { ...base, newThread: initNewThread(model.drafts + 1), drafts: model.drafts + 1 },
         [...leaving, ...lists, ...watching],
       ];
-    case "inbox":
+    case "done":
       return [base, [...leaving, ...lists, ...watching]];
     case "review": {
       const [review, effects] = initReview(route.token);
@@ -263,7 +263,7 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       }
       const [thread, effects] = streamed(model.thread, msg.event);
       // Its turn starting or ending, or a change set of it moving, changes what
-      // it waits on, and an end may move it between inbox states. The status
+      // it waits on, and an end may move it between thread states. The status
       // the stream opens with covers what moved before it opened.
       const moved = msg.event.type !== "entry";
       return [{ ...model, thread }, moved ? [...effects, loadThreads, loadGroups] : effects];
@@ -280,8 +280,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
   switch (msg.tag.kind) {
     case "groups":
       return msg.ok ? [{ ...model, groups: (msg.body as GroupsView).groups }, []] : [model, []];
-    case "inbox":
-      return msg.ok ? [{ ...model, threads: (msg.body as InboxView).threads }, []] : [model, []];
+    case "threads":
+      return msg.ok ? [{ ...model, threads: (msg.body as ThreadsView).threads }, []] : [model, []];
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
@@ -373,7 +373,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
 
 // Once a thread closed from a list: every list that shows it reloads, and
 // so does the page it's on. A page showing a thread or group that is gone
-// gives way, in history too, to the group's page or the inbox.
+// gives way, in history too, to the group's page or the Done page.
 function closed(model: Model, msg: Replied): [Model, Effect[]] {
   if (!msg.ok || msg.tag.kind === "deletion" || !("threadId" in msg.tag)) return [model, []];
   const { threadId } = msg.tag;
@@ -383,7 +383,7 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
   if (deleted) {
     const gone = (page: Route): Effect => ({ type: "navigate", route: page, replace: true });
     const away: Route = deleted.groupRemoved
-      ? { page: "inbox" }
+      ? { page: "done" }
       : { page: "group", id: deleted.groupId };
     if (route.page === "thread" && route.id === threadId) return [model, [...lists, gone(away)]];
     if (route.page === "group" && route.id === deleted.groupId)

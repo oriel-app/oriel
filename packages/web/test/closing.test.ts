@@ -25,8 +25,8 @@ const urls = (effects: Effect[]) =>
 const nothing = { applied: 0, reverted: 0, unconfirmed: 0, sources: [] };
 
 test("marking a thread done from its menu posts as the page's button does, and reloads what shows it", () => {
-  const [inbox] = init({ page: "inbox" });
-  const [asked, effects] = run(inbox, closing({ type: "markDoneClicked", threadId, via: "menu" }));
+  const [done] = init({ page: "done" });
+  const [asked, effects] = run(done, closing({ type: "markDoneClicked", threadId, via: "menu" }));
   assert.deepEqual(effects, [
     {
       type: "http",
@@ -55,9 +55,9 @@ test("marking a thread done from its menu posts as the page's button does, and r
 });
 
 test("a failed close says why, until dismissed", () => {
-  const [inbox] = init({ page: "inbox" });
+  const [done] = init({ page: "done" });
   const [failed, effects] = run(
-    inbox,
+    done,
     closing({ type: "markDoneClicked", threadId, via: "menu" }),
     replied({ kind: "markedDone", threadId }, { error: "no such thread" }, false),
   );
@@ -99,18 +99,18 @@ test("delete asks once, after saying what it would lose, then leaves a page that
     route: { page: "group", id: groupId },
     replace: true,
   });
-  // A group made for it went too: the inbox, then.
+  // A group made for it went too: the Done page, then.
   const [, removed] = run(
     deleting,
     replied({ kind: "deleted", threadId }, { groupId, groupRemoved: true }),
   );
-  assert.deepEqual(removed.at(-1), { type: "navigate", route: { page: "inbox" }, replace: true });
+  assert.deepEqual(removed.at(-1), { type: "navigate", route: { page: "done" }, replace: true });
 });
 
 test("cancelling a delete deletes nothing, and a refused one keeps asking with why", () => {
-  const [inbox] = init({ page: "inbox" });
+  const [done] = init({ page: "done" });
   const [told] = run(
-    inbox,
+    done,
     closing({ type: "deleteClicked", threadId, title: "New thread", via: "menu" }),
     replied({ kind: "deletion", threadId }, nothing),
   );

@@ -63,7 +63,7 @@ test("a page number past either end shows the nearest page", () => {
 
 test("Done holds every thread no longer working, most recently active first", () => {
   const model: Model = {
-    ...init({ page: "inbox" })[0],
+    ...init({ page: "done" })[0],
     threads: [
       thread(3),
       thread(1, "working"),
@@ -86,16 +86,16 @@ test("Done holds every thread no longer working, most recently active first", ()
 });
 
 test("the Done page is at /done, with its page number past the first", () => {
-  assert.equal(routeUrl({ page: "inbox" }), "/done");
-  assert.equal(routeUrl({ page: "inbox", number: 1 }), "/done");
-  assert.equal(routeUrl({ page: "inbox", number: 3 }), "/done?page=3");
-  assert.deepEqual(parseRoute("/done", "?page=3"), { page: "inbox", number: 3 });
-  assert.deepEqual(parseRoute("/done", ""), { page: "inbox" });
+  assert.equal(routeUrl({ page: "done" }), "/done");
+  assert.equal(routeUrl({ page: "done", number: 1 }), "/done");
+  assert.equal(routeUrl({ page: "done", number: 3 }), "/done?page=3");
+  assert.deepEqual(parseRoute("/done", "?page=3"), { page: "done", number: 3 });
+  assert.deepEqual(parseRoute("/done", ""), { page: "done" });
   // The inbox's old address is gone: it opens the window, as any unknown one does.
   assert.equal(parseRoute("/inbox", "").page, "window");
   // A page that isn't one is the first.
   for (const search of ["?page=1", "?page=0", "?page=-2", "?page=2.5", "?page=x"])
-    assert.deepEqual(parseRoute("/done", search), { page: "inbox" }, search);
+    assert.deepEqual(parseRoute("/done", search), { page: "done" }, search);
 });
 
 test("a group's page lists the threads the sidebar does, as they move", () => {
@@ -123,7 +123,7 @@ test("a group's page lists the threads the sidebar does, as they move", () => {
   assert.ok(reloads.some((effect) => effect.type === "http" && effect.url === "/api/threads"));
   const [after] = update(moved, {
     type: "replied",
-    tag: { kind: "inbox" },
+    tag: { kind: "threads" },
     ok: true,
     body: { threads: [thread(1, "working"), thread(2, "done"), thread(5, "working", groupB)] },
   });

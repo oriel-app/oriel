@@ -52,7 +52,7 @@ const at = (route: Route, lists = true): Model => ({
 });
 
 test("each group lists its own threads, most recently active first", () => {
-  const where = nav(at({ page: "inbox" }));
+  const where = nav(at({ page: "done" }));
   assert.deepEqual(
     where.groups?.map((entry) => [entry.group.name, entry.threads.map((each) => each.id)]),
     [
@@ -94,7 +94,7 @@ test("every page but a review link loads what the sidebar shows, the folder incl
     { page: "window", grouping: "epic", addTo: null },
     { page: "group", id: groupA },
     { page: "thread", id: "01JBZ0000000000000000000T1" },
-    { page: "inbox" },
+    { page: "done" },
   ] as const)
     for (const url of ["/api/groups", "/api/threads", "/api/folder"])
       assert.ok(urls(route).includes(url), `${route.page} loads ${url}`);
@@ -150,8 +150,8 @@ test("a drop on a thread reaches the thread, even after a visit to its group's p
 
 test("a drop that answers after the user moved on still reloads the groups", () => {
   const onGroup = init({ page: "group", id: groupA })[0];
-  const [onInbox] = update(onGroup, { type: "routed", route: { page: "inbox" } });
-  const [, effects] = update(onInbox, {
+  const [onDone] = update(onGroup, { type: "routed", route: { page: "done" } });
+  const [, effects] = update(onDone, {
     type: "replied",
     tag: { kind: "dropped", groupId: groupA },
     ok: true,
@@ -168,7 +168,7 @@ test("one stream per page says when any thread moves, and a move reloads both li
   for (const route of [
     { page: "window", grouping: "epic", addTo: null },
     { page: "group", id: groupA },
-    { page: "inbox" },
+    { page: "done" },
   ] as const)
     assert.deepEqual(watching(route), ["watchThreads"], route.page);
   // A thread's own stream says, and a review link watches nothing.
@@ -178,7 +178,7 @@ test("one stream per page says when any thread moves, and a move reloads both li
   assert.deepEqual(watching({ page: "review", token: "abc_DEF-123" }), []);
   const urls = (effects: ReturnType<typeof update>[1]) =>
     effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
-  const [, moved] = update(init({ page: "inbox" })[0], { type: "threadsMoved" });
+  const [, moved] = update(init({ page: "done" })[0], { type: "threadsMoved" });
   assert.deepEqual(urls(moved), ["/api/threads", "/api/groups"]);
   const onThread = init({ page: "thread", id: "01JBZ0000000000000000000T1" })[0];
   const [, told] = update(onThread, { type: "streamed", event: { type: "threads" } });
@@ -241,7 +241,7 @@ test("a thread page whose thread didn't load watches every thread instead", () =
 });
 
 test("New thread makes nothing until its first message, which starts it once", () => {
-  const [model] = init({ page: "inbox" });
+  const [model] = init({ page: "done" });
   const [, clicked] = update(model, { type: "linkClicked", route: { page: "new-thread" } });
   assert.deepEqual(clicked, [{ type: "navigate", route: { page: "new-thread" } }]);
   const [draft, entered] = update(model, { type: "routed", route: { page: "new-thread" } });
@@ -280,7 +280,7 @@ test("New thread makes nothing until its first message, which starts it once", (
 });
 
 test("a first message that fails says why and keeps the draft", () => {
-  const [draft] = update(init({ page: "inbox" })[0], {
+  const [draft] = update(init({ page: "done" })[0], {
     type: "routed",
     route: { page: "new-thread" },
   });
@@ -307,7 +307,7 @@ test("a first message that fails says why and keeps the draft", () => {
 });
 
 test("a draft left before sending is dropped; one sent before leaving shows in the lists", () => {
-  const [draft] = update(init({ page: "inbox" })[0], {
+  const [draft] = update(init({ page: "done" })[0], {
     type: "routed",
     route: { page: "new-thread" },
   });
@@ -315,7 +315,7 @@ test("a draft left before sending is dropped; one sent before leaving shows in t
     type: "newThread",
     msg: { type: "draftChanged", text: "Plan kiosk wallets" },
   });
-  const [left, leaving] = update(typed, { type: "routed", route: { page: "inbox" } });
+  const [left, leaving] = update(typed, { type: "routed", route: { page: "done" } });
   assert.equal(left.newThread, null);
   assert.ok(!leaving.some((e) => e.type === "http" && e.method === "POST"));
   assert.equal(
@@ -366,5 +366,5 @@ test("the sidebar lists the threads waiting on the user, most recently active fi
     ],
   );
   assert.equal(where.needsYou, where.waiting.length);
-  assert.deepEqual(nav(at({ page: "inbox" }, false)).waiting, []);
+  assert.deepEqual(nav(at({ page: "done" }, false)).waiting, []);
 });

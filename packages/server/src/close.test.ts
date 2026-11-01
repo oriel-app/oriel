@@ -8,7 +8,7 @@ import type {
   DiffView,
   GroupsView,
   GroupView,
-  InboxView,
+  ThreadsView,
   StreamEvent,
   ThreadView,
 } from "@oriel/web/view";
@@ -28,10 +28,10 @@ async function thread(t: TestContext, options: Parameters<typeof testApp>[1] = {
     await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate SYN-23" }),
   );
   await app.app.settled();
-  const inbox = async () =>
-    json<InboxView>(await app.get("/api/threads")).threads.map((each) => each.id);
+  const listed = async () =>
+    json<ThreadsView>(await app.get("/api/threads")).threads.map((each) => each.id);
   const lastEvent = () => app.app.telemetry().at(-1);
-  return { ...app, groupId, threadId, inbox, lastEvent };
+  return { ...app, groupId, threadId, listed, lastEvent };
 }
 
 // Reads a stream's events until it ends.
@@ -70,7 +70,7 @@ test("a thread that wrote nothing is deleted from everywhere, and its group stay
   assert.equal((await app.get(`/api/threads/${app.threadId}`)).status, 404);
   assert.equal((await app.get(`/api/threads/${app.threadId}/deletion`)).status, 404);
   assert.equal((await app.post(`/api/threads/${app.threadId}/delete`)).status, 404);
-  assert.deepEqual(await app.inbox(), []);
+  assert.deepEqual(await app.listed(), []);
   const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
   assert.deepEqual(group.threads, []);
   assert.equal(group.group.threads.working, 0);
@@ -126,7 +126,7 @@ test("a thread that wrote to Jira says so, and once deleted keeps its records ou
     groupRemoved: false,
   });
   assert.equal(app.lastEvent()?.data.kept, true);
-  assert.deepEqual(await app.inbox(), []);
+  assert.deepEqual(await app.listed(), []);
   assert.equal((await app.get(`/api/threads/${app.threadId}`)).status, 404);
   // Its change sets can't be acted on, here or by a review link.
   assert.equal((await app.post(`/api/change-sets/${entry.changeSetId}/revert`)).status, 404);
