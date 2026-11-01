@@ -3344,17 +3344,59 @@ a.replies:hover {
   list-style: none;
 }
 
+.panel-messages + .panel-messages {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+/* Who wrote it beside what they wrote, as a conversation reads. */
 .panel-message {
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--line);
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 0 var(--space-2);
+}
+
+.panel-message[data-run] {
+  margin-top: calc(var(--space-1) - var(--space-3));
+}
+
+.panel-message .avatar {
+  grid-row: span 2;
+  grid-column: 1;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
+}
+
+.panel-message .panel-said,
+.panel-message .panel-plain {
+  grid-column: 2;
+}
+
+.panel-later {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 0 var(--space-3);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.panel-later::before,
+.panel-later::after {
+  flex: 1;
+  border-top: 1px solid var(--line);
+  content: "";
 }
 
 .panel-said {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   align-items: baseline;
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-sm);
+  margin: 0 0 0.125rem;
 }
 
 .panel-author {
@@ -3363,6 +3405,7 @@ a.replies:hover {
 
 .panel-said time {
   color: var(--text-faint);
+  font-size: var(--text-xs);
 }
 
 /* A link to an item with no web page of its own, such as a file: a button

@@ -1,13 +1,13 @@
 // A Jira issue as the panel beside the page shows it, from a live read: its
 // type, status, assignee and estimate, its description and its comments.
-import type { PanelOf } from "@oriel/core";
+import type { PanelBlock, PanelOf } from "@oriel/core";
 import { jiraContent } from "./attrs.ts";
 
 export const jiraPanel: PanelOf = (content) => {
   const read = jiraContent(content);
   if (!read.ok) return null;
   const issue = read.value;
-  return [
+  const blocks: PanelBlock[] = [
     {
       kind: "facts",
       facts: [
@@ -47,4 +47,5 @@ export const jiraPanel: PanelOf = (content) => {
       empty: "No comments.",
     },
   ];
+  return { title: null, blocks };
 };

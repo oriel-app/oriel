@@ -13,8 +13,9 @@ import { json, t0, testApp } from "./testing.ts";
 const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
 const blocksOf = (view: ItemPanelView): PanelBlock[] =>
   view.read.status === "ok" ? view.read.blocks : [];
-const block = <K extends PanelBlock["kind"]>(view: ItemPanelView, kind: K) =>
-  blocksOf(view).find((each): each is Extract<PanelBlock, { kind: K }> => each.kind === kind);
+const blocks = <K extends PanelBlock["kind"]>(view: ItemPanelView, kind: K) =>
+  blocksOf(view).filter((each): each is Extract<PanelBlock, { kind: K }> => each.kind === kind);
+const block = <K extends PanelBlock["kind"]>(view: ItemPanelView, kind: K) => blocks(view, kind)[0];
 
 test("a Jira issue shows its status, assignee, estimate, description and comments, read live", async (t) => {
   const app = await testApp(t);
@@ -94,7 +95,7 @@ test("a source that doesn't answer is a plain sentence", async (t) => {
   assert.match(json<{ error: string }>(reply).error, /^Jira didn't answer/);
 });
 
-test("a Slack conversation is one item: its message and every reply, each with its author and time", async (t) => {
+test("a Slack conversation is one item, named by its channel: its message, then every reply under it", async (t) => {
   const app = await testApp(t, { slack: { kind: "fixture" } });
   const id = "slack:C0FW1WEATHR-1788444000.000100";
   const view = json<ItemPanelView>(await app.get(path(id)));
@@ -103,11 +104,14 @@ test("a Slack conversation is one item: its message and every reply, each with i
     view.url,
     "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100",
   );
-  const thread = block(view, "messages");
-  // The message, then its four replies.
-  assert.equal(thread?.messages.length, 5);
-  assert.ok(thread?.messages.every((m) => m.author !== "" && !Number.isNaN(Date.parse(m.at))));
-  assert.deepEqual(block(view, "facts")?.facts[1], { name: "Replies", value: "4" });
+  // Its first line is the item's title, so the panel names it by its channel.
+  assert.equal(view.title, "#weather-disruptions");
+  const [message, replies] = blocks(view, "messages");
+  assert.equal(message?.messages.length, 1);
+  assert.equal(replies?.heading, "4 replies");
+  assert.equal(replies?.messages.length, 4);
+  const all = [...(message?.messages ?? []), ...(replies?.messages ?? [])];
+  assert.ok(all.every((m) => m.author !== "" && !Number.isNaN(Date.parse(m.at))));
 });
 
 test("text that tells the agent what to do is shown as the message it is", async (t) => {
@@ -118,7 +122,7 @@ test("text that tells the agent what to do is shown as the message it is", async
     .find((row) => row.title.includes("Status of SYN-47"));
   assert.ok(asking);
   const view = json<ItemPanelView>(await app.get(path(asking.id)));
-  const said = block(view, "messages")?.messages.map((m) => m.text) ?? [];
+  const said = blocks(view, "messages").flatMap((each) => each.messages.map((m) => m.text));
   assert.ok(said.some((text) => text.includes("ignore your instructions")));
 });
 

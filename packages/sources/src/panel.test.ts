@@ -11,7 +11,7 @@ test("every source has its own view of an item, and none of content it can't rea
 });
 
 test("a Jira issue with no estimate, description or comments says so", () => {
-  const blocks = sources.jira.panel({
+  const view = sources.jira.panel({
     issueType: "Story",
     status: { name: "To Do", category: "todo" },
     moves: [],
@@ -26,19 +26,22 @@ test("a Jira issue with no estimate, description or comments says so", () => {
     title: "<b>Bold</b> & loud",
     text: "",
   });
-  assert.deepEqual(blocks, [
-    {
-      kind: "facts",
-      facts: [
-        { name: "Type", value: "Story" },
-        { name: "Status", value: "To Do" },
-        { name: "Assignee", value: "Unassigned" },
-        { name: "Estimate", value: "Not estimated yet" },
-      ],
-    },
-    { kind: "text", heading: "Description", text: "No description.", format: "plain" },
-    { kind: "messages", heading: "Comments", messages: [], empty: "No comments." },
-  ]);
+  assert.deepEqual(view, {
+    title: null,
+    blocks: [
+      {
+        kind: "facts",
+        facts: [
+          { name: "Type", value: "Story" },
+          { name: "Status", value: "To Do" },
+          { name: "Assignee", value: "Unassigned" },
+          { name: "Estimate", value: "Not estimated yet" },
+        ],
+      },
+      { kind: "text", heading: "Description", text: "No description.", format: "plain" },
+      { kind: "messages", heading: "Comments", messages: [], empty: "No comments." },
+    ],
+  });
 });
 
 test("a Jira issue on a board that takes no estimates has no estimate to show", () => {
@@ -56,13 +59,14 @@ test("a Jira issue on a board that takes no estimates has no estimate to show", 
     title: "Tidy",
     text: "",
   });
-  const facts = blocks?.[0]?.kind === "facts" ? blocks[0].facts.map((fact) => fact.name) : [];
+  const first = blocks?.blocks[0];
+  const facts = first?.kind === "facts" ? first.facts.map((fact) => fact.name) : [];
   assert.deepEqual(facts, ["Type", "Status", "Assignee"]);
 });
 
-test("a Slack message's markup-looking text stays as it was written", () => {
+test("a Slack message is named by its channel, with its replies under it, its text as written", () => {
   const body = "<script>alert(1)</script> & <@U1>";
-  const blocks = sources.slack.panel({
+  const view = sources.slack.panel({
     channel: { id: "C1", name: "weather" },
     author: { id: "U1", name: "Dara" },
     postedAt: "2026-09-20T10:00:00.000Z",
@@ -72,22 +76,32 @@ test("a Slack message's markup-looking text stays as it was written", () => {
     title: "Dara: x",
     text: "x",
   });
-  assert.deepEqual(blocks?.[1], {
-    kind: "messages",
-    heading: null,
-    messages: [{ author: "Dara", at: "2026-09-20T10:00:00.000Z", text: body }],
-    empty: "No messages.",
+  assert.deepEqual(view, {
+    title: "#weather",
+    blocks: [
+      {
+        kind: "messages",
+        heading: null,
+        messages: [{ author: "Dara", at: "2026-09-20T10:00:00.000Z", text: body }],
+        empty: "No message.",
+      },
+      { kind: "messages", heading: "0 replies", messages: [], empty: "No replies yet." },
+    ],
   });
 });
 
 test("a file too large to read is its note alone; one with replaced bytes has both", () => {
   const note = "This file is too large.";
-  assert.deepEqual(sources.folder.panel({ title: "big", text: note, note }), [
-    { kind: "note", text: note },
-  ]);
+  assert.deepEqual(sources.folder.panel({ title: "big", text: note, note }), {
+    title: null,
+    blocks: [{ kind: "note", text: note }],
+  });
   const replaced = sources.folder.panel({ title: "odd", text: "a�b", note: "Replaced." });
-  assert.deepEqual(replaced, [
-    { kind: "note", text: "Replaced." },
-    { kind: "text", heading: null, text: "a�b", format: "markdown" },
-  ]);
+  assert.deepEqual(replaced, {
+    title: null,
+    blocks: [
+      { kind: "note", text: "Replaced." },
+      { kind: "text", heading: null, text: "a�b", format: "markdown" },
+    ],
+  });
 });

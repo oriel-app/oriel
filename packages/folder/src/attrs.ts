@@ -63,11 +63,15 @@ export const folderPanel: PanelOf = (content) => {
   const read = folderContent(content);
   if (!read.ok) return null;
   const { text, note } = read.value;
-  if (note !== null && text === note) return [{ kind: "note", text: note }];
-  return [
-    ...(note === null ? [] : [{ kind: "note" as const, text: note }]),
-    { kind: "text", heading: null, text, format: "markdown" },
-  ];
+  if (note !== null && text === note)
+    return { title: null, blocks: [{ kind: "note", text: note }] };
+  return {
+    title: null,
+    blocks: [
+      ...(note === null ? [] : [{ kind: "note" as const, text: note }]),
+      { kind: "text", heading: null, text, format: "markdown" },
+    ],
+  };
 };
 
 // The folder as it declares itself to the composition root: read-only, so it

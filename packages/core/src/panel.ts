@@ -25,6 +25,11 @@ export type PanelBlock =
   // Oriel's own words about the read, such as a file too large to show.
   | { kind: "note"; text: string };
 
+// A source's view of an item: its blocks, and a title when the item's own
+// would only repeat them, as a message's first line repeats the message. Null
+// keeps the item's title.
+export type PanelView = { title: string | null; blocks: PanelBlock[] };
+
 // A source's view of an item from what its read returned (`content`, checked
 // by the adapter), or null when the content isn't in a shape it can read.
-export type PanelOf = (content: unknown) => PanelBlock[] | null;
+export type PanelOf = (content: unknown) => PanelView | null;

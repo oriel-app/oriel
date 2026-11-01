@@ -63,12 +63,12 @@ export function itemPanels(deps: PanelDeps): ItemPanels {
           },
         };
       }
-      const blocks = source.panel(result.content);
-      const title = result.content.title;
+      const shown = source.panel(result.content);
+      const title = shown?.title ?? result.content.title;
       return {
         ...base,
         title: title.trim() === "" ? base.title : title,
-        read: blocks === null ? { status: "unreadable" } : { status: "ok", blocks },
+        read: shown === null ? { status: "unreadable" } : { status: "ok", blocks: shown.blocks },
       };
     },
     stamp(id) {

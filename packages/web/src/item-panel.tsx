@@ -6,7 +6,7 @@ import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
 import { behind, type PanelModel } from "./panel.ts";
-import { type Dispatch, ItemKey, keyLabel, Markdown, when } from "./parts.tsx";
+import { type Dispatch, initials, ItemKey, keyLabel, Markdown, plural, when } from "./parts.tsx";
 import { safeHref } from "./route.ts";
 import type { ItemPanelView, PanelBlock } from "./view.ts";
 
@@ -152,23 +152,50 @@ function Block({ block }: { block: PanelBlock }) {
           {block.messages.length === 0 ? (
             <p class="panel-empty">{block.empty}</p>
           ) : (
-            <ol class="panel-thread">
-              {block.messages.map((message, i) => (
-                <li key={i} class="panel-message">
-                  <p class="panel-said">
-                    <span class="panel-author">{message.author}</span>
-                    <time dateTime={message.at}>{when(message.at)}</time>
-                  </p>
-                  <Plain text={message.text} />
-                </li>
-              ))}
-            </ol>
+            <Messages messages={block.messages} />
           )}
         </section>
       );
     case "note":
       return <p class="panel-note">{block.text}</p>;
   }
+}
+
+type Message = Extract<PanelBlock, { kind: "messages" }>["messages"][number];
+
+const minute = 60_000;
+const day = 24 * 60 * minute;
+
+// Messages as a conversation reads: each with who wrote it, a run by one
+// person within a few minutes under their name once, and a long pause marked.
+function Messages({ messages }: { messages: Message[] }) {
+  return (
+    <ol class="panel-thread">
+      {messages.map((message, i) => {
+        const before = messages[i - 1];
+        const gap = before ? Date.parse(message.at) - Date.parse(before.at) : 0;
+        const later = gap >= day ? Math.floor(gap / day) : 0;
+        const run = before?.author === message.author && later === 0 && gap < 5 * minute;
+        return (
+          <li key={i} class="panel-message" data-run={run || undefined}>
+            {later > 0 && <p class="panel-later">{plural(later, "day")} later</p>}
+            {!run && (
+              <>
+                <span class="avatar" aria-hidden="true">
+                  {initials(message.author)}
+                </span>
+                <p class="panel-said">
+                  <span class="panel-author">{message.author}</span>
+                  <time dateTime={message.at}>{when(message.at)}</time>
+                </p>
+              </>
+            )}
+            <Plain text={message.text} />
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 // Text as written: blank lines part paragraphs, and each line stays a line.
