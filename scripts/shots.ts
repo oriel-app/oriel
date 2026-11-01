@@ -15,10 +15,15 @@
 // reads the Slack fixture's picked channel. Three more hand a story to the
 // team: one change set moves it in Jira and posts in Slack's channel,
 // proposed on one, approved on the next, and reverted on the last (OA-28).
+//
+// `pnpm shots --width 1440 panel-` takes only the scenes whose names
+// start with `panel-`, at 1440px wide; with neither, every scene at 1280px
+// and 390px, and the onboarding.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
@@ -1147,7 +1152,12 @@ const scenes: Scene[] = [
     },
   },
 ];
-const widths = [1280, 390];
+const asked = parseArgs({
+  options: { width: { type: "string", multiple: true } },
+  allowPositionals: true,
+});
+const widths = asked.values.width?.map(Number) ?? [1280, 390];
+const picked = asked.positionals;
 const themes = ["light", "dark"] as const;
 
 const browser = await chromium.launch({ channel: "chrome" });
@@ -1172,6 +1182,8 @@ try {
       });
       page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
       for (scene of scenes) {
+        const { name } = scene;
+        if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
         await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
@@ -1185,7 +1197,7 @@ try {
       await context.close();
     }
   }
-  await onboarding();
+  if (picked.length === 0) await onboarding();
 } finally {
   await browser.close();
   await server.close();

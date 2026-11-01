@@ -26,6 +26,9 @@
   --bar-height: 0rem;
   --rail: 15rem;
   --chat: 44rem;
+  /* Motion: how long a short entrance takes, and how it settles. */
+  --motion: 180ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --bg: #f7f7f5;
   --surface: #ffffff;
@@ -231,6 +234,8 @@ a {
 
 .shell-main {
   min-width: 0;
+  /* The page lays out by its own width, which the panel beside it narrows. */
+  container: page / inline-size;
 }
 
 .icon {
@@ -1578,6 +1583,7 @@ a.replies {
   color: var(--text-muted);
   font-size: var(--text-sm);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 a.replies:hover {
@@ -1625,14 +1631,14 @@ a.replies:hover {
 .selection-bar {
   position: fixed;
   bottom: var(--space-4);
-  /* Centred on the page beside the sidebar. */
-  left: calc(50% + var(--sidebar) / 2);
+  /* Centred on the page, between the sidebar and the panel. */
+  left: calc(50% + (var(--sidebar) - var(--beside)) / 2);
   z-index: 4;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
-  max-width: calc(100vw - var(--sidebar) - 2 * var(--space-4));
+  max-width: calc(100vw - var(--sidebar) - var(--beside) - 2 * var(--space-4));
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -2637,6 +2643,9 @@ a.replies:hover {
 
 .members.compact .member {
   grid-template-columns: 0.5rem auto minmax(0, 1fr);
+  /* A message's replies take a column of their own on its line, as wide as
+     they need, rather than wrapping under it. */
+  grid-auto-flow: column;
   gap: var(--space-2);
   min-height: 1.75rem;
   padding: 0;
@@ -2748,10 +2757,11 @@ a.replies:hover {
   color: var(--danger);
 }
 
-/* Narrow screens: the rails move inline, and rows wrap to two lines. The
-   sidebar takes room, so the region moves under the chat before the rows wrap. */
+/* A narrow page, on a narrow screen or beside the panel: the rails move
+   inline, and rows wrap to two lines. The region moves under the chat before
+   the rows wrap, where a 1180px screen leaves the page beside the sidebar. */
 
-@media (max-width: 1180px) {
+@container page (max-width: 932px) {
   .thread-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2782,7 +2792,7 @@ a.replies:hover {
   }
 }
 
-@media (max-width: 760px) {
+@container page (max-width: 760px) {
   .window-layout {
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3) 7rem;
@@ -2902,8 +2912,9 @@ a.replies:hover {
     padding-left: 2.25rem;
   }
 
+  /* A status gives way; a message's replies keep their place. */
   .member {
-    grid-template-columns: 0.5rem auto minmax(0, 1fr) 1.5rem;
+    grid-template-columns: 0.5rem auto minmax(0, 1fr) auto 1.5rem;
   }
 
   .member .status {
@@ -2929,7 +2940,10 @@ a.replies:hover {
   .marker::after {
     display: none;
   }
+}
 
+/* A review link's page has no shell around it, so these follow the screen. */
+@media (max-width: 760px) {
   .field {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
@@ -2947,7 +2961,9 @@ a.replies:hover {
 .drop-veil {
   position: fixed;
   inset: calc(var(--bar-height) + 0.5rem) 0.5rem 0.5rem;
-  /* Over the page only: leaving it for the sidebar is leaving the zone. */
+  /* Over the page only: leaving it for the sidebar or the panel is leaving
+     the zone. */
+  right: calc(var(--beside, 0rem) + 0.5rem);
   left: calc(var(--sidebar, 0rem) + 0.5rem);
   z-index: 20;
   display: grid;
@@ -3060,7 +3076,7 @@ a.replies:hover {
 .closing-problem {
   position: fixed;
   bottom: var(--space-4);
-  left: calc(50% + var(--sidebar) / 2);
+  left: calc(50% + (var(--sidebar) - var(--beside)) / 2);
   z-index: 22;
   display: flex;
   align-items: center;
@@ -3079,7 +3095,7 @@ a.replies:hover {
 .undos {
   position: fixed;
   bottom: var(--space-4);
-  left: calc(50% + var(--sidebar) / 2);
+  left: calc(50% + (var(--sidebar) - var(--beside)) / 2);
   z-index: 22;
   display: grid;
   justify-items: center;
@@ -3178,12 +3194,16 @@ a.replies:hover {
   }
 }
 
-/* The panel beside the page: one item in its source's own view. Wide screens
-   make room for it; narrower ones lay it over the page's right side, and a
-   phone gives it the whole screen. */
+/* The panel beside the page: one item in its source's own view. Screens with
+   room for a phone-width page beside it, laptops included, narrow the page at
+   once; narrower ones lay it over the page's right side, and a phone gives it
+   the whole screen. It arrives with a short slide and fade, and only moves:
+   nothing beside or inside it reflows. */
 
 .shell {
   --panel: 30rem;
+  /* The room the panel takes beside the page. */
+  --beside: 0rem;
 }
 
 .item-panel {
@@ -3202,11 +3222,42 @@ a.replies:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow-wrap: anywhere;
+  transition:
+    opacity var(--motion) var(--ease-out),
+    transform var(--motion) var(--ease-out);
 }
 
-@media (min-width: 1400px) {
-  .shell[data-panel] .shell-main {
-    margin-right: var(--panel);
+@starting-style {
+  .item-panel {
+    opacity: 0;
+    transform: translateX(0.375rem);
+  }
+}
+
+/* Its contents fade in with it, and again for each item it shows. */
+.item-panel > * {
+  animation: panel-fade var(--motion) var(--ease-out);
+}
+
+@keyframes panel-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item-panel {
+    transition-property: opacity;
+  }
+}
+
+.shell-main {
+  margin-right: var(--beside);
+}
+
+@media (min-width: 1100px) {
+  .shell[data-panel] {
+    --beside: var(--panel);
   }
 
   .item-panel {

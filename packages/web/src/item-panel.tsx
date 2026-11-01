@@ -28,62 +28,66 @@ export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Di
     if (clickTo(event) !== "browser")
       dispatch({ type: "sourceOpened", id: model.id, via: "panel" });
   };
+  // The panel arrives once; its contents are drawn afresh for each item it
+  // shows, so they fade in again where the panel itself stays put.
   return (
     <aside
       class="item-panel"
       aria-labelledby="item-panel-title"
       aria-busy={model.status === "loading"}
     >
-      <header class="panel-head">
-        <p class="panel-source">{shown ? `${shown.source} · ${keyLabel(shown)}` : "Item"}</p>
-        <button
-          type="button"
-          class="panel-close"
-          aria-label="Close the panel"
-          title="Close (Esc)"
-          onClick={() => dispatch({ type: "panelClosed" })}
-        >
-          ×
-        </button>
-        <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
-          {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
-        </h2>
-        {shown && href && (
-          <a
-            class="button panel-open"
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={leave}
-            onAuxClick={leave}
+      <Fragment key={model.id}>
+        <header class="panel-head">
+          <p class="panel-source">{shown ? `${shown.source} · ${keyLabel(shown)}` : "Item"}</p>
+          <button
+            type="button"
+            class="panel-close"
+            aria-label="Close the panel"
+            title="Close (Esc)"
+            onClick={() => dispatch({ type: "panelClosed" })}
           >
-            Open in {shown.source}
-          </a>
-        )}
-      </header>
-      {model.status === "failed" && (
-        <p class="panel-problem" role="alert">
-          {model.problem}{" "}
-          <button type="button" class="quiet-action" onClick={readAgain}>
-            Try again
+            ×
           </button>
-        </p>
-      )}
-      {shown && (
-        <p class="panel-read" role="status">
-          {model.status === "loading" ? "Reading again…" : `Read ${when(shown.readAt)}`}
-          {behind(model) && model.status !== "loading" && (
-            <>
-              {" · "}
-              <strong class="panel-behind">{shown.source} has changed since.</strong>{" "}
-              <button type="button" class="quiet-action" onClick={readAgain}>
-                Read again
-              </button>
-            </>
+          <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
+            {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
+          </h2>
+          {shown && href && (
+            <a
+              class="button panel-open"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={leave}
+              onAuxClick={leave}
+            >
+              Open in {shown.source}
+            </a>
           )}
-        </p>
-      )}
-      {shown && <PanelBody view={shown} />}
+        </header>
+        {model.status === "failed" && (
+          <p class="panel-problem" role="alert">
+            {model.problem}{" "}
+            <button type="button" class="quiet-action" onClick={readAgain}>
+              Try again
+            </button>
+          </p>
+        )}
+        {shown && (
+          <p class="panel-read" role="status">
+            {model.status === "loading" ? "Reading again…" : `Read ${when(shown.readAt)}`}
+            {behind(model) && model.status !== "loading" && (
+              <>
+                {" · "}
+                <strong class="panel-behind">{shown.source} has changed since.</strong>{" "}
+                <button type="button" class="quiet-action" onClick={readAgain}>
+                  Read again
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {shown && <PanelBody view={shown} />}
+      </Fragment>
     </aside>
   );
 }
