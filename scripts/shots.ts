@@ -12,7 +12,9 @@
 // the form's shots, and one for the onboarding, timed from the first screen
 // to an approved change, which also counts the word "token" on each screen.
 // One more connects Jira to SYN with no issues, as a new project is. Another
-// reads the Slack fixture's picked channel, read-only.
+// reads the Slack fixture's picked channel. Three more hand a story to the
+// team: one change set moves it in Jira and posts in Slack's channel,
+// proposed on one, approved on the next, and reverted on the last (OA-28).
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -60,6 +62,14 @@ const planScript = (all: boolean, one = false) =>
     ...(one ? [] : ['jira.createStory({ summary: "Show the gift card balance at checkout" });']),
     "return null;",
   ].join("\n");
+// Asked to hand SYN-61 to the team: it moves to Ready for Dev, and the
+// channel hears so, beside Chen's message about its SMS copy.
+const smsCopy = "slack:C0FW1WEATHR-1788782400.000100";
+const handOffScript = [
+  'jira.setStatus("jira:SYN-61", "Ready for Dev");',
+  `slack.postMessage(${JSON.stringify(smsCopy)}, "SYN-61 is ready to pick up: the SMS copy is signed off, and the story is in Ready for Dev.");`,
+  "return null;",
+].join("\n");
 // Asked to mark stories done: two moved to Done, the built ones or the fixes.
 const finishScript = (keys: readonly string[]) =>
   [...keys.map((key) => `jira.setStatus("jira:${key}", "Done");`), "return null;"].join("\n");
@@ -69,6 +79,8 @@ const planning = (input: TurnInput): Step[] => {
       { run: planScript(/rename/i.test(input.text), /\bonly\b/i.test(input.text)) },
       { text: "The proposed change is below." },
     ];
+  if (/\bpick up\b/i.test(input.text))
+    return [{ run: handOffScript }, { text: "The proposed change is below." }];
   if (/\bdone\b/i.test(input.text))
     return [
       {
@@ -84,7 +96,10 @@ const planning = (input: TurnInput): Step[] => {
 // A server that writes to its own SYN site in memory, and reads Slack when
 // given it, on its own clock when given one.
 const writing = async (slack?: SlackMode, now?: () => Instant) => {
-  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  // A workflow with a column for stories ready to pick up, which SYN's lacks.
+  const site = memorySite(loadJiraFixture(), instant(new Date()), {
+    statuses: [{ name: "Ready for Dev", category: "todo" }],
+  });
   const serving = await serve(0, {
     db: ":memory:",
     jira: {
@@ -370,6 +385,39 @@ const fares = await post<{ id: string }>(
 );
 const faresThread = await ask("What's in here?", chatty, fares.id);
 
+// One change set to two sources: SYN-61 to Ready for Dev in Jira, and a
+// message in Slack's channel that it's ready to pick up. Proposed, approved,
+// and approved then reverted, each on a server of its own, so each diff reads
+// its own Jira and Slack.
+const handOff = async (then: "propose" | "approve" | "revert") => {
+  const { serving } = await writing({ kind: "fixture" });
+  const { id: groupId } = await post<{ id: string }>(
+    "/api/groups",
+    { kind: "picked", name: "SMS updates", items: ["jira:SYN-61", smsCopy] },
+    serving,
+  );
+  const threadId = await ask("SYN-61 is ready to pick up: hand it to the team", serving, groupId);
+  const setId = await changeSetOf(serving, threadId);
+  const review = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, serving);
+  if (then !== "propose") {
+    const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
+    await post(`/api/change-sets/${setId}/approve`, { hash }, serving);
+  }
+  if (then === "revert") {
+    const { revert } = await post<{ revert: string }>(
+      `/api/change-sets/${setId}/revert`,
+      {},
+      serving,
+    );
+    const { hash } = await post<{ hash: string }>(`/api/change-sets/${revert}/diff`, {}, serving);
+    await post(`/api/change-sets/${revert}/approve`, { hash }, serving);
+  }
+  return { serving, groupId, threadId, review: new URL(review.url).pathname };
+};
+const handing = await handOff("propose");
+const handed = await handOff("approve");
+const handedBack = await handOff("revert");
+
 // A group of one item, and one with none left, for how the page counts them.
 const single = await post<{ id: string }>("/api/groups", {
   kind: "picked",
@@ -596,6 +644,39 @@ const scenes: Scene[] = [
       await page.locator(".run summary").first().click();
       await page.locator(".run[open] .output").first().waitFor();
     },
+  },
+  {
+    name: "thread-handoff",
+    path: `/threads/${handing.threadId}`,
+    on: handing.serving,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    name: "review-handoff",
+    path: handing.review,
+    on: handing.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    name: "thread-handoff-applied",
+    path: `/threads/${handed.threadId}`,
+    on: handed.serving,
+    act: (page) => page.getByRole("button", { name: "Revert" }).waitFor(),
+  },
+  {
+    name: "group-handoff-applied",
+    path: `/groups/${handed.groupId}`,
+    on: handed.serving,
+    act: (page) => page.locator(".group-page .members").waitFor(),
+  },
+  {
+    name: "thread-handoff-reverted",
+    path: `/threads/${handedBack.threadId}`,
+    on: handedBack.serving,
+    act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
   },
   // The panel beside the page, one per source's view, and from the window at
   // both zoom levels: a plain click opens it, an address can too.
@@ -1120,6 +1201,7 @@ try {
   await empty.close();
   await picking.close();
   await chatty.close();
+  for (const { serving } of [handing, handed, handedBack]) await serving.close();
   await idling.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }

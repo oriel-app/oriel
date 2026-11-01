@@ -9,6 +9,7 @@ import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
 import { bindingsFor, type ItemDocs, type Namespaces } from "@oriel/bindings";
 import { type ItemId, type Region, sourceKinds, type SourceKind } from "@oriel/core";
+import { slackNamespace } from "@oriel/slack";
 import { loadJiraFixture } from "./repo.ts";
 import { buildWorld, fileId, itemDocs } from "./world.ts";
 
@@ -67,6 +68,18 @@ test("each source adds to the module within its budget", () => {
     assert.ok(added > 0, `${kind} says nothing about its items`);
     assert.ok(added <= budgets[kind], `${kind} adds ${added} bytes`);
   }
+});
+
+test("Slack's writes, once it is connected, add within their budget", () => {
+  // The world above doesn't connect Slack, so its namespace declares nothing
+  // there; connected, it offers postMessage and reply (OA-28), in a region
+  // holding a Slack conversation only.
+  const writes = 500;
+  const connected = {
+    slack: slackNamespace({ channels: ["C0FW1WEATHR"], author: "U0FWAMARA1" }),
+  };
+  const added = shape(dts(["slack"], connected, {})) - shape(dts(["slack"], {}, {}));
+  assert.ok(added > 0 && added <= writes, `Slack's writes add ${added} bytes`);
 });
 
 test("a source adds nothing to the module of a region without its items", () => {

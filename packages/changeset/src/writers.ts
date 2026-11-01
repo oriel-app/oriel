@@ -6,6 +6,7 @@
 // nowhere else.
 import type { Credential, Log, SourceKind, SourceWriter } from "@oriel/core";
 import { type JiraBoards, jiraWriter, restTransport } from "@oriel/jira/writer";
+import { slackWriter, writeApi } from "@oriel/slack/writer";
 
 // How to reach each writable source to write to it. A source with no config
 // here is read-only to change sets.
@@ -24,25 +25,44 @@ export type WriterConfig = {
     // Without it, the writer finds each board's once.
     boards?: JiraBoards;
   };
-} & { [K in Exclude<SourceKind, "jira">]?: never };
+  slack?: {
+    // The token of the person Oriel reads Slack as, who posts.
+    credential: Credential;
+    // The channels the server reads, by ID: the only ones written to.
+    channels: readonly string[];
+    // How requests reach Slack's Web API: the global fetch unless given, as
+    // the synthetic workspace gives one that answers from memory.
+    fetch?: typeof fetch;
+  };
+} & { [K in Exclude<SourceKind, "jira" | "slack">]?: never };
 
 // Each writable source's writer, by kind.
 export type Writers = { [K in SourceKind]?: SourceWriter<K> };
 
 export function buildWriters(config: WriterConfig, log: Log): Writers {
-  const { jira } = config;
-  return jira
-    ? {
-        jira: jiraWriter({
-          transport: restTransport({
-            site: jira.site,
-            credential: jira.credential,
-            ...(jira.fetch ? { fetch: jira.fetch } : {}),
-          }),
-          project: jira.project,
-          ...(jira.boards ? { boards: jira.boards } : {}),
-          log,
+  const { jira, slack } = config;
+  return {
+    ...(jira && {
+      jira: jiraWriter({
+        transport: restTransport({
+          site: jira.site,
+          credential: jira.credential,
+          ...(jira.fetch ? { fetch: jira.fetch } : {}),
         }),
-      }
-    : {};
+        project: jira.project,
+        ...(jira.boards ? { boards: jira.boards } : {}),
+        log,
+      }),
+    }),
+    ...(slack && {
+      slack: slackWriter({
+        api: writeApi({
+          credential: slack.credential,
+          ...(slack.fetch ? { fetch: slack.fetch } : {}),
+        }),
+        channels: slack.channels,
+        log,
+      }),
+    }),
+  };
 }

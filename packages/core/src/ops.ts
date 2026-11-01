@@ -2,6 +2,7 @@
 // source's catalogue, plus what a diff, an apply and a revert need from it.
 // The adapter declares them; the composition root hands them to change sets
 // by source kind (decision 0019).
+import type { Conflict } from "./changeset.ts";
 import type { ItemId } from "./ids.ts";
 import type { NewRef } from "./sandbox.ts";
 import type { FieldValues, OpCatalogue, WriteResult } from "./source.ts";
@@ -19,7 +20,9 @@ export type LineContext = {
   subject: Subject;
   // Field values just before this mutation.
   before: FieldValues;
-  person(accountId: string): Promise<string | null>;
+  // What a person calls an ID the op names in its source, such as an
+  // account or a channel; null when unknown.
+  name(id: string): Promise<string | null>;
   // An item's title, or a new item's, as the change set leaves it.
   title(id: ItemId | NewRef): Promise<string | null>;
 };
@@ -71,6 +74,9 @@ export type OpSpecs = {
   // reverting a create checks only it.
   updatedField: string;
   ops: Readonly<Record<string, OpSpec>>;
+  // What stops a revert, in the source's own words, given the item's title
+  // where Oriel knows it. Without it, Oriel's words name the item by its key.
+  explain?(conflict: Conflict, title: string | null): string;
 };
 
 // One op: its entry in the source's own catalogue (how to check its

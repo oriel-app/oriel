@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./writer": "./src/writer.ts"
   },
   "scripts": {
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"

@@ -7,7 +7,8 @@
 // answers only requests signed as that account, and 401 to any other. With
 // `estimates: false`, its board counts issues instead, so it has no points
 // field, as a team-managed board without one doesn't; `estimation` changes
-// that later.
+// that later. `statuses` adds to the workflow statuses SYN doesn't use, such
+// as a column for stories ready to pick up.
 // Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
@@ -39,7 +40,11 @@ export type MemorySite = ReturnType<typeof memorySite>;
 export function memorySite(
   fixture: JiraFixture,
   clock: Instant,
-  options: { account?: { email: string; token: string }; estimates?: false } = {},
+  options: {
+    account?: { email: string; token: string };
+    estimates?: false;
+    statuses?: { name: string; category: "todo" | "in-progress" | "done" }[];
+  } = {},
 ) {
   const { issues: start } = applySourceEdits(fixture, fixture.edits.length);
   const issues = new Map<string, Issue>(
@@ -67,7 +72,12 @@ export function memorySite(
   // follow any other, as in a workflow that allows every transition, except
   // out of a status made final.
   const keys = { todo: "new", "in-progress": "indeterminate", done: "done" } as const;
-  const statuses = new Map(fixture.issues.map((issue) => [issue.status.name, issue.status]));
+  const statuses = new Map(
+    [...fixture.issues.map((issue) => issue.status), ...(options.statuses ?? [])].map((status) => [
+      status.name,
+      status,
+    ]),
+  );
   const final = new Set<string>();
   const statusView = (name: string) => ({
     name,

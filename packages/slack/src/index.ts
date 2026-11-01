@@ -1,4 +1,5 @@
-// Slack, read-only (decision 0021). It has no writer and no op catalogue.
+// The read side only. The writer is exported from `@oriel/slack/writer`, and
+// nothing here imports it.
 export {
   bearer,
   readMethods,
@@ -14,7 +15,6 @@ export {
   slackAttrsOf,
   type SlackContent,
   slackContent,
-  slackDeclaration,
   slackDetails,
   slackLinked,
   slackFacets,
@@ -24,12 +24,18 @@ export {
   slackText,
   slackTitle,
 } from "./attrs.ts";
-export { connectSlack, type SlackWorkspace } from "./connect.ts";
+export { connectSlack, slackPerson, type SlackWorkspace } from "./connect.ts";
+export { slackDeclaration } from "./declaration.ts";
+export { escapeText, isSlackOp, type SlackArgs, type SlackOp, slackOps } from "./ops.ts";
+export { type SlackContext, slackNamespace } from "./namespace.ts";
+export { slackSpecs } from "./specs.ts";
 export {
   type FixtureApiOptions,
   type FixtureCall,
   type FixtureMessage,
+  type FixtureWorkspace,
   fixtureApi,
+  fixtureApiOrigin,
   parseSlackFixture,
   type SlackFixture,
 } from "./fixture.ts";

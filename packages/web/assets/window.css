@@ -2380,6 +2380,15 @@ a.replies:hover {
   overflow-wrap: anywhere;
 }
 
+/* What a new message says, word for word, as the person approves it. */
+.new-description[data-body] {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--line-strong);
+  color: var(--text);
+  font-size: inherit;
+}
+
 .item-value {
   display: inline-flex;
   flex-wrap: wrap;
@@ -2667,7 +2676,7 @@ a.replies:hover {
   background: var(--surface);
 }
 
-.review-card p:not(.line-head) {
+.review-card p:not(.line-head, .new-description[data-body]) {
   color: var(--text-muted);
 }
 

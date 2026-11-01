@@ -146,9 +146,11 @@ export function changeSetView(
   all: readonly ChangeSet[],
   nextSteps: readonly NextStep[],
   applying: boolean,
+  writable: boolean,
 ): ChangeSetView {
   return {
     id: set.id,
+    readOnly: !writable,
     status: applying ? "applying" : changeSetStatus(set),
     nextSteps: nextSteps.map((step) => ({ ...step })),
     applying,
@@ -419,6 +421,9 @@ export function views(deps: ViewDeps) {
       sets: readonly ChangeSet[],
       steps: ReadonlyMap<string, readonly NextStep[]>,
       applying: (changeSetId: string) => boolean,
+      // Whether a change set can be approved here; by the thread's own
+      // `writable` unless given.
+      writable: (changeSetId: string) => boolean = () => deps.writable,
     ): ThreadView | null {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
@@ -452,7 +457,7 @@ export function views(deps: ViewDeps) {
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
         changeSets: sets.map((set) =>
-          changeSetView(set, sets, steps.get(set.id) ?? [], applying(set.id)),
+          changeSetView(set, sets, steps.get(set.id) ?? [], applying(set.id), writable(set.id)),
         ),
         writable: deps.writable,
       };

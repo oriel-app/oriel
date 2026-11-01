@@ -55,7 +55,8 @@ export type NamespaceWrite = Base & {
   kind: "write";
   // The op in the source's catalogue that checks what `build` returns.
   op: string;
-  // A create returns the new item's ref; other writes return nothing.
+  // Whether it returns a new item's ref, which later writes in this run can
+  // name. Other writes, and a create nothing later can name, return nothing.
   creates: boolean;
   // The target and the op's arguments, before the catalogue checks them.
   build(

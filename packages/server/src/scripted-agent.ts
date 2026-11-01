@@ -145,6 +145,16 @@ const unestimated = stories.flatMap((story) =>
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
 return unestimated.slice(0, 3);`;
 
+// Posts `text` beside the group's first Slack conversation, in its channel,
+// or replies in that conversation (OA-28).
+const slackScript = (fn: "postMessage" | "reply", text: string) => `const ids = (await items.list())
+  .map((item) => item.id)
+  .filter((id): id is SlackId => id.startsWith("slack:"));
+const [first] = ids;
+if (first) slack.${fn}(first, ${JSON.stringify(text)});
+return first ?? null;`;
+const slackAsk = /^\s*(post|reply)\b[:\s]*([\s\S]*)$/i;
+
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
 // Words a person adds around what they're looking for, which an index search
 // would require every item to contain.
@@ -170,9 +180,27 @@ const filler = new Set([
 ]);
 
 // What `pnpm dev` answers with: a search when asked to find something, an
-// estimate change when asked about estimates, and otherwise a read of every
-// item in the region.
+// estimate change when asked about estimates, a Slack post or reply when
+// asked to "post: …" or "reply: …", and otherwise a read of every item in
+// the region.
 export function devPlan(input: TurnInput): Step[] {
+  const slackAsked = slackAsk.exec(input.text);
+  if (slackAsked) {
+    const fn = slackAsked[1]?.toLowerCase() === "reply" ? "reply" : "postMessage";
+    const slack = input.region.items.some((item) => parseItemId(item.id)?.source === "slack");
+    if (!slack) return [{ text: "Nothing in this group is in Slack, so there's nowhere to post." }];
+    const text = slackAsked[2]?.trim() || "A smoke test from Oriel's dev server.";
+    return [
+      {
+        text:
+          fn === "reply"
+            ? "I'll reply in this group's first Slack conversation."
+            : "I'll post in the channel of this group's first Slack conversation.",
+      },
+      { run: slackScript(fn, text) },
+      { text: "The proposed change is below. Nothing is posted until you approve it." },
+    ];
+  }
   const query = searchAsk
     .exec(input.text)?.[1]
     ?.replace(/[?.!"]+/g, " ")

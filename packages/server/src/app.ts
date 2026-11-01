@@ -66,7 +66,10 @@ import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@orie
 import {
   connectSlack,
   fixtureApi,
+  type FixtureWorkspace,
   slackAttrs,
+  type SlackContext,
+  slackPerson,
   type SlackSource,
   slackSource,
   webApi,
@@ -112,12 +115,15 @@ export type JiraMode =
   | ({ kind: "live" } & JiraWrites)
   | { kind: "window"; store: ConnectionStore; fetch?: typeof fetch };
 
-// Where Slack comes from, read-only (decision 0021). The fixture is the
-// synthetic workspace in `fixtures/slack/`, with the channel picked there.
-// Live is the workspace a token is for, reading only the public channels
-// picked by name or ID; one it can't find stops the app from starting.
+// Where Slack comes from (decision 0021). The fixture is the synthetic
+// workspace in `fixtures/slack/`, with the channel picked there, which change
+// sets post to in memory. Live is the workspace a token is for, reading only
+// the public channels picked by name or ID; one it can't find stops the app
+// from starting. Change sets a person approves post there as the token's
+// person, only in those channels (OA-28).
 export type SlackMode =
-  | { kind: "fixture" }
+  // Tests may pass the fixture's workspace in, to act in it as others do.
+  | { kind: "fixture"; workspace?: FixtureWorkspace }
   | { kind: "live"; credential: Credential; channels: string[]; fetch?: typeof fetch };
 
 export type AppOptions = {
@@ -165,7 +171,7 @@ const disconnected: FieldReader<"jira"> = {
       "Jira isn't connected now, so Oriel can't show this change. Connect Jira in the window.",
     );
   },
-  person: async () => null,
+  name: async () => null,
 };
 
 // Why a connection the user typed wasn't kept, in their words.
@@ -279,7 +285,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = fixture ? fixtureIndex(fixture).now : null;
 
-  const slack = options.slack ? await slackFrom(options.slack, log) : null;
+  const slack = options.slack ? await slackFrom(options.slack, now, log) : null;
   const records = (): IndexRecord[] => [
     ...index.records(workspaceId, "jira", jiraAttrs),
     ...index.records(workspaceId, "folder", folderAttrs),
@@ -421,13 +427,13 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   if (folder) await syncFolder();
 
-  // Slack's picked channels, read-only (decision 0021). A sync that fails
+  // Slack's picked channels (decision 0021). A sync that fails
   // leaves its items as they were, and says so.
   const syncSlack = async (): Promise<string | null> => {
     if (!slack) return null;
     const first = index.source(workspaceId, "slack") === null;
     try {
-      await syncInto(slack, slackAttrs, true);
+      await syncInto(slack.source, slackAttrs, true);
     } catch (error) {
       log("slack sync failed", { error: error instanceof Error ? error.message : String(error) });
       return "Slack didn't answer, so Oriel couldn't look for new messages.";
@@ -495,7 +501,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       const results: ReadResult[] = [
         ...(jira.length && source ? await source.read(jira) : []),
         ...(files.length && folder ? await folder.source.read(files) : []),
-        ...(messages.length && slack ? await slack.read(messages) : []),
+        ...(messages.length && slack ? await slack.source.read(messages) : []),
       ];
       const read = new Map<string, ReadResult>(results.map((result) => [result.id, result]));
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
@@ -518,13 +524,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     const none = boards?.unestimating() ?? new Set<string>();
     return bindingsFor(region, {
       reader,
-      namespaces: namespacesFor(records(), { jira: { none, home } }),
+      namespaces: namespacesFor(records(), {
+        jira: { none, home },
+        slack: slack?.context,
+      }),
       items: itemDocs,
     });
   };
 
   const buildSets = () => {
-    const writerConfig: WriterConfig = writes && boards ? { jira: { ...writes, boards } } : {};
+    const writerConfig: WriterConfig = {
+      ...(writes && boards ? { jira: { ...writes, boards } } : {}),
+      ...(slack ? { slack: slack.writes } : {}),
+    };
     return changeSets({
       db,
       writerConfig,
@@ -534,7 +546,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           : mode.kind === "window" && !writes
             ? { jira: disconnected }
             : {},
-      people: { jira: async (id) => people().get(id) ?? null },
+      names: { jira: async (id) => people().get(id) ?? null },
       specs,
       reviewBase: options.reviewBase,
       now,
@@ -588,7 +600,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     running: conversation.running,
     changeSets: sets,
     get writable() {
-      return writes !== null;
+      return writes !== null || slack !== null;
     },
   });
 
@@ -650,6 +662,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       const items = created(set).map((member) => member.id);
       if (items.length) await dispatch("workstream.add", { workstream: thread.groupId, items }, by);
     }
+    // What it posted in Slack shows once Slack is listed again.
+    if (set.mutations.some((m) => m.applied && parseItemId(m.applied.item.id)?.source === "slack"))
+      await syncSlack();
     if (mode.kind === "fixture") return;
     for (const { applied: write } of set.mutations)
       if (write && isJira(write.item.id))
@@ -766,7 +781,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         if (slackProblem) problems.push(slackProblem);
         return problems.length > 0 ? problems.join(" ") : null;
       },
-      explain: (conflicts) => explainConflicts(conflicts, specs),
+      explain: (conflicts) => {
+        const titles = new Map(records().map((record) => [record.id, record.title]));
+        return explainConflicts(conflicts, specs, (id) => titles.get(id) ?? null);
+      },
       jira: {
         view: jiraView,
         connect: connectJira,
@@ -806,17 +824,36 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
 }
 
-// The Slack source a mode reads from: the fixture's Web API with its picked
-// channel, or Slack's, with the picked channels found by name or ID.
-async function slackFrom(mode: SlackMode, log: Log): Promise<SlackSource> {
+// The Slack source a mode reads from, and what change sets write with: the
+// fixture's Web API, in memory, with its picked channel, or Slack's, with the
+// picked channels found by name or ID. Either posts as the person the token
+// is for, only in the channels it reads.
+async function slackFrom(
+  mode: SlackMode,
+  now: () => Instant,
+  log: Log,
+): Promise<{
+  source: SlackSource;
+  context: NonNullable<SlackContext>;
+  writes: NonNullable<WriterConfig["slack"]>;
+}> {
   if (mode.kind === "fixture") {
     const fixture = loadSlackFixture();
-    return slackSource({
-      api: fixtureApi(fixture).api,
-      workspaceUrl: fixture.team.url,
-      channels: fixture.picked,
-      log,
-    });
+    const workspace = mode.workspace ?? fixtureApi(fixture, { now });
+    return {
+      source: slackSource({
+        api: workspace.api,
+        workspaceUrl: fixture.team.url,
+        channels: fixture.picked,
+        log,
+      }),
+      context: { channels: fixture.picked, author: await slackPerson(workspace.api) },
+      writes: {
+        credential: { headers: async () => ({}) },
+        channels: fixture.picked,
+        fetch: workspace.fetch,
+      },
+    };
   }
   const api = webApi({ credential: mode.credential, ...(mode.fetch ? { fetch: mode.fetch } : {}) });
   const workspace = await connectSlack(api, mode.channels);
@@ -825,10 +862,14 @@ async function slackFrom(mode: SlackMode, log: Log): Promise<SlackSource> {
       `Slack has no public channel Oriel can see named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
     );
   if (!workspace.channels.length) throw new Error("Pick at least one Slack channel to read");
-  return slackSource({
-    api,
-    workspaceUrl: workspace.url,
-    channels: workspace.channels.map((channel) => channel.id),
-    log,
-  });
+  const channels = workspace.channels.map((channel) => channel.id);
+  return {
+    source: slackSource({ api, workspaceUrl: workspace.url, channels, log }),
+    context: { channels, author: await slackPerson(api) },
+    writes: {
+      credential: mode.credential,
+      channels,
+      ...(mode.fetch ? { fetch: mode.fetch } : {}),
+    },
+  };
 }

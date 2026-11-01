@@ -234,6 +234,9 @@ export type ChangeSetView = {
   applying: boolean;
   // A change was sent with no answer, so it may already have been made.
   sentUnapplied: boolean;
+  // A source it writes to has no writer here, so it can be reviewed and
+  // rejected, not approved. Absent: as the thread's `writable` says.
+  readOnly?: boolean;
   decision: {
     kind: "approved" | "rejected";
     via: "thread" | "review-link";
@@ -298,8 +301,8 @@ export type ThreadView = {
   lastSeq: number;
   running: boolean;
   changeSets: ChangeSetView[];
-  // Whether approving can write anywhere; when false, change sets can be
-  // reviewed and rejected only.
+  // Whether approving can write to any source; when false, change sets can
+  // be reviewed and rejected only.
   writable: boolean;
 };
 

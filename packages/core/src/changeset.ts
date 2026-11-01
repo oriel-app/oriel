@@ -183,6 +183,9 @@ export interface ChangeSets {
   // Whether this instance is applying it now. Until that ends, every action
   // on it is refused as busy.
   applying(id: Ulid): boolean;
+  // Whether every source it still has to write to has a writer here. When
+  // not, it can be reviewed and rejected, never approved.
+  writable(id: Ulid): boolean;
   // Ends a change set that started landing, or may have: its unapplied
   // changes are rejected for good, and a revert covers exactly what applied.
   // The warnings name any change that may already have landed. Dismissing
