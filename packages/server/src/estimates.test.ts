@@ -155,13 +155,15 @@ test("the agent's item has no points on a board that takes no estimates, and nul
   }
 });
 
-const estimateSyn23: Script = async () => ({ writes: [["jira.setEstimate", ["jira:SYN-23", 3]]] });
+const estimateSyn23 =
+  (points: number): Script =>
+  async () => ({ writes: [["jira.setEstimate", ["jira:SYN-23", points]]] });
 
 test("a board that stops taking estimates is followed from the next sync, without a restart", async (t) => {
   const app = await testApp(t, {
     live: true,
-    plan: () => [{ run: "estimate" }],
-    scripts: { estimate: estimateSyn23 },
+    plan: (input) => [{ run: input.text.endsWith("at 5") ? "five" : "three" }],
+    scripts: { three: estimateSyn23(3), five: estimateSyn23(5) },
   });
   const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
   const ask = async (text: string) => {
@@ -169,19 +171,30 @@ test("a board that stops taking estimates is followed from the next sync, withou
     await app.app.settled();
     return json<ThreadView>(await app.get(`/api/threads/${id}`)).entries;
   };
-  const proposed = (await ask("Estimate SYN-23")).find((e) => e.kind === "change-set");
-  assert.ok(proposed?.kind === "change-set");
+  const propose = async (text: string) => {
+    const entry = (await ask(text)).find((e) => e.kind === "change-set");
+    assert.ok(entry?.kind === "change-set");
+    return entry.changeSetId;
+  };
+  const approve = async (changeSetId: string) => {
+    const { hash } = json<DiffView>(await app.post(`/api/change-sets/${changeSetId}/diff`));
+    return json<{ changeSet: ChangeSetView }>(
+      await app.post(`/api/change-sets/${changeSetId}/approve`, { hash }),
+    ).changeSet;
+  };
+  const first = await propose("Estimate SYN-23 at 3");
+  const second = await propose("Estimate SYN-23 at 5");
+  // The writer has found the board's points field by now.
+  assert.equal((await approve(first)).status, "applied");
+  assert.equal(app.site?.issue("SYN-23")?.points, 3);
 
   app.site?.estimation(false);
   assert.equal((await app.post("/api/jira/sync")).status, 200);
-  // The writer: approving the estimate proposed before writes nothing.
-  const { hash } = json<DiffView>(await app.post(`/api/change-sets/${proposed.changeSetId}/diff`));
-  const approved = json<{ changeSet: ChangeSetView }>(
-    await app.post(`/api/change-sets/${proposed.changeSetId}/approve`, { hash }),
-  );
-  assert.notEqual(approved.changeSet.status, "applied");
-  assert.match(approved.changeSet.errors[0]?.error ?? "", /SYN's board has no points field/);
-  assert.equal(app.site?.issue("SYN-23")?.points, null);
+  // The writer: approving an estimate proposed before writes nothing.
+  const refused = await approve(second);
+  assert.notEqual(refused.status, "applied");
+  assert.match(refused.errors[0]?.error ?? "", /SYN's board has no points field/);
+  assert.equal(app.site?.issue("SYN-23")?.points, 3);
   // The agent's module: a new estimate is refused when captured.
   const again = await ask("Estimate SYN-23 again");
   assert.ok(again.every((e) => e.kind !== "change-set"));
