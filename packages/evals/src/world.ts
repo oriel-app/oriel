@@ -38,6 +38,7 @@ import {
   resolveFolder,
 } from "@oriel/folder";
 import {
+  estimateless,
   type FixtureRegion,
   fixtureSnapshot,
   jiraItemDoc,
@@ -125,7 +126,10 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     origin: input.region?.origin ?? { kind: "picked" },
   };
   const namespaces: Namespaces = {
-    jira: jiraNamespace(new Map(snapshot.records.map((r) => [r.id, r.facets.kind]))),
+    jira: jiraNamespace(new Map(snapshot.records.map((r) => [r.id, r.facets.kind])), {
+      none: estimateless(snapshot.records),
+      home: input.fixture.project.key,
+    }),
   };
 
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;

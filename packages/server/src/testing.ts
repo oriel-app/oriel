@@ -105,6 +105,8 @@ export type TestOptions = {
   issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
   // Slack, off when absent.
   slack?: SlackMode;
+  // SYN's board in memory takes no estimates: it has no points field.
+  estimates?: false;
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -121,10 +123,11 @@ export async function testApp(
   const plan = options.plan ?? (() => [{ text: "Hello." }]);
   const syn = loadJiraFixture();
   const served = options.issues ? { ...syn, issues: options.issues(syn.issues), edits: [] } : syn;
+  const board = options.estimates === false ? { estimates: false as const } : {};
   const site = options.connect
-    ? memorySite(served, now(), { account })
+    ? memorySite(served, now(), { account, ...board })
     : options.writes || options.live
-      ? memorySite(served, now())
+      ? memorySite(served, now(), board)
       : null;
   const writeTo = site && {
     site: memorySiteOrigin,

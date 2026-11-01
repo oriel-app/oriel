@@ -17,6 +17,7 @@ import {
   object,
   optional,
   param,
+  type IndexRecord,
   parseItemId,
   read,
   string,
@@ -25,6 +26,7 @@ import {
 } from "@oriel/core";
 import { type JiraContent, jiraContent } from "./attrs.ts";
 import { type JiraOp, jiraOps } from "./ops.ts";
+import { keyOf, projectOf } from "./rest.ts";
 
 const isJiraId = (id: string): id is ItemId<"jira"> => parseItemId(id)?.source === "jira";
 
@@ -80,13 +82,48 @@ function writable(id: string, host: NamespaceHost): ItemId<"jira"> | NewRef {
   );
 }
 
-// The region's Jira items, the epic its group was made around, if any, and
-// the epics a new story may go in.
+// The region's Jira items, the epic its group was made around, if any, the
+// epics a new story may go in, and where estimates can't go.
 type JiraScope = {
   ids: readonly ItemId<"jira">[];
   anchor: ItemId<"jira"> | null;
   epics: readonly ItemId<"jira">[];
+  estimates: Estimates;
 };
+
+// The projects whose boards take no estimates, and the project a story with
+// no epic is created in. Approval can't write an estimate there, so a run
+// can't propose one: the agent learns why from the refusal and can say so.
+export type Estimates = { none: ReadonlySet<string>; home: string | null };
+
+// The Jira projects whose items have no estimate facet in the index: their
+// boards take no estimates (see `jiraFacets`).
+export function estimateless(records: readonly IndexRecord[]): Set<string> {
+  const projects = records.flatMap((record) =>
+    isJiraId(record.id)
+      ? [{ project: projectOf(keyOf(record.id)), estimates: record.facets.estimate !== undefined }]
+      : [],
+  );
+  const estimating = new Set(projects.filter((p) => p.estimates).map((p) => p.project));
+  return new Set(projects.map((p) => p.project).filter((project) => !estimating.has(project)));
+}
+
+// The project a Jira item is in, or a new story goes in: an item's own, and
+// otherwise the region's epic's, or with none, the home project. A story
+// created earlier in this run counts as in the region's epic, or the home
+// project. That guess, or a handle whose item has since moved project, can
+// miss; approval then refuses the estimate, as it did before.
+function projectFor(scope: JiraScope, at: string | null): string | null {
+  if (at !== null && isJiraId(at)) return projectOf(keyOf(at));
+  return scope.anchor ? projectOf(keyOf(scope.anchor)) : scope.estimates.home;
+}
+
+// Refuses an estimate in a project whose board takes none.
+function estimable(scope: JiraScope, at: string | null, what: string) {
+  const project = projectFor(scope, at);
+  if (project !== null && scope.estimates.none.has(project))
+    throw new RangeError(`${project}'s board takes no estimates, so ${what}`);
+}
 
 const getItem = read({
   name: "getItem",
@@ -173,7 +210,10 @@ function createStory(scope: JiraScope): NamespaceWrite {
       creates: true,
       params: [param("story", storyType(null), object(storyFields))],
       // The epic is bound, whatever the guest sent.
-      build: ([story]) => ({ target: null, args: { ...story, epic: anchor } }),
+      build: ([story]) => {
+        unpointed(scope, story, anchor);
+        return { target: null, args: { ...story, epic: anchor } };
+      },
     });
   return write({
     name: "createStory",
@@ -193,9 +233,16 @@ function createStory(scope: JiraScope): NamespaceWrite {
       const parent = story.epic ?? null;
       if (parent !== null && !epics.some((epic) => epic === parent))
         throw new RangeError(`${JSON.stringify(parent)} isn't an epic in this region`);
+      unpointed(scope, story, parent);
       return { target: null, args: { ...story, epic: parent } };
     },
   });
+}
+
+// A new story gets points only where its board takes estimates.
+function unpointed(scope: JiraScope, story: { points?: number | null }, epic: string | null) {
+  if (story.points !== undefined && story.points !== null)
+    estimable(scope, epic, "create the story without points");
 }
 
 // A region with no items yet offers only creates, to start a plan from
@@ -216,19 +263,21 @@ const createEpic = write({
   build: ([epic]) => ({ target: null, args: { ...epic } }),
 });
 
-const createStoryInNewEpic = write({
-  name: "createStory",
-  doc: "Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref.",
-  op: "createStory",
-  creates: true,
-  params: [param("story", storyType("NewRef"), object({ ...storyFields, epic: epicField }))],
-  build: ([story], host) => {
-    const parent = story.epic ?? null;
-    if (parent !== null && !(isNewRef(parent) && host.created.get(parent) === "createEpic"))
-      throw new RangeError(`${JSON.stringify(parent)} isn't an epic created earlier in this run`);
-    return { target: null, args: { ...story, epic: parent } };
-  },
-});
+const createStoryInNewEpic = (scope: JiraScope) =>
+  write({
+    name: "createStory",
+    doc: "Create a story, in an epic createEpic made earlier in this run, or in none. Returns its ref.",
+    op: "createStory",
+    creates: true,
+    params: [param("story", storyType("NewRef"), object({ ...storyFields, epic: epicField }))],
+    build: ([story], host) => {
+      const parent = story.epic ?? null;
+      if (parent !== null && !(isNewRef(parent) && host.created.get(parent) === "createEpic"))
+        throw new RangeError(`${JSON.stringify(parent)} isn't an epic created earlier in this run`);
+      unpointed(scope, story, parent);
+      return { target: null, args: { ...story, epic: parent } };
+    },
+  });
 
 const target = param("id", "Target", string);
 
@@ -264,14 +313,18 @@ const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => Nam
         args: { description },
       }),
     }),
-  setEstimate: () =>
+  setEstimate: (scope) =>
     write({
       name: "setEstimate",
       doc: "Set an item's estimate in story points; null clears it.",
       op: "setEstimate",
       creates: false,
       params: [target, param("points", "number | null", nullable(number))],
-      build: ([id, points], host) => ({ target: writable(id, host), args: { points } }),
+      build: ([id, points], host) => {
+        const at = writable(id, host);
+        estimable(scope, at, `${at} can't be estimated`);
+        return { target: at, args: { points } };
+      },
     }),
   setAssignee: () =>
     write({
@@ -353,13 +406,23 @@ function types(scope: JiraScope): string[] {
 }
 
 // Jira's namespace. `kinds` holds each Jira item's kind facet from the index:
-// only an epic can parent a new story.
-export function jiraNamespace(kinds: ReadonlyMap<string, string | undefined>): NamespaceSpec {
+// only an epic can parent a new story. `estimates` says where estimates
+// can't go; by default, everywhere they can.
+export function jiraNamespace(
+  kinds: ReadonlyMap<string, string | undefined>,
+  estimates: Estimates = { none: new Set(), home: null },
+): NamespaceSpec {
   const jiraScope = ({ ids, anchor }: NamespaceScope): JiraScope => {
     const jira = ids.filter(isJiraId);
     // A new story in a region made around an epic always goes in that epic.
-    if (anchor !== null && isJiraId(anchor)) return { ids: jira, anchor, epics: [anchor] };
-    return { ids: jira, anchor: null, epics: jira.filter((id) => kinds.get(id) === "epic") };
+    if (anchor !== null && isJiraId(anchor))
+      return { ids: jira, anchor, epics: [anchor], estimates };
+    return {
+      ids: jira,
+      anchor: null,
+      epics: jira.filter((id) => kinds.get(id) === "epic"),
+      estimates,
+    };
   };
   return {
     name: "Jira",
@@ -369,7 +432,7 @@ export function jiraNamespace(kinds: ReadonlyMap<string, string | undefined>): N
     // Region reads, then the writes in catalogue order.
     fns(given): NamespaceFn[] {
       const scope = jiraScope(given);
-      if (!scope.ids.length) return [createEpic, createStoryInNewEpic];
+      if (!scope.ids.length) return [createEpic, createStoryInNewEpic(scope)];
       const epic = scope.anchor;
       return [
         ...(epic ? [getEpic(epic), listStories(scope, epic)] : []),

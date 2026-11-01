@@ -49,7 +49,13 @@ import {
 } from "./rest.ts";
 import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
-export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & { readonly ops: typeof jiraOps };
+export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & {
+  readonly ops: typeof jiraOps;
+  // The projects whose boards the last discovery found no points field on,
+  // null before one. It knows a project with no items yet, and a board
+  // changed since the index last saw an item.
+  unestimating?(): ReadonlySet<string> | null;
+};
 
 export type JiraSourceOptions = {
   transport: ReadTransport;
@@ -108,13 +114,23 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // `updated`, so other issues keep their old points until a full sweep. A
   // failed discovery isn't kept.
   let discovered: Promise<Map<string, string>> | null = null;
+  let unestimating: ReadonlySet<string> | null = null;
+  // Only the latest discovery, of two running at once, is kept.
   const pointsFields = (fresh: boolean) => {
-    if (fresh || !discovered)
-      discovered = discoverPoints(transport, projects, log).catch((error: unknown) => {
-        discovered = null;
+    if (discovered && !fresh) return discovered;
+    const run: Promise<Map<string, string>> = discoverPoints(transport, projects, log).then(
+      (found) => {
+        if (discovered === run)
+          unestimating = new Set(projects.filter((project) => !found.has(project)));
+        return found;
+      },
+      (error: unknown) => {
+        if (discovered === run) discovered = null;
         throw error;
-      });
-    return discovered;
+      },
+    );
+    discovered = run;
+    return run;
   };
   const fieldList = (points: Map<string, string>) => [
     ...new Set([...indexFieldNames, ...points.values()]),
@@ -135,7 +151,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         title: fields.summary,
         location: `${site}/browse/${key}`,
         updatedAt: fields.updated,
-        facets: facetsOf(fields, rawField(raw, points.get(projectOf(key)))),
+        facets: facetsOf(fields, raw, points.get(projectOf(key))),
         attrs: attrsOf(fields),
       },
     };
@@ -240,6 +256,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   return {
     kind: "jira",
     ops: jiraOps,
+    unestimating: () => unestimating,
 
     // A null cursor lists everything. Otherwise the cursor is the latest
     // `updated` seen so far, and only issues updated since (less the overlap)

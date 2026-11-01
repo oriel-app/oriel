@@ -122,25 +122,26 @@ export function jiraKind(type: { name: string; subtask?: boolean; hierarchyLevel
 
 // The facets every Jira item has: its assignee, its status category, its
 // epic by the epic's stable ID, its issue type as a kind and its story points
-// as an estimate. Remote links aren't among them: Jira's search doesn't
-// return them, and a read per issue on every sync costs too much. They are
-// in the content a read returns.
+// as an estimate. Points are undefined, and the item has no estimate facet,
+// when its project's board takes no estimates: it has none to lack. Remote
+// links aren't among them: Jira's search doesn't return them, and a read per
+// issue on every sync costs too much. They are in the content a read returns.
 export function jiraFacets(item: {
   category: State;
   epic: { id: ItemId<"jira">; stableId: string } | null;
   assignee: { accountId: string; name: string } | null;
   kind: string;
-  points: number | null;
+  points: number | null | undefined;
 }): Facets {
-  return {
+  const facets: Facets = {
     people: item.assignee
       ? [{ role: "assignee", id: item.assignee.accountId, name: item.assignee.name }]
       : [],
     state: item.category,
     container: item.epic,
     kind: item.kind,
-    estimate: item.points,
   };
+  return item.points === undefined ? facets : { ...facets, estimate: item.points };
 }
 
 // The summary, the description and each comment with its author and time,

@@ -396,6 +396,8 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
   // Files and Slack messages carry no assignees or estimates (decisions 0019
   // and 0021).
   const tracked = !item.id.startsWith("folder:") && !item.id.startsWith("slack:");
+  // A Jira item whose board takes no estimates carries none either.
+  const estimated = tracked && !item.noEstimates;
   return (
     <li class={picked ? "item picked" : "item"}>
       <label class="pick">
@@ -425,9 +427,9 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       )}
       <span
         class="points"
-        title={!tracked ? undefined : item.points === null ? "Unestimated" : points(item.points)}
+        title={!estimated ? undefined : item.points === null ? "Unestimated" : points(item.points)}
       >
-        {tracked ? (item.points ?? "–") : ""}
+        {estimated ? (item.points ?? "–") : ""}
       </span>
       <span
         class="idle"

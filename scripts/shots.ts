@@ -121,6 +121,19 @@ const live = async () => {
 };
 const offline = await live();
 offline.site.outage("offline");
+// A server that syncs SYN from a board that takes no estimates, as a
+// team-managed board with no points field does.
+const unpointed = await serve(0, {
+  db: ":memory:",
+  jira: {
+    kind: "live",
+    site: memorySiteOrigin,
+    credential: { headers: async () => ({}) },
+    project: "SYN",
+    fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
+  },
+  agent: (deps) => scriptedAgent(deps, planning),
+});
 
 // Jira not connected yet; the window connects it to SYN in memory, which
 // takes only this account.
@@ -186,6 +199,12 @@ const ask = async (text: string, on: Serving = server, groupId = group.id) => {
   return opened.id;
 };
 const thread = await ask("Which stories here still need estimates?");
+// Asked for estimates where the board takes none.
+const unpointedThread = await ask(
+  "Estimate the unestimated ones",
+  unpointed,
+  (await post<{ id: string }>("/api/groups", checkout, unpointed)).id,
+);
 await post(`/api/threads/${thread}/messages`, { text: "Find anything about weather" });
 await server.app.settled();
 const changeSet = await changeSetOf(server, thread);
@@ -444,6 +463,30 @@ const scenes: Scene[] = [
     },
   },
   { name: "stuck", path: "/?grouping=stuck", act: (page) => shown(page, "stuck") },
+  {
+    name: "no-estimates-epic",
+    path: "/?grouping=epic",
+    on: unpointed,
+    act: async (page) => {
+      await shown(page, "epic");
+      await openFirstCluster(page);
+    },
+  },
+  {
+    name: "no-estimates-stuck",
+    path: "/?grouping=stuck",
+    on: unpointed,
+    act: (page) => shown(page, "stuck"),
+  },
+  {
+    name: "no-estimates-thread",
+    path: `/threads/${unpointedThread}`,
+    on: unpointed,
+    act: async (page) => {
+      await page.locator(".run summary").first().click();
+      await page.locator(".run[open]").first().waitFor();
+    },
+  },
   {
     name: "stuck-expanded",
     path: "/?grouping=stuck",
@@ -826,6 +869,7 @@ try {
   await server.close();
   await refusing.serving.close();
   await offline.serving.close();
+  await unpointed.close();
   await unanswered.serving.close();
   inFlight.release();
   await inFlight.approving;

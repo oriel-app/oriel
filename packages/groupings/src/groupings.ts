@@ -161,9 +161,11 @@ const isOpenWork = (record: IndexRecord) =>
   record.facets.state !== undefined &&
   record.facets.state !== "done";
 
-// Both clusters always show, so an empty one says nothing is stuck that way.
+// Each cluster shows even when empty, so it says nothing is stuck that way.
 // "No update" lists the longest idle first. "Unestimated" counts only items
 // whose source estimates: one with no estimate facet has nothing to lack.
+// When nothing in the index estimates, as with a board that takes no
+// estimates, there is no such cluster at all.
 export const stuckGrouping: Grouping = {
   id: "stuck",
   label: "Stuck",
@@ -172,6 +174,7 @@ export const stuckGrouping: Grouping = {
     const idle = open
       .filter((item) => Date.parse(now) - Date.parse(item.updatedAt) >= stuckAfter)
       .toSorted((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+    const estimates = records.some((item) => item.facets.estimate !== undefined);
     const unestimated = open.filter((item) => item.facets.estimate === null);
     return [
       {
@@ -183,13 +186,17 @@ export const stuckGrouping: Grouping = {
           derived: "Stories, tasks and bugs not done and last updated 14 or more days ago",
         },
       },
-      {
-        key: "unestimated",
-        label: "Unestimated",
-        anchor: null,
-        itemIds: ids(unestimated),
-        origin: { derived: "Stories, tasks and bugs not done and with no estimate" },
-      },
+      ...(estimates
+        ? [
+            {
+              key: "unestimated",
+              label: "Unestimated",
+              anchor: null,
+              itemIds: ids(unestimated),
+              origin: { derived: "Stories, tasks and bugs not done and with no estimate" },
+            },
+          ]
+        : []),
     ];
   },
 };
