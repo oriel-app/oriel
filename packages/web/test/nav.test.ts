@@ -5,15 +5,15 @@ import { init, type Model, update } from "../src/root.ts";
 import type { Route } from "../src/route.ts";
 import {
   type ChangeSetStatus,
-  type GroupSummary,
+  type WorkstreamSummary,
   type ThreadSummaryView,
   waitingOn,
 } from "../src/view.ts";
 
-const groupA = "01JBZ0000000000000000000G1";
-const groupB = "01JBZ0000000000000000000G2";
+const workstreamA = "01JBZ0000000000000000000G1";
+const workstreamB = "01JBZ0000000000000000000G2";
 
-const group = (id: string, name: string): GroupSummary => ({
+const workstream = (id: string, name: string): WorkstreamSummary => ({
   id,
   name,
   origin: { kind: "picked" },
@@ -25,14 +25,14 @@ const group = (id: string, name: string): GroupSummary => ({
 
 const thread = (
   id: string,
-  groupId: string,
+  workstreamId: string,
   state: ThreadSummaryView["state"],
   activityAt: string,
   waitingOn: ThreadSummaryView["waitingOn"] = null,
 ): ThreadSummaryView => ({
   id,
   title: `Thread ${id}`,
-  group: { id: groupId, name: groupId === groupA ? "Launch" : "Billing" },
+  workstream: { id: workstreamId, name: workstreamId === workstreamA ? "Launch" : "Billing" },
   state,
   doneBy: null,
   waitingOn,
@@ -41,20 +41,25 @@ const thread = (
 
 const at = (route: Route, lists = true): Model => ({
   ...init(route)[0],
-  groups: lists ? [group(groupA, "Launch"), group(groupB, "Billing")] : null,
+  workstreams: lists
+    ? [workstream(workstreamA, "Launch"), workstream(workstreamB, "Billing")]
+    : null,
   threads: lists
     ? [
-        thread("T1", groupA, "done", "2026-10-29T09:00:00.000Z"),
-        thread("T2", groupA, "working", "2026-10-30T09:00:00.000Z", "agent"),
-        thread("T3", groupB, "working", "2026-10-28T09:00:00.000Z", "review"),
+        thread("T1", workstreamA, "done", "2026-10-29T09:00:00.000Z"),
+        thread("T2", workstreamA, "working", "2026-10-30T09:00:00.000Z", "agent"),
+        thread("T3", workstreamB, "working", "2026-10-28T09:00:00.000Z", "review"),
       ]
     : null,
 });
 
-test("each group lists its own threads, most recently active first", () => {
+test("each workstream lists its own threads, most recently active first", () => {
   const where = nav(at({ page: "done" }));
   assert.deepEqual(
-    where.groups?.map((entry) => [entry.group.name, entry.threads.map((each) => each.id)]),
+    where.workstreams?.map((entry) => [
+      entry.workstream.name,
+      entry.threads.map((each) => each.id),
+    ]),
     [
       ["Launch", ["T2", "T1"]],
       ["Billing", ["T3"]],
@@ -63,27 +68,27 @@ test("each group lists its own threads, most recently active first", () => {
   // T2's agent is mid-turn; T3 has a change set for the user to review.
   assert.equal(where.needsYou, 1);
   assert.equal(where.thread, null);
-  assert.ok(where.groups?.every((entry) => !entry.current));
+  assert.ok(where.workstreams?.every((entry) => !entry.current));
 });
 
-test("the group on the page, or the group of the thread on it, is current", () => {
-  const onGroup = nav(at({ page: "group", id: groupB }));
+test("the workstream on the page, or the workstream of the thread on it, is current", () => {
+  const onWorkstream = nav(at({ page: "workstream", id: workstreamB }));
   assert.deepEqual(
-    onGroup.groups?.map((entry) => entry.current),
+    onWorkstream.workstreams?.map((entry) => entry.current),
     [false, true],
   );
-  // The thread hasn't loaded yet: its group comes from the threads list.
+  // The thread hasn't loaded yet: its workstream comes from the threads list.
   const onThread = nav(at({ page: "thread", id: "T1" }));
   assert.equal(onThread.thread, "T1");
   assert.deepEqual(
-    onThread.groups?.map((entry) => entry.current),
+    onThread.workstreams?.map((entry) => entry.current),
     [true, false],
   );
 });
 
-test("before the lists load, there are no groups to show", () => {
+test("before the lists load, there are no workstreams to show", () => {
   const where = nav(at({ page: "window", grouping: "epic", addTo: null }, false));
-  assert.equal(where.groups, null);
+  assert.equal(where.workstreams, null);
   assert.equal(where.needsYou, 0);
 });
 
@@ -92,11 +97,11 @@ test("every page but a review link loads what the sidebar shows, the folder incl
     init(route)[1].flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
   for (const route of [
     { page: "window", grouping: "epic", addTo: null },
-    { page: "group", id: groupA },
+    { page: "workstream", id: workstreamA },
     { page: "thread", id: "01JBZ0000000000000000000T1" },
     { page: "done" },
   ] as const)
-    for (const url of ["/api/groups", "/api/threads", "/api/folder"])
+    for (const url of ["/api/workstreams", "/api/threads", "/api/folder"])
       assert.ok(urls(route).includes(url), `${route.page} loads ${url}`);
   assert.deepEqual(
     urls({ page: "review", token: "abc_DEF-123" }).filter((url) => !url.startsWith("/api/review")),
@@ -104,60 +109,68 @@ test("every page but a review link loads what the sidebar shows, the folder incl
   );
 });
 
-test("a drop on a group's page updates the page, and the groups reload for their counts", () => {
-  const [model] = init({ page: "group", id: groupA });
-  const view = { group: group(groupA, "Launch"), members: [], changes: [], threads: [] };
+test("a drop on a workstream's page updates the page, and the workstreams reload for their counts", () => {
+  const [model] = init({ page: "workstream", id: workstreamA });
+  const view = {
+    workstream: workstream(workstreamA, "Launch"),
+    members: [],
+    changes: [],
+    threads: [],
+  };
   const [after, effects] = update(model, {
     type: "replied",
-    tag: { kind: "dropped", groupId: groupA },
+    tag: { kind: "dropped", workstreamId: workstreamA },
     ok: true,
-    body: { group: view, added: ["jira:OA-5"], refused: [] },
+    body: { workstream: view, added: ["jira:OA-5"], refused: [] },
   });
-  assert.equal(after.group?.view, view);
-  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
+  assert.equal(after.workstream?.view, view);
+  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/workstreams"));
 });
 
-test("a turn that ends reloads the threads and the groups, whose dots and counts it may move", () => {
+test("a turn that ends reloads the threads and the workstreams, whose dots and counts it may move", () => {
   const [model] = init({ page: "thread", id: "01JBZ0000000000000000000T1" });
   const [, effects] = update(model, {
     type: "streamed",
     event: { type: "status", running: false, state: "done", regionVersion: 1 },
   });
   const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
-  assert.ok(urls.includes("/api/threads") && urls.includes("/api/groups"));
+  assert.ok(urls.includes("/api/threads") && urls.includes("/api/workstreams"));
 });
 
-test("a drop on a thread reaches the thread, even after a visit to its group's page", () => {
+test("a drop on a thread reaches the thread, even after a visit to its workstream's page", () => {
   const thread = "01JBZ0000000000000000000T1";
-  const onGroup = init({ page: "group", id: groupA })[0];
-  const [entered] = update(onGroup, { type: "routed", route: { page: "thread", id: thread } });
-  assert.notEqual(entered.group, null);
-  // The thread has loaded, in group A.
-  const loaded = { ...entered.thread, view: { group: { id: groupA } } } as Model["thread"];
+  const onWorkstream = init({ page: "workstream", id: workstreamA })[0];
+  const [entered] = update(onWorkstream, { type: "routed", route: { page: "thread", id: thread } });
+  assert.notEqual(entered.workstream, null);
+  // The thread has loaded, in workstream A.
+  const loaded = {
+    ...entered.thread,
+    view: { workstream: { id: workstreamA } },
+  } as Model["thread"];
   const [, effects] = update(
     { ...entered, thread: loaded },
     {
       type: "replied",
-      tag: { kind: "dropped", groupId: groupA },
+      tag: { kind: "dropped", workstreamId: workstreamA },
       ok: true,
-      body: { group: {}, added: ["jira:OA-5"], refused: [] },
+      body: { workstream: {}, added: ["jira:OA-5"], refused: [] },
     },
   );
   const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
   assert.ok(urls.includes(`/api/threads/${thread}`), "the thread reloads to show its marker");
-  assert.ok(urls.includes("/api/groups"));
+  assert.ok(urls.includes("/api/workstreams"));
 });
 
-test("a drop that answers after the user moved on still reloads the groups", () => {
-  const onGroup = init({ page: "group", id: groupA })[0];
-  const [onDone] = update(onGroup, { type: "routed", route: { page: "done" } });
+test("a drop that answers after the user moved on still reloads the workstreams", () => {
+  const onWorkstream = init({ page: "workstream", id: workstreamA })[0];
+  const [onDone] = update(onWorkstream, { type: "routed", route: { page: "done" } });
   const [, effects] = update(onDone, {
     type: "replied",
-    tag: { kind: "dropped", groupId: groupA },
+    tag: { kind: "dropped", workstreamId: workstreamA },
     ok: true,
-    body: { group: {}, added: ["jira:OA-5"], refused: [] },
+    body: { workstream: {}, added: ["jira:OA-5"], refused: [] },
   });
-  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/groups"));
+  assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/workstreams"));
 });
 
 test("one stream per page says when any thread moves, and a move reloads both lists", () => {
@@ -167,7 +180,7 @@ test("one stream per page says when any thread moves, and a move reloads both li
     );
   for (const route of [
     { page: "window", grouping: "epic", addTo: null },
-    { page: "group", id: groupA },
+    { page: "workstream", id: workstreamA },
     { page: "done" },
   ] as const)
     assert.deepEqual(watching(route), ["watchThreads"], route.page);
@@ -179,10 +192,10 @@ test("one stream per page says when any thread moves, and a move reloads both li
   const urls = (effects: ReturnType<typeof update>[1]) =>
     effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
   const [, moved] = update(init({ page: "done" })[0], { type: "threadsMoved" });
-  assert.deepEqual(urls(moved), ["/api/threads", "/api/groups"]);
+  assert.deepEqual(urls(moved), ["/api/threads", "/api/workstreams"]);
   const onThread = init({ page: "thread", id: "01JBZ0000000000000000000T1" })[0];
   const [, told] = update(onThread, { type: "streamed", event: { type: "threads" } });
-  assert.deepEqual(urls(told), ["/api/threads", "/api/groups"]);
+  assert.deepEqual(urls(told), ["/api/threads", "/api/workstreams"]);
   // The thread's own moves come as its own events, which reload them too.
   const loaded = {
     ...onThread,
@@ -193,7 +206,10 @@ test("one stream per page says when any thread moves, and a move reloads both li
     { type: "change-set", changeSetId: "C1", applying: false },
   ] as const) {
     const [, own] = update(loaded, { type: "streamed", event });
-    assert.ok(urls(own).includes("/api/threads") && urls(own).includes("/api/groups"), event.type);
+    assert.ok(
+      urls(own).includes("/api/threads") && urls(own).includes("/api/workstreams"),
+      event.type,
+    );
   }
 });
 
@@ -273,7 +289,7 @@ test("New thread makes nothing until its first message, which starts it once", (
     type: "replied",
     tag: { kind: "threadStarted", draft: 1 },
     ok: true,
-    body: { id, groupId: groupA },
+    body: { id, workstreamId: workstreamA },
   });
   // The thread takes the draft's place, so Back doesn't return to it.
   assert.deepEqual(opened, [{ type: "navigate", route: { page: "thread", id }, replace: true }]);
@@ -335,11 +351,11 @@ test("a draft left before sending is dropped; one sent before leaving shows in t
     type: "replied",
     tag: { kind: "threadStarted", draft: 1 },
     ok: true,
-    body: { id: "01JBZ0000000000000000000T9", groupId: groupA },
+    body: { id: "01JBZ0000000000000000000T9", workstreamId: workstreamA },
   });
   assert.deepEqual(
     reloaded.map((e) => (e.type === "http" ? e.url : e.type)),
-    ["/api/groups", "/api/threads"],
+    ["/api/workstreams", "/api/threads"],
   );
   assert.deepEqual(kept.newThread, newer.newThread);
   assert.equal(kept.newThread?.draft, "Plan gift cards");
@@ -351,9 +367,9 @@ test("the sidebar lists the threads waiting on the user, most recently active fi
     ...model,
     threads: [
       ...(model.threads ?? []),
-      thread("T4", groupA, "working", "2026-10-27T09:00:00.000Z", "reply"),
-      thread("T5", groupA, "working", "2026-10-30T10:00:00.000Z", "reply"),
-      thread("T6", groupB, "handed-off", "2026-10-30T11:00:00.000Z"),
+      thread("T4", workstreamA, "working", "2026-10-27T09:00:00.000Z", "reply"),
+      thread("T5", workstreamA, "working", "2026-10-30T10:00:00.000Z", "reply"),
+      thread("T6", workstreamB, "handed-off", "2026-10-30T11:00:00.000Z"),
     ],
   });
   // An agent mid-turn and a settled thread wait on nobody.

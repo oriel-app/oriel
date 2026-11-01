@@ -872,17 +872,21 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   };
 
   // Why a mutation's target may no longer be written: it left the thread's
-  // group after the change was captured (decision 0018). A revert may target
+  // workstream after the change was captured (decision 0018). A revert may target
   // anything the change set it reverts touched, and an item this change set
   // created is its own, so neither is checked.
-  const leftGroup = (m: MutationRecord, set: ChangeSet, target: ItemId | null): string | null => {
+  const leftWorkstream = (
+    m: MutationRecord,
+    set: ChangeSet,
+    target: ItemId | null,
+  ): string | null => {
     if (target === null || m.reverts !== null || (m.target !== null && isNewRef(m.target)))
       return null;
     const source = parseItemId(target)?.source;
     const stableId = stableIdFor(m, set, target);
-    if (!source || stableId === null || rows.inGroupNow(set.threadId, source, stableId))
+    if (!source || stableId === null || rows.inWorkstreamNow(set.threadId, source, stableId))
       return null;
-    return `${key(target)} was removed from the group after this was captured, so it wasn't sent.`;
+    return `${key(target)} was removed from the workstream after this was captured, so it wasn't sent.`;
   };
 
   // Whether a set op's value is already in place, as when an earlier send
@@ -1017,7 +1021,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // the source. Apply checks each row with this before sending it, and its
   // guard checks the first unapplied one. A set op sent before may have
   // landed: apply first checks whether it is in place (`checked`), and
-  // records it if so, whatever the group or region holds now. Only then do
+  // records it if so, whatever the workstream or region holds now. Only then do
   // those stop it; and it is unsent again only if it was found absent.
   const sendPlan = (
     m: MutationRecord,
@@ -1067,7 +1071,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return stop(
         `${key(where.target)} no longer names an item in the region this change was made in, so it wasn't sent.`,
       );
-    const away = leftGroup(m, set, where.target);
+    const away = leftWorkstream(m, set, where.target);
     if (away) return stop(away);
     return { target: where.target, stableId, args: args.args };
   };

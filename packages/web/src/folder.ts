@@ -1,4 +1,4 @@
-// The connected folder, beside the groups: connecting one by its typed path
+// The connected folder, beside the workstreams: connecting one by its typed path
 // (there is no native picker on localhost), and syncing it again. It stays a
 // quiet line until the user opens it.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";

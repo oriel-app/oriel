@@ -52,11 +52,11 @@ function answering(responses: ModelEvent[][]): Provider {
 }
 
 const thread = async (app: Awaited<ReturnType<typeof testApp>>) => {
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "cluster", grouping: "epic", cluster: "10001" }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10001" }),
   );
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "One" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "One" }),
   );
   await app.app.settled();
   return id;
@@ -84,7 +84,7 @@ test("a thread whose spend leaves less than a useful response: the agent stops t
   );
   const refused = await app.post(`/api/threads/${id}/messages`, { text: "Three" });
   assert.equal(refused.status, 409);
-  const notice = /used its 10,000 tokens\. Start a new thread on this group/;
+  const notice = /used its 10,000 tokens\. Start a new thread on this workstream/;
   assert.match(json<{ error: string }>(refused).error, notice);
   const after = json<ThreadView>(await app.get(`/api/threads/${id}`));
   const last = after.entries.at(-1);
@@ -125,7 +125,7 @@ test("a turn the agent ended on its token cap ends the thread's questions", asyn
   // but the turn ended on the agent's cap, so the server holds it too.
   const refused = await app.post(`/api/threads/${id}/messages`, { text: "Two" });
   assert.equal(refused.status, 409);
-  assert.match(json<{ error: string }>(refused).error, /Start a new thread on this group/);
+  assert.match(json<{ error: string }>(refused).error, /Start a new thread on this workstream/);
   const after = json<ThreadView>(await app.get(`/api/threads/${id}`));
   assert.deepEqual(
     after.entries.slice(-2).map((e) => e.kind),
@@ -146,11 +146,11 @@ test("the model-backed agent runs a turn through the server's deps", async (t) =
     scripts: { list: listed },
     agent: (deps) => agent({ ...deps, provider: provider("list") }),
   });
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "cluster", grouping: "epic", cluster: "10001" }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10001" }),
   );
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "What's here?" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "What's here?" }),
   );
   await app.app.settled();
   const view = json<ThreadView>(await app.get(`/api/threads/${id}`));

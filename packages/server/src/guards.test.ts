@@ -2,8 +2,15 @@
 // records for the pilot (SPEC §7).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type GroupMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
-import { ensureWorkspace, groupStore, loadMigrations, migrate, open, threadStore } from "@oriel/db";
+import { type WorkstreamMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
+import {
+  ensureWorkspace,
+  workstreamStore,
+  loadMigrations,
+  migrate,
+  open,
+  threadStore,
+} from "@oriel/db";
 import type { ThreadView } from "@oriel/web/view";
 import type { Agent } from "./agent.ts";
 import { host, json, type Script, t0, testApp } from "./testing.ts";
@@ -13,8 +20,8 @@ const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
 async function thread(t: Parameters<typeof testApp>[0], options: Parameters<typeof testApp>[1]) {
   const app = await testApp(t, options);
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
-  const opened = await app.post(`/api/groups/${groupId}/threads`, { text: "One" });
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
+  const opened = await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "One" });
   const { id } = json<{ id: string }>(opened);
   await app.app.settled();
   const view = async () => json<ThreadView>(await app.get(`/api/threads/${id}`));
@@ -23,7 +30,7 @@ async function thread(t: Parameters<typeof testApp>[0], options: Parameters<type
     await app.app.settled();
     return reply;
   };
-  return { ...app, groupId, id, view, say };
+  return { ...app, workstreamId, id, view, say };
 }
 
 test("every line a run logs names its thread and its run, each proxied read included", async (t) => {
@@ -76,7 +83,7 @@ test("a thread that has spent its tokens takes no more, whatever the agent does"
   assert.equal(refused.status, 409);
   assert.match(
     json<{ error: string }>(refused).error,
-    /^This thread has used its 10 tokens\. Start a new thread on this group to keep going\.$/,
+    /^This thread has used its 10 tokens\. Start a new thread on this workstream to keep going\.$/,
   );
   assert.equal((await app.view()).entries.at(-1)?.kind, "limit");
 });
@@ -142,17 +149,21 @@ test("the window reports grouping and zoom changes, and nothing else", async (t)
   assert.equal(app.app.telemetry().length, 3);
 });
 
-test("an item that moved keeps its title in a group's history and a thread's markers", async () => {
+test("an item that moved keeps its title in a workstream's history and a thread's markers", async () => {
   const db = open(":memory:");
   const at = t0 as Instant;
   migrate(db, loadMigrations(), at);
   const id = (n: number) => ulid(n, new Uint8Array(10));
   ensureWorkspace(db, { id: id(1), name: "test" }, at);
-  const groups = groupStore(db);
+  const workstreams = workstreamStore(db);
   const threads = threadStore(db);
-  groups.create({ id: id(2), workspaceId: id(1), name: "G", origin: { kind: "picked" } }, [], at);
-  threads.open({ id: id(3), workspaceId: id(1), groupId: id(2) }, at);
-  groups.add(id(2), [{ id: "jira:SYN-5", stableId: "10005" }], { kind: "user" }, at);
+  workstreams.create(
+    { id: id(2), workspaceId: id(1), name: "G", origin: { kind: "picked" } },
+    [],
+    at,
+  );
+  threads.open({ id: id(3), workspaceId: id(1), workstreamId: id(2) }, at);
+  workstreams.add(id(2), [{ id: "jira:SYN-5", stableId: "10005" }], { kind: "user" }, at);
   threads.follow(id(2), at, () => id(4));
   // SYN-5 has since moved to another project: the index has it as OA-1.
   const moved = {
@@ -165,7 +176,7 @@ test("an item that moved keeps its title in a group's history and a thread's mar
     attrs: {},
   } as IndexRecord;
   const shown = views({
-    groups,
+    workstreams,
     threads,
     records: () => [moved],
     presentations: {},
@@ -175,7 +186,7 @@ test("an item that moved keeps its title in a group's history and a thread's mar
     changeSets: { ofThread: async () => [], nextSteps: async () => [], applying: () => false },
     writable: false,
   });
-  const added = (await shown.group(id(2)))?.changes[0]?.added[0];
+  const added = (await shown.workstream(id(2)))?.changes[0]?.added[0];
   assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
   const marker = shown
     .thread(id(3), [], new Map(), () => false)
@@ -189,7 +200,7 @@ test("an item that moved keeps its title in a group's history and a thread's mar
 
 test("a member is found by identity, so a moved item is removed under its new handle", () => {
   const record = (id: string, stableId: string) => ({ id, stableId }) as IndexRecord;
-  const held: GroupMember[] = [
+  const held: WorkstreamMember[] = [
     { id: "jira:SYN-5", stableId: "10005" },
     { id: "jira:SYN-6", stableId: "10006" },
   ];

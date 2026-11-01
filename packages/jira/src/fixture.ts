@@ -7,7 +7,7 @@
 import {
   array,
   boolean,
-  type GroupOrigin,
+  type WorkstreamOrigin,
   type Infer,
   type Issue,
   isInstant,
@@ -108,7 +108,7 @@ export type FixtureEdit = Infer<typeof fixtureEdit>;
 export type JiraFixtureFile = Infer<typeof jiraFixtureFile>;
 
 // A frozen region as Oriel uses it, with its origin in core's terms.
-export type FixtureRegion = { name: string; origin: GroupOrigin; items: ItemId<"jira">[] };
+export type FixtureRegion = { name: string; origin: WorkstreamOrigin; items: ItemId<"jira">[] };
 export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureRegion[] };
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.

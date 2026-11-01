@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/header.svg" alt="Oriel: point, don't prompt. Item cards drift into a bay window and settle into groups; a pointer selects one group and a check approves the proposed change." width="100%"></p>
+<p align="center"><img src="docs/assets/header.svg" alt="Oriel: point, don't prompt. Item cards drift into a bay window and settle into workstreams; a pointer selects one workstream and a check approves the proposed change." width="100%"></p>
 
 # Oriel
 

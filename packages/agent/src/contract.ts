@@ -20,7 +20,7 @@ import type { Provider } from "./provider.ts";
 // One user message in a thread, run to completion.
 export type TurnInput = {
   thread: Thread;
-  // The version of the thread's group this turn uses.
+  // The version of the thread's workstream this turn uses.
   region: Region;
   // Prior messages, oldest first.
   history: ChatMessage[];

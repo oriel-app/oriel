@@ -81,7 +81,7 @@ function writable(id: string, host: NamespaceHost): ItemId<"jira"> | NewRef {
   );
 }
 
-// The region's Jira items, the epic its group was made around, if any, the
+// The region's Jira items, the epic its workstream was made around, if any, the
 // epics a new story may go in, and where estimates can't go.
 type JiraScope = {
   ids: readonly ItemId<"jira">[];

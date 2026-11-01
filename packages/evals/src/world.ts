@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ItemDocs, Namespaces } from "@oriel/bindings";
 import {
-  type GroupMember,
+  type WorkstreamMember,
   type ItemId,
   itemId,
   parseItemId,
@@ -76,7 +76,7 @@ export type WorldInput = {
 };
 
 export type World = {
-  // Version 1 of a group holding the Jira region's items, then the files,
+  // Version 1 of a workstream holding the Jira region's items, then the files,
   // then the messages.
   region: Region;
   reader: Reader;
@@ -95,13 +95,13 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const stableIds = new Map(input.fixture.issues.map((i) => [`jira:${i.key}`, i.id]));
   const files = input.files.map((path) => ({ id: fileId(path), path }));
   const paths = new Map<string, string>(files.map(({ id, path }) => [id, path]));
-  const members: GroupMember[] = [
+  const members: WorkstreamMember[] = [
     ...(input.region?.items ?? []).map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
     ...files.map(({ id }) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
     ...(input.messages ?? []).map((id) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
   ];
   const region: Region = {
-    groupId: fixedId,
+    workstreamId: fixedId,
     version: 1,
     workspaceId: fixedId,
     items: members,

@@ -1,28 +1,33 @@
-// A group: ask about it, see its threads, and curate its items.
+// A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import {
   askPrompt,
-  type GroupModel,
-  type GroupMsg,
+  type WorkstreamModel,
+  type WorkstreamMsg,
   type Hold,
   latestUndo,
   type Removal,
   undoable,
-} from "./group.ts";
+} from "./workstream.ts";
 import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
-import type { GroupChangeView, GroupView, ThreadStateId, ThreadSummaryView } from "./view.ts";
+import type {
+  WorkstreamChangeView,
+  WorkstreamView,
+  ThreadStateId,
+  ThreadSummaryView,
+} from "./view.ts";
 
-// `threads`: the group's, from the list the sidebar keeps, so they move as
+// `threads`: the workstream's, from the list the sidebar keeps, so they move as
 // it does.
-export function GroupPage(props: {
-  model: GroupModel;
+export function WorkstreamPage(props: {
+  model: WorkstreamModel;
   threads: ThreadSummaryView[];
   dispatch: Dispatch;
 }) {
   const { model, threads, dispatch } = props;
-  const send = (msg: GroupMsg) => dispatch({ type: "group", msg });
+  const send = (msg: WorkstreamMsg) => dispatch({ type: "workstream", msg });
   const { view } = model;
   const list = useRef<HTMLUListElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -75,29 +80,29 @@ export function GroupPage(props: {
       <main class="page">
         {model.status === "failed" ? (
           <p class="failed" role="alert">
-            This group didn't load.
+            This workstream didn't load.
           </p>
         ) : (
           <p class="loading">Loading…</p>
         )}
       </main>
     );
-  const { group } = view;
+  const { workstream } = view;
   const members = view.members.filter(
     (member) => !model.removing.some((each) => each.id === member.ref.id),
   );
   return (
     <DropZone
       class="drop-page"
-      label={`Drop to add to ${group.name}`}
+      label={`Drop to add to ${workstream.name}`}
       onDrop={(dropped) => send({ type: "dropped", dropped })}
     >
-      <main class="page group-page">
-        <header class="group-head">
+      <main class="page workstream-page">
+        <header class="workstream-head">
           <input
-            class="group-title"
-            value={model.name ?? group.name}
-            aria-label="Group name"
+            class="workstream-title"
+            value={model.name ?? workstream.name}
+            aria-label="Workstream name"
             maxLength={120}
             onInput={(event) => send({ type: "nameEdited", name: event.currentTarget.value })}
             onBlur={() => send({ type: "nameSaved" })}
@@ -105,14 +110,14 @@ export function GroupPage(props: {
               if (event.key === "Enter") event.currentTarget.blur();
             }}
           />
-          <p class="group-origin">
-            {group.origin.kind === "cluster"
-              ? `Copied from a cluster in the ${group.origin.grouping} grouping`
-              : group.origin.kind === "thread"
+          <p class="workstream-origin">
+            {workstream.origin.kind === "cluster"
+              ? `Copied from a cluster in the ${workstream.origin.grouping} grouping`
+              : workstream.origin.kind === "thread"
                 ? "Made by a thread started from nothing"
                 : "Picked by hand"}
             {" · "}
-            {plural(group.size, "item")} · v{group.version}
+            {plural(workstream.size, "item")} · v{workstream.version}
           </p>
         </header>
 
@@ -126,8 +131,8 @@ export function GroupPage(props: {
           <textarea
             rows={2}
             value={model.draft}
-            placeholder={askPrompt(group.size)}
-            aria-label="Ask about this group"
+            placeholder={askPrompt(workstream.size)}
+            aria-label="Ask about this workstream"
             onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -153,7 +158,7 @@ export function GroupPage(props: {
         {threads.length > 0 && (
           <section class="section">
             <h2 class="section-title">Threads</h2>
-            <Threads threads={threads} dispatch={dispatch} showGroup={false} said={null} />
+            <Threads threads={threads} dispatch={dispatch} showWorkstream={false} said={null} />
           </section>
         )}
 
@@ -249,8 +254,8 @@ function Undos(props: {
   );
 }
 
-// Who changed a group, when it wasn't the user.
-const causes: Record<GroupChangeView["cause"], string> = {
+// Who changed a workstream, when it wasn't the user.
+const causes: Record<WorkstreamChangeView["cause"], string> = {
   user: "",
   agent: " · by the agent",
   tool: " · by an outside tool",
@@ -258,8 +263,8 @@ const causes: Record<GroupChangeView["cause"], string> = {
   "change-set": " · by an applied change set",
 };
 
-// The group's versions, newest first, folded.
-function History({ view }: { view: GroupView }) {
+// The workstream's versions, newest first, folded.
+function History({ view }: { view: WorkstreamView }) {
   return (
     <details class="history">
       <summary>{plural(view.changes.length, "version")}</summary>
@@ -293,7 +298,7 @@ function History({ view }: { view: GroupView }) {
 export function Threads(props: {
   threads: ThreadSummaryView[];
   dispatch: Dispatch;
-  showGroup: boolean;
+  showWorkstream: boolean;
   said: ThreadStateId | null;
 }) {
   return (
@@ -307,7 +312,9 @@ export function Threads(props: {
               class="thread-link"
             >
               <span class="thread-link-title">{thread.title ?? "New thread"}</span>
-              {props.showGroup && <span class="thread-link-group">{thread.group.name}</span>}
+              {props.showWorkstream && (
+                <span class="thread-link-workstream">{thread.workstream.name}</span>
+              )}
               {(thread.waitingOn || thread.state !== props.said) && (
                 <StateChip state={thread.state} waitingOn={thread.waitingOn} />
               )}

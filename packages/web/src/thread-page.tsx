@@ -18,7 +18,7 @@ import {
   StateChip,
   TypeMark,
 } from "./parts.tsx";
-import { planPrompt } from "./group.ts";
+import { planPrompt } from "./workstream.ts";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Block,
@@ -116,13 +116,17 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
     <ItemLinksContext.Provider value={{ dispatch, items: itemsOf(view) }}>
       <DropZone
         class="thread-layout"
-        label={`Drop to add to ${view.group.name}`}
+        label={`Drop to add to ${view.workstream.name}`}
         onDrop={(dropped) => send({ type: "dropped", dropped })}
       >
         <main class="thread" aria-busy={view.running}>
           <header class="thread-head">
-            <Link route={{ page: "group", id: view.group.id }} dispatch={dispatch} class="crumb">
-              {view.group.name}
+            <Link
+              route={{ page: "workstream", id: view.workstream.id }}
+              dispatch={dispatch}
+              class="crumb"
+            >
+              {view.workstream.name}
             </Link>
             <div class="thread-title-row">
               <h1 class="thread-title">{view.title ?? "New thread"}</h1>
@@ -178,7 +182,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
 }
 
 // A thread from nothing, before its first message: only the composer. There
-// is no group yet; sending makes it, with the thread.
+// is no workstream yet; sending makes it, with the thread.
 export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; dispatch: Dispatch }) {
   return (
     <div class="thread-layout">
@@ -202,7 +206,7 @@ export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; disp
       <aside class="rail" aria-label="This thread's items">
         <h2 class="rail-title">No items</h2>
         <p class="rail-note">
-          No group yet: your first message makes one, with this thread. What a change set here
+          No workstream yet: your first message makes one, with this thread. What a change set here
           creates joins it.
         </p>
       </aside>
@@ -249,14 +253,14 @@ function ChatBlock(props: {
       return (
         <li class="search-block">
           <p class="search-label">
-            Searched outside this group · {plural(block.hits.length, "result")} · read-only
+            Searched outside this workstream · {plural(block.hits.length, "result")} · read-only
           </p>
           <ul class="hits">
             {block.hits.map((hit) => (
               <li key={hit.id}>
                 <ItemKey item={hit} />
                 <span class="hit-title">{hit.title}</span>
-                {hit.inRegion && <span class="in-region">in this group</span>}
+                {hit.inRegion && <span class="in-region">in this workstream</span>}
               </li>
             ))}
           </ul>
@@ -920,9 +924,9 @@ function Composer(props: {
   );
 }
 
-// The region the thread works in: its group at one version.
+// The region the thread works in: its workstream at one version.
 function Region({ view }: { view: ThreadView }) {
-  const behind = view.regionVersion < view.group.version;
+  const behind = view.regionVersion < view.workstream.version;
   return (
     <aside class="rail" aria-label="This thread's items">
       <h2 class="rail-title">
@@ -930,11 +934,12 @@ function Region({ view }: { view: ThreadView }) {
       </h2>
       {behind && (
         <p class="rail-note">
-          The group is at v{view.group.version}. This thread catches up when you write again.
+          The workstream is at v{view.workstream.version}. This thread catches up when you write
+          again.
         </p>
       )}
       {view.members.length === 0 && !behind && (
-        <p class="rail-note">No items yet. What a change set here creates joins this group.</p>
+        <p class="rail-note">No items yet. What a change set here creates joins this workstream.</p>
       )}
       <ul class="members compact">
         {view.members.map((member) => (
@@ -963,7 +968,7 @@ export function Member({ member, onRemove }: { member: MemberView; onRemove?: ()
         <button
           type="button"
           class="remove-member"
-          title={`Remove ${ref.key} from this group`}
+          title={`Remove ${ref.key} from this workstream`}
           aria-label={`Remove ${ref.key}`}
           onClick={onRemove}
         >

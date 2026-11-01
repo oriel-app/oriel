@@ -2,7 +2,7 @@
 // region in the right rail. Entries arrive over the thread's event stream as
 // they're stored; change sets are acted on with explicit requests.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
-import { nothingToAdd } from "./group.ts";
+import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type {
   ChangeSetView,
@@ -71,7 +71,7 @@ export type ThreadMsg =
   | { type: "heldEdited"; seq: number; text: string }
   | { type: "heldEditCancelled"; seq: number }
   | { type: "heldDiscardClicked"; seq: number }
-  // Dropped on the thread: added to its group, which the thread then follows.
+  // Dropped on the thread: added to its workstream, which the thread then follows.
   | { type: "dropped"; dropped: Dropped }
   // The page moved: `below`, how far the chat's end is below the window's
   // bottom edge; `up`, whether the user scrolled up or opened a run's
@@ -284,10 +284,15 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     case "dropped": {
       if (model.view === null) return [model, []];
       if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
-      const groupId = model.view.group.id;
+      const workstreamId = model.view.workstream.id;
       return [
         { ...model, notice: null },
-        [post(`/api/groups/${groupId}/drop`, msg.dropped, { kind: "dropped", groupId })],
+        [
+          post(`/api/workstreams/${workstreamId}/drop`, msg.dropped, {
+            kind: "dropped",
+            workstreamId,
+          }),
+        ],
       ];
     }
     case "scrolled": {
@@ -309,7 +314,7 @@ const nearLatest = 40;
 
 // A thread opens at its latest entry, and while the user is there, the
 // thread or a diff changing (an entry, a change set's status, a reload after
-// its group changed) keeps them there, as does the composer emptying once a
+// its workstream changed) keeps them there, as does the composer emptying once a
 // message is sent. Once it renders, the page is asked
 // again, so a user who scrolled up meanwhile, or is reading a run they
 // opened, stays where they are.
@@ -358,9 +363,9 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       if (!msg.ok) return [{ ...model, sending: false, notice: errorOf(msg.body) }, []];
       return [{ ...model, sending: false, draft: "" }, []];
     case "dropped": {
-      if (tag.groupId !== model.view?.group.id) return [model, []];
+      if (tag.workstreamId !== model.view?.workstream.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      // The thread follows its group with a marker; the refresh shows it.
+      // The thread follows its workstream with a marker; the refresh shows it.
       const reply = msg.body as DropReply;
       return [
         { ...model, notice: dropNotice(reply) },
@@ -512,8 +517,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
   // The lists' business, not the thread's.
   if (event.type === "threads") return [model, []];
-  // Its group changed, its name or members, whether or not the thread moved.
-  if (event.type === "group") return [model, [refresh(model)]];
+  // Its workstream changed, its name or members, whether or not the thread moved.
+  if (event.type === "workstream") return [model, [refresh(model)]];
   // An entry it shows changed, as a held message settles.
   if (event.type === "chat") return [model, [refresh(model)]];
   // Its stream ends with this.
@@ -524,7 +529,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     ...model,
     view: { ...view, entries: [...view.entries, entry], lastSeq: entry.seq },
   };
-  // A new change set or group version: fetch what the view lacks.
+  // A new change set or workstream version: fetch what the view lacks.
   const effects: Effect[] =
     entry.kind === "change-set"
       ? [diffOf(entry.changeSetId), refresh(model)]
@@ -535,7 +540,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
 }
 
 // A thread from nothing, before its first message: a draft in the browser
-// only. Sending it makes the group and the thread, once; leaving first makes
+// only. Sending it makes the workstream and the thread, once; leaving first makes
 // nothing. `id` tells this draft's reply from one sent from an earlier draft.
 export type NewThreadModel = {
   id: number;

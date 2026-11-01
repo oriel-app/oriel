@@ -1,5 +1,5 @@
 import type { Actor } from "./actions.ts";
-import type { GroupChange, GroupOrigin } from "./group.ts";
+import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
 import type { ZoomId } from "./zoom.ts";
@@ -17,28 +17,28 @@ export type CloseVia = "page" | "menu" | "swipe";
 
 // Events that can come from an Oriel action say who acted in `by`, which only
 // an actor other than the user fills in; or, by their `cause`, who changed a
-// group (decision 0024).
+// workstream (decision 0024).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
   // `size` is how many items it started with.
   | {
-      name: "group.created";
-      groupId: Ulid;
-      origin: GroupOrigin["kind"];
+      name: "workstream.created";
+      workstreamId: Ulid;
+      origin: WorkstreamOrigin["kind"];
       size: number;
       by?: Actor;
     }
-  // One per item, by whoever added it, as the group's log has it: the user,
-  // say, or a change set a thread on the group applied.
+  // One per item, by whoever added it, as the workstream's log has it: the user,
+  // say, or a change set a thread on the workstream applied.
   | {
-      name: "group.item-added";
-      groupId: Ulid;
+      name: "workstream.item-added";
+      workstreamId: Ulid;
       source: SourceKind;
-      cause: GroupChange["cause"]["kind"];
+      cause: WorkstreamChange["cause"]["kind"];
     }
-  | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
+  | { name: "thread.opened"; threadId: Ulid; workstreamId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
   // `held`: it was a message held from someone else, which the user sent to
   // the agent, as it was or edited (decision 0024).
@@ -55,13 +55,13 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // someone else, who closed nothing in the window.
   | { name: "thread.marked-done"; threadId: Ulid; via?: CloseVia; by?: Actor }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
-  // stay, out of sight. `groupRemoved`: its group, made for it, went too.
+  // stay, out of sight. `workstreamRemoved`: its workstream, made for it, went too.
   | {
       name: "thread.deleted";
       threadId: Ulid;
-      groupId: Ulid;
+      workstreamId: Ulid;
       kept: boolean;
-      groupRemoved: boolean;
+      workstreamRemoved: boolean;
       via: CloseVia;
     }
   | { name: "grouping.switched"; grouping: string }

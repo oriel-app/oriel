@@ -288,7 +288,7 @@ test("the turn cap: a thread at its limit refuses the message before the model s
     {
       kind: "limit",
       reason:
-        "This thread has reached its limit of 2 messages. Start a new thread on the group to keep going.",
+        "This thread has reached its limit of 2 messages. Start a new thread on the workstream to keep going.",
     },
     { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } },
   ]);

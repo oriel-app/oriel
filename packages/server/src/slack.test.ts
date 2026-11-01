@@ -1,13 +1,13 @@
 // Slack's picked channels, read-only: their messages join the window beside
 // Jira's, under groupings that say Slack has no epics or assignees, and a
-// group can hold both, read by its thread's region.
+// workstream can hold both, read by its thread's region.
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fixtureApi, type ReadMethod, SlackError } from "@oriel/slack";
-import type { GroupView, ThreadView, WindowView } from "@oriel/web/view";
+import type { WorkstreamView, ThreadView, WindowView } from "@oriel/web/view";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
@@ -51,7 +51,7 @@ test("the picked channel's messages are in the window, in clusters that say Slac
   );
 });
 
-test("a group holds Jira items and Slack messages; its thread reads both, and no message text reaches the declarations", async (t) => {
+test("a workstream holds Jira items and Slack messages; its thread reads both, and no message text reaches the declarations", async (t) => {
   const inspect: Script = async (bindings) => ({
     value: { dts: bindings.dts, items: (await bindings.read("items.list", [])).value },
   });
@@ -61,26 +61,28 @@ test("a group holds Jira items and Slack messages; its thread reads both, and no
     scripts: { inspect },
   });
   const message = "slack:C0FW1WEATHR-1788444000.000100";
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", {
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
       kind: "picked",
       name: "Fares after cancellations",
       items: ["jira:SYN-45", message],
     }),
   );
-  const group = json<GroupView>(await app.get(`/api/groups/${groupId}`));
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
   assert.deepEqual(
-    group.members.map((m) => [m.ref.id, m.ref.url]),
+    workstream.members.map((m) => [m.ref.id, m.ref.url]),
     [
       ["jira:SYN-45", "https://oriel.atlassian.net/browse/SYN-45"],
       [message, "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100"],
     ],
   );
-  assert.equal(group.members[1]?.row?.type, "message");
-  const added = app.app.telemetry().filter((e) => e.name === "group.created");
+  assert.equal(workstream.members[1]?.row?.type, "message");
+  const added = app.app.telemetry().filter((e) => e.name === "workstream.created");
   assert.equal(added.length, 1);
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "What did the team decide?" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "What did the team decide?",
+    }),
   );
   await app.app.settled();
   const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
@@ -151,14 +153,14 @@ test("live Slack reads only the channels picked by name, through the Web API", a
   );
 });
 
-test("a Slack message's link dropped on a group adds it", async (t) => {
+test("a Slack message's link dropped on a workstream adds it", async (t) => {
   const app = await testApp(t, { slack: { kind: "fixture" } });
   const { id } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );
   const link = "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100";
   const dropped = json<{ added: string[]; refused: unknown[] }>(
-    await app.post(`/api/groups/${id}/drop`, { links: [link], files: [] }),
+    await app.post(`/api/workstreams/${id}/drop`, { links: [link], files: [] }),
   );
   assert.deepEqual(dropped.added, ["slack:C0FW1WEATHR-1788444000.000100"]);
   assert.deepEqual(dropped.refused, []);
@@ -175,11 +177,11 @@ test("started without Slack, the window and search leave out what an earlier sta
   });
   const off = await testApp(t, { db, plan: () => [{ run: "found" }], scripts: { found } });
   assert.deepEqual(slackRows(json<WindowView>(await off.get("/api/window?grouping=epic"))), []);
-  const { id: groupId } = json<{ id: string }>(
-    await off.post("/api/groups", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await off.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );
   const { id } = json<{ id: string }>(
-    await off.post(`/api/groups/${groupId}/threads`, { text: "Anything about SMS?" }),
+    await off.post(`/api/workstreams/${workstreamId}/threads`, { text: "Anything about SMS?" }),
   );
   await off.app.settled();
   const thread = json<ThreadView>(await off.get(`/api/threads/${id}`));

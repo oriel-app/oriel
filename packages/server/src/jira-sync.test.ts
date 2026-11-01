@@ -5,8 +5,8 @@ import { test } from "node:test";
 import type {
   ChangeSetView,
   DiffView,
-  GroupSummary,
-  GroupView,
+  WorkstreamSummary,
+  WorkstreamView,
   JiraView,
   ThreadView,
 } from "@oriel/web/view";
@@ -26,12 +26,12 @@ test("Sync shows the epics and stories made in Jira, and what was deleted there 
   const app = await testApp(t, { live: true });
   const { site } = app;
   assert.ok(site);
-  const created = await app.post("/api/groups", {
+  const created = await app.post("/api/workstreams", {
     kind: "picked",
     name: "Declines",
     items: ["jira:SYN-10", "jira:SYN-21"],
   });
-  const { id: groupId, version } = json<GroupSummary>(created);
+  const { id: workstreamId, version } = json<WorkstreamSummary>(created);
   const before = json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected;
   assert.ok(before);
 
@@ -56,12 +56,12 @@ test("Sync shows the epics and stories made in Jira, and what was deleted there 
   );
   assert.ok(!keys(app).has("SYN-21"), "the deleted story is gone from the window");
 
-  // The group keeps it, at the same version: a group changes only when the
+  // The workstream keeps it, at the same version: a workstream changes only when the
   // user changes it, so its region stays the one its threads work in.
-  const group = json<GroupView>(await app.get(`/api/groups/${groupId}`));
-  assert.equal(group.group.version, version);
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
+  assert.equal(workstream.workstream.version, version);
   assert.deepEqual(
-    group.members.map((m) => [m.ref.key, m.row?.title ?? null]),
+    workstream.members.map((m) => [m.ref.key, m.row?.title ?? null]),
     [
       ["SYN-10", "Remove the legacy web-view checkout"],
       ["SYN-21", null],
@@ -198,7 +198,7 @@ test("what a revert deleted stays gone while Jira's search lags, however long", 
   const app = await testApp(t, { live: true, plan: () => [{ run: "plan" }], scripts: { plan } });
   const { site } = app;
   assert.ok(site);
-  const { id: threadId, groupId } = json<{ id: string; groupId: string }>(
+  const { id: threadId, workstreamId } = json<{ id: string; workstreamId: string }>(
     await app.post("/api/threads", { text: "Plan kiosk wallets" }),
   );
   await app.app.settled();
@@ -229,7 +229,7 @@ test("what a revert deleted stays gone while Jira's search lags, however long", 
   // Long after the app stopped reading the epic by key, a sync of each kind:
   // one a dropped link starts, then a Sync.
   app.advance(60 * 60 * 1000);
-  const drop = await app.post(`/api/groups/${groupId}/drop`, {
+  const drop = await app.post(`/api/workstreams/${workstreamId}/drop`, {
     links: ["https://oriel.atlassian.net/browse/SYN-999"],
     files: [],
   });
@@ -237,7 +237,7 @@ test("what a revert deleted stays gone while Jira's search lags, however long", 
   assert.ok(!keys(app).has("SYN-900"), "an incremental sync doesn't bring it back");
   assert.equal((await app.post("/api/jira/sync")).status, 200);
   assert.ok(!keys(app).has("SYN-900"), "nor does a full sweep");
-  const members = json<GroupView>(await app.get(`/api/groups/${groupId}`)).members;
+  const members = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`)).members;
   assert.deepEqual(
     members.map((m) => [m.ref.key, m.row]),
     [["SYN-900", null]],

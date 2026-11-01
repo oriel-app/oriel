@@ -1,4 +1,4 @@
-// The window: clusters under a grouping, and items to pick into a group.
+// The window: clusters under a grouping, and items to pick into a workstream.
 // Controls stay out of the way until something is picked or hovered.
 import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
 import { emptyJira, type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
@@ -19,7 +19,7 @@ import {
   type ClusterView,
   type GroupingId,
   groupingIds,
-  type GroupSummary,
+  type WorkstreamSummary,
   type ItemRow,
   type WindowView,
 } from "./view.ts";
@@ -32,12 +32,12 @@ const groupingNames: Record<GroupingId, string> = {
 
 export function WindowPage(props: {
   model: Model;
-  groups: GroupSummary[] | null;
+  workstreams: WorkstreamSummary[] | null;
   jira: JiraModel;
   dispatch: Dispatch;
 }) {
-  const { model, groups, jira, dispatch } = props;
-  const adding = groups?.find((group) => group.id === model.addTo) ?? null;
+  const { model, workstreams, jira, dispatch } = props;
+  const adding = workstreams?.find((workstream) => workstream.id === model.addTo) ?? null;
   const empty = emptyJira(jira.view);
   return (
     <div class="window-layout">
@@ -60,7 +60,7 @@ export function WindowPage(props: {
         {empty && <EmptyJira site={empty.site} project={empty.project} />}
         <Body model={model} dispatch={dispatch} />
       </main>
-      <Selection model={model} groups={groups} adding={adding} dispatch={dispatch} />
+      <Selection model={model} workstreams={workstreams} adding={adding} dispatch={dispatch} />
     </div>
   );
 }
@@ -301,14 +301,14 @@ function Cluster(props: {
         </button>
         <button
           type="button"
-          class="quiet-action make-group"
+          class="quiet-action make-workstream"
           disabled={props.pending}
-          title={`Make a group of ${row.label}'s items as they are now`}
+          title={`Make a workstream of ${row.label}'s items as they are now`}
           onClick={() =>
-            dispatch({ type: "window", msg: { type: "clusterGrouped", key: row.key } })
+            dispatch({ type: "window", msg: { type: "clusterToWorkstream", key: row.key } })
           }
         >
-          Make group
+          Make workstream
         </button>
       </h2>
       {open && (
@@ -462,15 +462,15 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
 // What can be done with picked items. It appears once something is picked.
 function Selection(props: {
   model: Model;
-  groups: GroupSummary[] | null;
-  adding: GroupSummary | null;
+  workstreams: WorkstreamSummary[] | null;
+  adding: WorkstreamSummary | null;
   dispatch: Dispatch;
 }) {
   const { model, adding, dispatch } = props;
   const count = model.selected.length;
   if (count === 0 && !adding && !model.notice) return null;
   const send = (msg: WindowMsg) => dispatch({ type: "window", msg });
-  const others = (props.groups ?? []).filter((group) => group.id !== adding?.id);
+  const others = (props.workstreams ?? []).filter((workstream) => workstream.id !== adding?.id);
   return (
     <div class="selection-bar" role="region" aria-label="Picked items">
       <span class="selection-count">{count === 0 ? "Nothing picked" : `${count} picked`}</span>
@@ -479,7 +479,7 @@ function Selection(props: {
           type="button"
           class="button primary"
           disabled={count === 0 || model.pending}
-          onClick={() => send({ type: "selectionAdded", groupId: adding.id })}
+          onClick={() => send({ type: "selectionAdded", workstreamId: adding.id })}
         >
           Add to {adding.name}
         </button>
@@ -488,26 +488,26 @@ function Selection(props: {
           type="button"
           class="button primary"
           disabled={count === 0 || model.pending}
-          onClick={() => send({ type: "selectionGrouped", name: pickedName(model) })}
+          onClick={() => send({ type: "selectionToWorkstream", name: pickedName(model) })}
         >
-          New group
+          New workstream
         </button>
       )}
       {!adding && others.length > 0 && count > 0 && (
         <select
           class="add-to"
-          aria-label="Add to a group"
+          aria-label="Add to a workstream"
           disabled={model.pending}
           value=""
           onChange={(event) => {
-            const groupId = event.currentTarget.value;
-            if (groupId) send({ type: "selectionAdded", groupId });
+            const workstreamId = event.currentTarget.value;
+            if (workstreamId) send({ type: "selectionAdded", workstreamId });
           }}
         >
           <option value="">Add to…</option>
-          {others.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
+          {others.map((workstream) => (
+            <option key={workstream.id} value={workstream.id}>
+              {workstream.name}
             </option>
           ))}
         </select>
@@ -522,7 +522,11 @@ function Selection(props: {
         </button>
       )}
       {adding && (
-        <Link route={{ page: "group", id: adding.id }} dispatch={dispatch} class="quiet-action">
+        <Link
+          route={{ page: "workstream", id: adding.id }}
+          dispatch={dispatch}
+          class="quiet-action"
+        >
           Done
         </Link>
       )}

@@ -3,8 +3,8 @@ import { type TestContext, test } from "node:test";
 import type {
   ChangeSetView,
   DiffView,
-  GroupSummary,
-  GroupView,
+  WorkstreamSummary,
+  WorkstreamView,
   ReviewView,
   StreamEvent,
   ThreadSummaryView,
@@ -16,17 +16,17 @@ import { host, json, type Script, t0, testApp } from "./testing.ts";
 // SYN-1's epic cluster is keyed by the epic's stable ID.
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
-async function group(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
+async function workstream(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
   const app = await testApp(t, options);
-  const created = await app.post("/api/groups", checkout);
+  const created = await app.post("/api/workstreams", checkout);
   assert.equal(created.status, 201);
-  const summary = json<GroupSummary>(created);
-  return { ...app, groupId: summary.id, summary };
+  const summary = json<WorkstreamSummary>(created);
+  return { ...app, workstreamId: summary.id, summary };
 }
 
 async function thread(t: TestContext, text: string, options: Parameters<typeof testApp>[1] = {}) {
-  const app = await group(t, options);
-  const opened = await app.post(`/api/groups/${app.groupId}/threads`, { text });
+  const app = await workstream(t, options);
+  const opened = await app.post(`/api/workstreams/${app.workstreamId}/threads`, { text });
   assert.equal(opened.status, 201);
   const { id } = json<{ id: string }>(opened);
   await app.app.settled();
@@ -37,39 +37,39 @@ async function thread(t: TestContext, text: string, options: Parameters<typeof t
 const names = (app: { app: { telemetry(): { name: string }[] } }) =>
   app.app.telemetry().map((event) => event.name);
 
-test("a cluster becomes a group in one request: a copy of its members, its anchor included", async (t) => {
-  const { get, groupId, summary, app } = await group(t);
+test("a cluster becomes a workstream in one request: a copy of its members, its anchor included", async (t) => {
+  const { get, workstreamId, summary, app } = await workstream(t);
   assert.equal(summary.origin.kind, "cluster");
   assert.equal(summary.version, 1);
-  const view = json<GroupView>(await get(`/api/groups/${groupId}`));
+  const view = json<WorkstreamView>(await get(`/api/workstreams/${workstreamId}`));
   assert.equal(view.members[0]?.ref.id, "jira:SYN-1");
   assert.equal(view.members.length, summary.size);
   assert.ok(view.members.every((m) => m.row !== null));
-  const listed = json<{ groups: GroupSummary[] }>(await get("/api/groups"));
+  const listed = json<{ workstreams: WorkstreamSummary[] }>(await get("/api/workstreams"));
   assert.deepEqual(
-    listed.groups.map((g) => g.id),
-    [groupId],
+    listed.workstreams.map((g) => g.id),
+    [workstreamId],
   );
   assert.deepEqual(app.telemetry().at(-1), {
-    name: "group.created",
+    name: "workstream.created",
     at: t0,
-    data: { groupId, origin: "cluster", size: summary.size },
+    data: { workstreamId, origin: "cluster", size: summary.size },
   });
 });
 
-test("hand-picked items make a group; adding and removing each take a version", async (t) => {
+test("hand-picked items make a workstream; adding and removing each take a version", async (t) => {
   const app = await testApp(t);
-  const created = await app.post("/api/groups", {
+  const created = await app.post("/api/workstreams", {
     kind: "picked",
     name: "Launch risks",
     items: ["jira:SYN-10", "jira:SYN-21"],
   });
   assert.equal(created.status, 201);
-  const { id } = json<GroupSummary>(created);
-  const added = json<GroupView>(
-    await app.post(`/api/groups/${id}/add`, { items: ["jira:SYN-3", "jira:SYN-10"] }),
+  const { id } = json<WorkstreamSummary>(created);
+  const added = json<WorkstreamView>(
+    await app.post(`/api/workstreams/${id}/add`, { items: ["jira:SYN-3", "jira:SYN-10"] }),
   );
-  assert.equal(added.group.version, 2);
+  assert.equal(added.workstream.version, 2);
   assert.deepEqual(
     added.members.map((m) => m.ref.key),
     ["SYN-3", "SYN-10", "SYN-21"],
@@ -78,43 +78,46 @@ test("hand-picked items make a group; adding and removing each take a version", 
     added.changes[0]?.added.map((r) => r.key),
     ["SYN-3"],
   );
-  const removed = json<GroupView>(
-    await app.post(`/api/groups/${id}/remove`, { items: ["jira:SYN-21"] }),
+  const removed = json<WorkstreamView>(
+    await app.post(`/api/workstreams/${id}/remove`, { items: ["jira:SYN-21"] }),
   );
-  assert.equal(removed.group.version, 3);
+  assert.equal(removed.workstream.version, 3);
   assert.deepEqual(
     removed.members.map((m) => m.ref.key),
     ["SYN-3", "SYN-10"],
   );
-  const renamed = json<GroupSummary>(
-    await app.post(`/api/groups/${id}/rename`, { name: "Launch" }),
+  const renamed = json<WorkstreamSummary>(
+    await app.post(`/api/workstreams/${id}/rename`, { name: "Launch" }),
   );
   assert.deepEqual([renamed.name, renamed.version], ["Launch", 3]);
   assert.deepEqual(
-    names(app).filter((n) => n.startsWith("group.")),
-    ["group.created", "group.item-added"],
+    names(app).filter((n) => n.startsWith("workstream.")),
+    ["workstream.created", "workstream.item-added"],
   );
-  // An item the window doesn't have, or one the group doesn't hold, is refused.
-  assert.equal((await app.post(`/api/groups/${id}/add`, { items: ["jira:SYN-27"] })).status, 400);
+  // An item the window doesn't have, or one the workstream doesn't hold, is refused.
   assert.equal(
-    (await app.post(`/api/groups/${id}/remove`, { items: ["jira:SYN-21"] })).status,
+    (await app.post(`/api/workstreams/${id}/add`, { items: ["jira:SYN-27"] })).status,
     400,
   );
   assert.equal(
-    (await app.post("/api/groups", { kind: "picked", name: "x", items: [] })).status,
+    (await app.post(`/api/workstreams/${id}/remove`, { items: ["jira:SYN-21"] })).status,
+    400,
+  );
+  assert.equal(
+    (await app.post("/api/workstreams", { kind: "picked", name: "x", items: [] })).status,
     400,
   );
 });
 
-test("what's dropped on a group joins it as picking would; what names nothing is refused", async (t) => {
+test("what's dropped on a workstream joins it as picking would; what names nothing is refused", async (t) => {
   const app = await testApp(t);
-  const created = await app.post("/api/groups", {
+  const created = await app.post("/api/workstreams", {
     kind: "picked",
     name: "Launch risks",
     items: ["jira:SYN-10"],
   });
-  const { id } = json<GroupSummary>(created);
-  const dropped = await app.post(`/api/groups/${id}/drop`, {
+  const { id } = json<WorkstreamSummary>(created);
+  const dropped = await app.post(`/api/workstreams/${id}/drop`, {
     links: [
       "https://oriel.atlassian.net/browse/SYN-3",
       "SYN-10 and SYN-21",
@@ -123,28 +126,31 @@ test("what's dropped on a group joins it as picking would; what names nothing is
     files: [{ name: "plan.md", modified: 0 }],
   });
   assert.equal(dropped.status, 200);
-  const body = json<{ group: GroupView; added: string[]; refused: { what: string }[] }>(dropped);
+  const body = json<{ workstream: WorkstreamView; added: string[]; refused: { what: string }[] }>(
+    dropped,
+  );
   assert.deepEqual(body.added, ["jira:SYN-21", "jira:SYN-3"]);
   assert.deepEqual(
-    body.group.members.map((m) => m.ref.key),
+    body.workstream.members.map((m) => m.ref.key),
     ["SYN-3", "SYN-10", "SYN-21"],
   );
-  assert.equal(body.group.group.version, 2);
+  assert.equal(body.workstream.workstream.version, 2);
   assert.deepEqual(
     body.refused.map((r) => r.what),
     ["https://example.com/x", "plan.md"],
   );
   assert.deepEqual(
-    names(app).filter((n) => n === "group.item-added"),
-    ["group.item-added", "group.item-added"],
+    names(app).filter((n) => n === "workstream.item-added"),
+    ["workstream.item-added", "workstream.item-added"],
   );
   // Nothing found changes nothing.
-  const none = json<{ group: GroupView; added: string[] }>(
-    await app.post(`/api/groups/${id}/drop`, { links: ["SYN-3"], files: [] }),
+  const none = json<{ workstream: WorkstreamView; added: string[] }>(
+    await app.post(`/api/workstreams/${id}/drop`, { links: ["SYN-3"], files: [] }),
   );
-  assert.deepEqual([none.added, none.group.group.version], [[], 2]);
+  assert.deepEqual([none.added, none.workstream.workstream.version], [[], 2]);
   assert.equal(
-    (await app.post(`/api/groups/${id}/drop`, { links: Array(51).fill("x"), files: [] })).status,
+    (await app.post(`/api/workstreams/${id}/drop`, { links: Array(51).fill("x"), files: [] }))
+      .status,
     400,
   );
 });
@@ -152,36 +158,39 @@ test("what's dropped on a group joins it as picking would; what names nothing is
 test("every POST needs this server's Origin, JSON, and a body within its cap", async (t) => {
   const app = await testApp(t);
   const picked = { kind: "picked", name: "x", items: ["jira:SYN-10"] };
-  const cross = await app.post("/api/groups", picked, { origin: "https://attacker.example" });
+  const cross = await app.post("/api/workstreams", picked, { origin: "https://attacker.example" });
   assert.equal(cross.status, 403);
   const none = await app.handle({
     method: "POST",
-    url: "/api/groups",
+    url: "/api/workstreams",
     headers: { host, "content-type": "application/json" },
     body: app.body(JSON.stringify(picked)),
   });
   assert.equal(none.status, 403);
   assert.equal(
-    (await app.post("/api/groups", picked, { "content-type": "text/plain" })).status,
+    (await app.post("/api/workstreams", picked, { "content-type": "text/plain" })).status,
     415,
   );
   const huge = { ...picked, name: "x".repeat(70_000) };
-  assert.equal((await app.post("/api/groups", huge)).status, 413);
+  assert.equal((await app.post("/api/workstreams", huge)).status, 413);
   const broken = await app.handle({
     method: "POST",
-    url: "/api/groups",
+    url: "/api/workstreams",
     headers: { host, origin: `http://${host}`, "content-type": "application/json" },
     body: app.body("{"),
   });
   assert.equal(broken.status, 400);
-  assert.equal((await app.get("/api/groups", { origin: "https://attacker.example" })).status, 403);
+  assert.equal(
+    (await app.get("/api/workstreams", { origin: "https://attacker.example" })).status,
+    403,
+  );
   const wrongMethod = await app.handle({
     method: "DELETE",
-    url: "/api/groups",
+    url: "/api/workstreams",
     headers: { host, origin: `http://${host}` },
   });
   assert.equal(wrongMethod.status, 405);
-  assert.equal((await app.get("/api/groups/01ARZ3NDEKTSV4RRFFQ69G5FAV")).status, 404);
+  assert.equal((await app.get("/api/workstreams/01ARZ3NDEKTSV4RRFFQ69G5FAV")).status, 404);
 });
 
 test("a thread answers a question: text, a run's transcript, then done", async (t) => {
@@ -209,14 +218,14 @@ test("a thread answers a question: text, a run's transcript, then done", async (
   assert.deepEqual(names(app).slice(-2), ["thread.opened", "question.asked"]);
   const threads = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
   assert.deepEqual(
-    threads.threads.map((s) => [s.id, s.state, s.group.id, s.waitingOn]),
-    [[app.threadId, "working", app.groupId, "reply"]],
+    threads.threads.map((s) => [s.id, s.state, s.workstream.id, s.waitingOn]),
+    [[app.threadId, "working", app.workstreamId, "reply"]],
   );
 });
 
-test("a group change shows in a working thread as a marker; a done one catches up later", async (t) => {
+test("a workstream change shows in a working thread as a marker; a done one catches up later", async (t) => {
   const app = await thread(t, "Hi");
-  await app.post(`/api/groups/${app.groupId}/add`, { items: ["jira:SYN-3"] });
+  await app.post(`/api/workstreams/${app.workstreamId}/add`, { items: ["jira:SYN-3"] });
   const moved = await app.view();
   assert.equal(moved.regionVersion, 2);
   const marker = moved.entries.at(-1);
@@ -225,11 +234,11 @@ test("a group change shows in a working thread as a marker; a done one catches u
     [marker.from, marker.to, marker.added.map((r) => r.key), marker.removed],
     [1, 2, ["SYN-3"], []],
   );
-  // Done, it keeps its version while the group changes.
+  // Done, it keeps its version while the workstream changes.
   app.advance(1000);
   const done = json<ThreadView>(await app.post(`/api/threads/${app.threadId}/done`));
   assert.deepEqual([done.state, done.doneBy], ["done", "marked"]);
-  await app.post(`/api/groups/${app.groupId}/remove`, { items: ["jira:SYN-3"] });
+  await app.post(`/api/workstreams/${app.workstreamId}/remove`, { items: ["jira:SYN-3"] });
   assert.equal((await app.view()).regionVersion, 2);
   // A new message makes it working, after a marker that catches it up.
   assert.equal(
@@ -272,11 +281,11 @@ async function proposed(t: TestContext) {
   return { ...app, changeSetId: id, diff };
 }
 
-// What the threads list and the group's page say the thread waits on.
+// What the threads list and the workstream's page say the thread waits on.
 async function waits(app: Awaited<ReturnType<typeof proposed>>) {
   const threads = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
-  const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
-  return [...threads.threads, ...group.threads].map((s) => s.waitingOn);
+  const workstream = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstreamId}`));
+  return [...threads.threads, ...workstream.threads].map((s) => s.waitingOn);
 }
 
 test("a captured change set shows as a diff; read-only, approving says writing isn't configured", async (t) => {
@@ -349,15 +358,15 @@ test("search results come back as their own block, and count as the escape hatch
     assert.match(hit.title ?? "", /weather/i);
     assert.ok(hit.url === null || hit.url.startsWith("https://"));
   }
-  // The weather epic isn't in the checkout group.
+  // The weather epic isn't in the checkout workstream.
   assert.ok(found.hits.some((hit) => !hit.inRegion));
   const used = app.app.telemetry().find((e) => e.name === "escape-hatch.used");
   assert.equal(used?.data.threadId, app.threadId);
-  // A hit is shown against the version the search ran in, whatever the group
+  // A hit is shown against the version the search ran in, whatever the workstream
   // holds since.
   const outside = found.hits.find((hit) => !hit.inRegion);
   assert.ok(outside);
-  await app.post(`/api/groups/${app.groupId}/add`, { items: [outside.id] });
+  await app.post(`/api/workstreams/${app.workstreamId}/add`, { items: [outside.id] });
   const later = (await app.view()).entries.find((e) => e.kind === "search");
   assert.ok(later?.kind === "search");
   assert.equal(later.hits.find((hit) => hit.id === outside.id)?.inRegion, false);
@@ -478,7 +487,7 @@ test("the threads' stream says when any thread's turn starts or ends, or it's ma
   await app.post(`/api/threads/${app.threadId}/done`);
   assert.equal((await next).value, moved);
   // A thread opened with no message moves too.
-  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  await app.post(`/api/workstreams/${app.workstreamId}/threads`, {});
   assert.equal((await stream.next()).value, moved);
   await stream.return?.();
 });
@@ -489,7 +498,7 @@ test("a thread's own stream also says when another thread moves, so its page nee
   assert.ok(reply.stream);
   const stream = reply.stream[Symbol.asyncIterator]();
   await read(stream, (e) => e.type === "status");
-  await app.post(`/api/groups/${app.groupId}/threads`, {});
+  await app.post(`/api/workstreams/${app.workstreamId}/threads`, {});
   assert.deepEqual(await read(stream, () => true), [{ type: "threads" }]);
   await stream.return?.();
 });
@@ -514,9 +523,9 @@ function waiting(keepsContract: boolean): Agent {
 
 test("one turn at a time per thread, and stopping one is explicit", async (t) => {
   for (const keepsContract of [true, false]) {
-    const app = await group(t, { agent: () => waiting(keepsContract) });
+    const app = await workstream(t, { agent: () => waiting(keepsContract) });
     const { id } = json<{ id: string }>(
-      await app.post(`/api/groups/${app.groupId}/threads`, { text: "First" }),
+      await app.post(`/api/workstreams/${app.workstreamId}/threads`, { text: "First" }),
     );
     const busy = await app.post(`/api/threads/${id}/messages`, { text: "Second" });
     assert.equal(busy.status, 409);
@@ -546,9 +555,9 @@ test("a turn gets the index snapshot and what earlier turns spent", async (t) =>
       yield { kind: "done", usage: { inputTokens: 10, outputTokens: 2 } };
     },
   };
-  const app = await group(t, { agent: () => counting });
+  const app = await workstream(t, { agent: () => counting });
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${app.groupId}/threads`, { text: "One" }),
+    await app.post(`/api/workstreams/${app.workstreamId}/threads`, { text: "One" }),
   );
   await app.app.settled();
   await app.post(`/api/threads/${id}/messages`, { text: "Two" });
@@ -590,9 +599,9 @@ test("what stopped and failed turns spent counts toward the next turn", async (t
       yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
     },
   };
-  const app = await group(t, { agent: () => agent });
+  const app = await workstream(t, { agent: () => agent });
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${app.groupId}/threads`, { text: "One" }),
+    await app.post(`/api/workstreams/${app.workstreamId}/threads`, { text: "One" }),
   );
   await app.post(`/api/threads/${id}/stop`);
   await app.app.settled();
@@ -612,31 +621,35 @@ test("what stopped and failed turns spent counts toward the next turn", async (t
 
 test("a thread from nothing is made with its first message, and nothing without one", async (t) => {
   const app = await testApp(t);
-  const groupsNow = async () =>
-    json<{ groups: GroupSummary[] }>(await app.get("/api/groups")).groups;
+  const workstreamsNow = async () =>
+    json<{ workstreams: WorkstreamSummary[] }>(await app.get("/api/workstreams")).workstreams;
   for (const body of [{}, { text: "  " }]) {
     const refused = await app.post("/api/threads", body);
     assert.equal(refused.status, 400, JSON.stringify(body));
   }
-  assert.deepEqual(await groupsNow(), []);
+  assert.deepEqual(await workstreamsNow(), []);
   assert.deepEqual(names(app), ["source.connected"]);
 
   const started = await app.post("/api/threads", { text: "Plan kiosk wallets" });
   assert.equal(started.status, 201);
-  const { id, groupId } = json<{ id: string; groupId: string }>(started);
+  const { id, workstreamId } = json<{ id: string; workstreamId: string }>(started);
   await app.app.settled();
   assert.deepEqual(
-    (await groupsNow()).map((g) => [g.id, g.name, g.origin, g.size]),
-    [[groupId, "New group", { kind: "thread" }, 0]],
+    (await workstreamsNow()).map((g) => [g.id, g.name, g.origin, g.size]),
+    [[workstreamId, "New workstream", { kind: "thread" }, 0]],
   );
   assert.deepEqual(
     app.app
       .telemetry()
-      .filter((e) => e.name === "group.created")
-      .map((e) => [e.data.groupId, e.data.origin]),
-    [[groupId, "thread"]],
+      .filter((e) => e.name === "workstream.created")
+      .map((e) => [e.data.workstreamId, e.data.origin]),
+    [[workstreamId, "thread"]],
   );
-  assert.deepEqual(names(app).slice(1, 4), ["group.created", "thread.opened", "question.asked"]);
+  assert.deepEqual(names(app).slice(1, 4), [
+    "workstream.created",
+    "thread.opened",
+    "question.asked",
+  ]);
   const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
   assert.equal(view.entries[0]?.kind, "user");
 });

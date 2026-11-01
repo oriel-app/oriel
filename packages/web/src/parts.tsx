@@ -38,7 +38,7 @@ export function Link(props: {
   );
 }
 
-// Where things dropped are added to a group: a Jira card dragged out of its
+// Where things dropped are added to a workstream: a Jira card dragged out of its
 // board, a link, an item's key, or a file from the connected folder. Only
 // drags from outside Oriel: one that starts in this page, like text moved
 // into the composer, is left to the browser. While one is over the zone, a

@@ -86,7 +86,7 @@ test("the agent answers in the case's world, and its change set is the case's mu
 
 test("a question is answered with no mutations", async () => {
   const model = scriptedModel([streamed({ text: "Nothing to change." })]);
-  const output = await system(input(model.fetch, { prompt: "What's in this group?" }));
+  const output = await system(input(model.fetch, { prompt: "What's in this workstream?" }));
   assert.deepEqual(output.mutations, []);
   assert.equal(output.reply, "Nothing to change.");
 });

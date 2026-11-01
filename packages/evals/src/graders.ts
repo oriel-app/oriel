@@ -48,16 +48,16 @@ function describer(mutations: readonly CapturedMutation[]) {
 // run numbers its creates in the order it makes them (`new:1`, `new:2`), so
 // each ref is renamed after the content of the create that made it, and
 // targets and arguments that name it are rewritten to match. Identical creates
-// form a group, and are told apart by an index: their order among themselves,
-// or `order[group]` when given. Groups are numbered by first appearance, which
+// form a batch, and are told apart by an index: their order among themselves,
+// or `order[batch]` when given. Batches are numbered by first appearance, which
 // no renaming changes.
 function comparisonKeys(
   mutations: readonly CapturedMutation[],
   order: readonly (readonly number[])[] = [],
-): { keys: string[]; groups: number[] } {
+): { keys: string[]; batches: number[] } {
   const names = new Map<string, string>();
-  const groupOf = new Map<string, number>();
-  const groups: number[] = [];
+  const batchOf = new Map<string, number>();
+  const batches: number[] = [];
   const rename = (value: unknown): unknown => {
     if (typeof value === "string") return names.get(value) ?? value;
     if (Array.isArray(value)) return value.map(rename);
@@ -68,15 +68,15 @@ function comparisonKeys(
     const body = { op: m.op, target: rename(m.target), args: rename(m.args) };
     if (!m.ref) return canonicalJson({ ...body, ref: null });
     const content = canonicalJson(body);
-    const group = groupOf.get(content) ?? groups.length;
-    groupOf.set(content, group);
-    const nth = groups[group] ?? 0;
-    groups[group] = nth + 1;
-    const name = `created #${order[group]?.[nth] ?? nth} ${content}`;
+    const batch = batchOf.get(content) ?? batches.length;
+    batchOf.set(content, batch);
+    const nth = batches[batch] ?? 0;
+    batches[batch] = nth + 1;
+    const name = `created #${order[batch]?.[nth] ?? nth} ${content}`;
     names.set(m.ref, name);
     return canonicalJson({ ...body, ref: name });
   });
-  return { keys, groups };
+  return { keys, batches };
 }
 
 // Every ordering of 0..n-1, the identity first.
@@ -93,16 +93,16 @@ function permutations(n: number): number[][] {
   return found;
 }
 
-// Identical creates are interchangeable, so each group of up to `maxGroup`
-// may be named in any order; larger groups keep their order. The orders are
+// Identical creates are interchangeable, so each batch of up to `maxBatch`
+// may be named in any order; larger batches keep their order. The orders are
 // tried identity first, at most `maxTries` in all, so a change set with many
-// groups can't stall a round.
-const maxGroup = 6;
+// batches can't stall a round.
+const maxBatch = 6;
 const maxTries = 5040;
 
-function* namings(groups: readonly number[]): Generator<number[][]> {
-  // An empty order keeps a group's own order.
-  const choices = groups.map((size) => (size > 1 && size <= maxGroup ? permutations(size) : [[]]));
+function* namings(batches: readonly number[]): Generator<number[][]> {
+  // An empty order keeps a batch's own order.
+  const choices = batches.map((size) => (size > 1 && size <= maxBatch ? permutations(size) : [[]]));
   function* product(i: number, chosen: number[][]): Generator<number[][]> {
     const options = choices[i];
     if (!options) {
@@ -125,10 +125,10 @@ export function gradeExactDiff(
   actual: readonly CapturedMutation[],
 ): Grade {
   const goldenKeys = comparisonKeys(golden).keys;
-  const { keys: actualKeys, groups } = comparisonKeys(actual);
+  const { keys: actualKeys, batches } = comparisonKeys(actual);
   if (golden.length === actual.length) {
     let tries = 0;
-    for (const order of namings(groups)) {
+    for (const order of namings(batches)) {
       if (tries++ >= maxTries) break;
       if (sorted(goldenKeys) === sorted(comparisonKeys(actual, order).keys))
         return { grader: "exact-diff", pass: true, detail: `${golden.length} mutations match` };

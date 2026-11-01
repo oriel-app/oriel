@@ -37,9 +37,9 @@ async function proposed(t: TestContext, options: Parameters<typeof testApp>[1] =
     scripts: { rename },
     ...options,
   });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Rename SYN-23" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Rename SYN-23" }),
   );
   await app.app.settled();
   const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));

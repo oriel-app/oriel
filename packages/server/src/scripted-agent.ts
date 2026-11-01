@@ -145,7 +145,7 @@ const unestimated = stories.flatMap((story) =>
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
 return unestimated.slice(0, 3);`;
 
-// Posts `text` beside the group's first Slack conversation, in its channel,
+// Posts `text` beside the workstream's first Slack conversation, in its channel,
 // or replies in that conversation (OA-28).
 const slackScript = (fn: "postMessage" | "reply", text: string) => `const ids = (await items.list())
   .map((item) => item.id)
@@ -188,14 +188,15 @@ export function devPlan(input: TurnInput): Step[] {
   if (slackAsked) {
     const fn = slackAsked[1]?.toLowerCase() === "reply" ? "reply" : "postMessage";
     const slack = input.region.items.some((item) => parseItemId(item.id)?.source === "slack");
-    if (!slack) return [{ text: "Nothing in this group is in Slack, so there's nowhere to post." }];
+    if (!slack)
+      return [{ text: "Nothing in this workstream is in Slack, so there's nowhere to post." }];
     const text = slackAsked[2]?.trim() || "A smoke test from Oriel's dev server.";
     return [
       {
         text:
           fn === "reply"
-            ? "I'll reply in this group's first Slack conversation."
-            : "I'll post in the channel of this group's first Slack conversation.",
+            ? "I'll reply in this workstream's first Slack conversation."
+            : "I'll post in the channel of this workstream's first Slack conversation.",
       },
       { run: slackScript(fn, text) },
       { text: "The proposed change is below. Nothing is posted until you approve it." },
@@ -209,13 +210,14 @@ export function devPlan(input: TurnInput): Step[] {
     .join(" ");
   if (query)
     return [
-      { text: "I'll look across the whole window, not just this group." },
+      { text: "I'll look across the whole window, not just this workstream." },
       { search: query },
-      { text: "Those come from outside this group, so they're read-only here." },
+      { text: "Those come from outside this workstream, so they're read-only here." },
     ];
   if (/\b(estimate|estimates|points|unestimated)\b/i.test(input.text)) {
     const jira = input.region.items.some((item) => parseItemId(item.id)?.source === "jira");
-    if (!jira) return [{ text: "Nothing in this group can be estimated: it has no Jira items." }];
+    if (!jira)
+      return [{ text: "Nothing in this workstream can be estimated: it has no Jira items." }];
     return [
       { text: "I'll find stories here without an estimate and propose 3 points for each." },
       { run: estimateScript },
@@ -225,10 +227,10 @@ export function devPlan(input: TurnInput): Step[] {
     ];
   }
   return [
-    { text: "Here's every item in this group, read live." },
+    { text: "Here's every item in this workstream, read live." },
     { run: listScript },
     {
-      text: "I'm the scripted agent for local development. Ask about estimates to see a change set, or ask me to find something outside the group.",
+      text: "I'm the scripted agent for local development. Ask about estimates to see a change set, or ask me to find something outside the workstream.",
     },
   ];
 }

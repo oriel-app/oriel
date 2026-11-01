@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type CapturedMutation, type NextStep, SourceRefused, type Ulid } from "@oriel/core";
-import { groupStore } from "@oriel/db";
+import { workstreamStore } from "@oriel/db";
 import { plainError, sendLeaseMs } from "./change-sets.ts";
 import { approve, nth, preview, setup, status } from "./testing.ts";
 
@@ -263,15 +263,15 @@ test("a send still within its lease isn't retried until the lease runs out", asy
 });
 
 test("a revert drops what never landed, which completes the set", async () => {
-  const { db, changeSets, run, groupId, events, indexed } = setup();
+  const { db, changeSets, run, workstreamId, events, indexed } = setup();
   const set = await changeSets.capture(run, [
     estimate("jira:SYN-21", 5),
     estimate("jira:SYN-3", 3),
   ]);
   await approve(changeSets, set.id);
-  // SYN-3 leaves the group before apply, so apply stops at it.
-  groupStore(db).remove(
-    groupId,
+  // SYN-3 leaves the workstream before apply, so apply stops at it.
+  workstreamStore(db).remove(
+    workstreamId,
     [{ id: "jira:SYN-3", stableId: indexed("SYN-3").stableId }],
     { kind: "user" },
     "2026-10-29T09:00:01.000Z" as never,
@@ -342,7 +342,7 @@ test("a reason a change stopped reads as plain words, from the forms apply store
     plainError("Nothing was sent: SYN's board has no points field to estimate in."),
     "Nothing was sent: SYN's board has no points field to estimate in.",
   );
-  const own = "SYN-99 was removed from the group after this was captured, so it wasn't sent.";
+  const own = "SYN-99 was removed from the workstream after this was captured, so it wasn't sent.";
   assert.equal(plainError(own), own);
 });
 
@@ -639,7 +639,7 @@ test("a sent change whose item can't be read now can't be approved again", async
 });
 
 test("a send found absent goes back to unsent only if no other apply sent it since", async () => {
-  const { db, changeSets, instance, run, jira, groupId, indexed } = setup();
+  const { db, changeSets, instance, run, jira, workstreamId, indexed } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   await approve(changeSets, set.id);
@@ -649,18 +649,18 @@ test("a send found absent goes back to unsent only if no other apply sent it sin
   jira.hooks.read = async () => {
     jira.hooks.read = undefined;
     // While this apply checks SYN-21, another sends the change again and
-    // hears nothing back either; then SYN-21 leaves the group.
+    // hears nothing back either; then SYN-21 leaves the workstream.
     loseCall(jira, 2);
     await other.apply(set.id);
-    groupStore(db).remove(
-      groupId,
+    workstreamStore(db).remove(
+      workstreamId,
       [{ id: "jira:SYN-21", stableId: indexed("SYN-21").stableId }],
       { kind: "user" },
       "2026-10-29T09:00:01.000Z" as never,
     );
   };
   const report = await changeSets.apply(set.id);
-  assert.match(nth(report.failed, 0).error, /removed from the group/);
+  assert.match(nth(report.failed, 0).error, /removed from the workstream/);
   // This apply found its own send absent, not the other's: that may have
   // landed, so the row stays sent.
   assert.equal(status(db, mutationId), "failed");
@@ -687,7 +687,7 @@ test("a read that fails while apply checks a sent change is recorded, not thrown
 });
 
 test("an absent read goes stale when anything writes to the row, even the same words again", async () => {
-  const { db, changeSets, instance, run, jira, groupId, indexed } = setup();
+  const { db, changeSets, instance, run, jira, workstreamId, indexed } = setup();
   const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
   const mutationId = nth(set.mutations, 0).id;
   await approve(changeSets, set.id);
@@ -716,9 +716,9 @@ test("an absent read goes stale when anything writes to the row, even the same w
     await c.apply(set.id);
     jira.show("SYN-21");
     assert.equal((await changeSets.get(set.id))?.mutations[0]?.error, said);
-    // And SYN-21 leaves the group, so this apply won't send it.
-    groupStore(db).remove(
-      groupId,
+    // And SYN-21 leaves the workstream, so this apply won't send it.
+    workstreamStore(db).remove(
+      workstreamId,
       [{ id: "jira:SYN-21", stableId: indexed("SYN-21").stableId }],
       { kind: "user" },
       "2026-10-29T09:00:01.000Z" as never,

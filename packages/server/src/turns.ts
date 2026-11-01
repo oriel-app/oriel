@@ -2,7 +2,7 @@
 // stored in the thread's chat as it arrives and passed to whoever watches
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
-import { type GroupStore, type Message, type Move, type ThreadStore } from "@oriel/db";
+import { type WorkstreamStore, type Message, type Move, type ThreadStore } from "@oriel/db";
 import type { HeldSender, Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
 import type { Titler } from "@oriel/agent";
 import {
@@ -17,7 +17,7 @@ export type ThreadEvent =
   | { type: "message"; message: Message }
   | { type: "status"; running: boolean }
   | { type: "change-set"; changeSetId: Ulid; applying: boolean }
-  | { type: "group" }
+  | { type: "workstream" }
   // An entry already in the thread's chat changed, as a held message settles.
   | { type: "chat" }
   | { type: "deleted" };
@@ -86,7 +86,7 @@ const hidden = new RegExp(
 // agent decides; or, as a backstop whatever agent is plugged in, it has
 // spent all its tokens.
 export function capReached(messages: readonly Message[], caps: Caps): string | null {
-  const next = "Start a new thread on this group to keep going.";
+  const next = "Start a new thread on this workstream to keep going.";
   const asked = messages.filter((m) => m.role === "user").length;
   if (asked >= caps.maxTurnsPerThread)
     return `This thread has had all ${caps.maxTurnsPerThread} of its questions. ${next}`;
@@ -98,7 +98,7 @@ export function capReached(messages: readonly Message[], caps: Caps): string | n
 
 export type TurnDeps = {
   threads: ThreadStore;
-  groups: GroupStore;
+  workstreams: WorkstreamStore;
   agent: Agent;
   // Writes a thread's title from its first message; with none, the window
   // shows that message, clipped.
@@ -193,10 +193,10 @@ export function history(
 export type Turns = ReturnType<typeof turns>;
 
 export function turns(deps: TurnDeps) {
-  const { threads, groups } = deps;
+  const { threads, workstreams } = deps;
   const running = new Map<Ulid, { controller: AbortController; done: Promise<void> }>();
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
-  // Pages watching the whole workspace: every list, and a group's page.
+  // Pages watching the whole workspace: every list, and a workstream's page.
   const anyWatchers = new Set<(threadId: Ulid | null) => void>();
   // Titles being written, which outlive a stopped turn; closing stops them.
   const titling = new Set<Promise<void>>();
@@ -221,8 +221,10 @@ export function turns(deps: TurnDeps) {
   };
 
   // What a marker tells the agent: the items added and removed, by ID.
-  const markerText = (groupId: Ulid) => (from: number, to: number) => {
-    const changes = groups.changes(groupId, from).filter((change) => change.version <= to);
+  const markerText = (workstreamId: Ulid) => (from: number, to: number) => {
+    const changes = workstreams
+      .changes(workstreamId, from)
+      .filter((change) => change.version <= to);
     const added = changes.flatMap((change) => change.added.map((m) => m.id));
     const removed = changes.flatMap((change) => change.removed.map((m) => m.id));
     return [
@@ -285,13 +287,13 @@ export function turns(deps: TurnDeps) {
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
     let done = false;
     try {
-      const region = groups.region(thread.groupId, thread.regionVersion);
-      if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's group`);
+      const region = workstreams.region(thread.workstreamId, thread.regionVersion);
+      if (!region) throw new Error(`no version ${thread.regionVersion} of the thread's workstream`);
       const before = threads.messages(thread.id).filter((message) => message.seq < seq);
       const input = {
         thread,
         region,
-        history: history(before, markerText(thread.groupId)),
+        history: history(before, markerText(thread.workstreamId)),
         text,
         snapshot: deps.snapshot(),
         spent: spent(before),
@@ -314,7 +316,7 @@ export function turns(deps: TurnDeps) {
   };
 
   // The user's message, and a turn to answer it, which runs on after this
-  // returns. A settled thread catches up with its group first. Counting it
+  // returns. A settled thread catches up with its workstream first. Counting it
   // is the caller's.
   const start = (threadId: Ulid, text: string): { seq: number; at: Instant; workspaceId: Ulid } => {
     if (running.has(threadId)) throw new ThreadBusy();
@@ -429,16 +431,16 @@ export function turns(deps: TurnDeps) {
 
     // One of Oriel's own actions changed the workspace, by whoever (decision
     // 0024): the pages watching a thread it changed hear its status; each
-    // thread that moved to its group's newer version shows its marker; the
-    // pages watching any thread of a group it changed hear that, moved or
+    // thread that moved to its workstream's newer version shows its marker; the
+    // pages watching any thread of a workstream it changed hear that, moved or
     // not; and every page watching the workspace hears once, so the lists,
-    // and a group's page, load again.
+    // and a workstream's page, load again.
     // `chat`: an entry already in the thread's chat changed, which its pages
     // load again.
     acted(changed: {
       thread: Ulid | null;
       chat?: boolean;
-      group: Ulid | null;
+      workstream: Ulid | null;
       moves: readonly Move[];
     }): void {
       if (changed.thread) {
@@ -447,9 +449,9 @@ export function turns(deps: TurnDeps) {
       }
       // An entry tells only its thread's pages.
       for (const move of changed.moves) published(move.threadId, move.seq);
-      if (changed.group)
-        for (const { thread } of threads.ofGroup(changed.group, deps.now()))
-          tell(thread.id, { type: "group" });
+      if (changed.workstream)
+        for (const { thread } of threads.ofWorkstream(changed.workstream, deps.now()))
+          tell(thread.id, { type: "workstream" });
       broadcast(changed.thread);
     },
 
@@ -514,13 +516,13 @@ export function turns(deps: TurnDeps) {
       return held.from;
     },
 
-    // The index changed, as a sync changes it, and with it maybe a group's
+    // The index changed, as a sync changes it, and with it maybe a workstream's
     // name, as it follows its epic, or what the index has of its items: the
-    // pages watching any thread hear their group changed, and every page
+    // pages watching any thread hear their workstream changed, and every page
     // watching the workspace hears, so an open panel can tell whether its
     // item changed.
     synced(): void {
-      for (const threadId of watchers.keys()) tell(threadId, { type: "group" });
+      for (const threadId of watchers.keys()) tell(threadId, { type: "workstream" });
       broadcast(null);
     },
 

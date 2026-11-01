@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { groupReplied, initGroup } from "../src/group.ts";
+import { workstreamReplied, initWorkstream } from "../src/workstream.ts";
 import type { Replied } from "../src/http.ts";
 import { initJira, jiraReplied, loadJira, updateJira } from "../src/jira.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
@@ -48,7 +48,7 @@ test("Jira syncs on demand, once at a time, and says why when it can't", () => {
   assert.deepEqual([done.model, done.synced], [{ ...initJira(), view: more }, true]);
 });
 
-test("once Jira synced, the window and the group or thread on screen load again", () => {
+test("once Jira synced, the window and the workstream or thread on screen load again", () => {
   const [window, effects] = initRoot({ page: "window", grouping: "epic", addTo: null });
   assert.ok(effects.includes(loadJira));
   const synced = replied({ kind: "jiraSynced" }, true, { jira: syn });
@@ -58,13 +58,13 @@ test("once Jira synced, the window and the group or thread on screen load again"
     loads.map((e) => e.type),
     ["loadWindow"],
   );
-  const [group] = initRoot({ page: "group", id: "01JB0000000000000000000000" });
-  assert.deepEqual(updateRoot(group, synced)[1], [
+  const [workstream] = initRoot({ page: "workstream", id: "01JB0000000000000000000000" });
+  assert.deepEqual(updateRoot(workstream, synced)[1], [
     {
       type: "http",
       method: "GET",
-      url: "/api/groups/01JB0000000000000000000000",
-      tag: { kind: "groupSynced", id: "01JB0000000000000000000000" },
+      url: "/api/workstreams/01JB0000000000000000000000",
+      tag: { kind: "workstreamSynced", id: "01JB0000000000000000000000" },
     },
   ]);
   const [thread] = initRoot({ page: "thread", id: "01JB0000000000000000000001" });
@@ -78,13 +78,13 @@ test("once Jira synced, the window and the group or thread on screen load again"
   ]);
 });
 
-test("a group reloaded after a sync keeps an Ask that's still on its way", () => {
-  const [loading] = initGroup("01JB0000000000000000000000");
+test("a workstream reloaded after a sync keeps an Ask that's still on its way", () => {
+  const [loading] = initWorkstream("01JB0000000000000000000000");
   const asking = { ...loading, pending: true, draft: "What's left?" };
-  const view = { group: { id: "01JB0000000000000000000000" }, members: [] };
-  const [after] = groupReplied(
+  const view = { workstream: { id: "01JB0000000000000000000000" }, members: [] };
+  const [after] = workstreamReplied(
     asking,
-    replied({ kind: "groupSynced", id: "01JB0000000000000000000000" }, true, view),
+    replied({ kind: "workstreamSynced", id: "01JB0000000000000000000000" }, true, view),
   );
   assert.deepEqual([after.pending, after.draft, after.view], [true, "What's left?", view]);
 });

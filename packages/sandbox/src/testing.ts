@@ -10,7 +10,7 @@ const fixedId = ulid(0, new Uint8Array(10));
 
 export function regionBindings(): Bindings {
   const region: Region = {
-    groupId: fixedId,
+    workstreamId: fixedId,
     version: 1,
     workspaceId: fixedId,
     items: ids.map((id, i) => ({ id, stableId: String(10001 + i) })),

@@ -6,7 +6,7 @@ import { init, type Model, type Msg, update } from "../src/root.ts";
 import type { ThreadView } from "../src/view.ts";
 
 const threadId = "01JBZ0000000000000000000T1";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Msg => ({
   type: "replied",
@@ -39,18 +39,18 @@ test("marking a thread done from its menu posts as the page's button does, and r
   // Once at a time.
   assert.deepEqual(run(asked, closing({ type: "markDoneClicked", threadId, via: "menu" }))[1], []);
   const [, reloads] = run(asked, replied({ kind: "markedDone", threadId }, {}));
-  assert.deepEqual(urls(reloads), ["GET /api/threads", "GET /api/groups"]);
-  // A group's page lists its threads too.
-  const [onGroup] = init({ page: "group", id: groupId });
-  const [, group] = run(
-    onGroup,
+  assert.deepEqual(urls(reloads), ["GET /api/threads", "GET /api/workstreams"]);
+  // A workstream's page lists its threads too.
+  const [onWorkstream] = init({ page: "workstream", id: workstreamId });
+  const [, workstream] = run(
+    onWorkstream,
     closing({ type: "markDoneClicked", threadId, via: "menu" }),
     replied({ kind: "markedDone", threadId }, {}),
   );
-  assert.deepEqual(urls(group), [
+  assert.deepEqual(urls(workstream), [
     "GET /api/threads",
-    "GET /api/groups",
-    `GET /api/groups/${groupId}`,
+    "GET /api/workstreams",
+    `GET /api/workstreams/${workstreamId}`,
   ]);
 });
 
@@ -91,18 +91,18 @@ test("delete asks once, after saying what it would lose, then leaves a page that
   ]);
   const [done, after] = run(
     deleting,
-    replied({ kind: "deleted", threadId }, { groupId, groupRemoved: false }),
+    replied({ kind: "deleted", threadId }, { workstreamId, workstreamRemoved: false }),
   );
   assert.equal(done.closing.asking, null);
   assert.deepEqual(after.at(-1), {
     type: "navigate",
-    route: { page: "group", id: groupId },
+    route: { page: "workstream", id: workstreamId },
     replace: true,
   });
-  // A group made for it went too: the Done page, then.
+  // A workstream made for it went too: the Done page, then.
   const [, removed] = run(
     deleting,
-    replied({ kind: "deleted", threadId }, { groupId, groupRemoved: true }),
+    replied({ kind: "deleted", threadId }, { workstreamId, workstreamRemoved: true }),
   );
   assert.deepEqual(removed.at(-1), { type: "navigate", route: { page: "done" }, replace: true });
 });
@@ -137,7 +137,7 @@ test("a thread deleted in another tab says so on its page, which then watches th
     "unsubscribe",
     "watchThreads",
     "GET /api/threads",
-    "GET /api/groups",
+    "GET /api/workstreams",
   ]);
 });
 

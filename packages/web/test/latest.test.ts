@@ -7,7 +7,7 @@ import { init, type Model, type Msg, update } from "../src/root.ts";
 import type { ChangeSetView, ChatEntry, ThreadView } from "../src/view.ts";
 
 const id = "01JBZ0000000000000000000T1";
-const groupId = "01JBZ0000000000000000000G1";
+const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-01-01T00:00:00.000Z";
 
@@ -27,7 +27,7 @@ const openSet: ChangeSetView = {
 const view: ThreadView = {
   id,
   title: "Hi",
-  group: { id: groupId, name: "Checkout", version: 1 },
+  workstream: { id: workstreamId, name: "Checkout", version: 1 },
   state: "working",
   doneBy: null,
   regionVersion: 1,
@@ -67,8 +67,8 @@ const scrolled = (below: number, up: boolean): Msg => ({
 const up = scrolled(600, true);
 
 test("a thread opens at its latest entry, from a link or its address", () => {
-  const [onGroup] = init({ page: "group", id: groupId });
-  const [opening, routed] = update(onGroup, { type: "routed", route: { page: "thread", id } });
+  const [onWorkstream] = init({ page: "workstream", id: workstreamId });
+  const [opening, routed] = update(onWorkstream, { type: "routed", route: { page: "thread", id } });
   // Nothing to scroll to until it loads.
   assert.equal(asks(routed), false);
   const [shown, effects] = update(opening, loaded);
@@ -153,19 +153,19 @@ test("where the page counts as at the latest entry", () => {
   assert.equal(at(shown, scrolled(-300, false), scrolled(-25, true)), true);
 });
 
-test("a change to the thread's group reloads it at the latest entry, and nowhere else", () => {
-  const groupChanged: Msg = { type: "streamed", event: { type: "group" } };
+test("a change to the thread's workstream reloads it at the latest entry, and nowhere else", () => {
+  const workstreamChanged: Msg = { type: "streamed", event: { type: "workstream" } };
   const reloads = (effects: readonly Effect[]) =>
     effects.some((e) => e.type === "http" && e.url === `/api/threads/${id}`);
-  const renamed = { ...view, group: { ...view.group, name: "Checkout v2" } };
+  const renamed = { ...view, workstream: { ...view.workstream, name: "Checkout v2" } };
   const reloaded: Msg = { type: "replied", tag: { kind: "thread", id }, ok: true, body: renamed };
   const [shown] = run(init({ page: "thread", id })[0], loaded);
-  const [told, effects] = update(shown, groupChanged);
+  const [told, effects] = update(shown, workstreamChanged);
   assert.ok(reloads(effects));
   const [there, asked] = update(told, reloaded);
-  assert.equal(there.thread?.view?.group.name, "Checkout v2");
+  assert.equal(there.thread?.view?.workstream.name, "Checkout v2");
   assert.equal(asks(asked), true);
-  const [away] = run(shown, up, groupChanged);
+  const [away] = run(shown, up, workstreamChanged);
   const [stayed, quiet] = update(away, reloaded);
   assert.equal(asks(quiet), false);
   assert.equal(scrolls(stayed), false);

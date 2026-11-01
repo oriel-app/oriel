@@ -6,6 +6,6 @@
   "edited": 3,
   "files": ["README.md", "plans/q3-launch.md", "plans/q3-launch-notes.md"],
   "folderEdited": 3,
-  "prompt": "Give me a one-line status for each item in this group.",
+  "prompt": "Give me a one-line status for each item in this workstream.",
   "expect": [{ "grader": "zero-mutations" }]
 }

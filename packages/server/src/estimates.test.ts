@@ -54,9 +54,11 @@ test("on a board that takes no estimates, a run that estimates is told why and p
     plan: () => [{ run: "estimate" }],
     scripts: { estimate },
   });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate the unestimated ones" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "Estimate the unestimated ones",
+    }),
   );
   await app.app.settled();
   const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
@@ -117,9 +119,11 @@ test("the scripted agent says why a run failed instead of pointing to a change s
       }),
     },
   });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate the unestimated ones" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "Estimate the unestimated ones",
+    }),
   );
   await app.app.settled();
   const said = JSON.stringify(json<ThreadView>(await app.get(`/api/threads/${threadId}`)).entries);
@@ -144,9 +148,9 @@ test("the agent's item has no points on a board that takes no estimates, and nul
       plan: () => [{ run: "pointed" }],
       scripts: { pointed },
     });
-    const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+    const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
     const { id: threadId } = json<{ id: string }>(
-      await app.post(`/api/groups/${groupId}/threads`, { text: "Has SYN-23 points?" }),
+      await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Has SYN-23 points?" }),
     );
     await app.app.settled();
     const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
@@ -165,9 +169,11 @@ test("a board that stops taking estimates is followed from the next sync, withou
     plan: (input) => [{ run: input.text.endsWith("at 5") ? "five" : "three" }],
     scripts: { three: estimateSyn23(3), five: estimateSyn23(5) },
   });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const ask = async (text: string) => {
-    const { id } = json<{ id: string }>(await app.post(`/api/groups/${groupId}/threads`, { text }));
+    const { id } = json<{ id: string }>(
+      await app.post(`/api/workstreams/${workstreamId}/threads`, { text }),
+    );
     await app.app.settled();
     return json<ThreadView>(await app.get(`/api/threads/${id}`)).entries;
   };
@@ -210,9 +216,11 @@ async function devApp(t: Parameters<typeof testApp>[0], plan: (input: TurnInput)
     estimates: false,
     agent: (deps) => scriptedAgent({ ...deps, sandbox }, plan),
   });
-  const { id: groupId } = json<{ id: string }>(await app.post("/api/groups", checkout));
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
   const { id: threadId } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate the unestimated ones" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "Estimate the unestimated ones",
+    }),
   );
   await app.app.settled();
   return JSON.stringify(json<ThreadView>(await app.get(`/api/threads/${threadId}`)).entries);

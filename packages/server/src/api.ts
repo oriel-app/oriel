@@ -33,7 +33,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import type { GroupStore, Message, ThreadStore } from "@oriel/db";
+import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
 import { sources } from "@oriel/sources";
 import {
   type DeletedView,
@@ -53,7 +53,7 @@ import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
-  groups: GroupStore;
+  workstreams: WorkstreamStore;
   threads: ThreadStore;
   // The index's live records, from every source.
   records(): readonly IndexRecord[];
@@ -69,7 +69,7 @@ export type ApiDeps = {
   now(): Instant;
   newId(): Ulid;
   // After a change set applied, partly or in full: what it created joins the
-  // group, and a live index syncs.
+  // workstream, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
   // Syncs the sources that change outside Oriel, once, so a dropped link to
   // an item made since the last sync can be found. What went wrong, in plain
@@ -184,9 +184,9 @@ const reviewDismissal = object({
 });
 const emptyBody = object({});
 const closeBody = object({ via: closeVia });
-// The window makes a group from a cluster or from picked items; a group from
+// The window makes a workstream from a cluster or from picked items; a workstream from
 // nothing comes only with its thread.
-const windowGroup = refine(
+const windowWorkstream = refine(
   unknown,
   (body) =>
     typeof body === "object" &&
@@ -269,32 +269,35 @@ const ulidPart = "([0-9A-HJKMNP-TV-Z]{26})";
 const itemPart = "([^/]{1,512})";
 // A chat entry's place in its thread.
 const seqPart = "([1-9][0-9]{0,8})";
+// Workstreams were called groups until OA-98: /api/groups/… still answers as
+// /api/workstreams/…, for a tab opened before then.
 const at = (path: string) =>
   new RegExp(
     `^/api${path.replaceAll(":id", ulidPart).replaceAll(":item", itemPart).replaceAll(":seq", seqPart)}$`,
   );
 
 export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Reply | null> {
-  const { groups, threads, changeSets, turns, views } = deps;
+  const { workstreams, threads, changeSets, turns, views } = deps;
 
-  const mustGroup = (id: string) => {
-    const group = groups.get(id as Ulid);
-    if (!group || group.workspaceId !== deps.workspaceId) throw new Refused(404, "no such group");
-    return group;
+  const mustWorkstream = (id: string) => {
+    const workstream = workstreams.get(id as Ulid);
+    if (!workstream || workstream.workspaceId !== deps.workspaceId)
+      throw new Refused(404, "no such workstream");
+    return workstream;
   };
-  // Opens a thread on a group's current version, and starts its first turn
+  // Opens a thread on a workstream's current version, and starts its first turn
   // when it opens with a message.
-  const openThread = (groupId: Ulid, version: number, text: string | undefined): Ulid => {
+  const openThread = (workstreamId: Ulid, version: number, text: string | undefined): Ulid => {
     const threadId = deps.newId();
     const now = deps.now();
-    threads.open({ id: threadId, workspaceId: deps.workspaceId, groupId }, now);
+    threads.open({ id: threadId, workspaceId: deps.workspaceId, workstreamId }, now);
     deps.emit({
       name: "thread.opened",
       at: now,
       workspaceId: deps.workspaceId,
       threadId,
-      groupId,
-      regionSize: groups.region(groupId, version)?.items.length ?? 0,
+      workstreamId,
+      regionSize: workstreams.region(workstreamId, version)?.items.length ?? 0,
     });
     if (text !== undefined) turns.say(threadId, text);
     else turns.touched(threadId);
@@ -434,7 +437,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (event.type === "message") entry(event.message);
       else if (event.type === "change-set")
         send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying });
-      else if (event.type === "group") send({ type: "group" });
+      else if (event.type === "workstream") send({ type: "workstream" });
       else if (event.type === "chat") send({ type: "chat" });
       else if (event.type === "deleted") {
         send({ type: "deleted" });
@@ -605,49 +608,49 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     },
     {
       method: "GET",
-      path: at("/groups"),
-      run: async () => json(200, { groups: views.groups(deps.workspaceId) }),
+      path: at("/workstreams"),
+      run: async () => json(200, { workstreams: views.workstreams(deps.workspaceId) }),
     },
     {
       method: "POST",
-      path: at("/groups"),
+      path: at("/workstreams"),
       async run(_, request) {
-        const body = await readJson(request, listBody, windowGroup);
+        const body = await readJson(request, listBody, windowWorkstream);
         const { workstream } = await deps.dispatch(
           "workstream.create",
           checked("workstream.create", body as Fields<"workstream.create">),
           user,
         );
-        return json(201, views.groupSummary(workstream));
+        return json(201, views.workstreamSummary(workstream));
       },
     },
     {
       method: "GET",
-      path: at("/groups/:id"),
+      path: at("/workstreams/:id"),
       async run([id = ""]) {
-        mustGroup(id);
-        return json(200, await views.group(id as Ulid));
+        mustWorkstream(id);
+        return json(200, await views.workstream(id as Ulid));
       },
     },
     {
       method: "POST",
-      path: at("/groups/:id/add"),
+      path: at("/workstreams/:id/add"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
         const input = checked("workstream.add", { workstream: id, items });
         const { undo } = await deps.dispatch("workstream.add", input, user);
-        return json(200, { ...(await views.group(id as Ulid)), undo });
+        return json(200, { ...(await views.workstream(id as Ulid)), undo });
       },
     },
     {
-      // What the user dropped on the group or one of its threads: links, text
+      // What the user dropped on the workstream or one of its threads: links, text
       // and file names, as dropped.ts reads them. What names nothing in the
       // index is retried once after a sync, then refused in plain words; the
       // rest is added as the user picking it would be.
       method: "POST",
-      path: at("/groups/:id/drop"),
+      path: at("/workstreams/:id/drop"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
+        const workstream = mustWorkstream(id);
         const dropped = await readJson(request, listBody, droppedBody);
         let resolved = resolveDropped(deps.records(), dropped, sources);
         let synced: string | null = null;
@@ -660,7 +663,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const { added, undo } = resolved.ids.length
           ? await deps.dispatch(
               "workstream.add",
-              { workstream: group.id, items: resolved.ids },
+              { workstream: workstream.id, items: resolved.ids },
               user,
             )
           : { added: [], undo: null };
@@ -668,36 +671,41 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           what,
           why: synced && syncMightHelp ? `${why} ${synced}` : why,
         }));
-        return json(200, { group: await views.group(group.id), added, refused, undo });
+        return json(200, {
+          workstream: await views.workstream(workstream.id),
+          added,
+          refused,
+          undo,
+        });
       },
     },
     {
       method: "POST",
-      path: at("/groups/:id/remove"),
+      path: at("/workstreams/:id/remove"),
       async run([id = ""], request) {
         const { items } = await readJson(request, listBody, itemsBody);
         const input = checked("workstream.remove", { workstream: id, items });
         const { undo } = await deps.dispatch("workstream.remove", input, user);
-        return json(200, { ...(await views.group(id as Ulid)), undo });
+        return json(200, { ...(await views.workstream(id as Ulid)), undo });
       },
     },
     {
       method: "POST",
-      path: at("/groups/:id/rename"),
+      path: at("/workstreams/:id/rename"),
       async run([id = ""], request) {
         const { name } = await readJson(request, smallBody, object({ name: unknown }));
         const input = checked("workstream.rename", { workstream: id, name });
         const { undo } = await deps.dispatch("workstream.rename", input, user);
-        return json(200, { ...views.groupSummary(id as Ulid), undo });
+        return json(200, { ...views.workstreamSummary(id as Ulid), undo });
       },
     },
     {
       method: "POST",
-      path: at("/groups/:id/threads"),
+      path: at("/workstreams/:id/threads"),
       async run([id = ""], request) {
-        const group = mustGroup(id);
+        const workstream = mustWorkstream(id);
         const { text } = await readJson(request, messageBody, openThreadBody);
-        return json(201, { id: openThread(group.id, group.version, text) });
+        return json(201, { id: openThread(workstream.id, workstream.version, text) });
       },
     },
     {
@@ -706,7 +714,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, { threads: await views.threads(deps.workspaceId) }),
     },
     {
-      // A thread from nothing, with its first message: on a new group with no
+      // A thread from nothing, with its first message: on a new workstream with no
       // items, where the agent may only create them, as when a plan starts
       // with its epic. Until that message is sent, the thread is only a draft
       // in the browser, so one abandoned leaves nothing behind.
@@ -714,13 +722,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads"),
       async run(_, request) {
         const { text } = await readJson(request, messageBody, messageBodyValue);
-        const { workstream: groupId } = await deps.dispatch(
+        const { workstream: workstreamId } = await deps.dispatch(
           "workstream.create",
           { kind: "thread" },
           user,
         );
-        const group = mustGroup(groupId);
-        return json(201, { id: openThread(group.id, group.version, text), groupId });
+        const workstream = mustWorkstream(workstreamId);
+        return json(201, { id: openThread(workstream.id, workstream.version, text), workstreamId });
       },
     },
     {
@@ -811,12 +819,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           at: now,
           workspaceId: deps.workspaceId,
           threadId: thread.id,
-          groupId: deleted.groupId,
+          workstreamId: deleted.workstreamId,
           kept: deleted.kept,
-          groupRemoved: deleted.groupRemoved,
+          workstreamRemoved: deleted.workstreamRemoved,
           via: via ?? "menu",
         });
-        const reply: DeletedView = { groupId: deleted.groupId, groupRemoved: deleted.groupRemoved };
+        const reply: DeletedView = {
+          workstreamId: deleted.workstreamId,
+          workstreamRemoved: deleted.workstreamRemoved,
+        };
         return json(200, reply);
       },
     },
@@ -1006,8 +1017,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   ];
 
   return async (request, url) => {
+    const path = url.pathname.replace(/^\/api\/groups(?=\/|$)/, "/api/workstreams");
     const matched = routes.flatMap((route) => {
-      const match = route.path.exec(url.pathname);
+      const match = route.path.exec(path);
       return match ? [{ route, params: match.slice(1) }] : [];
     });
     if (matched.length === 0) return null;

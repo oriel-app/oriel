@@ -1,24 +1,24 @@
 // What the sidebar shows, from the lists the app already keeps: the threads
-// waiting on the user, the user's groups, each with its threads, most
+// waiting on the user, the user's workstreams, each with its threads, most
 // recently active first, the finished threads, and where the page is among
 // them.
-// The Done page and a group's page read the same list, so all three move
+// The Done page and a workstream's page read the same list, so all three move
 // together.
 import type { Model } from "./root.ts";
 import { type Route, routeUrl } from "./route.ts";
 import { expected } from "./thread.ts";
-import { type GroupSummary, holding, type ThreadSummaryView, waitingOn } from "./view.ts";
+import { type WorkstreamSummary, holding, type ThreadSummaryView, waitingOn } from "./view.ts";
 
-export type NavGroup = {
-  group: GroupSummary;
+export type NavWorkstream = {
+  workstream: WorkstreamSummary;
   threads: ThreadSummaryView[];
-  // The page is this group, or one of its threads.
+  // The page is this workstream, or one of its threads.
   current: boolean;
 };
 
 export type Nav = {
-  // Null until the groups have loaded.
-  groups: NavGroup[] | null;
+  // Null until the workstreams have loaded.
+  workstreams: NavWorkstream[] | null;
   // The thread on the page, if one is.
   thread: string | null;
   // The Done page's tab, if the Done page is on the page.
@@ -29,7 +29,7 @@ export type Nav = {
   needsYou: number;
   // Threads no longer working: done, handed off or dropped, most recently
   // active first. The Done page lists them in its two tabs, and the sidebar's
-  // Done section the first tab's, so with Needs you and the groups every
+  // Done section the first tab's, so with Needs you and the workstreams every
   // state stays in sight. Empty until the threads have loaded.
   finished: ThreadSummaryView[];
 };
@@ -37,14 +37,14 @@ export type Nav = {
 export function nav(model: Model): Nav {
   const { route } = model;
   const thread = route.page === "thread" ? route.id : null;
-  // A thread's group is known from the list before the thread itself loads.
-  const group =
-    route.page === "group"
+  // A thread's workstream is known from the list before the thread itself loads.
+  const workstream =
+    route.page === "workstream"
       ? route.id
       : thread === null
         ? null
-        : (model.thread?.view?.group.id ??
-          model.threads?.find((summary) => summary.id === thread)?.group.id ??
+        : (model.thread?.view?.workstream.id ??
+          model.threads?.find((summary) => summary.id === thread)?.workstream.id ??
           null);
   const threads = [...(model.threads ?? [])]
     .sort((a, b) => b.activityAt.localeCompare(a.activityAt))
@@ -54,11 +54,11 @@ export function nav(model: Model): Nav {
       each.waitingOn === "held" || each.waitingOn === "review" || each.waitingOn === "reply",
   );
   return {
-    groups:
-      model.groups?.map((summary) => ({
-        group: summary,
-        threads: threads.filter((each) => each.group.id === summary.id),
-        current: summary.id === group,
+    workstreams:
+      model.workstreams?.map((summary) => ({
+        workstream: summary,
+        threads: threads.filter((each) => each.workstream.id === summary.id),
+        current: summary.id === workstream,
       })) ?? null,
     thread,
     doneTab: route.page === "done" ? doneTab(route) : null,
@@ -165,12 +165,12 @@ export function doneShown(
   };
 }
 
-// A group's threads, newest first, from the list the sidebar keeps, so a new
-// thread or one finishing shows on the group's page as it does there. Until
-// that list loads, the group's own.
-export function groupThreads(model: Model, groupId: string): ThreadSummaryView[] {
-  if (model.threads === null) return model.group?.view?.threads ?? [];
-  return model.threads.filter((each) => each.group.id === groupId);
+// A workstream's threads, newest first, from the list the sidebar keeps, so a new
+// thread or one finishing shows on the workstream's page as it does there. Until
+// that list loads, the workstream's own.
+export function workstreamThreads(model: Model, workstreamId: string): ThreadSummaryView[] {
+  if (model.threads === null) return model.workstream?.view?.threads ?? [];
+  return model.threads.filter((each) => each.workstream.id === workstreamId);
 }
 
 // Where a click on a link goes: a plain click stays in the page, as an

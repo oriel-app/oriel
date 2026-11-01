@@ -1,5 +1,5 @@
 // The Done page, and a review link's page.
-import { Threads } from "./group-page.tsx";
+import { Threads } from "./workstream-page.tsx";
 import { type DoneTab, doneRoute, doneShown } from "./nav.ts";
 import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
@@ -52,7 +52,7 @@ export function DonePage(props: {
         </p>
       ) : (
         <>
-          <Threads threads={page.threads} dispatch={dispatch} showGroup said={tab} />
+          <Threads threads={page.threads} dispatch={dispatch} showWorkstream said={tab} />
           {page.pages > 1 && (
             <nav class="pager" aria-label={`Pages of ${tab} threads`}>
               {previous ? (

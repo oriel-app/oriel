@@ -116,7 +116,7 @@ async function* turn(
   log("agent.turn", { turn: turns, history: input.history.length, region_version: region.version });
   if (turns > limits.maxTurnsPerThread) {
     yield limit(
-      `This thread has reached its limit of ${limits.maxTurnsPerThread} messages. Start a new thread on the group to keep going.`,
+      `This thread has reached its limit of ${limits.maxTurnsPerThread} messages. Start a new thread on the workstream to keep going.`,
     );
     yield done();
     return;
@@ -126,8 +126,8 @@ async function* turn(
     yield done();
     return;
   }
-  if (region.groupId !== thread.groupId || region.workspaceId !== thread.workspaceId) {
-    yield failed("This turn's region isn't a version of the thread's group.");
+  if (region.workstreamId !== thread.workstreamId || region.workspaceId !== thread.workspaceId) {
+    yield failed("This turn's region isn't a version of the thread's workstream.");
     yield done();
     return;
   }

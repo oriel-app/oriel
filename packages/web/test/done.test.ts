@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { donePage, groupThreads, nav, perPage } from "../src/nav.ts";
+import { donePage, workstreamThreads, nav, perPage } from "../src/nav.ts";
 import { init, type Model, update } from "../src/root.ts";
 import { parseRoute, routeUrl } from "../src/route.ts";
-import type { GroupView, ThreadSummaryView } from "../src/view.ts";
+import type { WorkstreamView, ThreadSummaryView } from "../src/view.ts";
 
-const groupA = "01JBZ0000000000000000000G1";
-const groupB = "01JBZ0000000000000000000G2";
+const workstreamA = "01JBZ0000000000000000000G1";
+const workstreamB = "01JBZ0000000000000000000G2";
 
 const thread = (
   n: number,
   state: ThreadSummaryView["state"] = "done",
-  groupId = groupA,
+  workstreamId = workstreamA,
 ): ThreadSummaryView => ({
   id: `T${n}`,
   title: `Thread ${n}`,
-  group: { id: groupId, name: groupId === groupA ? "Launch" : "Billing" },
+  workstream: { id: workstreamId, name: workstreamId === workstreamA ? "Launch" : "Billing" },
   state,
   doneBy: state === "done" ? "marked" : null,
   waitingOn: null,
@@ -81,7 +81,7 @@ test("Done holds every thread no longer working, most recently active first", ()
       ["T5", "handed-off"],
     ],
   );
-  // A working thread isn't among them: it's in Needs you, or under its group.
+  // A working thread isn't among them: it's in Needs you, or under its workstream.
   assert.deepEqual(nav({ ...model, threads: null }).finished, []);
 });
 
@@ -98,37 +98,37 @@ test("the Done page is at /done, with its page number past the first", () => {
     assert.deepEqual(parseRoute("/done", search), { page: "done" }, search);
 });
 
-test("a group's page lists the threads the sidebar does, as they move", () => {
+test("a workstream's page lists the threads the sidebar does, as they move", () => {
   const view = {
-    group: { id: groupA },
+    workstream: { id: workstreamA },
     members: [],
     changes: [],
     threads: [thread(2, "working")],
-  } as unknown as GroupView;
-  const [entered] = init({ page: "group", id: groupA });
+  } as unknown as WorkstreamView;
+  const [entered] = init({ page: "workstream", id: workstreamA });
   const loaded = update(entered, {
     type: "replied",
-    tag: { kind: "group", id: groupA },
+    tag: { kind: "workstream", id: workstreamA },
     ok: true,
     body: view,
   })[0];
-  // Before the threads list loads, the group's own.
+  // Before the threads list loads, the workstream's own.
   assert.deepEqual(
-    groupThreads(loaded, groupA).map((each) => each.id),
+    workstreamThreads(loaded, workstreamA).map((each) => each.id),
     ["T2"],
   );
   // A new thread, and the one before it finishing, arrive in the list the
-  // sidebar reloads when any thread moves; the group's page shows both.
+  // sidebar reloads when any thread moves; the workstream's page shows both.
   const [moved, reloads] = update(loaded, { type: "threadsMoved" });
   assert.ok(reloads.some((effect) => effect.type === "http" && effect.url === "/api/threads"));
   const [after] = update(moved, {
     type: "replied",
     tag: { kind: "threads" },
     ok: true,
-    body: { threads: [thread(1, "working"), thread(2, "done"), thread(5, "working", groupB)] },
+    body: { threads: [thread(1, "working"), thread(2, "done"), thread(5, "working", workstreamB)] },
   });
   assert.deepEqual(
-    groupThreads(after, groupA).map((each) => [each.id, each.state]),
+    workstreamThreads(after, workstreamA).map((each) => [each.id, each.state]),
     [
       ["T1", "working"],
       ["T2", "done"],

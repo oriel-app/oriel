@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, type Ulid, ulid } from "@oriel/core";
-import { groupStore } from "./groups.ts";
+import { workstreamStore } from "./workstreams.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { threadStore } from "./threads.ts";
@@ -17,15 +17,15 @@ function fresh() {
   migrate(db, loadMigrations(), t0);
   const workspaceId = id(0);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
-  const groupId = id(1);
-  groupStore(db).create(
-    { id: groupId, workspaceId, name: "Checkout", origin: { kind: "picked" } },
+  const workstreamId = id(1);
+  workstreamStore(db).create(
+    { id: workstreamId, workspaceId, name: "Checkout", origin: { kind: "picked" } },
     [{ id: "jira:SYN-1", stableId: "10001" }],
     t0,
   );
   const threads = threadStore(db);
   const threadId = id(2);
-  threads.open({ id: threadId, workspaceId, groupId }, t0);
+  threads.open({ id: threadId, workspaceId, workstreamId }, t0);
   return { threads, threadId };
 }
 
@@ -94,6 +94,17 @@ test("a review link's holder's name and reason are capped, as they type both", (
   assert.equal(threads.held(threadId).length, 1);
 });
 
+// A workstream holding SYN-1, id 1, and a thread on it, id 2, written as the
+// tables were before 0012 named them groups.
+const oldWorkstreamAndThread = (db: ReturnType<typeof open>) =>
+  db.exec(`
+    insert into groups values ('${id(1)}', '${id(0)}', 'Checkout', '{"kind":"picked"}', '${t0}');
+    insert into group_changes values ('${id(0)}', '${id(1)}', 1, '${t0}', '{"kind":"user"}');
+    insert into group_members values ('${id(0)}', '${id(1)}', 'jira', '10001', 'jira:SYN-1', 1, null);
+    insert into threads (id, workspace_id, group_id, region_version, created_at)
+      values ('${id(2)}', '${id(0)}', '${id(1)}', 1, '${t0}');
+  `);
+
 test("0011 moves what a review link's holder sent under who it is from, and whether Oriel asks first", () => {
   const db = open(":memory:");
   const migrations = loadMigrations();
@@ -103,12 +114,7 @@ test("0011 moves what a review link's holder sent under who it is from, and whet
     t0,
   );
   ensureWorkspace(db, { id: id(0), name: "test" }, t0);
-  groupStore(db).create(
-    { id: id(1), workspaceId: id(0), name: "Checkout", origin: { kind: "picked" } },
-    [{ id: "jira:SYN-1", stableId: "10001" }],
-    t0,
-  );
-  threadStore(db).open({ id: id(2), workspaceId: id(0), groupId: id(1) }, t0);
+  oldWorkstreamAndThread(db);
   const insert = db.prepare(
     "insert into messages (id, workspace_id, thread_id, seq, role, content, at) values (?, ?, ?, ?, ?, ?, ?)",
   );
@@ -136,12 +142,7 @@ test("0010 keeps every chat entry as it was", () => {
   const before = migrations.filter((m) => m.version < 10);
   migrate(db, before, t0);
   ensureWorkspace(db, { id: id(0), name: "test" }, t0);
-  groupStore(db).create(
-    { id: id(1), workspaceId: id(0), name: "Checkout", origin: { kind: "picked" } },
-    [{ id: "jira:SYN-1", stableId: "10001" }],
-    t0,
-  );
-  threadStore(db).open({ id: id(2), workspaceId: id(0), groupId: id(1) }, t0);
+  oldWorkstreamAndThread(db);
   const insert = db.prepare(
     "insert into messages (id, workspace_id, thread_id, seq, role, content, at) values (?, ?, ?, ?, ?, ?, ?)",
   );

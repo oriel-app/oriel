@@ -108,16 +108,16 @@ export type ItemPanelView = {
 // an open panel learns that its read has fallen behind.
 export type ItemStampView = { id: string; updatedAt: string | null };
 
-// An item named somewhere: in a group, a marker, a search result. `title` is
+// An item named somewhere: in a workstream, a marker, a search result. `title` is
 // null when the index doesn't have the item (deleted, or not synced yet).
 // `url` is set only for an http(s) location.
 export type ItemRef = { id: string; key: string; title: string | null; url: string | null };
 
-// A group's member: its row as the list zoom level shows it, or null when
+// A workstream's member: its row as the list zoom level shows it, or null when
 // the index no longer has the item.
 export type MemberView = { ref: ItemRef; row: ItemRow | null };
 
-export type GroupSummary = {
+export type WorkstreamSummary = {
   id: string;
   name: string;
   // Where it came from: a copy of a cluster (its grouping's name for it),
@@ -133,8 +133,8 @@ export type GroupSummary = {
   threads: Record<ThreadStateId, number>;
 };
 
-// One version of a group's membership log, and who made it.
-export type GroupChangeView = {
+// One version of a workstream's membership log, and who made it.
+export type WorkstreamChangeView = {
   version: number;
   at: string;
   added: ItemRef[];
@@ -146,21 +146,21 @@ export type ThreadSummaryView = {
   id: string;
   // A few words on what the user first asked, or null before anything was.
   title: string | null;
-  group: { id: string; name: string };
+  workstream: { id: string; name: string };
   state: ThreadStateId;
   doneBy: "applied" | "marked" | null;
   waitingOn: WaitingOn | null;
   activityAt: string;
 };
 
-export type GroupView = {
-  group: GroupSummary;
+export type WorkstreamView = {
+  workstream: WorkstreamSummary;
   members: MemberView[];
-  changes: GroupChangeView[];
+  changes: WorkstreamChangeView[];
   threads: ThreadSummaryView[];
 };
 
-export type GroupsView = { groups: GroupSummary[] };
+export type WorkstreamsView = { workstreams: WorkstreamSummary[] };
 
 // The call that undoes one of Oriel's own actions, built by the server from
 // what the action changed (decision 0024). The window sends it back as it
@@ -289,10 +289,10 @@ export type DiffView = {
 export type ThreadView = {
   id: string;
   title: string | null;
-  group: { id: string; name: string; version: number };
+  workstream: { id: string; name: string; version: number };
   state: ThreadStateId;
   doneBy: "applied" | "marked" | null;
-  // The group version the thread works in.
+  // The workstream version the thread works in.
   regionVersion: number;
   members: MemberView[];
   entries: ChatEntry[];
@@ -320,15 +320,15 @@ export type StreamEvent =
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
   | { type: "change-set"; changeSetId: string; applying: boolean }
-  // The thread's group changed: its name, its members, or what the index has
+  // The thread's workstream changed: its name, its members, or what the index has
   // of them, whether or not the thread moved to the new version.
-  | { type: "group" }
+  | { type: "workstream" }
   // An entry already in the thread's chat changed: a held message was sent on
   // or discarded, here or elsewhere.
   | { type: "chat" }
   // The rest of the workspace changed: another thread moved (its turn
   // started or ended, a change set of it changed, or it was opened, marked
-  // done or deleted), or one of Oriel's own actions changed a group.
+  // done or deleted), or one of Oriel's own actions changed a workstream.
   | { type: "threads" }
   // This thread was deleted; the stream ends.
   | { type: "deleted" };
@@ -345,8 +345,8 @@ export type DeletionView = {
   sources: string[];
 };
 
-// A thread just deleted: its group, and whether that went with it.
-export type DeletedView = { groupId: string; groupRemoved: boolean };
+// A thread just deleted: its workstream, and whether that went with it.
+export type DeletedView = { workstreamId: string; workstreamRemoved: boolean };
 
 // What a review link shows, without the thread.
 export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };

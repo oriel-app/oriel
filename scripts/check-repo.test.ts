@@ -355,21 +355,21 @@ const routes = (extra: string, lines = listed()) => ({
 test("a POST route that changes state without the dispatcher is reported", () => {
   const moved = `{
     method: "POST",
-    path: at("/groups/:id/remove"),
+    path: at("/workstreams/:id/remove"),
     async run([id = ""], request) {
-      const { undo } = await deps.dispatch("group.remove", { group: id }, user);
+      const { undo } = await deps.dispatch("workstream.remove", { workstream: id }, user);
     },
   },
-  { method: "GET", path: at("/groups/:id"), async run() { groups.remove(); } },
+  { method: "GET", path: at("/workstreams/:id"), async run() { workstreams.remove(); } },
   { method: "POST", path: /^\\/api\\/actions\\/([a-z.]+)$/, async run() { dispatch(name); } },`;
   assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(moved)] }), []);
   const sneaky = `{
     method: "POST",
-    path: at("/groups/:id/rename"),
-    async run([id = ""]) { groups.rename(id, "x"); },
+    path: at("/workstreams/:id/rename"),
+    async run([id = ""]) { workstreams.rename(id, "x"); },
   },`;
   assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(sneaky)] }), [
-    "packages/server/src/api.ts: POST /groups/:id/rename changes state without calling the dispatcher (decision 0024)",
+    "packages/server/src/api.ts: POST /workstreams/:id/rename changes state without calling the dispatcher (decision 0024)",
   ]);
   // Tests may post anything.
   const test = { path: "packages/server/src/testing.ts", text: sneaky };
@@ -422,22 +422,30 @@ test("an action closed to a door, a person's, or one with no inverse must say wh
   });
   assert.deepEqual(
     actionProblems({
-      "group.add": { doc: "Adds.", input, class: { kind: "direct", inverse: "group.remove" } },
-      "group.remove": {
+      "workstream.add": {
+        doc: "Adds.",
+        input,
+        class: { kind: "direct", inverse: "workstream.remove" },
+      },
+      "workstream.remove": {
         doc: "Removes.",
         input,
-        class: { kind: "direct", inverse: "group.add" },
+        class: { kind: "direct", inverse: "workstream.add" },
         closed: { agent: " ", tool: "outside tools wait on OA-75" },
       },
       "thread.delete": { doc: "Deletes.", input, class: { kind: "person-only", why: "" } },
       "thread.done": { doc: "Done.", input, class: { kind: "direct", inverse: null, why: "" } },
-      "group.rename": { doc: "Names.", input, class: { kind: "direct", inverse: "group.unname" } },
+      "workstream.rename": {
+        doc: "Names.",
+        input,
+        class: { kind: "direct", inverse: "workstream.unname" },
+      },
     }),
     [
-      "packages/core/src/actions.ts: group.remove is closed to the agent without a reason (decision 0024)",
+      "packages/core/src/actions.ts: workstream.remove is closed to the agent without a reason (decision 0024)",
       "packages/core/src/actions.ts: thread.delete is a person's without a reason (decision 0024)",
       "packages/core/src/actions.ts: thread.done has no inverse and doesn't say why (decision 0024)",
-      "packages/core/src/actions.ts: group.rename's inverse group.unname isn't an action (decision 0024)",
+      "packages/core/src/actions.ts: workstream.rename's inverse workstream.unname isn't an action (decision 0024)",
     ],
   );
 });

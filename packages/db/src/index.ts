@@ -1,5 +1,5 @@
 export * from "./folders.ts";
-export * from "./groups.ts";
+export * from "./workstreams.ts";
 export * from "./index-store.ts";
 export * from "./migrate.ts";
 export * from "./open.ts";

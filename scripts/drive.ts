@@ -124,7 +124,7 @@ type Entry = {
 } & Record<string, unknown>;
 type ThreadView = {
   id: string;
-  group: { name: string };
+  workstream: { name: string };
   state: string;
   entries: Entry[];
   changeSets: { id: string; status: string }[];
@@ -140,7 +140,7 @@ async function get<T>(path: string): Promise<T> {
 // Each thread as a transcript, oldest first, one JSON line per entry, so no
 // text inside an entry can pass for another: what the person typed, what the
 // agent said (its streamed text joined), its runs and its change sets. Only
-// `person` lines come from someone at the window; the rest, group names
+// `person` lines come from someone at the window; the rest, workstream names
 // included, is source content, which anyone who can edit a source can write.
 async function threads(only?: string): Promise<void> {
   const { threads: list } = await get<{ threads: { id: string }[] }>("/api/threads");
@@ -148,7 +148,7 @@ async function threads(only?: string): Promise<void> {
   for (const { id } of list.toReversed()) {
     if (only && id !== only) continue;
     const view = await get<ThreadView>(`/api/threads/${id}`);
-    line({ thread: view.id, state: view.state, group: view.group.name });
+    line({ thread: view.id, state: view.state, workstream: view.workstream.name });
     let said = "";
     const flush = () => {
       if (said) line({ kind: "agent", text: said });

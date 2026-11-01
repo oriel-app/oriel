@@ -1,5 +1,5 @@
-// Where the page is: the window (with a grouping, and maybe a group it is
-// adding items to), a group, a thread, a new thread not started yet, the
+// Where the page is: the window (with a grouping, and maybe a workstream it is
+// adding items to), a workstream, a thread, a new thread not started yet, the
 // Done page (the threads no longer working, in two tabs, a page at a time),
 // or a review link. On any page but a review link's, `item` is the item open
 // in the panel beside it, by its ID.
@@ -9,7 +9,7 @@ export type Route = Page & { item?: string };
 
 export type Page =
   | { page: "window"; grouping: GroupingId; addTo: string | null }
-  | { page: "group"; id: string }
+  | { page: "workstream"; id: string }
   | { page: "thread"; id: string }
   | { page: "new-thread" }
   // `tab`: the dropped threads; absent for the done and handed-off ones.
@@ -18,7 +18,7 @@ export type Page =
   | { page: "review"; token: string };
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
-const groupPath = new RegExp(`^/groups/(${ulid})$`);
+const workstreamPath = new RegExp(`^/workstreams/(${ulid})$`);
 const threadPath = new RegExp(`^/threads/(${ulid})$`);
 const reviewPath = /^\/review\/([A-Za-z0-9_-]{1,64})$/;
 
@@ -33,8 +33,8 @@ export function parseRoute(pathname: string, search: string): Route {
 
 function parsePage(pathname: string, search: string): Page {
   const query = new URLSearchParams(search);
-  const group = groupPath.exec(pathname)?.[1];
-  if (group) return { page: "group", id: group };
+  const workstream = workstreamPath.exec(pathname)?.[1];
+  if (workstream) return { page: "workstream", id: workstream };
   const thread = threadPath.exec(pathname)?.[1];
   if (thread) return { page: "thread", id: thread };
   const token = reviewPath.exec(pathname)?.[1];
@@ -71,8 +71,8 @@ function pageUrl(route: Page): string {
       if (route.addTo) query.set("addTo", route.addTo);
       return `/?${query}`;
     }
-    case "group":
-      return `/groups/${route.id}`;
+    case "workstream":
+      return `/workstreams/${route.id}`;
     case "thread":
       return `/threads/${route.id}`;
     case "new-thread":

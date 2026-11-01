@@ -16,7 +16,7 @@ export type Run = {
   threadId: Ulid;
   // The source snapshot it read.
   snapshot: number;
-  // The version of the thread's group it used, start to end (decision 0018).
+  // The version of the thread's workstream it used, start to end (decision 0018).
   regionVersion: number;
   systemPromptHash: string;
   dtsHash: string;

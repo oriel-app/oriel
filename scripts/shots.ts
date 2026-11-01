@@ -6,7 +6,7 @@
 // whose runs go to the real sandbox (Deno). Most write to SYN as a Jira site
 // in memory, each to its own, so one scene's writes don't show in another's
 // diffs; one is read-only, as Oriel is without credentials. Before any
-// screenshot they get groups and threads, with runs, change sets, a search
+// screenshot they get workstreams and threads, with runs, change sets, a search
 // and a marker, through the same JSON routes the window uses. Two start with
 // Jira unconnected, to connect it from the window to SYN in memory: one for
 // the form's shots, and one for the onboarding, timed from the first screen
@@ -216,9 +216,13 @@ const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 
 // SYN-1's epic cluster, keyed by the epic's stable ID.
-const group = await post<{ id: string }>("/api/groups", checkout);
-const ask = async (text: string, on: Serving = server, groupId = group.id) => {
-  const opened = await post<{ id: string }>(`/api/groups/${groupId}/threads`, { text }, on);
+const workstream = await post<{ id: string }>("/api/workstreams", checkout);
+const ask = async (text: string, on: Serving = server, workstreamId = workstream.id) => {
+  const opened = await post<{ id: string }>(
+    `/api/workstreams/${workstreamId}/threads`,
+    { text },
+    on,
+  );
   await on.app.settled();
   return opened.id;
 };
@@ -227,7 +231,7 @@ const thread = await ask("Which stories here still need estimates?");
 const unpointedThread = await ask(
   "Estimate the unestimated ones",
   unpointed,
-  (await post<{ id: string }>("/api/groups", checkout, unpointed)).id,
+  (await post<{ id: string }>("/api/workstreams", checkout, unpointed)).id,
 );
 await post(`/api/threads/${thread}/messages`, { text: "Find anything about weather" });
 await server.app.settled();
@@ -241,8 +245,8 @@ const stopAt = async (
   { site, serving }: Awaited<ReturnType<typeof writing>>,
   how: "refuse" | "loseAnswers",
 ) => {
-  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
-  const threadId = await ask("Estimate what's missing", serving, groupId);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  const threadId = await ask("Estimate what's missing", serving, workstreamId);
   const setId = await changeSetOf(serving, threadId);
   site[how]("SYN-99");
   const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
@@ -272,8 +276,8 @@ const partlyReviewed = await (async () => {
 // the change set says it is being applied, and offers nothing else.
 const inFlight = await (async () => {
   const { site, serving } = holding;
-  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
-  const threadId = await ask("Estimate what's missing", serving, groupId);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  const threadId = await ask("Estimate what's missing", serving, workstreamId);
   const setId = await changeSetOf(serving, threadId);
   const held = site.hold("SYN-99");
   const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
@@ -315,8 +319,8 @@ const longAsk = await ask(
 );
 // Answered, over items it needn't change: the user marks it done.
 await post(`/api/threads/${await ask("What's in here?")}/done`, {});
-// A later change to the group shows in working threads as a marker.
-await post(`/api/groups/${group.id}/add`, { items: ["jira:SYN-3"] });
+// A later change to the workstream shows in working threads as a marker.
+await post(`/api/workstreams/${workstream.id}/add`, { items: ["jira:SYN-3"] });
 
 // Gift cards planned, then rejected: with no reason, the thread asks what was
 // wrong; with one, the agent proposes a revised change set below the
@@ -348,10 +352,10 @@ const toReject = await post<{ url: string }>(
 );
 
 // Without credentials: change sets can be reviewed and rejected only.
-const readOnlyGroup = await post<{ id: string }>("/api/groups", checkout, readOnly);
-const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyGroup.id);
+const readOnlyWorkstream = await post<{ id: string }>("/api/workstreams", checkout, readOnly);
+const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyWorkstream.id);
 
-// A folder of notes beside Jira, and a group that mixes both.
+// A folder of notes beside Jira, and a workstream that mixes both.
 const notes = join(realpathSync(mkdtempSync(join(tmpdir(), "oriel-shots-"))), "Launch notes");
 const note = (name: string, body: string) => {
   mkdirSync(dirname(join(notes, name)), { recursive: true });
@@ -365,7 +369,7 @@ const files = server.app
   .window("epic")
   .clusters.flatMap((c) => c.list)
   .filter((row) => row.id.startsWith("folder:"));
-const mixed = await post<{ id: string }>("/api/groups", {
+const mixed = await post<{ id: string }>("/api/workstreams", {
   kind: "picked",
   name: "Saved cards launch",
   items: ["jira:SYN-23", "jira:SYN-99", "jira:SYN-104", ...files.map((file) => file.id)],
@@ -373,9 +377,9 @@ const mixed = await post<{ id: string }>("/api/groups", {
 const mixedThread = await ask("What's in here?", server, mixed.id);
 
 // Slack messages beside Jira items: the fare decision, with its replies, and
-// the SMS wording thread, in a group with the stories they're about.
+// the SMS wording thread, in a workstream with the stories they're about.
 const fares = await post<{ id: string }>(
-  "/api/groups",
+  "/api/workstreams",
   {
     kind: "picked",
     name: "Fares after cancellations",
@@ -396,12 +400,16 @@ const faresThread = await ask("What's in here?", chatty, fares.id);
 // its own Jira and Slack.
 const handOff = async (then: "propose" | "approve" | "revert") => {
   const { serving } = await writing({ kind: "fixture" });
-  const { id: groupId } = await post<{ id: string }>(
-    "/api/groups",
+  const { id: workstreamId } = await post<{ id: string }>(
+    "/api/workstreams",
     { kind: "picked", name: "SMS updates", items: ["jira:SYN-61", smsCopy] },
     serving,
   );
-  const threadId = await ask("SYN-61 is ready to pick up: hand it to the team", serving, groupId);
+  const threadId = await ask(
+    "SYN-61 is ready to pick up: hand it to the team",
+    serving,
+    workstreamId,
+  );
   const setId = await changeSetOf(serving, threadId);
   const review = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, serving);
   if (then !== "propose") {
@@ -417,33 +425,33 @@ const handOff = async (then: "propose" | "approve" | "revert") => {
     const { hash } = await post<{ hash: string }>(`/api/change-sets/${revert}/diff`, {}, serving);
     await post(`/api/change-sets/${revert}/approve`, { hash }, serving);
   }
-  return { serving, groupId, threadId, review: new URL(review.url).pathname };
+  return { serving, workstreamId, threadId, review: new URL(review.url).pathname };
 };
 const handing = await handOff("propose");
 const handed = await handOff("approve");
 const handedBack = await handOff("revert");
 
-// A group of one item, and one with none left, for how the page counts them.
-const single = await post<{ id: string }>("/api/groups", {
+// A workstream of one item, and one with none left, for how the page counts them.
+const single = await post<{ id: string }>("/api/workstreams", {
   kind: "picked",
   name: "Declined card retry",
   items: ["jira:SYN-23"],
 });
-const emptied = await post<{ id: string }>("/api/groups", {
+const emptied = await post<{ id: string }>("/api/workstreams", {
   kind: "picked",
   name: "Gift cards",
   items: ["jira:SYN-99"],
 });
-await post(`/api/groups/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
+await post(`/api/workstreams/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 
-// Notes picked in the window and made a group, on a server of their own: each
-// pass of the scenes makes another group, which no other scene should show.
+// Notes picked in the window and made a workstream, on a server of their own: each
+// pass of the scenes makes another workstream, which no other scene should show.
 const picking = (await writing()).serving;
 await post("/api/folder", { path: notes }, picking);
-// A group to remove items from, and undo that, on the same server: each pass
+// A workstream to remove items from, and undo that, on the same server: each pass
 // puts its items back first.
 const trimmed = await post<{ id: string }>(
-  "/api/groups",
+  "/api/workstreams",
   {
     kind: "picked",
     name: "Checkout polish",
@@ -453,12 +461,12 @@ const trimmed = await post<{ id: string }>(
 );
 const trim = async (page: Page) => {
   await post(
-    `/api/groups/${trimmed.id}/add`,
+    `/api/workstreams/${trimmed.id}/add`,
     { items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-99", "jira:SYN-104"] },
     picking,
   );
   await page.reload();
-  await page.locator(".group-page .members").waitFor();
+  await page.locator(".workstream-page .members").waitFor();
   for (const key of ["SYN-23", "SYN-99"]) {
     await page.getByRole("button", { name: `Remove ${key}` }).click();
     await page.locator(".undo", { hasText: key }).waitFor();
@@ -470,11 +478,11 @@ const trim = async (page: Page) => {
 const idling = await (async () => {
   let later = 0;
   const { serving } = await writing(undefined, () => instant(new Date(Date.now() + later)));
-  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
   const done = async (text: string) =>
-    post(`/api/threads/${await ask(text, serving, groupId)}/done`, {}, serving);
-  await ask("Who is on the saved cards stories?", serving, groupId);
-  await ask("Is anything blocking phone wallets?", serving, groupId);
+    post(`/api/threads/${await ask(text, serving, workstreamId)}/done`, {}, serving);
+  await ask("Who is on the saved cards stories?", serving, workstreamId);
+  await ask("Is anything blocking phone wallets?", serving, workstreamId);
   await done("What's in here?");
   later = 8 * 24 * 60 * 60 * 1000;
   await done("Which stories have no estimate?");
@@ -616,14 +624,14 @@ const scenes: Scene[] = [
     },
   },
   {
-    name: "group",
-    path: `/groups/${group.id}`,
-    act: (page) => page.locator(".group-page .members").waitFor(),
+    name: "workstream",
+    path: `/workstreams/${workstream.id}`,
+    act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
-    name: "group-mixed",
-    path: `/groups/${mixed.id}`,
-    act: (page) => page.locator(".group-page .members").waitFor(),
+    name: "workstream-mixed",
+    path: `/workstreams/${mixed.id}`,
+    act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
     name: "slack-window",
@@ -636,10 +644,10 @@ const scenes: Scene[] = [
     },
   },
   {
-    name: "group-slack",
-    path: `/groups/${fares.id}`,
+    name: "workstream-slack",
+    path: `/workstreams/${fares.id}`,
     on: chatty,
-    act: (page) => page.locator(".group-page .members").waitFor(),
+    act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
     name: "thread-slack",
@@ -672,10 +680,10 @@ const scenes: Scene[] = [
     act: (page) => page.getByRole("button", { name: "Revert" }).waitFor(),
   },
   {
-    name: "group-handoff-applied",
-    path: `/groups/${handed.groupId}`,
+    name: "workstream-handoff-applied",
+    path: `/workstreams/${handed.workstreamId}`,
     on: handed.serving,
-    act: (page) => page.locator(".group-page .members").waitFor(),
+    act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
     name: "thread-handoff-reverted",
@@ -708,21 +716,21 @@ const scenes: Scene[] = [
   {
     name: "panel-slack",
     window: true,
-    path: `/groups/${fares.id}`,
+    path: `/workstreams/${fares.id}`,
     on: chatty,
     act: async (page) => {
-      await page.locator(".group-page .members").waitFor();
-      await page.locator(".group-page a.replies").first().click();
+      await page.locator(".workstream-page .members").waitFor();
+      await page.locator(".workstream-page a.replies").first().click();
       await page.locator(".item-panel .panel-thread").last().waitFor();
     },
   },
   {
     name: "panel-folder",
     window: true,
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
-      await page.locator(".group-page .members").waitFor();
-      await page.locator(".group-page .key.item-link").first().click();
+      await page.locator(".workstream-page .members").waitFor();
+      await page.locator(".workstream-page .key.item-link").first().click();
       await page.locator(".item-panel .panel-text").waitFor();
     },
   },
@@ -737,26 +745,26 @@ const scenes: Scene[] = [
     },
   },
   {
-    name: "group-one",
-    path: `/groups/${single.id}`,
-    act: (page) => page.locator(".group-page .members").waitFor(),
+    name: "workstream-one",
+    path: `/workstreams/${single.id}`,
+    act: (page) => page.locator(".workstream-page .members").waitFor(),
   },
   {
-    name: "group-empty",
-    path: `/groups/${emptied.id}`,
-    act: (page) => page.locator(".group-page .rail-empty").waitFor(),
+    name: "workstream-empty",
+    path: `/workstreams/${emptied.id}`,
+    act: (page) => page.locator(".workstream-page .rail-empty").waitFor(),
   },
   {
     // Two items removed with ×, each undoable for a few seconds.
-    name: "group-undo",
-    path: `/groups/${trimmed.id}`,
+    name: "workstream-undo",
+    path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: trim,
   },
   {
     // One of them undone: back where it was.
-    name: "group-undone",
-    path: `/groups/${trimmed.id}`,
+    name: "workstream-undone",
+    path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: async (page) => {
       await trim(page);
@@ -776,7 +784,7 @@ const scenes: Scene[] = [
     // The threads waiting on the user, in the sidebar; on a narrow screen,
     // in its drawer.
     name: "needs-you",
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
       await page.locator(".nav-waiting-link").first().waitFor({ state: "attached" });
       if ((page.viewportSize()?.width ?? 0) <= 760) {
@@ -788,7 +796,7 @@ const scenes: Scene[] = [
   {
     // A thread's menu, from a right-click on it in the sidebar.
     name: "thread-menu",
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
       if ((page.viewportSize()?.width ?? 0) <= 760) {
         await page.getByRole("button", { name: "Open the sidebar" }).click();
@@ -803,14 +811,14 @@ const scenes: Scene[] = [
     // resistance, to show Delete beside Mark done: a trackpad's sideways
     // wheel, as on a wide screen, works in the drawer too.
     name: "thread-swipe",
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
       if ((page.viewportSize()?.width ?? 0) <= 760) {
         await page.getByRole("button", { name: "Open the sidebar" }).click();
         await page.locator(".shell[data-drawer] .sidebar").waitFor();
       }
       // Once the sidebar has loaded, so the row holds still under the pointer.
-      await page.locator(".sidebar-groups .nav-group").first().waitFor();
+      await page.locator(".sidebar-workstreams .nav-workstream").first().waitFor();
       const row = page.locator(".sidebar-needs .swipe").first();
       await row.hover();
       // At twice the pixel density each step moves half as far.
@@ -823,7 +831,7 @@ const scenes: Scene[] = [
   },
   {
     // Deleting a thread whose change set wrote to Jira first says so: from
-    // its group's list of threads.
+    // its workstream's list of threads.
     name: "thread-delete",
     path: `/threads/${partial}`,
     on: refusing.serving,
@@ -1086,8 +1094,8 @@ const scenes: Scene[] = [
   },
   {
     // In the epic grouping a folder's files are in "No epics in this source";
-    // the group made of two of them is named from what they are.
-    name: "picked-notes-group",
+    // the workstream made of two of them is named from what they are.
+    name: "picked-notes-workstream",
     path: "/?grouping=epic",
     on: picking,
     act: async (page) => {
@@ -1097,8 +1105,8 @@ const scenes: Scene[] = [
       const boxes = notes.locator('.item input[type="checkbox"]');
       await boxes.nth(0).check();
       await boxes.nth(1).check();
-      await page.locator(".selection-bar").getByRole("button", { name: "New group" }).click();
-      await page.locator(".group-page .members").waitFor();
+      await page.locator(".selection-bar").getByRole("button", { name: "New workstream" }).click();
+      await page.locator(".workstream-page .members").waitFor();
     },
   },
   {
@@ -1115,7 +1123,7 @@ const scenes: Scene[] = [
   {
     // The latest done threads, opened at the foot of the sidebar.
     name: "sidebar-done",
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
       if ((page.viewportSize()?.width ?? 0) <= 760) {
         await page.getByRole("button", { name: "Open the sidebar" }).click();
@@ -1143,7 +1151,7 @@ const scenes: Scene[] = [
     // Folded on a wide screen, the fold button counts the threads waiting on
     // the user; a narrow screen's menu does.
     name: "sidebar-folded",
-    path: `/groups/${mixed.id}`,
+    path: `/workstreams/${mixed.id}`,
     act: async (page) => {
       await page.locator(".nav-waiting-link").first().waitFor({ state: "attached" });
       if ((page.viewportSize()?.width ?? 0) <= 760) return;
@@ -1252,10 +1260,10 @@ async function onboarding(): Promise<void> {
     await shown(page, "epic");
     await count("epics");
     const checkoutEpic = page.locator(".cluster", { hasText: "Checkout" }).first();
-    await checkoutEpic.getByRole("button", { name: "Make group" }).click();
-    await page.locator(".group-page .members").waitFor();
-    await count("group");
-    await page.getByLabel("Ask about this group").fill("Plan gift cards in this epic");
+    await checkoutEpic.getByRole("button", { name: "Make workstream" }).click();
+    await page.locator(".workstream-page .members").waitFor();
+    await count("workstream");
+    await page.getByLabel("Ask about this workstream").fill("Plan gift cards in this epic");
     await page.getByRole("button", { name: "Ask" }).click();
     await page.getByRole("button", { name: "Approve and apply" }).waitFor();
     await count("thread");

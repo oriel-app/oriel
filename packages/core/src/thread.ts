@@ -1,5 +1,5 @@
-// A thread: a group, a chat and change sets (decision 0018). It is pinned to
-// its group and works in one version of it, its region. Its state is derived
+// A thread: a workstream, a chat and change sets (decision 0018). It is pinned to
+// its workstream and works in one version of it, its region. Its state is derived
 // from what happened in it, never stored (packages/db derives it).
 import { holderName, maxReasonChars } from "./actions.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
@@ -13,8 +13,8 @@ export type ThreadState = "working" | "done" | "handed-off" | "dropped";
 export type Thread = {
   id: Ulid;
   workspaceId: Ulid;
-  groupId: Ulid;
-  // A working thread moves to its group's latest version when the group
+  workstreamId: Ulid;
+  // A working thread moves to its workstream's latest version when the workstream
   // changes, with a marker in the chat; any other keeps its version.
   regionVersion: number;
   state: ThreadState;

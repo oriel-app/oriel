@@ -1,11 +1,11 @@
 // The window: clusters under a grouping, at two zoom levels, and the items
-// the user picks to make or grow a group.
+// the user picks to make or grow a workstream.
 import { type Effect, errorOf, post, type Replied } from "./http.ts";
 import {
   type ClusterView,
   type GroupingId,
   isGroupingId,
-  type GroupSummary,
+  type WorkstreamSummary,
   type WindowView,
 } from "./view.ts";
 
@@ -27,9 +27,9 @@ export type Model = {
   // Items picked by hand, in the order picked. They stay picked across
   // groupings, since an item is the same item under any lens.
   selected: readonly string[];
-  // The group the user is adding items to, from its page; null otherwise.
+  // The workstream the user is adding items to, from its page; null otherwise.
   addTo: string | null;
-  // A group being made or grown.
+  // A workstream being made or grown.
   pending: boolean;
   notice: string | null;
 };
@@ -42,10 +42,10 @@ export type Msg =
   | { type: "windowFailed"; request: number }
   | { type: "itemToggled"; id: string }
   | { type: "selectionCleared" }
-  // Turns a cluster into a group: a copy of its members now.
-  | { type: "clusterGrouped"; key: string }
-  | { type: "selectionGrouped"; name: string }
-  | { type: "selectionAdded"; groupId: string }
+  // Turns a cluster into a workstream: a copy of its members now.
+  | { type: "clusterToWorkstream"; key: string }
+  | { type: "selectionToWorkstream"; name: string }
+  | { type: "selectionAdded"; workstreamId: string }
   | Replied;
 
 // `grouping` is what the address bar asked for, if anything.
@@ -107,20 +107,20 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     }
     case "selectionCleared":
       return [{ ...model, selected: [], notice: null }, []];
-    case "clusterGrouped": {
+    case "clusterToWorkstream": {
       if (model.pending || model.window === null) return [model, []];
       const body = { kind: "cluster", grouping: model.window.grouping, cluster: msg.key };
       return [
         { ...model, pending: true, notice: null },
-        [post("/api/groups", body, { kind: "createGroup" })],
+        [post("/api/workstreams", body, { kind: "createWorkstream" })],
       ];
     }
-    case "selectionGrouped": {
+    case "selectionToWorkstream": {
       if (model.pending || model.selected.length === 0) return [model, []];
       const body = { kind: "picked", name: msg.name, items: model.selected };
       return [
         { ...model, pending: true, notice: null },
-        [post("/api/groups", body, { kind: "createGroup" })],
+        [post("/api/workstreams", body, { kind: "createWorkstream" })],
       ];
     }
     case "selectionAdded": {
@@ -129,21 +129,22 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
         { ...model, pending: true, notice: null },
         [
           post(
-            `/api/groups/${msg.groupId}/add`,
+            `/api/workstreams/${msg.workstreamId}/add`,
             { items: model.selected },
-            { kind: "addToGroup", groupId: msg.groupId },
+            { kind: "addToWorkstream", workstreamId: msg.workstreamId },
           ),
         ],
       ];
     }
     case "replied": {
       const { tag } = msg;
-      if (tag.kind !== "createGroup" && tag.kind !== "addToGroup") return [model, []];
+      if (tag.kind !== "createWorkstream" && tag.kind !== "addToWorkstream") return [model, []];
       if (!msg.ok) return [{ ...model, pending: false, notice: errorOf(msg.body) }, []];
-      const id = tag.kind === "addToGroup" ? tag.groupId : (msg.body as GroupSummary).id;
+      const id =
+        tag.kind === "addToWorkstream" ? tag.workstreamId : (msg.body as WorkstreamSummary).id;
       return [
         { ...model, pending: false, selected: [], addTo: null },
-        [{ type: "navigate", route: { page: "group", id } }],
+        [{ type: "navigate", route: { page: "workstream", id } }],
       ];
     }
   }
@@ -154,10 +155,10 @@ export function zoomOf(model: Model, key: string): Zoom {
   return model.open[model.window.grouping].includes(key) ? "list" : "cluster";
 }
 
-// A name for a group of hand-picked items, from what they are: the epic
+// A name for a workstream of hand-picked items, from what they are: the epic
 // they all belong to, the one item's title, or the first one's and how many
 // more. Never another cluster's label: one like "No epic" or "Unestimated"
-// says what the items lack, not what the group is. A cluster's anchor (its
+// says what the items lack, not what the workstream is. A cluster's anchor (its
 // epic) comes from that cluster. Picked items no longer in the window are
 // named by how many there are.
 export function pickedName(model: Model): string {
@@ -179,7 +180,7 @@ export function pickedName(model: Model): string {
   return selected.length === 1 ? "1 item" : `${selected.length} items`;
 }
 
-// The server's cap on a group's name, in characters.
+// The server's cap on a workstream's name, in characters.
 const maxNameChars = 120;
 
 // At most `max` characters, the last an ellipsis when the text was cut.

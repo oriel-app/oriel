@@ -1,8 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
-import { GroupPage } from "./group-page.tsx";
+import { WorkstreamPage } from "./workstream-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
-import { doneTab, groupThreads, nav } from "./nav.ts";
+import { doneTab, workstreamThreads, nav } from "./nav.ts";
 import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
@@ -132,18 +132,18 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         model.window && (
           <WindowPage
             model={model.window}
-            groups={model.groups}
+            workstreams={model.workstreams}
             jira={model.jira}
             dispatch={dispatch}
           />
         )
       );
-    case "group":
+    case "workstream":
       return (
-        model.group && (
-          <GroupPage
-            model={model.group}
-            threads={groupThreads(model, model.group.id)}
+        model.workstream && (
+          <WorkstreamPage
+            model={model.workstream}
+            threads={workstreamThreads(model, model.workstream.id)}
             dispatch={dispatch}
           />
         )

@@ -5,7 +5,7 @@ import {
   type ChangeSet,
   type ChangeSets,
   type Diff,
-  type GroupMember,
+  type WorkstreamMember,
   type IndexRecord,
   type Instant,
   type ItemId,
@@ -15,16 +15,16 @@ import {
   type Ulid,
 } from "@oriel/core";
 import { plainError } from "@oriel/changeset";
-import type { GroupStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
+import type { WorkstreamStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
 import { itemRow } from "@oriel/groupings";
 import type {
   ChangeSetStatus,
   ChangeSetView,
   ChatEntry,
   DiffView,
-  GroupChangeView,
-  GroupSummary,
-  GroupView,
+  WorkstreamChangeView,
+  WorkstreamSummary,
+  WorkstreamView,
   ItemRef,
   ItemValue,
   MemberView,
@@ -37,7 +37,7 @@ import { waitingOn } from "@oriel/web/view";
 import { agentEvent, type AgentEvent } from "./agent.ts";
 
 export type ViewDeps = {
-  groups: GroupStore;
+  workstreams: WorkstreamStore;
   threads: ThreadStore;
   // The index's live records, from every source.
   records: () => readonly IndexRecord[];
@@ -50,7 +50,7 @@ export type ViewDeps = {
   writable: boolean;
 };
 
-// What fits on one line of a list of threads beside a thread's group and time.
+// What fits on one line of a list of threads beside a thread's workstream and time.
 const maxTitleChars = 60;
 
 // A thread's title until the model's arrives, or if it never does: the
@@ -92,15 +92,15 @@ const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 export const identity = (item: { id: string; stableId: string }) =>
   `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
 
-// The member of a group a handle names. Through the index, by identity, so
+// The member of a workstream a handle names. Through the index, by identity, so
 // an item that moved is found under its current handle; failing that, by the
 // handle the member was added with, if no live item has that member's
 // identity (it was deleted, or its key was reused by another item).
 export function memberOf(
   handle: string,
-  held: readonly GroupMember[],
+  held: readonly WorkstreamMember[],
   records: readonly IndexRecord[],
-): GroupMember | undefined {
+): WorkstreamMember | undefined {
   const record = records.find((r) => r.id === handle);
   const live = new Set(records.map(identity));
   return (
@@ -198,7 +198,7 @@ function runView(result: Extract<AgentEvent, { kind: "run.finished" }>["result"]
 }
 
 export function views(deps: ViewDeps) {
-  const { groups, threads } = deps;
+  const { workstreams, threads } = deps;
 
   // The index by handle and by identity (source and stable ID), which
   // outlives a handle.
@@ -210,7 +210,7 @@ export function views(deps: ViewDeps) {
     );
     // By identity only: a handle another item has taken since names that
     // other item, not this one.
-    const find = (member: GroupMember): IndexRecord | undefined =>
+    const find = (member: WorkstreamMember): IndexRecord | undefined =>
       byIdentity.get(`${parseItemId(member.id)?.source}\u0000${member.stableId}`);
     return { byId, find };
   };
@@ -229,7 +229,7 @@ export function views(deps: ViewDeps) {
     return (id: string) => names.get(id) ?? null;
   };
 
-  const members = (items: readonly GroupMember[]): MemberView[] => {
+  const members = (items: readonly WorkstreamMember[]): MemberView[] => {
     const { find } = lookup();
     const asOf = deps.asOf();
     return items
@@ -254,22 +254,22 @@ export function views(deps: ViewDeps) {
     return out;
   };
 
-  const groupSummary = (id: Ulid): GroupSummary => {
-    const group = groups.get(id);
-    if (!group) throw new RangeError(`no group ${id}`);
-    const latest = groups.region(id, group.version);
-    const { origin } = group;
+  const workstreamSummary = (id: Ulid): WorkstreamSummary => {
+    const workstream = workstreams.get(id);
+    if (!workstream) throw new RangeError(`no workstream ${id}`);
+    const latest = workstreams.region(id, workstream.version);
+    const { origin } = workstream;
     return {
-      id: group.id,
-      name: group.name,
+      id: workstream.id,
+      name: workstream.name,
       origin:
         origin.kind === "cluster"
-          ? { kind: "cluster", grouping: origin.grouping, label: group.name || null }
+          ? { kind: "cluster", grouping: origin.grouping, label: workstream.name || null }
           : { kind: origin.kind },
-      version: group.version,
+      version: workstream.version,
       size: latest?.items.length ?? 0,
-      createdAt: group.createdAt,
-      threads: counts(threads.ofGroup(id, deps.now())),
+      createdAt: workstream.createdAt,
+      threads: counts(threads.ofWorkstream(id, deps.now())),
     };
   };
 
@@ -296,7 +296,7 @@ export function views(deps: ViewDeps) {
   }: ThreadSummary): Promise<ThreadSummaryView> => ({
     id: thread.id,
     title: title(thread.id),
-    group: { id: thread.groupId, name: groups.get(thread.groupId)?.name ?? "" },
+    workstream: { id: thread.workstreamId, name: workstreams.get(thread.workstreamId)?.name ?? "" },
     state: thread.state,
     doneBy: thread.doneBy,
     waitingOn: waitingOn({
@@ -308,11 +308,11 @@ export function views(deps: ViewDeps) {
     activityAt,
   });
 
-  const changeView = (groupId: Ulid, from: number, to: number): GroupChangeView[] => {
+  const changeView = (workstreamId: Ulid, from: number, to: number): WorkstreamChangeView[] => {
     // By identity, so an item that moved since keeps its title.
     const { find } = lookup();
-    return groups
-      .changes(groupId, from)
+    return workstreams
+      .changes(workstreamId, from)
       .filter((change) => change.version <= to)
       .map((change) => ({
         version: change.version,
@@ -327,7 +327,7 @@ export function views(deps: ViewDeps) {
   // in a shape this server doesn't know.
   const entry = (
     message: Message,
-    groupId: Ulid,
+    workstreamId: Ulid,
     region: ReadonlySet<string>,
   ): ChatEntry | null => {
     const at = { seq: message.seq, at: message.at };
@@ -340,7 +340,7 @@ export function views(deps: ViewDeps) {
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "marker") {
-      const changes = changeView(groupId, message.from, message.to);
+      const changes = changeView(workstreamId, message.from, message.to);
       return {
         ...at,
         kind: "marker",
@@ -385,25 +385,25 @@ export function views(deps: ViewDeps) {
     }
   };
 
-  const regionIds = (groupId: Ulid, version: number): Set<string> =>
-    new Set(groups.region(groupId, version)?.items.map((m) => m.id) ?? []);
+  const regionIds = (workstreamId: Ulid, version: number): Set<string> =>
+    new Set(workstreams.region(workstreamId, version)?.items.map((m) => m.id) ?? []);
 
   return {
-    groupSummary,
+    workstreamSummary,
     members,
 
-    groups(workspaceId: Ulid): GroupSummary[] {
-      return groups.list(workspaceId).map((group) => groupSummary(group.id));
+    workstreams(workspaceId: Ulid): WorkstreamSummary[] {
+      return workstreams.list(workspaceId).map((workstream) => workstreamSummary(workstream.id));
     },
 
-    async group(id: Ulid): Promise<GroupView | null> {
-      const group = groups.get(id);
-      if (!group) return null;
+    async workstream(id: Ulid): Promise<WorkstreamView | null> {
+      const workstream = workstreams.get(id);
+      if (!workstream) return null;
       return {
-        group: groupSummary(id),
-        members: members(groups.region(id, group.version)?.items ?? []),
-        changes: changeView(id, 0, group.version).toReversed(),
-        threads: await Promise.all(threads.ofGroup(id, deps.now()).map(threadSummary)),
+        workstream: workstreamSummary(id),
+        members: members(workstreams.region(id, workstream.version)?.items ?? []),
+        changes: changeView(id, 0, workstream.version).toReversed(),
+        threads: await Promise.all(threads.ofWorkstream(id, deps.now()).map(threadSummary)),
       };
     },
 
@@ -416,7 +416,11 @@ export function views(deps: ViewDeps) {
     entry(message: Message, threadId: Ulid): ChatEntry | null {
       const thread = threads.get(threadId, deps.now());
       if (!thread) return null;
-      return entry(message, thread.groupId, regionIds(thread.groupId, thread.regionVersion));
+      return entry(
+        message,
+        thread.workstreamId,
+        regionIds(thread.workstreamId, thread.regionVersion),
+      );
     },
 
     thread(
@@ -430,9 +434,9 @@ export function views(deps: ViewDeps) {
     ): ThreadView | null {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
-      const group = groups.get(thread.groupId);
-      if (!group) return null;
-      const region = groups.region(thread.groupId, thread.regionVersion);
+      const workstream = workstreams.get(thread.workstreamId);
+      if (!workstream) return null;
+      const region = workstreams.region(thread.workstreamId, thread.regionVersion);
       const messages = threads.messages(id);
       // Each entry against the version the thread was in when it was stored:
       // the one its last marker moved it to, or the one it opened in.
@@ -440,18 +444,18 @@ export function views(deps: ViewDeps) {
       let version = firstMarker?.role === "marker" ? firstMarker.from : thread.regionVersion;
       const versions = new Map<number, Set<string>>();
       const idsAt = (at: number) => {
-        const known = versions.get(at) ?? regionIds(thread.groupId, at);
+        const known = versions.get(at) ?? regionIds(thread.workstreamId, at);
         versions.set(at, known);
         return known;
       };
       const entries = messages.flatMap((m) => {
         if (m.role === "marker") version = m.to;
-        return entry(m, thread.groupId, idsAt(version)) ?? [];
+        return entry(m, thread.workstreamId, idsAt(version)) ?? [];
       });
       return {
         id,
         title: title(id),
-        group: { id: group.id, name: group.name, version: group.version },
+        workstream: { id: workstream.id, name: workstream.name, version: workstream.version },
         state: thread.state,
         doneBy: thread.doneBy,
         regionVersion: thread.regionVersion,

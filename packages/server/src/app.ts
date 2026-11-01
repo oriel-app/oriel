@@ -39,7 +39,7 @@ import {
   ensureWorkspace,
   firstWorkspace,
   folderStore,
-  groupStore,
+  workstreamStore,
   indexStore,
   loadMigrations,
   migrate,
@@ -81,7 +81,7 @@ import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { blankGroupName, dispatcher } from "./actions.ts";
+import { blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api, type JiraDetails } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
 import { throwawaySite } from "./env.ts";
@@ -219,7 +219,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return id;
     })();
   const index = indexStore(db);
-  const groups = groupStore(db);
+  const workstreams = workstreamStore(db);
   const threads = threadStore(db);
   const runs = runStore(db);
   const telemetry = telemetryStore(db);
@@ -312,9 +312,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
       )
       .then(() => {
-        // A group that can't follow its epic is no reason to call the sync failed.
+        // A workstream that can't follow its epic is no reason to call the sync failed.
         try {
-          followAnchors(groups, workspaceId, records());
+          followAnchors(workstreams, workspaceId, records());
         } catch (error) {
           log("following epics failed", { error: String(error) });
         }
@@ -579,7 +579,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const agent = (options.agent ?? ((deps) => scriptedAgent(deps, devPlan)))(agentDeps);
   const conversation = turns({
     threads,
-    groups,
+    workstreams,
     agent,
     titler: options.titler ?? null,
     emit,
@@ -591,7 +591,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   });
   told = () => conversation.synced();
   const viewer = views({
-    groups,
+    workstreams,
     threads,
     records,
     presentations: sources,
@@ -605,14 +605,14 @@ export async function createApp(options: AppOptions): Promise<App> {
   });
 
   // Oriel's own actions, through one dispatcher (decision 0024). Each call
-  // publishes once to the window's streams: a group's working threads
+  // publishes once to the window's streams: a workstream's working threads
   // follow it, with markers; a thread's pages hear it changed; and every
   // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
   const dispatch = dispatcher({
     workspaceId,
-    groups,
+    workstreams,
     threads,
     records,
     clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now()),
@@ -625,11 +625,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     publish: (changed) => {
       conversation.acted(
         "thread" in changed
-          ? { thread: changed.thread, chat: changed.chat === true, group: null, moves: [] }
+          ? { thread: changed.thread, chat: changed.chat === true, workstream: null, moves: [] }
           : {
               thread: null,
-              group: changed.group,
-              moves: changed.members ? threads.follow(changed.group, now(), newId) : [],
+              workstream: changed.workstream,
+              moves: changed.members ? threads.follow(changed.workstream, now(), newId) : [],
             },
       );
     },
@@ -637,8 +637,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     newId,
   });
 
-  // What a change set created joins its thread's group, so later turns can
-  // work on it (decision 0018); the group's working threads follow. A group
+  // What a change set created joins its thread's workstream, so later turns can
+  // work on it (decision 0018); the workstream's working threads follow. A workstream
   // made for a thread from nothing takes the name of the first epic created
   // in it, unless the user has named it. Both are actions the change set
   // takes. A live index syncs, reading what the change set wrote by key, as
@@ -648,18 +648,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     const thread = threads.get(set.threadId, now());
     if (thread) {
       const by = { kind: "change-set", changeSetId: set.id } as const;
-      const group = groups.get(thread.groupId);
+      const workstream = workstreams.get(thread.workstreamId);
       const epic = set.mutations.find((m) => m.op === "createEpic" && m.applied);
       const summary = (epic?.args as { summary?: unknown } | undefined)?.summary;
       const name = typeof summary === "string" ? nameOf(summary) : "";
       const blank =
-        group?.origin.kind === "thread" &&
-        group.name === blankGroupName &&
-        groups.region(group.id, group.version)?.items.length === 0;
+        workstream?.origin.kind === "thread" &&
+        workstream.name === blankWorkstreamName &&
+        workstreams.region(workstream.id, workstream.version)?.items.length === 0;
       if (blank && name !== "")
-        await dispatch("workstream.rename", { workstream: thread.groupId, name }, by);
+        await dispatch("workstream.rename", { workstream: thread.workstreamId, name }, by);
       const items = created(set).map((member) => member.id);
-      if (items.length) await dispatch("workstream.add", { workstream: thread.groupId, items }, by);
+      if (items.length)
+        await dispatch("workstream.add", { workstream: thread.workstreamId, items }, by);
     }
     // What it posted in Slack shows once Slack is listed again.
     if (set.mutations.some((m) => m.applied && parseItemId(m.applied.item.id)?.source === "slack"))
@@ -755,7 +756,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     jira: jiraView,
     api: api({
       workspaceId,
-      groups,
+      workstreams,
       threads,
       records,
       dispatch,

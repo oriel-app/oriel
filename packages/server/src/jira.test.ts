@@ -79,11 +79,15 @@ test("a change set approved after connecting is written to that Jira", async (t)
     scripts: { estimate: async () => ({ writes: [["jira.setEstimate", ["jira:SYN-99", 5]]] }) },
   });
   await app.post("/api/jira", details);
-  const { id: groupId } = json<{ id: string }>(
-    await app.post("/api/groups", { kind: "picked", name: "Estimates", items: ["jira:SYN-99"] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "picked",
+      name: "Estimates",
+      items: ["jira:SYN-99"],
+    }),
   );
   const { id } = json<{ id: string }>(
-    await app.post(`/api/groups/${groupId}/threads`, { text: "Estimate SYN-99" }),
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Estimate SYN-99" }),
   );
   await app.app.settled();
   const thread = json<ThreadView>(await app.get(`/api/threads/${id}`));
@@ -221,11 +225,15 @@ test("after a dropped connection, a change set from before says to connect Jira 
     scripts: { estimate },
   });
   await first.post("/api/jira", details);
-  const { id: groupId } = json<{ id: string }>(
-    await first.post("/api/groups", { kind: "picked", name: "Estimates", items: ["jira:SYN-99"] }),
+  const { id: workstreamId } = json<{ id: string }>(
+    await first.post("/api/workstreams", {
+      kind: "picked",
+      name: "Estimates",
+      items: ["jira:SYN-99"],
+    }),
   );
   const { id } = json<{ id: string }>(
-    await first.post(`/api/groups/${groupId}/threads`, { text: "Estimate SYN-99" }),
+    await first.post(`/api/workstreams/${workstreamId}/threads`, { text: "Estimate SYN-99" }),
   );
   await first.app.settled();
   const setId = json<ThreadView>(await first.get(`/api/threads/${id}`)).changeSets[0]?.id;

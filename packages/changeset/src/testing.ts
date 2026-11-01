@@ -21,7 +21,14 @@ import {
   type WriteResult,
 } from "@oriel/core";
 import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps, jiraSpecs } from "@oriel/jira";
-import { ensureWorkspace, groupStore, indexStore, loadMigrations, migrate, open } from "@oriel/db";
+import {
+  ensureWorkspace,
+  workstreamStore,
+  indexStore,
+  loadMigrations,
+  migrate,
+  open,
+} from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSetsOver, type FieldReader, type Specs } from "./change-sets.ts";
 
@@ -437,7 +444,7 @@ export const regionKeys = [
   "SYN-117",
 ];
 
-// A fresh in-memory database with a workspace, a group of the region's items
+// A fresh in-memory database with a workspace, a workstream of the region's items
 // at version 1, a thread on it and a run in that version, Jira in memory, and
 // a clock the test moves by hand.
 export function setup() {
@@ -445,19 +452,19 @@ export function setup() {
   migrate(db, loadMigrations(), t0);
   const ms = Date.parse(t0);
   const workspaceId = ulid(ms);
-  const groupId = ulid(ms);
+  const workstreamId = ulid(ms);
   const threadId = ulid(ms);
   const runId = ulid(ms);
   ensureWorkspace(db, { id: workspaceId, name: "test" }, t0);
   const base = new Map(fixture().issues.map((issue) => [issue.key, issue.id]));
-  groupStore(db).create(
-    { id: groupId, workspaceId, name: "Picked", origin: { kind: "picked" } },
+  workstreamStore(db).create(
+    { id: workstreamId, workspaceId, name: "Picked", origin: { kind: "picked" } },
     regionKeys.map((key) => ({ id: `jira:${key}`, stableId: base.get(key) ?? "" })),
     t0,
   );
   db.prepare(`
-    insert into threads (id, workspace_id, group_id, region_version, created_at)
-    values (?, ?, ?, 1, ?)`).run(threadId, workspaceId, groupId, t0);
+    insert into threads (id, workspace_id, workstream_id, region_version, created_at)
+    values (?, ?, ?, 1, ?)`).run(threadId, workspaceId, workstreamId, t0);
   db.prepare(`
     insert into runs (id, workspace_id, thread_id, snapshot, region_version, system_prompt_hash,
       dts_hash, model, input_tokens, output_tokens, wall_ms, outcome, started_at)
@@ -501,8 +508,8 @@ export function setup() {
     events,
     run,
     workspaceId: workspaceId as Ulid,
-    // The thread's group, at version 1 holding `regionKeys`.
-    groupId: groupId as Ulid,
+    // The thread's workstream, at version 1 holding `regionKeys`.
+    workstreamId: workstreamId as Ulid,
     changeSets: instance(),
     instance,
     // A later sync page, such as a move or a reused key.
