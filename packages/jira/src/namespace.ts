@@ -110,7 +110,9 @@ export function estimateless(records: readonly IndexRecord[]): Set<string> {
 
 // The project a Jira item is in, or a new story goes in: an item's own, and
 // otherwise the region's epic's, or with none, the home project. A story
-// created earlier in this run counts as in the region's epic.
+// created earlier in this run counts as in the region's epic, or the home
+// project. That guess, or a handle whose item has since moved project, can
+// miss; approval then refuses the estimate, as it did before.
 function projectFor(scope: JiraScope, at: string | null): string | null {
   if (at !== null && isJiraId(at)) return projectOf(keyOf(at));
   return scope.anchor ? projectOf(keyOf(scope.anchor)) : scope.estimates.home;

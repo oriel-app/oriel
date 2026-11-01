@@ -64,3 +64,37 @@ test("on a board that takes no estimates, a run that estimates is told why and p
     /SYN's board takes no estimates, so jira:SYN-23 can't be estimated/,
   );
 });
+
+// A plan from nothing: an epic, and a story in it with points.
+const plan: Script = async (bindings) => {
+  bindings.capture("jira.createEpic", [{ summary: "Kiosk wallets" }], "new:1");
+  try {
+    bindings.capture(
+      "jira.createStory",
+      [{ summary: "Tap to pay", points: 3, epic: "new:1" }],
+      "new:2",
+    );
+    return { value: "captured" };
+  } catch (error) {
+    return { value: error instanceof Error ? error.message : String(error) };
+  }
+};
+
+test("a project with no items yet is known to take no estimates from its board", async (t) => {
+  const app = await testApp(t, {
+    live: true,
+    estimates: false,
+    issues: () => [],
+    plan: () => [{ run: "plan" }],
+    scripts: { plan },
+  });
+  const { id: threadId } = json<{ id: string }>(
+    await app.post("/api/threads", { text: "Plan kiosk wallets, with estimates" }),
+  );
+  await app.app.settled();
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  assert.match(
+    JSON.stringify(view.entries),
+    /SYN's board takes no estimates, so create the story without points/,
+  );
+});

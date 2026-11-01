@@ -24,13 +24,14 @@ async function synced() {
     }),
   });
   const source = jiraSource({ transport, site, projects: ["SYN", "OA"], log: () => {} });
+  const before = source.unestimating?.();
   const records: IndexRecord[] = [];
   for await (const page of source.sync(null)) records.push(...page.records);
-  return records;
+  return { records, before, after: source.unestimating?.() };
 }
 
 test("an item whose board takes no estimates has no estimate facet, not a missing estimate", async () => {
-  const records = await synced();
+  const { records } = await synced();
   assert.deepEqual(
     records.map((r) => [r.id, "estimate" in r.facets, r.facets.estimate]),
     [
@@ -43,8 +44,14 @@ test("an item whose board takes no estimates has no estimate facet, not a missin
   );
 });
 
+test("the source says which boards its last sync found taking no estimates", async () => {
+  const { before, after } = await synced();
+  assert.equal(before, null);
+  assert.deepEqual([...(after ?? [])], ["OA"]);
+});
+
 test("the projects that take no estimates are those whose items have no estimate facet", async () => {
-  const records = await synced();
+  const { records } = await synced();
   assert.deepEqual([...estimateless(records)], ["OA"]);
   // Another source's items, which never estimate, aren't projects.
   const file = { ...records[0], id: "folder:0123456789abcdef", facets: {} } as IndexRecord;

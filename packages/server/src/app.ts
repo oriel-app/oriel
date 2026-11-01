@@ -509,9 +509,11 @@ export async function createApp(options: AppOptions): Promise<App> {
     const kinds = new Map(all.map((record) => [record.id, record.facets.kind]));
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
+    // What the last sync found on the boards, or else what the index shows.
+    const none = source?.unestimating?.() ?? estimateless(all);
     return bindingsFor(region, {
       reader,
-      namespaces: { jira: jiraNamespace(kinds, { none: estimateless(all), home }) },
+      namespaces: { jira: jiraNamespace(kinds, { none, home }) },
       items: { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc },
     });
   };

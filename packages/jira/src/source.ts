@@ -49,7 +49,13 @@ import {
 } from "./rest.ts";
 import { type ReadTransport, searchPath, siteOrigin } from "./transport.ts";
 
-export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & { readonly ops: typeof jiraOps };
+export type JiraSource = Source<"jira", JiraAttrs, JiraContent> & {
+  readonly ops: typeof jiraOps;
+  // The projects whose boards the last discovery found no points field on,
+  // null before one. It knows a project with no items yet, and a board
+  // changed since the index last saw an item.
+  unestimating?(): ReadonlySet<string> | null;
+};
 
 export type JiraSourceOptions = {
   transport: ReadTransport;
@@ -108,12 +114,19 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // `updated`, so other issues keep their old points until a full sweep. A
   // failed discovery isn't kept.
   let discovered: Promise<Map<string, string>> | null = null;
+  let unestimating: ReadonlySet<string> | null = null;
   const pointsFields = (fresh: boolean) => {
     if (fresh || !discovered)
-      discovered = discoverPoints(transport, projects, log).catch((error: unknown) => {
-        discovered = null;
-        throw error;
-      });
+      discovered = discoverPoints(transport, projects, log).then(
+        (found) => {
+          unestimating = new Set(projects.filter((project) => !found.has(project)));
+          return found;
+        },
+        (error: unknown) => {
+          discovered = null;
+          throw error;
+        },
+      );
     return discovered;
   };
   const fieldList = (points: Map<string, string>) => [
@@ -240,6 +253,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   return {
     kind: "jira",
     ops: jiraOps,
+    unestimating: () => unestimating,
 
     // A null cursor lists everything. Otherwise the cursor is the latest
     // `updated` seen so far, and only issues updated since (less the overlap)
