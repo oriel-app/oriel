@@ -18,7 +18,9 @@ import {
   type Log,
   literal,
   maxItems,
+  messageText,
   maxNameChars,
+  holderReason,
   number,
   object,
   optional,
@@ -46,7 +48,7 @@ import { resolveDropped } from "./dropped.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
-import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
@@ -99,7 +101,6 @@ export type JiraDetails = { site: string; email: string; token: string; project:
 const smallBody = 4 * 1024;
 const listBody = 64 * 1024;
 const messageBody = 32 * 1024;
-const maxMessageChars = 8_000;
 
 const json = (status: number, value: unknown): Reply => ({
   status,
@@ -132,11 +133,7 @@ const nameValue = refine(
   (name) => name.trim() !== "" && [...name].length <= maxNameChars,
   `expected a name of 1 to ${maxNameChars} characters`,
 );
-const textValue = refine(
-  string,
-  (text) => text.trim() !== "" && text.length <= maxMessageChars,
-  `expected a message of 1 to ${maxMessageChars} characters`,
-);
+const textValue = messageText;
 const maxDropped = 50;
 const droppedFile = object({
   name: refine(string, (name) => name.length <= 255, "expected at most 255 characters"),
@@ -162,9 +159,11 @@ const editBody = object({
   remove: refine(array(ulidValue), (ids) => ids.length > 0, "nothing to remove"),
 });
 const tokenBody = object({ token: string });
-// A reason goes with a rejection only: it becomes the thread's next message.
+// A reason goes with a rejection only. The person's becomes the thread's
+// next message; a review-link holder's is held for the person, and shorter.
 const reasonValue = optional(textValue);
 const rejectBody = object({ hash: string, reason: reasonValue });
+
 const reviewDecision = refine(
   object({
     token: string,
@@ -172,7 +171,7 @@ const reviewDecision = refine(
     kind: union(literal("approved"), literal("rejected")),
     name: nameValue,
     hash: string,
-    reason: reasonValue,
+    reason: optional(holderReason),
   }),
   (body) => body.kind === "rejected" || body.reason === undefined,
   "only a rejection takes a reason",
@@ -360,9 +359,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
 
   // Decides, and on approval applies at once: approving is what lets Oriel
   // write, so replay follows it (decision 0003). A rejection is the thread's
-  // to answer: it asks what was wrong, and a reason given with it is the
-  // answer, which starts a turn. A reason that can't be said, mid-turn or
-  // past the thread's caps, leaves the rejection standing, and says why.
+  // to answer: it asks what was wrong. The person's own reason is the
+  // answer, which starts a turn; one that can't be said, mid-turn or past
+  // the thread's caps, leaves the rejection standing, and says why. A
+  // review-link holder's is held in the thread for the person, whatever the
+  // turn or the caps.
   const decide = async (
     id: Ulid,
     kind: "approved" | "rejected",
@@ -378,13 +379,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return { report: null, problem: null };
       } catch (error) {
         if (!(error instanceof ThreadBusy || error instanceof ThreadLimit)) throw error;
-        // A reviewer can't stop the agent or start a thread: whoever shared
-        // the link can.
-        const problem =
-          approver.via === "review-link"
-            ? "Rejected, but the thread can't take your reason now. Send it to whoever shared this link."
-            : error.message;
-        return { report: null, problem };
+        return { report: null, problem: error.message };
       }
     }
     // The decision stands even if applying it is refused (another apply is
@@ -429,6 +424,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       else if (event.type === "change-set")
         send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying });
       else if (event.type === "group") send({ type: "group" });
+      else if (event.type === "chat") send({ type: "chat" });
       else if (event.type === "deleted") {
         send({ type: "deleted" });
         out.end();
@@ -854,6 +850,26 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // A review-link holder's reason for rejecting the change set, held in
+      // its thread: the person sends it to the agent, as it is or edited.
+      method: "POST",
+      path: at("/change-sets/:id/held-reason/send"),
+      async run([id = ""], request) {
+        const { text } = await readJson(request, messageBody, object({ text: unknown }));
+        const { seq } = await deps.dispatch("reason.send", { changeSet: id, text }, user);
+        return json(202, { seq });
+      },
+    },
+    {
+      method: "POST",
+      path: at("/change-sets/:id/held-reason/discard"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const { thread } = await deps.dispatch("reason.discard", { changeSet: id }, user);
+        return json(200, await threadView(thread));
+      },
+    },
+    {
       // Retries an approved change set that stopped partway.
       method: "POST",
       path: at("/change-sets/:id/apply"),
@@ -993,7 +1009,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       return await found.route.run(found.params, request, url);
     } catch (error) {
       if (error instanceof Refused) return problem(error.status, error.message);
-      if (error instanceof ThreadBusy || error instanceof ThreadLimit)
+      if (
+        error instanceof ThreadBusy ||
+        error instanceof ThreadLimit ||
+        error instanceof NothingHeld
+      )
         return problem(409, error.message);
       if (error instanceof ActionError) return problem(actionStatus[error.code], error.message);
       const status = changeSetStatus(error);

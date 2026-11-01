@@ -185,7 +185,10 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
           </h1>
           <p>Thanks, {model.decided?.decision?.by}.</p>
           {model.outcome === "rejected" && model.reason.trim() && !model.problem && (
-            <p>What you said is in the thread, for a revised change.</p>
+            <p>
+              What you said is in the thread for whoever shared this link. They decide whether the
+              agent sees it.
+            </p>
           )}
           {model.warnings.length > 0 && (
             <ul class="may-have-landed" role="note">
@@ -268,7 +271,8 @@ function ReviewChange(props: {
               <textarea
                 value={reason}
                 rows={2}
-                maxLength={8000}
+                // The server's maxReasonChars.
+                maxLength={2000}
                 onInput={(event) =>
                   send({ type: "reasonChanged", reason: event.currentTarget.value })
                 }

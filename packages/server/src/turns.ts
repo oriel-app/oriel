@@ -18,6 +18,8 @@ export type ThreadEvent =
   | { type: "status"; running: boolean }
   | { type: "change-set"; changeSetId: Ulid; applying: boolean }
   | { type: "group" }
+  // An entry already in the thread's chat changed, as a held reason settles.
+  | { type: "chat" }
   | { type: "deleted" };
 
 export class ThreadBusy extends Error {
@@ -35,6 +37,9 @@ export class ThreadLimit extends Error {
   }
 }
 
+// A change set that was rejected, as rejecting it needs it.
+type Rejected = { id: Ulid; threadId: Ulid; revertOf: Ulid | null };
+
 export type Caps = Pick<AgentLimits, "maxTurnsPerThread" | "maxTokensPerThread">;
 
 // Whether the thread's last turn ended on a per-thread cap: the agent
@@ -47,6 +52,34 @@ function endedOnLimit(messages: readonly Message[]): boolean {
     return event.ok && event.value.kind === "limit";
   });
 }
+
+// A held reason the person was to send or discard is gone: they already
+// did one or the other, or there never was one.
+export class NothingHeld extends Error {
+  constructor() {
+    super("That reason was already sent or discarded.");
+    this.name = "NothingHeld";
+  }
+}
+
+// Characters that show as nothing but that a model reads (Unicode's default
+// ignorables: variation selectors, tag characters, bidi controls, fillers
+// and the like). A held reason loses them, so what the person reads is all
+// they send. Only where emoji and joining scripts need them do variation
+// selectors 15 and 16 and the joiners stay. A subdivision flag, made with
+// tag characters, is held as a plain black flag.
+const joining = String.raw`[\p{Script=Arabic}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gurmukhi}\p{Script=Gujarati}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Sinhala}]`;
+const hidden = new RegExp(
+  [
+    String.raw`(?<!\p{Extended_Pictographic}\p{Emoji_Modifier}?)[\u{FE0E}\u{FE0F}]`,
+    String.raw`(?<![\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}])\u{200D}`,
+    String.raw`\u{200D}(?!\p{Extended_Pictographic})`,
+    String.raw`(?<!${joining})\u{200C}`,
+    String.raw`\u{200C}(?![\p{L}\p{M}])`,
+    String.raw`[\p{Default_Ignorable_Code_Point}--[\u{200C}\u{200D}\u{FE0E}\u{FE0F}]]`,
+  ].join("|"),
+  "gv",
+);
 
 // Why a thread can take no more questions, in plain words, or null: it has
 // asked as many as a thread may; or its last turn ended on a cap, which the
@@ -112,7 +145,8 @@ export function spent(messages: readonly Message[]): { inputTokens: number; outp
 
 // The chat as the agent's history: the user's messages, its own replies
 // joined up, each run's script and summary, and markers naming items by ID
-// only.
+// only. A reason held from a review link is never in it: only what the
+// person sends on reaches the agent, as their own message (decision 0024).
 export function history(
   messages: readonly Message[],
   markerText: (from: number, to: number) => string,
@@ -129,6 +163,7 @@ export function history(
       out.push({ role: "marker", text: markerText(message.from, message.to), at: message.at });
       continue;
     }
+    if (message.role === "held") continue;
     const event = agentEvent(message.event);
     if (!event.ok) continue;
     const last = out.at(-1);
@@ -279,8 +314,9 @@ export function turns(deps: TurnDeps) {
   };
 
   // The user's message, and a turn to answer it, which runs on after this
-  // returns. A settled thread catches up with its group first.
-  const say = (threadId: Ulid, text: string, rejected?: Ulid): { seq: number } => {
+  // returns. A settled thread catches up with its group first. Counting it
+  // is the caller's.
+  const start = (threadId: Ulid, text: string): { seq: number; at: Instant; workspaceId: Ulid } => {
     if (running.has(threadId)) throw new ThreadBusy();
     // The per-thread caps hold whatever agent is plugged in (SPEC §9).
     const earlier = threads.messages(threadId);
@@ -299,13 +335,6 @@ export function turns(deps: TurnDeps) {
     published(threadId, said.seq);
     const thread = threads.get(threadId, now);
     if (!thread) throw new RangeError(`no thread ${threadId}`);
-    deps.emit({
-      name: "question.asked",
-      at: now,
-      workspaceId: thread.workspaceId,
-      threadId,
-      ...(rejected === undefined ? {} : { rejected }),
-    });
     const controller = new AbortController();
     const done = run(thread, text, said.seq, controller.signal).finally(() => {
       running.delete(threadId);
@@ -314,7 +343,33 @@ export function turns(deps: TurnDeps) {
     running.set(threadId, { controller, done });
     publish(threadId, { type: "status", running: true });
     if (first) title(threadId, text);
-    return { seq: said.seq };
+    return { seq: said.seq, at: now, workspaceId: thread.workspaceId };
+  };
+
+  // The user's message, counted. `cause` says it was their reason for
+  // rejecting a change set.
+  const say = (threadId: Ulid, text: string, cause?: { rejected: Ulid }): { seq: number } => {
+    const { seq, at, workspaceId } = start(threadId, text);
+    deps.emit({ name: "question.asked", at, workspaceId, threadId, ...cause });
+    return { seq };
+  };
+
+  // Whether Oriel asks what was wrong with a rejected change set now: not
+  // mid-turn, once the thread can take no more questions, or of an Undo,
+  // which Oriel made and the agent didn't.
+  const asks = (set: Rejected) =>
+    set.revertOf === null &&
+    !running.has(set.threadId) &&
+    capReached(threads.messages(set.threadId), deps.caps) === null;
+
+  // Oriel's line asking what was wrong, with no model call. It ends as a
+  // turn does, so a line after it starts its own paragraph.
+  const ask = (threadId: Ulid, yours: boolean) => {
+    record(threadId, {
+      kind: "text",
+      text: `${yours ? "You rejected this change set" : "This change set was rejected on its review link"}, so nothing in it will change. What was wrong with it? Say what to change, and I'll propose a revised one.`,
+    });
+    record(threadId, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
   };
 
   return {
@@ -365,9 +420,18 @@ export function turns(deps: TurnDeps) {
     // pages watching any thread of a group it changed hear that, moved or
     // not; and every page watching the workspace hears once, so the lists,
     // and a group's page, load again.
-    acted(changed: { thread: Ulid | null; group: Ulid | null; moves: readonly Move[] }): void {
-      if (changed.thread)
+    // `chat`: an entry already in the thread's chat changed, which its pages
+    // load again.
+    acted(changed: {
+      thread: Ulid | null;
+      chat?: boolean;
+      group: Ulid | null;
+      moves: readonly Move[];
+    }): void {
+      if (changed.thread) {
         tell(changed.thread, { type: "status", running: running.has(changed.thread) });
+        if (changed.chat) tell(changed.thread, { type: "chat" });
+      }
       // An entry tells only its thread's pages.
       for (const move of changed.moves) published(move.threadId, move.seq);
       if (changed.group)
@@ -381,30 +445,52 @@ export function turns(deps: TurnDeps) {
     // A change set of the thread was rejected. The thread says so and asks
     // what was wrong, in a line Oriel writes with no model call: the agent reads it
     // in its history, so it answers with a revised change set rather than
-    // more on top of the rejected one. A reason is the answer, said as a
-    // typed message is; one from a review link says who gave it. Mid-turn,
-    // once the thread can take no more questions, or of an Undo, which Oriel
-    // made and the agent didn't, it doesn't ask.
-    rejected(
-      set: { id: Ulid; threadId: Ulid; revertOf: Ulid | null },
-      by: string | null,
-      reason: string | null,
-    ): void {
+    // more on top of the rejected one, when it can (`asks`). The person's own
+    // reason is the answer, said as a typed message is. A review link may
+    // have been forwarded to anyone, so its holder's reason is held in the
+    // thread under their name, whatever the turn or the caps, until the
+    // person sends it on or discards it; and the line the agent reads
+    // doesn't name them (decision 0024).
+    rejected(set: Rejected, by: string | null, reason: string | null): void {
       const { threadId } = set;
-      // It ends as a turn does, so a line after it starts its own paragraph.
-      if (
-        set.revertOf === null &&
-        !running.has(threadId) &&
-        capReached(threads.messages(threadId), deps.caps) === null
-      ) {
-        record(threadId, {
-          kind: "text",
-          text: `${by === null ? "You" : by} rejected this change set, so nothing in it will change. What was wrong with it? Say what to change, and I'll propose a revised one.`,
-        });
-        record(threadId, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
+      const asked = asks(set);
+      if (asked) ask(threadId, by === null);
+      if (reason === null) return;
+      if (by === null) {
+        say(threadId, reason, { rejected: set.id });
+        return;
       }
-      if (reason !== null)
-        say(threadId, by === null ? reason : `${by}, from the review link: ${reason}`, set.id);
+      const text = reason.replace(hidden, "");
+      if (text.trim() === "") return;
+      const held = { role: "held" as const, changeSet: set.id, by, text, asked };
+      published(threadId, threads.append(threadId, held, deps.newId(), deps.now()));
+      // It waits on the person now: every list hears.
+      publish(threadId, { type: "status", running: running.has(threadId) });
+    },
+
+    // The person sends a reason held from a review link to the agent, as it
+    // was or as they edited it. It goes as their message, as a typed one
+    // does, so the turn and the words are theirs. One held while Oriel
+    // couldn't ask what was wrong, mid-turn, is asked first, so the agent
+    // reads the reason as the answer about a rejected change set. Refused
+    // mid-turn or past the caps, it stays held. Counting it and telling the
+    // thread's pages are the dispatcher's (decision 0024).
+    sendHeld(set: Rejected, text?: string): { seq: number; held: "sent" | "edited" } {
+      const { threadId } = set;
+      const held = threads.held(threadId).find((h) => h.changeSet === set.id);
+      if (!held) throw new NothingHeld();
+      if (running.has(threadId)) throw new ThreadBusy();
+      if (!held.asked && asks(set)) ask(threadId, false);
+      const sent = text ?? held.text;
+      const { seq } = start(threadId, sent);
+      threads.settle(threadId, set.id, "sent");
+      return { seq, held: sent === held.text ? "sent" : "edited" };
+    },
+
+    // The person discards a reason held from a review link: it never reaches
+    // the agent.
+    discardHeld(threadId: Ulid, changeSet: Ulid): void {
+      if (!threads.settle(threadId, changeSet, "discarded")) throw new NothingHeld();
     },
 
     // The index changed, as a sync changes it, and with it maybe a group's

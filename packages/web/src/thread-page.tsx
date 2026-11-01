@@ -36,6 +36,7 @@ import {
   type MemberView,
   type RunView,
   type ThreadView,
+  holding,
   waitingOn,
 } from "./view.ts";
 
@@ -119,6 +120,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
                 waitingOn={waitingOn({
                   state: view.state,
                   running: view.running,
+                  held: holding(view.entries),
                   changeSets: view.changeSets,
                 })}
               />
@@ -258,6 +260,12 @@ function ChatBlock(props: {
         </li>
       );
     }
+    case "held":
+      return (
+        <li class="held-block" data-outcome={block.outcome ?? "held"}>
+          <HeldReason block={block} model={props.model} view={props.view} send={props.send} />
+        </li>
+      );
     // A limit is a per-thread cap that ended the turn; a run's own cap stays
     // inside its folded transcript.
     case "notice":
@@ -280,6 +288,89 @@ function ChatBlock(props: {
 // value, opens its panel.
 const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
+
+// A review-link holder's reason for rejecting a change set. Whoever holds a
+// link may be anyone, so the agent never sees it until the person sends it,
+// as it is or edited, as their own message; or they discard it.
+function HeldReason(props: {
+  block: Extract<Block, { kind: "held" }>;
+  model: ThreadModel;
+  view: ThreadView;
+  send: (msg: ThreadMsg) => void;
+}) {
+  const { block, model, view, send } = props;
+  const { changeSetId } = block;
+  // Settled, here or elsewhere, it is shown as it was held.
+  const editing = block.outcome === null ? model.editing[changeSetId] : undefined;
+  const busy = model.busy.includes(changeSetId);
+  const sendable = !busy && !view.running && editing?.trim() !== "";
+  return (
+    <section class="held-reason" aria-busy={busy}>
+      <p class="held-by">
+        <strong>{block.by}</strong> rejected this on the review link:
+      </p>
+      {editing === undefined ? (
+        <blockquote class="held-text">{block.text}</blockquote>
+      ) : (
+        <textarea
+          class="held-field"
+          value={editing}
+          rows={3}
+          maxLength={8000}
+          aria-label={`Edit ${block.by}'s reason`}
+          disabled={busy}
+          onInput={(event) =>
+            send({ type: "heldEdited", changeSetId, text: event.currentTarget.value })
+          }
+        />
+      )}
+      {block.outcome === null ? (
+        <div class="held-actions">
+          <span class="held-note">The agent won't see this until you send it.</span>
+          <button
+            type="button"
+            class="button primary"
+            disabled={!sendable}
+            onClick={() => send({ type: "heldSendClicked", changeSetId })}
+          >
+            Send to agent
+          </button>
+          {editing === undefined ? (
+            <button
+              type="button"
+              class="button"
+              disabled={busy}
+              onClick={() => send({ type: "heldEditClicked", changeSetId })}
+            >
+              Edit
+            </button>
+          ) : (
+            <button
+              type="button"
+              class="button"
+              disabled={busy}
+              onClick={() => send({ type: "heldEditCancelled", changeSetId })}
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            class="quiet-action"
+            disabled={busy}
+            onClick={() => send({ type: "heldDiscardClicked", changeSetId })}
+          >
+            Discard
+          </button>
+        </div>
+      ) : (
+        <p class="held-note">
+          {block.outcome === "sent" ? "Sent to the agent." : "Discarded. The agent never saw it."}
+        </p>
+      )}
+    </section>
+  );
+}
 
 // Where the thread's items live: the only sites a reply's links open to.
 const sites = (view: ThreadView): ReadonlySet<string> =>

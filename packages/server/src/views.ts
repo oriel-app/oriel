@@ -300,6 +300,7 @@ export function views(deps: ViewDeps) {
     waitingOn: waitingOn({
       state: thread.state,
       running: deps.running(thread.id),
+      held: thread.state === "working" && threads.held(thread.id).length > 0,
       changeSets: thread.state === "working" ? await changeSetsOf(thread.id) : [],
     }),
     activityAt,
@@ -329,6 +330,10 @@ export function views(deps: ViewDeps) {
   ): ChatEntry | null => {
     const at = { seq: message.seq, at: message.at };
     if (message.role === "user") return { ...at, kind: "user", text: message.text };
+    if (message.role === "held") {
+      const { changeSet, by, text, outcome } = message;
+      return { ...at, kind: "held", changeSetId: changeSet, by, text, outcome };
+    }
     if (message.role === "marker") {
       const changes = changeView(groupId, message.from, message.to);
       return {

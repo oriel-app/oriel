@@ -24,6 +24,7 @@ import {
 import type { GroupStore, ThreadStore } from "@oriel/db";
 import { type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
+import type { Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
 // What a group made for a thread from nothing is called, until a change set
@@ -41,8 +42,9 @@ export class ActionError extends Error {
 }
 
 // What a call changed, for the window's streams: a group, and whether its
-// members changed, which moves its working threads; or a thread.
-export type Changed = { group: Ulid; members: boolean } | { thread: Ulid };
+// members changed, which moves its working threads; or a thread, and
+// whether an entry already in its chat changed, as a held reason settles.
+export type Changed = { group: Ulid; members: boolean } | { thread: Ulid; chat?: true };
 
 export type ActionDeps = {
   workspaceId: Ulid;
@@ -54,6 +56,10 @@ export type ActionDeps = {
   clusters(grouping: GroupingId): Cluster[];
   // What a change set created, which joins its group before the index has it.
   created(changeSetId: Ulid): Promise<GroupMember[]>;
+  // A change set: the thread it belongs to and whether it undoes another.
+  changeSet(id: Ulid): Promise<{ workspaceId: Ulid; threadId: Ulid; revertOf: Ulid | null } | null>;
+  // What becomes of a review-link holder's reason, held in a thread.
+  held: Pick<Turns, "sendHeld" | "discardHeld">;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
   now(): Instant;
@@ -89,6 +95,14 @@ const mustGroup = (deps: ActionDeps, id: Ulid) => {
   if (!group || group.workspaceId !== deps.workspaceId)
     throw new ActionError("not-found", "no such group");
   return group;
+};
+
+// A change set of a thread this workspace has.
+const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
+  const set = await deps.changeSet(id);
+  if (!set || set.workspaceId !== deps.workspaceId || !deps.threads.get(set.threadId, deps.now()))
+    throw new ActionError("not-found", "no such change set");
+  return { id, threadId: set.threadId, revertOf: set.revertOf };
 };
 
 // Items as the index has them now. One it doesn't have is refused, unless
@@ -256,6 +270,28 @@ const handlers = {
           ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
         },
       ],
+    };
+  },
+
+  "reason.send": async ({ changeSet, text }, _actor, deps) => {
+    const set = await mustChangeSet(deps, changeSet);
+    const { seq, held } = deps.held.sendHeld(set, text);
+    return {
+      output: { seq },
+      undo: null,
+      changed: { thread: set.threadId, chat: true },
+      events: [{ name: "question.asked", threadId: set.threadId, rejected: set.id, held }],
+    };
+  },
+
+  "reason.discard": async ({ changeSet }, _actor, deps) => {
+    const set = await mustChangeSet(deps, changeSet);
+    deps.held.discardHeld(set.threadId, set.id);
+    return {
+      output: { thread: set.threadId },
+      undo: null,
+      changed: { thread: set.threadId, chat: true },
+      events: [{ name: "held-reason.discarded", threadId: set.threadId, changeSetId: set.id }],
     };
   },
 } satisfies { [N in ActionName]: Handler<N> };

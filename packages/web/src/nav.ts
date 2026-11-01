@@ -7,7 +7,7 @@
 import type { Model } from "./root.ts";
 import { type Route, routeUrl } from "./route.ts";
 import { expected } from "./thread.ts";
-import { type GroupSummary, type ThreadSummaryView, waitingOn } from "./view.ts";
+import { type GroupSummary, holding, type ThreadSummaryView, waitingOn } from "./view.ts";
 
 export type NavGroup = {
   group: GroupSummary;
@@ -23,8 +23,8 @@ export type Nav = {
   thread: string | null;
   // The Done page's tab, if the Done page is on the page.
   doneTab: DoneTab | null;
-  // Threads waiting on the user: a change set to review, or a reply. Empty
-  // until the threads have loaded.
+  // Threads waiting on the user: a reason held for them, a change set to
+  // review, or a reply. Empty until the threads have loaded.
   waiting: ThreadSummaryView[];
   needsYou: number;
   // Threads no longer working: done, handed off or dropped, most recently
@@ -50,7 +50,8 @@ export function nav(model: Model): Nav {
     .sort((a, b) => b.activityAt.localeCompare(a.activityAt))
     .map(decided(model));
   const waiting = threads.filter(
-    (each) => each.waitingOn === "review" || each.waitingOn === "reply",
+    (each) =>
+      each.waitingOn === "held" || each.waitingOn === "review" || each.waitingOn === "reply",
   );
   return {
     groups:
@@ -79,7 +80,7 @@ function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryVie
   if (thread === null || ahead === null) return (summary) => summary;
   return (summary) =>
     summary.id === thread.id && summary.waitingOn === "review"
-      ? { ...summary, waitingOn: waitingOn(ahead) }
+      ? { ...summary, waitingOn: waitingOn({ ...ahead, held: holding(ahead.entries) }) }
       : summary;
 }
 

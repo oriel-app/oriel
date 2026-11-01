@@ -1,6 +1,7 @@
 // Rejecting a change set: the thread asks what was wrong, and a reason given
-// with the rejection, in the thread or on a review link, is the thread's next
-// message, which the agent answers with a revised change set.
+// with the rejection in the thread is the thread's next message, which the
+// agent answers with a revised change set. A review link's is held instead
+// (held.test.ts).
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type {
@@ -119,36 +120,6 @@ test("a reason with a rejection is the user's next message, which the agent answ
   );
 });
 
-test("a review link's rejection asks with the reviewer's name, and its reason says who gave it", async (t) => {
-  const app = await proposed(t);
-  const minted = json<{ url: string }>(
-    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
-  );
-  const token = new URL(minted.url).pathname.split("/").at(-1);
-  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
-  const decide = (body: Record<string, unknown>) =>
-    app.post("/api/review/decide", {
-      token,
-      changeSet: app.changeSetId,
-      name: " Ana ",
-      hash: opened.diff.hash,
-      ...body,
-    });
-  // Approving takes no reason.
-  assert.equal((await decide({ kind: "approved", reason: "Looks good" })).status, 400);
-  const reply = await decide({ kind: "rejected", reason: "One story too many." });
-  assert.equal(reply.status, 200);
-  assert.equal(json<{ problem: string | null }>(reply).problem, null);
-  await app.app.settled();
-  const after = said((await app.view()).entries);
-  assert.match(
-    after[0]?.[1] ?? "",
-    /^Ana rejected this change set, so nothing in it will change\./,
-  );
-  assert.deepEqual(after[1], ["user", "Ana, from the review link: One story too many."]);
-  assert.equal(app.turns.length, 2);
-});
-
 // The first turn proposes; any later one thinks until stopped.
 function thenWaits(first: Agent): Agent {
   let turns = 0;
@@ -229,25 +200,4 @@ test("rejecting an Undo asks nothing: Oriel made it, not the agent", async (t) =
   assert.equal(json<{ changeSet: ChangeSetView }>(reply).changeSet.status, "rejected");
   const entries = (await app.view()).entries;
   assert.ok(!entries.some((e) => e.kind === "text" && asked.test(e.text)));
-});
-
-test("a reviewer whose reason the thread can't take is told to pass it on", async (t) => {
-  const app = await proposed(t, { limits: { maxTurnsPerThread: 1 } });
-  const minted = json<{ url: string }>(
-    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
-  );
-  const token = new URL(minted.url).pathname.split("/").at(-1);
-  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
-  const reply = await app.post("/api/review/decide", {
-    token,
-    changeSet: app.changeSetId,
-    kind: "rejected",
-    name: "Ana",
-    hash: opened.diff.hash,
-    reason: "Wrong title.",
-  });
-  assert.equal(reply.status, 200);
-  const body = json<{ changeSet: ChangeSetView; problem: string | null }>(reply);
-  assert.equal(body.changeSet.status, "rejected");
-  assert.match(body.problem ?? "", /whoever shared this link/);
 });
