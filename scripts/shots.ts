@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "playwright-core";
-import { instant } from "../packages/core/src/ids.ts";
+import { type Instant, instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
 import { memoryStore } from "../packages/server/src/connection.ts";
@@ -78,8 +78,8 @@ const planning = (input: TurnInput): Step[] => {
 };
 
 // A server that writes to its own SYN site in memory, and reads Slack when
-// given it.
-const writing = async (slack?: SlackMode) => {
+// given it, on its own clock when given one.
+const writing = async (slack?: SlackMode, now?: () => Instant) => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
   const serving = await serve(0, {
     db: ":memory:",
@@ -93,6 +93,7 @@ const writing = async (slack?: SlackMode) => {
       },
     },
     ...(slack ? { slack } : {}),
+    ...(now ? { now } : {}),
     agent: (deps) => scriptedAgent(deps, planning),
   });
   return { site, serving };
@@ -334,6 +335,22 @@ await post(`/api/groups/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 // pass of the scenes makes another group, which no other scene should show.
 const picking = (await writing()).serving;
 await post("/api/folder", { path: notes }, picking);
+
+// Threads on a server whose clock moves on eight days partway through: the
+// two asked before that and left unsettled are dropped, beside two done.
+const idling = await (async () => {
+  let later = 0;
+  const { serving } = await writing(undefined, () => instant(new Date(Date.now() + later)));
+  const { id: groupId } = await post<{ id: string }>("/api/groups", checkout, serving);
+  const done = async (text: string) =>
+    post(`/api/threads/${await ask(text, serving, groupId)}/done`, {}, serving);
+  await ask("Who is on the saved cards stories?", serving, groupId);
+  await ask("Is anything blocking phone wallets?", serving, groupId);
+  await done("What's in here?");
+  later = 8 * 24 * 60 * 60 * 1000;
+  await done("Which stories have no estimate?");
+  return serving;
+})();
 
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
@@ -679,6 +696,12 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".done-page .thread-list").waitFor(),
   },
   {
+    name: "done-dropped",
+    path: "/done?tab=dropped",
+    on: idling,
+    act: (page) => page.locator(".done-page .thread-list").waitFor(),
+  },
+  {
     name: "review",
     path: new URL(link.url).pathname,
     act: async (page) => {
@@ -720,7 +743,7 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Dismiss" }).waitFor();
     },
   },
-  // These two last: the sidebar remembers them in the browser, and every
+  // These last: the sidebar remembers them in the browser, and every
   // scene of a width and theme shares one.
   {
     // The latest done threads, opened at the foot of the sidebar.
@@ -733,6 +756,20 @@ const scenes: Scene[] = [
       }
       await page.locator(".sidebar-done").getByRole("button", { name: /^Done/ }).click();
       await page.locator(".nav-done").waitFor();
+    },
+  },
+  {
+    // Beside dropped threads, the opened Done section leads to their tab.
+    name: "sidebar-done-dropped",
+    path: "/done?tab=dropped",
+    on: idling,
+    act: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) <= 760) {
+        await page.getByRole("button", { name: "Open the sidebar" }).click();
+        await page.locator(".shell[data-drawer] .sidebar").waitFor();
+      }
+      await page.locator(".sidebar-done").getByRole("button", { name: /^Done/ }).click();
+      await page.locator(".nav-done").getByRole("link", { name: "2 dropped" }).waitFor();
     },
   },
   {
@@ -798,6 +835,7 @@ try {
   await empty.close();
   await picking.close();
   await chatty.close();
+  await idling.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 

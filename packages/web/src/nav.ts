@@ -24,9 +24,9 @@ export type Nav = {
   waiting: ThreadSummaryView[];
   needsYou: number;
   // Threads no longer working: done, handed off or dropped, most recently
-  // active first. The Done page and the sidebar's Done section list them, so
-  // with Needs you and the groups every state stays in sight. Empty until the
-  // threads have loaded.
+  // active first. The Done page lists them in its two tabs, and the sidebar's
+  // Done section the first tab's, so with Needs you and the groups every
+  // state stays in sight. Empty until the threads have loaded.
   finished: ThreadSummaryView[];
 };
 
@@ -62,7 +62,20 @@ export function nav(model: Model): Nav {
   };
 }
 
-// The Done page shows this many threads at a time.
+// The Done page's two tabs. Done holds handed-off threads too: neither needs
+// anything more from the user. Dropped holds the threads nobody settled, kept
+// apart so finished work doesn't bury one the user may come back to.
+export function doneTabs(finished: readonly ThreadSummaryView[]): {
+  done: ThreadSummaryView[];
+  dropped: ThreadSummaryView[];
+} {
+  return {
+    done: finished.filter((each) => each.state !== "dropped"),
+    dropped: finished.filter((each) => each.state === "dropped"),
+  };
+}
+
+// The Done page shows this many threads at a time, in either tab.
 export const perPage = 50;
 
 export type DonePage = {
@@ -74,16 +87,16 @@ export type DonePage = {
   total: number;
 };
 
-// One page of the finished threads. A number past either end shows the nearest
+// One page of a tab's threads. A number past either end shows the nearest
 // page, so an address kept from before threads were deleted still shows some.
-export function donePage(finished: readonly ThreadSummaryView[], number: number): DonePage {
-  const pages = Math.max(1, Math.ceil(finished.length / perPage));
+export function donePage(threads: readonly ThreadSummaryView[], number: number): DonePage {
+  const pages = Math.max(1, Math.ceil(threads.length / perPage));
   const at = Math.min(Math.max(1, Math.trunc(number) || 1), pages);
   return {
-    threads: finished.slice((at - 1) * perPage, at * perPage),
+    threads: threads.slice((at - 1) * perPage, at * perPage),
     number: at,
     pages,
-    total: finished.length,
+    total: threads.length,
   };
 }
 

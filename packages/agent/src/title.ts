@@ -1,5 +1,5 @@
 // A thread's title: a few words that say what the person first asked, so the
-// inbox can be scanned. One small request to a small model, separate from
+// sidebar and the Done page can be scanned. One small request to a small model, separate from
 // the turn. The person's message is the request's only input and goes in
 // the user message; the system prompt is constant. What comes back is checked
 // to be one short line, or else there is no title and the thread keeps the
@@ -19,7 +19,7 @@ export type Titler = (
 export const titleModel = "claude-haiku-5-5";
 
 // Longer than this, the answer isn't a title, or won't fit on one line of
-// the inbox: the server's clipped title stays.
+// the sidebar: the server's clipped title stays.
 export const maxTitleChars = 60;
 
 export const titlePrompt = `You title threads in Oriel, a workspace where a product or engineering manager asks an agent about their work: issues, documents, notes.

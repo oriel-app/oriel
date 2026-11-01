@@ -1,7 +1,7 @@
 // Where the page is: the window (with a grouping, and maybe a group it is
 // adding items to), a group, a thread, a new thread not started yet, the
-// Done page (the threads no longer working, a page at a time), or a review
-// link.
+// Done page (the threads no longer working, in two tabs, a page at a time),
+// or a review link.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
 export type Route =
@@ -9,8 +9,9 @@ export type Route =
   | { page: "group"; id: string }
   | { page: "thread"; id: string }
   | { page: "new-thread" }
-  // `number`: the page of done threads, from 1; absent for the first.
-  | { page: "done"; number?: number }
+  // `tab`: the dropped threads; absent for the done and handed-off ones.
+  // `number`: the tab's page, from 1; absent for the first.
+  | { page: "done"; tab?: "dropped"; number?: number }
   | { page: "review"; token: string };
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
@@ -29,7 +30,11 @@ export function parseRoute(pathname: string, search: string): Route {
   if (pathname === "/threads/new") return { page: "new-thread" };
   if (pathname === "/done") {
     const number = Number(query.get("page"));
-    return Number.isSafeInteger(number) && number > 1 ? { page: "done", number } : { page: "done" };
+    return {
+      page: "done",
+      ...(query.get("tab") === "dropped" && { tab: "dropped" as const }),
+      ...(Number.isSafeInteger(number) && number > 1 && { number }),
+    };
   }
   const grouping = query.get("grouping");
   const addTo = query.get("addTo");
@@ -53,8 +58,12 @@ export function routeUrl(route: Route): string {
       return `/threads/${route.id}`;
     case "new-thread":
       return "/threads/new";
-    case "done":
-      return route.number && route.number > 1 ? `/done?page=${route.number}` : "/done";
+    case "done": {
+      const query = new URLSearchParams();
+      if (route.tab) query.set("tab", route.tab);
+      if (route.number && route.number > 1) query.set("page", String(route.number));
+      return `${query}` ? `/done?${query}` : "/done";
+    }
     case "review":
       return `/review/${route.token}`;
   }
