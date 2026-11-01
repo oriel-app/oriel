@@ -5,7 +5,9 @@
 // The Done page and a group's page read the same list, so all three move
 // together.
 import type { Model } from "./root.ts";
-import type { GroupSummary, ThreadSummaryView } from "./view.ts";
+import type { Route } from "./route.ts";
+import { expected } from "./thread.ts";
+import { type GroupSummary, type ThreadSummaryView, waitingOn } from "./view.ts";
 
 export type NavGroup = {
   group: GroupSummary;
@@ -42,9 +44,9 @@ export function nav(model: Model): Nav {
         : (model.thread?.view?.group.id ??
           model.threads?.find((summary) => summary.id === thread)?.group.id ??
           null);
-  const threads = [...(model.threads ?? [])].sort((a, b) =>
-    b.activityAt.localeCompare(a.activityAt),
-  );
+  const threads = [...(model.threads ?? [])]
+    .sort((a, b) => b.activityAt.localeCompare(a.activityAt))
+    .map(decided(model));
   const waiting = threads.filter(
     (each) => each.waitingOn === "review" || each.waitingOn === "reply",
   );
@@ -60,6 +62,22 @@ export function nav(model: Model): Nav {
     needsYou: waiting.length,
     finished: threads.filter((each) => each.state !== "working"),
   };
+}
+
+// A decision sent from the thread's page shows in every list at once: while
+// the list still has the thread needing a review, it waits on what the
+// decision will leave it waiting on. So Approve and apply takes it out of
+// Needs you as applying, and Reject leaves it there only if it still needs
+// the user. Whatever the server says next stands, as does a failure, which
+// puts it back.
+function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryView {
+  const { thread } = model;
+  const ahead = thread && Object.keys(thread.deciding).length > 0 ? expected(thread) : null;
+  if (thread === null || ahead === null) return (summary) => summary;
+  return (summary) =>
+    summary.id === thread.id && summary.waitingOn === "review"
+      ? { ...summary, waitingOn: waitingOn(ahead) }
+      : summary;
 }
 
 // The Done page's two tabs. Done holds handed-off threads too: neither needs
@@ -97,6 +115,33 @@ export function donePage(threads: readonly ThreadSummaryView[], number: number):
     number: at,
     pages,
     total: threads.length,
+  };
+}
+
+// What the Done page shows at its address: the tab's threads, a page of
+// them, how many each tab has, and where Previous and Next go, which keep the
+// tab.
+export function doneShown(
+  finished: readonly ThreadSummaryView[],
+  at: { tab?: "dropped"; number?: number },
+): {
+  counts: { done: number; dropped: number };
+  page: DonePage;
+  previous: Route | null;
+  next: Route | null;
+} {
+  const tabs = doneTabs(finished);
+  const page = donePage(at.tab ? tabs.dropped : tabs.done, at.number ?? 1);
+  const to = (number: number): Route => ({
+    page: "done",
+    ...(at.tab && { tab: at.tab }),
+    ...(number > 1 && { number }),
+  });
+  return {
+    counts: { done: tabs.done.length, dropped: tabs.dropped.length },
+    page,
+    previous: page.number > 1 ? to(page.number - 1) : null,
+    next: page.number < page.pages ? to(page.number + 1) : null,
   };
 }
 

@@ -2,6 +2,7 @@
 // what they're for, and the few things that touch the address bar or the
 // thread's event stream. `perform` (effects.ts) carries them out; updates
 // return them, so they're tested without a DOM.
+import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import type { GroupingId } from "./view.ts";
 
@@ -12,6 +13,8 @@ export type Tag =
   | { kind: "dropped"; groupId: string }
   | { kind: "group"; id: string }
   | { kind: "groupChanged"; id: string }
+  // A removal was undone: the item was added back.
+  | { kind: "restored"; id: string }
   // The group loaded again after a sync: only its view changes.
   | { kind: "groupSynced"; id: string }
   | { kind: "renamed"; id: string }
@@ -52,7 +55,9 @@ export type Effect =
   // stream says, or a review link's.
   | { type: "watchThreads" }
   | { type: "unwatchThreads" }
-  | { type: "copy"; text: string };
+  | { type: "copy"; text: string }
+  // Sends `msg` once `ms` have passed, as when an undo runs out.
+  | { type: "after"; ms: number; msg: Msg };
 
 // A server's reply to an `http` effect. `body` is our own server's JSON in
 // the shape @oriel/web/view declares for that route, or `{ error }`.

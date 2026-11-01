@@ -19,6 +19,7 @@ import { lines, type Piece } from "./text-diff.ts";
 import {
   type Block,
   blocks,
+  expected,
   type NewThreadModel,
   removable,
   stepLabel,
@@ -68,7 +69,8 @@ const statusNames: Record<ChangeSetView["status"], string> = {
 
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
-  const { view } = model;
+  // A decision sent from here shows before the server answers it.
+  const view = expected(model);
   if (model.deleted)
     return (
       <main class="page">
@@ -345,7 +347,8 @@ function ChangeSet(props: {
     <section class="change-set" data-status={set.status} aria-busy={busy}>
       <header class="change-set-head">
         <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
-        <span class="change-set-status">
+        {/* Announced as it moves, as when Approve and apply turns it to applying. */}
+        <span class="change-set-status" role="status">
           {statusNames[set.status]}
           {set.decision &&
             set.decision.via === "review-link" &&
@@ -783,7 +786,7 @@ function Region({ view }: { view: ThreadView }) {
 export function Member({ member, onRemove }: { member: MemberView; onRemove?: () => void }) {
   const { ref, row } = member;
   return (
-    <li class={row ? "member" : "member gone"}>
+    <li class={row ? "member" : "member gone"} data-item={ref.id}>
       <TypeMark row={row} />
       <ItemKey item={ref} />
       <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>

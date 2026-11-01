@@ -2,7 +2,14 @@
 // a Jira site in memory, through the writer @oriel/changeset builds.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import type { ChangeSetView, DiffView, GroupView, StreamEvent, ThreadView } from "@oriel/web/view";
+import type {
+  ChangeSetView,
+  DiffView,
+  GroupView,
+  StreamEvent,
+  ThreadSummaryView,
+  ThreadView,
+} from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 // SYN-1's epic, whose stories SYN-23, SYN-99 and SYN-104 have no estimate.
@@ -692,4 +699,24 @@ test("a revert the workflow has no way back for stops, says why, and moves nothi
     ],
   );
   assert.equal(app.site.issue("SYN-99")?.status, "Done");
+});
+
+test("while a change set applies, its thread needs nothing from the user; a failed apply needs them again", async (t) => {
+  const app = await proposed(t);
+  // What the threads list and the group's page say, as a reload asks them.
+  const waits = async () => {
+    const threads = json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads"));
+    const group = json<GroupView>(await app.get(`/api/groups/${app.groupId}`));
+    return [...threads.threads, ...group.threads].map((s) => s.waitingOn);
+  };
+  assert.deepEqual(await waits(), ["review", "review"]);
+  app.site.refuse("SYN-99");
+  const held = app.site.hold("SYN-23");
+  const approving = app.approve();
+  await held.reached;
+  assert.deepEqual(await waits(), ["apply", "apply"]);
+  held.release();
+  const stopped = await approving;
+  assert.equal(stopped.body.changeSet.status, "partial");
+  assert.deepEqual(await waits(), ["review", "review"]);
 });

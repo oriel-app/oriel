@@ -208,13 +208,13 @@ test("a working thread waits on its agent mid-turn, then on a review or the user
     "agent",
   );
   // A change set waits on the user while the engine offers a step besides a
-  // revert, or while it applies.
+  // revert; while it applies, on nobody but its sources.
   assert.equal(waitingOn({ ...working, changeSets: [set("open", "approve", "reject")] }), "review");
   assert.equal(
     waitingOn({ ...working, changeSets: [set("partial", "retry", "dismiss", "revert")] }),
     "review",
   );
-  assert.equal(waitingOn({ ...working, changeSets: [set("applying")] }), "review");
+  assert.equal(waitingOn({ ...working, changeSets: [set("applying")] }), "apply");
   // Applied, rejected, or partly applied and the rest dismissed: nothing to decide.
   assert.equal(waitingOn({ ...working, changeSets: [set("applied", "revert")] }), "reply");
   assert.equal(waitingOn({ ...working, changeSets: [set("rejected")] }), "reply");

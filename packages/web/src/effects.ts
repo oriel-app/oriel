@@ -8,7 +8,8 @@ let events: EventSource | null = null;
 // Every thread, watched for a move, on a page with no thread stream to say.
 let threadsMoved: EventSource | null = null;
 
-// The only code that touches the network, the address bar or the clipboard.
+// The only code that touches the network, the address bar, the clipboard or
+// the clock.
 export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   switch (effect.type) {
     case "loadWindow": {
@@ -96,6 +97,9 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       return;
     case "copy":
       navigator.clipboard?.writeText(effect.text).catch(() => {});
+      return;
+    case "after":
+      setTimeout(() => dispatch(effect.msg), effect.ms);
       return;
   }
 }
