@@ -1951,7 +1951,7 @@ a.replies:hover {
   flex-direction: column;
   width: 100%;
   max-width: var(--chat);
-  min-height: calc(100vh - var(--bar-height) - var(--space-3));
+  min-height: calc(100vh - var(--bar-height) - var(--inset-top));
   margin: 0 auto;
 }
 
@@ -2661,7 +2661,7 @@ a.replies:hover {
   position: sticky;
   top: calc(var(--bar-height) + var(--inset-top));
   align-self: start;
-  max-height: calc(100vh - var(--bar-height) - var(--space-6));
+  max-height: calc(100vh - var(--bar-height) - 2 * var(--inset-top));
   overflow-y: auto;
 }
 
@@ -2807,11 +2807,15 @@ a.replies:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The region waits below the chat. */
+  /* The region waits below the chat, with no top line to share. */
   .rail {
     position: static;
     max-height: none;
     padding: 0 0 var(--space-6);
+  }
+
+  .rail > .rail-title {
+    min-height: 0;
   }
 
   .rail .members.compact {
