@@ -129,9 +129,10 @@ test("state-changing methods need this server's Origin, and no route takes them 
   assert.equal(own.headers.allow, "GET, HEAD");
 });
 
-test("the Done page is served at /done with its page number, and at /inbox, its old address", async (t) => {
+test("the Done page is served at /done with its page number, and nothing is at /inbox", async (t) => {
   const handle = site(t);
-  for (const url of ["/done", "/done?page=2", "/inbox"]) {
+  assert.equal((await handle(get("/inbox"))).status, 404);
+  for (const url of ["/done", "/done?page=2"]) {
     const reply = await handle(get(url));
     assert.equal(reply.status, 200, url);
     assert.match(text(reply.body), /<script type="module" src="\/app\/main.js"><\/script>/, url);

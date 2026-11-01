@@ -1,8 +1,7 @@
 // Where the page is: the window (with a grouping, and maybe a group it is
 // adding items to), a group, a thread, a new thread not started yet, the
 // inbox, or a review link. The inbox shows the done threads, a page at a
-// time, and the user knows it as the Done page, at /done; /inbox, its old
-// address, still opens it.
+// time, and the user knows it as the Done page, at /done.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
 export type Route =
@@ -28,7 +27,7 @@ export function parseRoute(pathname: string, search: string): Route {
   const token = reviewPath.exec(pathname)?.[1];
   if (token) return { page: "review", token };
   if (pathname === "/threads/new") return { page: "new-thread" };
-  if (pathname === "/done" || pathname === "/inbox") {
+  if (pathname === "/done") {
     const number = Number(query.get("page"));
     return Number.isSafeInteger(number) && number > 1
       ? { page: "inbox", number }
