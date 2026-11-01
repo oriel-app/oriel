@@ -47,6 +47,7 @@ import type { Route } from "./route.ts";
 import {
   initNewThread,
   initThread,
+  keptAtLatest,
   type NewThreadModel,
   type NewThreadMsg,
   newThreadReplied,
@@ -252,13 +253,15 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 
 // When the window or the lists load again, something may have moved in the
 // index, so an open panel asks whether its item changed since its read.
+// However a thread's page changed, it scrolls the same way.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
   const [next, effects] = updated(model, msg);
   const moved = effects.some(
     (effect) =>
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
-  return moved && next.panel ? [next, [...effects, ...checkPanel(next.panel)]] : [next, effects];
+  const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
+  return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
 }
 
 function updated(model: Model, msg: Msg): [Model, Effect[]] {
@@ -276,7 +279,8 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "thread": {
       if (model.thread === null) return [model, []];
       const [thread, effects] = updateThread(model.thread, msg.msg);
-      return [{ ...model, thread }, effects];
+      // Scrolling sends a message often, which mostly changes nothing.
+      return [thread === model.thread ? model : { ...model, thread }, effects];
     }
     case "newThread": {
       if (model.newThread === null) return [model, []];
