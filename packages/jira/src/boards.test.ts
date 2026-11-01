@@ -48,3 +48,20 @@ test("a project not listed is found on its own, and found again after a refresh"
   assert.equal(await boards.field("OA"), undefined);
   assert.equal(boardReads(), 4);
 });
+
+test("a read of an item in a project not listed, as one moved there, asks its own board", async () => {
+  const oaField = "customfield_10028";
+  const both = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},${oaField},description`;
+  const { transport } = fakeJira({
+    ...discovery("SYN"),
+    ...discovery("OA", { type: "field", field: { fieldId: oaField, displayName: "Points" } }, 2),
+    ...read("OA-7"),
+    [`GET /rest/api/3/issue/OA-7?fields=${both}&expand=transitions`]: ok(
+      jiraIssue("OA-7", { [oaField]: 2 }),
+    ),
+  });
+  const source = jiraSource({ transport, site, projects: ["SYN"], log: () => {} });
+  const [moved] = await source.read(["jira:OA-7"]);
+  assert.ok(moved?.status === "ok");
+  assert.equal(moved.content.points, 2);
+});

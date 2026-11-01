@@ -70,7 +70,7 @@ export function fakeBindings(onHold: () => void = () => {}): Bindings {
           return { value: stories, outsideRegion: false };
         case "jira.getStory": {
           const story = stories.find((s) => s.id === args[0]);
-          if (!story) throw new Error(`${String(args[0])} is not in this region`);
+          if (!story) throw new Error(`${fn}: ${String(args[0])} is not in this region`);
           return { value: story, outsideRegion: false };
         }
         case "jira.fail":
@@ -96,7 +96,7 @@ export function fakeBindings(onHold: () => void = () => {}): Bindings {
           const target = String(args[0]);
           if ((isItemId(target) && inRegion.has(target)) || isNewRef(target))
             return { op: fn, target, ref: null, args };
-          throw new Error(`${target} is not in this region`);
+          throw new Error(`${fn}: ${target} is not in this region`);
         }
         case "jira.createStory":
           if (ref === null) throw new Error("a create needs a ref");

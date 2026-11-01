@@ -109,6 +109,14 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // applies to the issues the next sync lists. Changing the field doesn't touch
   // `updated`, so other issues keep their old points until a full sweep.
   const boards = options.boards ?? jiraBoards({ transport, projects, log });
+  // The points fields a read of one issue asks for: every listed project's,
+  // and its own project's, which may not be listed, as one an item moved to.
+  const withOwn = async (key: string, points: ReadonlyMap<string, string>) => {
+    const project = projectOf(key);
+    if (points.has(project)) return points;
+    const own = await boards.field(project);
+    return own === undefined ? points : new Map([...points, [project, own]]);
+  };
   const fieldList = (points: ReadonlyMap<string, string>) => [
     ...new Set([...indexFieldNames, ...points.values()]),
   ];
@@ -146,10 +154,11 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
 
   const readOne = async (
     id: ItemId<"jira">,
-    points: ReadonlyMap<string, string>,
+    listed: ReadonlyMap<string, string>,
   ): Promise<ReadResult<"jira", JiraContent>> => {
     const parsed = parseItemId(id);
     if (parsed?.source !== "jira") return { id, status: "gone", reason: "deleted" };
+    const points = await withOwn(parsed.key, listed);
     const request = {
       method: "GET" as const,
       path: `${api}/issue/${parsed.key}?fields=${[...fieldList(points), "description"].join(",")}&expand=transitions`,
@@ -191,10 +200,11 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   // Null for one in a shape Oriel can't read.
   const recordOf = async (
     id: ItemId<"jira">,
-    points: ReadonlyMap<string, string>,
+    listed: ReadonlyMap<string, string>,
   ): Promise<IndexRecord<"jira", JiraAttrs> | "gone" | null> => {
     const parsed = parseItemId(id);
     if (parsed?.source !== "jira") return "gone";
+    const points = await withOwn(parsed.key, listed);
     const request = {
       method: "GET" as const,
       path: `${api}/issue/${parsed.key}?fields=${fieldList(points).join(",")}`,

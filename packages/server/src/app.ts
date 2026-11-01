@@ -227,7 +227,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     });
   // What each board estimates in, one answer per connection: the source
   // refreshes it on each sync, and the writer and the agent's module read it.
-  // With the fixture as the index, nothing syncs the site, so it is found once.
+  // With the fixture as the index, nothing syncs the site, so its boards are
+  // found once, at the first write that needs a points field.
   const boardsOf = (to: JiraWrites) =>
     jiraBoards({ transport: transportTo(to), projects: [to.project], log });
   const liveSource = (to: JiraWrites, boards: JiraBoards) =>
