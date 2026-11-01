@@ -53,6 +53,8 @@ export type Effect =
   // `replace`, takes the current page's place in it. `stay`: the page stays
   // where it is scrolled, as when only the panel beside it changes.
   | { type: "navigate"; route: Route; replace?: true; stay?: true }
+  // Scrolls a thread's page to its latest entry.
+  | { type: "showLatest" }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }
@@ -62,7 +64,10 @@ export type Effect =
   | { type: "unwatchThreads" }
   | { type: "copy"; text: string }
   // Sends `msg` once `ms` have passed, as when an undo runs out.
-  | { type: "after"; ms: number; msg: Msg };
+  | { type: "after"; ms: number; msg: Msg }
+  // Sends `msg` once the page shows the update that asked, before it paints,
+  // and after what the user did meanwhile.
+  | { type: "rendered"; msg: Msg };
 
 // A server's reply to an `http` effect. `body` is our own server's JSON in
 // the shape @oriel/web/view declares for that route, or `{ error }`.

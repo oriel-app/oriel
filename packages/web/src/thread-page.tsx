@@ -2,6 +2,8 @@
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
+import { useEffect } from "preact/hooks";
+import { watchLatest } from "./effects.ts";
 import {
   addressOf,
   type Dispatch,
@@ -78,6 +80,8 @@ const statusNames: Record<ChangeSetView["status"], string> = {
 
 export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: Dispatch }) {
   const send = (msg: ThreadMsg) => dispatch({ type: "thread", msg });
+  // Where the page is, for as long as this thread is on screen.
+  useEffect(() => watchLatest(send), [model.id]);
   // A decision sent from here shows before the server answers it.
   const view = expected(model);
   if (model.deleted)

@@ -42,6 +42,8 @@ export type ThreadModel = {
   notice: string | null;
   // The thread was deleted while its page was open.
   deleted: boolean;
+  // The page shows the latest entry, so what arrives keeps it there.
+  atLatest: boolean;
 };
 
 // A step offered for a whole change set. Removing a line is its own message.
@@ -68,7 +70,13 @@ export type ThreadMsg =
   | { type: "heldEditCancelled"; changeSetId: string }
   | { type: "heldDiscardClicked"; changeSetId: string }
   // Dropped on the thread: added to its group, which the thread then follows.
-  | { type: "dropped"; dropped: Dropped };
+  | { type: "dropped"; dropped: Dropped }
+  // The page moved: `below`, how far the chat's end is below the window's
+  // bottom edge; `up`, whether the user scrolled up or opened a run's
+  // output, either of which moves that end further down.
+  | { type: "scrolled"; below: number; up: boolean }
+  // The page shows what changed, and what the user did meanwhile.
+  | { type: "rendered" };
 
 export function initThread(id: string): [ThreadModel, Effect[]] {
   return [
@@ -88,6 +96,7 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       notes: {},
       notice: null,
       deleted: false,
+      atLatest: true,
     },
     [get(`/api/threads/${id}`, { kind: "thread", id })],
   ];
@@ -278,7 +287,36 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         [post(`/api/groups/${groupId}/drop`, msg.dropped, { kind: "dropped", groupId })],
       ];
     }
+    case "scrolled": {
+      // Moving the chat's end further below leaves the latest entry at once,
+      // so a slow scroll up isn't pulled back down. Otherwise, as when coming
+      // back from either side, the page is there within a few dozen pixels,
+      // and stays there while what arrived renders below.
+      const { below, up } = msg;
+      const atLatest =
+        !(up && below > 1) && (Math.abs(below) <= nearLatest || (below > 0 && model.atLatest));
+      return atLatest === model.atLatest ? [model, []] : [{ ...model, atLatest }, []];
+    }
+    case "rendered":
+      return [model, model.view && model.atLatest ? [{ type: "showLatest" }] : []];
   }
+}
+
+const nearLatest = 40;
+
+// A thread opens at its latest entry, and while the user is there, the
+// thread or a diff changing (an entry, a change set's status, a reload after
+// its group changed) keeps them there, as does the composer emptying once a
+// message is sent. Once it renders, the page is asked
+// again, so a user who scrolled up meanwhile, or is reading a run they
+// opened, stays where they are.
+export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
+  if (after.view === null || !after.atLatest) return [];
+  const changed =
+    after.view !== before?.view ||
+    after.diffs !== before?.diffs ||
+    after.sending !== before?.sending;
+  return changed ? [{ type: "rendered", msg: { type: "thread", msg: { type: "rendered" } } }] : [];
 }
 
 // Server replies that belong to this thread's page.
