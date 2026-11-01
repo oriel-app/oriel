@@ -407,9 +407,13 @@ export function turns(deps: TurnDeps) {
         say(threadId, by === null ? reason : `${by}, from the review link: ${reason}`, set.id);
     },
 
-    // The index changed, as a sync changes it: every page watching the
-    // workspace hears, so an open panel can tell whether its item changed.
+    // The index changed, as a sync changes it, and with it maybe a group's
+    // name, as it follows its epic, or what the index has of its items: the
+    // pages watching any thread hear their group changed, and every page
+    // watching the workspace hears, so an open panel can tell whether its
+    // item changed.
     synced(): void {
+      for (const threadId of watchers.keys()) tell(threadId, { type: "group" });
       broadcast(null);
     },
 

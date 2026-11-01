@@ -77,12 +77,30 @@ test("a move that only adds a marker reaches every page, and the thread's own it
   await ownStream.return?.();
 });
 
-test("a sync reaches every page, so an open panel can tell whether its item changed", async (t) => {
+test("a sync reaches every page, and an open thread's hears its group may have changed", async (t) => {
   const app = await testApp(t, { live: true });
+  const { id: groupId } = json<GroupSummary>(
+    await app.post("/api/groups", { kind: "picked", name: "Launch", items: ["jira:SYN-3"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/groups/${groupId}/threads`, { text: "Hi" }),
+  );
+  await app.app.settled();
+  const own = (await app.get(`/api/threads/${threadId}/events`)).stream;
+  assert.ok(own);
+  const ownStream = own[Symbol.asyncIterator]();
+  const event = async () => {
+    const data = /^data: (.*)$/m.exec(String((await ownStream.next()).value))?.[1];
+    return data === undefined ? null : (JSON.parse(data) as StreamEvent);
+  };
+  while ((await event())?.type !== "status");
   const { stream } = await watch(app);
   assert.equal((await app.post("/api/jira/sync")).status, 200);
   assert.equal((await stream.next()).value, changed);
+  assert.deepEqual(await event(), { type: "group" });
+  assert.deepEqual(await event(), { type: "threads" });
   await stream.return?.();
+  await ownStream.return?.();
 });
 
 test("a thread's own page hears its group renamed, or changed, though the thread didn't move", async (t) => {

@@ -352,8 +352,9 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [thread, effects] = streamed(model.thread, msg.event);
       // Its turn starting or ending, or a change set of it moving, changes what
       // it waits on, and an end may move it between thread states. The status
-      // the stream opens with covers what moved before it opened.
-      const moved = msg.event.type !== "entry";
+      // the stream opens with covers what moved before it opened. Its group
+      // changing is told to every page right after, which loads the lists.
+      const moved = msg.event.type !== "entry" && msg.event.type !== "group";
       return [{ ...model, thread }, moved ? [...effects, loadThreads, loadGroups] : effects];
     }
     // What each thread waits on is in both lists: the groups count by state.

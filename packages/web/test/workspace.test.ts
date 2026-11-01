@@ -34,8 +34,6 @@ test("a thread's page loads its thread again when its group changed, moved or no
   });
   assert.deepEqual(requests(update(shown, { type: "streamed", event: { type: "group" } })[1]), [
     `GET /api/threads/${threadId} thread`,
-    "GET /api/threads threads",
-    "GET /api/groups groups",
   ]);
 });
 
