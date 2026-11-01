@@ -17,7 +17,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Namespaces } from "@oriel/bindings";
+import type { ItemDocs, Namespaces } from "@oriel/bindings";
 import {
   type GroupMember,
   type ItemId,
@@ -30,14 +30,35 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
-import { type FixtureRegion, fixtureSnapshot, jiraNamespace, type JiraFixture } from "@oriel/jira";
-import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
+import {
+  canonicalPath,
+  folderItemDoc,
+  folderKey,
+  folderSource,
+  resolveFolder,
+} from "@oriel/folder";
+import {
+  type FixtureRegion,
+  fixtureSnapshot,
+  jiraItemDoc,
+  jiraNamespace,
+  type JiraFixture,
+} from "@oriel/jira";
+import {
+  fixtureApi,
+  type SlackFixture,
+  type SlackRecord,
+  slackItemDoc,
+  slackSource,
+} from "@oriel/slack";
 import {
   buildFolder,
   diskDependent,
   type FolderFixture,
 } from "../../../scripts/fixtures/folder.ts";
+
+// What each source's items are, as the server hands them to bindings.
+export const itemDocs: ItemDocs = { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc };
 
 // Item URLs point here, as they do in the index.
 export const evalSite = "https://oriel.atlassian.net";
@@ -77,6 +98,7 @@ export type World = {
   region: Region;
   reader: Reader;
   namespaces: Namespaces;
+  items: ItemDocs;
   // Each region item as its source holds it, for the judge: a file with its
   // path and title, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -156,6 +178,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     region,
     reader,
     namespaces,
+    items: itemDocs,
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {

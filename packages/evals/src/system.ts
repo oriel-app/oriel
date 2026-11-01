@@ -98,7 +98,8 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r) => bindingsFor(r, { reader: world.reader, namespaces: world.namespaces }),
+    bindingsFor: (r) =>
+      bindingsFor(r, { reader: world.reader, namespaces: world.namespaces, items: world.items }),
     runs: records.runs,
     changeSets: records.changeSets,
     limits: options.limits ?? evalLimits,

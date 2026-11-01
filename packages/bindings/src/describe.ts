@@ -27,6 +27,13 @@ export { pathOf } from "./fn.ts";
 // Each source's namespace, as its adapter declares it.
 export type Namespaces = Partial<Record<SourceKind, NamespaceSpec>>;
 
+// What each source's items are, as `items.*` reads them, as its adapter
+// declares it: one line on what kind of item it is, what its title and text
+// hold, and how to name it to the user. Shape only, never source text. The
+// declarations hold a source's line only when the region holds its items, so
+// a source costs a region without them nothing.
+export type ItemDocs = Partial<Record<SourceKind, string>>;
+
 // The names the script sees. The list is fixed, whatever the region holds,
 // because the guest compiles the script before it knows the region: a
 // namespace the region has no functions in is empty, and the declarations
@@ -37,15 +44,23 @@ export const spaceNames = ["items", ...sourceKinds] as const;
 export const globals = [...spaceNames, "search"] as const;
 export const parameters: readonly string[] = ["search"];
 
-// A region as the module sees it: its IDs, sorted, and each source namespace
-// it gets, with the items that namespace binds.
+// A region as the module sees it: its IDs, sorted, the item docs of the
+// sources it holds items from, and each source namespace it gets, with the
+// items that namespace binds.
 export type Scope = {
   ids: readonly ItemId[];
+  docs: readonly string[];
   sources: { kind: SourceKind; spec: NamespaceSpec; scope: NamespaceScope }[];
 };
 
+// A doc goes inside a doc comment, on one line.
+function checkedDoc(kind: SourceKind, doc: string): void {
+  if (!doc.trim() || /[\r\n\u2028\u2029]|\*\//.test(doc))
+    throw new Error(`${kind}: an item doc is one line of plain text, with no */`);
+}
+
 // IDs reach generated code, so each must have its source's strict key shape.
-export function scopeOf(region: Region, namespaces: Namespaces): Scope {
+export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs = {}): Scope {
   const names: Partial<Record<SourceKind, string>> = {};
   for (const kind of sourceKinds) names[kind] = namespaces[kind]?.name;
   const ids: ItemId[] = [];
@@ -65,6 +80,12 @@ export function scopeOf(region: Region, namespaces: Namespaces): Scope {
         parseItemId(item.id)?.source === parseItemId(named.id)?.source,
     );
   const anchor = held && ids.includes(held.id) ? held.id : null;
+  const docs = sourceKinds.flatMap((kind) => {
+    const doc = items[kind];
+    if (doc === undefined) return [];
+    checkedDoc(kind, doc);
+    return ids.some((id) => parseItemId(id)?.source === kind) ? [doc] : [];
+  });
   const sources = sourceKinds.flatMap((kind) => {
     const spec = namespaces[kind];
     const members = ids.filter((id) => parseItemId(id)?.source === kind);
@@ -73,7 +94,7 @@ export function scopeOf(region: Region, namespaces: Namespaces): Scope {
     const own = anchor !== null && members.includes(anchor) ? anchor : null;
     return [{ kind, spec, scope: { ids: members, anchor: own } }];
   });
-  return { ids, sources };
+  return { ids, docs, sources };
 }
 
 // `items`, then each namespace in source order, then the escape hatch. The

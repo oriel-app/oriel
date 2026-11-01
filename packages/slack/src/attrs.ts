@@ -89,6 +89,11 @@ export const slackDetails: DetailsOf = (record) => {
 
 export const slackPresentation: Presentation = { name: "Slack", details: slackDetails };
 
+// What a message is, in the declarations' `Item` (see `ItemDocs` in
+// bindings): shape only, never source text. Its text is `slackText`'s.
+export const slackItemDoc =
+  "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic. Name it by who wrote it, where and when.";
+
 const titleChars = 120;
 
 // "Author: " and the first line with text, cut at a word near the limit. A

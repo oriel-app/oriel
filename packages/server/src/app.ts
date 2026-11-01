@@ -55,6 +55,7 @@ import {
   fixtureFields,
   fixtureSource,
   jiraAttrs,
+  jiraItemDoc,
   JiraFailed,
   jiraNamespace,
   jiraSource,
@@ -62,11 +63,18 @@ import {
   readTransport,
   syncSource,
 } from "@oriel/jira";
-import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
+import {
+  folderAttrs,
+  folderItemDoc,
+  type FolderPath,
+  folderSource,
+  resolveFolder,
+} from "@oriel/folder";
 import {
   connectSlack,
   fixtureApi,
   slackAttrs,
+  slackItemDoc,
   type SlackSource,
   slackSource,
   webApi,
@@ -497,7 +505,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   const regionBindings = (region: Region) => {
     const kinds = new Map(records().map((record) => [record.id, record.facets.kind]));
-    return bindingsFor(region, { reader, namespaces: { jira: jiraNamespace(kinds) } });
+    return bindingsFor(region, {
+      reader,
+      namespaces: { jira: jiraNamespace(kinds) },
+      items: { jira: jiraItemDoc, folder: folderItemDoc, slack: slackItemDoc },
+    });
   };
 
   const specs = { jira: jiraSpecs };
