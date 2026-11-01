@@ -35,6 +35,9 @@ type Scene = {
   act?(page: Page): Promise<void>;
   // A refusal the scene asks for, which the browser logs as an error.
   refused?: number;
+  // The window as the user sees it, not the whole page: what's fixed or
+  // sticky to the window (the sidebar, the panel beside the page) spans it.
+  window?: true;
 };
 
 const out = new URL("../shots/", import.meta.url);
@@ -593,6 +596,59 @@ const scenes: Scene[] = [
       await page.locator(".run[open] .output").first().waitFor();
     },
   },
+  // The panel beside the page, one per source's view, and from the window at
+  // both zoom levels: a plain click opens it, an address can too.
+  {
+    name: "panel-jira-list",
+    window: true,
+    path: "/?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page.locator(".item a.key", { hasText: "SYN-23" }).click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  {
+    name: "panel-jira-cluster",
+    window: true,
+    path: "/?grouping=epic&item=jira%3ASYN-1",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  {
+    name: "panel-slack",
+    window: true,
+    path: `/groups/${fares.id}`,
+    on: chatty,
+    act: async (page) => {
+      await page.locator(".group-page .members").waitFor();
+      await page.locator(".group-page a.replies").first().click();
+      await page.locator(".item-panel .panel-thread").last().waitFor();
+    },
+  },
+  {
+    name: "panel-folder",
+    window: true,
+    path: `/groups/${mixed.id}`,
+    act: async (page) => {
+      await page.locator(".group-page .members").waitFor();
+      await page.locator(".group-page .key.item-link").first().click();
+      await page.locator(".item-panel .panel-text").waitFor();
+    },
+  },
+  {
+    name: "panel-thread-rail",
+    window: true,
+    path: `/threads/${thread}`,
+    act: async (page) => {
+      await page.locator(".rail .members").waitFor();
+      await page.locator(".rail a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
   {
     name: "group-one",
     path: `/groups/${single.id}`,
@@ -1026,7 +1082,7 @@ try {
         await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
-        await page.screenshot({ path, fullPage: true, animations: "disabled" });
+        await page.screenshot({ path, fullPage: !scene.window, animations: "disabled" });
         // Leaving first cancels a held request quietly; aborting it logs.
         if (hung.length > 0) await page.goto("about:blank");
         for (const route of hung.splice(0)) await route.abort().catch(() => {});

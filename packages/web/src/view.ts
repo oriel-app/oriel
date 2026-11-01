@@ -3,9 +3,11 @@
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
+import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
 
 export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
+export type { PanelBlock } from "@oriel/core/panel";
 
 export const groupingIds = ["epic", "assignee", "stuck"] as const;
 export type GroupingId = (typeof groupingIds)[number];
@@ -25,6 +27,9 @@ export type WindowView = {
   asOf: string;
   // True while the server shows the synthetic fixtures instead of the index.
   fixture: boolean;
+  // Where each item shown lives in its source, by ID, for an http(s)
+  // location only: where a Cmd/Ctrl or middle click on its row goes.
+  locations?: Readonly<Record<string, string>>;
 };
 
 // The folder of markdown files the user connected, read-only: its real path,
@@ -62,6 +67,33 @@ export function waitingOn(thread: {
   if (thread.changeSets.some(open)) return "review";
   return thread.changeSets.some((set) => set.status === "applying") ? "apply" : "reply";
 }
+
+// One item in the panel beside the page, read live through the reader the
+// agent's `items.read` uses, in its source's own view (`blocks`). `title` is
+// the read's, or the index's when the read has none, or null when neither
+// has one. `readAt` is when Oriel read it; `updatedAt` when the index last
+// saw it change, null for an item the index doesn't have. Source content is
+// text, never HTML.
+export type ItemPanelView = {
+  id: string;
+  key: string;
+  // The source's name, such as "Jira", and the item's page there.
+  source: string;
+  title: string | null;
+  url: string | null;
+  readAt: string;
+  updatedAt: string | null;
+  read:
+    | { status: "ok"; blocks: PanelBlock[] }
+    | { status: "moved"; to: ItemRef }
+    | { status: "gone"; reason: "deleted" | "forbidden" }
+    // The source returned it in a shape its view can't read.
+    | { status: "unreadable" };
+};
+
+// When the index last saw an item change, without reading its source: how
+// an open panel learns that its read has fallen behind.
+export type ItemStampView = { id: string; updatedAt: string | null };
 
 // An item named somewhere: in a group, a marker, a search result. `title` is
 // null when the index doesn't have the item (deleted, or not synced yet).

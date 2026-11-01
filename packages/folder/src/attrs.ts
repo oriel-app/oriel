@@ -7,6 +7,7 @@ import {
   type Facets,
   type IndexRecord,
   nullable,
+  type PanelOf,
   object,
   type Presentation,
   type SourceDeclaration,
@@ -55,9 +56,28 @@ export const folderDetails: DetailsOf = () => null;
 
 export const folderPresentation: Presentation = { name: "Folder", details: folderDetails };
 
+// A file as the panel beside the page shows it, from a live read: its text,
+// read as markdown into the web's own blocks, and Oriel's note on how the
+// text was made, if any. A file too large to read is the note alone.
+export const folderPanel: PanelOf = (content) => {
+  const read = folderContent(content);
+  if (!read.ok) return null;
+  const { text, note } = read.value;
+  if (note !== null && text === note)
+    return { title: null, blocks: [{ kind: "note", text: note }] };
+  return {
+    title: null,
+    blocks: [
+      ...(note === null ? [] : [{ kind: "note" as const, text: note }]),
+      { kind: "text", heading: null, text, format: "markdown" },
+    ],
+  };
+};
+
 // The folder as it declares itself to the composition root: read-only, so it
 // has no namespace and no op specs.
 export const folderDeclaration = {
   ...folderPresentation,
   itemDoc: folderItemDoc,
+  panel: folderPanel,
 } satisfies SourceDeclaration;

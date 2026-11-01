@@ -6,6 +6,7 @@ import {
   Assignee,
   Chevron,
   type Dispatch,
+  ItemLink,
   keyLabel,
   Link,
   plural,
@@ -235,6 +236,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
             zoom={zoomOf(model, view.row.key)}
             selected={model.selected}
             pending={model.pending}
+            locations={shown.locations ?? {}}
             dispatch={dispatch}
           />
         ))}
@@ -248,6 +250,7 @@ function Cluster(props: {
   zoom: Zoom;
   selected: readonly string[];
   pending: boolean;
+  locations: Readonly<Record<string, string>>;
   dispatch: Dispatch;
 }) {
   const { view, zoom, dispatch } = props;
@@ -308,7 +311,15 @@ function Cluster(props: {
           Make group
         </button>
       </h2>
-      {open && <Items id={listId} items={list} selected={props.selected} dispatch={dispatch} />}
+      {open && (
+        <Items
+          id={listId}
+          items={list}
+          selected={props.selected}
+          locations={props.locations}
+          dispatch={dispatch}
+        />
+      )}
     </section>
   );
 }
@@ -369,6 +380,7 @@ function Items(props: {
   id: string;
   items: ItemRow[];
   selected: readonly string[];
+  locations: Readonly<Record<string, string>>;
   dispatch: Dispatch;
 }) {
   if (props.items.length === 0) {
@@ -385,6 +397,7 @@ function Items(props: {
           key={item.id}
           item={item}
           picked={props.selected.includes(item.id)}
+          url={props.locations[item.id] ?? null}
           dispatch={props.dispatch}
         />
       ))}
@@ -392,7 +405,8 @@ function Items(props: {
   );
 }
 
-function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; dispatch: Dispatch }) {
+function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispatch: Dispatch }) {
+  const { item, picked, dispatch } = props;
   // Files and Slack messages carry no assignees or estimates (decisions 0019
   // and 0021).
   const tracked = !item.id.startsWith("folder:") && !item.id.startsWith("slack:");
@@ -408,10 +422,10 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
           onChange={() => dispatch({ type: "window", msg: { type: "itemToggled", id: item.id } })}
         />
       </label>
-      <span class="key">
+      <ItemLink item={{ id: item.id, url: props.url }} class="key source-link">
         <span class="type" data-type={item.type.toLowerCase()} title={item.type} />
         {keyLabel(item)}
-      </span>
+      </ItemLink>
       <span class="title" title={item.title}>
         {item.title}
       </span>
@@ -423,7 +437,9 @@ function Item({ item, picked, dispatch }: { item: ItemRow; picked: boolean; disp
       {tracked ? (
         <Assignee name={item.assignee} />
       ) : (
-        <span class="assignee">{item.replies && <Replies replies={item.replies} />}</span>
+        <span class="assignee">
+          {item.replies && <Replies id={item.id} replies={item.replies} />}
+        </span>
       )}
       <span
         class="points"

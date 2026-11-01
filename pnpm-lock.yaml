@@ -200,6 +200,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
       '@oriel/groupings':
         specifier: workspace:*
         version: link:../groupings

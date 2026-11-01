@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./panel": "./src/panel.ts"
   },
   "scripts": {
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"

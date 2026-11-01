@@ -12,6 +12,7 @@ import {
   type IndexRecord,
   type Instant,
   isItemId,
+  type ItemId,
   isUlid,
   type Log,
   literal,
@@ -39,6 +40,7 @@ import {
 } from "@oriel/web/view";
 import { resolveDropped } from "./dropped.ts";
 import { maxNameChars, nameOf } from "./names.ts";
+import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
@@ -55,6 +57,9 @@ export type ApiDeps = {
   changeSets: ChangeSets;
   turns: Turns;
   views: Views;
+  // One item for the panel beside the page, read live, and when the index
+  // last saw it change.
+  items: ItemPanels;
   emit(event: TelemetryEvent): void;
   now(): Instant;
   newId(): Ulid;
@@ -100,6 +105,15 @@ const json = (status: number, value: unknown): Reply => ({
   body: JSON.stringify(value),
 });
 const problem = (status: number, error: string): Reply => json(status, { error });
+
+// A path segment as it was before the browser encoded it; "" if it can't be.
+function decoded(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return "";
+  }
+}
 
 class Refused extends Error {
   readonly status: number;
@@ -213,6 +227,13 @@ const windowEvent = union(
     grouping: refine(string, isGroupingId, "expected epic, assignee or stuck"),
   }),
   object({ name: literal("zoom.changed"), from: zoomId, to: zoomId }),
+  // By the item, whose source the event keeps; the item itself isn't kept.
+  object({ name: literal("item.panel-opened"), item: itemIdValue }),
+  object({
+    name: literal("item.source-opened"),
+    item: itemIdValue,
+    via: union(literal("panel"), literal("link")),
+  }),
 );
 
 async function readJson<T>(request: Request, limit: number, validator: Validator<T>): Promise<T> {
@@ -247,7 +268,10 @@ type Route = {
 };
 
 const ulidPart = "([0-9A-HJKMNP-TV-Z]{26})";
-const at = (path: string) => new RegExp(`^/api${path.replaceAll(":id", ulidPart)}$`);
+// An item ID, as one path segment (`jira%3ASYN-12`).
+const itemPart = "([^/]{1,512})";
+const at = (path: string) =>
+  new RegExp(`^/api${path.replaceAll(":id", ulidPart).replaceAll(":item", itemPart)}$`);
 
 export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Reply | null> {
   const { groups, threads, changeSets, turns, views } = deps;
@@ -287,6 +311,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!set || set.workspaceId !== deps.workspaceId || !threads.get(set.threadId, deps.now()))
       throw new Refused(404, "no such change set");
     return set;
+  };
+
+  // An item ID from a request, with its source.
+  const mustItem = (text: string) => {
+    const parsed = parseItemId(text);
+    if (!parsed) throw new Refused(400, "expected an item ID");
+    return { id: text as ItemId, source: parsed.source };
   };
 
   // Items as the index has them now; one it doesn't have is refused.
@@ -532,19 +563,55 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What only the window knows happened. Two events, fixed fields.
+      // What only the window knows happened. Four events, fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
         const event = await readJson(request, tinyBody, windowEvent);
         const at = deps.now();
         const { workspaceId } = deps;
+        const sourceOf = (id: string) => mustItem(id).source;
         deps.emit(
           event.name === "grouping.switched"
             ? { name: event.name, at, workspaceId, grouping: event.grouping }
-            : { name: event.name, at, workspaceId, from: event.from, to: event.to },
+            : event.name === "zoom.changed"
+              ? { name: event.name, at, workspaceId, from: event.from, to: event.to }
+              : event.name === "item.panel-opened"
+                ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
+                : {
+                    name: event.name,
+                    at,
+                    workspaceId,
+                    source: sourceOf(event.item),
+                    via: event.via,
+                  },
         );
         return json(202, {});
+      },
+    },
+    {
+      // An item for the panel beside the page, read live. A source that
+      // doesn't answer is a plain sentence; a missing item is a view.
+      method: "GET",
+      path: at("/items/:item"),
+      async run([item = ""]) {
+        const { id, source } = mustItem(decoded(item));
+        try {
+          return json(200, await deps.items.read(id));
+        } catch (error) {
+          deps.log("api: item read failed", { source, error: String(error) });
+          throw new Refused(
+            502,
+            `${sources[source].name} didn't answer, so Oriel couldn't read this item. Try again.`,
+          );
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: at("/items/:item/stamp"),
+      async run([item = ""]) {
+        return json(200, deps.items.stamp(mustItem(decoded(item)).id));
       },
     },
     {

@@ -57,5 +57,11 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "changeset.dismissed"; changeSetId: Ulid; via: "thread" | "review-link" }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
   | { name: "review-link.opened"; changeSetId: Ulid }
+  // The user opened an item's panel beside the page, by a plain click on a
+  // link to it or at an address with one open.
+  | { name: "item.panel-opened"; source: SourceKind }
+  // The user left Oriel for an item's source: from its panel's button, or by
+  // a Cmd/Ctrl or middle click on a link to it.
+  | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
 );
