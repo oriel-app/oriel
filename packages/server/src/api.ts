@@ -325,6 +325,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       await changeSets.ofThread(set.threadId),
       await changeSets.nextSteps(set.id),
       changeSets.applying(set.id),
+      changeSets.writable(set.id),
     );
   const changeSetReply = async (id: Ulid, extra: Record<string, unknown> = {}) =>
     json(200, { changeSet: await viewOf(await mustChangeSet(id)), ...extra });
@@ -335,7 +336,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         sets.map(async (set) => [set.id, await changeSets.nextSteps(set.id)] as const),
       ),
     );
-    return views.thread(threadId, sets, steps, (id) => changeSets.applying(id as Ulid));
+    return views.thread(
+      threadId,
+      sets,
+      steps,
+      (id) => changeSets.applying(id as Ulid),
+      (id) => changeSets.writable(id as Ulid),
+    );
   };
 
   // Every action that changes a change set tells the pages watching its

@@ -59,3 +59,10 @@ export async function connectSlack(
     missing: wanted.filter((want) => !found.has(want)),
   };
 }
+
+// Whom a token is for: the person Oriel reads Slack as, and posts as.
+export async function slackPerson(api: SlackApi): Promise<string> {
+  const who = object({ user_id: string })(await api("auth.test", {}));
+  if (!who.ok) throw new Error("slack: auth.test: unexpected reply");
+  return who.value.user_id;
+}

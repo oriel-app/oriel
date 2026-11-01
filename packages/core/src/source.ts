@@ -27,6 +27,8 @@ import {
 // - `epic`: the item ID of its parent, or null;
 // - `link:<id>`: one link as `{ url, title }`, or null when there is no such
 //   link;
+// - `reply:<id>`: one reply in the item's conversation, as its text, or null
+//   when there is no such reply; `replies`: how many it has;
 // - `updated`: when the item last changed, an instant. It belongs to the item,
 //   not to a field: any write moves it, so field conflict checks ignore it.
 // A source reports only the names that apply to it.
@@ -161,6 +163,10 @@ export interface SourceWriter<K extends SourceKind = SourceKind> {
     id: ItemId<K>,
     fields: readonly string[],
   ): Promise<{ stableId: string; values: FieldValues } | "gone">;
+  // What a person calls an ID its ops name, such as an account or a
+  // channel, asked of the source; null when unknown. Without it, the
+  // composition root names them.
+  name?(id: string): Promise<string | null>;
 }
 
 // What `apply` throws when nothing was sent or changed: the write never went

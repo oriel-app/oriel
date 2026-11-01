@@ -14,8 +14,9 @@
 //
 // Slack is off unless `--slack fixture`, the synthetic workspace, or
 // `--slack live --channels a,b`, which reads those public channels, by name
-// or ID, as the first person in `.env`'s SLACK_USER_TOKENS. Either is
-// read-only.
+// or ID, as the first person in `.env`'s SLACK_USER_TOKENS. Change sets a
+// person approves post as that person, only in those channels: in memory for
+// the fixture, and in Slack for live, which needs the chat:write scope.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -130,8 +131,8 @@ console.log(
   slack === null
     ? "Slack: off. --slack fixture reads the synthetic channel."
     : slack.kind === "fixture"
-      ? "Slack: the synthetic channel, read-only."
-      : `Slack: ${channels.map((name) => `#${name.replace(/^#/, "")}`).join(", ")}, read-only.`,
+      ? "Slack: the synthetic channel. Change sets you approve post there, in memory."
+      : `Slack: ${channels.map((name) => `#${name.replace(/^#/, "")}`).join(", ")}. Change sets you approve post there as the person Oriel reads Slack as.`,
 );
 console.log(
   modelKey

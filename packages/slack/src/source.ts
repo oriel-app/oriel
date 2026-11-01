@@ -83,7 +83,8 @@ const fields = {
   files: optional(array(object({ name: optional(string), title: optional(string) }))),
 };
 const message = object({ ts: string, ...fields });
-type Message = Infer<typeof message> & { unknownAuthor?: true };
+export type SlackMessage = Infer<typeof message> & { unknownAuthor?: true };
+type Message = SlackMessage;
 
 function looseMessage(raw: unknown): { message: Message; odd: string[] } | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
@@ -114,18 +115,24 @@ const profile = object({
 // What a person posted: a message, one an app posted as itself, a file with
 // its comment, a /me. Joins, topic changes, the placeholder a deleted message
 // with replies leaves, and the like aren't anyone's message.
-const posted = new Set([undefined, "bot_message", "file_share", "me_message", "thread_broadcast"]);
+export const posted = new Set([
+  undefined,
+  "bot_message",
+  "file_share",
+  "me_message",
+  "thread_broadcast",
+]);
 
 // Slack's codes for a channel or message Oriel can't read now, and for one
 // that isn't there. Anything else is a failure, not a result.
-const forbidden = new Set([
+export const forbidden = new Set([
   "channel_not_found",
   "not_in_channel",
   "access_denied",
   "missing_scope",
   "no_permission",
 ]);
-const deleted = new Set(["thread_not_found", "message_not_found"]);
+export const deleted = new Set(["thread_not_found", "message_not_found"]);
 
 // A `ts` as an instant: seconds, then microseconds, which an instant keeps to
 // the millisecond.
@@ -157,74 +164,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
   // the cap: older ones are left out of the index.
   const cutoff = new Map<string, string>();
 
-  // People's names, looked up once per sync or read: a name changed since
-  // shows on the next one.
-  const people = () => {
-    const known = new Map<string, Promise<string | null>>();
-    const lookup = (id: string) => {
-      let found = known.get(id);
-      if (!found) {
-        found = api("users.profile.get", { user: id }).then(
-          (reply) => {
-            const parsed = profile(reply);
-            if (!parsed.ok) return null;
-            const { real_name, display_name } = parsed.value.profile;
-            return real_name?.trim() || display_name?.trim() || null;
-          },
-          (error: unknown) => {
-            if (error instanceof SlackError && error.code === "user_not_found") return null;
-            throw error;
-          },
-        );
-        known.set(id, found);
-      }
-      return found;
-    };
-    // A message's author and body, with every mention in it named.
-    return async (m: Message): Promise<{ author: SlackPerson; body: string }> => {
-      const text = m.text ?? "";
-      const ids = [...new Set([...(m.user ? [m.user] : []), ...mentionedUsers(text)])];
-      const names = new Map(
-        await Promise.all(ids.map(async (id) => [id, await lookup(id)] as const)),
-      );
-      // The author is the person in `user`, even when an app posted for them
-      // and `bot_id` is set too (decision 0021). Only a message with no
-      // person is the app's own.
-      const author: SlackPerson = m.unknownAuthor
-        ? { id: null, name: "Unknown person" }
-        : m.user
-          ? { id: m.user, name: names.get(m.user) ?? `Unknown person (${m.user})` }
-          : { id: null, name: `${m.username ?? m.bot_profile?.name ?? "An app"} (app)` };
-      const files = (m.files ?? []).map(
-        (file) => `[File: ${file.title ?? file.name ?? "untitled"}]`,
-      );
-      const body = [plainText(text, (id) => names.get(id) ?? null), ...files]
-        .filter((part) => part.trim() !== "")
-        .join("\n");
-      return { author, body };
-    };
-  };
-
-  const channelName = async (channel: string) => {
-    const parsed = info(await api("conversations.info", { channel }));
-    if (!parsed.ok) throw new Error("slack: conversations.info: unexpected reply");
-    return parsed.value.channel.name;
-  };
-
-  // A page's messages. One without a `ts` has no key and is skipped; odd
-  // fields are left out. Either is logged.
-  const messagesOf = (reply: unknown, method: string) => {
-    const parsed = page(reply);
-    if (!parsed.ok) throw new Error(`slack: ${method}: unexpected reply`);
-    const found: Message[] = [];
-    for (const raw of parsed.value.messages) {
-      const taken = looseMessage(raw);
-      if (!taken) log("slack: skipped a message Oriel can't place", { method });
-      else found.push(taken.message);
-      if (taken?.odd.length) log("slack: left out odd fields", { method, fields: taken.odd });
-    }
-    return { found, next: parsed.value.response_metadata?.next_cursor ?? "" };
-  };
+  const { people, channelName, messagesOf, conversation } = slackReads(api, log);
 
   return {
     kind: "slack",
@@ -342,6 +282,95 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
       return results;
     },
   };
+}
+
+// A message someone posted in the channel, not a reply to another.
+export function isRoot(m: Message | undefined): m is Message {
+  return (
+    m !== undefined &&
+    posted.has(m.subtype) &&
+    m.subtype !== "thread_broadcast" &&
+    (m.thread_ts === undefined || m.thread_ts === m.ts)
+  );
+}
+
+// How the source and the writer read a conversation the same way: people's
+// names, looked up once per call of `people` (a name changed since shows on
+// the next one), a channel's name, a page's messages, and a message with its
+// replies.
+export function slackReads(api: SlackApi, log: Log) {
+  // A person's name, or null when Slack has no such person.
+  const personName = (id: string): Promise<string | null> =>
+    api("users.profile.get", { user: id }).then(
+      (reply) => {
+        const parsed = profile(reply);
+        if (!parsed.ok) return null;
+        const { real_name, display_name } = parsed.value.profile;
+        return real_name?.trim() || display_name?.trim() || null;
+      },
+      (error: unknown) => {
+        if (error instanceof SlackError && error.code === "user_not_found") return null;
+        throw error;
+      },
+    );
+
+  // People's names, looked up once per sync or read: a name changed since
+  // shows on the next one.
+  const people = () => {
+    const known = new Map<string, Promise<string | null>>();
+    const lookup = (id: string) => {
+      let found = known.get(id);
+      if (!found) {
+        found = personName(id);
+        known.set(id, found);
+      }
+      return found;
+    };
+    // A message's author and body, with every mention in it named.
+    return async (m: Message): Promise<{ author: SlackPerson; body: string }> => {
+      const text = m.text ?? "";
+      const ids = [...new Set([...(m.user ? [m.user] : []), ...mentionedUsers(text)])];
+      const names = new Map(
+        await Promise.all(ids.map(async (id) => [id, await lookup(id)] as const)),
+      );
+      // The author is the person in `user`, even when an app posted for them
+      // and `bot_id` is set too (decision 0021). Only a message with no
+      // person is the app's own.
+      const author: SlackPerson = m.unknownAuthor
+        ? { id: null, name: "Unknown person" }
+        : m.user
+          ? { id: m.user, name: names.get(m.user) ?? `Unknown person (${m.user})` }
+          : { id: null, name: `${m.username ?? m.bot_profile?.name ?? "An app"} (app)` };
+      const files = (m.files ?? []).map(
+        (file) => `[File: ${file.title ?? file.name ?? "untitled"}]`,
+      );
+      const body = [plainText(text, (id) => names.get(id) ?? null), ...files]
+        .filter((part) => part.trim() !== "")
+        .join("\n");
+      return { author, body };
+    };
+  };
+
+  const channelName = async (channel: string) => {
+    const parsed = info(await api("conversations.info", { channel }));
+    if (!parsed.ok) throw new Error("slack: conversations.info: unexpected reply");
+    return parsed.value.channel.name;
+  };
+
+  // A page's messages. One without a `ts` has no key and is skipped; odd
+  // fields are left out. Either is logged.
+  const messagesOf = (reply: unknown, method: string) => {
+    const parsed = page(reply);
+    if (!parsed.ok) throw new Error(`slack: ${method}: unexpected reply`);
+    const found: Message[] = [];
+    for (const raw of parsed.value.messages) {
+      const taken = looseMessage(raw);
+      if (!taken) log("slack: skipped a message Oriel can't place", { method });
+      else found.push(taken.message);
+      if (taken?.odd.length) log("slack: left out odd fields", { method, fields: taken.odd });
+    }
+    return { found, next: parsed.value.response_metadata?.next_cursor ?? "" };
+  };
 
   // A message and its replies, oldest first, once each: Slack repeats the
   // message at the top of every page.
@@ -365,14 +394,6 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     } while (cursor);
     return [...byTs.values()].toSorted((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
   }
-}
 
-// A message someone posted in the channel, not a reply to another.
-function isRoot(m: Message | undefined): m is Message {
-  return (
-    m !== undefined &&
-    posted.has(m.subtype) &&
-    m.subtype !== "thread_broadcast" &&
-    (m.thread_ts === undefined || m.thread_ts === m.ts)
-  );
+  return { personName, people, channelName, messagesOf, conversation };
 }

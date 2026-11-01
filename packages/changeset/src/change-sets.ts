@@ -64,8 +64,9 @@ export type FieldReader<K extends SourceKind = SourceKind> = {
   // Field names as in the source's op specs; "gone" when the
   // item no longer exists or can't be seen.
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
-  // A person's display name for a diff line; null when unknown.
-  person(accountId: string): Promise<string | null>;
+  // What a person calls an ID an op names, for a diff line; null when
+  // unknown.
+  name(id: string): Promise<string | null>;
 };
 
 export type ChangeSetDeps = {
@@ -74,8 +75,10 @@ export type ChangeSetDeps = {
   // (writers.ts): nothing passes a writer in, so none exists outside this
   // package (decision 0003). A source with no config is read-only.
   writerConfig: WriterConfig;
-  // A person's display name for a diff line, by source; null when unknown.
-  people?: { [K in SourceKind]?: (personId: string) => Promise<string | null> };
+  // What a person calls an ID an op names, such as an account, for a diff
+  // line, by source; null when unknown. A writer that names its own IDs
+  // (`SourceWriter.name`) needs none.
+  names?: { [K in SourceKind]?: (id: string) => Promise<string | null> };
   // How a source with no writer config reads its current values, so its
   // change sets can still be captured and diffed. They can't be approved
   // until writing to the source is configured.
@@ -97,7 +100,7 @@ export type Sources = {
 };
 
 // What the engine runs on: the deps, with the writers built.
-export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "people" | "readers" | "log"> & {
+export type EngineDeps = Omit<ChangeSetDeps, "writerConfig" | "names" | "readers" | "log"> & {
   sources: Sources;
 };
 
@@ -333,11 +336,17 @@ function approvedFrom(preview: FieldValues | null): FieldValues | null {
 
 // Conflicts in plain words, for the thread and the review page. An `expected`
 // of undefined means Oriel is missing a value it recorded at apply (before or
-// after), so it can't revert that field safely.
-export function explainConflicts(conflicts: readonly Conflict[], specs: Specs): string {
+// after), so it can't revert that field safely. A source that words its own
+// (`OpSpecs.explain`) gets the item's title from `title`, where Oriel knows it.
+export function explainConflicts(
+  conflicts: readonly Conflict[],
+  specs: Specs,
+  title: (id: ItemId) => string | null = () => null,
+): string {
   const parts = conflicts.map((c) => {
     const item = key(c.target);
     const catalogue = catalogueOf(specs, c.target);
+    if (catalogue.explain) return catalogue.explain(c, title(c.target));
     if (c.field === "item") return `${item} is no longer there`;
     if (c.field === catalogue.updatedField)
       return c.expected === undefined || c.expected === null
@@ -361,8 +370,8 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
     sourceKinds.flatMap(
       (kind): [SourceKind, { writer: SourceWriter | null; reader: unknown }][] => {
         const writer = writers[kind];
-        const person = deps.people?.[kind] ?? unknown;
-        if (writer) return [[kind, { writer, reader: { current: writer.current, person } }]];
+        const name = deps.names?.[kind] ?? writer?.name?.bind(writer) ?? unknown;
+        if (writer) return [[kind, { writer, reader: { current: writer.current, name } }]];
         const reader = deps.readers?.[kind];
         return reader ? [[kind, { writer: null, reader }]] : [];
       },
@@ -548,7 +557,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const context = (subject: Subject, before: FieldValues) => ({
         subject,
         before,
-        person: (accountId: string) => reader(kind).person(accountId),
+        name: (id: string) => reader(kind).name(id),
         title,
       });
       const item = itemOf(m);
@@ -928,12 +937,16 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const { now } = at();
     if (!rows.markCompleted(id as Ulid, now)) return;
     const set = mustLoad(id);
+    const wrote = new Set(
+      set.mutations.flatMap((m) => (m.applied ? [mustSpec(specs, m, set.mutations).kind] : [])),
+    );
     deps.emit({
       name: "changeset.applied",
       at: now,
       workspaceId: set.workspaceId,
       changeSetId: set.id,
       threadId: set.threadId,
+      sources: sourceKinds.filter((kind) => wrote.has(kind)),
     });
   };
 
@@ -1674,6 +1687,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
     applying(id) {
       return applying.has(id);
+    },
+
+    writable(id) {
+      return unwritable(mustLoad(id)) === null;
     },
 
     // Reverses exactly what has been applied (see `revertRefusal`). A partly

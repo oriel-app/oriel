@@ -16,7 +16,6 @@ import {
   type PanelOf,
   parseItemId,
   type Presentation,
-  type SourceDeclaration,
   refine,
   string,
   type Validator,
@@ -115,11 +114,6 @@ export const slackPresentation: Presentation = {
   linked: slackLinked,
 };
 
-// What a message is, in the declarations' `Item` (see `ItemDocs` in
-// bindings): shape only, never source text. Its text is `slackText`'s.
-export const slackItemDoc =
-  "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic. Name it by who wrote it, where and when.";
-
 // A message as the panel beside the page shows it, from a live read: named
 // by its channel, the message, then each reply in its thread under it, with
 // its author and time, all inside the one item (decision 0021). Slack's text
@@ -153,14 +147,6 @@ export const slackPanel: PanelOf = (content) => {
     ],
   };
 };
-
-// Slack as it declares itself to the composition root: read-only for now, so
-// it has no namespace and no op specs.
-export const slackDeclaration = {
-  ...slackPresentation,
-  itemDoc: slackItemDoc,
-  panel: slackPanel,
-} satisfies SourceDeclaration;
 
 const titleChars = 120;
 

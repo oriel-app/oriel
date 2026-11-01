@@ -91,8 +91,9 @@ test("a group holds Jira items and Slack messages; its thread reads both, and no
     items: { id: string; gone: boolean; title?: string; text?: string }[];
   };
   assert.ok(value.dts.includes(JSON.stringify(message)));
-  // Read-only: Slack gets no namespace, only items.*.
-  assert.doesNotMatch(value.dts, /declare const slack/);
+  // Writable through change sets (OA-28): Slack's namespace, which names no
+  // message text either.
+  assert.match(value.dts, /declare const slack/);
   assert.doesNotMatch(value.dts, /Dara|Decision|fare they paid/);
   const read = value.items.find((item) => item.id === message);
   assert.equal(read?.gone, false);

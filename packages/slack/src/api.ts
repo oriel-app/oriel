@@ -1,8 +1,9 @@
 // The seam between Slack's Web API and how it is reached. The source only
 // calls a `SlackApi`: `webApi` sends each call to slack.com behind a
 // `Credential`, and the fixture's fake answers the same calls from memory.
-// Read methods only, checked at run time too, so a cast can't send a write:
-// the source is read-only (decision 0021).
+// The source's is read methods only, checked at run time too, so a cast
+// can't send a write (decision 0021); only `@oriel/slack/writer` hands out one
+// that posts.
 import { setTimeout as wait } from "node:timers/promises";
 import { boolean, type Credential, object, optional, string } from "@oriel/core";
 
@@ -19,7 +20,10 @@ export type ReadMethod = (typeof readMethods)[number];
 // One call: its method and its arguments as form fields. Resolves to the
 // reply's body when Slack says `ok`, and throws a `SlackError` when it
 // doesn't.
-export type SlackApi = (method: ReadMethod, params: Record<string, string>) => Promise<unknown>;
+export type SlackApi<M extends string = ReadMethod> = (
+  method: M,
+  params: Record<string, string>,
+) => Promise<unknown>;
 
 // What Slack said instead of `ok`, by its error code, such as
 // "channel_not_found".
@@ -50,12 +54,22 @@ const maxAttempts = 5;
 const envelope = object({ ok: boolean, error: optional(string) });
 
 export function webApi(options: WebApiOptions): SlackApi {
+  return methodsApi(options, readMethods, "the read side");
+}
+
+// Slack's Web API for `methods` only, checked at run time. The read side's
+// is `webApi`; only the writer's entry hands out one that can write.
+export function methodsApi<M extends string>(
+  options: WebApiOptions,
+  methods: readonly M[],
+  side: string,
+): SlackApi<M> {
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
   const timeoutMs = options.timeoutMs ?? 30_000;
   return async (method, params) => {
-    if (!readMethods.includes(method))
-      throw new Error(`refusing a method the read side doesn't use: ${method}`);
+    if (!methods.includes(method))
+      throw new Error(`refusing a method ${side} doesn't use: ${method}`);
     for (let attempt = 1; ; attempt++) {
       // The credential's own message stays out of the error, in case it names
       // a secret.

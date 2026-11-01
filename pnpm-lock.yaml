@@ -64,6 +64,9 @@ importers:
       '@oriel/jira':
         specifier: workspace:*
         version: link:../jira
+      '@oriel/slack':
+        specifier: workspace:*
+        version: link:../slack
 
   packages/core: {}
 

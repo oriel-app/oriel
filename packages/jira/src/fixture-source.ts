@@ -39,6 +39,11 @@ export function fixtureFields(fixture: JiraFixture, options: FixtureSourceOption
     async person(accountId: string): Promise<string | null> {
       return people.get(accountId) ?? null;
     },
+    // What a diff calls an ID an op names: in Jira, every such ID is a
+    // person's account.
+    async name(id: string): Promise<string | null> {
+      return people.get(id) ?? null;
+    },
   };
 }
 

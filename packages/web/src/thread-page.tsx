@@ -47,8 +47,14 @@ const fieldNames: Record<string, string> = {
   assignee: "Assignee",
   epic: "Epic",
   status: "Status",
+  replies: "Replies",
 };
-const fieldName = (name: string) => fieldNames[name] ?? (name.startsWith("link:") ? "Link" : name);
+// One of several of a kind, such as a link or a reply, by its prefix.
+const fieldKinds: Record<string, string> = { "link:": "Link", "reply:": "Reply" };
+const fieldName = (name: string) =>
+  fieldNames[name] ??
+  Object.entries(fieldKinds).find(([prefix]) => name.startsWith(prefix))?.[1] ??
+  name;
 
 // An estimate reads in points; any other value as the server sent it.
 function withUnits(field: Field): Field {
@@ -531,7 +537,7 @@ function ChangeSet(props: {
             </span>
           );
         })}
-        {set.status === "open" && !view.writable && (
+        {set.status === "open" && (set.readOnly ?? !view.writable) && (
           <span class="read-only-note">
             Live writes aren't configured here, so this can be reviewed and rejected, not approved.
           </span>
@@ -696,9 +702,12 @@ function Edited({ field }: { field: Field }) {
 }
 
 // A new item, as one card: its title, its description, and the fields it
-// is made with. An empty field isn't shown.
+// is made with. An empty field isn't shown. One with no title of its own, as
+// a message has none, leads with the line's sentence, and shows what it says
+// in full, as a quote.
 function NewItem({ line }: { line: Line }) {
   const field = (name: string) => line.fields.find((f) => f.name === name);
+  const title = field("summary")?.after ?? null;
   const description = field("description")?.after ?? null;
   const rest = line.fields.filter(
     (f) => f.name !== "summary" && f.name !== "description" && f.after !== null,
@@ -709,9 +718,17 @@ function NewItem({ line }: { line: Line }) {
         <span class="line-mark" data-kind="create">
           {line.makes ? `New ${line.makes}` : "New"}
         </span>
-        <span class="new-title">{field("summary")?.after ?? line.sentence}</span>
+        {title === null ? (
+          <span class="sentence">{line.sentence}</span>
+        ) : (
+          <span class="new-title">{title}</span>
+        )}
       </p>
-      {description && <p class="new-description">{description}</p>}
+      {description && (
+        <p class="new-description" data-body={title === null ? "" : undefined}>
+          {description}
+        </p>
+      )}
       {rest.length > 0 && (
         <dl class="fields">
           {rest.map((f) => (

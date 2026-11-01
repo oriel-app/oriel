@@ -45,12 +45,29 @@ type ContextOf<D> = D extends { namespace: (records: never, context: infer C) =>
   ? C
   : never;
 
+type Declared = typeof declared;
+type Needs<K extends keyof Declared> = ContextOf<Declared[K]>;
+
 // What only the composition root knows that each source with a namespace
-// needs, by kind. A source that declares a namespace is required here.
+// needs, by kind. A source that declares a namespace is required here, unless
+// its namespace takes no context at times, as Slack's while it isn't
+// connected.
 export type NamespaceContexts = {
   [
-    K in keyof typeof declared as [ContextOf<(typeof declared)[K]>] extends [never] ? never : K
-  ]: ContextOf<(typeof declared)[K]>;
+    K in keyof Declared as [Needs<K>] extends [never]
+      ? never
+      : undefined extends Needs<K>
+        ? never
+        : K
+  ]: Needs<K>;
+} & {
+  [
+    K in keyof Declared as [Needs<K>] extends [never]
+      ? never
+      : undefined extends Needs<K>
+        ? K
+        : never
+  ]?: Needs<K>;
 };
 
 // Each source's namespace, for bindings, from the index.

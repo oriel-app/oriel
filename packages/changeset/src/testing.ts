@@ -347,7 +347,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
 
   const reader: FieldReader<"jira"> = {
     current,
-    person: async (accountId) => people.get(accountId) ?? null,
+    name: async (accountId) => people.get(accountId) ?? null,
   };
 
   const touch = (key: string): MemoryIssue => {

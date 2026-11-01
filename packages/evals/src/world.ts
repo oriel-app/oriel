@@ -107,14 +107,16 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     items: members,
     origin: input.region?.origin ?? { kind: "picked" },
   };
-  const namespaces = namespacesFor(snapshot.records, {
-    jira: { none: new Set(), home: input.fixture.project.key },
-  });
-
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
   if (input.messages?.length && !input.slack)
     throw new Error("the region holds messages, but no Slack fixture");
   const slack = input.messages?.length && input.slack ? await connectSlack(input.slack) : null;
+  // As the app has them: Slack posts as the fixture's first person, in its
+  // picked channel, while it is connected.
+  const namespaces = namespacesFor([...snapshot.records, ...(slack?.index ?? [])], {
+    jira: { none: new Set(), home: input.fixture.project.key },
+    slack: slack?.context,
+  });
   const index: SearchHit[] = [
     ...snapshot.records,
     ...(folder?.index ?? []),
@@ -227,5 +229,7 @@ async function connectSlack(fixture: SlackFixture) {
   });
   const index: SlackRecord[] = [];
   for await (const page of source.sync(null)) index.push(...page.records);
-  return { source, index };
+  const author = fixture.users[0]?.id;
+  if (!author) throw new Error("the Slack fixture has no people");
+  return { source, index, context: { channels: fixture.picked, author } };
 }

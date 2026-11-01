@@ -65,7 +65,7 @@ function destination(url: string): string {
 }
 
 async function who(context: LineContext, accountId: string): Promise<string> {
-  return (await context.person(accountId)) ?? "a person Oriel can't name";
+  return (await context.name(accountId)) ?? "a person Oriel can't name";
 }
 
 function linkField(values: FieldValues): string | null {
