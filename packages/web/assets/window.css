@@ -488,7 +488,7 @@ button.nav-disclose:hover {
   font-weight: 500;
 }
 
-.nav-waiting-on[data-waiting="review"] {
+.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"]) {
   color: var(--accent);
 }
 
@@ -517,12 +517,12 @@ button.nav-disclose:hover {
 }
 
 /* Only an agent mid-turn, or a change set applying, pulses; a change set to
-   review stands out. */
+   review, or a reason held for the person, stands out. */
 .state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot[data-waiting="review"] {
+.state-dot:is([data-waiting="review"], [data-waiting="held"]) {
   background: var(--accent);
 }
 
@@ -904,7 +904,7 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip[data-waiting="review"] {
+.state-chip:is([data-waiting="review"], [data-waiting="held"]) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -3429,4 +3429,63 @@ a.replies:hover {
 .item a.key,
 .item .key.item-link {
   color: var(--text-faint);
+}
+
+/* A review-link holder's reason, held for the person: set apart from what
+   the person and the agent said, since neither said it. */
+.held-reason {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.held-by {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.held-by strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.held-text {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.held-block[data-outcome="discarded"] .held-text {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.held-field {
+  padding: 0.3125rem var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  resize: vertical;
+}
+
+.held-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.held-note {
+  flex: 1 1 14rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }

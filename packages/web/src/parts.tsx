@@ -326,6 +326,7 @@ export const stateNames: Record<ThreadStateId, string> = {
 // doesn't look busy.
 export const waitingNames: Record<WaitingOn, string> = {
   agent: "Agent working",
+  held: "Reason held",
   review: "Needs review",
   apply: "Applying…",
   reply: "Your turn",

@@ -13,6 +13,7 @@ import {
   isItemId,
   isUlid,
   literal,
+  holderName,
   nullable,
   number,
   object,
@@ -43,7 +44,7 @@ const cause: Validator<GroupChange["cause"]> = union(
   object({ kind: literal("user") }),
   object({ kind: literal("agent"), threadId: ulidValue }),
   object({ kind: literal("tool"), name: string }),
-  object({ kind: literal("review-link"), by: string }),
+  object({ kind: literal("review-link"), by: holderName }),
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
 );
 

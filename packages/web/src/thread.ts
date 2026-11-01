@@ -30,6 +30,9 @@ export type ThreadModel = {
   // What's wrong with a change set, typed to go with rejecting it, by change
   // set. Rejecting with none stays one click.
   reasons: Readonly<Record<string, string>>;
+  // A review-link holder's held reason being edited before it is sent, by
+  // the change set it rejected.
+  editing: Readonly<Record<string, string>>;
   // What the last request about a change set said, when it failed.
   problems: Readonly<Record<string, string>>;
   // Review links minted here, by change set.
@@ -57,6 +60,13 @@ export type ThreadMsg =
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
+  // A review-link holder's held reason: sent to the agent as it is, edited
+  // first, or discarded. Each is the person's.
+  | { type: "heldSendClicked"; changeSetId: string }
+  | { type: "heldEditClicked"; changeSetId: string }
+  | { type: "heldEdited"; changeSetId: string; text: string }
+  | { type: "heldEditCancelled"; changeSetId: string }
+  | { type: "heldDiscardClicked"; changeSetId: string }
   // Dropped on the thread: added to its group, which the thread then follows.
   | { type: "dropped"; dropped: Dropped };
 
@@ -72,6 +82,7 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       busy: [],
       deciding: {},
       reasons: {},
+      editing: {},
       problems: {},
       links: {},
       notes: {},
@@ -91,6 +102,13 @@ const problemOf = (body: unknown): string | null =>
   typeof body === "object" && body !== null && "problem" in body && typeof body.problem === "string"
     ? body.problem
     : null;
+
+// The held reason for rejecting `changeSetId` that waits on the person.
+const heldFor = (model: ThreadModel, changeSetId: string) =>
+  model.view?.entries.find(
+    (entry): entry is Extract<ChatEntry, { kind: "held" }> =>
+      entry.kind === "held" && entry.changeSetId === changeSetId && entry.outcome === null,
+  ) ?? null;
 
 // Each step's route; approving the rest is approving the set as it stands.
 const routes: Record<SetStep, string> = {
@@ -221,6 +239,36 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       const link = model.links[msg.changeSetId];
       return [model, link ? [{ type: "copy", text: link }] : []];
     }
+    case "heldSendClicked":
+    case "heldDiscardClicked": {
+      const { changeSetId } = msg;
+      if (model.busy.includes(changeSetId) || heldFor(model, changeSetId) === null)
+        return [model, []];
+      const sending = msg.type === "heldSendClicked";
+      const edited = model.editing[changeSetId]?.trim();
+      // Sending is a message: not while the agent answers, nor as nothing.
+      if (sending && (model.view?.running || edited === "")) return [model, []];
+      return [
+        { ...model, busy: [...model.busy, changeSetId], notice: null },
+        [
+          post(
+            `/api/change-sets/${changeSetId}/held-reason/${sending ? "send" : "discard"}`,
+            sending && edited !== undefined ? { text: edited } : {},
+            { kind: "held", threadId: model.id, changeSetId },
+          ),
+        ],
+      ];
+    }
+    case "heldEditClicked": {
+      const held = heldFor(model, msg.changeSetId);
+      if (held === null || msg.changeSetId in model.editing) return [model, []];
+      return [{ ...model, editing: { ...model.editing, [msg.changeSetId]: held.text } }, []];
+    }
+    case "heldEdited":
+      if (!(msg.changeSetId in model.editing)) return [model, []];
+      return [{ ...model, editing: { ...model.editing, [msg.changeSetId]: msg.text } }, []];
+    case "heldEditCancelled":
+      return [{ ...model, editing: without(model.editing, msg.changeSetId) }, []];
     case "dropped": {
       if (model.view === null) return [model, []];
       if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
@@ -250,8 +298,16 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         lastSeq: Math.max(view.lastSeq, model.view?.lastSeq ?? 0),
       };
       const unseen = view.changeSets.filter((set) => !(set.id in model.diffs));
+      // An edit of a reason another page sent or discarded is dropped.
+      const editing = Object.fromEntries(
+        Object.entries(model.editing).filter(([changeSetId]) =>
+          merged.entries.some(
+            (e) => e.kind === "held" && e.changeSetId === changeSetId && e.outcome === null,
+          ),
+        ),
+      );
       return [
-        { ...model, view: merged, status: "ready" },
+        { ...model, view: merged, status: "ready", editing },
         [
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
@@ -324,6 +380,18 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       return [
         { ...model, busy, deciding, reasons, problems, notes, draft },
         msg.ok ? [] : [diffOf(tag.changeSetId), refresh(model)],
+      ];
+    }
+    // Sent or discarded, it is settled: the reload shows it so. Refused, as
+    // mid-turn, it stays held, with why; or another page settled it first.
+    case "held": {
+      if (tag.threadId !== model.id) return [model, []];
+      const busy = model.busy.filter((id) => id !== tag.changeSetId);
+      return [
+        msg.ok
+          ? { ...model, busy, editing: without(model.editing, tag.changeSetId) }
+          : { ...model, busy, notice: errorOf(msg.body) },
+        [refresh(model)],
       ];
     }
     case "reviewLink": {
@@ -409,6 +477,8 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
   if (event.type === "threads") return [model, []];
   // Its group changed, its name or members, whether or not the thread moved.
   if (event.type === "group") return [model, [refresh(model)]];
+  // An entry it shows changed, as a held reason settles.
+  if (event.type === "chat") return [model, [refresh(model)]];
   // Its stream ends with this.
   if (event.type === "deleted") return [{ ...model, deleted: true }, [{ type: "unsubscribe" }]];
   const { entry } = event;
@@ -492,6 +562,14 @@ export type Block =
     }
   | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; seq: number; changeSetId: string }
+  | {
+      kind: "held";
+      seq: number;
+      changeSetId: string;
+      by: string;
+      text: string;
+      outcome: "sent" | "discarded" | null;
+    }
   | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string };
 
 export function blocks(entries: readonly ChatEntry[]): Block[] {
@@ -539,6 +617,9 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
       }
       case "search":
         out.push({ kind: "search", seq: entry.seq, hits: entry.hits });
+        break;
+      case "held":
+        out.push(entry);
         break;
       case "change-set":
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });

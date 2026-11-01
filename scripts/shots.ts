@@ -300,7 +300,8 @@ await post(`/api/groups/${group.id}/add`, { items: ["jira:SYN-3"] });
 
 // Gift cards planned, then rejected: with no reason, the thread asks what was
 // wrong; with one, the agent proposes a revised change set below the
-// rejected one; and with one from a review link, it says who gave it.
+// rejected one; and with one from a review link, it is held in the thread,
+// under the reviewer's name, until the person sends it on or discards it.
 const rejected = async (reason?: string, reviewer?: string) => {
   const threadId = await ask("Plan gift cards");
   const setId = await changeSetOf(server, threadId);
@@ -319,7 +320,7 @@ const rejected = async (reason?: string, reviewer?: string) => {
 };
 const rejectedBare = await rejected();
 const revised = await rejected('One story too many: plan only "Pay with a gift card".');
-const revisedFromLink = await rejected("Plan only the gift card story, please.", "Dana");
+const heldFromLink = await rejected("Plan only the gift card story, please.", "Dana");
 // A change set whose review link someone is about to reject, with a reason.
 const toReject = await post<{ url: string }>(
   `/api/change-sets/${await changeSetOf(server, await ask("Plan gift cards"))}/review-link`,
@@ -924,10 +925,21 @@ const scenes: Scene[] = [
     act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
   },
   {
-    // Rejected from a review link with a reason, which says who gave it.
-    name: "thread-revised-from-link",
-    path: `/threads/${revisedFromLink}`,
-    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+    // Rejected from a review link with a reason, held for the person.
+    name: "thread-held-from-link",
+    path: `/threads/${heldFromLink}`,
+    act: (page) => page.getByRole("button", { name: "Send to agent" }).waitFor(),
+  },
+  {
+    // The held reason, being edited before it is sent.
+    name: "thread-held-editing",
+    path: `/threads/${heldFromLink}`,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Edit" }).click();
+      await page
+        .getByRole("textbox", { name: "Edit Dana's reason" })
+        .fill("Plan only the gift card story, and estimate it.");
+    },
   },
   {
     name: "thread-read-only",

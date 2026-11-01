@@ -53,15 +53,23 @@ export type ThreadStateId = (typeof threadStates)[number];
 // sources, on a change set being applied, which needs nothing from the user
 // until it ends; or else the user's next message. A thread in any other state
 // waits on nothing.
-export type WaitingOn = "agent" | "review" | "apply" | "reply";
+export type WaitingOn = "agent" | "held" | "review" | "apply" | "reply";
+
+// `held`: a review-link holder's reason waits on the person to send it to
+// the agent or discard it.
+// Whether a held reason in the chat waits on the person.
+export const holding = (entries: readonly ChatEntry[]): boolean =>
+  entries.some((entry) => entry.kind === "held" && entry.outcome === null);
 
 export function waitingOn(thread: {
   state: ThreadStateId;
   running: boolean;
+  held?: boolean;
   changeSets: readonly { status: ChangeSetStatus; nextSteps: readonly { kind: string }[] }[];
 }): WaitingOn | null {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
+  if (thread.held) return "held";
   const open = (set: (typeof thread.changeSets)[number]) =>
     set.nextSteps.some((step) => step.kind !== "revert");
   if (thread.changeSets.some(open)) return "review";
@@ -179,6 +187,16 @@ export type ChatEntry = { seq: number; at: string } & (
   | { kind: "run.finished"; runId: string; run: RunView }
   | { kind: "search"; runId: string; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; changeSetId: string }
+  // A review-link holder's reason for rejecting a change set, under the name
+  // they typed, which only the person can send to the agent. `outcome` is
+  // null while it waits on them.
+  | {
+      kind: "held";
+      changeSetId: string;
+      by: string;
+      text: string;
+      outcome: "sent" | "discarded" | null;
+    }
   | { kind: "limit"; reason: string }
   | { kind: "error"; message: string }
   | { kind: "done" }
@@ -304,6 +322,9 @@ export type StreamEvent =
   // The thread's group changed: its name, its members, or what the index has
   // of them, whether or not the thread moved to the new version.
   | { type: "group" }
+  // An entry already in the thread's chat changed: a held reason was sent on
+  // or discarded, here or elsewhere.
+  | { type: "chat" }
   // The rest of the workspace changed: another thread moved (its turn
   // started or ended, a change set of it changed, or it was opened, marked
   // done or deleted), or one of Oriel's own actions changed a group.

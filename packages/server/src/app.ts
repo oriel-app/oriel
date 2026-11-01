@@ -609,10 +609,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       return set ? created(set) : [];
     },
     emit,
+    changeSet: (id) => sets.get(id),
+    held: conversation,
     publish: (changed) => {
       conversation.acted(
         "thread" in changed
-          ? { thread: changed.thread, group: null, moves: [] }
+          ? { thread: changed.thread, chat: changed.chat === true, group: null, moves: [] }
           : {
               thread: null,
               group: changed.group,

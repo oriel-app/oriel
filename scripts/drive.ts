@@ -176,19 +176,27 @@ async function threads(only?: string): Promise<void> {
   }
 }
 
-// Only a person approves a change set (decision 0003). The driver never
-// presses a control that approves, applies or reverts one, or submits a form
-// that has one, and never acts on a review link's page, whatever the server:
-// the maintainer does that, in the same window.
+// Only a person approves a change set (decision 0003), and only a person
+// sends a review-link holder's held reason to the agent, or discards it
+// (decision 0024). The driver never presses a control that does either, or
+// submits a form that has one, and never acts on a review link's page,
+// whatever the server: the maintainer does that, in the same window.
 const writes = /^(approve|apply|try again|revert)/i;
+const held = /^(send to agent|discard)/i;
 function refuse(why: string): true {
-  console.error(`${why} Only a person approves a change set; ask the maintainer.`);
+  console.error(`${why} Only a person does that; ask the maintainer.`);
   process.exitCode = 3;
   return true;
 }
 function refused(names: readonly string[]): boolean {
-  const write = names.map((name) => name.trim()).find((name) => writes.test(name));
-  return write !== undefined && refuse(`"${write}" can approve, apply or revert a change set.`);
+  const trimmed = names.map((name) => name.trim());
+  const write = trimmed.find((name) => writes.test(name));
+  if (write !== undefined) return refuse(`"${write}" can approve, apply or revert a change set.`);
+  const settle = trimmed.find((name) => held.test(name));
+  return (
+    settle !== undefined &&
+    refuse(`"${settle}" sends or discards a reason held from a review link.`)
+  );
 }
 const onReviewPage = (path: string): boolean =>
   path.startsWith("/review/") && refuse("This is a review link's page.");

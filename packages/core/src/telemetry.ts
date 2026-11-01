@@ -39,7 +39,12 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
     }
   | { name: "thread.opened"; threadId: Ulid; groupId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
-  | { name: "question.asked"; threadId: Ulid; rejected?: Ulid }
+  // `held`: that reason was a review-link holder's, held until the person
+  // sent it to the agent, as it was or edited (decision 0024).
+  | { name: "question.asked"; threadId: Ulid; rejected?: Ulid; held?: "sent" | "edited" }
+  // The person discarded a review-link holder's held reason for rejecting
+  // that change set, so it never reached the agent.
+  | { name: "held-reason.discarded"; threadId: Ulid; changeSetId: Ulid }
   // The thread was marked done, as one over read-only items needs: by the
   // user, on its page, or from a menu or a swipe on a list of threads; or by
   // someone else, who closed nothing in the window.

@@ -49,9 +49,14 @@ export type ActionDeclaration = {
 
 export const maxNameChars = 120;
 export const maxItems = 500;
+export const maxMessageChars = 8_000;
+// Why a review link's holder rejected a change set: they control it, and it
+// waits in the thread for the user, so it is shorter than a message.
+export const maxReasonChars = 2_000;
 
 const workstreamId = refine(string, isUlid, "expected a workstream ID", { type: "WorkstreamId" });
 const threadId = refine(string, isUlid, "expected a thread ID", { type: "ThreadId" });
+const changeSetId = refine(string, isUlid, "expected a change set ID", { type: "ChangeSetId" });
 const itemId = refine(string, isItemId, "expected an item ID", { type: "ItemId" });
 const items = refine(
   array(itemId),
@@ -60,10 +65,24 @@ const items = refine(
 );
 // Where in the window the user closed a thread from.
 export const closeVia = optional(union(literal("page"), literal("menu"), literal("swipe")));
+// What the user says in a thread.
+export const messageText = refine(
+  string,
+  (text) => text.trim() !== "" && text.length <= maxMessageChars,
+  `expected a message of 1 to ${maxMessageChars} characters`,
+);
 const name = refine(
   string,
   (text) => text.trim() !== "" && [...text].length <= maxNameChars,
   `expected a name of 1 to ${maxNameChars} characters`,
+);
+// What a review link's holder types, and so controls: the name they give,
+// and why they rejected a change set.
+export const holderName = name;
+export const holderReason = refine(
+  string,
+  (text) => text.trim() !== "" && text.length <= maxReasonChars,
+  `expected a reason of 1 to ${maxReasonChars} characters`,
 );
 
 export const actions = {
@@ -104,6 +123,24 @@ export const actions = {
       kind: "direct",
       inverse: null,
       why: "Reopening a thread is its Undo, which comes with the story that shows what the agent did under its reply.",
+    },
+  },
+  // A review-link holder's reason for rejecting a change set waits in its
+  // thread, and reaches the agent only as the user sends it (OA-87).
+  "reason.send": {
+    doc: "Sends a reason a review link's holder gave for rejecting a change set, held in its thread, to the agent as the user's message: as it is, or as `text`, the user's edit of it.",
+    input: object({ changeSet: changeSetId, text: optional(messageText) }),
+    class: {
+      kind: "person-only",
+      why: "Whether the agent hears what a review link's holder said is the user's call, and sent on, the words are the user's.",
+    },
+  },
+  "reason.discard": {
+    doc: "Discards a reason a review link's holder gave for rejecting a change set, held in its thread, so the agent never sees it.",
+    input: object({ changeSet: changeSetId }),
+    class: {
+      kind: "person-only",
+      why: "Whether the agent hears what a review link's holder said is the user's call.",
     },
   },
 } as const satisfies Record<string, ActionDeclaration>;
