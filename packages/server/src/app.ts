@@ -288,8 +288,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
   ];
 
-  // One sync at a time, of any source, through the generic sync worker.
+  // One sync at a time, of any source, through the generic sync worker. Once
+  // each ends, every page watching the workspace hears, as even one that
+  // failed may have kept pages it read; nobody is watching before the turns
+  // start.
   let syncing: Promise<unknown> = Promise.resolve();
+  let told = (): void => {};
   const syncInto = <K extends SourceKind, A>(
     from: Source<K, A>,
     attrs: Validator<A>,
@@ -308,7 +312,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         } catch (error) {
           log("following epics failed", { error: String(error) });
         }
-      });
+      })
+      .finally(() => told());
     syncing = run;
     return run;
   };
@@ -572,6 +577,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     newId,
     log,
   });
+  told = () => conversation.synced();
   const viewer = views({
     groups,
     threads,
@@ -586,9 +592,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
   });
 
-  // Oriel's own actions, through one dispatcher (decision 0024). What a
-  // call changed reaches the window's streams: a group's working threads
-  // follow it, with markers; a thread's pages hear it changed.
+  // Oriel's own actions, through one dispatcher (decision 0024). Each call
+  // publishes once to the window's streams: a group's working threads
+  // follow it, with markers; a thread's pages hear it changed; and every
+  // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
   const dispatch = dispatcher({
@@ -603,8 +610,15 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     publish: (changed) => {
-      if ("thread" in changed) conversation.touched(changed.thread);
-      else if (changed.members) conversation.moved(threads.follow(changed.group, now(), newId));
+      conversation.acted(
+        "thread" in changed
+          ? { thread: changed.thread, group: null, moves: [] }
+          : {
+              thread: null,
+              group: changed.group,
+              moves: changed.members ? threads.follow(changed.group, now(), newId) : [],
+            },
+      );
     },
     now,
     newId,

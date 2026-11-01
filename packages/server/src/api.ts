@@ -428,14 +428,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       if (event.type === "message") entry(event.message);
       else if (event.type === "change-set")
         send({ type: "change-set", changeSetId: event.changeSetId, applying: event.applying });
+      else if (event.type === "group") send({ type: "group" });
       else if (event.type === "deleted") {
         send({ type: "deleted" });
         out.end();
       } else status();
     });
-    // A thread's page hears other threads move on this stream too, so a tab
-    // holds one stream at most: browsers allow few per host. Its own thread's
-    // moves are the status and change-set events above.
+    // A thread's page hears the rest of the workspace change on this stream
+    // too, so a tab holds one stream at most: browsers allow few per host.
+    // Its own thread's moves are the status and change-set events above.
     const unwatchAny = turns.watchAny((moved) => {
       if (moved !== threadId) send({ type: "threads" });
     });
@@ -454,8 +455,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     };
   };
 
-  // The workspace's threads moved: one empty event each time, which pages
-  // answer by reloading the threads list.
+  // The workspace changed: a thread moved, or one of Oriel's own actions
+  // changed something, whoever called it. One empty event each time, which
+  // pages answer by loading again what they show.
   const anyStream = (): Reply => {
     const out = channel<string>(() => stop());
     const stop = turns.watchAny(() => out.push('data: {"type":"threads"}\n\n'));
