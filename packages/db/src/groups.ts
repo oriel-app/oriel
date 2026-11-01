@@ -41,6 +41,9 @@ const groupOrigin: Validator<GroupOrigin> = union(
 );
 const cause: Validator<GroupChange["cause"]> = union(
   object({ kind: literal("user") }),
+  object({ kind: literal("agent"), threadId: ulidValue }),
+  object({ kind: literal("tool"), name: string }),
+  object({ kind: literal("review-link"), by: string }),
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
 );
 
@@ -101,6 +104,7 @@ export function groupStore(db: DatabaseSync) {
   const markUserNamed = db.prepare(
     "insert or ignore into user_named_groups (workspace_id, group_id) select workspace_id, id from groups where id = ?",
   );
+  const unmarkUserNamed = db.prepare("delete from user_named_groups where group_id = ?");
   const nameByOriel = db.prepare(`
     update groups set name = ? where id = ? and name != ?
       and not exists (select 1 from user_named_groups where group_id = groups.id)`);
@@ -217,6 +221,16 @@ export function groupStore(db: DatabaseSync) {
       });
     },
 
+    // Gives a group's name back to Oriel, as it was before the user named
+    // it, so Oriel may name it again: what undoing the user's rename does.
+    giveBack(groupId: Ulid, name: string): void {
+      transaction(db, () => {
+        mustGet(groupId);
+        nameByUser.run(name, groupId);
+        unmarkUserNamed.run(groupId);
+      });
+    },
+
     // A workspace's groups, newest first.
     list(workspaceId: Ulid): Group[] {
       return selectByWorkspace.all(workspaceId).map((raw) => {
@@ -225,17 +239,20 @@ export function groupStore(db: DatabaseSync) {
       });
     },
 
-    // A new group at version 1, holding `members`.
+    // A new group at version 1, holding `members`; its first version
+    // records who made it, the user unless it says otherwise.
     create(
       group: { id: Ulid; workspaceId: Ulid; name: string; origin: GroupOrigin },
       members: readonly GroupMember[],
       now: Instant,
+      why: GroupChange["cause"] = { kind: "user" },
     ): Group {
       const origin = parse(groupOrigin, group.origin, "group origin");
+      const checked = parse(cause, why, "cause");
       const added = distinct(members);
       transaction(db, () => {
         insertGroup.run(group.id, group.workspaceId, group.name, JSON.stringify(origin), now);
-        insertChange.run(group.workspaceId, group.id, 1, now, JSON.stringify({ kind: "user" }));
+        insertChange.run(group.workspaceId, group.id, 1, now, JSON.stringify(checked));
         for (const m of added)
           insertMember.run(group.workspaceId, group.id, m.source, m.stableId, m.id, 1);
       });

@@ -120,13 +120,13 @@ export type GroupSummary = {
   threads: Record<ThreadStateId, number>;
 };
 
-// One version of a group's membership log.
+// One version of a group's membership log, and who made it.
 export type GroupChangeView = {
   version: number;
   at: string;
   added: ItemRef[];
   removed: ItemRef[];
-  cause: "user" | "change-set";
+  cause: "user" | "agent" | "tool" | "review-link" | "change-set";
 };
 
 export type ThreadSummaryView = {
@@ -148,6 +148,12 @@ export type GroupView = {
 };
 
 export type GroupsView = { groups: GroupSummary[] };
+
+// The call that undoes one of Oriel's own actions, built by the server from
+// what the action changed (decision 0024). The window sends it back as it
+// is, to `POST /api/actions/<action>`, which answers with its own undo.
+export type UndoView = { action: string; input: unknown };
+export type Undoable<T> = T & { undo: UndoView | null };
 
 export type ThreadsView = { threads: ThreadSummaryView[] };
 

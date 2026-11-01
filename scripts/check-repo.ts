@@ -13,9 +13,17 @@
 // both rules, wherever 0003 refuses it. Packages reach each other only
 // through `@oriel/<name>` and its declared exports, never a relative path into
 // another package; a relative path into scripts/ (the fixture tooling) is
-// fine.
+// fine. Oriel's own actions keep their doors in step (decision 0024): an
+// action closed to a door, a person's action, or a direct one with no
+// inverse says why, and an inverse names an action; and every POST route in
+// packages/server changes state only through the dispatcher, apart from the
+// three exempt below and the routes not moved yet, or moved in part, which
+// OA-70 moves. A route on a list must be as the list says, so the lists
+// only shrink. What a route does besides dispatching is its author's word:
+// the check sees only whether it dispatches.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
+import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
 import { sourceKinds } from "../packages/core/src/ids.ts";
 
 // `name@version` keys from every top-level `packages:` block.
@@ -100,8 +108,11 @@ function mayImportAdapter(path: string, kind: string, writer: boolean): boolean 
     );
   if (path.startsWith(`packages/${kind}/`)) return true;
   if (/^packages\/(?:sources|server|evals)\//.test(path)) return true;
-  return /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/.test(path);
+  return testFile.test(path);
 }
+
+// Tests and their support files.
+const testFile = /(?:^|\/)(?:testing|[^/]+\.test)\.tsx?$/;
 
 // Relative specifiers in import syntax: `from "…"`, `import "…"` and
 // `import("…")`. Other strings that look like paths aren't imports.
@@ -123,6 +134,83 @@ export function crossPackageImports(path: string, text: string): string[] {
   return [...found];
 }
 
+// POST routes that change none of Oriel's state, and why.
+export const exemptRoutes: Record<string, string> = {
+  "/telemetry": "the window's own telemetry",
+  "/change-sets/:id/diff": "a read that records what was shown",
+  "/review/open": "a read that records what was shown",
+};
+
+// POST routes not on the dispatcher yet, and what they do instead. This list
+// only shrinks: OA-70 moves the rest and empties it.
+export const unmovedRoutes: Record<string, string> = {
+  "/folder": "connects the folder",
+  "/folder/sync": "syncs the folder",
+  "/jira": "connects Jira",
+  "/jira/sync": "syncs Jira",
+  "/groups/:id/threads": "opens a thread and says its first message",
+  "/threads/:id/messages": "says a message",
+  "/threads/:id/stop": "stops a turn",
+  "/threads/:id/delete": "deletes a thread",
+  "/change-sets/:id/edit": "edits a change set",
+  "/change-sets/:id/approve": "approves a change set",
+  "/change-sets/:id/reject": "rejects a change set",
+  "/change-sets/:id/apply": "applies a change set",
+  "/change-sets/:id/dismiss": "dismisses a change set",
+  "/change-sets/:id/revert": "reverts a change set",
+  "/change-sets/:id/review-link": "creates a review link",
+  "/change-sets/:id/review-link/revoke": "revokes a review link",
+  "/review/decide": "decides a change set through a review link",
+  "/review/dismiss": "dismisses a change set through a review link",
+};
+
+// POST routes that call the dispatcher for part of what they do, and what
+// they do besides.
+export const partlyMovedRoutes: Record<string, string> = {
+  "/groups/:id/drop": "syncs the sources when a dropped link names nothing yet",
+  "/threads": "opens its thread and says its first message",
+};
+
+// A file's POST routes, by the path each declares (`at("…")`, or a regex
+// literal as written), and whether its code calls the dispatcher. A route's
+// code runs to the next route's `method`.
+export function postRoutes(text: string): { path: string; dispatches: boolean }[] {
+  const starts = [...text.matchAll(/\bmethod: "(GET|POST)"/g)];
+  return starts.flatMap((start, i) => {
+    if (start[1] !== "POST") return [];
+    const code = text.slice(start.index, starts[i + 1]?.index ?? text.length);
+    const path = /\bpath: (?:at\("([^"]*)"\)|(\/.*\/)[a-z]*),/.exec(code);
+    return [
+      {
+        path: path?.[1] ?? path?.[2] ?? "(unread path)",
+        dispatches: /\bdispatch\(/.test(code),
+      },
+    ];
+  });
+}
+
+// What an action's declaration leaves unsaid: why a door is closed to it, why
+// it is a person's, or why a direct one has no inverse; or an inverse that
+// names no action.
+export function actionProblems(declared: Record<string, ActionDeclaration>): string[] {
+  const at = "packages/core/src/actions.ts";
+  const found: string[] = [];
+  const blank = (why: string | undefined) => why === undefined || why.trim() === "";
+  for (const [name, action] of Object.entries(declared)) {
+    for (const [door, why] of Object.entries(action.closed ?? {}))
+      if (blank(why))
+        found.push(`${at}: ${name} is closed to the ${door} without a reason (decision 0024)`);
+    const { class: kind } = action;
+    if (kind.kind === "person-only" && blank(kind.why))
+      found.push(`${at}: ${name} is a person's without a reason (decision 0024)`);
+    if (kind.kind === "direct" && kind.inverse === null && blank(kind.why))
+      found.push(`${at}: ${name} has no inverse and doesn't say why (decision 0024)`);
+    if (kind.kind === "direct" && kind.inverse !== null && !Object.hasOwn(declared, kind.inverse))
+      found.push(`${at}: ${name}'s inverse ${kind.inverse} isn't an action (decision 0024)`);
+  }
+  return found;
+}
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -136,7 +224,29 @@ export function problems(repo: {
   sources: { path: string; text: string }[];
 }): string[] {
   const found = new Set<string>();
+  const routed = new Set<string>();
   for (const { path, text } of repo.sources) {
+    if (path.startsWith("packages/server/src/") && !testFile.test(path))
+      for (const route of postRoutes(text)) {
+        routed.add(route.path);
+        const listed = route.path in exemptRoutes || route.path in unmovedRoutes;
+        if (route.dispatches && route.path in exemptRoutes)
+          found.add(
+            `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the exempt routes`,
+          );
+        if (route.dispatches && route.path in unmovedRoutes)
+          found.add(
+            `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the unmoved routes, or list it as moved in part`,
+          );
+        if (!route.dispatches && route.path in partlyMovedRoutes)
+          found.add(
+            `scripts/check-repo.ts: POST ${route.path} no longer calls the dispatcher, as the routes moved in part say it does`,
+          );
+        if (!route.dispatches && !listed)
+          found.add(
+            `${path}: POST ${route.path} changes state without calling the dispatcher (decision 0024)`,
+          );
+      }
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = ownWriterFile.test(path);
@@ -171,6 +281,15 @@ export function problems(repo: {
         `${path}: imports packages/${other} by a relative path; packages reach each other only through @oriel/${other} and its exports`,
       );
   }
+  // Every exemption names a route; a route moved leaves the list.
+  if (routed.size > 0)
+    for (const listed of [
+      ...Object.keys(exemptRoutes),
+      ...Object.keys(unmovedRoutes),
+      ...Object.keys(partlyMovedRoutes),
+    ])
+      if (!routed.has(listed))
+        found.add(`scripts/check-repo.ts: lists POST ${listed}, which no route declares`);
   if (repo.claudeLink !== "AGENTS.md") {
     found.add(
       `CLAUDE.md must be a symlink to exactly "AGENTS.md", got ${JSON.stringify(repo.claudeLink)}`,
@@ -208,22 +327,25 @@ function readLink(path: string): string {
 }
 
 if (import.meta.main) {
-  const found = problems({
-    claudeLink: readLink("CLAUDE.md"),
-    lockfile: readFileSync("pnpm-lock.yaml", "utf8"),
-    agentsMd: readFileSync("AGENTS.md", "utf8"),
-    decisions: readdirSync("docs/decisions")
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => readFileSync(`docs/decisions/${f}`, "utf8")),
-    // This check and its test spell out what they catch, so neither is scanned.
-    sources: ["packages", "scripts"]
-      .flatMap((dir) =>
-        readdirSync(dir, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f}`),
-      )
-      .filter((f) => /\.tsx?$/.test(f) && !f.split("/").includes("node_modules"))
-      .filter((f) => !/^scripts\/check-repo(\.test)?\.ts$/.test(f))
-      .map((path) => ({ path, text: readFileSync(path, "utf8") })),
-  });
+  const found = [
+    ...actionProblems(actions),
+    ...problems({
+      claudeLink: readLink("CLAUDE.md"),
+      lockfile: readFileSync("pnpm-lock.yaml", "utf8"),
+      agentsMd: readFileSync("AGENTS.md", "utf8"),
+      decisions: readdirSync("docs/decisions")
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => readFileSync(`docs/decisions/${f}`, "utf8")),
+      // This check and its test spell out what they catch, so neither is scanned.
+      sources: ["packages", "scripts"]
+        .flatMap((dir) =>
+          readdirSync(dir, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f}`),
+        )
+        .filter((f) => /\.tsx?$/.test(f) && !f.split("/").includes("node_modules"))
+        .filter((f) => !/^scripts\/check-repo(\.test)?\.ts$/.test(f))
+        .map((path) => ({ path, text: readFileSync(path, "utf8") })),
+    }),
+  ];
   for (const p of found) console.error(p);
   process.exitCode = found.length ? 1 : 0;
 }

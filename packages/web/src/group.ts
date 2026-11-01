@@ -3,12 +3,19 @@
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { GroupSummary, GroupView, MemberView } from "./view.ts";
+import type { GroupSummary, GroupView, MemberView, Undoable, UndoView } from "./view.ts";
 
-// A removal the user can still undo: the member as it showed, and the group
-// version the removal made, which tells it from every other. `countdown`
-// counts the times its countdown started; only the latest one's end hides it.
-export type Removal = { member: MemberView; version: number; countdown: number };
+// A removal the user can still undo: the member as it showed, the group
+// version the removal made, which tells it from every other, and the call
+// that undoes it, as the server gave it, or null when it can't be undone.
+// `countdown` counts the times its countdown started; only the latest one's
+// end hides it.
+export type Removal = {
+  member: MemberView;
+  version: number;
+  countdown: number;
+  undo: UndoView | null;
+};
 
 // How long a removal can be undone, while the user isn't on its Undo.
 export const undoMs = 8_000;
@@ -92,7 +99,7 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
     }
     case "undoClicked": {
       const undone = model.removals.find((each) => each.version === msg.version);
-      if (undone === undefined || !undoable(undone)) return [model, []];
+      if (!undone?.undo) return [model, []];
       // Its Undo goes, and with it, maybe without a word, the focus that held
       // the rest: the keyboard lets go of them. A pointer still on them holds.
       const [held, rest, restarts] = letGo(
@@ -103,11 +110,10 @@ export function updateGroup(model: GroupModel, msg: GroupMsg): [GroupModel, Effe
       return [
         { ...model, held, removals: rest, notice: null },
         [
-          post(
-            `/api/groups/${model.id}/add`,
-            { items: [undone.member.ref.id] },
-            { kind: "restored", id: model.id },
-          ),
+          post(`/api/actions/${undone.undo.action}`, undone.undo.input, {
+            kind: "restored",
+            id: model.id,
+          }),
           ...restarts,
         ],
       ];
@@ -172,8 +178,9 @@ function letGo(
   return [held, restarted, restarted.map((each) => expiry(model.id, each))];
 }
 
-// Only an item the window still has can be added back.
-export const undoable = (removal: Removal): boolean => removal.member.row !== null;
+// The server says what can be undone: only an item the window still has can
+// be added back.
+export const undoable = (removal: Removal): boolean => removal.undo !== null;
 
 // What ⌘Z or Ctrl+Z undoes: the latest removal that can be.
 export const latestUndo = (model: GroupModel): Removal | null =>
@@ -197,12 +204,12 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
       const [done, ...rest] = model.removing;
       const next = rest[0] ? [removal(model.id, rest[0].id)] : [];
       if (!msg.ok) return [{ ...model, removing: rest, notice: errorOf(msg.body) }, next];
-      const answer = msg.body as GroupView;
+      const { undo: call, ...answer } = msg.body as Undoable<GroupView>;
       if (done && answer.members.some((each) => each.ref.id === done.id))
         return [{ ...model, view: newer(model, answer), status: "ready" }, []];
       const view = newer(model, answer);
       const undo = done?.member
-        ? { member: done.member, version: (msg.body as GroupView).group.version, countdown: 0 }
+        ? { member: done.member, version: answer.group.version, countdown: 0, undo: call }
         : null;
       return [
         {
@@ -215,10 +222,11 @@ export function groupReplied(model: GroupModel, msg: Replied): [GroupModel, Effe
         [...next, ...(undo ? [expiry(model.id, undo)] : [])],
       ];
     }
+    // The undo landed: the group, as it is now, loads again.
     case "restored": {
       if (tag.id !== model.id) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      return [{ ...model, view: newer(model, msg.body as GroupView), status: "ready" }, []];
+      return [model, [get(`/api/groups/${model.id}`, { kind: "group", id: model.id })]];
     }
     case "group": {
       if (tag.id !== model.id) return [model, []];

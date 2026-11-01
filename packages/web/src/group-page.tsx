@@ -12,7 +12,7 @@ import {
 } from "./group.ts";
 import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
-import type { GroupView, ThreadStateId, ThreadSummaryView } from "./view.ts";
+import type { GroupChangeView, GroupView, ThreadStateId, ThreadSummaryView } from "./view.ts";
 
 // `threads`: the group's, from the list the sidebar keeps, so they move as
 // it does.
@@ -249,6 +249,15 @@ function Undos(props: {
   );
 }
 
+// Who changed a group, when it wasn't the user.
+const causes: Record<GroupChangeView["cause"], string> = {
+  user: "",
+  agent: " · by the agent",
+  tool: " · by an outside tool",
+  "review-link": " · from a review link",
+  "change-set": " · by an applied change set",
+};
+
 // The group's versions, newest first, folded.
 function History({ view }: { view: GroupView }) {
   return (
@@ -269,7 +278,7 @@ function History({ view }: { view: GroupView }) {
                   ]
                     .filter(Boolean)
                     .join(" · ")}
-              {change.cause === "change-set" && " · by an applied change set"}
+              {causes[change.cause]}
             </span>
             <span class="change-at">{when(change.at)}</span>
           </li>

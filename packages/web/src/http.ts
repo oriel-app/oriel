@@ -13,7 +13,7 @@ export type Tag =
   | { kind: "dropped"; groupId: string }
   | { kind: "group"; id: string }
   | { kind: "groupChanged"; id: string }
-  // A removal was undone: the item was added back.
+  // A removal was undone, through the call the server gave for it.
   | { kind: "restored"; id: string }
   // The group loaded again after a sync: only its view changes.
   | { kind: "groupSynced"; id: string }
