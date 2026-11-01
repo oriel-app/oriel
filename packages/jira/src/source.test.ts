@@ -257,8 +257,8 @@ test("each project's points field comes from its board, and a board without one 
     [
       ["jira:SYN-5", 5],
       ["jira:OA-7", 2],
-      ["jira:TIME-1", null],
-      ["jira:NONE-1", null],
+      ["jira:TIME-1", undefined],
+      ["jira:NONE-1", undefined],
     ],
   );
   const [body] = searches(calls);

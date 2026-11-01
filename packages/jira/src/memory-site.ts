@@ -4,7 +4,9 @@
 // the same stable IDs the index has. Every write moves the item's `updated`
 // one second on from `clock`. It answers the source's search and reads too,
 // so an app can sync from it as from a live site. With an `account`, it
-// answers only requests signed as that account, and 401 to any other.
+// answers only requests signed as that account, and 401 to any other. With
+// `estimates: false`, its board counts issues instead, so it has no points
+// field, as a team-managed board without one doesn't.
 // Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
@@ -36,7 +38,7 @@ export type MemorySite = ReturnType<typeof memorySite>;
 export function memorySite(
   fixture: JiraFixture,
   clock: Instant,
-  options: { account?: { email: string; token: string } } = {},
+  options: { account?: { email: string; token: string }; estimates?: false } = {},
 ) {
   const { issues: start } = applySourceEdits(fixture, fixture.edits.length);
   const issues = new Map<string, Issue>(
@@ -137,7 +139,10 @@ export function memorySite(
       return json(200, { values: [{ id: 1, type: "scrum" }] });
     if (method === "GET" && path === "/rest/agile/1.0/board/1/configuration")
       return json(200, {
-        estimation: { type: "field", field: { fieldId: pointsField, displayName: "Story Points" } },
+        estimation:
+          options.estimates === false
+            ? { type: "issueCount" }
+            : { type: "field", field: { fieldId: pointsField, displayName: "Story Points" } },
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });

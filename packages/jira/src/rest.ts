@@ -147,13 +147,15 @@ export function attrsOf(fields: IndexFields): JiraAttrs {
   };
 }
 
-export function facetsOf(fields: IndexFields, points: unknown): Facets {
+// `field` is the project's points field, undefined when its board takes no
+// estimates.
+export function facetsOf(fields: IndexFields, raw: unknown, field: string | undefined): Facets {
   return jiraFacets({
     category: categoryOf(fields),
     epic: containerOf(fields),
     assignee: assigneeOf(fields),
     kind: jiraKind(fields.issuetype),
-    points: pointsOf(points),
+    points: field === undefined ? undefined : pointsOf(rawField(raw, field)),
   });
 }
 

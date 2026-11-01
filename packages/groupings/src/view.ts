@@ -15,6 +15,10 @@ export type ItemRow = {
   status: { name: string; category: StatusCategory } | null;
   assignee: string | null;
   points: number | null;
+  // Set when the item tracks work but its source takes no estimates, as a
+  // Jira project whose board has no points field: its null points are no
+  // estimate to lack. Absent otherwise.
+  noEstimates?: true;
   // Whole days from the item's last update to the window's `asOf`.
   idleDays: number;
   // A chat message's replies, and its link, which opens them. Absent when it
