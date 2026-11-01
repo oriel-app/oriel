@@ -26,8 +26,9 @@
   --bar-height: 0rem;
   --rail: 15rem;
   --chat: 44rem;
-  /* Motion: how long a short entrance takes, and how it settles. */
-  --motion: 180ms;
+  /* Motion: how the panel beside the page arrives, and how motion settles. */
+  --duration-panel: 180ms;
+  --slide-panel: 0.375rem;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --bg: #f7f7f5;
@@ -3227,20 +3228,20 @@ a.replies:hover {
   box-shadow: var(--shadow);
   overflow-wrap: anywhere;
   transition:
-    opacity var(--motion) var(--ease-out),
-    transform var(--motion) var(--ease-out);
+    opacity var(--duration-panel) var(--ease-out),
+    transform var(--duration-panel) var(--ease-out);
 }
 
 @starting-style {
   .item-panel {
     opacity: 0;
-    transform: translateX(0.375rem);
+    transform: translateX(var(--slide-panel));
   }
 }
 
 /* Its contents fade in with it, and again for each item it shows. */
 .item-panel > * {
-  animation: panel-fade var(--motion) var(--ease-out);
+  animation: panel-fade var(--duration-panel) var(--ease-out);
 }
 
 @keyframes panel-fade {
