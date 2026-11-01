@@ -11,19 +11,19 @@ Adds: none
   - `group.remove(id: RegionId)`: an item in the version the run used.
   - `group.add(id: FoundId)`: an item this run's `search()` returned that the version doesn't hold. It is the only write that takes a search result; every other write still refuses one.
 
-  The host refuses a change that wouldn't change the version, and the same item twice. An item a create in the change set makes (`new:N`) needs neither: it joins when it is created (0018).
+  The host refuses a change that wouldn't change the version, and the same item twice, comparing items by stable ID: each search hit brings its stable ID to the host, never to the script. An item a create in the change set makes (`new:N`) needs neither: it joins when it is created (0018).
 
-- **They are Oriel's own ops, not a source's.** They change the group, never the item, so they need no writer or writable connection, and they work on items of any source, read-only ones included. Each is a line of its own in the diff, which says the item itself doesn't change.
+- **They are Oriel's own ops, not a source's.** Their ops are `group.add` and `group.remove`, names no source op can have, so whatever reads mutations can tell them apart. They change the group, never the item, so they need no catalogue, writer or writable connection, and they work on items of any source, read-only ones included. Each is a line of its own in the diff, naming the item by its title in the index and saying the item itself doesn't change.
 - **Which item.** Capture records each item's stable ID with it, read from the index, so the hash covers it and apply changes exactly the item the person approved, even if its key moves to another item. Bindings enforce that an added item came from the run's `search()`. The engine checks that it is indexed and outside the run's version.
-- **Caps.** Membership changes have their own cap per run and per change set, 100 each, apart from the 20 for writes: each changes only Oriel's record and reverts exactly, and a group's done stories can outnumber 20.
+- **Caps.** Membership changes have their own cap per run and per change set, 100 each, apart from the 20 for writes: each changes only Oriel's record and reverts exactly, and a group's done stories can outnumber 20. The sandbox host enforces both caps.
 - **Apply.**
-  - In every change set, a revert's included, capture puts membership changes after the writes to sources.
+  - Every change set, a revert included, lists its membership changes after its writes to sources.
   - Under the change set's approval, checked against its hash as for any mutation, once every write before them has applied, they take one new version of the group, caused by the change set. Adds and removes go into that version together, in the same transaction that marks them applied.
-  - If one can't apply (an item to add that the index no longer has), none does: apply stops at it and says why, as at any failure, and they stay pending.
+  - If one can't apply (an item to add that the index no longer has, or has as deleted), none does: apply stops at it and says why, as at any failure, and they stay pending.
   - One the group already shows, whoever made it since (the user, or another thread's change set), changes nothing and counts as applied. 0018's rule that apply stops at a target that has left the group is for writes to sources.
-- **The region moves, with a marker.** The thread whose change set made a version moves to it with its marker ("removed SYN-3"), even though applying the change set settles the thread. The group's other working threads follow as for any change (0018). So a thread that asked about v3 shows, under its approved change set, that it now works in v4. This holds for the version a change set's creates make, too.
-- **Revert.** Reverting proposes the opposite change for each membership change that applied, approved like any revert, and takes another version. If a later version added or removed that item, the revert stops on it as a conflict rather than undo that later change (SPEC §7). One that changed nothing reverts to nothing.
-- **A membership change isn't a write to a source.** What a thread says it wrote, and to which sources, leaves membership changes out. Once applied, one still settles the thread, as any applied change set does, and a deleted thread that made one keeps its records, so the group's log never names a change set that is gone.
+- **The region moves, with a marker.** The thread whose change set made a version moves to it with its marker ("removed SYN-3"), even though applying the change set settles the thread. The group's other working threads follow as for any change (0018). So a thread that asked about v3 shows, under its approved change set, that it now works in v4. This holds for the version a change set's creates make, too: when a change set creates items and changes membership, the items it created join in a version of their own, and each thread moves once, to the latest, with one marker.
+- **Revert.** Reverting proposes the opposite change for each membership change that applied, approved like any revert, and takes another version. If a later version added or removed that item, that is a conflict, and as with any conflict the revert stops rather than undo the later change (SPEC §7). Applying the revert checks again, as it does for writes. One that changed nothing reverts to nothing.
+- **A membership change isn't a write to a source.** What a thread says it wrote, and to which sources, leaves membership changes out. Once applied, one still settles the thread, as any applied change set does, and a deleted thread that applied one keeps its records, as one that wrote does, so the group's log never names a change set that is gone.
 - **Telemetry.** `group.item-added` and a new `group.item-removed` carry the cause `change-set`.
 
 **Why.**
@@ -40,11 +40,12 @@ Adds: none
 - A membership proposal beside change sets: a second approve button, review link, Needs you entry and revert for the same idea.
 - Letting the agent change membership directly because it isn't a write to a source: the region would change without the user's say, which 0004 and 0018 rule out.
 - `items.add` and `items.remove`: they read as creating and deleting the item.
-- One call naming many items, as one diff line: a person couldn't leave one item out, and a revert conflict on one would stop them all.
+- One call naming many items, as one diff line: a person couldn't leave one item out.
 - Letting `group.add` take any ID the agent types.
 
 **Consequences.**
 
 - Every region's module declares the `group` namespace, about 300 bytes on every request, so every eval cassette is recorded again.
-- The change-set engine applies and reverts membership changes itself, through the group store, which gains one change that adds and removes together. A diff line says whether it puts an item into the group or takes one out.
+- The change-set engine captures, shows, applies and reverts membership changes itself, through the group store and the index, never a source's catalogue, writer or reader. The group store gains one change that adds and removes together, inside the engine's transaction. A diff line says whether it puts an item into the group or takes one out.
+- `RunLimits` gains the membership cap, which the sandbox host enforces beside the write cap. `packages/sandbox` is the maintainer's.
 - `.claude/rules/bindings.md` and the `FoundId` docs say that `group.add` is the one write that takes a search result.
