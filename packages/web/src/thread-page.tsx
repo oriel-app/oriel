@@ -10,6 +10,7 @@ import {
   Markdown,
   plural,
   points,
+  Replies,
   StateChip,
   TypeMark,
 } from "./parts.tsx";
@@ -786,10 +787,12 @@ export function Member({ member, onRemove }: { member: MemberView; onRemove?: ()
       <TypeMark row={row} />
       <ItemKey item={ref} />
       <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>
-      {row?.status && (
+      {row?.status ? (
         <span class="status" data-category={row.status.category}>
           {row.status.name}
         </span>
+      ) : (
+        row?.replies && <Replies replies={row.replies} />
       )}
       {onRemove && (
         <button

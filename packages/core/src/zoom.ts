@@ -17,13 +17,20 @@ export type Summary = {
 // source's own words for an item's type and status, and its labels. An
 // adapter declares how to read them from its index records, and the
 // composition root passes that in, by source kind. A source with none shows
-// what core knows.
-export type ItemDetails = { type: string; status: string; labels: string[] };
+// what core knows. `replies` counts the replies under a chat message, which
+// are part of it.
+export type ItemDetails = { type: string; status: string; labels: string[]; replies?: number };
 export type DetailsOf = (record: IndexRecord) => ItemDetails | null;
 
 // How a source shows in the window: its name as a person knows it, such as
-// "Jira", and its items' details.
-export type Presentation = { name: string; details: DetailsOf };
+// "Jira", and its items' details. `linked` names the item, by its key, that a
+// link into the source points at when the link isn't the item's location,
+// such as a chat reply's link, which is its message's.
+export type Presentation = {
+  name: string;
+  details: DetailsOf;
+  linked?: (link: URL) => string | null;
+};
 export type Presentations = Partial<Record<SourceKind, Presentation>>;
 
 // `view` builds plain view data for the web package to render, so zoom levels

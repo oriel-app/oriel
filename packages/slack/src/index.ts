@@ -16,6 +16,7 @@ export {
   slackContent,
   slackDetails,
   slackItemDoc,
+  slackLinked,
   slackFacets,
   type SlackPerson,
   slackPresentation,
