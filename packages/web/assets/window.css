@@ -3729,7 +3729,7 @@ a.replies:hover {
   border-top: 1px solid var(--line);
 }
 
-/* A person or channel the source's text names, set apart from the words
+/* A person or a channel the source's text names, set apart from the words
    around it. */
 .mention {
   padding: 0 0.2em;
@@ -3760,11 +3760,14 @@ a.replies:hover {
 }
 
 .panel-message .panel-said,
-.panel-message .panel-plain {
+.panel-message .panel-plain,
+.panel-message .panel-files,
+.panel-message .panel-edited {
   grid-column: 2;
 }
 
-.panel-later {
+/* One header for each day of a conversation. */
+.panel-day {
   display: flex;
   grid-column: 1 / -1;
   gap: var(--space-2);
@@ -3774,8 +3777,8 @@ a.replies:hover {
   font-size: var(--text-xs);
 }
 
-.panel-later::before,
-.panel-later::after {
+.panel-day::before,
+.panel-day::after {
   flex: 1;
   border-top: 1px solid var(--line);
   content: "";
@@ -3794,6 +3797,41 @@ a.replies:hover {
 }
 
 .panel-said time {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+/* The source's words about a message, such as a reply also sent to the
+   channel. */
+.panel-label {
+  padding: 0 var(--space-1);
+  border-radius: 0.25rem;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.panel-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-file {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+  font-size: var(--text-sm);
+}
+
+.panel-edited {
+  margin: 0;
   color: var(--text-faint);
   font-size: var(--text-xs);
 }

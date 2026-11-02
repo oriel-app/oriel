@@ -223,6 +223,12 @@ export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; links
 
 type Sites = ReadonlySet<string> | "any";
 
+// What is inside a block, already read, such as a message's text with its
+// mentions.
+export function Inlines({ inlines, linksTo }: { inlines: readonly Inline[]; linksTo: Sites }) {
+  return <>{inlines.map((inline, i) => span(inline, i, linksTo))}</>;
+}
+
 function block(prose: Prose, key: number, to: Sites): ComponentChildren {
   const spans = (inlines: Inline[]) => inlines.map((inline, i) => span(inline, i, to));
   switch (prose.kind) {
@@ -310,8 +316,9 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
     case "route":
       return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
     case "mention":
+    case "channel":
       return (
-        <span key={key} class="mention">
+        <span key={key} class="mention" data-kind={inline.kind}>
           {inline.text}
         </span>
       );

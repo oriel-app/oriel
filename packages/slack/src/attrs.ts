@@ -10,16 +10,21 @@ import {
   type IndexRecord,
   type Instant,
   isInstant,
+  literal,
   nullable,
   number,
   object,
+  optional,
+  type PanelBlock,
   type PanelOf,
   parseItemId,
   type Presentation,
   refine,
   string,
+  union,
   type Validator,
 } from "@oriel/core";
+import type { SlackPart } from "./mrkdwn.ts";
 
 export type SlackPerson = {
   // Their Slack user ID; null for an app that posted as itself.
@@ -35,7 +40,11 @@ export type SlackAttrs = {
 
 export type SlackRecord = IndexRecord<"slack", SlackAttrs>;
 
-// A message read live: the root and every reply, each as plain text.
+// A message read live: the root and every reply, each as plain text, with
+// the files it shared as `[File: name]` lines. For the panel, each also has
+// its own text in parts, its mentions and channels marked, and its files
+// apart: absent
+// from a read made before Oriel kept them.
 export type SlackContent = {
   channel: { id: string; name: string };
   author: SlackPerson;
@@ -43,7 +52,19 @@ export type SlackContent = {
   // When the root's text last changed, or null if it never has.
   editedAt: Instant | null;
   body: string;
-  replies: { author: SlackPerson; at: Instant; body: string }[];
+  parts?: SlackPart[];
+  files?: string[];
+  replies: {
+    author: SlackPerson;
+    at: Instant;
+    body: string;
+    parts?: SlackPart[];
+    files?: string[];
+    // When its text last changed, if it has.
+    editedAt?: Instant;
+    // Sent to the channel too, as well as in reply.
+    broadcast?: true;
+  }[];
   // What any item's read returns: the author and the start of the message as
   // the title, and the whole conversation as one plain text.
   title: string;
@@ -62,13 +83,30 @@ export const slackAttrs = object({
 
 // What a read returns, checked where it is used: a reader may sit behind any
 // transport.
+const parts = optional(
+  array(object({ text: string, names: optional(union(literal("person"), literal("channel"))) })),
+);
+const files = optional(array(string));
+
 export const slackContent = object({
   channel,
   author: person,
   postedAt: at,
   editedAt: nullable(at),
   body: string,
-  replies: array(object({ author: person, at, body: string })),
+  parts,
+  files,
+  replies: array(
+    object({
+      author: person,
+      at,
+      body: string,
+      parts,
+      files,
+      editedAt: optional(at),
+      broadcast: optional(literal(true)),
+    }),
+  ),
   title: string,
   text: string,
 }) satisfies Validator<SlackContent>;
@@ -114,34 +152,65 @@ export const slackPresentation: Presentation = {
   linked: slackLinked,
 };
 
+type PanelMessage = Extract<PanelBlock, { kind: "messages" }>["messages"][number];
+
+// A message or reply as the panel shows it: its text as written, with its
+// mentions and channels set apart where it has any, its files apart from the text, and
+// whether it was edited or also sent to the channel.
+function panelMessage(
+  said: {
+    author: SlackPerson;
+    at: Instant;
+    body: string;
+    parts?: SlackPart[] | undefined;
+    files?: string[] | undefined;
+    editedAt?: Instant | null | undefined;
+    broadcast?: true | undefined;
+  },
+  channel: string,
+): PanelMessage {
+  const { parts } = said;
+  return {
+    author: said.author.name,
+    at: said.at,
+    text: parts ? parts.map((part) => part.text).join("") : said.body,
+    ...(parts?.some((part) => part.names) && {
+      spans: parts.map((part) => ({
+        kind: part.names === "person" ? "mention" : (part.names ?? "text"),
+        text: part.text,
+      })),
+    }),
+    ...(said.editedAt && { edited: said.editedAt }),
+    ...(parts && said.files?.length && { files: said.files }),
+    ...(said.broadcast && { labels: [`Also sent to #${channel}`] }),
+  };
+}
+
 // A message as the panel beside the page shows it, from a live read: named
 // by its channel, the message, then each reply in its thread under it, with
 // its author and time, all inside the one item (decision 0021). Slack's text
-// is plain here, shown as written.
+// shows as written, with its mentions and channels set apart.
 export const slackPanel: PanelOf = (content) => {
   const read = slackContent(content);
   if (!read.ok) return null;
   const message = read.value;
+  const channel = message.channel.name;
   const replies = message.replies.length;
   return {
     // The item's own title is the message's first line, which the panel
     // shows in full just below.
-    title: `#${message.channel.name}`,
+    title: `#${channel}`,
     blocks: [
       {
         kind: "messages",
         heading: null,
-        messages: [{ author: message.author.name, at: message.postedAt, text: message.body }],
+        messages: [panelMessage({ ...message, at: message.postedAt }, channel)],
         empty: "No message.",
       },
       {
         kind: "messages",
         heading: `${replies} ${replies === 1 ? "reply" : "replies"}`,
-        messages: message.replies.map((reply) => ({
-          author: reply.author.name,
-          at: reply.at,
-          text: reply.body,
-        })),
+        messages: message.replies.map((reply) => panelMessage(reply, channel)),
         empty: "No replies yet.",
       },
     ],

@@ -8,7 +8,7 @@ import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
 
 export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
-export type { PanelBlock, PanelInline, PanelProse } from "@oriel/core/panel";
+export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
 export const groupingIds = ["epic", "assignee", "stuck"] as const;
 export type GroupingId = (typeof groupingIds)[number];

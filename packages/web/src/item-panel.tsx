@@ -6,10 +6,11 @@
 import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
-import { behind, type PanelModel } from "./panel.ts";
+import { behind, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
 import {
   type Dispatch,
   initials,
+  Inlines,
   ItemKey,
   keyLabel,
   Markdown,
@@ -18,7 +19,7 @@ import {
   when,
 } from "./parts.tsx";
 import { safeHref } from "./route.ts";
-import type { ItemPanelView, PanelBlock } from "./view.ts";
+import type { ItemPanelView, PanelBlock, PanelInline, PanelMessage } from "./view.ts";
 
 export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Dispatch }) {
   const { view } = model;
@@ -109,7 +110,7 @@ function PanelBody({ view }: { view: ItemPanelView }) {
       return (
         <div class="panel-body">
           {read.blocks.map((block, i) => (
-            <Block key={i} block={block} />
+            <Block key={i} block={block} before={lastSaid(read.blocks.slice(0, i))} />
           ))}
         </div>
       );
@@ -133,7 +134,12 @@ function PanelBody({ view }: { view: ItemPanelView }) {
   }
 }
 
-function Block({ block }: { block: PanelBlock }) {
+// When the last message above was said, in any block, so a conversation's
+// days read on across its message and its replies.
+const lastSaid = (blocks: PanelBlock[]): string | null =>
+  blocks.flatMap((block) => (block.kind === "messages" ? block.messages : [])).at(-1)?.at ?? null;
+
+function Block({ block, before }: { block: PanelBlock; before: string | null }) {
   switch (block.kind) {
     case "facts":
       return (
@@ -155,7 +161,7 @@ function Block({ block }: { block: PanelBlock }) {
               <Markdown text={block.text} linksTo="any" />
             </div>
           ) : (
-            <Plain text={block.text} />
+            <Plain spans={[{ kind: "text", text: block.text }]} />
           )}
         </section>
       );
@@ -175,7 +181,7 @@ function Block({ block }: { block: PanelBlock }) {
           {block.messages.length === 0 ? (
             <p class="panel-empty">{block.empty}</p>
           ) : (
-            <Messages messages={block.messages} />
+            <Messages messages={block.messages} before={before} />
           )}
         </section>
       );
@@ -184,24 +190,35 @@ function Block({ block }: { block: PanelBlock }) {
   }
 }
 
-type Message = Extract<PanelBlock, { kind: "messages" }>["messages"][number];
-
 const minute = 60_000;
-const day = 24 * 60 * minute;
 
-// Messages as a conversation reads: each with who wrote it, a run by one
-// person within a few minutes under their name once, and a long pause marked.
-function Messages({ messages }: { messages: Message[] }) {
+// Messages as a conversation reads: one header for each day, saying how long
+// after the message before it was when that's a day or more; each message
+// with who wrote it and when, a run by one person within a few minutes under
+// their name once. Mentions are set apart, files listed apart from the text,
+// and an edit marked after it.
+function Messages({ messages, before }: { messages: PanelMessage[]; before: string | null }) {
+  const days = daysOf(messages, before);
   return (
     <ol class="panel-thread">
       {messages.map((message, i) => {
-        const before = messages[i - 1];
-        const gap = before ? Date.parse(message.at) - Date.parse(before.at) : 0;
-        const later = gap >= day ? Math.floor(gap / day) : 0;
-        const run = before?.author === message.author && later === 0 && gap < 5 * minute;
+        const above = messages[i - 1];
+        const newDay = days[i];
+        const run =
+          above?.author === message.author &&
+          !newDay &&
+          !message.labels?.length &&
+          Date.parse(message.at) - Date.parse(above.at) < 5 * minute;
         return (
           <li key={i} class="panel-message" data-run={run || undefined}>
-            {later > 0 && <p class="panel-later">{plural(later, "day")} later</p>}
+            {newDay && (
+              <p class="panel-day">
+                <span>
+                  <time dateTime={message.at}>{dayName(message.at)}</time>
+                  {newDay.later > 0 && ` · ${plural(newDay.later, "day")} later`}
+                </span>
+              </p>
+            )}
             {!run && (
               <>
                 <span class="avatar" aria-hidden="true">
@@ -209,11 +226,35 @@ function Messages({ messages }: { messages: Message[] }) {
                 </span>
                 <p class="panel-said">
                   <span class="panel-author">{message.author}</span>
-                  <time dateTime={message.at}>{when(message.at)}</time>
+                  <time dateTime={message.at} title={when(message.at)}>
+                    {clock(message.at)}
+                  </time>
+                  {message.labels?.map((label) => (
+                    <span key={label} class="panel-label">
+                      {label}
+                    </span>
+                  ))}
                 </p>
               </>
             )}
-            <Plain text={message.text} />
+            <Plain spans={message.spans ?? [{ kind: "text", text: message.text }]} />
+            {message.files && message.files.length > 0 && (
+              <ul class="panel-files" aria-label="Files">
+                {message.files.map((file, j) => (
+                  <li key={j} class="panel-file">
+                    <FileIcon />
+                    {file}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {message.edited && (
+              <p class="panel-edited">
+                <time dateTime={message.edited} title={`Edited ${when(message.edited)}`}>
+                  (edited)
+                </time>
+              </p>
+            )}
           </li>
         );
       })}
@@ -221,24 +262,35 @@ function Messages({ messages }: { messages: Message[] }) {
   );
 }
 
+// A day as a header names it, in the reader's zone and words.
+const dayName = (instant: string): string =>
+  new Date(instant).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+// The time of day alone, under a header that names the day.
+const clock = (instant: string): string =>
+  new Date(instant).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
 // Text as written: blank lines part paragraphs, and each line stays a line.
-function Plain({ text }: { text: string }) {
-  const paragraphs = text
-    .replace(/\r\n?/g, "\n")
-    .split(/\n\s*\n/)
-    .filter((paragraph) => paragraph.trim() !== "");
+function Plain({ spans }: { spans: PanelInline[] }) {
   return (
     <div class="panel-plain">
-      {paragraphs.map((paragraph, i) => (
+      {paragraphsOf(spans).map((paragraph, i) => (
         <p key={i}>
-          {paragraph.split("\n").map((line, j) => (
-            <Fragment key={j}>
-              {j > 0 && <br />}
-              {line}
-            </Fragment>
-          ))}
+          <Inlines inlines={paragraph} linksTo="any" />
         </p>
       ))}
     </div>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.25 2.25h5l2.5 2.5v9h-7.5zM9.25 2.25v2.5h2.5" />
+    </svg>
   );
 }
