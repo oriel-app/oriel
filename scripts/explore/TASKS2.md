@@ -23,11 +23,15 @@ never from a design.
 
 | #   | Task                                                                                                                  | Ground truth                                                                  | Judged        |
 | --- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------- |
-| A1  | Ask who has items in progress in the workstream that moved most (a table). Who has most there, and how many?          | per person, in-progress members of T2's workstream; the most                  | yes           |
+| A1  | Ask which sources changed most since you looked (a table). Which changed second most, and how many items?           | per source, items with a change-log entry after last-seen; the second most      | yes                        |
 | A2  | Ask for a chart of what moved since you looked, by workstream. Which moved second most, and how many?                 | the open workstream with the second most members changed after last-seen      | yes           |
 | A3  | Make a workstream of the top thing not in a workstream. What is it called, and how many items does it hold?           | T4's epic: its title, and 1 + its children                                    | yes           |
 | A4  | Pin A2's answer to the overview, so it is there next time.                                                            | after a reload, the top two workstreams and the top count on the first screen | measured only |
 | A5  | Ask about the stalled workstream, with the workstream itself cited. Which item in it changed last, how many days ago? | T3's workstream; its member with the latest update, and the days since        | yes           |
+
+A1 first asked who has items in progress in the workstream that moved most. Building the answers, before
+round 10 ran, showed every person there has one, so it had no single answer; it became the sources
+table above.
 
 The judge sees the screen after the design's scripted path for that task: one viewport
 screenshot, as the user sees it when the answer arrives. The judge doesn't see the path.
