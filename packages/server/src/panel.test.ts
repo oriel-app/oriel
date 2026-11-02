@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { PanelBlock } from "@oriel/core";
 import type { ItemPanelView, ItemStampView, WindowView } from "@oriel/web/view";
-import { richDescription } from "@oriel/jira/testing";
+import { textToAdf } from "@oriel/jira";
+import { richComment, richDescription } from "@oriel/jira/testing";
 import { json, t0, testApp } from "./testing.ts";
 
 const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
@@ -61,6 +62,29 @@ test("a description written with structure keeps it: a list, a heading, code and
   assert.match(wire, /"kind":"link","href":"https:\/\/design\.example\.com\/wallet"/);
   // The link to a script is its words, and nothing reads as markup.
   assert.doesNotMatch(wire, /javascript:/);
+});
+
+test("a comment written with structure keeps it as the description does; a plain one is as written", async (t) => {
+  const app = await testApp(t, { live: true });
+  app.site?.comment("SYN-23", "amara", textToAdf("Design signed this off.\nOn Monday."));
+  app.site?.comment("SYN-23", "esme", richComment);
+  const view = json<ItemPanelView>(await app.get(path("jira:SYN-23")));
+  const [plain, rich] = block(view, "messages")?.messages ?? [];
+  assert.deepEqual(plain, {
+    author: "Amara Okafor",
+    at: plain?.at,
+    text: "Design signed this off.\nOn Monday.",
+  });
+  assert.equal(rich?.author, "Esme Whitlock");
+  assert.deepEqual(
+    rich?.prose?.map((prose) => prose.kind),
+    ["paragraph", "list", "code", "paragraph"],
+  );
+  // Its text stays as Oriel reads it anywhere else.
+  assert.match(rich?.text ?? "", /^- Safari shows the button$/m);
+  const wire = JSON.stringify(rich?.prose);
+  assert.match(wire, /"kind":"code","text":"PaymentRequest is not defined"/);
+  assert.match(wire, /"kind":"link","href":"https:\/\/bugs\.example\.com\/wallet\/1203"/);
 });
 
 test("on a board that takes no estimates, the issue has no estimate to lack", async (t) => {

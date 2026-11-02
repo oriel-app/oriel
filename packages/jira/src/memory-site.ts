@@ -29,7 +29,8 @@ type Issue = {
   // above is what Oriel writes and reads back.
   document?: unknown;
   labels: string[];
-  comments: FixtureIssue["comments"];
+  // Each as rich text too, when a teammate wrote it in Jira's editor.
+  comments: (FixtureIssue["comments"][number] & { document?: unknown })[];
   epic: string | null;
   assignee: string | null;
   points: number | null;
@@ -246,7 +247,7 @@ export function memorySite(
         total: issue.comments.length,
         comments: issue.comments.map((comment) => ({
           author: { displayName: people.get(comment.author) ?? comment.author },
-          body: textToAdf(comment.body),
+          body: comment.document ?? textToAdf(comment.body),
           created: comment.at,
         })),
       });
@@ -412,6 +413,14 @@ export function memorySite(
       if (!issue) throw new Error(`no issue ${key}`);
       Object.assign(issue, { document, description: adfToText(document), updated: tick() });
     },
+    // A teammate comments in Jira's editor, as rich text, by their account ID.
+    comment(key: string, author: string, document: unknown) {
+      const issue = issues.get(key);
+      if (!issue) throw new Error(`no issue ${key}`);
+      const at = tick();
+      issue.comments.push({ author, body: adfToText(document), at, document });
+      issue.updated = at;
+    },
   };
 }
 
@@ -489,6 +498,36 @@ export const richDescription = {
       text(" to check "),
       text("this", [{ type: "link", attrs: { href: "javascript:alert(1)" } }]),
       text(" before the review."),
+    ),
+  ],
+};
+
+// A comment as Jira's editor writes it, for `comment`: a list, a code block
+// and a link.
+export const richComment = {
+  type: "doc",
+  version: 1,
+  content: [
+    paragraph(text("Checked on the three browsers we care about:")),
+    {
+      type: "bulletList",
+      content: [
+        item(text("Safari shows the button")),
+        item(text("Chrome shows it once a card is saved")),
+        item(text("Firefox falls back to the card form")),
+      ],
+    },
+    {
+      type: "codeBlock",
+      attrs: { language: "text" },
+      content: [text("PaymentRequest is not defined")],
+    },
+    paragraph(
+      text("Firefox's console says the above; "),
+      text("the tracking bug", [
+        { type: "link", attrs: { href: "https://bugs.example.com/wallet/1203" } },
+      ]),
+      text(" has more."),
     ),
   ],
 };

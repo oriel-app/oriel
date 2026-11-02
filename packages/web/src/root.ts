@@ -33,7 +33,7 @@ import {
   leftPage,
   updateEnding,
 } from "./ending.ts";
-import { type Effect, get, type Replied, report } from "./http.ts";
+import { type Effect, get, type Replied, report, type Tag } from "./http.ts";
 import {
   initJira,
   type JiraModel,
@@ -46,12 +46,19 @@ import { samePage, withItem } from "./nav.ts";
 import {
   checkPanel,
   type CurrentWorkstream,
+  keptAdds,
   openPanel,
+  type PanelAdds,
   type PanelModel,
   type PanelMsg,
   panelReplied,
+  checkAdd,
+  recheckAdd,
+  shownOf,
+  standingAdds,
   stepped,
   updatePanel,
+  withAdds,
 } from "./panel.ts";
 import {
   initReview,
@@ -96,6 +103,7 @@ import type {
   ThreadsView,
   StreamEvent,
   ThreadSummaryView,
+  WorkstreamView,
 } from "./view.ts";
 
 export type Model = {
@@ -125,6 +133,9 @@ export type Model = {
   // The list on the page the open item was opened from, by item ID, which
   // the panel steps through; null when it wasn't opened from one.
   panelList: readonly string[] | null;
+  // The panel's last add of each item, for as long as it can be undone,
+  // whatever item the panel shows.
+  panelAdds: PanelAdds;
   // The sidebar's search over the workspace's threads.
   search: SearchModel;
 };
@@ -208,6 +219,7 @@ export function init(route: Route): [Model, Effect[]] {
     ending: initEnding(),
     panel: null,
     panelList: null,
+    panelAdds: [],
     search: initSearch(),
   };
   return withPanel(...enter(empty, route));
@@ -219,8 +231,9 @@ function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
   const { item } = model.route;
   if (item === undefined) return [{ ...model, panel: null }, effects];
   if (model.panel?.id === item) return [model, effects];
-  const [panel, opened] = openPanel(item);
-  return [{ ...model, panel }, [...effects, ...opened]];
+  const [panel, opened] = openPanel(item, model.panelAdds);
+  const checked = checkAdd(model.panelAdds, item, model.workstreams);
+  return [{ ...model, panel }, [...effects, ...opened, ...checked]];
 }
 
 // Sets up the page `route` names. The window keeps its state between visits,
@@ -306,13 +319,39 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 // However a thread's page changed, it scrolls the same way. However the user
 // asked for a page, one already open stays as it is.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
-  const [next, effects] = staying(...updated(model, msg));
+  const [next, effects] = staying(...standing(msg, ...updated(model, msg)));
   const moved = effects.some(
     (effect) =>
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
   return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
+}
+
+// Replies whose body is a workstream's whole view: its version and its
+// members from one read. A view a page merged from more than one, as after a
+// rename or a thread's status, may pair a version with older members.
+const wholeViews: ReadonlySet<Tag["kind"]> = new Set([
+  "workstream",
+  "workstreamSynced",
+  "workstreamChanged",
+  "panelAddChecked",
+]);
+
+// An add the panel made goes once a workstream, as Oriel answers with it,
+// shows it undone some other way.
+function standing(msg: Msg, model: Model, effects: Effect[]): [Model, Effect[]] {
+  if (msg.type !== "replied" || !msg.ok || !wholeViews.has(msg.tag.kind)) return [model, effects];
+  if (model.panelAdds.length === 0) return [model, effects];
+  const shown = shownOf(msg.body as WorkstreamView);
+  return [addsSeen(model, standingAdds(model.panelAdds, [shown])), effects];
+}
+
+// The panel's adds as they stand now, and the panel without one that doesn't.
+function addsSeen(model: Model, panelAdds: PanelAdds): Model {
+  if (panelAdds === model.panelAdds) return model;
+  const panel = model.panel && withAdds(model.panel, panelAdds);
+  return { ...model, panelAdds, panel };
 }
 
 // The page a route opens, whatever is open in the panel beside it or where
@@ -479,10 +518,16 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
 
 function replied(model: Model, msg: Replied): [Model, Effect[]] {
   switch (msg.tag.kind) {
-    case "workstreams":
-      return msg.ok
-        ? [{ ...model, workstreams: (msg.body as WorkstreamsView).workstreams }, []]
-        : [model, []];
+    // An open item's add whose workstream changed since is checked again.
+    case "workstreams": {
+      if (!msg.ok) return [model, []];
+      const { workstreams } = msg.body as WorkstreamsView;
+      const checked = model.panel ? checkAdd(model.panelAdds, model.panel.id, workstreams) : [];
+      return [{ ...model, workstreams }, checked];
+    }
+    // `standing` reads what it says.
+    case "panelAddChecked":
+      return [model, []];
     case "threads":
       return msg.ok ? [{ ...model, threads: (msg.body as ThreadsView).threads }, []] : [model, []];
     // Telemetry is best effort; the window carries on either way.
@@ -500,12 +545,18 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     }
     // The workstream changed, wherever the panel was by the time it answered:
     // the sidebar's counts, and the page on screen, show it.
+    // A failed Undo asks whether the add still stands.
     case "panelAdded":
     case "panelAddUndone": {
-      const changed = msg.ok ? [loadWorkstreams, ...reloadShown(model)] : [];
-      if (model.panel === null) return [model, changed];
+      const changed = msg.ok
+        ? [loadWorkstreams, ...reloadShown(model)]
+        : msg.tag.kind === "panelAddUndone"
+          ? recheckAdd(model.panelAdds, msg.tag.id)
+          : [];
+      const panelAdds = keptAdds(model.panelAdds, msg);
+      if (model.panel === null) return [{ ...model, panelAdds }, changed];
       const [panel, effects] = panelReplied(model.panel, msg);
-      return [{ ...model, panel }, [...effects, ...changed]];
+      return [{ ...model, panelAdds, panel: withAdds(panel, panelAdds) }, [...effects, ...changed]];
     }
     case "markedDone":
     case "deletion":

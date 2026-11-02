@@ -26,7 +26,13 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
-import { memorySite, memorySiteOrigin, richDescription } from "../packages/jira/src/memory-site.ts";
+import { textToAdf } from "../packages/jira/src/adf.ts";
+import {
+  memorySite,
+  memorySiteOrigin,
+  richComment,
+  richDescription,
+} from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
 import { memoryStore } from "../packages/server/src/connection.ts";
 import type { SlackMode } from "../packages/server/src/app.ts";
@@ -145,9 +151,12 @@ const live = async () => {
 };
 const offline = await live();
 offline.site.outage("offline");
-// A teammate wrote SYN-23's description in Jira's editor, as rich text.
+// A teammate wrote SYN-23's description in Jira's editor, as rich text, and
+// two comments on it: one plain, one with a list, code and a link.
 const described = await live();
 described.site.describe("SYN-23", richDescription);
+described.site.comment("SYN-23", "amara", textToAdf("Design signed this off on Monday."));
+described.site.comment("SYN-23", "esme", richComment);
 // A server that syncs SYN from a board that takes no estimates, as a
 // team-managed board with no points field does.
 const unpointed = await serve(0, {
@@ -545,6 +554,15 @@ const unend = async (page: Page) => {
   await page.locator(".workstream-actions").waitFor();
 };
 
+// A workstream on a server of its own, to add an item to from the panel,
+// then step away and back (OA-149).
+const revisiting = (await writing()).serving;
+const revisited = await post<{ id: string }>(
+  "/api/workstreams",
+  { kind: "picked", name: "Declined card retry", items: ["jira:SYN-23"] },
+  revisiting,
+);
+
 // Threads on a server whose clock moves on eight days partway through: the
 // two asked before that and left unsettled are dropped, beside two done.
 const idling = await (async () => {
@@ -807,6 +825,18 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-text").waitFor();
     },
   },
+  // Its comments read the same way: a plain one as written, one with a list,
+  // code and a link with them (OA-148).
+  {
+    name: "panel-jira-comments",
+    window: true,
+    path: "/?grouping=epic&item=jira%3ASYN-23",
+    on: described.serving,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".item-panel .panel-thread").scrollIntoViewIfNeeded();
+    },
+  },
   // What the Slack fixture marks (OA-94): mentions, here, and a reply also
   // sent to the channel; an edit; a file with no text; an unknown person.
   ...[
@@ -867,6 +897,25 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       await page.getByRole("button", { name: "Add to workstream" }).click();
       await page.locator(".panel-added, .panel-actions .panel-problem").first().waitFor();
+    },
+  },
+  // Its line and Undo come back with the item after stepping away (OA-149).
+  {
+    name: "panel-add-back",
+    window: true,
+    path: `/?grouping=epic&addTo=${revisited.id}`,
+    on: revisiting,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page.locator(".item a.key", { hasText: "SYN-99" }).click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("button", { name: "Add to workstream" }).click();
+      await page.locator(".panel-added").waitFor();
+      await page.keyboard.press("ArrowDown");
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.keyboard.press("ArrowUp");
+      await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
   {

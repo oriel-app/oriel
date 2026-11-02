@@ -39,7 +39,7 @@ export type JiraAttrs = {
 export type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 
 // Full content, read live at run time. Rich text arrives as plain text, and
-// a structured description as Jira's rich text too, for the panel.
+// a structured description or comment as Jira's rich text too, for the panel.
 export type JiraContent = {
   issueType: string;
   status: { name: string; category: State };
@@ -55,7 +55,8 @@ export type JiraContent = {
   // The description as Jira's rich text, for the panel, when it has more
   // than paragraphs of plain text: a list, a heading, code, a link, a mark.
   descriptionDoc?: unknown;
-  comments: { author: string; body: string; at: Instant }[];
+  // Each comment's body as rich text too, on the same terms.
+  comments: { author: string; body: string; bodyDoc?: unknown; at: Instant }[];
   links: { linkId: string; url: string; title: string }[];
   // What any item's read returns: the summary as the title, and the summary,
   // description and comments as one plain text.
@@ -93,6 +94,7 @@ export const jiraContent = object({
     object({
       author: string,
       body: string,
+      bodyDoc: optional(unknown),
       at: refine(string, isInstant, "expected an instant"),
     }),
   ),
