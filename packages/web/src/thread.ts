@@ -183,11 +183,13 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
+    // Sending takes the page to the latest entry, where what was said and the
+    // reply to it show, and keeps it there.
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending || model.view?.running) return [model, []];
       return [
-        { ...model, sending: true, notice: null },
+        { ...model, sending: true, notice: null, atLatest: true },
         [post(`/api/threads/${model.id}/messages`, { text }, { kind: "sent", threadId: model.id })],
       ];
     }
@@ -286,7 +288,12 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       // Sending is a message: not while the agent answers, nor as nothing.
       if (sending && (model.view?.running || edited === "")) return [model, []];
       return [
-        { ...model, settling: [...model.settling, seq], notice: null },
+        {
+          ...model,
+          settling: [...model.settling, seq],
+          notice: null,
+          atLatest: model.atLatest || sending,
+        },
         [
           post(
             `/api/threads/${model.id}/held/${seq}/${sending ? "send" : "discard"}`,
@@ -366,6 +373,7 @@ const nearLatest = 40;
 // names, and while the user is at the latest, the thread or a diff changing
 // (an entry, a change set's status, a reload after its workstream changed)
 // keeps them there, as does the composer emptying once a message is sent.
+// Sending one, or a held message, takes them there from anywhere.
 // Once it renders, the page is asked again, so a user who scrolled up
 // meanwhile, or is reading a run they opened, stays where they are.
 export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
