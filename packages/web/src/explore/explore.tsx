@@ -469,6 +469,202 @@ function OverviewR1({ data, design }: Props) {
   );
 }
 
+// A workstream as one row: name, status, what moved, when, threads, signals.
+export function WorkstreamTable({ cards, now }: { cards: Card[]; now: string }) {
+  return (
+    <ul class="x-rows x-table">
+      {cards.map((card) => (
+        <li key={card.id} class="x-row x-ws" data-workstream={card.name}>
+          <a class="x-title x-ws-name" href={`/workstreams/${card.id}`}>
+            {card.name}
+          </a>
+          <span class="x-ws-bar">
+            <StatusBar status={card.status} />
+          </span>
+          <span class="x-ws-moved">
+            {card.moved > 0 ? (
+              <>
+                <strong>{card.moved}</strong> moved{card.movedDone > 0 && `, ${card.movedDone} done`}
+              </>
+            ) : (
+              <span class="x-quiet">none moved</span>
+            )}
+          </span>
+          <span class="x-ws-last" title="Latest member update or thread activity">
+            {since(card.lastActivity, now)} ago
+          </span>
+          <span class="x-ws-threads">
+            {card.threads.waiting > 0
+              ? `${card.threads.waiting} waiting on you`
+              : card.threads.working > 0
+                ? `${card.threads.working} working`
+                : ""}
+          </span>
+          <span class="x-ws-signals">
+            {card.signals.map((s) => (
+              <span key={s.rule} class="x-signal" title={s.rule}>
+                {s.text}
+              </span>
+            ))}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Round 2: denser. One line per workstream, and the overview in two columns
+// where there is room, so every section starts on the first screen.
+function OverviewR2({ data, design, headlines = false }: Props & { headlines?: boolean }) {
+  const cards = data.workstreams.toSorted((a, b) => b.moved - a.moved);
+  return (
+    <div class="x-page x-dense" data-useful>
+      <div class="x-top">
+        <nav class="x-tabs">
+          <a aria-current="page" href={`/?design=${design}`}>
+            Overview
+          </a>
+          <a data-browse href={browse({})}>
+            Browse
+          </a>
+        </nav>
+        <Strip data={data} />
+      </div>
+      {headlines && <Headlines data={data} />}
+      <div class="x-columns">
+        <div class="x-main">
+          <NeedsYou data={data} cap={4} />
+          <Section id="workstreams" title="Workstreams" count={cards.length}>
+            <WorkstreamTable cards={cards} now={data.now} />
+          </Section>
+        </div>
+        <div class="x-side">
+          <Candidates data={data} />
+          <People data={data} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Round 3: headlines. One computed line for each standing question, each the
+// extreme of one measure, with its rule. A fixed number of lines whatever the
+// number of sources or workstreams.
+export function Headlines({ data }: { data: OverviewData }) {
+  const cards = data.workstreams;
+  const moved = cards.toSorted((a, b) => b.moved - a.moved)[0];
+  const quiet = cards.toSorted((a, b) => a.lastActivity.localeCompare(b.lastActivity))[0];
+  const waited = data.needsYou[0];
+  const talked = data.talked[0];
+  const top = data.candidates[0];
+  const busiest = data.people[0];
+  const lines: { id: string; label: string; rule: string; body: ComponentChildren }[] = [];
+  if (waited)
+    lines.push({
+      id: "waited",
+      label: "Waited longest",
+      rule: `The oldest of the ${data.needsYou.length} threads waiting on you`,
+      body: (
+        <>
+          <a class="x-title" href={`/threads/${waited.thread.id}`}>
+            {waited.thread.title}
+          </a>{" "}
+          <span class="x-sub">
+            {since(waited.since, data.now)} · {waited.workstream.name}
+          </span>
+        </>
+      ),
+    });
+  if (moved && moved.moved > 0)
+    lines.push({
+      id: "moved",
+      label: `Moved most since ${weekday(data.lastSeen)}`,
+      rule: "The workstream with the most members changed since you last looked",
+      body: (
+        <>
+          <a class="x-title" href={`/workstreams/${moved.id}`}>
+            {moved.name}
+          </a>{" "}
+          <span class="x-sub">
+            {moved.moved} items moved{moved.movedDone > 0 && `, ${moved.movedDone} to done`}
+          </span>
+        </>
+      ),
+    });
+  if (quiet)
+    lines.push({
+      id: "quiet",
+      label: "Quiet longest",
+      rule: "The open workstream whose latest member update or thread activity is oldest",
+      body: (
+        <>
+          <a class="x-title" href={`/workstreams/${quiet.id}`}>
+            {quiet.name}
+          </a>{" "}
+          <span class="x-sub">nothing moved in {plural(quiet.idleDays, "day")}</span>
+        </>
+      ),
+    });
+  if (talked)
+    lines.push({
+      id: "talked",
+      label: "Named most in chat this week",
+      rule: "The item chat messages from the last 7 days name most",
+      body: (
+        <>
+          <span class="x-title">
+            <span class="key">{talked.key}</span> {talked.title}
+          </span>{" "}
+          <span class="x-sub">
+            named {talked.refs}× · {talked.workstream ? `in ${talked.workstream}` : "not in a workstream"}
+          </span>
+        </>
+      ),
+    });
+  if (top)
+    lines.push({
+      id: "top",
+      label: "Top not in a workstream",
+      rule: top.rule,
+      body: (
+        <>
+          <span class="x-title">{top.label}</span>{" "}
+          <span class="x-sub">
+            {top.source} · {top.detail}
+          </span>
+        </>
+      ),
+    });
+  if (busiest)
+    lines.push({
+      id: "busiest",
+      label: "Most in progress",
+      rule: "The person with the most items in progress",
+      body: (
+        <>
+          <span class="x-title">{busiest.name}</span>{" "}
+          <span class="x-sub">{busiest.inProgress} items in progress</span>
+        </>
+      ),
+    });
+  return (
+    <section class="x-headlines" data-section="headlines" aria-label="Headlines">
+      {lines.map((line) => (
+        <p key={line.id} class="x-headline" title={line.rule}>
+          <span class="x-headline-label">{line.label}</span>
+          <span class="x-headline-body">{line.body}</span>
+        </p>
+      ))}
+    </section>
+  );
+}
+
+function OverviewR3(props: Props) {
+  return <OverviewR2 {...props} headlines />;
+}
+
 export const layouts: Record<string, (props: Props) => ComponentChildren> = {
+  r3: OverviewR3,
   r1: OverviewR1,
+  r2: OverviewR2,
 };

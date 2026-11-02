@@ -88,3 +88,9 @@ export function register(design: Omit<Design, "paths"> & { paths?: Design["paths
 
 // Round 1: 0027's overview as written.
 register({ id: "r1", query: "design=r1", useful: "[data-useful]" });
+
+// Round 2: denser. A line per workstream, two columns.
+register({ id: "r2", query: "design=r2", useful: "[data-useful]" });
+
+// Round 3: R2 with a band of headlines.
+register({ id: "r3", query: "design=r3", useful: "[data-useful]" });
