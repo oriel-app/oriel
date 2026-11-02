@@ -11,40 +11,28 @@ import {
 import type { Effect, Replied } from "../src/http.ts";
 import { init as initRoot, type Model, update as updateRoot } from "../src/root.ts";
 import type { WorkstreamView, MemberView } from "../src/view.ts";
+import { itemRef, itemRow, memberView, workstreamSummary, workstreamView } from "../testing.ts";
 
 const workstreamId = "01JBZ0000000000000000000G1";
-const at = "2026-10-31T09:00:00.000Z";
 
-const member = (key: string, inIndex = true): MemberView => ({
-  ref: { id: `jira:${key}`, key, title: `Story ${key}`, url: null },
-  row: inIndex
-    ? {
-        id: `jira:${key}`,
-        key,
-        title: `Story ${key}`,
-        type: "Story",
-        status: null,
-        assignee: null,
-        points: null,
-        idleDays: 0,
-      }
-    : null,
-});
+const member = (key: string, inIndex = true): MemberView =>
+  memberView({
+    ref: itemRef({ id: `jira:${key}`, key, title: `Story ${key}` }),
+    row: inIndex ? itemRow({ id: `jira:${key}`, key, title: `Story ${key}` }) : null,
+  });
 
-const view = (version: number, members: MemberView[]): WorkstreamView => ({
-  workstream: {
-    id: workstreamId,
-    name: "Launch",
-    origin: { kind: "picked" },
-    version,
-    size: members.length,
-    createdAt: at,
-    threads: { working: 0, done: 0, "handed-off": 0, dropped: 0 },
-  },
-  members,
-  changes: [],
-  threads: [],
-});
+const view = (version: number, members: MemberView[]): WorkstreamView =>
+  workstreamView({
+    workstream: workstreamSummary({
+      id: workstreamId,
+      name: "Launch",
+      version,
+      size: members.length,
+    }),
+    members,
+    changes: [],
+    threads: [],
+  });
 
 const [a, b, c] = [member("OA-11"), member("OA-12"), member("OA-13")];
 

@@ -14,14 +14,8 @@ import {
   type ThreadModel,
   type ThreadMsg,
 } from "../src/thread.ts";
-import {
-  type ChangeSetView,
-  type ChatEntry,
-  holding,
-  type ThreadSummaryView,
-  type ThreadView,
-  waitingOn,
-} from "../src/view.ts";
+import { type ChatEntry, holding, type ThreadView, waitingOn } from "../src/view.ts";
+import { changeSetView, threadSummary, threadView } from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
@@ -30,18 +24,12 @@ const at = "2026-11-01T09:00:00.000Z";
 // Where the held message is in the chat.
 const seq = 3;
 
-const rejectedSet: ChangeSetView = {
+const rejectedSet = changeSetView({
   id: setId,
   status: "rejected",
   nextSteps: [],
-  applying: false,
-  sentUnapplied: false,
   decision: { kind: "rejected", via: "review-link", by: "Ana", at },
-  errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-};
+});
 
 const held = (outcome: "sent" | "discarded" | null): ChatEntry => ({
   seq,
@@ -52,30 +40,25 @@ const held = (outcome: "sent" | "discarded" | null): ChatEntry => ({
   outcome,
 });
 
-const viewWith = (entry: ChatEntry, running = false): ThreadView => ({
-  id,
-  title: "Plan gift cards",
-  workstream: { id: workstreamId, name: "Practice", version: 1 },
-  state: "working",
-  doneBy: null,
-  regionVersion: 1,
-  members: [],
-  entries: [{ seq: 1, at, kind: "change-set", changeSetId: setId }, entry],
-  lastSeq: 3,
-  running,
-  changeSets: [rejectedSet],
-  writable: true,
-});
+const viewWith = (entry: ChatEntry, running = false): ThreadView =>
+  threadView({
+    id,
+    title: "Plan gift cards",
+    workstream: { id: workstreamId, name: "Practice", version: 1 },
+    state: "working",
+    entries: [{ seq: 1, at, kind: "change-set", changeSetId: setId }, entry],
+    lastSeq: 3,
+    running,
+    changeSets: [rejectedSet],
+  });
 
-const summary: ThreadSummaryView = {
+const summary = threadSummary({
   id,
   title: "Plan gift cards",
   workstream: { id: workstreamId, name: "Practice" },
   state: "working",
-  doneBy: null,
   waitingOn: "held",
-  activityAt: at,
-};
+});
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
   type: "replied",

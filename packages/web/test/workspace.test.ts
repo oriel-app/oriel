@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
 import { init, update } from "../src/root.ts";
+import { threadView } from "../testing.ts";
 
 const workstreamId = "01JBZ0000000000000000000G1";
 const threadId = "01JBZ0000000000000000000T1";
@@ -30,7 +31,7 @@ test("a thread's page loads its thread again when its workstream changed, moved 
     type: "replied",
     tag: { kind: "thread", id: threadId },
     ok: true,
-    body: { id: threadId, entries: [], changeSets: [], lastSeq: 3, running: false },
+    body: threadView({ id: threadId, entries: [], changeSets: [], lastSeq: 3, running: false }),
   });
   assert.deepEqual(
     requests(update(shown, { type: "streamed", event: { type: "workstream" } })[1]),

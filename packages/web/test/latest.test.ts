@@ -4,34 +4,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
-import type { ChangeSetView, ChatEntry, ThreadView } from "../src/view.ts";
+import type { ChatEntry } from "../src/view.ts";
+import { changeSetView, diffView, threadView } from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-01-01T00:00:00.000Z";
 
-const openSet: ChangeSetView = {
+const openSet = changeSetView({
   id: setId,
   status: "open",
   nextSteps: [{ kind: "approve" }, { kind: "reject" }],
-  applying: false,
-  sentUnapplied: false,
-  decision: null,
-  errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-};
+});
 
-const view: ThreadView = {
+const view = threadView({
   id,
   title: "Hi",
   workstream: { id: workstreamId, name: "Checkout", version: 1 },
   state: "working",
-  doneBy: null,
-  regionVersion: 1,
-  members: [],
   entries: [
     { seq: 1, at, kind: "user", text: "Estimate these" },
     { seq: 2, at, kind: "change-set", changeSetId: setId },
@@ -39,8 +30,7 @@ const view: ThreadView = {
   lastSeq: 2,
   running: false,
   changeSets: [openSet],
-  writable: true,
-};
+});
 
 // The update asks to hear once the page has rendered, and then scrolls.
 const asks = (effects: readonly Effect[]) => effects.some((e) => e.type === "rendered");
@@ -86,7 +76,7 @@ test("new entries, and the diff that fills a change set, keep the page at the la
     type: "replied",
     tag: { kind: "diff", changeSetId: setId },
     ok: true,
-    body: { changeSetId: setId, hash: "h", lines: [] },
+    body: diffView({ changeSetId: setId, hash: "h" }),
   });
   assert.equal(asks(diffed[1]), true);
   // Typing changes nothing the chat shows.

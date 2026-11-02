@@ -8,6 +8,12 @@
 // tried on a copy of the database and of Jira so the walk goes on from the
 // state as it was. While an apply is in flight, nothing is offered and every
 // action is refused as busy (invariant 9).
+//
+// CI walks all 200 histories (GitHub Actions sets `CI`). Elsewhere it walks
+// the first 30 of the same 200, in a tenth of the time, and skips the checks
+// that the walk reached the states the invariants are about, which take all
+// 200. To walk all 200 locally:
+// `CI=true node --test packages/changeset/src/model.test.ts`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -37,7 +43,8 @@ import {
 } from "./testing.ts";
 
 const seed = 20261029;
-const sequences = 200;
+const histories = 200;
+const sequences = process.env["CI"] ? histories : 30;
 const steps = 28;
 
 // mulberry32: small, fast, and the same everywhere.
@@ -1051,7 +1058,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   return { landed: jira.landings.length, reverts: checked, reached };
 }
 
-test("model: random histories keep the change-set invariants", async () => {
+test("model: random histories keep the change-set invariants", async (t) => {
   const shared = setup();
   let landed = 0;
   let reverts = 0;
@@ -1062,6 +1069,12 @@ test("model: random histories keep the change-set invariants", async () => {
     reverts += outcome.reverts;
     for (const [state, n] of Object.entries(outcome.reached))
       reached[state] = (reached[state] ?? 0) + n;
+  }
+  if (sequences < histories) {
+    t.diagnostic(
+      `walked ${sequences} of ${histories} histories; CI=true walks all and checks what they reached`,
+    );
+    return;
   }
   // And the states the offered-step invariants are about: a dismissed set
   // with applied rows and one sent unanswered, a gone item, stale arguments,

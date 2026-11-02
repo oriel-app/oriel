@@ -27,13 +27,21 @@ import { init, pickedName, update } from "../src/update.ts";
 import type {
   ChangeSetView,
   ChatEntry,
-  DiffView,
-  WorkstreamView,
   NextStepView,
   ReviewView,
   ThreadView,
   WindowView,
 } from "../src/view.ts";
+import {
+  changeSetView,
+  clusterRow,
+  diffView,
+  itemRow,
+  threadView,
+  windowView,
+  workstreamSummary,
+  workstreamView,
+} from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
@@ -88,44 +96,36 @@ test("only http(s) URLs become links", () => {
     assert.equal(safeHref(url), undefined, String(url));
 });
 
-function windowView(): WindowView {
-  const row = (key: string) => ({
-    id: `jira:${key}`,
-    key,
-    title: `Title ${key}`,
-    type: "Story",
-    status: null,
-    assignee: null,
-    points: null,
-    idleDays: 0,
-  });
-  return {
+function checkoutWindow(): WindowView {
+  const row = (key: string) =>
+    itemRow({ id: `jira:${key}`, key, title: `Title ${key}`, type: "Story" });
+  return windowView({
     grouping: "epic",
     clusters: [
       {
-        row: {
+        row: clusterRow({
           key: "10001",
           label: "Checkout",
           origin: { kind: "source", source: "Jira" },
           anchor: { ...row("SYN-1"), title: "Checkout", type: "Epic" },
           count: 2,
-          points: 0,
-          estimated: 0,
           unestimated: 2,
           status: { todo: 2, "in-progress": 0, done: 0 },
-        },
+        }),
         list: [row("SYN-10"), row("SYN-11")],
       },
     ],
     items: 2,
-    asOf: at,
-    fixture: true,
-  };
+  });
 }
 
 function shownWindow() {
   const [model] = init("epic");
-  return update(model, { type: "windowLoaded", request: model.request, window: windowView() })[0];
+  return update(model, {
+    type: "windowLoaded",
+    request: model.request,
+    window: checkoutWindow(),
+  })[0];
 }
 
 test("the ask box and a picked workstream's name count items in good English", () => {
@@ -168,19 +168,10 @@ test("picking items, then making a workstream of them, goes to the new workstrea
 });
 
 test("an epic is picked from its heading like any item, and names the workstream it starts", () => {
-  const view = windowView();
+  const view = checkoutWindow();
   const [checkout] = view.clusters;
   assert.ok(checkout);
-  const epic = {
-    id: "jira:SYN-1",
-    key: "SYN-1",
-    title: "Checkout v2",
-    type: "Epic",
-    status: null,
-    assignee: null,
-    points: null,
-    idleDays: 0,
-  };
+  const epic = itemRow({ id: "jira:SYN-1", key: "SYN-1", title: "Checkout v2", type: "Epic" });
   const anchored = { ...view, clusters: [{ ...checkout, row: { ...checkout.row, anchor: epic } }] };
   const [initial] = init("epic");
   let model = update(initial, {
@@ -208,7 +199,7 @@ test("an epic is picked from its heading like any item, and names the workstream
 // The window as a source with no epics shows it: its items in a derived
 // cluster that says what they lack.
 function noEpicsWindow(titles: string[]): WindowView {
-  const window = windowView();
+  const window = checkoutWindow();
   const [epic] = window.clusters;
   const [story] = epic?.list ?? [];
   if (!epic || !story) throw new Error("no cluster");
@@ -272,37 +263,29 @@ test("a cluster becomes a workstream in one click; picked items can join an exis
   assert.deepEqual(update(picked, { type: "selectionCleared" })[0].selected, []);
 });
 
-function threadView(entries: ChatEntry[], changeSets: ChangeSetView[] = []): ThreadView {
-  return {
+const thread = (entries: ChatEntry[], changeSets: ChangeSetView[] = []): ThreadView =>
+  threadView({
     id,
     title: "Hi",
     workstream: { id: workstreamId, name: "Checkout", version: 1 },
     state: "working",
-    doneBy: null,
     regionVersion: 1,
-    members: [],
     entries,
     lastSeq: entries.at(-1)?.seq ?? 0,
     running: false,
     changeSets,
     writable: false,
-  };
-}
+  });
 
-const openSet: ChangeSetView = {
+const openSet = changeSetView({
   id: setId,
   status: "open",
   nextSteps: [{ kind: "approve" }, { kind: "reject" }, { kind: "remove", mutationIds: ["m1"] }],
-  applying: false,
-  sentUnapplied: false,
   decision: null,
   errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-};
+});
 
-const diff: DiffView = { changeSetId: setId, hash: "h1", lines: [] };
+const diff = diffView({ changeSetId: setId, hash: "h1" });
 
 function loadedThread(view: ThreadView): [ThreadModel, Effect[]] {
   const [model] = initThread(id);
@@ -314,7 +297,7 @@ test("a thread loads, then watches its events from the last entry, and diffs its
     { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
   ]);
   const [model, effects] = loadedThread(
-    threadView(
+    thread(
       [
         { seq: 1, at, kind: "user", text: "Hi" },
         { seq: 2, at, kind: "change-set", changeSetId: setId },
@@ -336,7 +319,7 @@ test("a thread loads, then watches its events from the last entry, and diffs its
 });
 
 test("streamed entries append once, and a new change set fetches its diff", () => {
-  const [model] = loadedThread(threadView([{ seq: 1, at, kind: "user", text: "Hi" }]));
+  const [model] = loadedThread(thread([{ seq: 1, at, kind: "user", text: "Hi" }]));
   const text = {
     type: "entry" as const,
     entry: { seq: 2, at, kind: "text" as const, text: "Hello" },
@@ -364,7 +347,7 @@ test("streamed entries append once, and a new change set fetches its diff", () =
 });
 
 test("an apply reloads each tab twice and diffs once: as it starts, then as it ends", () => {
-  const [loaded] = loadedThread(threadView([], [openSet]));
+  const [loaded] = loadedThread(thread([], [openSet]));
   const urls = (effects: Effect[]) => effects.map((e) => (e.type === "http" ? e.url : e.type));
   // The tab that approved: its own reply adds nothing, the stream says it all.
   const [approving, approve] = threadReplied(
@@ -401,7 +384,7 @@ test("a stream that reconnects reloads the thread once, and diffs every change s
     type: "replied",
     tag: { kind: "thread", id },
     ok: true,
-    body: threadView(
+    body: thread(
       [],
       [
         { ...openSet, status: "applying", applying: true, nextSteps: [] },
@@ -423,7 +406,7 @@ test("a stream that reconnects reloads the thread once, and diffs every change s
 
 test("approving sends the hash of the diff on screen; a refusal shows on the change set", () => {
   const [loaded] = loadedThread(
-    threadView([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
+    thread([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
   );
   // No diff yet: nothing to approve.
   assert.deepEqual(
@@ -475,7 +458,7 @@ test("approving sends the hash of the diff on screen; a refusal shows on the cha
 });
 
 test("sending a message clears the draft once the server takes it", () => {
-  const [loaded] = loadedThread(threadView([]));
+  const [loaded] = loadedThread(thread([]));
   const drafted = updateThread(loaded, { type: "draftChanged", text: "  What's left?  " })[0];
   const [sending, effects] = updateThread(drafted, { type: "sendClicked" });
   assert.deepEqual(effects[0], {
@@ -533,7 +516,7 @@ const stoppedSet: ChangeSetView = {
 };
 
 test("only what the change set engine offers is sent", () => {
-  const [loaded] = loadedThread(threadView([], [stoppedSet]));
+  const [loaded] = loadedThread(thread([], [stoppedSet]));
   const [shown] = threadReplied(loaded, ok({ kind: "diff", changeSetId: setId }, diff));
   const click = (step: Exclude<NextStepView["kind"], "remove">) =>
     updateThread(shown, { type: "changeSetClicked", changeSetId: setId, step })[1];
@@ -552,7 +535,7 @@ test("only what the change set engine offers is sent", () => {
 });
 
 test("dismissing keeps what it says to check", () => {
-  const [loaded] = loadedThread(threadView([], [stoppedSet]));
+  const [loaded] = loadedThread(thread([], [stoppedSet]));
   const [dismissed] = threadReplied(
     loaded,
     ok(
@@ -575,7 +558,7 @@ test("each offered step has a name for where the change set stands", () => {
 });
 
 test("a stopped change is left out with an edit, and the thread's stream reloads it", () => {
-  const [loaded] = loadedThread(threadView([], [stoppedSet]));
+  const [loaded] = loadedThread(thread([], [stoppedSet]));
   const [busy, effects] = updateThread(loaded, {
     type: "lineRemoved",
     changeSetId: setId,
@@ -605,7 +588,7 @@ test("a stopped change is left out with an edit, and the thread's stream reloads
 });
 
 test("a problem the server reports alongside a decision shows on the change set", () => {
-  const [loaded] = loadedThread(threadView([], [openSet]));
+  const [loaded] = loadedThread(thread([], [openSet]));
   const [shown] = threadReplied(
     loaded,
     ok(
@@ -710,7 +693,9 @@ test("what's dropped on a workstream's page is sent to it; the reply says only w
       tag: { kind: "dropped", workstreamId },
     },
   ]);
-  const view = { workstream: { name: "Checkout" } } as WorkstreamView;
+  const view = workstreamView({
+    workstream: workstreamSummary({ id: workstreamId, name: "Checkout" }),
+  });
   const refused = [{ what: "plan.md", why: "It isn't in the connected folder." }];
   const [after] = workstreamReplied(
     pending,
@@ -727,7 +712,7 @@ test("what's dropped on a workstream's page is sent to it; the reply says only w
 });
 
 test("what's dropped on a thread joins its workstream; the thread reloads to show the marker", () => {
-  const [model] = loadedThread(threadView([]));
+  const [model] = loadedThread(thread([]));
   const dropped = { links: ["OA-5"], files: [] };
   const [, sent] = updateThread(model, { type: "dropped", dropped });
   assert.deepEqual(sent, [
@@ -742,7 +727,7 @@ test("what's dropped on a thread joins its workstream; the thread reloads to sho
   const reply = (added: string[]) =>
     threadReplied(
       model,
-      ok({ kind: "dropped", workstreamId }, { workstream: {}, added, refused: [] }),
+      ok({ kind: "dropped", workstreamId }, { workstream: workstreamView(), added, refused: [] }),
     );
   assert.deepEqual(reply(["jira:OA-5"])[1], [
     { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
@@ -751,7 +736,9 @@ test("what's dropped on a thread joins its workstream; the thread reloads to sho
 });
 
 test("a workstream is renamed only when the name changed", () => {
-  const view = { workstream: { name: "Checkout" } } as WorkstreamView;
+  const view = workstreamView({
+    workstream: workstreamSummary({ id: workstreamId, name: "Checkout" }),
+  });
   const [model] = workstreamReplied(
     initWorkstream(workstreamId)[0],
     ok({ kind: "workstream", id: workstreamId }, view),
@@ -883,7 +870,7 @@ test("leaving a thread stops watching it; the window keeps what was picked", () 
 
 test("going back to a thread, or following its link again, watches it again", () => {
   const [model] = initRoot({ page: "thread", id });
-  const view = threadView([{ seq: 1, at, kind: "user", text: "Hi" }]);
+  const view = thread([{ seq: 1, at, kind: "user", text: "Hi" }]);
   const load = (current: typeof model) =>
     updateRoot(current, { type: "replied", tag: { kind: "thread", id }, ok: true, body: view });
   const [watching, first] = load(model);
@@ -917,7 +904,7 @@ test("the window reports a grouping switch and a zoom in or out, and nothing els
   const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
   const shown = updateRoot(model, {
     type: "window",
-    msg: { type: "windowLoaded", request: model.window?.request ?? 0, window: windowView() },
+    msg: { type: "windowLoaded", request: model.window?.request ?? 0, window: checkoutWindow() },
   })[0];
   const reported = (msg: Parameters<typeof update>[1]) =>
     updateRoot(shown, { type: "window", msg })[1].flatMap((e) =>
@@ -944,7 +931,7 @@ test("the window reports a grouping switch and a zoom in or out, and nothing els
 
 test("a diff that works clears an earlier diff's failure", () => {
   const [loaded] = loadedThread(
-    threadView([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
+    thread([{ seq: 1, at, kind: "change-set", changeSetId: setId }], [openSet]),
   );
   const tag = { kind: "diff", changeSetId: setId } as const;
   const [down] = threadReplied(loaded, failed(tag, "Oriel can't reach Jira."));

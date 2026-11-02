@@ -2,32 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { init, type Model, type Msg, update, zoomOf } from "../src/update.ts";
 import type { ClusterView, GroupingId, WindowView } from "../src/view.ts";
+import { clusterRow, windowView } from "../testing.ts";
 
 function cluster(key: string): ClusterView {
-  return {
-    row: {
-      key,
-      label: key,
-      origin: { kind: "source", source: "Jira" },
-      anchor: null,
-      count: 0,
-      points: 0,
-      estimated: 0,
-      unestimated: 0,
-      status: { todo: 0, "in-progress": 0, done: 0 },
-    },
-    list: [],
-  };
+  return { row: clusterRow({ key, label: key }), list: [] };
 }
 
 function view(grouping: GroupingId, keys: string[]): WindowView {
-  return {
-    grouping,
-    clusters: keys.map(cluster),
-    items: 0,
-    asOf: "2026-10-29T09:00:00.000Z",
-    fixture: true,
-  };
+  return windowView({ grouping, clusters: keys.map(cluster) });
 }
 
 function run(model: Model, ...msgs: Msg[]): Model {

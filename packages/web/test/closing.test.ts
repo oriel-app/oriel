@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { deletionWarning } from "../src/closing.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
-import type { ThreadView } from "../src/view.ts";
+import { threadView } from "../testing.ts";
 
 const threadId = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
@@ -129,7 +129,7 @@ test("cancelling a delete deletes nothing, and a refused one keeps asking with w
 
 test("a thread deleted in another tab says so on its page, which then watches the other threads", () => {
   const [onThread] = init({ page: "thread", id: threadId });
-  const view = { id: threadId, entries: [], lastSeq: 0, changeSets: [] } as unknown as ThreadView;
+  const view = threadView({ id: threadId, entries: [], lastSeq: 0, changeSets: [] });
   const [loaded] = run(onThread, replied({ kind: "thread", id: threadId }, view));
   const [gone, effects] = run(loaded, { type: "streamed", event: { type: "deleted" } });
   assert.equal(gone.thread?.deleted, true);
