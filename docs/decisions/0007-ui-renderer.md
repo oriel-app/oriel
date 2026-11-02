@@ -1,6 +1,6 @@
 # 0007 UI renderer: Preact, compiled by tsc
 
-Accepted 2026-10-28.
+Accepted 2026-10-28. Amended by 0029: there is no canvas, so the line on how it mounts no longer applies.
 
 **Decision.** `preact`, with JSX compiled by `tsc` itself (`jsx: react-jsx`, `jsxImportSource: preact`) and served as native ES modules through an import map. Hooks only; no signals, no compat layer. It lands with `packages/web`.
 
