@@ -69,6 +69,8 @@ test("only a folder can be connected, by a full path, from this window", async (
   assert.match((await refused(join(dir.top, "missing"))).error, /There's no folder/);
   assert.match((await refused(join(dir.root, "a.md"))).error, /a file, not a folder/);
   assert.match((await refused("notes")).error, /full path/);
+  // A path the check refuses is named alone, not beside Jira's details.
+  assert.equal((await refused("")).error, "$.path: expected a folder path");
   assert.equal((await app.post("/api/folder", { path: "x".repeat(5000) })).status, 413);
   assert.equal(
     (await app.post("/api/folder", { path: dir.root }, { origin: "https://attacker.example" }))
@@ -154,6 +156,26 @@ test("a folder syncs again on demand, and when the server starts", async (t) => 
   app.dir.write("Later.md", "Written while Oriel was off.");
   const again = await testApp(t, { db });
   assert.equal(json<{ folder: FolderView }>(await again.get("/api/folder")).folder.items, 4);
+});
+
+test("a dropped link to another site is refused by naming the sources connected now", async (t) => {
+  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const { id } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const why = async () =>
+    json<{ refused: { why: string }[] }>(
+      await app.post(`/api/workstreams/${id}/drop`, {
+        links: ["https://example.com/doc"],
+        files: [],
+      }),
+    ).refused.map((refusal) => refusal.why);
+  assert.deepEqual(await why(), ["Only Jira and Slack items can be added, not other pages."]);
+  const dir = folder(t, notes);
+  assert.equal((await app.post("/api/folder", { path: dir.root })).status, 200);
+  assert.deepEqual(await why(), [
+    "Only Jira, Folder and Slack items can be added, not other pages.",
+  ]);
 });
 
 test("a file dropped that the index doesn't have yet is found by syncing the folder once", async (t) => {

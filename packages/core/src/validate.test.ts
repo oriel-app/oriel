@@ -58,6 +58,26 @@ test("literal and union pick the first matching alternative", () => {
   assert.equal(kind("delete").ok, false);
 });
 
+test("a union of objects told apart by a literal names only the issues of the one the input picks", () => {
+  const connect = union(
+    object({ kind: literal("folder"), path: string }),
+    object({ kind: literal("jira"), site: string, token: string }),
+  );
+  assert.deepEqual(connect({ kind: "jira", site: "a", token: 1 }), {
+    ok: false,
+    issues: [{ path: "$.token", message: "expected a string" }],
+  });
+  assert.deepEqual(connect({ kind: "folder" }), {
+    ok: false,
+    issues: [{ path: "$.path", message: "expected a string" }],
+  });
+  // A kind none has, or none at all, names every alternative's issues.
+  const unknownKind = connect({ kind: "drive", path: "/a" });
+  assert.equal(unknownKind.ok ? 0 : unknownKind.issues.length, 4);
+  const noKind = connect([]);
+  assert.equal(noKind.ok ? 0 : noKind.issues.length, 2);
+});
+
 test("an inherited key does not satisfy the shape", () => {
   const input = Object.create({ key: "SYN-1" }) as object;
   assert.equal(object({ key: string })(input).ok, false);

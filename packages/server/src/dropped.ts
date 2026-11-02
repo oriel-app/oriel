@@ -10,8 +10,16 @@
 // - a file is the one folder file with its name and modification time.
 // What names nothing is refused with a plain reason (decision 0018: links and
 // files outside a connected folder wait for their own sources), and says
-// whether a sync might find it.
-import type { IndexRecord, ItemId, Presentations } from "@oriel/core";
+// whether a sync might find it. A link to a site Oriel doesn't index is
+// refused by naming the sources whose items it has, by their declared names.
+import {
+  type IndexRecord,
+  type ItemId,
+  parseItemId,
+  type Presentations,
+  type SourceKind,
+  sourceKinds,
+} from "@oriel/core";
 
 export type DroppedFile = { name: string; modified: number };
 export type Dropped = { links: readonly string[]; files: readonly DroppedFile[] };
@@ -37,6 +45,18 @@ const decoded = (part: string) => {
   }
 };
 
+// "Jira, Folder and Slack": each source with items here, in `sourceKinds` order.
+const sourceNames = new Intl.ListFormat("en-GB");
+const elsewhere = (sources: Presentations, kinds: ReadonlySet<SourceKind>) => {
+  const names = sourceKinds.flatMap((kind) => {
+    const source = sources[kind];
+    return source && kinds.has(kind) ? [source.name] : [];
+  });
+  return names.length > 0
+    ? `Only ${sourceNames.format(names)} items can be added, not other pages.`
+    : "Oriel has no items yet, so nothing can be added.";
+};
+
 const fileName = (location: string): string | null => {
   const url = URL.parse(location);
   if (!url || url.protocol !== "file:") return null;
@@ -46,8 +66,9 @@ const fileName = (location: string): string | null => {
 export function resolveDropped(
   records: readonly IndexRecord[],
   dropped: Dropped,
-  sources: Presentations = {},
+  sources: Presentations,
 ): Resolved {
+  const kinds = new Set<SourceKind>();
   const byPlace = new Map<string, ItemId>();
   const byHandle = new Map<string, ItemId>();
   const byName = new Map<string, IndexRecord[]>();
@@ -58,6 +79,8 @@ export function resolveDropped(
       byPlace.set(place(url), record.id);
       if (url.protocol !== "file:") origins.add(url.origin);
     }
+    const kind = parseItemId(record.id)?.source;
+    if (kind) kinds.add(kind);
     byHandle.set(record.id.slice(record.id.indexOf(":") + 1), record.id);
     const name = fileName(record.location);
     if (name) byName.set(name, [...(byName.get(name) ?? []), record]);
@@ -90,9 +113,7 @@ export function resolveDropped(
       if (found.length === 0)
         refused.push({
           what: link,
-          why: known
-            ? "Oriel doesn't have this item."
-            : "Only Jira items and files in the connected folder can be added, not other pages.",
+          why: known ? "Oriel doesn't have this item." : elsewhere(sources, kinds),
           syncMightHelp: known,
         });
       continue;
