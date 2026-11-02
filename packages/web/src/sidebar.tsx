@@ -10,10 +10,10 @@ import { WorkstreamMenu } from "./end-workstream.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import type { JiraModel } from "./jira.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
-import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
+import { changeSetStateNames, stateNames } from "./chip.ts";
+import { Chevron, type Dispatch, Link, Mark, plural, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
-import type { SearchResultView } from "./view.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -204,7 +204,7 @@ function ThreadSearch(props: {
                   <span class="nav-name">{result.thread.title ?? "New thread"}</span>
                   {result.changeSet && (
                     <span class="search-result-set" data-state={result.changeSet.state}>
-                      {changeSetNames[result.changeSet.state]}
+                      {`Change set ${changeSetStateNames[result.changeSet.state]}`}
                     </span>
                   )}
                 </span>
@@ -227,15 +227,6 @@ const listId = "thread-search-results";
 
 // Whether the field holds a query, so its results show instead of the lists.
 const searching = (search: SearchModel) => search.query.trim() !== "";
-
-// A change set a search found, by where it stands.
-const changeSetNames: Record<NonNullable<SearchResultView["changeSet"]>["state"], string> = {
-  pending: "Change set waiting",
-  approved: "Change set approved",
-  applied: "Change set applied",
-  rejected: "Change set rejected",
-  reverted: "Change set reverted",
-};
 
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 

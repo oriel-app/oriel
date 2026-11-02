@@ -5,11 +5,9 @@
 // the same things. It reads no source: what a change set wrote is told from
 // its rows and the index (`ChangeSets.changes`).
 import {
-  type ChangeSet,
   changeSetLink,
   type ChangeSetRead,
   type ChangeSets,
-  type ChangeSetState,
   findThreads,
   type Instant,
   type Known,
@@ -20,7 +18,7 @@ import {
 } from "@oriel/core";
 import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
 import { history } from "./turns.ts";
-import { changeSetStatus } from "./views.ts";
+import { changeSetState } from "./views.ts";
 
 export type OrielReadDeps = {
   workspaceId: Ulid;
@@ -34,20 +32,6 @@ export type OrielReadDeps = {
   known(): Known;
   now(): Instant;
 };
-
-// Where a change set stands, in a person's words. One a revert undid, in any
-// part, is reverted; one applied in part is applied; one approved but
-// stopped before anything landed is still approved.
-export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): ChangeSetState {
-  const undone = all.some(
-    (other) => other.revertOf === set.id && other.mutations.some((m) => m.status === "applied"),
-  );
-  if (undone) return "reverted";
-  const status = changeSetStatus(set);
-  if (status === "applied" || status === "partial") return "applied";
-  if (status === "approved" || status === "stopped") return "approved";
-  return status === "rejected" ? "rejected" : "pending";
-}
 
 // What was said in a thread, as one text: the user's words and the agent's
 // replies, joined up as the agent's own history has them. A message held

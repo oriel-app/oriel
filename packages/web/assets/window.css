@@ -80,6 +80,21 @@
   --avatar: #e9e8e3;
   --avatar-text: #55544f;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
+
+  /* The chip (chip.ts): something in Oriel named inline, as a reply's link
+     to a thread or a change set. Built on the tokens above, so it follows
+     the theme; its state takes the state colours. */
+  --chip-height: 1.375rem;
+  --chip-radius: var(--radius);
+  --chip-gap: 0.3125rem;
+  --chip-pad: 0 var(--space-2) 0 0.375rem;
+  --chip-font: var(--text-md);
+  --chip-name-max: 22em;
+  --chip-bg: var(--surface);
+  --chip-bg-hover: var(--surface-hover);
+  --chip-line: var(--line-strong);
+  --chip-text: var(--text);
+  --chip-icon: var(--text-muted);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1090,6 +1105,100 @@ button.nav-more {
 .state-chip[data-state="handed-off"] {
   background: var(--handed-off-soft);
   color: var(--handed-off-text);
+}
+
+/* Narrower than its line by a mark, so the comma or full stop after a chip
+   that fills one stays beside it. */
+.chip {
+  display: inline-flex;
+  max-width: calc(100% - 1ch);
+  height: var(--chip-height);
+  align-items: center;
+  gap: var(--chip-gap);
+  padding: var(--chip-pad);
+  border: 1px solid var(--chip-line);
+  border-radius: var(--chip-radius);
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: var(--chip-font);
+  font-weight: 500;
+  line-height: 1;
+  vertical-align: -0.1875rem;
+  white-space: nowrap;
+  --chip-dot: var(--todo);
+  --chip-state: var(--text-faint);
+}
+
+.chip-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  fill: none;
+  stroke: var(--chip-icon);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip-name {
+  min-width: 0;
+  max-width: var(--chip-name-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--chip-state);
+  font-size: var(--text-xs);
+}
+
+.chip-state::before {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--chip-dot);
+  content: "";
+}
+
+/* Where it stands, in the state colours: working and approved are under
+   way, needing the user and pending wait on them, done and applied landed,
+   the rest are over. */
+.chip:is([data-state="working"], [data-state="approved"]) {
+  --chip-dot: var(--in-progress);
+  --chip-state: var(--in-progress-text);
+}
+
+.chip:is([data-state="needs-you"], [data-state="pending"]) {
+  --chip-dot: var(--accent);
+  --chip-state: var(--accent);
+}
+
+.chip:is([data-state="done"], [data-state="applied"]) {
+  --chip-dot: var(--done);
+  --chip-state: var(--done-text);
+}
+
+.chip[data-state="handed-off"] {
+  --chip-dot: var(--handed-off-text);
+  --chip-state: var(--handed-off-text);
+}
+
+.chip[data-state="dropped"] .chip-state::before {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--todo);
+}
+
+.chip-link {
+  border-radius: var(--chip-radius);
+  text-decoration: none;
+}
+
+.chip-link:hover .chip {
+  background: var(--chip-bg-hover);
 }
 
 .working-dot {

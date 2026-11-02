@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
+import { changeSetLink, threadLink } from "../packages/core/src/oriel-reads.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
   memorySite,
@@ -84,7 +85,12 @@ const handOffScript = [
 // Asked to mark stories done: two moved to Done, the built ones or the fixes.
 const finishScript = (keys: readonly string[]) =>
   [...keys.map((key) => `jira.setStatus("jira:${key}", "Done");`), "return null;"].join("\n");
+// What the agent says when asked which threads touched a story: links to
+// threads and a change set (OA-113), written once those exist.
+let linkedReply = "";
+
 const planning = (input: TurnInput): Step[] => {
+  if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
   if (/\bplan\b/i.test(input.text))
     return [
       { run: planScript(/rename/i.test(input.text), /\bonly\b/i.test(input.text)) },
@@ -468,7 +474,7 @@ const handOff = async (then: "propose" | "approve" | "revert") => {
     const { hash } = await post<{ hash: string }>(`/api/change-sets/${revert}/diff`, {}, serving);
     await post(`/api/change-sets/${revert}/approve`, { hash }, serving);
   }
-  return { serving, workstreamId, threadId, review: new URL(review.url).pathname };
+  return { serving, workstreamId, threadId, setId, review: new URL(review.url).pathname };
 };
 const handing = await handOff("propose");
 const handed = await handOff("approve");
@@ -479,6 +485,20 @@ const askedWhere = await ask(
   handed.serving,
   handed.workstreamId,
 );
+// A third asks which threads touched SYN-61; the agent links to both
+// threads, as chips, and to the story, as a link to it.
+const handedView = await call<{ members: { ref: { key: string; url: string | null } }[] }>(
+  handed.serving,
+  "GET",
+  `/api/threads/${handed.threadId}`,
+);
+const syn61 = handedView.members.find((member) => member.ref.key === "SYN-61")?.ref.url;
+linkedReply = [
+  `[SYN-61](${syn61}) went to the team in [this thread](${threadLink(handed.threadId)}),`,
+  `when you approved [the change](${changeSetLink(handed.threadId, handed.setId)}).`,
+  `You asked where that was in [another](${threadLink(askedWhere)}).`,
+].join(" ");
+const linked = await ask("Which threads touched SYN-61?", handed.serving, handed.workstreamId);
 
 // A workstream of one item, and one with none left, for how the page counts them.
 const single = await post<{ id: string }>("/api/workstreams", {
@@ -1551,6 +1571,12 @@ const scenes: Scene[] = [
     path: `/threads/${askedWhere}`,
     on: handed.serving,
     act: (page) => page.locator(".chat a[href*='changeSet=']").waitFor(),
+  },
+  {
+    name: "thread-chips",
+    path: `/threads/${linked}`,
+    on: handed.serving,
+    act: (page) => page.locator(".reply .chip[data-state]").nth(2).waitFor(),
   },
   {
     // Folded on a wide screen, the fold button counts the threads waiting on
