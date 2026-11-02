@@ -205,10 +205,9 @@ export function indexStore(db: DatabaseSync) {
       const row = referenceRow(raw);
       if (!row.ok) throw new Error(`corrupt reference row: ${JSON.stringify(row.issues)}`);
       const key = `${row.value.source}\u0000${row.value.stable_id}`;
-      by.set(key, [
-        ...(by.get(key) ?? []),
-        { id: row.value.to_id, stableId: row.value.to_stable_id },
-      ]);
+      const named = by.get(key) ?? [];
+      named.push({ id: row.value.to_id, stableId: row.value.to_stable_id });
+      by.set(key, named);
     }
     return by;
   };

@@ -24,3 +24,9 @@ test("a link to another workspace, a channel or anything else, and a bare key, r
     assert.deepEqual(recognize(text), [], text);
   assert.deepEqual(slackRecognizer({ workspaceUrl: "not a url" })(archive), []);
 });
+
+test("a link longer than any Slack makes is skipped, however it is padded", () => {
+  const padded = `${archive}/p1788444000000100${".".repeat(40_000)}x`;
+  assert.deepEqual(recognize(padded), []);
+  assert.deepEqual(recognize(`https://ferrowick-example.slack.com/${"/".repeat(40_000)}`), []);
+});

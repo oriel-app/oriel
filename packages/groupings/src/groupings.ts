@@ -218,7 +218,11 @@ export const linkedGrouping: Grouping = {
       );
     const naming = new Map<IndexRecord, IndexRecord[]>();
     for (const record of sorted)
-      for (const to of named(record)) naming.set(to, [...(naming.get(to) ?? []), record]);
+      for (const to of named(record)) {
+        const from = naming.get(to) ?? [];
+        from.push(record);
+        naming.set(to, from);
+      }
     return [...naming]
       .map(([anchor, from]): Cluster => {
         const linked = [...new Set([...from, ...named(anchor)])].filter((r) => r !== anchor);

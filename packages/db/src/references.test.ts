@@ -160,3 +160,12 @@ test("references are Oriel's to find: a record an adapter set them on is skipped
   assert.equal(report.skipped, 1);
   assert.equal(references("jira:SYN-54"), undefined);
 });
+
+test("one text names at most 50 items", async () => {
+  const { sync, references } = fresh();
+  const issues = Array.from({ length: 60 }, (_, i) => issue(`SYN-${i + 1}`, `${10001 + i}`));
+  await sync("jira", issues);
+  const every = issues.map((g) => g.record.id.slice("jira:".length)).join(" ");
+  await sync("slack", [message("1788444000", every)]);
+  assert.equal(references("slack:C0FW1WEATHR-1788444000.000100")?.length, 50);
+});

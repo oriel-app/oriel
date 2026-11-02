@@ -8,15 +8,24 @@ export type SlackScope = { workspaceUrl: string };
 
 // A link ends at a space, or at what plain text puts around one: `<`, `>`,
 // `|`, quotes and brackets. Punctuation that ends a sentence isn't part of it.
+// Anything longer than a link Slack makes is no message's, and is skipped
+// before it is parsed, so a crafted run of characters costs nothing.
 const link = /https:\/\/[^\s<>|"'()[\]]+/g;
-const trailing = /[.,;:!?]+$/;
+const maxLink = 2_048;
+const sentenceEnd = new Set([".", ",", ";", ":", "!", "?"]);
+const trimmed = (found: string) => {
+  let end = found.length;
+  while (end > 0 && sentenceEnd.has(found[end - 1] ?? "")) end--;
+  return found.slice(0, end);
+};
 
 export function slackRecognizer({ workspaceUrl }: SlackScope): Recognizer {
   const origin = URL.parse(workspaceUrl)?.origin;
   if (!origin) return () => [];
   return (text) => {
     const ids = (text.match(link) ?? []).flatMap((found): ItemId[] => {
-      const url = URL.parse(found.replace(trailing, ""));
+      if (found.length > maxLink) return [];
+      const url = URL.parse(trimmed(found));
       const id = url?.origin === origin ? `slack:${slackLinked(url)}` : "";
       return isItemId(id) ? [id] : [];
     });

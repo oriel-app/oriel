@@ -24,6 +24,10 @@ export type IndexPage = Omit<SyncPage, "texts"> & {
   references?: Readonly<Record<string, readonly ItemId[]>>;
 };
 
+// The most items one record's text may name. Synced text is anyone's, and a
+// message naming every key in a project would otherwise weigh on every read.
+export const maxReferences = 50;
+
 // What the sync worker needs of the index. The index store (packages/db) is
 // one; core names only what it calls.
 export type SyncIndex = {
@@ -120,7 +124,9 @@ export async function syncSource<K extends SourceKind, A>(
       valid.flatMap((record) => {
         const text = Object.hasOwn(texts, record.stableId) ? texts[record.stableId] : undefined;
         if (text === undefined) return [];
-        const named = recognize(text).filter((id) => id !== record.id);
+        const named = recognize(text)
+          .filter((id) => id !== record.id)
+          .slice(0, maxReferences);
         return [[record.stableId, named]];
       }),
     );
