@@ -291,7 +291,7 @@ export const actions = {
   // The user's reason is their next message; a review link's holder's is
   // held in the thread for the user (decision 0024).
   "changeset.reject": {
-    doc: "Rejects a change set, with why.",
+    doc: "Rejects a change set; a review link's holder says why.",
     input: object({ changeSet: changeSetId, hash: string, reason: optional(messageText), token }),
     class: { kind: "person-only", why: approval },
     reviewLink: true,

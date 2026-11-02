@@ -565,7 +565,7 @@ const revisited = await post<{ id: string }>(
 
 // Threads on a server whose clock moves on eight days partway through: the
 // two asked before that and left unsettled are dropped, beside two done.
-const idling = await (async () => {
+const { serving: idling, workstreamId: idled } = await (async () => {
   let later = 0;
   const { serving } = await writing(undefined, () => instant(new Date(Date.now() + later)));
   const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
@@ -576,8 +576,43 @@ const idling = await (async () => {
   await done("What's in here?");
   later = 8 * 24 * 60 * 60 * 1000;
   await done("Which stories have no estimate?");
-  return serving;
+  return { serving, workstreamId };
 })();
+
+// That workstream with a thread under every other label too, as the threads
+// list says, older than its latest Done one and listed after every real one,
+// so its page shows them in the order of their labels (OA-147). The states a scripted turn can't hold still for
+// a shot (agent working, applying) are said by the list, not made.
+const everyLabel = async (page: Page) => {
+  await page.route("**/api/threads", async (route) => {
+    const listed = (await (await route.fetch()).json()) as {
+      threads: { id: string; activityAt: string; state: string }[];
+    };
+    const [newest] = listed.threads;
+    if (!newest) throw new Error("the idle workstream has threads");
+    const minutes = (n: number) =>
+      new Date(Date.parse(newest.activityAt) - n * 60_000).toISOString();
+    const more = [
+      ["Draft the saved cards rollout note", "working", "agent", 3],
+      ["Retry the gift card estimates", "working", "apply", 6],
+      ["Split the phone wallet story", "handed-off", null, 9],
+      ["Who signed off the 3-D Secure copy?", "working", "held", 12],
+      ["Estimate the remaining checkout stories", "working", "review", 15],
+      ["What's left before checkout ships?", "working", "reply", 18],
+    ].map(([title, state, waitingOn, ago], i) => ({
+      ...newest,
+      id: `01JBZ00000000000000000000${i}`,
+      title,
+      state,
+      doneBy: null,
+      waitingOn,
+      activityAt: minutes(Number(ago)),
+    }));
+    await route.fulfill({ json: { threads: [...listed.threads, ...more] } });
+  });
+  await page.reload();
+  await page.locator(".workstream-page .thread-list li").nth(9).waitFor();
+};
 
 async function shown(page: Page, grouping: Grouping): Promise<void> {
   await page.locator(`main[aria-busy="false"] .clusters[data-grouping="${grouping}"]`).waitFor();
@@ -717,6 +752,13 @@ const scenes: Scene[] = [
     name: "workstream",
     path: `/workstreams/${workstream.id}`,
     act: (page) => page.locator(".workstream-page .members").waitFor(),
+  },
+  {
+    // A thread under every label, what waits on the user first (OA-147).
+    name: "workstream-threads",
+    path: `/workstreams/${idled}`,
+    on: idling,
+    act: everyLabel,
   },
   {
     name: "workstream-mixed",
@@ -1007,6 +1049,21 @@ const scenes: Scene[] = [
       await page.goto(new URL(endedReview, ending.url).href);
       await page.getByRole("button", { name: "Show the change" }).click();
       await page.locator(".review-card", { hasText: "was deleted" }).waitFor();
+    },
+  },
+  {
+    // Marked done from the sidebar, off its page: the same Undo note, in the
+    // window's one stack (OA-142).
+    name: "ending-off-page",
+    path: "/done",
+    on: ending,
+    act: async (page) => {
+      await reset();
+      await page.reload();
+      await openSidebar(page);
+      await page.locator(".nav-workstream-menu .nav-link").first().click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark done" }).click();
+      await page.locator(".undo", { hasText: "done, with" }).waitFor();
     },
   },
   {

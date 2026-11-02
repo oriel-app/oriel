@@ -1,13 +1,20 @@
 // What the sidebar shows, from the lists the app already keeps: the threads
-// waiting on the user, the user's workstreams, each with its threads, most
-// recently active first, the finished threads, and where the page is among
-// them.
+// waiting on the user, the user's workstreams, each with its threads in the
+// order of the labels they show, the finished threads, and where the page is
+// among them.
 // The Done page and a workstream's page read the same list, so all three move
 // together.
 import type { Model } from "./root.ts";
 import { type Route, routeUrl } from "./route.ts";
 import { expected } from "./thread.ts";
-import { type WorkstreamSummary, holding, type ThreadSummaryView, waitingOn } from "./view.ts";
+import {
+  type WorkstreamSummary,
+  holding,
+  type ThreadStateId,
+  type ThreadSummaryView,
+  type WaitingOn,
+  waitingOn,
+} from "./view.ts";
 
 export type NavWorkstream = {
   workstream: WorkstreamSummary;
@@ -50,9 +57,7 @@ export function nav(model: Model): Nav {
         : (model.thread?.view?.workstream.id ??
           model.threads?.find((summary) => summary.id === thread)?.workstream.id ??
           null);
-  const threads = [...(model.threads ?? [])]
-    .sort((a, b) => b.activityAt.localeCompare(a.activityAt))
-    .map(decided(model));
+  const threads = newestFirst(model);
   const waiting = threads.filter(
     (each) =>
       each.waitingOn === "held" || each.waitingOn === "review" || each.waitingOn === "reply",
@@ -63,7 +68,7 @@ export function nav(model: Model): Nav {
         ?.filter((summary) => summary.done === null)
         .map((summary) => ({
           workstream: summary,
-          threads: threads.filter((each) => each.workstream.id === summary.id),
+          threads: threads.filter((each) => each.workstream.id === summary.id).sort(byLabel),
           current: summary.id === workstream,
         })) ?? null,
     done: (model.workstreams ?? [])
@@ -76,6 +81,34 @@ export function nav(model: Model): Nav {
     finished: threads.filter((each) => each.state !== "working"),
   };
 }
+
+// Every thread, most recently active first, each as the lists show it.
+const newestFirst = (model: Model): ThreadSummaryView[] =>
+  [...(model.threads ?? [])]
+    .sort((a, b) => b.activityAt.localeCompare(a.activityAt))
+    .map(decided(model));
+
+// The labels a thread's row shows, in the order a workstream's threads are
+// listed by them (OA-147): what waits on the user first, then what is
+// running, then what is finished.
+const labelOrder: Record<WaitingOn | ThreadStateId, number> = {
+  review: 0,
+  held: 1,
+  reply: 2,
+  agent: 3,
+  apply: 4,
+  working: 5,
+  "handed-off": 6,
+  done: 7,
+  dropped: 8,
+};
+const rank = (thread: ThreadSummaryView) => labelOrder[thread.waitingOn ?? thread.state];
+
+// A workstream's threads by the label each shows, and within one label,
+// newest activity first, by the time the row shows. As a thread changes
+// state it moves to its new label's place.
+export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
+  rank(a) - rank(b) || b.activityAt.localeCompare(a.activityAt);
 
 // A decision sent from the thread's page shows in every list at once: while
 // the list still has the thread needing a review, it waits on what the
@@ -174,12 +207,14 @@ export function doneShown(
   };
 }
 
-// A workstream's threads, newest first, from the list the sidebar keeps, so a new
-// thread or one finishing shows on the workstream's page as it does there. Until
-// that list loads, the workstream's own.
+// A workstream's threads, in the sidebar's order, from the list the sidebar
+// keeps, so a new thread or one finishing shows on the workstream's page as
+// it does there. Until that list loads, the workstream's own.
 export function workstreamThreads(model: Model, workstreamId: string): ThreadSummaryView[] {
-  if (model.threads === null) return model.workstream?.view?.threads ?? [];
-  return model.threads.filter((each) => each.workstream.id === workstreamId);
+  if (model.threads === null) return (model.workstream?.view?.threads ?? []).toSorted(byLabel);
+  return newestFirst(model)
+    .filter((each) => each.workstream.id === workstreamId)
+    .sort(byLabel);
 }
 
 // Where a click on a link goes: a plain click stays in the page, as an

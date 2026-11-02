@@ -110,6 +110,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "changeset.dismissed"; changeSetId: Ulid; via: "thread" | "review-link" }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
   | { name: "review-link.opened"; changeSetId: Ulid }
+  // A live review link whose change set the page won't show: its workstream
+  // was deleted (decision 0028). Not an open (OA-143).
+  | { name: "review-link.refused"; changeSetId: Ulid; why: "deleted" }
   // The user opened an item's panel beside the page, by a plain click on a
   // link to it or at an address with one open.
   | { name: "item.panel-opened"; source: SourceKind }

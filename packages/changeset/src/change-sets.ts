@@ -1879,14 +1879,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if (!link) return null;
       const set = rows.load(link.change_set_id);
       if (!set) return null;
-      const shown = await diff(set);
-      deps.emit({
-        name: "review-link.opened",
-        at: deps.now(),
-        workspaceId: set.workspaceId,
-        changeSetId: set.id,
-      });
-      return { changeSet: set, diff: shown };
+      return { changeSet: set, diff: await diff(set) };
     },
 
     async nextSteps(id) {
