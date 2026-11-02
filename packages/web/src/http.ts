@@ -46,6 +46,9 @@ export type Tag =
   | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.
   | { kind: "item"; id: string }
+  // The panel's item added to the current workstream, or that undone.
+  | { kind: "panelAdded"; id: string; workstreamId: string; name: string }
+  | { kind: "panelAddUndone"; id: string }
   | { kind: "itemStamp"; id: string }
   | { kind: "folder" }
   | { kind: "folderConnected" }

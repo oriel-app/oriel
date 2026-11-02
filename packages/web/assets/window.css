@@ -3637,9 +3637,75 @@ a.replies:hover {
 }
 
 .panel-open {
-  grid-column: 1;
-  justify-self: start;
   text-decoration: none;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.panel-actions .panel-problem {
+  flex-basis: 100%;
+}
+
+.panel-added {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Previous and next in the list the item was opened from, beside Close; it
+   stays put while the item under it changes. */
+.panel-steps {
+  position: absolute;
+  top: var(--inset-top);
+  right: calc(var(--space-4) + var(--head-row) + var(--space-1));
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  height: var(--head-row);
+}
+
+.item-panel[data-steps] .panel-source {
+  padding-right: 8.5rem;
+}
+
+.panel-place {
+  min-width: 4.5rem;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.panel-step {
+  display: grid;
+  place-items: center;
+  width: var(--head-row);
+  height: var(--head-row);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.panel-step:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.panel-step:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .panel-read,

@@ -851,6 +851,9 @@ const scenes: Scene[] = [
       await page.locator(".workstream-page .members").waitFor();
       await page.locator(".workstream-page .members a.key").first().click();
       await page.locator(".item-panel .panel-facts").waitFor();
+      await page.keyboard.press("ArrowDown");
+      await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+      await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
   {
@@ -860,8 +863,10 @@ const scenes: Scene[] = [
     act: async (page) => {
       await shown(page, "epic");
       await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
-      await page.locator(".item a.key", { hasText: "SYN-23" }).click();
+      await page.locator(".item a.key", { hasText: "SYN-99" }).click();
       await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("button", { name: "Add to workstream" }).click();
+      await page.locator(".panel-added, .panel-actions .panel-problem").first().waitFor();
     },
   },
   {

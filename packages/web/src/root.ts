@@ -45,10 +45,12 @@ import {
 import { samePage, withItem } from "./nav.ts";
 import {
   checkPanel,
+  type CurrentWorkstream,
   openPanel,
   type PanelModel,
   type PanelMsg,
   panelReplied,
+  stepped,
   updatePanel,
 } from "./panel.ts";
 import {
@@ -120,6 +122,9 @@ export type Model = {
   ending: EndingModel;
   // The item open in the panel beside the page, as the route names it.
   panel: PanelModel | null;
+  // The list on the page the open item was opened from, by item ID, which
+  // the panel steps through; null when it wasn't opened from one.
+  panelList: readonly string[] | null;
   // The sidebar's search over the workspace's threads.
   search: SearchModel;
 };
@@ -136,8 +141,11 @@ export type Msg =
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
   | { type: "search"; msg: SearchMsg }
-  // A plain click on a link to an item: it opens in the panel.
-  | { type: "itemOpened"; id: string }
+  // A plain click on a link to an item: it opens in the panel. `list`: the
+  // list on the page that holds the link, by item ID.
+  | { type: "itemOpened"; id: string; list?: readonly string[] }
+  // The next or previous item in that list, in the panel.
+  | { type: "panelStepped"; by: 1 | -1 }
   | { type: "panelClosed" }
   // The user left for an item's source: from its panel, or by a Cmd/Ctrl or
   // middle click on a link to it. The browser goes; this only tells.
@@ -199,6 +207,7 @@ export function init(route: Route): [Model, Effect[]] {
     closing: initClosing(),
     ending: initEnding(),
     panel: null,
+    panelList: null,
     search: initSearch(),
   };
   return withPanel(...enter(empty, route));
@@ -252,6 +261,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     thread: null,
     newThread: null,
     ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
+    panelList: samePage(model.route, route) ? model.panelList : null,
   };
   switch (route.page) {
     case "window": {
@@ -398,10 +408,22 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     // takes its place.
     case "itemOpened": {
       const route = withItem(model.route, msg.id);
+      if (route.item === undefined) return [model, []];
+      const listed = { ...model, panelList: msg.list ?? null };
       // The item already open stays as it is, and so does the page.
-      if (route.item === undefined || model.route.item === msg.id) return [model, []];
+      if (model.route.item === msg.id) return [listed, []];
       const replace = model.route.item !== undefined ? { replace: true as const } : {};
-      return [model, [{ type: "navigate", route, stay: true, ...replace }]];
+      return [listed, [{ type: "navigate", route, stay: true, ...replace }]];
+    }
+    // Stepping takes the open item's place in history, as opening another does.
+    case "panelStepped": {
+      const id = model.route.item;
+      const next = id === undefined ? null : stepped(model.panelList, id, msg.by);
+      if (next === null) return [model, []];
+      return [
+        model,
+        [{ type: "navigate", route: withItem(model.route, next), stay: true, replace: true }],
+      ];
     }
     case "panelClosed":
       if (model.route.item === undefined) return [model, []];
@@ -475,6 +497,15 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       if (model.panel === null) return [model, []];
       const [panel, effects] = panelReplied(model.panel, msg);
       return [{ ...model, panel }, effects];
+    }
+    // The workstream changed, wherever the panel was by the time it answered:
+    // the sidebar's counts, and the page on screen, show it.
+    case "panelAdded":
+    case "panelAddUndone": {
+      const changed = msg.ok ? [loadWorkstreams, ...reloadShown(model)] : [];
+      if (model.panel === null) return [model, changed];
+      const [panel, effects] = panelReplied(model.panel, msg);
+      return [{ ...model, panel }, [...effects, ...changed]];
     }
     case "markedDone":
     case "deletion":
@@ -595,4 +626,33 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
     return [model, [...lists, refreshThread(model.thread)]];
   if (route.page === "workstream") return [model, [...lists, ...initWorkstream(route.id)[1]]];
   return [model, lists];
+}
+
+// The workstream the page is about, which the panel's item can be added to:
+// the workstream's own page, a thread's, or the window adding items to one.
+// Null elsewhere, and until the page has loaded enough to name it.
+export function currentWorkstream(model: Model): CurrentWorkstream | null {
+  const { route } = model;
+  const ids = (members: readonly { ref: { id: string } }[]) =>
+    new Set(members.map((member) => member.ref.id));
+  if (route.page === "workstream") {
+    const view = model.workstream?.view;
+    if (!view || view.workstream.id !== route.id) return null;
+    const { id, name } = view.workstream;
+    return { id, name, members: ids(view.members) };
+  }
+  if (route.page === "thread") {
+    const view = model.thread?.view;
+    if (!view) return null;
+    const { id, name } = view.workstream;
+    // Its region's items, while the region is the workstream's latest
+    // version; once the workstream moved on, they may not be its own.
+    const latest = view.regionVersion >= view.workstream.version;
+    return { id, name, members: latest ? ids(view.members) : null };
+  }
+  if (route.page === "window" && route.addTo !== null) {
+    const found = model.workstreams?.find((workstream) => workstream.id === route.addTo);
+    return found ? { id: found.id, name: found.name, members: null } : null;
+  }
+  return null;
 }

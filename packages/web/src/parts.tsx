@@ -121,6 +121,12 @@ export function DropZone(props: {
 export type ItemLinks = { dispatch: Dispatch; items: ReadonlyMap<string, string> };
 export const ItemLinksContext = createContext<ItemLinks | null>(null);
 
+// The list on the page that holds a link to an item, by item ID, in the
+// order it shows them: a Browse cluster's items, a workstream's members, a
+// thread's rail or search results. An item opened from it can step through it
+// in the panel.
+export const ItemListContext = createContext<readonly string[] | null>(null);
+
 // An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
 
@@ -135,9 +141,12 @@ export function ItemLink(props: {
   children: ComponentChildren;
 }) {
   const links = useContext(ItemLinksContext);
+  const list = useContext(ItemListContext);
   const href = safeHref(props.item.url);
   const id = props.item.id ?? (href ? links?.items.get(addressOf(href)) : undefined) ?? null;
   const dispatch = id === null ? null : (links?.dispatch ?? null);
+  const opened = (id: string): Msg =>
+    list?.includes(id) ? { type: "itemOpened", id, list } : { type: "itemOpened", id };
   if (id === null || dispatch === null) {
     if (!href) return <span class={props.class}>{props.children}</span>;
     return (
@@ -151,7 +160,7 @@ export function ItemLink(props: {
       <button
         type="button"
         class={props.class ? `${props.class} item-link` : "item-link"}
-        onClick={() => dispatch({ type: "itemOpened", id })}
+        onClick={() => dispatch(opened(id))}
       >
         {props.children}
       </button>
@@ -160,7 +169,7 @@ export function ItemLink(props: {
     const to = clickTo(event);
     if (to === "page") {
       event.preventDefault();
-      dispatch({ type: "itemOpened", id });
+      dispatch(opened(id));
     } else if (to === "new-tab") dispatch({ type: "sourceOpened", id, via: "link" });
   };
   return (

@@ -6,7 +6,14 @@
 import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
-import { behind, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
+import {
+  behind,
+  type CurrentWorkstream,
+  daysOf,
+  type PanelModel,
+  type PanelMsg,
+  paragraphsOf,
+} from "./panel.ts";
 import {
   type Dispatch,
   initials,
@@ -21,17 +28,45 @@ import {
 import { safeHref } from "./route.ts";
 import type { ItemPanelView, PanelBlock, PanelInline, PanelMessage } from "./view.ts";
 
-export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Dispatch }) {
+export function ItemPanel(props: {
+  model: PanelModel;
+  // Where the item is in the list it was opened from, if it was.
+  place: { index: number; count: number } | null;
+  workstream: CurrentWorkstream | null;
+  dispatch: Dispatch;
+}) {
+  const { model, place, dispatch } = props;
   const { view } = model;
   const heading = useRef<HTMLHeadingElement>(null);
-  // Opening an item moves focus to it; closing gives focus back to what had it.
+  const steps = useRef<HTMLElement>(null);
+  // Closing gives focus back to what had it when the panel opened.
   useEffect(() => {
     const before = document.activeElement;
-    heading.current?.focus();
     return () => {
       if (before instanceof HTMLElement && before.isConnected) before.focus();
     };
+  }, []);
+  // Opening an item moves focus to it, unless the user is stepping with the
+  // buttons, which keep it.
+  useEffect(() => {
+    if (!steps.current?.contains(document.activeElement)) heading.current?.focus();
   }, [model.id]);
+  const step = (by: 1 | -1) => dispatch({ type: "panelStepped", by });
+  // Up and down step through the list, wherever focus is but in a field or a
+  // menu, which have their own uses for them.
+  const listed = place !== null;
+  useEffect(() => {
+    if (!listed) return;
+    const pressed = (event: KeyboardEvent) => {
+      const by = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (by === 0 || event.defaultPrevented || event.altKey || event.ctrlKey) return;
+      if (event.metaKey || event.shiftKey || typing(event.target)) return;
+      event.preventDefault();
+      step(by);
+    };
+    addEventListener("keydown", pressed);
+    return () => removeEventListener("keydown", pressed);
+  }, [listed]);
   const shown = view?.id === model.id ? view : null;
   const href = safeHref(shown?.url ?? null);
   const readAgain = () => dispatch({ type: "panel", msg: { type: "readAgainClicked" } });
@@ -46,7 +81,35 @@ export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Di
       class="item-panel"
       aria-labelledby="item-panel-title"
       aria-busy={model.status === "loading"}
+      data-steps={listed || undefined}
     >
+      {place && (
+        <nav class="panel-steps" aria-label="This list's items" ref={steps}>
+          <button
+            type="button"
+            class="panel-step"
+            aria-label="Previous item"
+            title="Previous (↑)"
+            disabled={place.index === 0}
+            onClick={() => step(-1)}
+          >
+            <StepIcon up />
+          </button>
+          <span class="panel-place">
+            {place.index + 1} of {place.count}
+          </span>
+          <button
+            type="button"
+            class="panel-step"
+            aria-label="Next item"
+            title="Next (↓)"
+            disabled={place.index === place.count - 1}
+            onClick={() => step(1)}
+          >
+            <StepIcon />
+          </button>
+        </nav>
+      )}
       <Fragment key={model.id}>
         <header class="panel-head">
           <p class="panel-source">{shown ? `${shown.source} · ${keyLabel(shown)}` : "Item"}</p>
@@ -62,17 +125,24 @@ export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Di
           <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
             {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
           </h2>
-          {shown && href && (
-            <a
-              class="button panel-open"
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={leave}
-              onAuxClick={leave}
-            >
-              Open in {shown.source}
-            </a>
+          {shown && (href || props.workstream) && (
+            <div class="panel-actions">
+              {href && (
+                <a
+                  class="button panel-open"
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={leave}
+                  onAuxClick={leave}
+                >
+                  Open in {shown.source}
+                </a>
+              )}
+              {props.workstream && (
+                <AddTo model={model} workstream={props.workstream} dispatch={dispatch} />
+              )}
+            </div>
           )}
         </header>
         {model.status === "failed" && (
@@ -100,6 +170,74 @@ export function ItemPanel({ model, dispatch }: { model: PanelModel; dispatch: Di
         {shown && <PanelBody view={shown} />}
       </Fragment>
     </aside>
+  );
+}
+
+// Adding the item to the workstream the page is about, and then what came of
+// it, with its Undo; or that it's in the workstream already.
+function AddTo(props: { model: PanelModel; workstream: CurrentWorkstream; dispatch: Dispatch }) {
+  const { model, workstream, dispatch } = props;
+  const send = (msg: PanelMsg) => dispatch({ type: "panel", msg });
+  const added = model.add?.added ?? null;
+  const adding = model.add?.adding ?? false;
+  const said =
+    added?.workstreamId === workstream.id
+      ? added.undo
+        ? `Added to “${added.name}”.`
+        : `Already in “${added.name}”.`
+      : workstream.members?.has(model.id)
+        ? `In “${workstream.name}”.`
+        : null;
+  return (
+    <>
+      {said === null ? (
+        <button
+          type="button"
+          class="button panel-add"
+          title={`Add to “${workstream.name}”`}
+          disabled={adding}
+          onClick={() => send({ type: "addClicked", workstream })}
+        >
+          Add to workstream
+        </button>
+      ) : (
+        <p class="panel-added" role="status">
+          <span>{said}</span>
+          {added?.workstreamId === workstream.id && added.undo && (
+            <button
+              type="button"
+              class="undo-action"
+              disabled={adding}
+              aria-label={`Undo: ${said}`}
+              onClick={() => send({ type: "addUndoClicked" })}
+            >
+              Undo
+            </button>
+          )}
+        </p>
+      )}
+      {model.add?.problem && (
+        <p class="panel-problem" role="alert">
+          {model.add.problem}
+        </p>
+      )}
+    </>
+  );
+}
+
+// Whether a key goes to something the user is typing in, a menu or a dialog.
+const typing = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement &&
+  (target.isContentEditable ||
+    target.closest(
+      "input, textarea, select, dialog, [role=dialog], [role=menu], [role=listbox], [role=combobox]",
+    ) !== null);
+
+function StepIcon({ up }: { up?: boolean }) {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d={up ? "M4.5 9.75L8 6.25l3.5 3.5" : "M4.5 6.25L8 9.75l3.5-3.5"} />
+    </svg>
   );
 }
 
