@@ -7,6 +7,7 @@ import type {
   Instant,
   Intent,
   Log,
+  OrielNote,
   ProxiedRead,
   Region,
   Run,
@@ -46,6 +47,9 @@ export type ChatMessage =
   // What Oriel did with the intents a turn recorded: each call, applied or
   // refused and why (decision 0024).
   | { role: "actions"; text: string; at: Instant }
+  // Oriel's own line about what someone did, such as rejecting a change set:
+  // the model reads it as Oriel's, never as its own words (OA-91).
+  | { role: "note"; note: OrielNote; at: Instant }
   // A compact record of a sandbox run, for history. With its script, history
   // replays the run faithfully.
   | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };

@@ -80,6 +80,9 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       set.focus({ preventScroll: true });
       return;
     }
+    case "focusComposer":
+      document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
+      return;
     case "subscribe": {
       events?.close();
       // The browser reconnects by itself and sends the last entry's ID, so

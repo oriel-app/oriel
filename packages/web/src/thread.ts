@@ -12,6 +12,7 @@ import type {
   HeldFrom,
   DiffView,
   ItemRef,
+  NoteView,
   RunView,
   StreamEvent,
   ThreadView,
@@ -29,9 +30,9 @@ export type ThreadModel = {
   // A decision sent from this page and not yet answered, by change set. The
   // page and the sidebar show what it will make of the thread (`expected`).
   deciding: Readonly<Record<string, Decision>>;
-  // What's wrong with a change set, typed to go with rejecting it, by change
-  // set. Rejecting with none stays one click.
-  reasons: Readonly<Record<string, string>>;
+  // Rejected change sets the user unfolded: the rest are one line each, so a
+  // revised one isn't buried under them.
+  unfolded: readonly string[];
   // A held message being edited before it is sent, by its place in the chat.
   editing: Readonly<Record<string, string>>;
   // Held messages with a send or discard in flight, by place.
@@ -58,8 +59,9 @@ export type ThreadModel = {
 // A step offered for a whole change set. Removing a line is its own message.
 export type SetStep = Exclude<NextStepView["kind"], "remove">;
 
-// A rejection's reason is the thread's next message, which starts a turn.
-export type Decision = { kind: "approved" } | { kind: "rejected"; reason: string | null };
+// Reject is one click: what was wrong is the user's next message, which the
+// message box waits for once the thread asks.
+export type Decision = { kind: "approved" } | { kind: "rejected" };
 
 export type ThreadMsg =
   | { type: "draftChanged"; text: string }
@@ -67,7 +69,8 @@ export type ThreadMsg =
   | { type: "stopClicked" }
   | { type: "doneClicked" }
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
-  | { type: "reasonChanged"; changeSetId: string; text: string }
+  // A rejected change set shown in full, or folded again.
+  | { type: "foldToggled"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
@@ -101,7 +104,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       diffs: {},
       busy: [],
       deciding: {},
-      reasons: {},
+      unfolded: [],
       editing: {},
       settling: [],
       undoing: [],
@@ -202,20 +205,14 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       if (model.busy.includes(changeSetId) || !offered(model, changeSetId, step))
         return [model, []];
       const hash = model.diffs[changeSetId]?.hash;
-      const reason = model.reasons[changeSetId]?.trim() || null;
       const decision: Decision | null =
         step === "approve" || step === "approve-rest"
           ? { kind: "approved" }
           : step === "reject"
-            ? { kind: "rejected", reason }
+            ? { kind: "rejected" }
             : null;
       if (decision && hash === undefined) return [model, []];
-      const body =
-        decision === null
-          ? {}
-          : decision.kind === "rejected" && reason
-            ? { hash, reason }
-            : { hash };
+      const body = decision === null ? {} : { hash };
       return [
         {
           ...model,
@@ -232,8 +229,13 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         ],
       ];
     }
-    case "reasonChanged":
-      return [{ ...model, reasons: { ...model.reasons, [msg.changeSetId]: msg.text } }, []];
+    case "foldToggled": {
+      const { changeSetId } = msg;
+      const unfolded = model.unfolded.includes(changeSetId)
+        ? model.unfolded.filter((id) => id !== changeSetId)
+        : [...model.unfolded, changeSetId];
+      return [{ ...model, unfolded }, []];
+    }
     case "lineRemoved": {
       const { changeSetId, mutationId } = msg;
       if (model.busy.includes(changeSetId) || !removable(model, changeSetId).includes(mutationId))
@@ -456,18 +458,22 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       // Dismissing says what to check.
       const warnings = msg.ok ? warningsOf(msg.body) : null;
       const notes = warnings ? { ...model.notes, [tag.changeSetId]: warnings } : model.notes;
-      // A rejection stood: its reason went to the thread, or, when it
-      // couldn't be said, waits in the message box.
-      const rejected = msg.ok && decision?.kind === "rejected" ? decision : null;
-      const reasons = rejected ? without(model.reasons, tag.changeSetId) : model.reasons;
-      const draft =
-        rejected?.reason && problem !== null && model.draft === "" ? rejected.reason : model.draft;
+      // A rejection stood and the thread asks what was wrong: the message
+      // box waits for the answer. It asks nothing of an Undo, which Oriel
+      // made, and couldn't if the server says why.
+      const set = model.view?.changeSets.find((each) => each.id === tag.changeSetId);
+      const rejected =
+        msg.ok && decision?.kind === "rejected" && problem === null && !set?.revertOf;
       // Whatever it changed, the server tells the thread's stream, which
       // reloads it here too. A refusal changed nothing, but what it was
       // refused on may have moved: reload.
       return [
-        { ...model, busy, deciding, reasons, problems, notes, draft },
-        msg.ok ? [] : [diffOf(tag.changeSetId), refresh(model)],
+        { ...model, busy, deciding, problems, notes },
+        msg.ok
+          ? rejected
+            ? [{ type: "focusComposer" }]
+            : []
+          : [diffOf(tag.changeSetId), refresh(model)],
       ];
     }
     // Sent or discarded, it is settled: the reload shows it so. Refused, as
@@ -509,7 +515,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
 
 // The thread as the decisions sent from its page will leave it, so a click
 // shows at once: an approved change set applying, a rejected one rejected,
-// neither offering anything, and a rejection's reason being answered. Only
+// neither offering anything. Only
 // while the server still shows a change set undecided; once it shows the
 // decision, or answers, the server's view stands, and a failed apply offers
 // its steps again.
@@ -522,12 +528,6 @@ export function expected(model: ThreadModel): ThreadView | null {
   };
   return {
     ...view,
-    running:
-      view.running ||
-      view.changeSets.some((set) => {
-        const decision = ahead(set);
-        return decision?.kind === "rejected" && decision.reason !== null;
-      }),
     changeSets: view.changeSets.map((set) => {
       const decision = ahead(set);
       if (decision === null) return set;
@@ -677,13 +677,11 @@ export type Block =
       text: string;
       outcome: "sent" | "discarded" | null;
     }
-  | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string };
+  | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string }
+  | { kind: "note"; seq: number; note: NoteView };
 
 export function blocks(entries: readonly ChatEntry[]): Block[] {
   const out: Block[] = [];
-  // Text after a turn ended, as Oriel's line after a rejection, is a reply
-  // of its own.
-  let ended = false;
   for (const entry of entries) {
     const last = out.at(-1);
     switch (entry.kind) {
@@ -691,9 +689,11 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         out.push({ kind: "user", seq: entry.seq, text: entry.text });
         break;
       case "text":
-        if (last?.kind === "reply" && !ended) last.text += entry.text;
+        if (last?.kind === "reply") last.text += entry.text;
         else out.push({ kind: "reply", seq: entry.seq, text: entry.text });
-        ended = false;
+        break;
+      case "note":
+        out.push({ kind: "note", seq: entry.seq, note: entry.note });
         break;
       case "marker":
         out.push({ ...entry, kind: "marker" });
@@ -748,12 +748,17 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
       case "done":
         for (const block of out)
           if (block.kind === "run" && block.run === null) block.stopped = true;
-        ended = true;
         break;
     }
   }
   return out;
 }
+
+// Whether a change set shows as one line: a rejected one does until the user
+// shows it, or the thread's address names it, so a revised one below isn't
+// buried (OA-90).
+export const folded = (model: ThreadModel, set: ChangeSetView): boolean =>
+  set.status === "rejected" && !model.unfolded.includes(set.id) && model.at?.changeSet !== set.id;
 
 // What a step is called. The steps themselves come from the change set
 // engine; this only names them.

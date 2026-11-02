@@ -54,6 +54,15 @@ export type ThreadStateId = (typeof threadStates)[number];
 // variant, as the server's HeldSender has them.
 export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
 
+// One of Oriel's lines in a thread, as the server's OrielNote has them:
+// a change set of the thread was rejected, here or on its review link, and
+// Oriel asks what was wrong with it.
+export type NoteView = {
+  kind: "rejected";
+  changeSetId: string;
+  via: "thread" | "review-link";
+};
+
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
 // sources, on a change set being applied, which needs nothing from the user
@@ -239,6 +248,8 @@ export type ChatEntry = { seq: number; at: string } & (
   // A message from anyone but the user, which only they can send to the
   // agent, edited or not. `outcome` is null while it waits on them.
   | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
+  // Oriel's own line about what someone did, never the agent's (OA-91).
+  | { kind: "note"; note: NoteView }
   | { kind: "limit"; reason: string }
   | { kind: "error"; message: string }
   | { kind: "done" }
