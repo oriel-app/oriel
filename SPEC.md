@@ -156,7 +156,7 @@ Test mechanics:
 ## 11. How you work
 
 - One canonical check: `pnpm check` (typecheck + lint + unit). During iteration run package-scoped checks; CI owns the full suite.
-- Never open a PR unless the maintainer asks. One concern per PR; if the description says "also", split it. Tests that define behavior are never edited in the PR they validate.
+- Never open a PR unless the maintainer asks. One concern per PR; if the description says "also", split it. Tests that define behavior are never weakened to make a PR pass. When a story deliberately changes behavior, the PR rewrites the tests that expected the old behavior and names each one in its Evidence.
 - Ask for buy-in before adding complexity for a speculative edge case; state the failure mode and cost. Fight scope creep; honor the maintainer's intent minimally and realistically.
 - Keep durable records minimal; derive views. Prefer inference over annotations; no `any`; early returns over `else`; inline single-use values.
 - If a rule here fights the task, say so loudly and get sign-off before breaking it.
