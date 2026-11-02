@@ -1,0 +1,82 @@
+{
+  "cap": 30,
+  "reps": 4,
+  "cases": {
+    "delete-workstream-on-its-page": {
+      "hash": "246f2247fae1387d31a202b2a3d0b9a25a8588a6eed9fddc43a6c3f647c89e2f",
+      "group": "oriel"
+    },
+    "estimate-unestimated-checkout": {
+      "hash": "5cc6412b2ca3c4aa2d52d8e16c5b4e8cbc0c6affc31886ccf7a4ae6b26c208d3",
+      "group": "changes"
+    },
+    "find-approved-slack-post": {
+      "hash": "14a5e81b1d39ade4e24f4f021dd121c8e052373af0e5452d7f1243cda0aea935",
+      "group": "oriel"
+    },
+    "injection-file-name": {
+      "hash": "e0f888c8ec04ca30c53fee39b61bb4d7cf47a6511a0b51b0099a87e67915419e",
+      "group": "injection"
+    },
+    "injection-meeting-notes-actions": {
+      "hash": "e9f316a72d50745e74d4db4055cc5e6ff417325ae7d8a64ca3af80b5a5f64e42",
+      "group": "injection"
+    },
+    "injection-meeting-notes-catchup": {
+      "hash": "58ceb741871d753bbb189afed42762bd1e4c45712a8de4af7949b61006255470",
+      "group": "injection"
+    },
+    "injection-meeting-notes": {
+      "hash": "92ff4ae029d192349cc5cf15b7b2d07b8d5009502a9238a86246b041149c26fa",
+      "group": "injection"
+    },
+    "injection-slack-message": {
+      "hash": "f6051fa1d8ed513f8a724028bb51da349c0ecbf331eface4036b0418e245c2cf",
+      "group": "injection"
+    },
+    "injection-slack-reply-done": {
+      "hash": "a39fda276a9e09c955d2bbcde39903ba78e2d1620e3f4ee1502fa8284c9ec4cf",
+      "group": "injection"
+    },
+    "injection-syn45-description": {
+      "hash": "3575d9b609cc7f66f9a31b2f733d962753ae995ef8e5510082e8049ebd199362",
+      "group": "injection"
+    },
+    "injection-syn98-comments": {
+      "hash": "cc43368945c574ae865e41e083f6fe4dc48e8c7d0e8bd2b2b07250e37e8f68c1",
+      "group": "injection"
+    },
+    "no-manual-epic": {
+      "hash": "7252178805d81fbf411ef796f40953e09a55f687ba4d877306b36734bf2a984b",
+      "group": "oriel"
+    },
+    "rejection-line-is-oriels": {
+      "hash": "9ab59620dbbd89b670c733555005c739b5706de2f052d473e85d655f3fcf8b7f",
+      "group": "oriel"
+    },
+    "remove-done-boarding": {
+      "hash": "c9ac3bdc5b64fea5f161de89e73244d9d3d7a40f44ba9bbe09a8cde2e4994e97",
+      "group": "changes"
+    },
+    "revert-not-manual-cleanup": {
+      "hash": "7c6d7c16e09c655f7be0974c3825bc020a51a99bdc70e9047686334f61e0aa48",
+      "group": "oriel"
+    },
+    "scope-off-region-question": {
+      "hash": "a3732db4f93c89f52586c70c992105885a8551c5fd0221ab075df23475653e0c",
+      "group": "scope"
+    },
+    "scope-promo-codes": {
+      "hash": "a88bd92e4444ff1290c798973abe688e73c7d4ec90fc1c5660287688c13d9878",
+      "group": "scope"
+    },
+    "slack-fare-decision": {
+      "hash": "71c434855583a96d969f8ff94ad9f7ee6aa2b9a8522e49983382a5b214c0a33d",
+      "group": "reading"
+    },
+    "tombstones-deleted-and-renamed": {
+      "hash": "c3c9421d1d17c3050faf53face1cce9593009d12370ff9ee0599e810afc79e97",
+      "group": "reading"
+    }
+  }
+}
