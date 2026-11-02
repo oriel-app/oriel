@@ -5,6 +5,8 @@
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
 import type { OverviewSection } from "@oriel/core/overview";
+import { endingNotes, holdEnding } from "./end-workstream.tsx";
+import type { EndingModel } from "./ending.ts";
 import type { JiraModel } from "./jira.ts";
 import type { OverviewModel, OverviewMsg } from "./overview.ts";
 import type { Route } from "./route.ts";
@@ -18,7 +20,9 @@ import {
   plural,
   StateChip,
 } from "./parts.tsx";
+import { type UndoNote, UndoStack } from "./undo-stack.tsx";
 import type {
+  CandidateView,
   HeadlineView,
   ItemRef,
   OverviewView,
@@ -29,14 +33,18 @@ import { ConnectJira, StatusBar } from "./window-page.tsx";
 
 export function OverviewPage(props: {
   model: OverviewModel;
+  // A workstream marked done, reopened or deleted, from the sidebar: its
+  // Undo shares this page's one stack.
+  ending: EndingModel;
   jira: JiraModel;
   // Browse as the user last left it.
   browse: Route;
   dispatch: Dispatch;
 }) {
-  const { model, jira, browse, dispatch } = props;
+  const { model, ending, jira, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
+  const ended = endingNotes(ending, dispatch);
   return (
     <main class="overview" aria-busy={view === null && model.problem === null}>
       <div class="overview-top">
@@ -70,10 +78,33 @@ export function OverviewPage(props: {
             <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
           </div>
           <div class="overview-side">
+            <Candidates view={view} model={model} dispatch={dispatch} />
             <People view={view} dispatch={dispatch} />
           </div>
         </div>
       )}
+      {/* One stack: a workstream ended from the sidebar, and those made here. */}
+      <UndoStack
+        notes={[
+          ...ended.notes,
+          ...model.made.map((made): UndoNote => ({
+            key: made.key,
+            said: `Made the workstream ${made.workstream.name}, of ${plural(made.workstream.size, "item")}.`,
+            label: `Undo making ${made.workstream.name}`,
+            onUndo: made.workstream.undo && (() => send({ type: "undoClicked", key: made.key })),
+            disabled: made.undoing,
+          })),
+        ]}
+        problem={
+          model.failed === null
+            ? ended.problem
+            : { said: model.failed, onDismiss: () => send({ type: "failedDismissed" }) }
+        }
+        onHold={(by, held) => {
+          send({ type: "undoHeld", by, held });
+          holdEnding(dispatch)(by, held);
+        }}
+      />
     </main>
   );
 }
@@ -468,6 +499,124 @@ function Spark({ values }: { values: readonly number[] }) {
       <title>{`${plural(total, "change")} in the last 14 days`}</title>
       <polyline points={points} />
     </svg>
+  );
+}
+
+// Browse, filtered to what no workstream holds: all of Not in a workstream yet.
+const unheld: Route = { page: "window", grouping: "epic", addTo: null, workstream: "none" };
+
+// Every source's candidates and the most linked clusters, ranked together:
+// the top few, each under the rule that found it, with its source; a
+// cluster's row offers Make a workstream.
+function Candidates(props: { view: OverviewView; model: OverviewModel; dispatch: Dispatch }) {
+  const { view, model, dispatch } = props;
+  const { rows, total } = view.candidates;
+  const groups = [...Map.groupBy(rows, (row) => row.rule)];
+  const items = rows.flatMap((row) =>
+    row.subject.kind === "item"
+      ? [row.subject.item.id]
+      : row.subject.lead
+        ? [row.subject.lead.id]
+        : [],
+  );
+  return (
+    <Section
+      id="candidates"
+      title="Not in a workstream yet"
+      count={total}
+      more={
+        total > rows.length && (
+          <Link
+            route={unheld}
+            dispatch={dispatch}
+            msg={{
+              type: "overview",
+              msg: { type: "moreOpened", section: "candidates", to: unheld },
+            }}
+            class="overview-more"
+          >
+            {total - rows.length} more
+          </Link>
+        )
+      }
+    >
+      {rows.length === 0 ? (
+        <p class="overview-quiet">Every item a rule finds is in a workstream.</p>
+      ) : (
+        <ItemListContext.Provider value={items}>
+          <div class="overview-rows overview-candidates">
+            {groups.map(([rule, list]) => (
+              <div key={rule} class="overview-group">
+                <p class="overview-rule">
+                  <span class="derived-tag">Oriel rule</span> {rule}
+                </p>
+                <ul>
+                  {list.map((row) => (
+                    <CandidateRow
+                      key={candidateKey(row)}
+                      row={row}
+                      making={model.making}
+                      made={model.made.some((each) => each.key === candidateKey(row))}
+                      dispatch={dispatch}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </ItemListContext.Provider>
+      )}
+    </Section>
+  );
+}
+
+const candidateKey = (row: CandidateView) =>
+  row.subject.kind === "item" ? row.subject.item.id : row.subject.key;
+
+function CandidateRow(props: {
+  row: CandidateView;
+  making: string | null;
+  made: boolean;
+  dispatch: Dispatch;
+}) {
+  const { row, making, made, dispatch } = props;
+  const { subject } = row;
+  const sub = [row.source, row.detail].filter(Boolean).join(" · ");
+  if (subject.kind === "item")
+    return (
+      <li class="overview-candidate" data-rule={row.rule}>
+        <Item item={subject.item} />
+        <span class="overview-sub">{sub}</span>
+      </li>
+    );
+  const title = subject.lead ? (
+    <ItemLink item={subject.lead} class="overview-title">
+      {subject.label}
+    </ItemLink>
+  ) : (
+    <span class="overview-title">{subject.label}</span>
+  );
+  return (
+    <li class="overview-candidate" data-rule={row.rule}>
+      {title}
+      <span class="overview-sub">
+        {plural(subject.size, "item")} · {sub}
+      </span>
+      <button
+        type="button"
+        class="quiet-action overview-make"
+        disabled={making !== null || made}
+        aria-label={`Make a workstream of ${subject.label}`}
+        onClick={() =>
+          dispatch({
+            type: "overview",
+            msg: { type: "makeClicked", grouping: subject.grouping, key: subject.key },
+          })
+        }
+      >
+        {making === subject.key ? "Making…" : "Make a workstream"}
+      </button>
+    </li>
   );
 }
 

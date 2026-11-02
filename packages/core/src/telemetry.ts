@@ -136,6 +136,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user opened a section's "more": in place, or in Browse filtered to
   // that slice.
   | { name: "overview.more-opened"; section: OverviewSection }
+  // A cluster Not in a workstream yet suggested became a workstream, by
+  // Make a workstream there; `grouping` is the cluster's.
+  | { name: "overview.suggestion-made"; workstreamId: Ulid; grouping: string }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );

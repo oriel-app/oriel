@@ -46,6 +46,10 @@ export type Tag =
   // The overview, and the user leaving it, which marks what it showed seen.
   | { kind: "overview" }
   | { kind: "overviewLeft" }
+  // A workstream made from a candidate on the overview, by its key there,
+  // and that undone.
+  | { kind: "overviewMade"; key: string; grouping: GroupingId }
+  | { kind: "overviewUnmade"; key: string }
   // The sidebar's search, by the query it asked about.
   | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.
@@ -144,7 +148,8 @@ export type Report =
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
   | { name: "items.searched"; queryLength: number; results: number }
   | { name: "overview.opened" }
-  | { name: "overview.more-opened"; section: OverviewSection };
+  | { name: "overview.more-opened"; section: OverviewSection }
+  | { name: "overview.suggestion-made"; workstreamId: string; grouping: GroupingId };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>

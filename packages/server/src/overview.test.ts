@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { IndexRecord, Instant } from "@oriel/core";
-import type { OverviewView, ThreadView, WorkstreamSummary } from "@oriel/web/view";
+import type {
+  OverviewView,
+  ThreadView,
+  Undoable,
+  WindowView,
+  WorkstreamSummary,
+} from "@oriel/web/view";
 import { buildFolder, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import type { Agent } from "./agent.ts";
 import { overviewView } from "./overview.ts";
@@ -55,13 +61,23 @@ test("the fixture window's overview ranks every source's candidates, computed wi
     weights,
     weights.toSorted((a, b) => b - a),
   );
+  // Mixing sources, each row's own, and a Linked cluster's every one it spans.
+  const named = view.candidates.rows.map((row) => row.source);
+  assert.ok(named.includes("Jira") && named.includes("Slack"));
   assert.deepEqual(
-    new Set(view.candidates.rows.map((row) => row.source)),
+    new Set(named.flatMap((source) => source.split(" · "))),
     new Set(["Jira", "Slack"]),
   );
   // An epic's row counts what Make a workstream would hold: the epic too.
-  const epic = view.candidates.rows.find((row) => row.subject.kind === "cluster");
-  assert.ok(epic?.subject.kind === "cluster" && epic.subject.anchor !== null);
+  const epic = view.candidates.rows.find(
+    (row) => row.subject.kind === "cluster" && row.subject.grouping === "epic",
+  );
+  assert.ok(epic?.subject.kind === "cluster" && epic.subject.lead !== null);
+  const { key, size } = epic.subject;
+  const browsed = json<WindowView>(await app.get("/api/browse?grouping=epic")).clusters.find(
+    (cluster) => cluster.row.key === key,
+  );
+  assert.equal(size, (browsed?.row.count ?? 0) + 1);
   assert.equal(
     view.headlines.find((line) => line.id === "top")?.rule,
     view.candidates.rows[0]?.rule,
@@ -207,4 +223,62 @@ test("in progress by person shows the top 10 of everyone, an epic not counting a
   assert.equal(view.people.total, 12);
   assert.equal(view.people.rows.length, 10);
   assert.deepEqual(view.people.rows[0], { id: "p0", name: "Person 0", inProgress: 2, top: null });
+});
+
+test("Make a workstream on the SYN-54 Linked cluster, then its Undo: the section follows", async (t) => {
+  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const before = await overview(app);
+  assert.ok(before.candidates.rows.length <= 8);
+  for (const row of before.candidates.rows) assert.ok(row.rule.length > 0);
+  const linked = before.candidates.rows.find(
+    (row) => row.subject.kind === "cluster" && row.subject.grouping === "linked",
+  );
+  assert.ok(linked?.subject.kind === "cluster");
+  assert.equal(linked.subject.lead?.key, "SYN-54");
+  assert.equal(linked.source, "Jira · Slack");
+  const made = json<Undoable<WorkstreamSummary>>(
+    await app.post("/api/workstreams", {
+      kind: "cluster",
+      grouping: linked.subject.grouping,
+      cluster: linked.subject.key,
+    }),
+  );
+  // The row's count is what Make a workstream holds.
+  assert.equal(made.size, linked.subject.size);
+  assert.deepEqual(made.undo, { action: "workstream.delete", input: { workstream: made.id } });
+  assert.equal(
+    (
+      await app.post("/api/telemetry", {
+        name: "overview.suggestion-made",
+        workstreamId: made.id,
+        grouping: "linked",
+      })
+    ).status,
+    202,
+  );
+  assert.deepEqual(app.app.telemetry().at(-1)?.data, { workstreamId: made.id, grouping: "linked" });
+  const after = await overview(app);
+  const keys = (view: OverviewView) =>
+    view.candidates.rows.flatMap((row) =>
+      row.subject.kind === "cluster" ? [row.subject.key] : [],
+    );
+  assert.ok(!keys(after).includes(linked.subject.key));
+  assert.equal(after.counts.notInWorkstream, before.counts.notInWorkstream - 1);
+  assert.equal(after.workstreams[0]?.id, made.id);
+  // Its Undo deletes it, and the cluster is a candidate again.
+  assert.equal((await app.post(`/api/actions/${made.undo.action}`, made.undo.input)).status, 200);
+  const undone = await overview(app);
+  assert.deepEqual(undone.workstreams, []);
+  assert.ok(keys(undone).includes(linked.subject.key));
+});
+
+test("Browse's not-in-a-workstream filter keeps only what no open workstream holds", async (t) => {
+  const app = await testApp(t);
+  await app.post("/api/workstreams", weather);
+  const ids = async (query: string) =>
+    json<WindowView>(await app.get(`/api/browse?grouping=epic${query}`)).clusters.map(
+      (cluster) => cluster.row.key,
+    );
+  assert.ok((await ids("")).includes(weather.cluster));
+  assert.ok(!(await ids("&workstream=none")).includes(weather.cluster));
 });

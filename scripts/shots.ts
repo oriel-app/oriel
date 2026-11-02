@@ -718,11 +718,37 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
+// A server of its own for Make a workstream on the overview: each pass of
+// the scenes deletes what the last one made first.
+const suggesting = (await writing({ kind: "fixture" })).serving;
+
 const scenes: Scene[] = [
   // The overview (decision 0027): with workstreams, threads waiting and the
   // folder beside Jira; and with Slack beside Jira.
   { name: "overview", path: "/", act: overviewShown },
   { name: "overview-slack", path: "/", on: chatty, act: overviewShown },
+  {
+    // Make a workstream on the cluster of SYN-54 and the messages that name
+    // it, with its Undo.
+    name: "overview-made",
+    path: "/",
+    on: suggesting,
+    act: async (page) => {
+      const { workstreams } = await call<{ workstreams: { id: string }[] }>(
+        suggesting,
+        "GET",
+        "/api/workstreams",
+      );
+      for (const { id } of workstreams)
+        await post(`/api/workstreams/${id}/delete`, { threads: 0 }, suggesting);
+      await page.reload();
+      await overviewShown(page);
+      const row = page.locator(".overview-candidate", { hasText: "Cancellation alert sent" });
+      await row.hover();
+      await row.getByRole("button", { name: /^Make a workstream of / }).click();
+      await page.locator(".undos button", { hasText: "Undo" }).waitFor();
+    },
+  },
   {
     name: "jira-connect",
     path: "/?grouping=epic",

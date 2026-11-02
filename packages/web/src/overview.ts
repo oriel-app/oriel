@@ -3,9 +3,10 @@
 // Its sections show a few rows each; "more" opens the rest in place, or in
 // Browse, filtered to that slice. Leaving it marks what it showed as seen.
 import type { OverviewSection } from "@oriel/core/overview";
-import { type Effect, errorOf, get, post, type Replied, report } from "./http.ts";
+import { type Effect, errorOf, get, post, type Replied, report, undoing } from "./http.ts";
 import type { Route } from "./route.ts";
-import type { OverviewView } from "./view.ts";
+import { type Held, type Hold, holding, letGo, notHeld, undoMs } from "./undos.ts";
+import type { GroupingId, OverviewView, Undoable, WorkstreamSummary } from "./view.ts";
 
 export type OverviewModel = {
   view: OverviewView | null;
@@ -13,11 +14,33 @@ export type OverviewModel = {
   problem: string | null;
   // The sections opened past their first rows, in place.
   opened: readonly OverviewSection[];
+  // Workstreams made here from a suggested cluster, each with its Undo, by
+  // the cluster's key, until they run out; `undoing` once its Undo is sent.
+  made: readonly Made[];
+  // The cluster a Make a workstream is on its way for.
+  making: string | null;
+  // What last went wrong making or undoing one.
+  failed: string | null;
+  held: Held;
+  countdown: number;
+};
+
+export type Made = {
+  key: string;
+  workstream: Undoable<WorkstreamSummary>;
+  undoing: boolean;
 };
 
 export type OverviewMsg =
   // A section's "more": in place, or into Browse at `to`.
-  { type: "moreOpened"; section: OverviewSection; to: Route | null } | { type: "retryClicked" };
+  | { type: "moreOpened"; section: OverviewSection; to: Route | null }
+  | { type: "retryClicked" }
+  // Make a workstream, on a cluster Not in a workstream yet suggests.
+  | { type: "makeClicked"; grouping: GroupingId; key: string }
+  | { type: "undoClicked"; key: string }
+  | { type: "undoHeld"; by: Hold; held: boolean }
+  | { type: "undoExpired"; countdown: number }
+  | { type: "failedDismissed" };
 
 export const loadOverview: Effect = get("/api/overview", { kind: "overview" });
 
@@ -28,7 +51,16 @@ export const shown = { needsYou: 4, workstreams: 8, quiet: 4 } as const;
 // Entering the overview loads it fresh, and counts as opening it.
 export function initOverview(): [OverviewModel, Effect[]] {
   return [
-    { view: null, problem: null, opened: [] },
+    {
+      view: null,
+      problem: null,
+      opened: [],
+      made: [],
+      making: null,
+      failed: null,
+      held: notHeld,
+      countdown: 0,
+    },
     [loadOverview, report({ name: "overview.opened" })],
   ];
 }
@@ -43,7 +75,99 @@ export function updateOverview(model: OverviewModel, msg: OverviewMsg): [Overvie
     }
     case "retryClicked":
       return [model, [loadOverview]];
+    case "makeClicked": {
+      if (model.making !== null) return [model, []];
+      return [
+        { ...model, making: msg.key, failed: null },
+        [
+          post(
+            "/api/workstreams",
+            { kind: "cluster", grouping: msg.grouping, cluster: msg.key },
+            { kind: "overviewMade", key: msg.key, grouping: msg.grouping },
+          ),
+        ],
+      ];
+    }
+    case "undoClicked": {
+      const made = model.made.find((each) => each.key === msg.key);
+      if (!made?.workstream.undo || made.undoing) return [model, []];
+      const [released, restarts] = letGoOf(model, "focus");
+      return [
+        {
+          ...released,
+          made: model.made.map((each) => (each === made ? { ...each, undoing: true } : each)),
+          failed: null,
+        },
+        [undoing(made.workstream.undo, { kind: "overviewUnmade", key: msg.key }), ...restarts],
+      ];
+    }
+    case "undoHeld":
+      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
+      return letGoOf(model, msg.by);
+    case "undoExpired":
+      if (msg.countdown !== model.countdown || holding(model.held)) return [model, []];
+      return [{ ...model, made: model.made.filter((each) => each.undoing) }, []];
+    case "failedDismissed":
+      return [{ ...model, failed: null }, []];
   }
+}
+
+const expiry = (countdown: number): Effect => ({
+  type: "after",
+  ms: undoMs,
+  msg: { type: "overview", msg: { type: "undoExpired", countdown } },
+});
+
+// Once neither pointer nor keyboard holds the notes, they get their full
+// time again.
+function letGoOf(model: OverviewModel, by: Hold): [OverviewModel, Effect[]] {
+  const [held, restart] = letGo(model.held, by);
+  if (!restart || model.made.length === 0) return [{ ...model, held }, []];
+  const countdown = model.countdown + 1;
+  return [{ ...model, held, countdown }, [expiry(countdown)]];
+}
+
+// Make a workstream answered: the workstream shows with its Undo, which
+// starts to run out, and the overview loads again, its counts with it. Its
+// Undo answered: the note goes, and the overview loads again.
+export function madeReplied(model: OverviewModel, msg: Replied): [OverviewModel, Effect[]] {
+  const { tag } = msg;
+  if (tag.kind === "overviewMade") {
+    if (!msg.ok) return [{ ...model, making: null, failed: errorOf(msg.body) }, []];
+    const workstream = msg.body as Undoable<WorkstreamSummary>;
+    const countdown = model.countdown + 1;
+    return [
+      {
+        ...model,
+        making: null,
+        made: [
+          ...model.made.filter((each) => each.key !== tag.key),
+          { key: tag.key, workstream, undoing: false },
+        ],
+        countdown,
+      },
+      [
+        loadOverview,
+        report({
+          name: "overview.suggestion-made",
+          workstreamId: workstream.id,
+          grouping: tag.grouping,
+        }),
+        expiry(countdown),
+      ],
+    ];
+  }
+  if (tag.kind !== "overviewUnmade") return [model, []];
+  if (!msg.ok)
+    return [
+      {
+        ...model,
+        made: model.made.map((each) => (each.key === tag.key ? { ...each, undoing: false } : each)),
+        failed: errorOf(msg.body),
+      },
+      [],
+    ];
+  return [{ ...model, made: model.made.filter((each) => each.key !== tag.key) }, [loadOverview]];
 }
 
 export function overviewReplied(model: OverviewModel, msg: Replied): OverviewModel {

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
 import type { Route } from "../src/route.ts";
-import { overviewView } from "../testing.ts";
+import { overviewView, workstreamSummary } from "../testing.ts";
 
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   let effects: Effect[] = [];
@@ -74,4 +74,53 @@ test("the overview loads again when the workspace changes, keeping what it shows
   const [model, effects] = run(shown, { type: "threadsMoved" });
   assert.ok(gets(effects).includes("/api/overview"));
   assert.equal(model.overview?.view?.seq, 3);
+});
+
+test("Make a workstream on a suggested cluster: the overview and the sidebar load again, with its Undo", () => {
+  const [shown] = run(init({ page: "overview" })[0], loaded(1));
+  const [making, asked] = run(shown, {
+    type: "overview",
+    msg: { type: "makeClicked", grouping: "linked", key: "jira:10054" },
+  });
+  assert.equal(making.overview?.making, "jira:10054");
+  assert.deepEqual(posts(asked), [
+    ["/api/workstreams", { kind: "cluster", grouping: "linked", cluster: "jira:10054" }],
+  ]);
+  const undo = { action: "workstream.delete", input: { workstream: "01JBZ0000000000000000000G9" } };
+  const [made, effects] = run(making, {
+    type: "replied",
+    tag: { kind: "overviewMade", key: "jira:10054", grouping: "linked" },
+    ok: true,
+    body: { ...workstreamSummary({ id: "01JBZ0000000000000000000G9" }), undo },
+  });
+  assert.equal(made.overview?.making, null);
+  assert.deepEqual(
+    made.overview?.made.map((each) => each.key),
+    ["jira:10054"],
+  );
+  assert.ok(gets(effects).includes("/api/overview"));
+  assert.ok(gets(effects).includes("/api/workstreams"));
+  assert.deepEqual(posts(effects), [
+    [
+      "/api/telemetry",
+      {
+        name: "overview.suggestion-made",
+        workstreamId: "01JBZ0000000000000000000G9",
+        grouping: "linked",
+      },
+    ],
+  ]);
+  const [, undoing] = run(made, {
+    type: "overview",
+    msg: { type: "undoClicked", key: "jira:10054" },
+  });
+  assert.deepEqual(posts(undoing), [["/api/actions/workstream.delete", undo.input]]);
+  const [gone, reloads] = run(made, {
+    type: "replied",
+    tag: { kind: "overviewUnmade", key: "jira:10054" },
+    ok: true,
+    body: { undo: null },
+  });
+  assert.deepEqual(gone.overview?.made, []);
+  assert.ok(gets(reloads).includes("/api/overview"));
 });

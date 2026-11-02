@@ -274,6 +274,13 @@ function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       {select("Assignee", "Anyone", filter.assignee, choices?.people ?? [], (assignee) => ({
         assignee,
       }))}
+      {select(
+        "Workstream",
+        "In a workstream or not",
+        filter.workstream,
+        [{ id: "none", name: "Not in a workstream" }],
+        (workstream) => ({ workstream: workstream === "none" ? "none" : undefined }),
+      )}
       {filtered(filter) && (
         <button type="button" class="quiet-action" onClick={() => send({ type: "filtersCleared" })}>
           Clear filters

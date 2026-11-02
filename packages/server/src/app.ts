@@ -95,7 +95,7 @@ import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
-import { overviewView } from "./overview.ts";
+import { heldBy, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
@@ -910,21 +910,26 @@ export async function createApp(options: AppOptions): Promise<App> {
   // The overview, computed now from the index, the change log, workstreams,
   // threads and review links: what the page shows and the window chat's
   // `window.overview()` reads (decision 0027).
+  // The open workstreams and their members now.
+  const openWorkstreams = () =>
+    viewer
+      .workstreams(workspaceId)
+      .filter((summary) => summary.done === null)
+      .map((summary) => ({
+        id: summary.id,
+        name: summary.name,
+        createdAt: summary.createdAt as Instant,
+        members: workstreams.region(summary.id as Ulid, summary.version)?.items ?? [],
+      }));
   const overview = async (): Promise<OverviewView> => {
     const all = records();
     const at = asOf ?? now();
-    const open = viewer.workstreams(workspaceId).filter((summary) => summary.done === null);
     const grouped = new Map<GroupingId, Cluster[]>();
     return overviewView({
       records: all,
       changes: index.changes(workspaceId),
       seen: lastSeen(db, workspaceId),
-      workstreams: open.map((summary) => ({
-        id: summary.id,
-        name: summary.name,
-        createdAt: summary.createdAt as Instant,
-        members: workstreams.region(summary.id as Ulid, summary.version)?.items ?? [],
-      })),
+      workstreams: openWorkstreams(),
       threads: await viewer.threads(workspaceId),
       unopened: await sets.unopenedLinks(workspaceId),
       clusters: (grouping) => {
@@ -982,7 +987,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             records(),
             asOf ?? now(),
             fixture !== null,
-            keepOf(filter),
+            keepOf(filter, () => heldBy(openWorkstreams())),
           ),
         page: (grouping, cluster, from, filter) =>
           clusterPage(
@@ -992,7 +997,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             asOf ?? now(),
             cluster,
             from,
-            keepOf(filter),
+            keepOf(filter, () => heldBy(openWorkstreams())),
           ),
       },
       overview,

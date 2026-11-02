@@ -115,7 +115,10 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <Closing model={model.closing} dispatch={dispatch} />
       <Endings
         model={model.ending}
-        shownByPage={model.route.page === "workstream"}
+        shownByPage={
+          model.route.page === "workstream" ||
+          (model.route.page === "overview" && model.overview !== null)
+        }
         dispatch={dispatch}
       />
     </div>
@@ -156,6 +159,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         model.overview && (
           <OverviewPage
             model={model.overview}
+            ending={model.ending}
             jira={model.jira}
             browse={windowRoute(model.window)}
             dispatch={dispatch}

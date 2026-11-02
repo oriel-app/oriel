@@ -37,20 +37,23 @@ export const groupings: Record<GroupingId, Grouping> = {
 };
 
 // The items a filter keeps (decision 0027): every search term in the key or
-// title, as search() matches; the source; the status category; the assignee.
-// Null when nothing is filtered.
+// title, as search() matches; the source; the status category; the assignee;
+// none an open workstream holds (`held`). Null when nothing is filtered.
 export type Keep = (record: IndexRecord) => boolean;
-export function keepOf(filter: BrowseFilter): Keep | null {
+export function keepOf(filter: BrowseFilter, held: () => Keep): Keep | null {
   const { terms } = searchTerms(filter.q ?? "");
-  const { q, source, status, assignee } = filter;
-  if (!q && !source && !status && !assignee) return null;
+  const { q, source, status, assignee, workstream } = filter;
+  if (!q && !source && !status && !assignee && !workstream) return null;
+  // Only a filter that asks reads what the workstreams hold.
+  const holds = workstream ? held() : () => false;
   // A query with no terms, such as "jira:" alone, finds nothing, as with
   // search().
   return (record) =>
     (!q || (terms.length > 0 && matchesSearch(record, terms))) &&
     (!source || parseItemId(record.id)?.source === source) &&
     (!status || record.facets.state === status) &&
-    (!assignee || assigneeOf(record)?.id === assignee);
+    (!assignee || assigneeOf(record)?.id === assignee) &&
+    (!workstream || !holds(record));
 }
 
 // What the filters can pick from: the sources the index has items from, in
