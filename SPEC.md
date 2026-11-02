@@ -121,7 +121,7 @@ LLM-graded:
 7. **Summary faithfulness:** a generated summary (the right rail's, or a line on a workstream card) vs the items it cites, graded for unsupported claims.
 8. **Scope discipline:** off-region questions must use `search()` (or, in the window chat, `window.overview()`) explicitly or decline; hallucinated or silent reach fails.
 
-Live evals run locally before a PR (`pnpm evals`) and are how we hillclimb: cases split into train and test, one change per round, keep it only if both splits improve, and report against baseline with confidence intervals. CI replays cassettes; it guards the pipeline, not the model's judgement.
+Live evals run locally before a PR (`pnpm evals`) and are how we hillclimb (decision 0029, the hill-climb skill): a plan frozen and committed before the first round, with a cost cap; cases split into train and test, each run several times a round; one change at a time, judged on train alone, a fix kept only if it is better beyond noise and a trim only if it is no worse within a stated margin, and either reverted if any group of cases gets worse; test run once at the end, and the report against baseline with confidence intervals. CI replays cassettes; it guards the pipeline, not the model's judgement.
 
 Test mechanics:
 
