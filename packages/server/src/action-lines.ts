@@ -8,11 +8,12 @@ import type { ActionLineView } from "@oriel/web/view";
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 const shown = 6;
 
-// "SYN-3", "SYN-3 and SYN-7", "SYN-1, SYN-2 and SYN-3", or the first few and
-// how many more.
-function listed(value: unknown): string {
-  const keys = (Array.isArray(value) ? value : []).map((id) => keyOf(String(id)));
-  if (keys.length > shown)
+// "SYN-3", "SYN-3 and SYN-7", "SYN-1, SYN-2 and SYN-3", or, for what wasn't
+// done, the first few and how many more. What was done names every item: the
+// thread's marker for it folds into this line, which is then its record.
+function listed(value: unknown, every = false): string {
+  const keys = [...new Set(Array.isArray(value) ? value : [])].map((id) => keyOf(String(id)));
+  if (keys.length > shown && !every)
     return `${keys.slice(0, shown).join(", ")} and ${keys.length - shown} more`;
   if (keys.length < 2) return keys.join("");
   return `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
@@ -21,30 +22,33 @@ function listed(value: unknown): string {
 const quoted = (name: unknown) => `“${String(name)}”`;
 
 // What each action did, then what it would have done, given its input, the
-// place it touched, and an applied rename's name before.
+// place it touched, and what its undo gives back: the items an add added,
+// none of those it already had, and a rename's name before.
 type Words = (
   input: Record<string, unknown>,
   place: string,
-  was: string | null,
+  undo: Record<string, unknown> | null,
 ) => [string, string];
 
 const words: { [N in ActionName]: Words } = {
-  "workstream.add": (input, place) => [
-    `Added ${listed(input["items"])} to ${place}`,
+  "workstream.add": (input, place, undo) => [
+    undo
+      ? `Added ${listed(undo["items"], true)} to ${place}`
+      : `Added nothing to ${place}: it already had ${listed(input["items"])}`,
     `add ${listed(input["items"])} to ${place}`,
   ],
   "workstream.remove": (input, place) => [
-    `Removed ${listed(input["items"])} from ${place}`,
+    `Removed ${listed(input["items"], true)} from ${place}`,
     `remove ${listed(input["items"])} from ${place}`,
   ],
   "workstream.create": (input) => [
-    `Made the workstream ${quoted(input["name"])} with ${listed(input["items"])}`,
+    `Made the workstream ${quoted(input["name"])} with ${listed(input["items"], true)}`,
     `make the workstream ${quoted(input["name"])}`,
   ],
-  "workstream.rename": (input, place, was) => [
-    was === null
+  "workstream.rename": (input, place, undo) => [
+    undo === null
       ? `Named ${place} ${quoted(input["name"])}`
-      : `Renamed ${quoted(was)} to ${quoted(input["name"])}`,
+      : `Renamed ${quoted(undo["name"])} to ${quoted(input["name"])}`,
     `rename ${place} to ${quoted(input["name"])}`,
   ],
   "thread.done": (_, place) => [`Marked ${place} done`, `mark ${place} done`],
@@ -68,10 +72,8 @@ export function actionLineView(
     : touched.name
       ? quoted(touched.name)
       : `a ${touched.kind}`;
-  // A rename undoes as renaming back to the name it had.
-  const was =
-    line.applied && line.undo?.action === "workstream.rename" ? String(line.undo.input.name) : null;
-  const [done, not] = words[call.action](call.input, place, was);
+  const undo = line.applied && line.undo ? (line.undo.input as Record<string, unknown>) : null;
+  const [done, not] = words[call.action](call.input, place, undo);
   return {
     text: line.applied ? `${done}.` : `Didn't ${not}: ${line.why}.`,
     applied: line.applied,
