@@ -2,6 +2,7 @@
 // the user picks to make or grow a workstream.
 import { type Effect, errorOf, post, type Replied } from "./http.ts";
 import {
+  type ClusterPageView,
   type ClusterView,
   type GroupingId,
   isGroupingId,
@@ -24,9 +25,22 @@ export type Model = {
   request: number;
   // Per grouping, the clusters open at the "list" zoom level.
   open: Readonly<Record<GroupingId, readonly string[]>>;
+  // The window on screen's clusters whose next page of items is on its way,
+  // by its request, or didn't come. A cluster's items load when it opens, a
+  // page at a time (decision 0027).
+  paging: Readonly<Record<string, number | "failed">>;
+  // The latest page request. Its replies are matched by `paging`.
+  pageRequest: number;
+  // By cluster, which of its item lists its first page came from, so a later
+  // page from another, after the index moved, isn't put after it.
+  listed: Readonly<Record<string, string>>;
   // Items picked by hand, in the order picked. They stay picked across
   // groupings, since an item is the same item under any lens.
   selected: readonly string[];
+  // What each picked item was where it was picked, to name a workstream of
+  // them once the window no longer shows it: another grouping, or a page of
+  // its cluster not loaded again.
+  picks: Readonly<Record<string, Picked>>;
   // The workstream the user is adding items to, from its page; null otherwise.
   addTo: string | null;
   // A workstream being made or grown.
@@ -40,6 +54,10 @@ export type Msg =
   | { type: "retryClicked" }
   | { type: "windowLoaded"; request: number; window: WindowView }
   | { type: "windowFailed"; request: number }
+  // The next page of an open cluster's items, after those shown.
+  | { type: "moreClicked"; key: string }
+  | { type: "itemsLoaded"; request: number; page: ClusterPageView }
+  | { type: "itemsFailed"; request: number; key: string; from: number }
   | { type: "itemToggled"; id: string }
   | { type: "selectionCleared" }
   // Turns a cluster into a workstream: a copy of its members now.
@@ -57,12 +75,81 @@ export function init(grouping: string | null, addTo: string | null = null): [Mod
     status: "loading",
     request: 0,
     open: { epic: [], assignee: [], stuck: [] },
+    paging: {},
+    pageRequest: 0,
+    listed: {},
     selected: [],
+    picks: {},
     addTo,
     pending: false,
     notice: null,
   };
   return load(model, picked);
+}
+
+// Asks for the page of a cluster's items after those the window on screen
+// has, unless one is on its way or there are no more.
+function more(model: Model, key: string): [Model, Effect[]] {
+  const cluster = model.window?.clusters.find((each) => each.row.key === key);
+  if (!model.window || !cluster || typeof model.paging[key] === "number") return [model, []];
+  if (cluster.list.length >= cluster.row.count) return [model, []];
+  const request = model.pageRequest + 1;
+  const { grouping } = model.window;
+  return [
+    { ...model, pageRequest: request, paging: { ...model.paging, [key]: request } },
+    [{ type: "loadItems", request, grouping, cluster: key, from: cluster.list.length }],
+  ];
+}
+
+// A newly loaded window, with the items of each cluster open in it on their
+// way again from the first. Until they come, a cluster the window on screen
+// shows open keeps the items it has, so the list doesn't jump.
+function shown(model: Model, window: WindowView): [Model, Effect[]] {
+  const open = model.open[window.grouping].filter((key) =>
+    window.clusters.some(({ row }) => row.key === key && row.count > 0),
+  );
+  const ready = { ...model, window, status: "ready" as const, paging: {}, listed: {} };
+  if (open.length === 0) return [ready, []];
+  const before = model.window?.grouping === window.grouping ? model.window.clusters : [];
+  const kept = {
+    ...window,
+    clusters: window.clusters.map((cluster) => {
+      const list = before.find(({ row }) => row.key === cluster.row.key)?.list;
+      return list && open.includes(cluster.row.key) ? { ...cluster, list } : cluster;
+    }),
+  };
+  let next: Model = { ...ready, window: kept };
+  const effects: Effect[] = [];
+  for (const key of open) {
+    const request = next.pageRequest + 1;
+    next = { ...next, pageRequest: request, paging: { ...next.paging, [key]: request } };
+    effects.push({ type: "loadItems", request, grouping: window.grouping, cluster: key, from: 0 });
+  }
+  return [next, effects];
+}
+
+// A page of a cluster's items, put in place: the first replaces what the
+// cluster showed, and any other follows it. A total that differs from the
+// cluster's count, or a later page from another list than the first's, means
+// the index moved since, so the window loads again.
+function paged(model: Model, page: ClusterPageView): [Model, Effect[]] {
+  const { window } = model;
+  const cluster = window?.clusters.find(({ row }) => row.key === page.cluster);
+  if (!window || !cluster) return [model, []];
+  const paging = { ...model.paging };
+  delete paging[page.cluster];
+  const moved =
+    page.total !== cluster.row.count || (page.from > 0 && model.listed[page.cluster] !== page.of);
+  if (moved) return load({ ...model, paging }, model.grouping);
+  const listed = page.from === 0 ? { ...model.listed, [page.cluster]: page.of } : model.listed;
+  const had = new Set(page.from === 0 ? [] : cluster.list.map((item) => item.id));
+  const list = [
+    ...(page.from === 0 ? [] : cluster.list),
+    ...page.items.filter((item) => !had.has(item.id)),
+  ];
+  const clusters = window.clusters.map((each) => (each === cluster ? { ...each, list } : each));
+  const locations = { ...window.locations, ...page.locations };
+  return [{ ...model, paging, listed, window: { ...window, clusters, locations } }, []];
 }
 
 function load(model: Model, grouping: GroupingId): [Model, Effect[]] {
@@ -84,7 +171,7 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       return load(model, model.grouping);
     case "windowLoaded":
       if (msg.request !== model.request) return [model, []];
-      return [{ ...model, window: msg.window, status: "ready" }, []];
+      return shown(model, msg.window);
     case "windowFailed":
       if (msg.request !== model.request) return [model, []];
       return [{ ...model, status: "failed" }, []];
@@ -97,16 +184,45 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const next = open.includes(msg.key)
         ? open.filter((key) => key !== msg.key)
         : [...open, msg.key];
-      return [{ ...model, open: { ...model.open, [grouping]: next } }, []];
+      const toggled = { ...model, open: { ...model.open, [grouping]: next } };
+      // Opened again, it shows what it had; only one with none asks.
+      const empty = model.window.clusters.some(
+        ({ row, list }) => row.key === msg.key && list.length === 0,
+      );
+      return next.includes(msg.key) && empty ? more(toggled, msg.key) : [toggled, []];
+    }
+    case "moreClicked":
+      return more(model, msg.key);
+    case "itemsLoaded": {
+      const { page } = msg;
+      if (model.paging[page.cluster] !== msg.request) return [model, []];
+      if (model.window?.grouping !== page.grouping) return [model, []];
+      return paged(model, page);
+    }
+    case "itemsFailed": {
+      if (model.paging[msg.key] !== msg.request) return [model, []];
+      const paging = { ...model.paging, [msg.key]: "failed" as const };
+      // A first page that didn't come leaves none of what the cluster showed
+      // before, which may be out of date.
+      const clusters = model.window?.clusters.map((cluster) =>
+        msg.from === 0 && cluster.row.key === msg.key ? { ...cluster, list: [] } : cluster,
+      );
+      const window = model.window && clusters ? { ...model.window, clusters } : model.window;
+      return [{ ...model, paging, window }, []];
     }
     case "itemToggled": {
-      const selected = model.selected.includes(msg.id)
-        ? model.selected.filter((id) => id !== msg.id)
-        : [...model.selected, msg.id];
-      return [{ ...model, selected, notice: null }, []];
+      if (model.selected.includes(msg.id)) {
+        const picks = { ...model.picks };
+        delete picks[msg.id];
+        const selected = model.selected.filter((id) => id !== msg.id);
+        return [{ ...model, selected, picks, notice: null }, []];
+      }
+      const seen = pickedFrom(model.window, msg.id);
+      const picks = seen ? { ...model.picks, [msg.id]: seen } : model.picks;
+      return [{ ...model, selected: [...model.selected, msg.id], picks, notice: null }, []];
     }
     case "selectionCleared":
-      return [{ ...model, selected: [], notice: null }, []];
+      return [{ ...model, selected: [], picks: {}, notice: null }, []];
     case "clusterToWorkstream": {
       if (model.pending || model.window === null) return [model, []];
       const body = { kind: "cluster", grouping: model.window.grouping, cluster: msg.key };
@@ -143,7 +259,7 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       const id =
         tag.kind === "addToWorkstream" ? tag.workstreamId : (msg.body as WorkstreamSummary).id;
       return [
-        { ...model, pending: false, selected: [], addTo: null },
+        { ...model, pending: false, selected: [], picks: {}, addTo: null },
         [{ type: "navigate", route: { page: "workstream", id } }],
       ];
     }
@@ -159,25 +275,46 @@ export function zoomOf(model: Model, key: string): Zoom {
 // they all belong to, the one item's title, or the first one's and how many
 // more. Never another cluster's label: one like "No epic" or "Unestimated"
 // says what the items lack, not what the workstream is. A cluster's anchor (its
-// epic) comes from that cluster. Picked items no longer in the window are
+// epic) comes from that cluster. Each item is as the window shows it now, or
+// else as it showed it when it was picked; items it showed neither way are
 // named by how many there are.
 export function pickedName(model: Model): string {
   const { selected } = model;
-  const clusters = model.window?.clusters ?? [];
-  const rows = ({ row, list }: ClusterView) => (row.anchor ? [row.anchor, ...list] : list);
-  const epic = clusters.find(
-    (cluster) =>
-      cluster.row.anchor !== null &&
-      selected.every((id) => rows(cluster).some((item) => item.id === id)),
+  const seen = selected.map((id): Picked | null => {
+    const now = pickedFrom(model.window, id);
+    const then = model.picks[id];
+    if (!now && !then) return null;
+    return {
+      title: now?.title ?? then?.title ?? null,
+      // An epic's items show under another grouping, where no cluster is one.
+      epics: now?.epics.length ? now.epics : (then?.epics ?? []),
+    };
+  });
+  const [first] = seen;
+  const epic = first?.epics.find((each) =>
+    seen.every((item) => item?.epics.some((other) => other.key === each.key)),
   );
-  if (epic && selected.length > 1) return cut(epic.row.label, maxNameChars);
-  const first = clusters
-    .flatMap(rows)
-    .find((row) => row.id === selected[0] && row.title.trim() !== "");
-  if (first && selected.length === 1) return cut(first.title, maxNameChars);
+  if (epic && selected.length > 1) return cut(epic.label, maxNameChars);
+  const title = first?.title ?? null;
+  if (title !== null && selected.length === 1) return cut(title, maxNameChars);
   const more = ` and ${selected.length - 1} more`;
-  if (first) return `${cut(first.title, maxNameChars - more.length)}${more}`;
+  if (title !== null) return `${cut(title, maxNameChars - more.length)}${more}`;
   return selected.length === 1 ? "1 item" : `${selected.length} items`;
+}
+
+// What a picked item is, as far as a window shows it: its title, unless
+// blank, and the epics it is in or is.
+export type Picked = { title: string | null; epics: { key: string; label: string }[] };
+
+function pickedFrom(window: WindowView | null, id: string): Picked | null {
+  const clusters = window?.clusters ?? [];
+  const rows = ({ row, list }: ClusterView) => (row.anchor ? [row.anchor, ...list] : list);
+  const title =
+    clusters.flatMap(rows).find((row) => row.id === id && row.title.trim() !== "")?.title ?? null;
+  const epics = clusters
+    .filter((cluster) => cluster.row.anchor !== null && rows(cluster).some((row) => row.id === id))
+    .map(({ row }) => ({ key: row.key, label: row.label }));
+  return title === null && epics.length === 0 ? null : { title, epics };
 }
 
 // The server's cap on a workstream's name, in characters.

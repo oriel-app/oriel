@@ -78,6 +78,7 @@ export function securityHeaders(importMapHash: string): Record<string, string> {
 const ulidPath = "[0-9A-HJKMNP-TV-Z]{26}";
 const pagePaths = [
   /^\/$/,
+  /^\/browse$/,
   /^\/done$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),

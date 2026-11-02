@@ -15,6 +15,7 @@
 // reads the Slack fixture's picked channel. Three more hand a story to the
 // team: one change set moves it in Jira and posts in Slack's channel,
 // proposed on one, approved on the next, and reverted on the last (OA-28).
+// One more has 120 more stories in SYN's checkout epic, so Browse pages them.
 //
 // `pnpm shots --width 1440 panel-` takes only the scenes whose names
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
@@ -156,6 +157,28 @@ const live = async () => {
   return { site, serving };
 };
 const offline = await live();
+// SYN with 120 more stories in its checkout epic, so Browse pages them.
+const paged = await (async () => {
+  const syn = loadJiraFixture();
+  const story = syn.issues.find((issue) => issue.epic === "SYN-1" && issue.issueType === "Story");
+  if (!story) throw new Error("SYN has no checkout story");
+  const more = Array.from({ length: 120 }, (_, n) => ({
+    ...story,
+    key: `SYN-${900 + n}`,
+    id: String(90_000 + n),
+    summary: `More checkout work, part ${n + 1}`,
+  }));
+  return serve(0, {
+    db: ":memory:",
+    jira: {
+      kind: "live",
+      site: memorySiteOrigin,
+      credential: { headers: async () => ({}) },
+      project: "SYN",
+      fetch: memorySite({ ...syn, issues: [...syn.issues, ...more] }, instant(new Date())).fetch,
+    },
+  });
+})();
 offline.site.outage("offline");
 // A teammate wrote SYN-23's description in Jira's editor, as rich text, and
 // two comments on it: one plain, one with a list, code and a link.
@@ -655,9 +678,15 @@ async function openSidebar(page: Page): Promise<void> {
   await page.locator(".shell[data-drawer] .sidebar").waitFor();
 }
 
+// Once no open cluster's items are on their way.
+async function itemsShown(page: Page): Promise<void> {
+  await page.locator('.more-items[data-state="loading"]').first().waitFor({ state: "detached" });
+}
+
 async function openFirstCluster(page: Page): Promise<void> {
   await page.locator(".cluster-toggle").first().click();
   await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+  await itemsShown(page);
 }
 
 async function openAll(page: Page): Promise<void> {
@@ -669,6 +698,7 @@ async function openAll(page: Page): Promise<void> {
       `document.querySelectorAll('.cluster-toggle[aria-expanded="false"]').length < ${left}`,
     );
   }
+  await itemsShown(page);
 }
 
 const scenes: Scene[] = [
@@ -724,6 +754,43 @@ const scenes: Scene[] = [
       await boxes.nth(1).check();
       await boxes.nth(2).check();
       await page.locator(".selection-bar").waitFor();
+    },
+  },
+  {
+    name: "browse-paged",
+    path: "/browse?grouping=epic",
+    on: paged,
+    act: async (page) => {
+      await shown(page, "epic");
+      await openFirstCluster(page);
+      await page.locator(".more-items button").waitFor();
+    },
+  },
+  {
+    name: "browse-paged-more",
+    path: "/browse?grouping=epic",
+    on: paged,
+    act: async (page) => {
+      await shown(page, "epic");
+      await openFirstCluster(page);
+      await page.locator(".more-items button").click();
+      await itemsShown(page);
+      await page.locator(".more-items button").waitFor();
+    },
+  },
+  // An item opened from a Browse cluster steps through the cluster's loaded
+  // items, as from any list (OA-95).
+  {
+    name: "browse-step",
+    window: true,
+    path: "/browse?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await openFirstCluster(page);
+      await page.locator(".item a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.keyboard.press("ArrowDown");
+      await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
     },
   },
   { name: "assignee", path: "/?grouping=assignee", act: (page) => shown(page, "assignee") },
@@ -793,6 +860,7 @@ const scenes: Scene[] = [
       await shown(page, "epic");
       await page.locator(".cluster-toggle", { hasText: "No epics in this source" }).click();
       await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+      await itemsShown(page);
     },
   },
   {
@@ -1663,6 +1731,7 @@ try {
   await offline.serving.close();
   await described.serving.close();
   await unpointed.close();
+  await paged.close();
   await unanswered.serving.close();
   inFlight.release();
   await inFlight.approving;

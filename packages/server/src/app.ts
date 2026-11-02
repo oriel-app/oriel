@@ -96,7 +96,7 @@ import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { views } from "./views.ts";
-import { groupings, windowView } from "./window.ts";
+import { browseView, clusterPage, groupings, windowView } from "./window.ts";
 
 // How change sets reach a Jira site to write: writer config, from which
 // @oriel/changeset builds the writer. `fetch` is for tests, which answer
@@ -915,6 +915,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       explain: (conflicts) => {
         const titles = new Map(records().map((record) => [record.id, record.title]));
         return explainConflicts(conflicts, specs, (id) => titles.get(id) ?? null);
+      },
+      browse: {
+        rows: (grouping) =>
+          browseView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null),
+        page: (grouping, cluster, from) =>
+          clusterPage(grouping, groupings[grouping], records(), asOf ?? now(), cluster, from),
       },
       jira: jiraView,
       folder: folderView,

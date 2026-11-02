@@ -1,9 +1,10 @@
-// Where the page is: the window (with a grouping, and maybe a workstream it is
-// adding items to), a workstream, a thread, a new thread not started yet, the
-// Done page (the threads no longer working, in two tabs, a page at a time),
-// or a review link. A thread's address may name one of its change sets, to
-// open the thread there. On any page but a review link's, `item` is the item open
-// in the panel beside it, by its ID.
+// Where the page is: Browse, at /browse (with a grouping, and maybe a
+// workstream it is adding items to; `/` shows it too until the overview takes
+// `/`), a workstream, a thread, a new thread not started yet, the Done page
+// (the threads no longer working, in two tabs, a page at a time), or a review
+// link. A thread's address may name one of its change sets, to open the
+// thread there. On any page but a review link's, `item` is the item open in
+// the panel beside it, by its ID.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
 export type Route = Page & { item?: string };
@@ -76,7 +77,7 @@ function pageUrl(route: Page): string {
     case "window": {
       const query = new URLSearchParams({ grouping: route.grouping });
       if (route.addTo) query.set("addTo", route.addTo);
-      return `/?${query}`;
+      return `/browse?${query}`;
     }
     case "workstream":
       return `/workstreams/${route.id}`;

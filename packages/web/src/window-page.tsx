@@ -22,6 +22,7 @@ import {
   groupingIds,
   type WorkstreamSummary,
   type ItemRow,
+  pageSize,
   type WindowView,
 } from "./view.ts";
 
@@ -235,6 +236,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
             key={view.row.key}
             view={view}
             zoom={zoomOf(model, view.row.key)}
+            paging={model.paging[view.row.key] ?? null}
             selected={model.selected}
             pending={model.pending}
             locations={shown.locations ?? {}}
@@ -249,6 +251,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
 function Cluster(props: {
   view: ClusterView;
   zoom: Zoom;
+  paging: number | "failed" | null;
   selected: readonly string[];
   pending: boolean;
   locations: Readonly<Record<string, string>>;
@@ -315,7 +318,9 @@ function Cluster(props: {
       {open && (
         <Items
           id={listId}
+          cluster={row}
           items={list}
+          paging={props.paging}
           selected={props.selected}
           locations={props.locations}
           dispatch={dispatch}
@@ -377,34 +382,98 @@ function StatusBar({ status }: { status: ClusterRow["status"] }) {
   );
 }
 
+// A cluster's items as far as they have loaded, and the next page's button.
 function Items(props: {
   id: string;
+  cluster: ClusterRow;
   items: ItemRow[];
+  paging: number | "failed" | null;
   selected: readonly string[];
   locations: Readonly<Record<string, string>>;
   dispatch: Dispatch;
 }) {
-  if (props.items.length === 0) {
+  const { cluster, items, paging } = props;
+  if (cluster.count === 0) {
     return (
       <p class="no-items" id={props.id}>
         No items.
       </p>
     );
   }
+  const left = cluster.count - items.length;
+  const next = (
+    <More
+      cluster={cluster}
+      left={left}
+      paging={paging}
+      onClick={() =>
+        props.dispatch({ type: "window", msg: { type: "moreClicked", key: cluster.key } })
+      }
+    />
+  );
+  if (items.length === 0)
+    return (
+      <div class="items-loading" id={props.id}>
+        {next}
+      </div>
+    );
   return (
-    <ItemListContext.Provider value={props.items.map((item) => item.id)}>
-      <ul class="items" id={props.id}>
-        {props.items.map((item) => (
-          <Item
-            key={item.id}
-            item={item}
-            picked={props.selected.includes(item.id)}
-            url={props.locations[item.id] ?? null}
-            dispatch={props.dispatch}
-          />
-        ))}
-      </ul>
-    </ItemListContext.Provider>
+    <>
+      <ItemListContext.Provider value={items.map((item) => item.id)}>
+        <ul class="items" id={props.id}>
+          {items.map((item) => (
+            <Item
+              key={item.id}
+              item={item}
+              picked={props.selected.includes(item.id)}
+              url={props.locations[item.id] ?? null}
+              dispatch={props.dispatch}
+            />
+          ))}
+        </ul>
+      </ItemListContext.Provider>
+      {left > 0 && next}
+    </>
+  );
+}
+
+// The next page of a cluster's items: on its way, failed, or a button.
+function More(props: {
+  cluster: ClusterRow;
+  left: number;
+  paging: number | "failed" | null;
+  onClick(): void;
+}) {
+  const { cluster, left, paging } = props;
+  if (typeof paging === "number")
+    return (
+      <p class="more-items" data-state="loading">
+        Loading…
+      </p>
+    );
+  if (paging === "failed")
+    return (
+      <p class="more-items" data-state="failed" role="alert">
+        <span>These items didn't load.</span>
+        <button type="button" class="button" onClick={props.onClick}>
+          Try again
+        </button>
+      </p>
+    );
+  return (
+    <p class="more-items">
+      <button
+        type="button"
+        class="button"
+        aria-label={`Show ${Math.min(left, pageSize)} more of ${cluster.label}'s items`}
+        onClick={props.onClick}
+      >
+        Show {Math.min(left, pageSize)} more
+      </button>
+      <span class="more-count">
+        {cluster.count - left} of {cluster.count} shown
+      </span>
+    </p>
   );
 }
 

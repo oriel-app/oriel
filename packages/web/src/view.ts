@@ -17,7 +17,24 @@ export function isGroupingId(value: unknown): value is GroupingId {
   return groupingIds.some((id) => id === value);
 }
 
+// A cluster's row, and its items so far. Browse's first reply has none:
+// they load when the cluster opens, `pageSize` at a time (decision 0027).
 export type ClusterView = { row: ClusterRow; list: ItemRow[] };
+
+export const pageSize = 50;
+
+// One page of a cluster's items, from the `from`th of the `total` it holds
+// now, and where each lives in its source, as `WindowView.locations`. `of`
+// names the list it is a page of: it changes when the cluster's items do.
+export type ClusterPageView = {
+  grouping: GroupingId;
+  cluster: string;
+  of: string;
+  from: number;
+  items: ItemRow[];
+  total: number;
+  locations: Readonly<Record<string, string>>;
+};
 
 export type WindowView = {
   grouping: GroupingId;
