@@ -1,6 +1,6 @@
 // Ending a workstream (decision 0028): its page's header buttons, its menu
 // and swipe in a list, and, once for the app, the question deleting asks and
-// what was done, with its Undo.
+// what was done, with its Undo, as a note in the one stack of Undos.
 import type { ComponentChildren } from "preact";
 import { Confirm } from "./close-thread.tsx";
 import {
@@ -13,6 +13,8 @@ import {
 import { ContextMenu, type MenuItem } from "./menu.tsx";
 import type { Dispatch } from "./parts.tsx";
 import { Swipeable } from "./swipe.tsx";
+import { type UndoNote, UndoStack } from "./undo-stack.tsx";
+import type { Hold } from "./undos.ts";
 
 const sender = (dispatch: Dispatch) => (msg: EndingMsg) => dispatch({ type: "ending", msg });
 
@@ -83,45 +85,38 @@ export function EndButtons(props: {
   );
 }
 
-// What was last done, with its Undo, and what last failed, among other
-// Undos where a page has them: one stack at the foot of the window.
-export function EndingNotes({ model, dispatch }: { model: EndingModel; dispatch: Dispatch }) {
+// What was last done, with its Undo, and what last failed, as notes in the
+// one stack of Undos: the page's, where it has one, or else the app's.
+export function endingNotes(
+  model: EndingModel,
+  dispatch: Dispatch,
+): { notes: UndoNote[]; problem: { said: string; onDismiss(): void } | null } {
   const send = sender(dispatch);
   const { ended } = model;
-  const said = ended && endedText(ended);
-  return (
-    <>
-      {ended && said && (
-        <p class="undo">
-          <span>{said}</span>
-          {ended.undo && (
-            <button
-              type="button"
-              class="undo-action"
-              disabled={model.pending !== null}
-              aria-label={`Undo: ${said}`}
-              onClick={() => send({ type: "undoClicked" })}
-            >
-              Undo
-            </button>
-          )}
-        </p>
-      )}
-      {model.problem && !model.asking && (
-        <p class="undo" role="alert">
-          <span>{model.problem}</span>
-          <button
-            type="button"
-            class="undo-action"
-            onClick={() => send({ type: "problemDismissed" })}
-          >
-            Dismiss
-          </button>
-        </p>
-      )}
-    </>
-  );
+  const said = ended && model.shown ? endedText(ended) : null;
+  return {
+    notes:
+      ended && said
+        ? [
+            {
+              key: `${ended.kind}-${ended.workstreamId}`,
+              said,
+              label: `Undo: ${said}`,
+              onUndo: ended.undo ? () => send({ type: "undoClicked" }) : null,
+              disabled: model.pending !== null,
+            },
+          ]
+        : [],
+    problem:
+      model.problem && !model.asking
+        ? { said: model.problem, onDismiss: () => send({ type: "problemDismissed" }) }
+        : null,
+  };
 }
+
+// The pointer or keyboard on the stack holds what was done there.
+export const holdEnding = (dispatch: Dispatch) => (by: Hold, held: boolean) =>
+  sender(dispatch)({ type: "undoHeld", by, held });
 
 // Once for the app: deleting's question; and what was done, or failed,
 // unless the page on screen shows that among its own Undos (`shownByPage`).
@@ -142,10 +137,8 @@ export function Endings(props: { model: EndingModel; shownByPage: boolean; dispa
         onConfirm={() => send({ type: "deleteConfirmed" })}
         onCancel={() => send({ type: "deleteCancelled" })}
       />
-      {!props.shownByPage && (model.ended || (model.problem && !asking)) && (
-        <div class="undos" role="status">
-          <EndingNotes model={model} dispatch={dispatch} />
-        </div>
+      {!props.shownByPage && (
+        <UndoStack {...endingNotes(model, dispatch)} onHold={holdEnding(dispatch)} />
       )}
     </>
   );

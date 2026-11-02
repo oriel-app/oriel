@@ -388,17 +388,17 @@ export function turns(deps: TurnDeps) {
     return { seq: said.seq, at: now, workspaceId: thread.workspaceId };
   };
 
-  // The user's message, counted. `cause` says it was their reason for
-  // rejecting a change set: given with the rejection, or the next thing they
-  // said after Oriel asked what was wrong with it.
-  const say = (threadId: Ulid, text: string, cause?: { rejected: Ulid }): { seq: number } => {
+  // The user's message, counted, and as their reason for rejecting a change
+  // set when it is the next thing they said after Oriel asked what was wrong
+  // with it.
+  const say = (threadId: Ulid, text: string): { seq: number } => {
     const last = threads.messages(threadId).at(-1);
     const answers =
       last?.role === "note" && last.note.kind === "rejected"
         ? { rejected: last.note.changeSet }
         : undefined;
     const { seq, at, workspaceId } = start(threadId, text, { kind: "user" });
-    deps.emit({ name: "question.asked", at, workspaceId, threadId, ...(cause ?? answers) });
+    deps.emit({ name: "question.asked", at, workspaceId, threadId, ...answers });
     return { seq };
   };
 
@@ -505,28 +505,24 @@ export function turns(deps: TurnDeps) {
     // A change set of the thread was rejected. The thread says so and asks
     // what was wrong, in a line Oriel writes with no model call: the agent reads it
     // in its history, so it answers with a revised change set rather than
-    // more on top of the rejected one, when it can (`asks`). The person's own
-    // reason is the answer, said as a typed message is. A review link may
-    // have been forwarded to anyone, so its holder's reason is held in the
-    // thread under their name, whatever the turn or the caps, until the
-    // person sends it on or discards it; and the line the agent reads
-    // doesn't name them (decision 0024).
-    rejected(set: Rejected, by: string | null, reason: string | null): void {
+    // more on top of the rejected one, when it can (`asks`). The user's
+    // reply is the answer (OA-145). A review link may have been forwarded to
+    // anyone, so its `holder`'s reason is held in the thread under their
+    // name, whatever the turn or the caps, until the person sends it on or
+    // discards it; and the line the agent reads doesn't name them (decision
+    // 0024).
+    rejected(set: Rejected, holder: { by: string; reason: string | null } | null): void {
       const { threadId } = set;
       const asked = asks(set);
-      if (asked) ask(threadId, set.id, by === null ? "thread" : "review-link");
-      if (reason === null) return;
-      if (by === null) {
-        say(threadId, reason, { rejected: set.id });
-        return;
-      }
+      if (asked) ask(threadId, set.id, holder === null ? "thread" : "review-link");
+      if (holder === null || holder.reason === null) return;
       const from = {
         kind: "review-link",
-        by,
+        by: holder.by,
         changeSet: set.id,
         askFirst: !asked && set.revertOf === null,
       } as const;
-      hold(threadId, from, reason);
+      hold(threadId, from, holder.reason);
     },
 
     // The user sends the message held at `seq` to the agent, as it was or as

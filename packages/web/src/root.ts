@@ -28,7 +28,7 @@ import {
   deleted as deletedWorkstream,
   type EndingModel,
   type EndingMsg,
-  endingReplied,
+  endingAnswered,
   initEnding,
   leftPage,
   updateEnding,
@@ -615,10 +615,15 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Its threads moved with it, so both lists load again, and its page, if
     // it is on screen and still there.
     case "ended": {
-      const next = { ...model, ending: endingReplied(model.ending, msg) };
+      const shownAbove = (model.workstream?.removals ?? []).map((each) => each.version);
+      const [ending, counting] = endingAnswered(model.ending, msg, shownAbove);
+      const next = { ...model, ending };
       const { route } = model;
       const here = route.page === "workstream" && route.id === msg.tag.id;
-      return [next, [loadWorkstreams, loadThreads, ...(here ? reloadShown(next) : [])]];
+      return [
+        next,
+        [...counting, loadWorkstreams, loadThreads, ...(here ? reloadShown(next) : [])],
+      ];
     }
     // A drop changes its workstream's count wherever the user is by the time it
     // answers. Its notice goes to the workstream's page or one of its threads,

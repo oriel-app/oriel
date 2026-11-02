@@ -3,8 +3,10 @@
 // page. Marking it done or reopening it goes at once; deleting asks first,
 // saying how many threads go with it, and sends that count, which the server
 // checks. What it did then shows, with Undo through the one path every Undo
-// takes. What else must reload once one ends is the app's to say (root.ts).
+// takes, in the one stack of Undo notes, running out as the others do. What
+// else must reload once one ends is the app's to say (root.ts).
 import { type Effect, errorOf, post, type Replied, undoing } from "./http.ts";
+import { type Held, type Hold, holding, letGo as release, notHeld, undoMs } from "./undos.ts";
 import type {
   Undoable,
   UndoView,
@@ -31,6 +33,16 @@ export type EndingModel = {
   // The workstream with a request in flight, and whether it is a delete.
   pending: { workstreamId: string; deleting: boolean } | null;
   ended: Ending | null;
+  // Whether what was done still shows, with its Undo: it runs out as every
+  // Undo note does, though a deleted workstream's page still says it went.
+  shown: boolean;
+  // The times its countdown started; only the latest one's end hides it.
+  countdown: number;
+  // The removals already in the page's stack when it showed, by the version
+  // each made: they sit above it, and any made later below, newest at the
+  // bottom.
+  above: readonly number[];
+  held: Held;
   // What the last request said, when it failed.
   problem: string | null;
 };
@@ -45,12 +57,18 @@ export type EndingMsg =
   | { type: "deleteConfirmed" }
   | { type: "deleteCancelled" }
   | { type: "undoClicked" }
+  | { type: "undoHeld"; by: Hold; held: boolean }
+  | { type: "undoExpired"; countdown: number }
   | { type: "problemDismissed" };
 
 export const initEnding = (): EndingModel => ({
   asking: null,
   pending: null,
   ended: null,
+  shown: false,
+  countdown: 0,
+  above: [],
+  held: notHeld,
   problem: null,
 });
 
@@ -98,19 +116,60 @@ export function updateEnding(model: EndingModel, msg: EndingMsg): [EndingModel, 
       return [{ ...model, asking: null, problem: null }, []];
     case "undoClicked": {
       const { ended } = model;
-      if (!ended?.undo || model.pending) return [model, []];
+      if (!ended?.undo || !model.shown || model.pending) return [model, []];
+      // As a removal's Undo does, it lets go of the keyboard's hold.
+      const [released, restarts] = letGo(model, "focus");
       return [
-        { ...model, pending: { workstreamId: ended.workstreamId, deleting: false }, problem: null },
-        [undoing(ended.undo, tag(ended.workstreamId, "undone", ended.name))],
+        {
+          ...released,
+          pending: { workstreamId: ended.workstreamId, deleting: false },
+          problem: null,
+        },
+        [undoing(ended.undo, tag(ended.workstreamId, "undone", ended.name)), ...restarts],
       ];
+    }
+    case "undoHeld": {
+      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
+      return letGo(model, msg.by);
+    }
+    case "undoExpired": {
+      if (msg.countdown !== model.countdown || holding(model.held)) return [model, []];
+      return [{ ...model, shown: false }, []];
     }
     case "problemDismissed":
       return [{ ...model, problem: null }, []];
   }
 }
 
-// The server's answer: what it did shows, with its Undo; an Undo that landed
-// clears it; a refusal says why.
+const expiry = (countdown: number): Effect => ({
+  type: "after",
+  ms: undoMs,
+  msg: { type: "ending", msg: { type: "undoExpired", countdown } },
+});
+
+// Once neither pointer nor keyboard holds it, what was done gets its full
+// time again.
+function letGo(model: EndingModel, by: Hold): [EndingModel, Effect[]] {
+  const [held, restart] = release(model.held, by);
+  if (!restart || !model.shown) return [{ ...model, held }, []];
+  const countdown = model.countdown + 1;
+  return [{ ...model, held, countdown }, [expiry(countdown)]];
+}
+
+// The server's answer, and what was done starting to run out once it shows,
+// below the removals (`above`, by version) already in the page's stack.
+export function endingAnswered(
+  model: EndingModel,
+  msg: Replied,
+  above: readonly number[],
+): [EndingModel, Effect[]] {
+  const next = endingReplied(model, msg);
+  if (next.countdown === model.countdown) return [next, []];
+  return [{ ...next, above }, [expiry(next.countdown)]];
+}
+
+// The server's answer: what it did shows, with its Undo, and its countdown
+// starts; an Undo that landed clears it; a refusal says why.
 export function endingReplied(model: EndingModel, msg: Replied): EndingModel {
   const { tag } = msg;
   if (tag.kind !== "ended") return model;
@@ -128,6 +187,8 @@ export function endingReplied(model: EndingModel, msg: Replied): EndingModel {
     ...base,
     problem: null,
     ended: { kind: tag.how, workstreamId: tag.id, name: tag.name, threads, undo },
+    shown: true,
+    countdown: model.countdown + 1,
   };
 }
 
@@ -136,6 +197,8 @@ export function endingReplied(model: EndingModel, msg: Replied): EndingModel {
 export const leftPage = (model: EndingModel): EndingModel => ({
   ...model,
   ended: null,
+  shown: false,
+  held: notHeld,
   problem: null,
 });
 
@@ -144,6 +207,16 @@ export const leftPage = (model: EndingModel): EndingModel => ({
 export const deleted = (model: EndingModel, workstreamId: string): boolean =>
   (model.pending?.deleting === true && model.pending.workstreamId === workstreamId) ||
   (model.ended?.kind === "deleted" && model.ended.workstreamId === workstreamId);
+
+// The removals in the page's stack either side of what was done: those made
+// before it, above it, and those since, below, newest at the bottom.
+export function around<T extends { version: number }>(
+  model: EndingModel,
+  removals: readonly T[],
+): [T[], T[]] {
+  const before = (each: T) => model.above.includes(each.version);
+  return [removals.filter(before), removals.filter((each) => !before(each))];
+}
 
 // "2 of its threads", or "its thread", as what came along with the workstream.
 const its = (threads: number) => (threads === 1 ? "its thread" : `${threads} of its threads`);

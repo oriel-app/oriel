@@ -183,7 +183,8 @@ export interface ChangeSets {
   // once the change set is decided.
   reviewLink(id: Ulid): Promise<URL>;
   revokeReviewLink(id: Ulid): Promise<void>;
-  // What the review page shows; null for a dead or unknown token.
+  // What the review page shows; null for a dead or unknown token. It records
+  // nothing: whoever shows it says whether it was opened.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
   // Exactly what can be done with it now (`NextStep`): each step is an
   // action whose own guard passes, so none offered is refused. Every message

@@ -287,9 +287,10 @@ test("with nothing held at a place in the chat, Send and Discard are refused", a
   const app = await linked(t);
   assert.equal((await app.send()).status, 409);
   assert.equal((await app.discard()).status, 409);
-  // The person's own reason is their message, not held.
+  // The person's own reason is their reply, not held (OA-145).
   const hash = json<DiffView>(await app.post(`/api/change-sets/${app.changeSetId}/diff`)).hash;
-  await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash, reason: "Wrong title." });
+  await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash });
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Wrong title." });
   await app.app.settled();
   assert.deepEqual(await app.held(), []);
   assert.equal(app.texts.at(-1), "Wrong title.");

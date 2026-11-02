@@ -30,7 +30,7 @@ import {
 import type { WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type FolderView, type GroupingId, isGroupingId, type JiraView } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
-import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
 // What a workstream made for a thread from nothing is called, until a change set
@@ -706,33 +706,35 @@ const handlers = {
     }
   },
 
-  // A rejection is the thread's to answer: it asks what was wrong. The
-  // user's own reason is the answer, which starts a turn; one that can't be
-  // said, mid-turn or past the thread's caps, leaves the rejection
-  // standing, and says why. A review link's holder's is held in the thread
-  // for the user, whatever the turn or the caps, and is shorter.
+  // A rejection is the thread's to answer: it asks what was wrong, and the
+  // user's reply is the answer, so a rejection in the thread takes no reason
+  // (OA-145). A review link's holder can't reply: their reason is held in
+  // the thread for the user, whatever the turn or the caps, and is shorter.
   "changeset.reject": async ({ changeSet: id, hash, reason, token }, actor, deps) => {
     const set = await mustChangeSet(deps, id);
     const approver = approverOf(actor, token);
-    if (approver.via === "review-link" && reason !== undefined && reason.length > maxReasonChars)
+    if (approver.via === "thread" && reason !== undefined)
+      throw new ActionError(
+        "invalid",
+        "$.reason: only a review link gives a reason; in the thread, reply to say what was wrong",
+      );
+    if (reason !== undefined && reason.length > maxReasonChars)
       throw new ActionError(
         "invalid",
         `$.reason: expected a reason of 1 to ${maxReasonChars} characters`,
       );
     const decided = await deps.changeSets.decide(set.id, "rejected", approver, hash);
     deps.publish({ thread: set.threadId, changeSet: set.id, applying: false });
-    const outcome = { undo: null, changed: null, events: "counted" } as const;
-    try {
-      deps.turns.rejected(
-        decided,
-        approver.via === "review-link" ? approver.by : null,
-        reason ?? null,
-      );
-      return { ...outcome, output: { report: null, problem: null } };
-    } catch (error) {
-      if (!(error instanceof ThreadBusy || error instanceof ThreadLimit)) throw error;
-      return { ...outcome, output: { report: null, problem: error.message } };
-    }
+    deps.turns.rejected(
+      decided,
+      approver.via === "review-link" ? { by: approver.by, reason: reason ?? null } : null,
+    );
+    return {
+      output: { report: null, problem: null },
+      undo: null,
+      changed: null,
+      events: "counted",
+    };
   },
 
   // Counted as `changeset.applied` only once it has applied in full, by

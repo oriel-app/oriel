@@ -4,16 +4,23 @@ import {
   type WorkstreamModel,
   workstreamReplied,
   initWorkstream,
-  latestUndo,
+  undoable,
   undoMs,
   updateWorkstream,
 } from "../src/workstream.ts";
+import { latestNote } from "../src/undos.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { init as initRoot, type Model, update as updateRoot } from "../src/root.ts";
 import type { WorkstreamView, MemberView } from "../src/view.ts";
 import { itemRef, itemRow, memberView, workstreamSummary, workstreamView } from "../testing.ts";
 
 const workstreamId = "01JBZ0000000000000000000G1";
+
+// What ⌘Z or Ctrl+Z undoes: the latest of the stack's notes that can be.
+const latestUndo = (model: WorkstreamModel) =>
+  latestNote(
+    model.removals.map((each) => ({ version: each.version, onUndo: undoable(each) || null })),
+  );
 
 const member = (key: string, inIndex = true): MemberView =>
   memberView({

@@ -1,7 +1,7 @@
-// Rejecting a change set: the thread asks what was wrong, and a reason given
-// with the rejection in the thread is the thread's next message, which the
-// agent answers with a revised change set. A review link's is held instead
-// (held.test.ts).
+// Rejecting a change set: the thread asks what was wrong, and the user's
+// reply is the reason, which the agent answers with a revised change set; a
+// rejection in the thread takes no reason of its own (OA-145). A review
+// link's holder can't reply, so theirs is held instead (held.test.ts).
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type {
@@ -98,12 +98,27 @@ test("a rejection with no reason leaves the thread asking what was wrong, and st
   );
 });
 
-test("a reason with a rejection is the user's next message, which the agent answers with a revised change set", async (t) => {
+test("a rejection in the thread takes no reason: it is refused, and the change set stays open", async (t) => {
+  const app = await proposed(t);
+  const reply = await app.reject({ reason: "Wrong title." });
+  assert.equal(reply.status, 400);
+  assert.match(json<{ error: string }>(reply).error, /reply to say what was wrong/);
+  await app.app.settled();
+  const view = await app.view();
+  assert.deepEqual(
+    view.changeSets.map((s) => s.status),
+    ["open"],
+  );
+  assert.ok(!view.entries.some(asks));
+});
+
+test("the reply after a rejection is its reason, which the agent answers with a revised change set", async (t) => {
   const app = await proposed(t);
   const reason = 'Title should be "Practice: reject you"';
-  const reply = await app.reject({ reason });
+  const reply = await app.reject();
   assert.equal(reply.status, 200);
   assert.equal(json<{ problem: string | null }>(reply).problem, null);
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: reason });
   await app.app.settled();
   const view = await app.view();
   assert.deepEqual(
@@ -149,35 +164,30 @@ function thenWaits(first: Agent): Agent {
   };
 }
 
-test("while the agent answers, a rejection stands without asking, and says its reason can't be said yet", async (t) => {
+test("while the agent answers, a rejection stands without asking", async (t) => {
   const app = await proposed(t, {
     agent: (deps) =>
       thenWaits(scriptedAgent(deps, () => [{ run: "rename" }, { text: "I proposed it." }])),
   });
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "And the epic?" });
-  const reply = await app.reject({ reason: "Wrong title." });
+  const reply = await app.reject();
   assert.equal(reply.status, 200);
   const body = json<{ changeSet: ChangeSetView; problem: string | null }>(reply);
-  assert.equal(body.changeSet.status, "rejected");
-  assert.match(body.problem ?? "", /still answering/);
+  assert.deepEqual([body.changeSet.status, body.problem], ["rejected", null]);
   await app.post(`/api/threads/${app.threadId}/stop`);
   await app.app.settled();
   const entries = (await app.view()).entries;
   assert.ok(!entries.some(asks));
-  assert.ok(!entries.some((e) => e.kind === "user" && e.text === "Wrong title."));
 });
 
-test("a thread with no questions left takes the rejection, says why its reason can't follow, and doesn't ask", async (t) => {
+test("a thread with no questions left takes the rejection and doesn't ask", async (t) => {
   const app = await proposed(t, { limits: { maxTurnsPerThread: 1 } });
-  const reply = await app.reject({ reason: "Wrong title." });
+  const reply = await app.reject();
   assert.equal(reply.status, 200);
   const body = json<{ changeSet: ChangeSetView; problem: string | null }>(reply);
-  assert.equal(body.changeSet.status, "rejected");
-  assert.match(body.problem ?? "", /all 1 of its questions/);
+  assert.deepEqual([body.changeSet.status, body.problem], ["rejected", null]);
   const entries = (await app.view()).entries;
   assert.ok(!entries.some(asks));
-  assert.ok(!entries.some((e) => e.kind === "user" && e.text === "Wrong title."));
-  assert.equal(entries.at(-1)?.kind, "limit");
 });
 
 test("two rejections in a row ask twice, each naming its change set", async (t) => {

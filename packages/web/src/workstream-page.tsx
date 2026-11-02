@@ -1,15 +1,12 @@
 // A workstream: ask about it, see its threads, and curate its items.
-import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
-import { EndButtons, EndingNotes } from "./end-workstream.tsx";
-import { deleted, type EndingModel } from "./ending.ts";
+import { EndButtons, endingNotes, holdEnding } from "./end-workstream.tsx";
+import { around, deleted, type EndingModel } from "./ending.ts";
 import {
   askPrompt,
   type WorkstreamModel,
   type WorkstreamMsg,
-  type Hold,
-  latestUndo,
   type Removal,
   undoable,
 } from "./workstream.ts";
@@ -23,6 +20,8 @@ import {
   when,
 } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
+import { type UndoNote, UndoStack } from "./undo-stack.tsx";
+import type { Hold } from "./undos.ts";
 import type {
   WorkstreamChangeView,
   WorkstreamSummary,
@@ -51,25 +50,6 @@ export function WorkstreamPage(props: {
     back.current = removal.member.ref.id;
     send({ type: "undoClicked", version: removal.version });
   };
-  const latest = latestUndo(model);
-  useEffect(() => {
-    if (latest === null) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "z" || !(event.metaKey || event.ctrlKey)) return;
-      if (event.shiftKey || event.altKey) return;
-      // A text field undoes its own typing.
-      const { target } = event;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest("input, textarea"))
-      )
-        return;
-      event.preventDefault();
-      undo(latest);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [latest]);
   useEffect(() => {
     const id = back.current;
     const row = id && rowOf(list.current, id);
@@ -89,7 +69,22 @@ export function WorkstreamPage(props: {
     }
     send({ type: "memberRemoved", id });
   };
-  const notes = <EndingNotes model={ending} dispatch={dispatch} />;
+  // The pointer or keyboard on the stack holds every note in it.
+  const hold = (by: Hold, held: boolean) => {
+    send({ type: "undoHeld", by, held });
+    holdEnding(dispatch)(by, held);
+  };
+  const ended = endingNotes(ending, dispatch);
+  // One stack, newest at the bottom: removals made before what was last
+  // done above it, and any since below.
+  const [before, since] = around(ending, model.removals);
+  const stack = (
+    <UndoStack
+      notes={[...removed(before, undo), ...ended.notes, ...removed(since, undo)]}
+      problem={ended.problem}
+      onHold={hold}
+    />
+  );
   // Deleted, or being deleted, the page holds only what went, and its Undo.
   if (deleted(ending, model.id)) {
     const gone = ending.ended?.workstreamId === model.id ? ending.ended : null;
@@ -101,9 +96,7 @@ export function WorkstreamPage(props: {
             ? "Deleted. Nothing lists it or its threads now, and its items stay in their sources."
             : "Deleting…"}
         </p>
-        <div class="undos" role="status">
-          {notes}
-        </div>
+        <UndoStack {...ended} onHold={hold} />
       </main>
     );
   }
@@ -117,9 +110,7 @@ export function WorkstreamPage(props: {
         ) : (
           <p class="loading">Loading…</p>
         )}
-        <div class="undos" role="status">
-          {notes}
-        </div>
+        {stack}
       </main>
     );
   const { workstream } = view;
@@ -238,14 +229,8 @@ export function WorkstreamPage(props: {
               </ul>
             </ItemListContext.Provider>
           )}
-          <Undos
-            removals={model.removals}
-            latest={latest}
-            onUndo={undo}
-            onHold={(by, held) => send({ type: "undoHeld", by, held })}
-          >
-            {notes}
-          </Undos>
+          {/* After the list, so the keyboard reaches them from the last row. */}
+          {stack}
         </section>
 
         <History view={view} dispatch={dispatch} />
@@ -265,57 +250,18 @@ const doneBy: Record<NonNullable<WorkstreamSummary["done"]>["by"], string> = {
 const rowOf = (list: HTMLUListElement | null, id: string) =>
   list?.querySelector(`[data-item="${CSS.escape(id)}"]`) ?? null;
 
-const shortcut =
-  typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "Meta+Z" : "Control+Z";
-
-// "Removed OA-12 · Undo", one for each removal that can still be undone,
-// read out as it shows. None runs out while the pointer or focus is on them.
-// After the list, so the keyboard reaches them from the last row.
-function Undos(props: {
-  removals: readonly Removal[];
-  latest: Removal | null;
-  onUndo(removal: Removal): void;
-  onHold(by: Hold, held: boolean): void;
-  children?: ComponentChildren;
-}) {
-  const { onHold } = props;
-  return (
-    <div
-      class="undos"
-      role="status"
-      onMouseEnter={() => onHold("pointer", true)}
-      onMouseLeave={() => onHold("pointer", false)}
-      onFocusIn={() => onHold("focus", true)}
-      onFocusOut={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-          onHold("focus", false);
-      }}
-    >
-      {props.removals.map((removal) => {
-        const { key } = removal.member.ref;
-        return (
-          <p class="undo" key={removal.version}>
-            <span>Removed {key}</span>
-            {undoable(removal) ? (
-              <button
-                type="button"
-                class="undo-action"
-                aria-label={`Undo removing ${key}`}
-                aria-keyshortcuts={removal === props.latest ? shortcut : undefined}
-                onClick={() => props.onUndo(removal)}
-              >
-                Undo
-              </button>
-            ) : (
-              <span class="undo-note">It's no longer in the window, so it can't come back.</span>
-            )}
-          </p>
-        );
-      })}
-      {props.children}
-    </div>
-  );
-}
+// "Removed OA-12 · Undo", one for each removal that can still be undone.
+const removed = (removals: readonly Removal[], onUndo: (removal: Removal) => void): UndoNote[] =>
+  removals.map((removal) => {
+    const { key } = removal.member.ref;
+    return {
+      key: `removed-${removal.version}`,
+      said: `Removed ${key}`,
+      label: `Undo removing ${key}`,
+      onUndo: undoable(removal) ? () => onUndo(removal) : null,
+      cannot: "It's no longer in the window, so it can't come back.",
+    };
+  });
 
 // Who changed a workstream, when it wasn't the user.
 const causes: Record<WorkstreamChangeView["cause"], string> = {

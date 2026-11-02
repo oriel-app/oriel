@@ -3,7 +3,10 @@
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
+import { type Held, type Hold, holding, letGo as release, notHeld, undoMs } from "./undos.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
+
+export { undoMs };
 
 // A removal the user can still undo: the member as it showed, the workstream
 // version the removal made, which tells it from every other, and the call
@@ -16,9 +19,6 @@ export type Removal = {
   countdown: number;
   undo: UndoView | null;
 };
-
-// How long a removal can be undone, while the user isn't on its Undo.
-export const undoMs = 8_000;
 
 export type WorkstreamModel = {
   id: string;
@@ -39,10 +39,8 @@ export type WorkstreamModel = {
   // Removals that can still be undone, oldest first.
   removals: readonly Removal[];
   // The user is on the undos, by pointer or keyboard: none runs out meanwhile.
-  held: Readonly<Record<Hold, boolean>>;
+  held: Held;
 };
-
-export type Hold = "pointer" | "focus";
 
 export type WorkstreamMsg =
   | { type: "draftChanged"; text: string }
@@ -69,7 +67,7 @@ export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
       lost: null,
       removing: [],
       removals: [],
-      held: { pointer: false, focus: false },
+      held: notHeld,
     },
     [get(`/api/workstreams/${id}`, { kind: "workstream", id })],
   ];
@@ -173,17 +171,15 @@ const expiry = (workstreamId: string, { version, countdown }: Removal): Effect =
   msg: { type: "workstream", msg: { type: "undoExpired", workstreamId, version, countdown } },
 });
 
-const holding = (held: WorkstreamModel["held"]): boolean => held.pointer || held.focus;
-
 // Once neither pointer nor keyboard holds them, every removal held gets its
 // full time again.
 function letGo(
   model: WorkstreamModel,
   by: Hold,
   removals: readonly Removal[],
-): [WorkstreamModel["held"], Removal[], Effect[]] {
-  const held = { ...model.held, [by]: false };
-  if (!holding(model.held) || holding(held)) return [held, [...removals], []];
+): [Held, Removal[], Effect[]] {
+  const [held, restart] = release(model.held, by);
+  if (!restart) return [held, [...removals], []];
   const restarted = removals.map((each) => ({ ...each, countdown: each.countdown + 1 }));
   return [held, restarted, restarted.map((each) => expiry(model.id, each))];
 }
@@ -191,10 +187,6 @@ function letGo(
 // The server says what can be undone: only an item the window still has can
 // be added back.
 export const undoable = (removal: Removal): boolean => removal.undo !== null;
-
-// What ⌘Z or Ctrl+Z undoes: the latest removal that can be.
-export const latestUndo = (model: WorkstreamModel): Removal | null =>
-  model.removals.findLast(undoable) ?? null;
 
 // A reply's view, unless one already shown is newer: answers to a removal and
 // to an undo can cross.

@@ -947,12 +947,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         if (!opened)
           throw new Refused(404, "This review link has expired, was revoked, or was already used.");
         // Its thread went with a workstream the user deleted, which they may
-        // bring back, and the link with it (decision 0028).
-        if (!(await liveChangeSet(deps, opened.changeSet.id)))
+        // bring back, and the link with it (decision 0028). That counts as
+        // refused, not opened (OA-143).
+        const { workspaceId } = deps;
+        const changeSetId = opened.changeSet.id;
+        if (!(await liveChangeSet(deps, changeSetId))) {
+          deps.emit({
+            name: "review-link.refused",
+            at: deps.now(),
+            workspaceId,
+            changeSetId,
+            why: "deleted",
+          });
           throw new Refused(
             404,
             "The workstream this change set is in was deleted, so it can't be reviewed now.",
           );
+        }
+        deps.emit({ name: "review-link.opened", at: deps.now(), workspaceId, changeSetId });
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),
