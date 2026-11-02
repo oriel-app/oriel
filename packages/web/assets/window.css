@@ -4468,7 +4468,8 @@ html[data-design="r8"] .shell:not(:has(.x-page)) .sidebar-needs {
 }
 
 html[data-design="r8"] .shell:has(.x-page) .sidebar-needs,
-html[data-design="r9"] .shell:has(.x-page) .sidebar-needs {
+html[data-design="r9"] .shell:has(.x-page) .sidebar-needs,
+html[data-design^="r1"]:not([data-design="r1"]) .shell:has(.x-page) .sidebar-needs {
   display: none;
 }
 
@@ -4544,4 +4545,443 @@ html[data-design="r9"] .shell:has(.x-page) .sidebar-needs {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Spike (window-explore), rounds 10 to 14: the window chat, mocked. */
+
+.shell {
+  --x-chat: 22rem;
+}
+
+.x-chat {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+}
+
+.x-chat[data-mode="rail"] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--x-chat);
+}
+
+@media (min-width: 1100px) {
+  .shell:has(.x-chat[data-mode="rail"]) .shell-main {
+    margin-right: var(--x-chat);
+  }
+
+  .x-chat-close {
+    display: none;
+  }
+}
+
+.x-chat-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--head-row);
+  padding: var(--inset-top) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.x-chat-head > span {
+  margin-right: auto;
+}
+
+.x-conversation {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.x-chat-empty {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.x-chat-empty p {
+  margin: 0;
+}
+
+.x-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.x-suggest button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.x-suggest button:hover {
+  background: var(--surface-hover);
+}
+
+.x-composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.x-composer input {
+  flex: 1;
+  min-width: 8rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--bg);
+}
+
+.x-send {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.x-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.x-chip button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.x-answer {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+}
+
+.x-asked {
+  justify-self: end;
+  max-width: 90%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+}
+
+.x-said p {
+  margin: 0 0 var(--space-1);
+}
+
+.x-block {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunk);
+}
+
+.x-block figcaption {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.x-read {
+  margin: var(--space-2) 0 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.x-bars ol {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.x-bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) 2.25rem;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.375rem;
+  font-size: var(--text-sm);
+}
+
+.x-bars li:hover {
+  background: var(--surface-hover);
+}
+
+.x-bar-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.x-bar-track {
+  height: 0.75rem;
+}
+
+.x-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+.x-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.x-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.x-grid th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--line-strong);
+  padding: var(--space-1) var(--space-2);
+}
+
+.x-grid td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.x-grid .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.x-block-items {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.x-pin {
+  justify-self: start;
+}
+
+.x-pinned-note,
+.x-made-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.x-cite {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.x-row:hover .x-cite,
+.x-line:hover .x-cite,
+.x-cite:focus-visible {
+  opacity: 1;
+}
+
+.x-pinned {
+  background: var(--accent-soft);
+}
+
+.x-unpin {
+  margin-left: var(--space-1);
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.x-inline-chat {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.x-inline-chat .x-composer {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.x-inline-chat .x-conversation {
+  padding: 0;
+  overflow: visible;
+}
+
+/* A narrow window: the composer is a bar at the bottom; asking opens the
+   conversation as a sheet over the page. */
+@media (max-width: 1099px) {
+  .x-chat[data-mode="rail"] {
+    top: auto;
+    left: 0;
+    width: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 0.06);
+  }
+
+  .x-chat[data-mode="rail"]:not([data-open]) .x-chat-head,
+  .x-chat[data-mode="rail"]:not([data-open]) .x-conversation {
+    display: none;
+  }
+
+  .x-chat[data-mode="rail"][data-open] {
+    top: 3rem;
+  }
+
+  .x-chat[data-mode="rail"]:not([data-open]) .x-composer {
+    border-top: 0;
+  }
+
+  .x-cite {
+    opacity: 1;
+  }
+}
+
+.x-ws-namecell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.x-ws-namecell .x-cite {
+  flex: none;
+}
+
+/* Round 11: an ask bar at the top; answers in a panel while asking. */
+.x-askbar {
+  flex: 1 1 100%;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.x-askbar .x-composer {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.x-askbar .x-composer input {
+  background: var(--surface);
+  padding-block: var(--space-2);
+}
+
+.x-chat[data-mode="panel"] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 26rem;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.08);
+}
+
+@media (max-width: 1099px) {
+  .x-chat[data-mode="panel"] {
+    top: 3rem;
+    left: 0;
+    width: auto;
+    border-left: 0;
+  }
+}
+
+/* Round 12: answers in place; pinned answers keep their form. */
+.x-inline-answers {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.x-inline-answers .x-conversation {
+  overflow: visible;
+}
+
+.x-inline-answers .x-answer {
+  max-width: 44rem;
+}
+
+.x-pin-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-3);
+}
+
+.x-pin-card {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.x-pin-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.x-pin-card .x-block {
+  background: var(--surface);
+}
+
+/* Round 13: each person's main workstream on narrow too. */
+@container page (max-width: 999px) {
+  html[data-design="r13"] .x-roster.tokens .x-where,
+  html[data-design="r14"] .x-roster.tokens .x-where {
+    display: inline;
+  }
+}
+
+.x-askbar .x-suggest button {
+  padding-block: 0.125rem;
+  color: var(--text-muted);
 }

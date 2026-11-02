@@ -98,6 +98,46 @@ export type OverviewData = {
   people: PersonRow[];
   talked: Talked[];
   sources: { name: string; shape: string; items: number; changed: number }[];
+  // Rounds 10 to 14: pinned answers, rerun on each look, and asks to start from.
+  chat?: ChatData;
 };
 
 export type ListData = { total: number; items: (OverviewItem & { workstream: string | null })[] };
+
+// Rounds 10 to 14: the window chat, mocked. A block is built from a read's
+// result, never from the agent's words; `read` names that read.
+export type Block =
+  | { kind: "table"; read: string; columns: string[]; rows: (string | number)[][] }
+  | {
+      kind: "bars";
+      read: string;
+      title: string;
+      unit: string;
+      bars: { label: string; value: number }[];
+      more: number;
+    }
+  | { kind: "items"; read: string; rows: { key: string; title: string; sub: string }[] };
+
+export type Cite = { kind: "workstream" | "item"; id: string; label: string };
+
+export type Answer = {
+  q: string;
+  cites: Cite[];
+  lines: string[];
+  blocks: Block[];
+  // One line that reruns on each look, for an answer that can be pinned.
+  pin: { title: string; headline: string } | null;
+  made: { id: string; name: string; size: number } | null;
+};
+
+export type Pinned = {
+  id: string;
+  q: string;
+  cites: Cite[];
+  title: string;
+  headline: string;
+  // Round 12 on: the answer's first block, its top five, so a pin keeps its form.
+  block: Block | null;
+};
+
+export type ChatData = { pins: Pinned[]; suggestions: string[] };

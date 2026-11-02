@@ -17,3 +17,23 @@ Large world, laptop / narrow: ttfup ms (4× CPU), dom elements, screens, visible
 | 9     | Round 8 with Not in a workstream yet as one-line rows under their rule, Make a workstream on hover                                                             | 17.5     | 213 / 213 | 1184 / 1184 | 2.4 / 2.2  | 5 / 5   | 0 / 0   | thrown away (tie) | Shortest page; reviewer prefers it to round 6 (scanning 4/3, hierarchy 4/3, density 3/2). Found: one rule fills the capped section at large |
 
 Best by the keep rule: round 6. Recommended: round 9, which ties it on answers and wins every measure and the reviewer.
+
+## Rounds 10 to 14: asking and acting (TASKS2.md)
+
+Scores: **score** = reading (T1–T4, T6, T7 at large laptop and narrow, of 12) + asking (A1, A2, A3, A5 at
+both widths, of 8), out of 20. Large world, laptop / narrow: ttfup ms, dom, screens, visible (of 6),
+asking steps (A1–A5 summed, per width), and the reviewer's mean (rubric 1–6, against the best).
+
+| Round | Idea                                                                                                   | Score | ttfup     | dom         | screens   | visible | steps   | Reviewer   | Verdict           | Why                                                                                                                                                        |
+| ----- | ------------------------------------------------------------------------------------------------------ | ----- | --------- | ----------- | --------- | ------- | ------- | ---------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9     | Round 9, no chat                                                                                       | 13.5  | 228 / 224 | 1184 / 1184 | 2.4 / 2.2 | 5 / 5   | A3 only | 2.7        | baseline          | Reading 11.5 from round 9's judges; only Make a workstream answers anything asked                                                                          |
+| 10    | 0027 as written: a rail beside the overview, Ask on each row, answers with tables and charts, pinnable | 19    | 238 / 219 | 1220 / 1220 | 2.1 / 2.2 | 5 / 5   | 11 / 11 | 3.3 vs 2.7 | **keep**          | Every asking task answered at both widths. The rail costs reading: people fall below the workstreams on a laptop (T6 half)                                 |
+| 11    | An ask bar at the top; answers in a panel over the page only while asking                              | 19.5  | 224 / 221 | 1214 / 1214 | 2.5 / 2.3 | 5 / 5   | 11 / 11 | 3.0 vs 3.3 | **keep**          | The overview gets its full width back at rest, T6 right on a laptop again. Reviewer prefers round 10 slightly; both flag pins turning into cropped text    |
+| 12    | Answers in place under the ask bar; pins in their own strip, keeping their chart                       | 19.5  | 276 / 226 | 1214 / 1214 | 2.5 / 2.3 | 5 / 5   | 11 / 11 | 3.2 vs 3.0 | thrown away (tie) | Same score and steps. Reviewer likes the pinned strip, not answers pushing Needs you down                                                                  |
+| 13    | Round 11 with questions to start from, round 12's pinned strip (top 3), narrow roster with workstreams | 20    | 230 / 286 | 1223 / 1223 | 2.6 / 2.8 | 5 / 5   | 8 / 8   | 3.2 vs 3.0 | **keep**          | First 20 of 20; three fewer steps per width. Narrow page grew by exactly the 0.5 screens the rule allows                                                   |
+| 14    | Round 13, and a cited row offers questions about itself ("What's happening in it?")                    | 20    | 238 / 293 | 1223 / 1223 | 2.6 / 2.8 | 5 / 5   | 7 / 7   | 3.3 vs 3.3 | **keep (best)**   | Same score, one fewer step, reviewer equal. 12 of its 20 screens were pixel-identical to round 13's, so those answers were reused rather than judged again |
+
+Best by the keep rule: round 14. The reviewer's standing complaint, every round: In progress by person is
+uncapped (60 rows). Capping it costs T6, so the judges and the reviewer pull apart here, as in round 4.
+Found by the round 14 reviewer: a candidate says 21 items and making it says 22 (the epic plus its 21),
+and the counts strip doesn't update after Make a workstream.

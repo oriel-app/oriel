@@ -3,18 +3,23 @@
 // paint counts as useful, and its scripted path for each task: the clicks and
 // typed strings that get the answer on screen, or null for no path.
 import type { Locator, Page } from "playwright-core";
+import type { AskTruth } from "./ask.ts";
 import type { Truth, World } from "./world.ts";
 
 export type Steps = {
   page: Page;
   narrow: boolean;
   truth: Truth;
+  ask: AskTruth;
   world: World;
   click(target: Locator | string): Promise<void>;
   type(target: Locator | string, text: string): Promise<void>;
   press(key: string): Promise<void>;
 };
 export type TaskId = "t1" | "t2" | "t3" | "t4" | "t5" | "t6" | "t7";
+// TASKS2.md's asking tasks; A3 runs last, since making a workstream moves others' counts.
+export type AskId = "a1" | "a2" | "a4" | "a5" | "a3";
+export const askIds: AskId[] = ["a1", "a2", "a4", "a5", "a3"];
 export type Path = ((s: Steps) => Promise<void>) | null;
 export type Design = {
   id: string;
@@ -22,6 +27,9 @@ export type Design = {
   query: string;
   useful: string;
   paths: Record<TaskId, Path>;
+  // Rounds 10 on: the asking tasks' paths, and where to ask.
+  asks?: Record<AskId, Path>;
+  askAt?: string;
 };
 
 const drawer = async (s: Steps) => {
@@ -86,6 +94,46 @@ export function register(design: Omit<Design, "paths"> & { paths?: Design["paths
   designs[design.id] = { ...design, paths: design.paths ?? overviewPaths() };
 }
 
+const asked = {
+  a1: "Which sources changed most since I looked?",
+  a2: "Chart what moved since I looked, by workstream",
+  a5: "Why is it stalled?",
+};
+
+// Typing the question and Enter; or, with `suggest`, its suggestion when one is shown.
+const askPaths = (opts: { suggest?: boolean } = {}): Record<AskId, Path> => {
+  const ask = async (s: Steps, q: string) => {
+    const chip = s.page.locator("[data-suggest]", { hasText: q });
+    if (opts.suggest && (await chip.count()) > 0 && (await chip.first().isVisible())) {
+      await s.click(chip.first());
+      return;
+    }
+    await s.type("[data-ask-input]", q);
+    await s.press("Enter");
+  };
+  return {
+    a1: (s) => ask(s, asked.a1),
+    a2: (s) => ask(s, asked.a2),
+    a4: async (s) => {
+      await ask(s, asked.a2);
+      await s.click(s.page.locator("[data-pin]").last());
+    },
+    a5: async (s) => {
+      const row = s.page.locator(`[data-workstream="${s.ask.a5.workstream}"]`).first();
+      await row.hover();
+      await s.click(row.locator("[data-cite]"));
+      const chip = s.page.locator("[data-suggest]", { hasText: "happening" });
+      if (opts.suggest && (await chip.count()) > 0) {
+        await s.click(chip.first());
+        return;
+      }
+      await s.type("[data-ask-input]", asked.a5);
+      await s.press("Enter");
+    },
+    a3: (s) => s.click(s.page.locator("[data-section=candidates] [data-make]").first()),
+  };
+};
+
 // Round 1: 0027's overview as written.
 register({ id: "r1", query: "design=r1", useful: "[data-useful]" });
 
@@ -112,3 +160,34 @@ register({ id: "r8", query: "design=r8", useful: "[data-useful]" });
 
 // Round 9: R8 with candidates as one-line rows under their rule.
 register({ id: "r9", query: "design=r9", useful: "[data-useful]" });
+// Round 9 as the baseline for rounds 10 on: no chat, so only A3 has a path.
+designs["r9"] = {
+  ...designs["r9"]!,
+  asks: { a1: null, a2: null, a4: null, a5: null, a3: askPaths().a3 },
+  askAt: "[data-ask-input]",
+};
+
+// Round 10: 0027's window chat as written, a rail beside the overview.
+register({ id: "r10", query: "design=r10", useful: "[data-useful]" });
+designs["r10"]!.asks = askPaths();
+designs["r10"]!.askAt = "[data-ask-input]";
+
+// Round 11: an ask bar at the top; answers in a panel only while asking.
+register({ id: "r11", query: "design=r11", useful: "[data-useful]" });
+designs["r11"]!.asks = askPaths();
+designs["r11"]!.askAt = "[data-ask-input]";
+
+// Round 12: answers in place under the ask bar; pins keep their form.
+register({ id: "r12", query: "design=r12", useful: "[data-useful]" });
+designs["r12"]!.asks = askPaths();
+designs["r12"]!.askAt = "[data-ask-input]";
+
+// Round 13: round 11 with suggestions, a compact pinned strip, narrow roster with workstreams.
+register({ id: "r13", query: "design=r13", useful: "[data-useful]" });
+designs["r13"]!.asks = askPaths({ suggest: true });
+designs["r13"]!.askAt = "[data-ask-input]";
+
+// Round 14: round 13, and a cited row offers questions about itself.
+register({ id: "r14", query: "design=r14", useful: "[data-useful]" });
+designs["r14"]!.asks = askPaths({ suggest: true });
+designs["r14"]!.askAt = "[data-ask-input]";

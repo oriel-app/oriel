@@ -23,7 +23,7 @@ never from a design.
 
 | #   | Task                                                                                                                  | Ground truth                                                                  | Judged        |
 | --- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------- |
-| A1  | Ask which sources changed most since you looked (a table). Which changed second most, and how many items?           | per source, items with a change-log entry after last-seen; the second most      | yes                        |
+| A1  | Ask which sources changed most since you looked (a table). Which changed second most, and how many items?             | per source, items with a change-log entry after last-seen; the second most    | yes           |
 | A2  | Ask for a chart of what moved since you looked, by workstream. Which moved second most, and how many?                 | the open workstream with the second most members changed after last-seen      | yes           |
 | A3  | Make a workstream of the top thing not in a workstream. What is it called, and how many items does it hold?           | T4's epic: its title, and 1 + its children                                    | yes           |
 | A4  | Pin A2's answer to the overview, so it is there next time.                                                            | after a reload, the top two workstreams and the top count on the first screen | measured only |

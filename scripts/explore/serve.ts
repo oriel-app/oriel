@@ -12,12 +12,14 @@ import { clusterZoom, listZoom } from "../../packages/groupings/src/index.ts";
 import { bodyReader, webFiles } from "../../packages/server/src/serve.ts";
 import { handler, type Reply } from "../../packages/server/src/site.ts";
 import { groupings } from "../../packages/server/src/window.ts";
+import type { Cite } from "../../packages/web/src/explore/data.ts";
 import type {
   GroupingId,
   ThreadSummaryView,
   WindowView,
   WorkstreamSummary,
 } from "../../packages/web/src/view.ts";
+import { ask, chat, make, unmake } from "./ask.ts";
 import { list, overview } from "./overview.ts";
 import { type Scale, type WItem, world as makeWorld, type World } from "./world.ts";
 
@@ -152,6 +154,8 @@ function threadsView(w: World): ThreadSummaryView[] {
 export async function startExplore(scale: Scale, port: number) {
   const w = makeWorld(scale);
   const { records } = recordsOf(w);
+  // Pinned answers: the question, rerun on each look.
+  const pins: { id: string; q: string; cites: Cite[] }[] = [];
   // Built per request, as the real server builds the window per request.
   const json = (status: number, body: unknown): Reply => ({
     status,
@@ -182,7 +186,37 @@ export async function startExplore(scale: Scale, port: number) {
         });
       if (path === "/api/folder") return json(200, null);
       if (path === "/api/telemetry") return { status: 204, headers: {}, body: "" };
-      if (path === "/api/explore/overview") return json(200, overview(w));
+      if (path === "/api/explore/overview")
+        return json(200, { ...overview(w), chat: chat(w, pins) });
+      const post = async () =>
+        JSON.parse((await request.body?.(10_000)) ?? "{}") as {
+          q?: string;
+          cites?: Cite[];
+          id?: string;
+          name?: string;
+        };
+      if (path === "/api/explore/ask" && request.method === "POST") {
+        const body = await post();
+        return json(200, ask(w, body.q ?? "", body.cites ?? []));
+      }
+      if (path === "/api/explore/pin" && request.method === "POST") {
+        const body = await post();
+        const id = `pin${pins.length + 1}`;
+        pins.push({ id, q: body.q ?? "", cites: body.cites ?? [] });
+        return json(200, { id });
+      }
+      if (path === "/api/explore/unpin" && request.method === "POST") {
+        const body = await post();
+        pins.splice(
+          pins.findIndex((p) => p.id === body.id),
+          1,
+        );
+        return json(200, {});
+      }
+      if (path === "/api/explore/unmake" && request.method === "POST") {
+        unmake(w, (await post()).id ?? "");
+        return json(200, {});
+      }
       if (path === "/api/explore/list") {
         const p = url.searchParams;
         return json(
@@ -201,25 +235,9 @@ export async function startExplore(scale: Scale, port: number) {
         );
       }
       if (path === "/api/explore/make" && request.method === "POST") {
-        const body = JSON.parse((await request.body?.(10_000)) ?? "{}") as {
-          id?: string;
-          name?: string;
-        };
-        const anchor = w.items.find((item) => item.id === body.id);
-        if (!anchor) return json(404, { error: "no such item" });
-        const members = [
-          anchor.id,
-          ...w.items.filter((item) => item.container === anchor.id).map((item) => item.id),
-        ];
-        w.workstreams.push({
-          id: `01JMADE${String(w.workstreams.length).padStart(19, "0")}`,
-          name: body.name ?? anchor.title,
-          members,
-          createdAt: w.now,
-          done: null,
-          from: `epic:${anchor.id}`,
-        });
-        return json(200, { name: body.name ?? anchor.title, size: members.length });
+        const body = await post();
+        const made = make(w, body.id ?? "", body.name);
+        return made ? json(200, made) : json(404, { error: "no such item" });
       }
       return null;
     },

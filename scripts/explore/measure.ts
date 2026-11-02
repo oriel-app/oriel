@@ -6,7 +6,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { type Browser, chromium, type Locator, type Page } from "playwright-core";
-import { type Design, designs, type Steps, type TaskId } from "./designs.ts";
+import { type AskTruth, askTruth } from "./ask.ts";
+import { type AskId, askIds, type Design, designs, type Steps, type TaskId } from "./designs.ts";
 import { startExplore } from "./serve.ts";
 import { type Scale, truth, type Truth } from "./world.ts";
 
@@ -42,6 +43,21 @@ export function wants(task: TaskId, t: Truth): Want | null {
       return { all: [t.t6.person, `${t.t6.count}`] };
     case "t7":
       return t.t7.keys[0] ? { all: [t.t7.keys[0], `${t.t7.count}`] } : null;
+  }
+}
+
+export function askWants(task: AskId, a: AskTruth): Want {
+  switch (task) {
+    case "a1":
+      return { all: [a.a1.sources[0] ?? "", `${a.a1.count}`] };
+    case "a2":
+      return { all: [a.a2.workstreams[0] ?? "", `${a.a2.count}`] };
+    case "a3":
+      return { all: [a.a3.names[0] ?? "", `${a.a3.size}`] };
+    case "a4":
+      return { all: [a.a2.top, `${a.a2.topCount}`, a.a2.workstreams[0] ?? ""] };
+    case "a5":
+      return { all: [a.a5.keys[0] ?? "", `${a.a5.days}`] };
   }
 }
 
@@ -121,6 +137,9 @@ export type Measured = {
   visible: number;
   visibleTasks: TaskId[];
   steps: Partial<Record<TaskId, number | null>>;
+  // Rounds 10 on.
+  askInView?: boolean;
+  asks?: Partial<Record<AskId, number | null>>;
 };
 
 export async function measure(
@@ -164,6 +183,14 @@ export async function measure(
   await settle(page);
   const dom = await page.evaluate(() => document.querySelectorAll("*").length);
   const screens = await page.evaluate(() => document.documentElement.scrollHeight / innerHeight);
+  const askInView = design.askAt
+    ? await page.evaluate((selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight;
+      }, design.askAt)
+    : undefined;
   const visibleTasks: TaskId[] = [];
   for (const task of judged) {
     const want = wants(task, t);
@@ -201,6 +228,7 @@ export async function measure(
       page,
       narrow: width === "narrow",
       truth: t,
+      ask: askTruth(world),
       world,
       click: async (target) => {
         count += 1;
@@ -243,7 +271,78 @@ export async function measure(
     visible: visibleTasks.length,
     visibleTasks,
     steps,
+    ...(askInView !== undefined && { askInView }),
   };
+}
+
+// TASKS2.md's asking tasks, on a fresh world: each path from a fresh load, then
+// the answer looked for on screen and the screen kept for the judges.
+export async function measureAsks(
+  browser: Browser,
+  design: Design,
+  base: string,
+  t: Truth,
+  world: Awaited<ReturnType<typeof startExplore>>["world"],
+  width: Width,
+  shots: string,
+): Promise<Partial<Record<AskId, number | null>>> {
+  const url = `${base}/${design.query ? `?${design.query}` : ""}`;
+  const a = askTruth(world);
+  const steps: Partial<Record<AskId, number | null>> = {};
+  for (const task of askIds) {
+    const path = design.asks?.[task] ?? null;
+    if (path === null) {
+      steps[task] = null;
+      continue;
+    }
+    const { context, page } = await open(browser, url, widths[width], false);
+    await page.goto(url);
+    await page.waitForSelector(design.useful);
+    await settle(page);
+    let count = 0;
+    const at = (target: Locator | string) =>
+      typeof target === "string" ? page.locator(target).first() : target;
+    const s: Steps = {
+      page,
+      narrow: width === "narrow",
+      truth: t,
+      ask: a,
+      world,
+      click: async (target) => {
+        count += 1;
+        await at(target).click({ timeout: 5000 });
+        await settle(page);
+      },
+      type: async (target, text) => {
+        count += 1;
+        await at(target).click({ timeout: 5000 });
+        await at(target).fill(text);
+        await settle(page);
+      },
+      press: async (key) => {
+        count += 1;
+        await page.keyboard.press(key);
+        await settle(page);
+      },
+    };
+    try {
+      await path(s);
+      await page.waitForTimeout(300);
+      if (task === "a4") {
+        // Pinned means there next time: a fresh load, the first screen.
+        await page.reload();
+        await page.waitForSelector(design.useful);
+        await settle(page);
+      }
+      steps[task] = (await shown(page, askWants(task, a))) ? count : null;
+      await page.screenshot({ path: `${shots}-${task}.png` });
+    } catch (error) {
+      console.error(`${design.id} ${task} ${width}:`, (error as Error).message.split("\n")[0]);
+      steps[task] = null;
+    }
+    await context.close();
+  }
+  return steps;
 }
 
 export async function measureDesign(id: string, out: string, scales: Scale[]) {
@@ -268,9 +367,22 @@ export async function measureDesign(id: string, out: string, scales: Scale[]) {
         width,
         `${dir}/${scale}-${width}`,
       );
+      await serving.close();
+      if (design.asks && scale === "large") {
+        const fresh = await startExplore(scale, port++);
+        m.asks = await measureAsks(
+          browser,
+          design,
+          fresh.url,
+          truth(fresh.world),
+          fresh.world,
+          width,
+          `${dir}/${scale}-${width}`,
+        );
+        await fresh.close();
+      }
       results[`${scale}-${width}`] = m;
       console.log(id, scale, width, JSON.stringify(m));
-      await serving.close();
     }
   }
   await browser.close();

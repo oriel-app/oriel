@@ -13,6 +13,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { type AskTruth, askTruth } from "./ask.ts";
 import { truth, type Truth, world } from "./world.ts";
 
 const root = "/tmp/oriel-judge";
@@ -51,7 +52,7 @@ const tasks = (t: Truth): Record<Task, { ask: string; shape: string }> => ({
   },
 });
 
-const letters = "MDQAKTHPWCRB";
+const letters = "MDQAKTHPWCRBEFGJLN";
 
 function prep(round: string, designs: string[]) {
   const dir = `${root}/${round}`;
@@ -183,7 +184,170 @@ function grade(round: string) {
   }
 }
 
+// Rounds 10 on (TASKS2.md): reading on the large world at both widths, with
+// the chat present; and the asking tasks, each judged from the one screen the
+// design's path ends on.
+type Ask = "a1" | "a2" | "a3" | "a5";
+const asks = (a: AskTruth): Record<Ask, { ask: string; shape: string }> => ({
+  a1: {
+    ask: "The user asked the assistant which sources changed most since they last looked. Which source had the second most items change, and how many items?",
+    shape: '{"source": "name" or null, "count": number or null}',
+  },
+  a2: {
+    ask: "The user asked for a chart of what moved since they last looked, by workstream. Which workstream had the second most items move, and how many items?",
+    shape: '{"workstream": "name" or null, "count": number or null}',
+  },
+  a3: {
+    ask: "The user just made a workstream of the most important thing that wasn't in any workstream yet. What is the new workstream called, and how many items does it hold?",
+    shape: '{"name": "its name" or null, "size": number or null}',
+  },
+  a5: {
+    ask: `The user asked why the workstream "${a.a5.workstream}" is stalled. Which item in it changed last, and how many days ago?`,
+    shape: '{"item": "its key or title" or null, "days": number or null}',
+  },
+});
+
+function prep2(round: string, designs: string[], only?: string) {
+  const dir = `${root}/${round}`;
+  mkdirSync(`${dir}/answers`, { recursive: true });
+  mkdirSync(`${dir}/p`, { recursive: true });
+  const global = `${root}/labels.json`;
+  const labels: Record<string, string> = existsSync(global)
+    ? (JSON.parse(readFileSync(global, "utf8")) as Record<string, string>)
+    : {};
+  for (const d of designs) labels[d] ??= letters[Object.keys(labels).length] ?? `Z${d}`;
+  writeFileSync(global, JSON.stringify(labels, null, 1));
+  writeFileSync(`${dir}/labels.json`, JSON.stringify(labels, null, 1));
+  const w = world("large");
+  const t = truth(w);
+  const a = askTruth(w);
+  const prompts: { id: string; prompt: string }[] = [];
+  const say = (id: string, files: string[], px: number, what: string, ask: string, shape: string) =>
+    prompts.push({
+      id,
+      prompt: [
+        "You're helping test how well a screen design of a work-tracking app answers a user's question. You see only screenshots.",
+        `Read these image files with the Read tool, and nothing else. Don't open, list or search any other file or folder, and don't run commands:\n${files.join("\n")}`,
+        `They show ${what} at a window ${px}px wide.`,
+        `Answer as a user would, from what the screenshots show. The question: ${ask}`,
+        "If the screenshots don't show enough to answer, use null rather than guessing.",
+        `Write your answer as JSON to ${dir}/answers/${id}.json, in this shape: ${shape.slice(0, -1)}, "confidence": 0 to 100, "where": "a few words on where you found it"}`,
+        "Then reply with the same JSON and nothing else.",
+      ].join("\n\n"),
+    });
+  for (const design of designs) {
+    const label = labels[design] ?? "";
+    mkdirSync(`${dir}/${label}`, { recursive: true });
+    for (const [width, px] of [
+      ["laptop", 1280],
+      ["narrow", 600],
+    ] as const) {
+      const copy = (name: string) => {
+        const from = `${shots}/${design}/large-${width}-${name}.png`;
+        if (!existsSync(from)) return null;
+        const to = `${dir}/${label}/large-${width}-${name}.png`;
+        copyFileSync(from, to);
+        return to;
+      };
+      if (only !== "asks") {
+        const files = [1, 2, 3, 4].flatMap((i) => copy(`${i}`) ?? []);
+        for (const [task, { ask, shape }] of Object.entries(tasks(t)))
+          say(
+            `${label}-large-${width}-${task}`,
+            files,
+            px,
+            "the app's first screen, then up to three more screens as the page scrolls down,",
+            ask,
+            shape,
+          );
+      }
+      for (const [task, { ask, shape }] of Object.entries(asks(a))) {
+        const file = copy(task);
+        if (!file) continue;
+        say(
+          `${label}-large-${width}-${task}`,
+          [file],
+          px,
+          "the app's screen right after the user did what the question describes,",
+          ask,
+          shape,
+        );
+      }
+    }
+  }
+  writeFileSync(`${dir}/prompts.json`, JSON.stringify(prompts, null, 1));
+  for (const p of prompts) writeFileSync(`${dir}/p/${p.id}.txt`, p.prompt);
+  console.log(`${prompts.length} prompts in ${dir}/p`, prompts.map((p) => p.id).join(" "));
+}
+
+function score2(task: string, x: Record<string, unknown>, t: Truth, a: AskTruth): number {
+  const half = (ok: boolean) => (ok ? 0.5 : 0);
+  switch (task) {
+    case "a1":
+      return half(same(x["source"], a.a1.sources)) + half(Number(x["count"]) === a.a1.count);
+    case "a2":
+      return (
+        half(same(x["workstream"], a.a2.workstreams)) + half(Number(x["count"]) === a.a2.count)
+      );
+    case "a3":
+      return half(same(x["name"], a.a3.names)) + half(Number(x["size"]) === a.a3.size);
+    case "a5":
+      return (
+        half(same(x["item"], [...a.a5.keys, ...a.a5.titles])) +
+        half(Number(x["days"]) === a.a5.days)
+      );
+    default:
+      return score(task as Task, x, t);
+  }
+}
+
+function grade2(round: string) {
+  const dir = `${root}/${round}`;
+  const labels = JSON.parse(readFileSync(`${dir}/labels.json`, "utf8")) as Record<string, string>;
+  const byLabel = Object.fromEntries(Object.entries(labels).map(([d, l]) => [l, d]));
+  const w = world("large");
+  const t = truth(w);
+  const a = askTruth(w);
+  const results: Record<string, { reading: number; asking: number; rows: string[] }> = {};
+  for (const file of readdirSync(`${dir}/answers`).toSorted()) {
+    const [label, , width, task] = file.replace(/\.json$/, "").split("-") as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    let x: Record<string, unknown>;
+    try {
+      x = JSON.parse(readFileSync(`${dir}/answers/${file}`, "utf8")) as Record<string, unknown>;
+    } catch {
+      x = {};
+    }
+    const s = score2(task, x, t, a);
+    const r = (results[byLabel[label] ?? label] ??= { reading: 0, asking: 0, rows: [] });
+    if (task.startsWith("a")) r.asking += s;
+    else r.reading += s;
+    r.rows.push(`${width} ${task} ${s} ${JSON.stringify(x).slice(0, 150)}`);
+  }
+  writeFileSync(`${dir}/graded.json`, JSON.stringify(results, null, 1));
+  for (const [design, r] of Object.entries(results)) {
+    console.log(
+      `${design}: reading ${r.reading}, asking ${r.asking}, score ${r.reading + r.asking}`,
+    );
+    for (const row of r.rows) console.log("  ", row);
+  }
+}
+
 const [cmd, round, ...rest] = process.argv.slice(2);
 if (cmd === "prep" && round) prep(round, rest);
 else if (cmd === "grade" && round) grade(round);
-else console.log("prep <round> <design...> | grade <round>");
+else if (cmd === "prep2" && round)
+  prep2(
+    round,
+    rest.filter((x) => x !== "--asks"),
+    rest.includes("--asks") ? "asks" : undefined,
+  );
+else if (cmd === "grade2" && round) grade2(round);
+else
+  console.log(
+    "prep <round> <design...> | grade <round> | prep2 <round> <design...> [--asks] | grade2 <round>",
+  );

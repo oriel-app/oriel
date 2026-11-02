@@ -4,6 +4,17 @@
 // the server's /api/explore/overview.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import {
+  ChatProvider,
+  CiteButton,
+  Composer,
+  InlineAnswers,
+  Panel,
+  PinnedStrip,
+  Rail,
+  Suggestions,
+  useChat,
+} from "./chat.tsx";
 import type { Card, Candidate, ListData, OverviewData, PersonRow, Waiting } from "./data.ts";
 
 const key = "oriel.explore.design";
@@ -50,6 +61,19 @@ export function Explore({ design }: { design: string }) {
   if (view === "browse") return <Browse design={design} />;
   if (data === null) return <p class="loading">Loading…</p>;
   const Layout = layouts[design] ?? OverviewR1;
+  // Rounds 10 on: the window chat. A pin or a made workstream reloads the overview.
+  if (chatDesigns.has(design))
+    return (
+      <ChatProvider
+        data={data}
+        refresh={() => {
+          loaded = null;
+          void load().then(setData);
+        }}
+      >
+        <Layout data={data} design={design} />
+      </ChatProvider>
+    );
   return <Layout data={data} design={design} />;
 }
 
@@ -315,6 +339,7 @@ export function GroupedCandidates({ data, cap = 8 }: { data: OverviewData; cap?:
                   <span class="x-sub">
                     {c.source} · {c.detail}
                   </span>
+                  <CiteButton cite={{ kind: "item", id: c.id, label: c.key }} />
                   <Make candidate={c} />
                 </li>
               ))}
@@ -560,9 +585,12 @@ export function WorkstreamTable({
                 ))}
             </span>
           )}
-          <a class="x-title x-ws-name" href={`/workstreams/${card.id}`}>
-            {card.name}
-          </a>
+          <span class="x-ws-namecell">
+            <a class="x-title x-ws-name" href={`/workstreams/${card.id}`}>
+              {card.name}
+            </a>
+            <CiteButton cite={{ kind: "workstream", id: card.id, label: card.name }} />
+          </span>
           <span class="x-ws-bar">
             <StatusBar status={card.status} />
           </span>
@@ -611,7 +639,17 @@ function OverviewR2({
   flags = false,
   calm = false,
   grouped = false,
+  chat,
+  suggest = false,
+  pinStrip = false,
+  pinTop = 5,
+  citeAsks = false,
 }: Props & {
+  chat?: "rail" | "top" | "inline";
+  suggest?: boolean;
+  pinStrip?: boolean;
+  pinTop?: number;
+  citeAsks?: boolean;
   calm?: boolean;
   grouped?: boolean;
   headlines?: boolean;
@@ -636,12 +674,22 @@ function OverviewR2({
           </a>
         </nav>
         <Strip data={data} />
+        {(chat === "top" || chat === "inline") && (
+          <div class="x-askbar">
+            <Composer />
+            {suggest && <Suggestions cited={citeAsks} />}
+          </div>
+        )}
       </div>
+      {chat === "inline" && <InlineAnswers />}
       {headlines && !calm && <Headlines data={data} />}
       <div class="x-columns">
         <div class="x-main">
           <NeedsYou data={data} cap={4} />
-          {calm && <Headlines data={data} only={["moved", "quiet", "talked", "top"]} />}
+          {calm && (
+            <Headlines data={data} only={["moved", "quiet", "talked", "top"]} pins={!pinStrip} />
+          )}
+          {pinStrip && <PinnedStrip data={data} top={pinTop} />}
           <Section id="workstreams" title="Workstreams" count={sorted.length}>
             <WorkstreamTable
               cards={cards}
@@ -666,6 +714,8 @@ function OverviewR2({
           {roster ? <Roster data={data} tokens={tokens} /> : <People data={data} />}
         </div>
       </div>
+      {chat === "rail" && <Rail suggest={suggest} />}
+      {chat === "top" && <Panel />}
     </div>
   );
 }
@@ -673,7 +723,15 @@ function OverviewR2({
 // Round 3: headlines. One computed line for each standing question, each the
 // extreme of one measure, with its rule. A fixed number of lines whatever the
 // number of sources or workstreams.
-export function Headlines({ data, only }: { data: OverviewData; only?: string[] }) {
+export function Headlines({
+  data,
+  only,
+  pins = true,
+}: {
+  data: OverviewData;
+  only?: string[];
+  pins?: boolean;
+}) {
   const cards = data.workstreams;
   const moved = cards.toSorted((a, b) => b.moved - a.moved)[0];
   const quiet = cards.toSorted((a, b) => a.lastActivity.localeCompare(b.lastActivity))[0];
@@ -780,7 +838,40 @@ export function Headlines({ data, only }: { data: OverviewData; only?: string[] 
           <span class="x-headline-body">{line.body}</span>
         </p>
       ))}
+      {pins && <Pins data={data} />}
     </section>
+  );
+}
+
+// Rounds 10 on: an answer pinned from the chat, its question rerun on each look.
+function Pins({ data }: { data: OverviewData }) {
+  const chat = useChat();
+  return (
+    <>
+      {(data.chat?.pins ?? []).map((p) => (
+        <p
+          key={p.id}
+          class="x-headline x-pinned"
+          data-pinned
+          title={`Pinned: "${p.q}", rerun on each look`}
+        >
+          <span class="x-headline-label">
+            Pinned · {p.title}
+            {chat && (
+              <button
+                type="button"
+                class="x-unpin"
+                aria-label={`Unpin ${p.title}`}
+                onClick={() => chat.unpin(p.id)}
+              >
+                ×
+              </button>
+            )}
+          </span>
+          <span class="x-headline-body">{p.headline}</span>
+        </p>
+      ))}
+    </>
   );
 }
 
@@ -859,7 +950,72 @@ function OverviewR9(props: Props) {
   return <OverviewR2 {...props} headlines roster tokens cap={8} calm grouped />;
 }
 
+// Round 10: round 9 with 0027's window chat as written: a rail beside the
+// overview, Ask on each workstream and candidate row, answers pinnable.
+function OverviewR10(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens cap={8} calm grouped chat="rail" />;
+}
+
+// Round 11: an ask bar at the top; answers in a panel only while asking.
+function OverviewR11(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens cap={8} calm grouped chat="top" />;
+}
+
+// Round 12: answers in place under the ask bar; pins keep their form.
+function OverviewR12(props: Props) {
+  return (
+    <OverviewR2 {...props} headlines roster tokens cap={8} calm grouped chat="inline" pinStrip />
+  );
+}
+
+// Round 13: round 11 with questions to start from under the ask bar, pins in
+// their own compact strip, and each person's main workstream on narrow too.
+function OverviewR13(props: Props) {
+  return (
+    <OverviewR2
+      {...props}
+      headlines
+      roster
+      tokens
+      cap={8}
+      calm
+      grouped
+      chat="top"
+      suggest
+      pinStrip
+      pinTop={3}
+    />
+  );
+}
+
+// Round 14: round 13, and a cited row offers questions about itself.
+function OverviewR14(props: Props) {
+  return (
+    <OverviewR2
+      {...props}
+      headlines
+      roster
+      tokens
+      cap={8}
+      calm
+      grouped
+      chat="top"
+      suggest
+      pinStrip
+      pinTop={3}
+      citeAsks
+    />
+  );
+}
+
+const chatDesigns = new Set(["r10", "r11", "r12", "r13", "r14"]);
+
 export const layouts: Record<string, (props: Props) => ComponentChildren> = {
+  r14: OverviewR14,
+  r13: OverviewR13,
+  r12: OverviewR12,
+  r11: OverviewR11,
+  r10: OverviewR10,
   r9: OverviewR9,
   r8: OverviewR8,
   r7: OverviewR7,
