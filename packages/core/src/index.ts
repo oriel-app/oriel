@@ -1,4 +1,5 @@
 export * from "./actions.ts";
+export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
 export * from "./find.ts";
@@ -14,6 +15,7 @@ export * from "./run.ts";
 export * from "./shape.ts";
 export * from "./sandbox.ts";
 export * from "./source.ts";
+export * from "./sync.ts";
 export * from "./telemetry.ts";
 export * from "./thread.ts";
 export * from "./validate.ts";

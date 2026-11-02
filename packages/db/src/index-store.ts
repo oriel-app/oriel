@@ -1,10 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type ChangeLogEntry,
+  type DeclaredFacets,
+  facetChanges,
+  facetChangesShape,
   facets,
   type IndexRecord,
   type Instant,
   isInstant,
   isItemId,
+  keptSince,
+  literal,
   nullable,
   number,
   object,
@@ -15,6 +21,7 @@ import {
   string,
   type SyncPage,
   type Ulid,
+  union,
   unknown,
   type Validator,
 } from "@oriel/core";
@@ -36,6 +43,20 @@ const sourceRow = object({
 });
 const versionRow = object({ version: nullable(number) });
 const existsRow = object({ found: number });
+const stableIdRow = object({ stable_id: string });
+const changeRow = object({
+  seq: number,
+  source: refine(
+    string,
+    (kind): kind is SourceKind => sourceKinds.some((k) => k === kind),
+    "expected a source",
+  ),
+  stable_id: string,
+  version: number,
+  at: refine(string, isInstant, "expected an instant"),
+  facets: string,
+  gone: union(literal(0), literal(1)),
+});
 
 // Case- and accent-folded: NFKD, then the Combining Diacritical Marks block
 // (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й" folds to
@@ -71,6 +92,24 @@ export function indexStore(db: DatabaseSync) {
       or items.location is not excluded.location or items.updated_at is not excluded.updated_at
       or items.facets is not excluded.facets or items.attrs is not excluded.attrs
       or items.gone_at is not null`);
+  // The live item a record replaces, by stable ID, and the live item that
+  // holds the record's handle under another stable ID.
+  const selectStored = db.prepare(`
+    select item_id, stable_id, title, location, updated_at, facets, attrs from items
+    where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
+  const selectHolder = db.prepare(`
+    select stable_id from items
+    where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
+  const logChange = db.prepare(`
+    insert into change_log (seq, workspace_id, source, stable_id, version, at, facets, gone)
+    values (
+      1 + max(coalesce((select max(seq) from change_log), 0),
+              coalesce((select max(seen_seq) from overview_seen), 0)),
+      ?, ?, ?, ?, ?, ?, ?)`);
+  const pruneChanges = db.prepare("delete from change_log where workspace_id = ? and at < ?");
+  const selectChanges = db.prepare(`
+    select seq, source, stable_id, version, at, facets, gone from change_log
+    where workspace_id = ? and seq > ? order by seq`);
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
@@ -105,31 +144,39 @@ export function indexStore(db: DatabaseSync) {
     return row.ok ? (row.value.version ?? 0) : 0;
   };
 
+  const recordOf = <A>(raw: unknown, attrs: Validator<A>): IndexRecord<SourceKind, A> => {
+    const row = itemRow(raw);
+    if (!row.ok) throw new Error(`corrupt index row: ${JSON.stringify(row.issues)}`);
+    const parsed = attrs(JSON.parse(row.value.attrs), "$.attrs");
+    if (!parsed.ok) {
+      throw new Error(
+        `index attrs don't match: ${row.value.item_id} ${JSON.stringify(parsed.issues)}`,
+      );
+    }
+    const stored = facets(JSON.parse(row.value.facets), "$.facets");
+    if (!stored.ok)
+      throw new Error(
+        `corrupt index facets: ${row.value.item_id} ${JSON.stringify(stored.issues)}`,
+      );
+    return {
+      id: row.value.item_id,
+      stableId: row.value.stable_id,
+      title: row.value.title,
+      location: row.value.location,
+      updatedAt: row.value.updated_at,
+      facets: stored.value,
+      attrs: parsed.value,
+    };
+  };
+
   const live = <A>(workspaceId: Ulid, source: SourceKind | null, attrs: Validator<A>) =>
-    selectLive.all(workspaceId, source, source).map((raw): IndexRecord<SourceKind, A> => {
-      const row = itemRow(raw);
-      if (!row.ok) throw new Error(`corrupt index row: ${JSON.stringify(row.issues)}`);
-      const parsed = attrs(JSON.parse(row.value.attrs), "$.attrs");
-      if (!parsed.ok) {
-        throw new Error(
-          `index attrs don't match: ${row.value.item_id} ${JSON.stringify(parsed.issues)}`,
-        );
-      }
-      const stored = facets(JSON.parse(row.value.facets), "$.facets");
-      if (!stored.ok)
-        throw new Error(
-          `corrupt index facets: ${row.value.item_id} ${JSON.stringify(stored.issues)}`,
-        );
-      return {
-        id: row.value.item_id,
-        stableId: row.value.stable_id,
-        title: row.value.title,
-        location: row.value.location,
-        updatedAt: row.value.updated_at,
-        facets: stored.value,
-        attrs: parsed.value,
-      };
-    });
+    selectLive.all(workspaceId, source, source).map((raw) => recordOf(raw, attrs));
+
+  // A record as a read would return it: its facets in their checked shape.
+  const readBack = (r: IndexRecord): IndexRecord => {
+    const checked = facets(JSON.parse(JSON.stringify(r.facets)), "$.facets");
+    return checked.ok ? { ...r, facets: checked.value } : r;
+  };
 
   // Pages are checked the way reads check rows, attrs included after a JSON
   // round trip, so one bad record can't break the window later.
@@ -161,20 +208,36 @@ export function indexStore(db: DatabaseSync) {
       return live(workspaceId, source, attrs);
     },
 
-    // Opens a sync of one source; `attrs` is that source's shape. Each page
-    // commits on its own. `finish` takes the snapshot version if anything
-    // changed, records the cursor (null keeps the stored one) and the finish
-    // time, and returns the version the index is at. A crash partway leaves
-    // pages tagged with an unclaimed version, which the next sync reclaims.
-    beginSync<A>(workspaceId: Ulid, source: SourceKind, attrs: Validator<A>, now: Instant) {
+    // Opens a sync of one source; `attrs` is that source's shape and
+    // `declared` its declared facets. Each page commits on its own, with
+    // what it changed in the change log: per item already indexed, the
+    // facets that changed, and each item it tombstoned. `finish` takes the
+    // snapshot version if anything changed, records the cursor (null keeps
+    // the stored one) and the finish time, prunes the change log of what is
+    // past keeping, and returns the version the index is at. A crash partway
+    // leaves pages tagged with an unclaimed version, which the next sync
+    // reclaims.
+    beginSync<A>(
+      workspaceId: Ulid,
+      source: SourceKind,
+      attrs: Validator<A>,
+      now: Instant,
+      declared: DeclaredFacets = {},
+    ) {
       const version = snapshot(workspaceId) + 1;
+      const gone = (from: SourceKind, stableId: string) =>
+        logChange.run(workspaceId, from, stableId, version, now, "{}", 1);
       return {
         version,
         apply(page: SyncPage): void {
           check(source, attrs, page);
           transaction(db, () => {
             for (const r of page.records) {
+              const holder = selectHolder.get(workspaceId, r.id, r.stableId);
               retireHandle.run(now, version, workspaceId, r.id, r.stableId);
+              const retired = holder && stableIdRow(holder);
+              if (retired?.ok) gone(source, retired.value.stable_id);
+              const stored = selectStored.get(workspaceId, source, r.stableId);
               upsert.run(
                 workspaceId,
                 source,
@@ -187,14 +250,29 @@ export function indexStore(db: DatabaseSync) {
                 JSON.stringify(r.attrs),
                 version,
               );
+              // Compared as the index reads both back.
+              const changed =
+                stored && facetChanges(declared, recordOf(stored, unknown), readBack(r));
+              if (changed)
+                logChange.run(
+                  workspaceId,
+                  source,
+                  r.stableId,
+                  version,
+                  now,
+                  JSON.stringify(changed),
+                  0,
+                );
             }
             for (const stableId of page.gone)
-              tombstone.run(now, version, workspaceId, source, stableId);
+              if (tombstone.run(now, version, workspaceId, source, stableId).changes)
+                gone(source, stableId);
           });
         },
         finish(cursor: string | null, finishedAt: Instant): number {
           return transaction(db, () => {
             saveSource.run(workspaceId, source, cursor, finishedAt);
+            pruneChanges.run(workspaceId, keptSince(finishedAt));
             const changed = existsRow(changedIn.get(workspaceId, source, version));
             if (!changed.ok || !changed.value.found) return version - 1;
             insertSnapshot.run(workspaceId, version, source, finishedAt);
@@ -202,6 +280,28 @@ export function indexStore(db: DatabaseSync) {
           });
         },
       };
+    },
+
+    // The change log in the order it committed: everything kept, or only
+    // what committed after the entry `after`, such as the last one the user
+    // had seen (`lastSeen`).
+    changes(workspaceId: Ulid, after = 0): ChangeLogEntry[] {
+      return selectChanges.all(workspaceId, after).map((raw) => {
+        const row = changeRow(raw);
+        if (!row.ok) throw new Error(`corrupt change log row: ${JSON.stringify(row.issues)}`);
+        const changed = facetChangesShape(JSON.parse(row.value.facets), "$.facets");
+        if (!changed.ok)
+          throw new Error(`corrupt change log facets: ${JSON.stringify(changed.issues)}`);
+        return {
+          seq: row.value.seq,
+          source: row.value.source,
+          stableId: row.value.stable_id,
+          version: row.value.version,
+          at: row.value.at,
+          facets: changed.value,
+          gone: row.value.gone === 1,
+        };
+      });
     },
 
     // The escape hatch, across every source. Every term must appear in the

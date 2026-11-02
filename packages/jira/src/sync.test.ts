@@ -7,6 +7,7 @@ import {
   type Log,
   type Source,
   type SyncPage,
+  syncSource,
   ulid,
 } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
@@ -14,7 +15,6 @@ import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs } from "./attrs.ts";
 import { fixtureSnapshot } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
-import { syncSource } from "./sync.ts";
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";

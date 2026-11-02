@@ -71,6 +71,7 @@ function world() {
     changeSets: unreached("changeSets"),
     applied: () => assert.fail("nothing applies here"),
     sources: unreached("sources"),
+    markSeen: () => assert.fail("the overview isn't left here"),
     // No turn runs and no change set waits here; agent-actions.test.ts
     // holds the agent to both.
     running: () => false,

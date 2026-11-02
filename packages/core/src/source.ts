@@ -183,15 +183,22 @@ export class SourceRefused extends Error {
   }
 }
 
-const state: Validator<State> = union(literal("todo"), literal("in-progress"), literal("done"));
+// The common facets' shapes, which the change log checks too.
+export const stateShape: Validator<State> = union(
+  literal("todo"),
+  literal("in-progress"),
+  literal("done"),
+);
+export const peopleShape = array(object({ role: string, id: string, name: string }));
+export const containerShape = nullable(
+  object({ id: refine(string, isItemId, "expected an item ID"), stableId: string }),
+);
 
 // Built once: every record the index reads is checked against it.
 const facetShape = object({
-  people: optional(array(object({ role: string, id: string, name: string }))),
-  state: optional(state),
-  container: optional(
-    nullable(object({ id: refine(string, isItemId, "expected an item ID"), stableId: string })),
-  ),
+  people: optional(peopleShape),
+  state: optional(stateShape),
+  container: optional(containerShape),
   links: optional(array(object({ url: string, title: string }))),
   kind: optional(string),
   estimate: optional(nullable(number)),

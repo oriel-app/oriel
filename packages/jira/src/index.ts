@@ -24,7 +24,6 @@ export { cassette, type Exchange, exchange, recording, replay } from "./cassette
 export { checkConnection, type ConnectionCheck } from "./connect.ts";
 export { fixtureFields, fixtureSource, type FixtureSourceOptions } from "./fixture-source.ts";
 export { type JiraSource, type JiraSourceOptions, jiraSource, jqlDate } from "./source.ts";
-export { type SyncOptions, type SyncReport, syncSource } from "./sync.ts";
 export {
   basicAuth,
   JiraFailed,

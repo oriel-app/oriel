@@ -1,3 +1,4 @@
+import type { DeclaredFacets } from "./change-log.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
 import type { PanelOf } from "./panel.ts";
@@ -19,6 +20,9 @@ export type SourceDeclaration<C = never> = Presentation & {
   // Its own view of one item, for the panel beside the page, from what a
   // live read returned.
   panel: PanelOf;
+  // Its facets beyond the common ones (state, people, container), each with
+  // its label, which the change log records (decision 0027). None is `{}`.
+  facets: DeclaredFacets;
   // Its namespace, from the index and `C`, what only the composition root
   // knows about it, such as where a new item goes.
   namespace?: (records: readonly IndexRecord[], context: C) => NamespaceSpec;
