@@ -15,6 +15,7 @@ import { placeIn } from "./panel.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import { useProgram } from "./use-program.ts";
 import { WindowPage } from "./window-page.tsx";
+import { Explore, exploreDesign } from "./explore/explore.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program);
@@ -140,6 +141,8 @@ function writeFolded(folded: boolean) {
 function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   switch (model.route.page) {
     case "window":
+      // Spike (window-explore): a prototype overview in the window's place.
+      if (exploreDesign) return <Explore design={exploreDesign} />;
       return (
         model.window && (
           <WindowPage

@@ -3983,3 +3983,276 @@ a.replies:hover {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* Spike (window-explore): prototype overviews. Rough on purpose. */
+
+.x-page {
+  display: grid;
+  gap: var(--space-6);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: var(--inset-top) var(--space-6) 6rem;
+}
+
+.x-tabs {
+  display: flex;
+  gap: var(--space-1);
+  min-height: var(--head-row);
+  align-items: center;
+}
+
+.x-tabs a {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.x-tabs a[aria-current] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.x-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: var(--text-md);
+}
+
+.x-since {
+  color: var(--text-muted);
+}
+
+.x-stat {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.x-section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.x-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.x-count {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.x-head-more {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.x-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.x-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-md);
+}
+
+.x-row:first-child {
+  border-top: 0;
+}
+
+.x-title {
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.x-sub,
+.x-age,
+.x-quiet,
+.x-note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.x-age {
+  margin-left: auto;
+}
+
+.x-note {
+  margin: 0;
+}
+
+.x-tag {
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.x-more {
+  justify-self: start;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.x-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-3);
+}
+
+.x-card {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+
+.x-card p {
+  margin: 0;
+}
+
+.x-card-name {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.x-card-name a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.x-card-sources,
+.x-card-threads {
+  color: var(--text-muted);
+}
+
+.x-card-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.x-card-status .status-bar {
+  flex: 1;
+}
+
+.x-spark {
+  width: 56px;
+  height: 17px;
+  flex: none;
+}
+
+.x-spark polyline {
+  fill: none;
+  stroke: var(--in-progress);
+  stroke-width: 1.4;
+}
+
+.x-signal {
+  color: var(--derived);
+}
+
+.x-rule {
+  flex-basis: 100%;
+  color: var(--derived);
+  font-size: var(--text-xs);
+}
+
+.x-make {
+  margin-left: auto;
+}
+
+.x-made {
+  color: var(--ins);
+  font-size: var(--text-sm);
+}
+
+.x-person {
+  display: block;
+}
+
+.x-person-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.x-person-items {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.x-find input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+}
+
+.x-found {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@container page (max-width: 760px) {
+  .x-page {
+    padding-inline: var(--space-3);
+  }
+}
+
+.x-signal .derived-tag,
+.x-rule .derived-tag {
+  margin-right: var(--space-2);
+}

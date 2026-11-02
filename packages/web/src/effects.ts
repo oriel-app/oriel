@@ -1,3 +1,4 @@
+import { exploreDesign } from "./explore/explore.tsx";
 import { type Effect, unreachable } from "./http.ts";
 import type { Msg } from "./root.ts";
 import { changeSetAnchor, parseRoute, routeUrl } from "./route.ts";
@@ -17,6 +18,8 @@ let threadsMoved: EventSource | null = null;
 export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   switch (effect.type) {
     case "loadWindow": {
+      // Spike (window-explore): a prototype overview loads its own data.
+      if (exploreDesign) return;
       const { request } = effect;
       loadWindow(effect.grouping).then(
         (window) => dispatch({ type: "window", msg: { type: "windowLoaded", request, window } }),
