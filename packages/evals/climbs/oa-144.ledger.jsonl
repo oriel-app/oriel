@@ -8,3 +8,7 @@
 {"round":"01M6EDDKPAD9G22QX0V6F9AV05","label":"T1b: trim 1, write rules in the run result","split":"train","trials":48,"usd":0.9504845999999996}
 {"round":"01M6EDHYB0B45XFFTD2BNRDTQK","label":"T1'a: T1 + a file by its title","split":"train","trials":48,"usd":1.0671956000000002}
 {"round":"01M6EDP80TCWYZ2HJBE693VPF0","label":"T1'b: T1 + a file by its title","split":"train","trials":48,"usd":0.9457407999999999}
+{"round":"01M6EDYQNYWT9JB6G0G80CR2X3","label":"T2a: module dedupes","split":"train","trials":48,"usd":0.9978102199999996,"estimated":true}
+{"round":"01M6EDYQNYWT9JB6G0G80CR2X3","label":"T2a: module dedupes","split":"train","trials":48,"usd":1.1225265999999998}
+{"round":"01M6EE2HN9J04PAK2QN5ART9C8","label":"T2b: module dedupes","split":"train","trials":48,"usd":1.0091480727272726,"estimated":true}
+{"round":"01M6EE2HN9J04PAK2QN5ART9C8","label":"T2b: module dedupes","split":"train","trials":48,"usd":0.9871223999999998}
