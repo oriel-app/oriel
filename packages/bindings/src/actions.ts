@@ -89,10 +89,10 @@ export const intentFns: readonly IntentFn[] = (Object.keys(actions) as ActionNam
 
 // What the actions are, and the types their inputs name.
 export const actionTypes = [
-  "/** The workstream and thread actions aren't writes and need no review: a run records them, and they apply as your turn ends, unless Oriel refuses one. The user can undo each. Use one only when asked. */",
+  "/** Workstream and thread actions skip review: they apply as your turn ends, unless Oriel refuses one. Use one only when the user asks. */",
   "type WorkstreamId = string;",
   "type ThreadId = string;",
-  "/** One a workstream gains is in this region, or found by search() in this run. */",
+  "/** One joining a workstream: in this region, or found by this run's search(). */",
   "type ItemId = string;",
 ];
 

@@ -101,9 +101,10 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 }
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,
-// then its actions, in registry order), then the escape hatch. The order is the order of the declarations, so it is part of
-// the byte-stable output. A namespace's write must name an op in its
-// catalogue that a run may capture; revert-only ops are never offered.
+// then its actions, in registry order), then the escape hatch. The order is
+// the order of the declarations, so it is part of the byte-stable output. A
+// namespace's write must name an op in its catalogue that a run may capture;
+// revert-only ops are never offered.
 export function describe(scope: Scope): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
