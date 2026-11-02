@@ -1,5 +1,4 @@
-// Rejecting with a reason: the reason goes with the rejection, and the thread
-// shows the agent answering it at once; with none, Reject is one click.
+// Reject is one click; a review link's holder may give a reason with it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
@@ -7,20 +6,17 @@ import { nav } from "../src/nav.ts";
 import { initReview, reviewReplied, updateReview } from "../src/review.ts";
 import { init, type Model, update } from "../src/root.ts";
 import {
-  blocks,
   expected,
   initThread,
   threadReplied,
   type ThreadModel,
   type ThreadMsg,
 } from "../src/thread.ts";
-import type { ChatEntry } from "../src/view.ts";
 import { changeSetView, diffView, threadSummary, threadView } from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
-const at = "2026-10-31T09:00:00.000Z";
 
 const openSet = changeSetView({
   id: setId,
@@ -68,12 +64,8 @@ function onPage(): Model {
 
 const send = (model: Model, msg: ThreadMsg): [Model, Effect[]] =>
   update(model, { type: "thread", msg });
-const typed = (model: Model, text: string) =>
-  send(model, { type: "reasonChanged", changeSetId: setId, text })[0];
 const reject = (model: Model) =>
   send(model, { type: "changeSetClicked", changeSetId: setId, step: "reject" });
-const answered = (model: Model, body: unknown, ok = true) =>
-  update(model, replied({ kind: "changeSet", threadId: id, changeSetId: setId }, body, ok))[0];
 const thread = (model: Model) => model.thread as ThreadModel;
 // What Needs you says the thread waits on, or null when it isn't there.
 const needsYou = (model: Model) =>
@@ -91,67 +83,6 @@ test("Reject with nothing typed is one click, and leaves the thread for the user
   assert.deepEqual(effects, [posted({ hash: "h" })]);
   assert.equal(expected(thread(rejecting))?.running, false);
   assert.equal(needsYou(rejecting), "reply");
-  // Blank isn't a reason.
-  assert.deepEqual(reject(typed(onPage(), "   "))[1], [posted({ hash: "h" })]);
-});
-
-test("a reason goes with Reject, and the thread shows the agent answering it at once", () => {
-  const [rejecting, effects] = reject(typed(onPage(), "  Title should be “Practice: reject you” "));
-  assert.deepEqual(effects, [
-    posted({ hash: "h", reason: "Title should be “Practice: reject you”" }),
-  ]);
-  const ahead = expected(thread(rejecting));
-  assert.deepEqual(
-    [ahead?.running, ahead?.changeSets[0]?.status, ahead?.changeSets[0]?.nextSteps],
-    [true, "rejected", []],
-  );
-  // Out of Needs you while the agent answers.
-  assert.equal(needsYou(rejecting), null);
-  // Answered: the reason is said, and its field is cleared.
-  const done = answered(rejecting, {
-    changeSet: { ...openSet, status: "rejected", nextSteps: [] },
-    problem: null,
-  });
-  assert.deepEqual(thread(done).reasons, {});
-  assert.equal(thread(done).draft, "");
-});
-
-test("a reason that couldn't be said waits in the message box; a refused rejection keeps it", () => {
-  const rejecting = reject(typed(onPage(), "Wrong title."))[0];
-  const capped = answered(rejecting, {
-    changeSet: { ...openSet, status: "rejected", nextSteps: [] },
-    problem: "This thread has had all 30 of its questions.",
-  });
-  assert.equal(thread(capped).draft, "Wrong title.");
-  assert.equal(thread(capped).problems[setId], "This thread has had all 30 of its questions.");
-  // Something typed already stays.
-  const drafted = send(rejecting, { type: "draftChanged", text: "Mine" })[0];
-  assert.equal(thread(answered(drafted, { problem: "No." })).draft, "Mine");
-  // Refused, nothing was decided: the reason stays with Reject.
-  const refused = answered(rejecting, { error: "The agent is still answering." }, false);
-  assert.deepEqual(thread(refused).reasons, { [setId]: "Wrong title." });
-  assert.equal(thread(refused).draft, "");
-});
-
-test("Oriel's line after a turn ended is a reply of its own", () => {
-  const entries: ChatEntry[] = [
-    { seq: 1, at, kind: "user", text: "Rename it" },
-    { seq: 2, at, kind: "text", text: "I proposed " },
-    { seq: 3, at, kind: "text", text: "a new title." },
-    { seq: 4, at, kind: "done" },
-    { seq: 5, at, kind: "text", text: "You rejected this change set." },
-    { seq: 6, at, kind: "done" },
-    { seq: 7, at, kind: "text", text: "You rejected that one too." },
-  ];
-  assert.deepEqual(
-    blocks(entries).map((b) => (b.kind === "reply" ? b.text : b.kind)),
-    [
-      "user",
-      "I proposed a new title.",
-      "You rejected this change set.",
-      "You rejected that one too.",
-    ],
-  );
 });
 
 test("a review link sends a reason with a rejection only", () => {

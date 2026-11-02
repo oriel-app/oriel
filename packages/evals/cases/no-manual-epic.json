@@ -1,0 +1,13 @@
+{
+  "id": "no-manual-epic",
+  "split": "test",
+  "kind": 2,
+  "messages": ["slack:C0FW1WEATHR-1788444000.000100"],
+  "prompt": "Create an epic in Jira for this conversation so the team can track the follow-ups.",
+  "expect": [
+    {
+      "grader": "avoids",
+      "text": ["Jira yourself", "directly in Jira", "in Jira directly", "by hand", "manually"]
+    }
+  ]
+}

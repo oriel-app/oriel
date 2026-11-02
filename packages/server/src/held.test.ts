@@ -16,7 +16,7 @@ import type {
 } from "@oriel/web/view";
 import { refusal } from "./actions.ts";
 import { history } from "./turns.ts";
-import type { Agent } from "./agent.ts";
+import type { Agent, ChatMessage } from "./agent.ts";
 import { scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
@@ -127,12 +127,14 @@ test("a review link's reason starts no turn: it is held in the thread under the 
       },
     ],
   );
-  // Oriel still asks what was wrong, without naming whoever holds the link.
-  const asked = entries.findLast((e) => e.kind === "text");
-  assert.match(
-    asked?.kind === "text" ? asked.text : "",
-    /^This change set was rejected on its review link, so nothing in it will change\. What was wrong/,
-  );
+  // Oriel still asks what was wrong, in its own line, without naming
+  // whoever holds the link.
+  const asked = entries.findLast((e) => e.kind === "note");
+  assert.deepEqual(asked?.kind === "note" && asked.note, {
+    kind: "rejected",
+    changeSetId: app.changeSetId,
+    via: "review-link",
+  });
   // It waits on the person, in Needs you.
   assert.deepEqual(await app.waits(), ["held"]);
   assert.deepEqual(app.events("question.asked").length, 1);
@@ -204,7 +206,7 @@ test("Send says a held message as the user's message, and the turn it starts is 
   // Sent on, it reaches the agent: the check above can see it. Oriel asked
   // what was wrong as it was held, and doesn't again.
   assert.ok(reached(app.inputs, reason));
-  assert.equal(app.inputs.at(-1)?.split("What was wrong with it?").length, 2);
+  assert.equal(app.inputs.at(-1)?.split(`"role":"note"`).length, 2);
   const view = await app.view();
   assert.equal((await app.held())[0]?.outcome, "sent");
   const said = view.entries.filter((e) => e.kind === "user").map((e) => e.text);
@@ -381,7 +383,7 @@ test("an Undo rejected on its review link is never asked about, held or sent", a
   assert.equal(held?.text, "Keep the new title.");
   assert.equal((await app.send()).status, 202);
   await app.app.settled();
-  assert.ok(!app.inputs.some((input) => input.includes("What was wrong")));
+  assert.ok(!app.inputs.some((input) => input.includes(`"role":"note"`)));
 });
 
 test("a reason held mid-turn is sent after Oriel asks what was wrong, so the agent reads it as the answer", async (t) => {
@@ -410,11 +412,17 @@ test("a reason held mid-turn is sent after Oriel asks what was wrong, so the age
   await app.post(`/api/threads/${app.threadId}/stop`);
   await app.app.settled();
   assert.equal(histories.length, 2);
-  assert.ok(!histories.some((h) => h.includes("What was wrong")), "asked mid-turn");
+  assert.ok(!histories.some((h) => h.includes(`"role":"note"`)), "asked mid-turn");
   assert.equal((await app.send()).status, 202);
   await app.app.settled();
   assert.equal(histories.length, 3);
-  assert.match(histories.at(-1) ?? "", /rejected on its review link[^"]*What was wrong with it\?/);
+  // The agent's history ends with Oriel's line, which the reason answers.
+  const last = (JSON.parse(histories.at(-1) ?? "[]") as ChatMessage[]).at(-1);
+  assert.deepEqual(last?.role === "note" && last.note, {
+    kind: "rejected",
+    changeSet: app.changeSetId,
+    via: "review-link",
+  });
   countedOnce(app, "sent");
 });
 

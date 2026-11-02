@@ -9,6 +9,7 @@ import type {
   HeldSender,
   Instant,
   Log,
+  OrielNote,
   TelemetryEvent,
   Thread,
   Ulid,
@@ -164,8 +165,9 @@ export function spent(messages: readonly Message[]): { inputTokens: number; outp
 }
 
 // The chat as the agent's history: the user's messages, its own replies
-// joined up, each run's script and summary, and markers naming items by ID
-// only. A reason held from a review link is never in it: only what the
+// joined up, each run's script and summary, with the change set its changes
+// became, markers naming items by ID only, and Oriel's notes, as Oriel's
+// (OA-91). A reason held from a review link is never in it: only what the
 // person sends on reaches the agent, as their own message (decision 0024).
 export function history(
   messages: readonly Message[],
@@ -173,7 +175,9 @@ export function history(
 ): ChatMessage[] {
   const out: ChatMessage[] = [];
   const scripts = new Map<string, string>();
-  let ended = false;
+  // The turn's last run that captured changes, which its change set holds,
+  // as the proposal takes it: a later run that only read or failed doesn't.
+  let capturing: Extract<ChatMessage, { role: "run" }> | null = null;
   for (const message of messages) {
     if (message.role === "user") {
       out.push({ role: "user", text: message.text, at: message.at });
@@ -183,30 +187,38 @@ export function history(
       out.push({ role: "marker", text: markerText(message.from, message.to), at: message.at });
       continue;
     }
+    if (message.role === "note") {
+      out.push({ role: "note", note: message.note, at: message.at });
+      continue;
+    }
     if (message.role === "held") continue;
     const event = agentEvent(message.event);
     if (!event.ok) continue;
     const last = out.at(-1);
     if (event.value.kind === "text") {
-      // Text after a turn ended, as Oriel's line after a rejection, is a new
-      // paragraph of what the agent last said.
-      if (last?.role === "assistant") last.text += `${ended ? "\n\n" : ""}${event.value.text}`;
+      if (last?.role === "assistant") last.text += event.value.text;
       else out.push({ role: "assistant", text: event.value.text, at: message.at });
-      ended = false;
     }
-    if (event.value.kind === "done") ended = true;
+    // The turn's changes became a change set: the run that captured them
+    // says which, so a note about it later is plain (OA-86).
+    if (event.value.kind === "change-set" && capturing)
+      capturing.summary += `; they are change set ${event.value.changeSetId}`;
+    if (event.value.kind === "done") capturing = null;
     if (event.value.kind === "actions")
       out.push({ role: "actions", text: actionsText(event.value.lines), at: message.at });
     if (event.value.kind === "run.started") scripts.set(event.value.runId, event.value.script);
     if (event.value.kind === "run.finished") {
       const script = scripts.get(event.value.runId);
-      out.push({
-        role: "run",
+      const run = {
+        role: "run" as const,
         runId: event.value.runId,
         summary: runSummary(event.value),
         ...(script === undefined ? {} : { script }),
         at: message.at,
-      });
+      };
+      out.push(run);
+      const { result } = event.value;
+      if (result.outcome === "ok" && result.mutations.length > 0) capturing = run;
     }
   }
   return out;
@@ -377,10 +389,16 @@ export function turns(deps: TurnDeps) {
   };
 
   // The user's message, counted. `cause` says it was their reason for
-  // rejecting a change set.
+  // rejecting a change set: given with the rejection, or the next thing they
+  // said after Oriel asked what was wrong with it.
   const say = (threadId: Ulid, text: string, cause?: { rejected: Ulid }): { seq: number } => {
+    const last = threads.messages(threadId).at(-1);
+    const answers =
+      last?.role === "note" && last.note.kind === "rejected"
+        ? { rejected: last.note.changeSet }
+        : undefined;
     const { seq, at, workspaceId } = start(threadId, text, { kind: "user" });
-    deps.emit({ name: "question.asked", at, workspaceId, threadId, ...cause });
+    deps.emit({ name: "question.asked", at, workspaceId, threadId, ...(cause ?? answers) });
     return { seq };
   };
 
@@ -405,15 +423,17 @@ export function turns(deps: TurnDeps) {
     publish(threadId, { type: "status", running: running.has(threadId) });
   };
 
-  // Oriel's line asking what was wrong, with no model call. It ends as a
-  // turn does, so a line after it starts its own paragraph.
-  const ask = (threadId: Ulid, yours: boolean) => {
-    record(threadId, {
-      kind: "text",
-      text: `${yours ? "You rejected this change set" : "This change set was rejected on its review link"}, so nothing in it will change. What was wrong with it? Say what to change, and I'll propose a revised one.`,
-    });
-    record(threadId, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
-  };
+  // One of Oriel's own lines in the thread, with no model call: the one way
+  // Oriel writes into a chat, as Oriel, never as the agent (OA-91).
+  const note = (threadId: Ulid, line: OrielNote) =>
+    published(
+      threadId,
+      threads.append(threadId, { role: "note", note: line }, deps.newId(), deps.now()),
+    );
+
+  // Oriel's line asking what was wrong with a rejected change set, naming it.
+  const ask = (threadId: Ulid, changeSet: Ulid, via: "thread" | "review-link") =>
+    note(threadId, { kind: "rejected", changeSet, via });
 
   return {
     running: (threadId: Ulid): boolean => running.has(threadId),
@@ -494,7 +514,7 @@ export function turns(deps: TurnDeps) {
     rejected(set: Rejected, by: string | null, reason: string | null): void {
       const { threadId } = set;
       const asked = asks(set);
-      if (asked) ask(threadId, by === null);
+      if (asked) ask(threadId, set.id, by === null ? "thread" : "review-link");
       if (reason === null) return;
       if (by === null) {
         say(threadId, reason, { rejected: set.id });
@@ -526,7 +546,8 @@ export function turns(deps: TurnDeps) {
       // they rejected: held while Oriel couldn't ask, mid-turn, it asks
       // first, so the agent reads the reason as that answer.
       const capped = capReached(threads.messages(threadId), deps.caps) !== null;
-      if (held.from.kind === "review-link" && held.from.askFirst && !capped) ask(threadId, false);
+      if (held.from.kind === "review-link" && held.from.askFirst && !capped)
+        ask(threadId, held.from.changeSet, "review-link");
       const sent = text ?? held.text;
       // Sent on, the words and the turn are the user's.
       const { seq } = start(threadId, sent, { kind: "user" });

@@ -1,0 +1,59 @@
+{
+  "id": "rejection-line-is-oriels",
+  "split": "train",
+  "kind": 2,
+  "region": "checkout-epic",
+  "oriel": {
+    "threads": [
+      {
+        "id": "01K8Y0000000000000000000T1",
+        "name": "Plan gift cards",
+        "state": "working",
+        "workstream": { "id": "01K8Y0000000000000000000W1", "name": "Checkout" },
+        "activityAt": "2026-10-31T09:05:00.000Z",
+        "said": [
+          "Plan gift cards in this epic: one story to pay with a gift card, one to show its balance."
+        ]
+      }
+    ],
+    "changeSets": [
+      {
+        "id": "01K8Y0000000000000000000C1",
+        "thread": "01K8Y0000000000000000000T1",
+        "state": "rejected",
+        "createdAt": "2026-10-31T09:01:00.000Z",
+        "decided": { "kind": "rejected", "by": "you", "at": "2026-10-31T09:05:00.000Z" },
+        "changes": [
+          {
+            "source": "Jira",
+            "sentence": "Create story \"Pay with a gift card\" in SYN-1, estimated at 3 points.",
+            "text": ["Pay with a gift card"]
+          },
+          {
+            "source": "Jira",
+            "sentence": "Create story \"Show the gift card balance at checkout\" in SYN-1.",
+            "text": ["Show the gift card balance at checkout"]
+          }
+        ]
+      }
+    ]
+  },
+  "before": [
+    {
+      "role": "user",
+      "text": "Plan gift cards in this epic: one story to pay with a gift card, one to show its balance."
+    },
+    {
+      "role": "assistant",
+      "text": "I proposed two new stories in this epic: \"Pay with a gift card\", estimated at 3 points, and \"Show the gift card balance at checkout\". Approve the change set to create them."
+    },
+    {
+      "role": "note",
+      "note": { "kind": "rejected", "changeSet": "01K8Y0000000000000000000C1", "via": "thread" }
+    }
+  ],
+  "prompt": "Only the first one, and make it 2 points.",
+  "expect": [
+    { "grader": "avoids", "text": ["mistake", "ignore", "apologi", "sorry", "my last message"] }
+  ]
+}

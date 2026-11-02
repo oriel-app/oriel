@@ -123,7 +123,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     {
       thread,
       region,
-      history: [],
+      history: (input.case.before ?? []).map((said) => ({ ...said, at: input.now })),
       text: input.case.prompt,
       snapshot: 1,
       spent: { inputTokens: 0, outputTokens: 0 },
