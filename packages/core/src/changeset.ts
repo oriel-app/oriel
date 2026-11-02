@@ -184,8 +184,14 @@ export interface ChangeSets {
   reviewLink(id: Ulid): Promise<URL>;
   revokeReviewLink(id: Ulid): Promise<void>;
   // What the review page shows; null for a dead or unknown token. It records
-  // nothing: whoever shows it says whether it was opened.
+  // nothing: whoever shows it says whether it was opened, with this.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
+  reviewLinkOpened(id: Ulid): Promise<void>;
+  // The workspace's live review links nobody has opened, oldest first:
+  // what the overview's Needs you lists (decision 0027).
+  unopenedLinks(
+    workspaceId: Ulid,
+  ): Promise<{ changeSetId: Ulid; threadId: Ulid; sentAt: Instant }[]>;
   // Exactly what can be done with it now (`NextStep`): each step is an
   // action whose own guard passes, so none offered is refused. Every message
   // the engine shows a person names only these. Empty while it is applying.

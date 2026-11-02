@@ -373,9 +373,13 @@ export const actions = {
   // The last-seen stamp moves when the user leaves the overview, not when
   // they open it, so a reload or a glance keeps what changed since they last
   // looked (decision 0027).
+  // `seq`: the last change log entry the overview showed; what committed
+  // after it stays unseen.
   "overview.leave": {
-    doc: "Marks what changed until now as seen, as the user leaves the overview.",
-    input: object({}),
+    doc: "Marks what the overview showed as seen, as the user leaves it.",
+    input: object({
+      seq: refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a change log entry"),
+    }),
     class: {
       kind: "person-only",
       why: "What the user has seen is theirs to say: only leaving the overview says it.",

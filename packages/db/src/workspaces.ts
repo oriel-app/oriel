@@ -49,15 +49,17 @@ export function lastSeen(db: DatabaseSync, workspaceId: Ulid): { at: Instant; se
   return { at: row.value.seen_at, seq: row.value.seen_seq };
 }
 
-// The user left the overview at `at`: the stamp moves there, and to the last
-// change log entry committed by then, and never back.
-export function markSeen(db: DatabaseSync, workspaceId: Ulid, at: Instant): void {
+// The user left the overview at `at`, having seen the change log up to
+// entry `seq` (no further than what has committed): the stamp moves there,
+// and never back.
+export function markSeen(db: DatabaseSync, workspaceId: Ulid, at: Instant, seq: number): void {
   db.prepare(`
     insert into overview_seen (workspace_id, seen_at, seen_seq)
-      values (?, ?, coalesce((select max(seq) from change_log), 0))
+      values (?, ?, min(?, coalesce((select max(seq) from change_log), 0)))
     on conflict (workspace_id) do update set
       seen_at = max(seen_at, excluded.seen_at), seen_seq = max(seen_seq, excluded.seen_seq)`).run(
     workspaceId,
     at,
+    seq,
   );
 }

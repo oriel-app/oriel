@@ -48,6 +48,7 @@ import {
   type WorkstreamEndedView,
   isGroupingId,
   type JiraView,
+  type OverviewView,
   type SearchView,
   type StreamEvent,
   type ThreadsView,
@@ -106,6 +107,9 @@ export type ApiDeps = {
       filter: BrowseFilter,
     ): ClusterPageView | null;
   };
+  // The overview, as the page and the window chat's `window.overview()`
+  // read it (decision 0027).
+  overview(): Promise<OverviewView>;
   // The connected folder and Jira as they stand; connecting and syncing
   // either is an action.
   folder(): FolderView | null;
@@ -229,6 +233,17 @@ const windowEvent = union(
     name: literal("threads.search-opened"),
     opened: union(literal("thread"), literal("change-set")),
     rank: count,
+  }),
+  object({ name: literal("overview.opened") }),
+  object({
+    name: literal("overview.more-opened"),
+    section: union(
+      literal("changed"),
+      literal("needs-you"),
+      literal("workstreams"),
+      literal("candidates"),
+      literal("people"),
+    ),
   }),
 );
 
@@ -545,18 +560,29 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The user left the overview: what changed until now is seen
-      // (decision 0027). The overview calls this as the user leaves it.
+      // The overview, computed now (decision 0027).
+      method: "GET",
+      path: at("/overview"),
+      async run() {
+        return json(200, await deps.overview());
+      },
+    },
+    {
+      // The user left the overview: what it showed is seen (decision 0027).
+      // `seq` is the last change log entry the page counted, so one that
+      // committed after it rendered stays unseen. The overview calls this as
+      // the user leaves it.
       method: "POST",
       path: at("/overview/leave"),
       async run(_, request) {
-        await readJson(request, tinyBody, emptyBody);
-        const { seenAt } = await deps.dispatch("overview.leave", {}, user);
+        const typed = await readJson(request, tinyBody, object({ seq: unknown }));
+        const input = checked("overview.leave", typed);
+        const { seenAt } = await deps.dispatch("overview.leave", input, user);
         return json(200, { seenAt });
       },
     },
     {
-      // What only the window knows happened. Seven events, fixed fields.
+      // What only the window knows happened. Nine events, fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
@@ -1047,6 +1073,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           );
         }
         deps.emit({ name: "review-link.opened", at: deps.now(), workspaceId, changeSetId });
+        await changeSets.reviewLinkOpened(changeSetId);
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),

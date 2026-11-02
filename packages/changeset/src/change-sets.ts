@@ -1865,6 +1865,17 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return reviewUrl(token);
     },
 
+    async reviewLinkOpened(id) {
+      rows.markLinkOpened(id, at().now);
+    },
+
+    async unopenedLinks(workspaceId) {
+      return rows.unopenedLinks(
+        workspaceId,
+        new Date(at().ms - linkLifetimeMs).toISOString() as Instant,
+      );
+    },
+
     async revokeReviewLink(id) {
       const set = mustLoad(id);
       rows.revokeLinks(set.id, at().now);

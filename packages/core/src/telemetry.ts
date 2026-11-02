@@ -2,6 +2,7 @@ import type { Actor } from "./actions.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
+import type { OverviewSection } from "./overview.ts";
 import type { ZoomId } from "./zoom.ts";
 
 // Pilot telemetry, stored locally. Only raw events are stored; these are
@@ -130,6 +131,11 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user searched items in Browse: how long the query was and how many
   // items it found, never what it said. One per query Browse loaded.
   | { name: "items.searched"; queryLength: number; results: number }
+  // The user opened the overview, the window's first view (decision 0027).
+  | { name: "overview.opened" }
+  // The user opened a section's "more": in place, or in Browse filtered to
+  // that slice.
+  | { name: "overview.more-opened"; section: OverviewSection }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );

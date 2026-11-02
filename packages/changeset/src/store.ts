@@ -89,6 +89,11 @@ const linkRow = object({
   created_at: instantValue,
   revoked_at: nullable(instantValue),
 });
+const unopenedRow = object({
+  change_set_id: ulidValue,
+  thread_id: ulidValue,
+  created_at: instantValue,
+});
 const nextRow = object({ next: number });
 const stableIdRow = object({ stable_id: string });
 const runRegionRow = object({ workstream_id: ulidValue, region_version: number });
@@ -214,6 +219,14 @@ export function store(db: DatabaseSync) {
   const insertLink = db.prepare(
     "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values (?, ?, ?, ?)",
   );
+  const markLinkOpened = db.prepare(
+    "update review_links set opened_at = ? where change_set_id = ? and revoked_at is null and opened_at is null",
+  );
+  const selectUnopened = db.prepare(`
+    select l.change_set_id, s.thread_id, l.created_at
+    from review_links l join change_sets s on s.id = l.change_set_id
+    where l.workspace_id = ? and l.revoked_at is null and l.opened_at is null and l.created_at > ?
+    order by l.created_at, l.change_set_id`);
 
   // The stable ID of the item a handle names in the index, or null.
   const stableIdOf = (workspaceId: Ulid, handle: string): string | null => {
@@ -493,6 +506,23 @@ export function store(db: DatabaseSync) {
 
     insertLink(tokenHash: string, workspaceId: Ulid, changeSetId: Ulid, at: Instant): void {
       insertLink.run(tokenHash, workspaceId, changeSetId, at);
+    },
+
+    // The change set's live link was opened at `at`, if it hadn't been.
+    markLinkOpened(changeSetId: Ulid, at: Instant): void {
+      markLinkOpened.run(at, changeSetId);
+    },
+
+    // Links made after `after` that are neither revoked nor opened, oldest
+    // first.
+    unopenedLinks(
+      workspaceId: Ulid,
+      after: Instant,
+    ): { changeSetId: Ulid; threadId: Ulid; sentAt: Instant }[] {
+      return selectUnopened.all(workspaceId, after).map((raw) => {
+        const row = parse(unopenedRow, raw, "review_links");
+        return { changeSetId: row.change_set_id, threadId: row.thread_id, sentAt: row.created_at };
+      });
     },
   };
 }
