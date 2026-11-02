@@ -20,7 +20,9 @@ export type Tag =
   | { kind: "renamed"; id: string }
   | { kind: "threadOpened"; workstreamId: string }
   | { kind: "threadStarted"; draft: number }
-  | { kind: "thread"; id: string }
+  // `statuses`: how many statuses the thread's stream had sent when it was
+  // asked for, when any had.
+  | { kind: "thread"; id: string; statuses?: number }
   | { kind: "sent"; threadId: string }
   | { kind: "threadAction"; threadId: string }
   | { kind: "diff"; changeSetId: string }

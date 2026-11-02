@@ -48,6 +48,9 @@ export type ThreadModel = {
   notice: string | null;
   // The thread was deleted while its page was open.
   deleted: boolean;
+  // How many statuses the thread's stream has sent. A load asked for before
+  // the latest one is answered with an older running, state and version.
+  statuses: number;
   // The page shows the latest entry, so what arrives keeps it there.
   atLatest: boolean;
   // The change set the thread's address names: the page opens there instead
@@ -110,6 +113,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       notes: {},
       notice: null,
       deleted: false,
+      statuses: 0,
       atLatest: changeSet === null,
       at: changeSet === null ? null : { changeSet, shown: false },
     },
@@ -117,8 +121,9 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
   ];
 }
 
-const refresh = (model: ThreadModel): Effect =>
-  get(`/api/threads/${model.id}`, { kind: "thread", id: model.id });
+// The thread loaded again, noting what its stream has said so far.
+export const refresh = ({ id, statuses }: ThreadModel): Effect =>
+  get(`/api/threads/${id}`, { kind: "thread", id, ...(statuses > 0 && { statuses }) });
 const diffOf = (changeSetId: string): Effect =>
   post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
 
@@ -382,10 +387,18 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       if (!msg.ok) return [{ ...model, status: model.view ? "ready" : "failed" }, []];
       const view = msg.body as ThreadView;
       const first = model.view === null;
-      // Entries the stream delivered after this view was built stay.
+      // Entries the stream delivered after this view was built stay, and so
+      // does a status it sent after this was asked for: the reply is older.
       const newer = model.view?.entries.filter((e) => e.seq > view.lastSeq) ?? [];
+      const said = (tag.statuses ?? 0) < model.statuses ? model.view : null;
       const merged: ThreadView = {
         ...view,
+        ...(said && {
+          running: said.running,
+          state: said.state,
+          regionVersion: said.regionVersion,
+          title: said.title,
+        }),
         entries: [...view.entries, ...newer],
         lastSeq: Math.max(view.lastSeq, model.view?.lastSeq ?? 0),
       };
@@ -555,6 +568,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     const moved = event.regionVersion !== view.regionVersion;
     const next = {
       ...model,
+      statuses: model.statuses + 1,
       view: {
         ...view,
         running: event.running,
@@ -564,7 +578,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
       },
     };
     // A finished turn may have settled the thread; a new version changes the rail.
-    return [next, moved || (!event.running && view.running) ? [refresh(model)] : []];
+    return [next, moved || (!event.running && view.running) ? [refresh(next)] : []];
   }
   // Applying started, here or elsewhere: nothing can be done with it until it
   // ends, which the thread says. Once it has, or anything else changed it,

@@ -65,6 +65,7 @@ import {
   type NewThreadMsg,
   newThreadReplied,
   reconnected,
+  refresh as refreshThread,
   streamed,
   type ThreadModel,
   type ThreadMsg,
@@ -155,8 +156,7 @@ const reloadShown = (model: Model): Effect[] => {
     return [
       get(`/api/workstreams/${workstream.id}`, { kind: "workstreamSynced", id: workstream.id }),
     ];
-  if (route.page === "thread" && thread)
-    return [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })];
+  if (route.page === "thread" && thread) return [refreshThread(thread)];
   return [];
 };
 
@@ -522,7 +522,7 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
     return [model, lists];
   }
   if (route.page === "thread" && route.id === threadId && model.thread !== null)
-    return [model, [...lists, get(`/api/threads/${threadId}`, { kind: "thread", id: threadId })]];
+    return [model, [...lists, refreshThread(model.thread)]];
   if (route.page === "workstream") return [model, [...lists, ...initWorkstream(route.id)[1]]];
   return [model, lists];
 }
