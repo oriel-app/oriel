@@ -16,9 +16,11 @@ export function isMessagesRequest(request: Request): boolean {
 }
 
 // Reads ANTHROPIC_API_KEY and nothing else. Callers never print its value.
+// A key with whitespace or anything but printable ASCII is refused: a header
+// can't hold it, and the error saying so would quote it.
 export function anthropicKey(envFile: string | null): string | null {
   const key = envFile ? parseEnv(envFile).ANTHROPIC_API_KEY : undefined;
-  return key?.trim() ? key : null;
+  return key && /^[!-~]+$/.test(key) ? key : null;
 }
 
 // Adds the key and the API version to each Messages API request. `network`

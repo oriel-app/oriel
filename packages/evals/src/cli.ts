@@ -1,11 +1,14 @@
 // `pnpm evals` runs every case live, recording its cassettes, for local
 // hillclimbing; `evals:ci` replays the cassettes and never reaches the network.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
+import { openChecked } from "@oriel/folder";
 import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
-import { anthropicFetch, anthropicKey, sameModel } from "./anthropic.ts";
+import { anthropicFetch, anthropicKey, type Fetch, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
 import { compareRounds, formatComparison, readResults } from "./compare.ts";
@@ -19,15 +22,16 @@ export const defaults = { model: "claude-opus-5-5", judge: "claude-sonnet-5-5" }
 // The eval clock: fixed, after the fixture's last source edit.
 export const evalNow: Instant = instant(new Date("2026-10-29T09:00:00.000Z"));
 
-export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baseline <round>]
-         runs every case against the live model and records its cassettes
+export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baseline <round>] [--env <path>]
+         runs every case against the live model and records its cassettes;
+         --env names the .env holding ANTHROPIC_API_KEY (default: the repo root's)
        pnpm evals compare <baseline round> <candidate round>
        pnpm --filter @oriel/evals evals:ci
          replays the cassettes; fails on any error and on failed deterministic cases
 A round is the ULID naming its directory under .evals/.`;
 
 export type Command =
-  | { command: "live"; model: string; judge: string; baseline: string | null }
+  | { command: "live"; model: string; judge: string; baseline: string | null; env?: string }
   | { command: "replay"; model: string; judge: string }
   | { command: "compare"; baseline: string; candidate: string };
 
@@ -41,6 +45,7 @@ function parse(args: readonly string[]) {
         model: { type: "string" },
         judge: { type: "string" },
         baseline: { type: "string" },
+        env: { type: "string" },
       },
     });
   } catch {
@@ -57,12 +62,20 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   const judge = values.judge ?? defaults.judge;
   if (sameModel(judge, model))
     return { error: "the judge model must differ from the model under test" };
-  if (verb === undefined && (values.baseline === undefined || isUlid(values.baseline)))
-    return { command: "live", model, judge, baseline: values.baseline ?? null };
-  if (verb === "replay" && rest.length === 0 && values.baseline === undefined)
+  if (verb === undefined && (values.baseline === undefined || isUlid(values.baseline))) {
+    const live = { command: "live" as const, model, judge, baseline: values.baseline ?? null };
+    if (values.env === undefined) return live;
+    if (values.env.trim()) return { ...live, env: values.env };
+  }
+  if (
+    verb === "replay" &&
+    rest.length === 0 &&
+    values.baseline === undefined &&
+    values.env === undefined
+  )
     return { command: "replay", model, judge };
   const [baseline = "", candidate = ""] = rest;
-  const flags = values.model ?? values.judge ?? values.baseline;
+  const flags = values.model ?? values.judge ?? values.baseline ?? values.env;
   if (
     verb === "compare" &&
     rest.length === 2 &&
@@ -73,43 +86,111 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   return { error: usage };
 }
 
-async function main(command: Command): Promise<number> {
+// Reads a .env as the folder source reads a file (decision 0019): no link on
+// the way to it, no second link to it, no pipe or device. Null when nothing
+// is there; no problem quotes the file.
+async function readEnv(path: string): Promise<{ text: string | null } | { problem: string }> {
+  const absolute = resolve(path);
+  let expected: { dev: bigint; ino: bigint };
+  try {
+    expected = lstatSync(absolute, { bigint: true });
+  } catch {
+    return { text: null };
+  }
+  const opened = await openChecked(absolute, expected);
+  if (opened.status === "vanished") return { text: null };
+  if (opened.status === "forbidden") return { problem: `${path} can't be read` };
+  if (opened.status === "changed")
+    return { problem: `${path} is not a regular file with one link; it is refused` };
+  try {
+    return { text: await opened.handle.readFile("utf8") };
+  } finally {
+    await opened.handle.close();
+  }
+}
+
+// The model key for a live round, from the .env `--env` names, or else the
+// repo root's. Only ANTHROPIC_API_KEY is kept, and no problem quotes a value.
+export async function modelKey(
+  env: string | undefined,
+  rootEnv: URL,
+): Promise<{ key: string } | { problem: string }> {
+  const read = await readEnv(env ?? fileURLToPath(rootEnv));
+  if ("problem" in read) return read;
+  if (env !== undefined && read.text === null) return { problem: `no file at ${env}` };
+  const key = anthropicKey(read.text);
+  if (key) return { key };
+  return {
+    problem:
+      env === undefined
+        ? "ANTHROPIC_API_KEY must be set in .env; env.example lists it."
+        : `ANTHROPIC_API_KEY must be set in ${env}`,
+  };
+}
+
+// What a round reads, writes and reaches. Tests pass their own, so none reads
+// the clock, the network or the repo's .env.
+export type Io = {
+  cases: URL;
+  cassettes: URL;
+  rounds: URL;
+  envFile: URL;
+  network: Fetch;
+  // Milliseconds since the epoch, naming the round.
+  now: () => number;
+  // Milliseconds, read only to time each case.
+  clock: () => number;
+  log: (line: string) => void;
+  error: (line: string) => void;
+};
+
+const repoIo: Io = {
+  cases: casesDir,
+  cassettes: cassettesDir,
+  rounds: roundsDir,
+  envFile,
+  network: fetch,
+  now: Date.now,
+  clock: () => performance.now(),
+  log: console.log,
+  error: console.error,
+};
+
+export async function main(command: Command, io: Io = repoIo): Promise<number> {
   if (command.command === "compare") {
-    const round = (id: string) => readResults(new URL(`${id}/`, roundsDir));
-    console.log(formatComparison(compareRounds(round(command.baseline), round(command.candidate))));
+    const round = (id: string) => readResults(new URL(`${id}/`, io.rounds));
+    io.log(formatComparison(compareRounds(round(command.baseline), round(command.candidate))));
     return 0;
   }
   const fixture = loadJiraFixture();
   const folder = loadFolderFixture();
   const slack = loadSlackFixture();
-  const { cases: loaded, problems } = loadCases(casesDir, fixture, repoRoot, folder, slack);
-  for (const problem of problems) console.error(problem);
+  const { cases: loaded, problems } = loadCases(io.cases, fixture, repoRoot, folder, slack);
+  for (const problem of problems) io.error(problem);
   if (problems.length) return 1;
   for (const { case: c } of loaded)
-    if (c.waiting) console.log(`waiting  ${c.id} (${c.split}, kind ${c.kind}): ${c.waiting}`);
+    if (c.waiting) io.log(`waiting  ${c.id} (${c.split}, kind ${c.kind}): ${c.waiting}`);
   const cases = loaded.filter((c) => c.case.waiting === undefined);
   if (!cases.length) {
-    console.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
+    io.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
     return 0;
   }
   const baseline =
     command.command === "live" && command.baseline
-      ? new URL(`${command.baseline}/`, roundsDir)
+      ? new URL(`${command.baseline}/`, io.rounds)
       : null;
   if (baseline && !existsSync(new URL("results.jsonl", baseline))) {
-    console.error(`no baseline round at ${baseline.pathname}`);
+    io.error(`no baseline round at ${baseline.pathname}`);
     return 1;
   }
-  const key =
-    command.command === "live"
-      ? anthropicKey(existsSync(envFile) ? readFileSync(envFile, "utf8") : null)
-      : null;
-  if (command.command === "live" && !key) {
-    console.error("ANTHROPIC_API_KEY must be set in .env; env.example lists it.");
+  const key = command.command === "live" ? await modelKey(command.env, io.envFile) : null;
+  if (key && "problem" in key) {
+    io.error(key.problem);
     return 1;
   }
-  const live = key ? anthropicFetch(key) : null;
-  const id = ulid(Date.now());
+  // The key goes to the model client and nowhere else.
+  const live = key ? anthropicFetch(key.key, io.network) : null;
+  const id = ulid(io.now());
   const round = await runRound({
     cases,
     fixture,
@@ -119,21 +200,21 @@ async function main(command: Command): Promise<number> {
     model: command.model,
     judgeModel: command.judge,
     transport: (caseId) => {
-      const dir = cassetteDir(cassettesDir, caseId, command.model, command.judge);
+      const dir = cassetteDir(io.cassettes, caseId, command.model, command.judge);
       return live ? cassettes({ mode: "record", dir, live }) : cassettes({ mode: "replay", dir });
     },
-    out: new URL(`${id}/`, roundsDir),
-    clock: () => performance.now(),
+    out: new URL(`${id}/`, io.rounds),
+    clock: io.clock,
     now: evalNow,
     concurrency: live ? 4 : 1,
   });
   const failing = new Map(
     cases.flatMap((c) => (c.case.failing ? [[c.case.id, c.case.failing.grader] as const] : [])),
   );
-  console.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
-  console.log(formatRound(round, failing));
-  console.log(`results: .evals/${id}/`);
-  if (baseline) console.log(formatComparison(compareRounds(readResults(baseline), round.results)));
+  io.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
+  io.log(formatRound(round, failing));
+  io.log(`results: .evals/${id}/`);
+  if (baseline) io.log(formatComparison(compareRounds(readResults(baseline), round.results)));
   return exitCode(round.results, command.command, failing);
 }
 

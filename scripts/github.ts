@@ -13,7 +13,7 @@ export const usage = `usage: pnpm -s github <operation>
   pr-list
   pr-view <number>
   pr-create <branch> <title> <body>
-  pr-edit <number> <body>
+  pr-edit <number> <body> [title]
   pr-enqueue <number>
   runs [branch]`;
 
@@ -21,7 +21,7 @@ export type Operation =
   | { op: "pr-list" }
   | { op: "pr-view" | "pr-enqueue"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
-  | { op: "pr-edit"; number: number; body: string }
+  | { op: "pr-edit"; number: number; body: string; title?: string }
   | { op: "runs"; branch: string | null };
 
 // SPEC §10: branch names are at most three hyphenated words, no prefixes.
@@ -40,10 +40,13 @@ export function parse(args: readonly string[]): Operation | { error: string } {
     const [branch = "", title = "", body = ""] = rest;
     if (branchName.test(branch) && title.trim()) return { op, branch, title, body };
   }
-  if (op === "pr-edit" && rest.length === 2) {
+  if (op === "pr-edit" && (rest.length === 2 || rest.length === 3)) {
+    const [, body = "", title] = rest;
     const number = prNumber(rest[0]);
-    const body = rest[1] ?? "";
-    if (number && body.trim()) return { op, number, body };
+    // Neither is a flag, so `--title x` can't become a body or `--draft` a title.
+    const ok = number && body.trim() && !body.startsWith("--");
+    if (ok && title === undefined) return { op, number, body };
+    if (ok && title?.trim() && !title.startsWith("-")) return { op, number, body, title };
   }
   if (op === "runs" && rest.length <= 1) {
     const branch = rest[0] ?? null;
@@ -67,8 +70,15 @@ export function leaksSecret(texts: readonly string[], envFile: string | null): b
   return texts.some((text) => values.some((value) => text.includes(value)));
 }
 
+// What an operation would publish on a PR's page.
+export function published(operation: Operation): string[] {
+  if (operation.op === "pr-create") return [operation.title, operation.body];
+  if (operation.op === "pr-edit") return [operation.title ?? "", operation.body];
+  return [];
+}
+
 // Only a PR from a branch of this repo may enter the merge queue or have its
-// body rewritten: a fork's PR is attacker input, whatever its title or branch
+// title or body rewritten: a fork's PR is attacker input, whatever its title or branch
 // name says (decision 0012).
 export function headRefusal(
   pr: { isCrossRepository: boolean; headRepository: { nameWithOwner: string } | null },
@@ -171,6 +181,7 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       if (refusal) throw new Error(refusal);
       const edited = (await call(token, "PATCH", `${base}/pulls/${operation.number}`, {
         body: operation.body,
+        ...(operation.title === undefined ? {} : { title: operation.title }),
       })) as { number: number; html_url: string };
       return { number: edited.number, url: edited.html_url };
     }
@@ -221,11 +232,7 @@ if (import.meta.main) {
   const envFile = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
   const token = agentToken(envFile);
   const operation = parse(process.argv.slice(2));
-  if (
-    !("error" in operation) &&
-    (operation.op === "pr-create" || operation.op === "pr-edit") &&
-    leaksSecret([operation.op === "pr-create" ? operation.title : "", operation.body], envFile)
-  ) {
+  if (!("error" in operation) && leaksSecret(published(operation), envFile)) {
     console.error("refusing: the title or body contains a value from .env");
     process.exit(1);
   }
