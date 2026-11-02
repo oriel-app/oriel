@@ -199,3 +199,16 @@ export function json<T = Record<string, unknown>>(reply: Reply): T {
     typeof reply.body === "string" ? reply.body : new TextDecoder().decode(reply.body),
   );
 }
+
+// What the dispatcher reaches besides workstreams and threads, for a test of
+// it that calls none of that but what it `gives`: any other call throws.
+export function unreached<T extends object>(what: string, gives: Partial<T> = {}): T {
+  return new Proxy(gives as T, {
+    get: (given, key) =>
+      Object.hasOwn(given, key)
+        ? given[key as keyof T]
+        : () => {
+            throw new Error(`${what}.${String(key)} isn't reached here`);
+          },
+  });
+}

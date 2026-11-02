@@ -15,6 +15,7 @@ import {
   type WriterConfig,
 } from "@oriel/changeset";
 import {
+  type ActionInput,
   type ChangeSet,
   type Credential,
   type IndexRecord,
@@ -82,8 +83,8 @@ import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { blankWorkstreamName, dispatcher } from "./actions.ts";
-import { api, type JiraDetails } from "./api.ts";
+import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
+import { api } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
@@ -304,6 +305,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // start.
   let syncing: Promise<unknown> = Promise.resolve();
   let told = (): void => {};
+  // Workstreams following their anchors, as a sync renames them through the
+  // dispatcher, made below: the syncs before it catch up once it is.
+  let follow = async (): Promise<void> => {};
   const syncInto = <K extends SourceKind, A>(
     from: Source<K, A>,
     attrs: Validator<A>,
@@ -315,10 +319,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       .then(() =>
         syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
       )
-      .then(() => {
-        // A workstream that can't follow its epic is no reason to call the sync failed.
+      .then(async () => {
+        // A workstream that can't follow its epic is no reason to call the sync
+        // failed.
         try {
-          followAnchors(workstreams, workspaceId, records());
+          await follow();
         } catch (error) {
           log("following epics failed", { error: String(error) });
         }
@@ -334,8 +339,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   const written = new Map<string, { id: ItemId<"jira">; stableId: string; at: Instant }>();
   // The first sync of a source into this workspace connects it, whenever
   // that sync is. Jira's is announced once, though two syncs may both start
-  // as the first.
+  // as the first. `announced` counts them, so connecting from the window can
+  // tell whether it was counted so.
+  let announced = 0;
   const connected = (kind: SourceKind) => {
+    announced += 1;
     emit({ name: "source.connected", at: now(), workspaceId, source: kind });
   };
   let jiraAnnounced = false;
@@ -402,10 +410,6 @@ export async function createApp(options: AppOptions): Promise<App> {
           return jiraProblem(error);
         },
       ));
-  // The user asked for a sync: how often they do says whether Oriel should
-  // sync on its own.
-  const synced = (kind: SourceKind, problem: string | null) =>
-    emit({ name: "source.synced", at: now(), workspaceId, source: kind, ok: problem === null });
   const caps = options.limits ?? limits;
 
   // The folder the user connected, read-only (decision 0019). Its stored path
@@ -682,7 +686,32 @@ export async function createApp(options: AppOptions): Promise<App> {
       return set ? created(set) : [];
     },
     emit,
-    held: conversation,
+    turns: conversation,
+    changeSets: sets,
+    applied: (set) => applied(set),
+    sources: {
+      connect: async (input) => {
+        const before = announced;
+        const outcome = await (input.kind === "folder"
+          ? connectFolder(input.path)
+          : connectJira(input));
+        return { outcome, counted: announced > before };
+      },
+      sync: async (kind) => {
+        if (kind === "folder") {
+          if (!folder) throw new ActionError("conflict", "No folder is connected.");
+          const problem = await syncFolder();
+          const view = folderView();
+          return problem || !view
+            ? { problem: problem ?? "No folder is connected." }
+            : { folder: view };
+        }
+        if (!jiraView().connected)
+          throw new ActionError("conflict", "Jira isn't connected to this window yet.");
+        const problem = await syncJira();
+        return problem ? { problem } : { jira: jiraView() };
+      },
+    },
     running: conversation.running,
     unsettled: async (threadId) =>
       Promise.all(
@@ -694,6 +723,9 @@ export async function createApp(options: AppOptions): Promise<App> {
           })),
       ),
     publish: (changed) => {
+      if ("changeSet" in changed)
+        return conversation.changeSet(changed.thread, changed.changeSet, changed.applying);
+      if ("deleted" in changed) return conversation.deleted(changed.thread);
       conversation.acted(
         "thread" in changed
           ? { thread: changed.thread, chat: changed.chat === true, workstream: null, moves: [] }
@@ -707,6 +739,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     newId,
   });
+
+  follow = () =>
+    followAnchors(workstreams, workspaceId, records(), (workstream, name, source) =>
+      dispatch("workstream.rename", { workstream, name }, { kind: "sync", source }),
+    );
+  await follow().catch((error: unknown) => log("following epics failed", { error: String(error) }));
 
   intents = intentsOf({
     dispatch,
@@ -784,7 +822,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // a reply or a message.
   let joining = false;
   const connectJira = async (
-    typed: JiraDetails,
+    typed: Extract<ActionInput<"source.connect">, { kind: "jira" }>,
   ): Promise<{ jira: JiraView } | { problem: string }> => {
     if (mode.kind !== "window" || source)
       return { problem: "Jira is already connected to this window." };
@@ -856,8 +894,6 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: itemPanels({ reader, records, sources, now }),
       emit,
       now,
-      newId,
-      applied,
       refresh: async () => {
         const problems: string[] = [];
         if (mode.kind !== "fixture" && source)
@@ -875,27 +911,8 @@ export async function createApp(options: AppOptions): Promise<App> {
         const titles = new Map(records().map((record) => [record.id, record.title]));
         return explainConflicts(conflicts, specs, (id) => titles.get(id) ?? null);
       },
-      jira: {
-        view: jiraView,
-        connect: connectJira,
-        sync: async () => {
-          const problem = await syncJira();
-          synced("jira", problem);
-          return problem ? { problem } : { jira: jiraView() };
-        },
-      },
-      folder: {
-        view: folderView,
-        connect: connectFolder,
-        sync: async () => {
-          const problem = await syncFolder();
-          if (folder) synced("folder", problem);
-          const view = folderView();
-          return problem || !view
-            ? { problem: problem ?? "No folder is connected." }
-            : { folder: view };
-        },
-      },
+      jira: jiraView,
+      folder: folderView,
       log,
     }),
     settled: () => conversation.settled(),

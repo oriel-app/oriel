@@ -442,12 +442,6 @@ export function turns(deps: TurnDeps) {
       return () => anyWatchers.delete(listener);
     },
 
-    // The user opened the thread without a message. Every page watching it
-    // hears.
-    touched(threadId: Ulid): void {
-      publish(threadId, { type: "status", running: running.has(threadId) });
-    },
-
     // The user deleted the thread: every page watching it says so, and every
     // list drops it.
     deleted(threadId: Ulid): void {

@@ -5,10 +5,8 @@ import {
   allowlist,
   exemptRoutes,
   lockedPackages,
-  partlyMovedRoutes,
   postRoutes,
   problems,
-  unmovedRoutes,
 } from "./check-repo.ts";
 
 const lockfile = `lockfileVersion: '9.0'
@@ -336,17 +334,11 @@ test("CLAUDE.md must link to exactly AGENTS.md", () => {
   assert.match(found[0] ?? "", /CLAUDE\.md must be a symlink/);
 });
 
-// A routes file declaring every listed route as its list says, as api.ts
+// A routes file declaring every exempt route as the list says, as api.ts
 // does, plus `extra`.
 const route = (path: string, code: string) =>
   `{ method: "POST", path: at("${path}"), async run() { ${code} } },`;
-const listed = (
-  lists = { exempt: exemptRoutes, unmoved: unmovedRoutes, part: partlyMovedRoutes },
-) => [
-  ...Object.keys(lists.exempt).map((path) => route(path, "work();")),
-  ...Object.keys(lists.unmoved).map((path) => route(path, "work();")),
-  ...Object.keys(lists.part).map((path) => route(path, "work(); await deps.dispatch(x);")),
-];
+const listed = (exempt = exemptRoutes) => Object.keys(exempt).map((path) => route(path, "work();"));
 const routes = (extra: string, lines = listed()) => ({
   path: "packages/server/src/api.ts",
   text: [...lines, extra].join("\n"),
@@ -376,14 +368,9 @@ test("a POST route that changes state without the dispatcher is reported", () =>
   assert.deepEqual(problems({ ...clean, sources: [...clean.sources, routes(""), test] }), []);
 });
 
-test("a listed route that's gone, or no longer as its list says, is reported, so the lists only shrink", () => {
-  const [first = "", ...rest] = Object.keys(unmovedRoutes);
-  const [part = ""] = Object.keys(partlyMovedRoutes);
-  const gone = listed({
-    exempt: exemptRoutes,
-    unmoved: Object.fromEntries(rest.map((path) => [path, ""])),
-    part: partlyMovedRoutes,
-  });
+test("an exempt route that's gone, or calls the dispatcher now, is reported", () => {
+  const [first = "", ...rest] = Object.keys(exemptRoutes);
+  const gone = listed(Object.fromEntries(rest.map((path) => [path, ""])));
   assert.deepEqual(problems({ ...clean, sources: [routes("", gone)] }), [
     `scripts/check-repo.ts: lists POST ${first}, which no route declares`,
   ]);
@@ -391,14 +378,7 @@ test("a listed route that's gone, or no longer as its list says, is reported, so
     line.includes(`at("${first}")`) ? route(first, "await deps.dispatch(x);") : line,
   );
   assert.deepEqual(problems({ ...clean, sources: [routes("", moved)] }), [
-    `scripts/check-repo.ts: POST ${first} calls the dispatcher now; take it off the unmoved routes, or list it as moved in part`,
-  ]);
-  const unmoved = listed().map((line) =>
-    line.includes(`at("${part}")`) ? route(part, "work();") : line,
-  );
-  assert.deepEqual(problems({ ...clean, sources: [routes("", unmoved)] }), [
-    `scripts/check-repo.ts: POST ${part} no longer calls the dispatcher, as the routes moved in part say it does`,
-    `packages/server/src/api.ts: POST ${part} changes state without calling the dispatcher (decision 0024)`,
+    `scripts/check-repo.ts: POST ${first} calls the dispatcher now; take it off the exempt routes`,
   ]);
 });
 

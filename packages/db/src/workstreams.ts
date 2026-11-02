@@ -20,6 +20,8 @@ import {
   parseItemId,
   type Region,
   refine,
+  type SourceKind,
+  sourceKinds,
   string,
   type Ulid,
   union,
@@ -46,6 +48,14 @@ const cause: Validator<WorkstreamChange["cause"]> = union(
   object({ kind: literal("tool"), name: string }),
   object({ kind: literal("review-link"), by: holderName }),
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
+  object({
+    kind: literal("sync"),
+    source: refine(
+      string,
+      (kind): kind is SourceKind => (sourceKinds as readonly string[]).includes(kind),
+      "expected a source",
+    ),
+  }),
 );
 
 const workstreamRow = object({

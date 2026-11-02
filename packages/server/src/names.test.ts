@@ -11,7 +11,7 @@ import {
 } from "@oriel/core";
 import { ensureWorkspace, workstreamStore, loadMigrations, migrate, open } from "@oriel/db";
 import type { DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
-import { followAnchors } from "./names.ts";
+import { followAnchors as follow } from "./names.ts";
 import { json, type Script, t0, testApp } from "./testing.ts";
 
 const now = instant(new Date(t0));
@@ -30,7 +30,7 @@ const member = (key: string, stableId: string): WorkstreamMember => ({
   stableId,
 });
 
-test("a workstream copied from an epic's cluster follows the epic's title while it holds the epic, until the user names it", () => {
+test("a workstream copied from an epic's cluster follows the epic's title while it holds the epic, until the user names it", async () => {
   const db = open(":memory:");
   migrate(db, loadMigrations(), now);
   const workspaceId = id(0);
@@ -52,8 +52,13 @@ test("a workstream copied from an epic's cluster follows the epic's title while 
   workstreams.remove(without, [epic], { kind: "user" }, now);
   const picked = make(4, "Checkout", [epic], { kind: "picked" });
   const name = (workstream: typeof following) => workstreams.get(workstream)?.name;
+  // The sync renames through the dispatcher; the store stands in for it here.
+  const followAnchors = (records: IndexRecord[]) =>
+    follow(workstreams, workspaceId, records, async (workstream, to) =>
+      workstreams.rename(workstream, to, "oriel"),
+    );
 
-  followAnchors(workstreams, workspaceId, [record("SYN-1", "10001", "Checkout v2")]);
+  await followAnchors([record("SYN-1", "10001", "Checkout v2")]);
   assert.deepEqual([following, named, without, picked].map(name), [
     "Checkout v2",
     "My checkout",
@@ -65,13 +70,13 @@ test("a workstream copied from an epic's cluster follows the epic's title while 
   assert.deepEqual(workstreams.region(following, 1)?.items, [epic, story]);
   // An epic that moved projects is the same epic, by stable ID; one the
   // index no longer has leaves the name as it was.
-  followAnchors(workstreams, workspaceId, [record("OPS-1", "10001", "Checkout v3")]);
+  await followAnchors([record("OPS-1", "10001", "Checkout v3")]);
   assert.equal(name(following), "Checkout v3");
-  followAnchors(workstreams, workspaceId, []);
+  await followAnchors([]);
   assert.equal(name(following), "Checkout v3");
   // Once the user names it, the epic's title no longer reaches it.
   workstreams.rename(following, "Wallets", "user");
-  followAnchors(workstreams, workspaceId, [record("SYN-1", "10001", "Checkout v4")]);
+  await followAnchors([record("SYN-1", "10001", "Checkout v4")]);
   assert.equal(name(following), "Wallets");
 });
 
@@ -165,4 +170,41 @@ test('a thread\'s workstream the user named "New workstream" keeps that name whe
   await app.post(`/api/change-sets/${entry.changeSetId}/approve`, { hash });
   const after = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`));
   assert.deepEqual([after.workstream.name, after.members.length], ["New workstream", 1]);
+});
+
+test("a sync renaming a workstream after its epic does it through the dispatcher, as the sync, and counts it", async (t) => {
+  const rename: Script = async () => ({
+    value: null,
+    writes: [["jira.setSummary", ["jira:SYN-1", "Checkout v3: wallets"]]],
+  });
+  const app = await testApp(t, {
+    live: true,
+    plan: () => [{ run: "rename" }],
+    scripts: { rename },
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10001" }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Rename the epic" }),
+  );
+  await app.app.settled();
+  const entry = json<ThreadView>(await app.get(`/api/threads/${threadId}`)).entries.find(
+    (e) => e.kind === "change-set",
+  );
+  assert.ok(entry?.kind === "change-set", "the run captured a change set");
+  const { hash } = json<DiffView>(await app.post(`/api/change-sets/${entry.changeSetId}/diff`));
+  const renames = () =>
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "action.called" && e.data["action"] === "workstream.rename");
+  assert.deepEqual(renames(), []);
+  await app.post(`/api/change-sets/${entry.changeSetId}/approve`, { hash });
+  assert.deepEqual(
+    renames().map((e) => e.data),
+    [{ action: "workstream.rename", by: { kind: "sync", source: "jira" } }],
+  );
+  // A sync that finds the name as it is renames nothing more.
+  await app.post("/api/jira/sync");
+  assert.equal(renames().length, 1);
 });

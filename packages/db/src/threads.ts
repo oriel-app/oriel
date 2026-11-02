@@ -424,11 +424,17 @@ export function threadStore(db: DatabaseSync) {
     },
 
     // Marks the thread done, as one over read-only items needs, and records
-    // who did: the user unless it says otherwise.
-    markDone(id: Ulid, now: Instant, by: Actor = { kind: "user" }): void {
-      transaction(db, () => {
+    // who did: the user unless it says otherwise. One marked done already
+    // keeps who marked it, and when: false, and nothing changes. Reopened,
+    // or working again since, it takes a new mark.
+    markDone(id: Ulid, now: Instant, by: Actor = { kind: "user" }): boolean {
+      return transaction(db, () => {
+        const thread = get(id, now);
+        if (!thread) throw new RangeError(`no thread ${id}`);
+        if (thread.state === "done" && thread.doneBy === "marked") return false;
         if (Number(mark.run(now, id).changes) !== 1) throw new RangeError(`no thread ${id}`);
         markedBy.run(id, JSON.stringify(by));
+        return true;
       });
     },
 

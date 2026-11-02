@@ -140,7 +140,7 @@ export type WorkstreamChangeView = {
   at: string;
   added: ItemRef[];
   removed: ItemRef[];
-  cause: "user" | "agent" | "tool" | "review-link" | "change-set";
+  cause: "user" | "agent" | "tool" | "review-link" | "change-set" | "sync";
   // The thread whose agent made it, when the agent did.
   thread?: { id: string; title: string | null };
 };

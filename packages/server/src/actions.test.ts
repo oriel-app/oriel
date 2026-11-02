@@ -25,6 +25,7 @@ import {
   threadStore,
 } from "@oriel/db";
 import { ActionError, type Changed, dispatcher, refusal } from "./actions.ts";
+import { unreached } from "./testing.ts";
 
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const id = (n: number) => ulid(n, new Uint8Array(10));
@@ -65,10 +66,11 @@ function world() {
     clusters: () => [],
     created: async (set) => (set === changeSetId ? [m("SYN-9", "10009")] : []),
     // Nothing is held here; held.test.ts sends and discards held messages.
-    held: {
-      sendHeld: () => assert.fail("nothing is held"),
-      discardHeld: () => assert.fail("nothing is held"),
-    },
+    // No turn, change set or source answers here either.
+    turns: unreached("turns"),
+    changeSets: unreached("changeSets"),
+    applied: () => assert.fail("nothing applies here"),
+    sources: unreached("sources"),
     // No turn runs and no change set waits here; agent-actions.test.ts
     // holds the agent to both.
     running: () => false,

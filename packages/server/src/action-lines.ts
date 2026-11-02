@@ -56,14 +56,33 @@ const words: { [N in ActionName]: Words } = {
     `rename ${place} to ${quoted(input["name"])}`,
   ],
   "workstream.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
-  "thread.done": (_, place) => [`Marked ${place} done`, `mark ${place} done`],
+  // Marked done already, it keeps who marked it, and there is nothing to undo.
+  "thread.done": (_, place, undo) => [
+    undo === null ? `Left ${place} marked done, as it already was` : `Marked ${place} done`,
+    `mark ${place} done`,
+  ],
   "thread.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
-  // A person's, so never the agent's; worded all the same.
+  // A person's, or closed to the agent, so never the agent's; worded all the
+  // same.
+  "thread.open": (_, place) => [`Opened a thread on ${place}`, `open a thread on ${place}`],
+  "thread.say": (_, place) => [`Said something in ${place}`, `say something in ${place}`],
+  "thread.stop": (_, place) => [`Stopped the turn in ${place}`, `stop the turn in ${place}`],
+  "thread.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
   "held.send": (_, place) => [`Sent a held message in ${place}`, `send a held message in ${place}`],
   "held.discard": (_, place) => [
     `Discarded a held message in ${place}`,
     `discard a held message in ${place}`,
   ],
+  "changeset.edit": () => ["Edited a change set", "edit a change set"],
+  "changeset.approve": () => ["Gave a change set its approval", "approve a change set"],
+  "changeset.reject": () => ["Rejected a change set", "reject a change set"],
+  "changeset.apply": () => ["Applied a change set", "apply a change set"],
+  "changeset.dismiss": () => ["Dismissed a change set", "dismiss a change set"],
+  "changeset.revert": () => ["Reverted a change set", "revert a change set"],
+  "review-link.create": () => ["Made a review link", "make a review link"],
+  "review-link.revoke": () => ["Revoked a review link", "revoke a review link"],
+  "source.connect": () => ["Connected a source", "connect a source"],
+  "source.sync": (input) => [`Synced ${input["source"]}`, `sync ${input["source"]}`],
 };
 
 // One line as the window shows it, in the thread `own` whose agent asked.
