@@ -1,6 +1,6 @@
 # 0024 Oriel's actions: one registry, three doors
 
-Accepted 2026-11-01 (OA-67, OA-74). Amends 0018 and 0019. Amended 2026-11-01 (OA-87): what the person sends, edits or discards is a held message, from any sender outside the thread, and a review link's holder is the first.
+Accepted 2026-11-01 (OA-67, OA-74). Amends 0018 and 0019. Amended 2026-11-01 (OA-87): what the person sends, edits or discards is a held message, from any sender outside the thread, and a review link's holder is the first. Amended by 0026: a group is now called a workstream; read "group" here as "workstream".
 
 Adds: none
 
