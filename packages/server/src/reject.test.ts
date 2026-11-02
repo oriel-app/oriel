@@ -24,7 +24,9 @@ const rename: Script = async () => ({
   writes: [["jira.setSummary", ["jira:SYN-23", "Practice: reject me"]]],
 });
 
-const asked = /^You rejected this change set, so nothing in it will change\. What was wrong/;
+// Oriel's line asking what was wrong with a change set: a note of its own,
+// never the agent's text (OA-91).
+const asks = (e: ChatEntry) => e.kind === "note" && e.note.kind === "rejected";
 
 async function proposed(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
   // What each turn's agent was given.
@@ -55,11 +57,18 @@ async function proposed(t: TestContext, options: Parameters<typeof testApp>[1] =
   return { ...app, turns, threadId, changeSetId: set.id, hash, view, reject, waits };
 }
 
-// What was said after the first turn ended: who said what.
+// What was said after the first turn ended: who said what, and of Oriel's
+// lines, which change set each is about.
 const said = (entries: readonly ChatEntry[]) =>
   entries
     .slice(entries.findIndex((e) => e.kind === "done") + 1)
-    .flatMap((e) => (e.kind === "user" || e.kind === "text" ? [[e.kind, e.text]] : []));
+    .flatMap((e) =>
+      e.kind === "user" || e.kind === "text"
+        ? [[e.kind, e.text]]
+        : e.kind === "note"
+          ? [[e.kind, e.note.changeSetId]]
+          : [],
+    );
 
 test("a rejection with no reason leaves the thread asking what was wrong, and starts no turn", async (t) => {
   const app = await proposed(t);
@@ -69,20 +78,24 @@ test("a rejection with no reason leaves the thread asking what was wrong, and st
   assert.deepEqual([body.changeSet.status, body.problem], ["rejected", null]);
   await app.app.settled();
   const view = await app.view();
-  const after = said(view.entries);
-  assert.equal(after.length, 1);
-  assert.equal(after[0]?.[0], "text");
-  assert.match(after[0]?.[1] ?? "", asked);
+  assert.deepEqual(said(view.entries), [["note", app.changeSetId]]);
   assert.equal(app.turns.length, 1, "no turn ran");
   // It's the user's turn: the question is it.
   assert.deepEqual(await app.waits(), ["reply"]);
-  // Answered later as any message is, the agent reads its question first,
-  // after what it said in its turn.
+  // Answered later as any message is, the agent reads Oriel's line as
+  // Oriel's, after what it said in its turn, which stays its own.
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "Wrong title." });
   await app.app.settled();
-  const last = app.turns.at(-1)?.history.at(-1);
-  assert.equal(last?.role, "assistant");
-  assert.match(last?.role === "assistant" ? last.text : "", /new title\.\n\nYou rejected/);
+  const history = app.turns.at(-1)?.history ?? [];
+  assert.deepEqual(history.at(-1)?.role === "note" && history.at(-1), {
+    role: "note",
+    note: { kind: "rejected", changeSet: app.changeSetId, via: "thread" },
+    at: history.at(-1)?.at,
+  });
+  assert.deepEqual(
+    history.flatMap((m) => (m.role === "assistant" ? [m.text] : [])),
+    ["I proposed a new title."],
+  );
 });
 
 test("a reason with a rejection is the user's next message, which the agent answers with a revised change set", async (t) => {
@@ -97,14 +110,13 @@ test("a reason with a rejection is the user's next message, which the agent answ
     said(view.entries)
       .slice(0, 2)
       .map(([kind]) => kind),
-    ["text", "user"],
+    ["note", "user"],
   );
   assert.equal(said(view.entries)[1]?.[1], reason);
-  // The agent got the reason as the message, after its question.
+  // The agent got the reason as the message, after Oriel's question.
   const turn = app.turns.at(-1);
   assert.equal(turn?.text, reason);
-  const last = turn?.history.at(-1);
-  assert.match(last?.role === "assistant" ? last.text : "", /What was wrong with it\?/);
+  assert.equal(turn?.history.at(-1)?.role, "note");
   // The rejected change set stays, above the revised one.
   assert.deepEqual(
     view.changeSets.map((s) => s.status),
@@ -151,7 +163,7 @@ test("while the agent answers, a rejection stands without asking, and says its r
   await app.post(`/api/threads/${app.threadId}/stop`);
   await app.app.settled();
   const entries = (await app.view()).entries;
-  assert.ok(!entries.some((e) => e.kind === "text" && asked.test(e.text)));
+  assert.ok(!entries.some(asks));
   assert.ok(!entries.some((e) => e.kind === "user" && e.text === "Wrong title."));
 });
 
@@ -163,12 +175,12 @@ test("a thread with no questions left takes the rejection, says why its reason c
   assert.equal(body.changeSet.status, "rejected");
   assert.match(body.problem ?? "", /all 1 of its questions/);
   const entries = (await app.view()).entries;
-  assert.ok(!entries.some((e) => e.kind === "text" && asked.test(e.text)));
+  assert.ok(!entries.some(asks));
   assert.ok(!entries.some((e) => e.kind === "user" && e.text === "Wrong title."));
   assert.equal(entries.at(-1)?.kind, "limit");
 });
 
-test("two rejections in a row ask twice, each a paragraph of its own", async (t) => {
+test("two rejections in a row ask twice, each naming its change set", async (t) => {
   const app = await proposed(t);
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "And another" });
   await app.app.settled();
@@ -179,11 +191,10 @@ test("two rejections in a row ask twice, each a paragraph of its own", async (t)
   assert.equal((await app.post(`/api/change-sets/${second.id}/reject`, { hash })).status, 200);
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "Both wrong." });
   await app.app.settled();
-  const last = app.turns.at(-1)?.history.at(-1);
-  assert.match(
-    last?.role === "assistant" ? last.text : "",
-    /new title\.\n\nYou rejected [^\n]+revised one\.\n\nYou rejected [^\n]+revised one\.$/,
+  const notes = (app.turns.at(-1)?.history ?? []).flatMap((m) =>
+    m.role === "note" ? [m.note.changeSet] : [],
   );
+  assert.deepEqual(notes, [app.changeSetId, second.id]);
 });
 
 test("rejecting an Undo asks nothing: Oriel made it, not the agent", async (t) => {
@@ -199,5 +210,5 @@ test("rejecting an Undo asks nothing: Oriel made it, not the agent", async (t) =
   const reply = await app.post(`/api/change-sets/${undo}/reject`, { hash });
   assert.equal(json<{ changeSet: ChangeSetView }>(reply).changeSet.status, "rejected");
   const entries = (await app.view()).entries;
-  assert.ok(!entries.some((e) => e.kind === "text" && asked.test(e.text)));
+  assert.ok(!entries.some(asks));
 });

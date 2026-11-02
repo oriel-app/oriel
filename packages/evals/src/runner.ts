@@ -42,6 +42,7 @@ import {
   gradeExactDiff,
   gradeIntents,
   gradeJudge,
+  gradeAvoids,
   gradeMentions,
   gradeSurfaced,
   gradeZeroMutations,
@@ -252,6 +253,7 @@ async function grade(
     }
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
+    if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({

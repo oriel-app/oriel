@@ -21,6 +21,7 @@ import {
   number,
   object,
   optional,
+  orielNote,
   refine,
   type Result,
   string,
@@ -83,7 +84,7 @@ const goldenPath = refine(
 // path, and the reply names it: an item by its key, a file by its title, a
 // Slack message by its author's name.
 // `mentions` is text the reply contains, such as the name of a control in
-// Oriel. `claims` are a rubric for the judge, each one checkable on its own.
+// Oriel; `avoids`, text it doesn't. `claims` are a rubric for the judge, each one checkable on its own.
 const itemIdText = refine(string, isItemId, "expected an item ID like jira:SYN-12");
 const surfacedItem = object({
   grader: literal("surfaced"),
@@ -110,6 +111,9 @@ const expectations = {
     return has(input, "file") ? surfacedFile(input, path) : surfacedItem(input, path);
   }) satisfies Validator<Infer<typeof surfacedItem> | Infer<typeof surfacedFile>>,
   mentions: object({ grader: literal("mentions"), text: atLeastOne(text) }),
+  // Text the reply never contains, such as disowning Oriel's own line, or
+  // sending the user to make a change by hand.
+  avoids: object({ grader: literal("avoids"), text: atLeastOne(text) }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
 };
 export type GraderName = keyof typeof expectations;
@@ -199,6 +203,17 @@ const evalCaseShape = object({
   ),
   // Oriel's own threads and change sets in the workspace. Absent: none.
   oriel: optional(orielWorkspace),
+  // What the thread said before the prompt, oldest first: the user's
+  // messages, the agent's replies, and Oriel's own lines, such as asking
+  // what was wrong with a rejected change set. Absent: a new thread.
+  before: optional(
+    atLeastOne(
+      union(
+        object({ role: union(literal("user"), literal("assistant")), text }),
+        object({ role: literal("note"), note: orielNote }),
+      ),
+    ),
+  ),
   // How many of the Jira fixture's source edits are applied before the case
   // runs. Absent means none.
   edited: optional(whole),
@@ -239,6 +254,12 @@ function rules(evalCase: EvalCase): Issue[] {
         found.push({ path: `$.${key}[${i}]`, message: "listed twice" });
     });
   }
+  // A note names a change set the workspace has.
+  const sets = new Set(evalCase.oriel?.changeSets.map((set) => set.id));
+  evalCase.before?.forEach((said, i) => {
+    if (said.role === "note" && !sets.has(said.note.changeSet))
+      found.push({ path: `$.before[${i}].note.changeSet`, message: "no such change set in oriel" });
+  });
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
     found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
