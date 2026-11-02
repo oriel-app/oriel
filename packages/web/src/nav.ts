@@ -58,10 +58,7 @@ export function nav(model: Model): Nav {
           model.threads?.find((summary) => summary.id === thread)?.workstream.id ??
           null);
   const threads = newestFirst(model);
-  const waiting = threads.filter(
-    (each) =>
-      each.waitingOn === "held" || each.waitingOn === "review" || each.waitingOn === "reply",
-  );
+  const waiting = threads.filter(needsYou);
   return {
     workstreams:
       model.workstreams
@@ -110,13 +107,18 @@ const rank = (thread: ThreadSummaryView) => labelOrder[thread.waitingOn ?? threa
 export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
   rank(a) - rank(b) || b.activityAt.localeCompare(a.activityAt);
 
+// Whether a thread waits on the user: a reason held for them, a change set
+// to review, or a reply. Needs you lists it, and a link to it says so.
+export const needsYou = (thread: ThreadSummaryView): boolean =>
+  thread.waitingOn === "held" || thread.waitingOn === "review" || thread.waitingOn === "reply";
+
 // A decision sent from the thread's page shows in every list at once: while
 // the list still has the thread needing a review, it waits on what the
 // decision will leave it waiting on. So Approve and apply takes it out of
 // Needs you as applying, and Reject leaves it there only if it still needs
 // the user. Whatever the server says next stands, as does a failure, which
 // puts it back.
-function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryView {
+export function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryView {
   const { thread } = model;
   const ahead = thread && Object.keys(thread.deciding).length > 0 ? expected(thread) : null;
   if (thread === null || ahead === null) return (summary) => summary;

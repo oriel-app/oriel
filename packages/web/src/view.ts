@@ -206,7 +206,12 @@ export type ActionLineView = {
 export type UndoView = { action: string; input: unknown };
 export type Undoable<T> = T & { undo: UndoView | null };
 
-export type ThreadsView = { threads: ThreadSummaryView[] };
+// Where a change set of a thread stands, in a person's words: what a link to
+// it shows, wherever one is.
+export type ChangeSetSummaryView = { id: string; thread: string; state: ChangeSetState };
+
+// Every thread in the workspace, and every change set of each.
+export type ThreadsView = { threads: ThreadSummaryView[]; changeSets: ChangeSetSummaryView[] };
 
 // What the sidebar's search found (OA-110): a thread, or one of its change
 // sets, with the words around the match. `query` is the query it answers, as

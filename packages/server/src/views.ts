@@ -4,6 +4,7 @@ import {
   byItemId,
   type ChangeSet,
   type ChangeSets,
+  type ChangeSetState,
   type Diff,
   type WorkstreamChange,
   type WorkstreamMember,
@@ -20,6 +21,7 @@ import type { WorkstreamStore, Message, ThreadStore, ThreadSummary } from "@orie
 import { itemRow } from "@oriel/groupings";
 import type {
   ChangeSetStatus,
+  ChangeSetSummaryView,
   ChangeSetView,
   ChatEntry,
   DiffView,
@@ -139,6 +141,20 @@ export function changeSetStatus(set: ChangeSet): ChangeSetStatus {
     return set.mutations.some((m) => m.error !== null) ? "stopped" : "approved";
   if (set.decision) return set.decision.kind;
   return "open";
+}
+
+// Where a change set stands, in a person's words (`ChangeSetState`). One a revert undid, in any
+// part, is reverted; one applied in part is applied; one approved but
+// stopped before anything landed is still approved.
+export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): ChangeSetState {
+  const undone = all.some(
+    (other) => other.revertOf === set.id && other.mutations.some((m) => m.status === "applied"),
+  );
+  if (undone) return "reverted";
+  const status = changeSetStatus(set);
+  if (status === "applied" || status === "partial") return "applied";
+  if (status === "approved" || status === "stopped") return "approved";
+  return status === "rejected" ? "rejected" : "pending";
 }
 
 // What can be done with it comes from the change set engine (`nextSteps`),
@@ -475,6 +491,22 @@ export function views(deps: ViewDeps) {
 
     threads(workspaceId: Ulid): Promise<ThreadSummaryView[]> {
       return Promise.all(threads.list(workspaceId, deps.now()).map(threadSummary));
+    },
+
+    // Where each change set of the workspace's threads stands, beside the
+    // list of threads, so a link to one says so wherever it is shown.
+    async changeSets(workspaceId: Ulid): Promise<ChangeSetSummaryView[]> {
+      const each = await Promise.all(
+        threads.list(workspaceId, deps.now()).map(async ({ thread }) => {
+          const all = await deps.changeSets.ofThread(thread.id);
+          return all.map((set) => ({
+            id: set.id,
+            thread: thread.id,
+            state: changeSetState(set, all),
+          }));
+        }),
+      );
+      return each.flat();
     },
 
     title,

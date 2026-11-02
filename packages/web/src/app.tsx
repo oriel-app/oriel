@@ -2,8 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import { WorkstreamPage } from "./workstream-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
-import { doneTab, workstreamThreads, nav } from "./nav.ts";
-import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx";
+import { decided, doneTab, workstreamThreads, nav } from "./nav.ts";
+import { type Dispatch, ItemLinksContext, Link, Mark, plural, WorkspaceContext } from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
@@ -69,6 +69,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
+  // What links to threads and change sets name, on the page and in the panel.
+  // Each thread as the sidebar shows it, a decision sent ahead.
+  const workspace = {
+    threads: model.threads?.map(decided(model)) ?? null,
+    changeSets: model.changeSets,
+  };
   return (
     <div
       class="shell"
@@ -87,17 +93,21 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <div class="shell-main">
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <Page model={model} dispatch={dispatch} />
+          <WorkspaceContext.Provider value={workspace}>
+            <Page model={model} dispatch={dispatch} />
+          </WorkspaceContext.Provider>
         </ItemLinksContext.Provider>
       </div>
       {model.panel && (
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <ItemPanel
-            model={model.panel}
-            place={placeIn(model.panelList, model.panel.id)}
-            workstream={currentWorkstream(model)}
-            dispatch={dispatch}
-          />
+          <WorkspaceContext.Provider value={workspace}>
+            <ItemPanel
+              model={model.panel}
+              place={placeIn(model.panelList, model.panel.id)}
+              workstream={currentWorkstream(model)}
+              dispatch={dispatch}
+            />
+          </WorkspaceContext.Provider>
         </ItemLinksContext.Provider>
       )}
       <Closing model={model.closing} dispatch={dispatch} />
