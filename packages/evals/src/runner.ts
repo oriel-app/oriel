@@ -175,9 +175,11 @@ export async function runRound(options: RoundOptions): Promise<Round> {
     throw new Error(`the judge model must differ from the model under test (${options.model})`);
   mkdirSync(new URL("transcripts/", options.out), { recursive: true });
   const reps = options.reps ?? 1;
-  const runs = options.cases.flatMap((loaded) =>
-    Array.from({ length: reps }, (_, rep) => ({ loaded, rep })),
-  );
+  // Every case's first run, then every case's second, and so on, so a
+  // network outage costs many cases a run each, not one case all of them.
+  const runs = Array.from({ length: reps }, (_, rep) =>
+    options.cases.map((loaded) => ({ loaded, rep })),
+  ).flat();
   const done = await pool(runs, options.concurrency ?? 1, ({ loaded, rep }) =>
     runCase(loaded, rep, options),
   );

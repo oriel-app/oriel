@@ -163,6 +163,21 @@ test("a climb's round runs train alone, each case its runs, and books what it sp
       ["all", 6],
     ],
   );
+  // Every case's first run, then every case's second: an outage in a burst
+  // costs many cases a run each, not one case all of them.
+  const all = ledger(io, "demo")[1];
+  assert.ok(all);
+  assert.deepEqual(
+    readResults(new URL(`${all.round}/`, io.rounds)).map((r) => `${r.id}.${r.rep ?? 0}`),
+    [
+      "revert-test.0",
+      "revert-train.0",
+      "revert-test.1",
+      "revert-train.1",
+      "revert-test.2",
+      "revert-train.2",
+    ],
+  );
 });
 
 test("a round that would pass the cap is refused before any model call", async (t) => {
