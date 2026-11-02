@@ -201,10 +201,11 @@ export const stuckGrouping: Grouping = {
   },
 };
 
-// One cluster per item another item's text names (decision 0027), anchored
-// on it, holding the items that name it and then those it names. A
-// reference is no hierarchy: every cluster is derived, an item may show in
-// several, and an item nothing names and that names nothing shows in none.
+// One cluster per item another item's text names (decision 0027): that
+// item first, then the items that name it and those it names. A reference
+// is no hierarchy, so no cluster has an anchor to hang off, nor makes one
+// for a workstream made of it: every cluster is derived, an item may show
+// in several, and one nothing names and that names nothing shows in none.
 // The most linked come first.
 export const linkedGrouping: Grouping = {
   id: "linked",
@@ -229,13 +230,14 @@ export const linkedGrouping: Grouping = {
         return {
           key: `${parseItemId(anchor.id)?.source ?? ""}:${anchor.stableId}`,
           label: anchor.title,
-          anchor: anchor.id,
-          itemIds: ids(linked),
+          anchor: null,
+          itemIds: ids([anchor, ...linked]),
           origin: { derived: "Items that name it, or that it names" },
         };
       })
       .toSorted(
-        (a, b) => b.itemIds.length - a.itemIds.length || byItemId(a.anchor ?? "", b.anchor ?? ""),
+        (a, b) =>
+          b.itemIds.length - a.itemIds.length || byItemId(a.itemIds[0] ?? "", b.itemIds[0] ?? ""),
       );
   },
 };

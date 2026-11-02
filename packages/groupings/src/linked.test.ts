@@ -29,8 +29,9 @@ test("each item another names anchors a cluster of what names it and what it nam
     {
       key: "jira:s-jira:SYN-54",
       label: "Title of jira:SYN-54",
-      anchor: "jira:SYN-54",
+      anchor: null,
       itemIds: [
+        "jira:SYN-54",
         "slack:C0FW1WEATHR-1788344100.000100",
         "slack:C0FW1WEATHR-1788444000.000100",
         "jira:SYN-3",
@@ -40,13 +41,14 @@ test("each item another names anchors a cluster of what names it and what it nam
     {
       key: "jira:s-jira:SYN-3",
       label: "Title of jira:SYN-3",
-      anchor: "jira:SYN-3",
-      itemIds: ["jira:SYN-54"],
+      anchor: null,
+      itemIds: ["jira:SYN-3", "jira:SYN-54"],
       origin: { derived: "Items that name it, or that it names" },
     },
   ]);
-  // A reference is never a hierarchy: no cluster comes from the source.
-  assert.ok(clusters.every((cluster) => cluster.origin !== "source"));
+  // A reference is never a hierarchy: no cluster comes from the source, and
+  // none hangs off an item.
+  assert.ok(clusters.every((cluster) => cluster.origin !== "source" && cluster.anchor === null));
 });
 
 test("nothing linked, no clusters; a reference to an item not in the index anchors none", () => {

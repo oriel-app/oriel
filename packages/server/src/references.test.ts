@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { isItemId } from "@oriel/core";
 import { open } from "@oriel/db";
-import type { WindowView } from "@oriel/web/view";
+import type { WindowView, WorkstreamView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
 const standup = "slack:C0FW1WEATHR-1788684000.000100";
@@ -19,14 +19,28 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
   const db = join(top, "oriel.db");
   const app = await testApp(t, { slack: { kind: "fixture" }, db });
   const linked = json<WindowView>(await app.get("/api/window?grouping=linked"));
-  const cluster = linked.clusters.find((c) => c.row.anchor?.id === "jira:SYN-54");
-  assert.ok(cluster, "SYN-54 anchors a cluster");
+  const cluster = linked.clusters.find((c) => c.list[0]?.id === "jira:SYN-54");
+  assert.ok(cluster, "SYN-54 heads a cluster");
   assert.equal(cluster.row.origin.kind, "derived");
+  assert.equal(cluster.row.anchor, null, "a reference is no hierarchy");
   assert.ok(
     cluster.list.some((row) => row.id === standup),
     "the standup that names it",
   );
-  assert.ok(cluster.list.every((row) => row.id.startsWith("slack:")));
+  assert.ok(cluster.list.slice(1).every((row) => row.id.startsWith("slack:")));
+  // A workstream made of it holds SYN-54 and the messages, and no epic.
+  const made = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "cluster",
+      grouping: "linked",
+      cluster: cluster.row.key,
+    }),
+  );
+  const view = json<WorkstreamView>(await app.get(`/api/workstreams/${made.id}`));
+  assert.deepEqual(
+    view.members.map((member) => member.ref.id).toSorted(),
+    cluster.list.map((row) => row.id).toSorted(),
+  );
   await app.app.close();
   // What the index keeps of a reference is an item's stable ID, or its
   // source and handle while unresolved, never the text around it.
@@ -46,5 +60,7 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
         : isItemId(`${String(row["to_source"])}:${String(row["to_handle"])}`);
     assert.ok(named, JSON.stringify(row));
   }
+  const origin = handle.prepare("select origin from workstreams where id = ?").get(made.id);
+  assert.equal(JSON.parse(String(origin?.["origin"])).anchor, null);
   handle.close();
 });

@@ -126,6 +126,8 @@ test("a message synced before its Jira item references it once that item syncs",
 test("an unresolved reference is dropped 90 days after the last sync that found it", async () => {
   const { db, sync, references } = fresh();
   await sync("slack", [message("1788444000", said)]);
+  await sync("jira", [issue("SYN-1", "10001")], later(89));
+  assert.notDeepEqual(db.prepare("select * from item_references").all(), []);
   await sync("jira", [issue("SYN-1", "10001")], later(91));
   assert.deepEqual(db.prepare("select * from item_references").all(), []);
   await sync("jira", [issue("SYN-54", "10054")], later(92));

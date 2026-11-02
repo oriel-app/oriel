@@ -239,6 +239,8 @@ export function indexStore(db: DatabaseSync) {
       const checked = facets(JSON.parse(JSON.stringify(r.facets) ?? "null"), "$.facets");
       if (!checked.ok)
         throw new Error(`${r.id}: facets don't match: ${JSON.stringify(checked.issues)}`);
+      if (checked.value.references !== undefined)
+        throw new Error(`${r.id}: references are the index's to resolve, never a page's to set`);
       const parsed = attrs(JSON.parse(JSON.stringify(r.attrs) ?? "null"), "$.attrs");
       if (!parsed.ok)
         throw new Error(`${r.id}: attrs don't match: ${JSON.stringify(parsed.issues)}`);

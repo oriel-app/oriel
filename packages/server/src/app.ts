@@ -303,9 +303,10 @@ export async function createApp(options: AppOptions): Promise<App> {
 
   // Every connected source's recognizer, for what each sync hands it: Jira's
   // in the project it syncs, once there is one, and Slack's in its
-  // workspace.
+  // workspace. A message synced before Jira connects names nothing in Jira
+  // until Slack syncs again.
   const recognize = () => {
-    const project = source ? (writes?.project ?? fixture?.project.key) : undefined;
+    const project = source ? (fixture?.project.key ?? writes?.project) : undefined;
     return recognizerFor({
       ...(project ? { jira: { projects: [project] } } : {}),
       ...(slack ? { slack: slack.scope } : {}),
