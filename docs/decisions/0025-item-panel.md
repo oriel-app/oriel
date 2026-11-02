@@ -1,6 +1,6 @@
 # 0025 Read an item in a panel beside the page
 
-Accepted 2026-11-01 (OA-61). Changes SPEC §1, whose right rail opened each item in its source.
+Accepted 2026-11-01 (OA-61). Changes SPEC §1, whose right rail opened each item in its source. Amended by 0027: the panel opens from every overview and Browse row, and covers the window chat's rail while an item is open.
 
 Adds: none
 
