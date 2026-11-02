@@ -2,6 +2,7 @@
 // version per sync. It is Oriel's, not any one source's: every source syncs
 // through it, and what a sync does beyond storing records runs here, never
 // in an adapter's package.
+import type { DeclaredFacets } from "./change-log.ts";
 import {
   type Instant,
   isInstant,
@@ -23,6 +24,7 @@ export type SyncIndex = {
     source: SourceKind,
     attrs: Validator<A>,
     now: Instant,
+    declared?: DeclaredFacets,
   ): { apply(page: SyncPage): void; finish(cursor: string | null, finishedAt: Instant): number };
   liveStableIds(workspaceId: Ulid, source: SourceKind): string[];
   goneStableIds(workspaceId: Ulid, source: SourceKind): string[];
@@ -32,6 +34,9 @@ export type SyncOptions<K extends SourceKind, A> = {
   source: Source<K, A>;
   // The source's attrs shape; each record is checked against it.
   attrs: Validator<A>;
+  // The source's declared facets, which the change log records beside the
+  // common ones: its declaration's `facets`. None when left out.
+  facets?: DeclaredFacets;
   index: SyncIndex;
   workspaceId: Ulid;
   // A full sweep lists everything and marks what the source no longer returns
@@ -75,7 +80,7 @@ export async function syncSource<K extends SourceKind, A>(
     items.length && source.records
       ? await source.records(items.map((i) => i.id))
       : { records: [], gone: [] };
-  const run = index.beginSync(workspaceId, source.kind, attrs, options.clock());
+  const run = index.beginSync(workspaceId, source.kind, attrs, options.clock(), options.facets);
   // Every stable ID the source returned, skipped ones included: a record that
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
   const seen = new Set<string>();
@@ -120,10 +125,20 @@ export async function syncSource<K extends SourceKind, A>(
   };
   // When the listing last saw each item updated, by stable ID.
   const listed = new Map<string, Instant>();
+  // A listing that lags would set an item read by key back to how it was
+  // before its write, and the read forward again, which the change log would
+  // keep as moves the source never made. So where the read is as new as the
+  // listing, the read alone lands, after the listing.
+  const readBy = new Map(read.records.map((record) => [record.stableId, record.updatedAt]));
+  const behind = (record: IndexRecord<K, A>) => {
+    const own = readBy.get(record.stableId);
+    return own !== undefined && !(own < record.updatedAt);
+  };
   for await (const returned of source.sync(cursor)) {
     const page = await confirmed(returned);
     for (const record of page.records) listed.set(record.stableId, record.updatedAt);
-    keep(page);
+    for (const record of page.records.filter(behind)) seen.add(record.stableId);
+    keep({ ...page, records: page.records.filter((record) => !behind(record)) });
     last = page.cursor ?? last;
   }
   // A read the listing has since overtaken is left out. The cursor stays the

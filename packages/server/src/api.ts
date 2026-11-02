@@ -524,6 +524,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // The user left the overview: what changed until now is seen
+      // (decision 0027). The overview calls this as the user leaves it.
+      method: "POST",
+      path: at("/overview/leave"),
+      async run(_, request) {
+        await readJson(request, tinyBody, emptyBody);
+        const { seenAt } = await deps.dispatch("overview.leave", {}, user);
+        return json(200, { seenAt });
+      },
+    },
+    {
       // What only the window knows happened. Six events, fixed fields.
       method: "POST",
       path: at("/telemetry"),

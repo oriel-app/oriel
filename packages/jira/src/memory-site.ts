@@ -402,7 +402,7 @@ export function memorySite(
       if (!issues.delete(key)) throw new Error(`no issue ${key}`);
     },
     // A teammate edits the item directly in Jira.
-    edit(key: string, change: Partial<Pick<Issue, "summary" | "points">>) {
+    edit(key: string, change: Partial<Pick<Issue, "summary" | "points" | "status">>) {
       const issue = issues.get(key);
       if (!issue) throw new Error(`no issue ${key}`);
       Object.assign(issue, change, { updated: tick() });

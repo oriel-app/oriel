@@ -1,4 +1,5 @@
 export * from "./actions.ts";
+export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
 export * from "./find.ts";

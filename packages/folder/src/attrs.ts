@@ -80,4 +80,6 @@ export const folderDeclaration = {
   ...folderPresentation,
   itemDoc: folderItemDoc,
   panel: folderPanel,
+  // A file has no facet beyond its kind, which never changes.
+  facets: {},
 } satisfies SourceDeclaration;

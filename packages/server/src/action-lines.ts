@@ -90,6 +90,7 @@ const words: { [N in ActionName]: Words } = {
   "review-link.revoke": () => ["Revoked a review link", "revoke a review link"],
   "source.connect": () => ["Connected a source", "connect a source"],
   "source.sync": (input) => [`Synced ${input["source"]}`, `sync ${input["source"]}`],
+  "overview.leave": () => ["Left the overview", "leave the overview"],
 };
 
 // One line as the window shows it, in the thread `own` whose agent asked.

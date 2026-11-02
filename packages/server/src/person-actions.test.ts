@@ -69,6 +69,7 @@ function world() {
     changeSets,
     applied: () => assert.fail("nothing applies here"),
     sources: unreached("sources"),
+    markSeen: () => assert.fail("the overview isn't left here"),
     running: () => false,
     unsettled: async () => [],
     emit: (event) => events.push(event),

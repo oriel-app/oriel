@@ -45,6 +45,7 @@ import {
   workstreamStore,
   indexStore,
   loadMigrations,
+  markSeen,
   migrate,
   open,
   runStore,
@@ -317,7 +318,17 @@ export async function createApp(options: AppOptions): Promise<App> {
     const run = syncing
       .catch(() => {})
       .then(() =>
-        syncSource({ source: from, attrs, index, workspaceId, full, items, clock: now, log }),
+        syncSource({
+          source: from,
+          attrs,
+          facets: sources[from.kind].facets,
+          index,
+          workspaceId,
+          full,
+          items,
+          clock: now,
+          log,
+        }),
       )
       .then(async () => {
         // A workstream that can't follow its epic is no reason to call the sync
@@ -686,6 +697,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return set ? created(set) : [];
     },
     emit,
+    markSeen: (at) => markSeen(db, workspaceId, at),
     turns: conversation,
     changeSets: sets,
     applied: (set) => applied(set),

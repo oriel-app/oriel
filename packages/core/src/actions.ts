@@ -370,6 +370,17 @@ export const actions = {
         "The agent's reads are live already, and an intent applies only as its turn ends, after the run that would read what the sync found.",
     },
   },
+  // The last-seen stamp moves when the user leaves the overview, not when
+  // they open it, so a reload or a glance keeps what changed since they last
+  // looked (decision 0027).
+  "overview.leave": {
+    doc: "Marks what changed until now as seen, as the user leaves the overview.",
+    input: object({}),
+    class: {
+      kind: "person-only",
+      why: "What the user has seen is theirs to say: only leaving the overview says it.",
+    },
+  },
 } as const satisfies Record<string, ActionDeclaration>;
 
 export type ActionName = keyof typeof actions;
