@@ -6,6 +6,7 @@
 // opens.
 import { useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
+import { WorkstreamMenu } from "./end-workstream.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import type { JiraModel } from "./jira.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
@@ -359,18 +360,27 @@ function WorkstreamEntry(props: {
         ) : (
           <span class="nav-disclose" aria-hidden="true" />
         )}
-        <Link
-          route={{ page: "workstream", id: workstream.id }}
+        {/* A swipe or right-click marks it done or deletes it (decision 0028). */}
+        <WorkstreamMenu
+          workstream={workstream}
+          done={false}
           dispatch={dispatch}
-          class="nav-link"
-          aria-current={entry.current && props.thread === null ? "page" : undefined}
+          swipe
+          class="nav-workstream-menu"
         >
-          <span class="nav-name">{workstream.name}</span>
-          {busy > 0 && <span class="working-dot" title={`${plural(busy, "agent")} working`} />}
-          <span class="nav-count" title={plural(workstream.size, "item")}>
-            {workstream.size}
-          </span>
-        </Link>
+          <Link
+            route={{ page: "workstream", id: workstream.id }}
+            dispatch={dispatch}
+            class="nav-link"
+            aria-current={entry.current && props.thread === null ? "page" : undefined}
+          >
+            <span class="nav-name">{workstream.name}</span>
+            {busy > 0 && <span class="working-dot" title={`${plural(busy, "agent")} working`} />}
+            <span class="nav-count" title={plural(workstream.size, "item")}>
+              {workstream.size}
+            </span>
+          </Link>
+        </WorkstreamMenu>
       </div>
       {open && (
         <ul id={listId} class="nav-threads">

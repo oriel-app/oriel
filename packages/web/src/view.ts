@@ -132,6 +132,9 @@ export type WorkstreamSummary = {
   createdAt: string;
   // Its threads, by state.
   threads: Record<ThreadStateId, number>;
+  // Once it is done (decision 0028): when it was marked done, and by whom.
+  // Null while it is open, as when one of its threads works again.
+  done: { at: string; by: "user" | "agent" | "tool" | "other" } | null;
 };
 
 // One version of a workstream's membership log, and who made it.
@@ -164,6 +167,14 @@ export type WorkstreamView = {
 };
 
 export type WorkstreamsView = { workstreams: WorkstreamSummary[] };
+
+// A workstream the user deleted: how many threads went with it (decision
+// 0028).
+export type WorkstreamDeletedView = { threads: number };
+
+// A workstream marked done or reopened, as it is now, and how many of its
+// threads that marked done or reopened (decision 0028).
+export type WorkstreamEndedView = WorkstreamView & { carried: number };
 
 // One of Oriel's own actions the agent asked for, as the host carried it out
 // (decision 0024): what it did, in a sentence that names the workstream or

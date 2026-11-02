@@ -17,8 +17,12 @@ export type NavWorkstream = {
 };
 
 export type Nav = {
+  // The open workstreams: a done one is on the Done page (decision 0028).
   // Null until the workstreams have loaded.
   workstreams: NavWorkstream[] | null;
+  // The done workstreams, most recently marked first. Empty until the
+  // workstreams have loaded.
+  done: WorkstreamSummary[];
   // The thread on the page, if one is.
   thread: string | null;
   // The Done page's tab, if the Done page is on the page.
@@ -55,11 +59,16 @@ export function nav(model: Model): Nav {
   );
   return {
     workstreams:
-      model.workstreams?.map((summary) => ({
-        workstream: summary,
-        threads: threads.filter((each) => each.workstream.id === summary.id),
-        current: summary.id === workstream,
-      })) ?? null,
+      model.workstreams
+        ?.filter((summary) => summary.done === null)
+        .map((summary) => ({
+          workstream: summary,
+          threads: threads.filter((each) => each.workstream.id === summary.id),
+          current: summary.id === workstream,
+        })) ?? null,
+    done: (model.workstreams ?? [])
+      .filter((summary) => summary.done !== null)
+      .toSorted((a, b) => (b.done?.at ?? "").localeCompare(a.done?.at ?? "")),
     thread,
     doneTab: route.page === "done" ? doneTab(route) : null,
     waiting,

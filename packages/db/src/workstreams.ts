@@ -104,11 +104,16 @@ function distinct(members: readonly WorkstreamMember[]): (WorkstreamMember & { s
 // Everything a workstream holds, then the workstream: what deleting one
 // takes. A thread names its workstream, so none may be left to.
 export const dropWorkstream = [
+  "delete from workstream_done_marks where workstream_id = ?",
   "delete from workstream_members where workstream_id = ?",
   "delete from workstream_changes where workstream_id = ?",
   "delete from user_named_workstreams where workstream_id = ?",
   "delete from workstreams where id = ?",
 ];
+
+// A workstream the user deleted while threads used it is out of every list
+// and lookup, its threads too, with its rows kept for its Undo (decision 0028).
+const shown = "not exists (select 1 from deleted_workstreams d where d.workstream_id = g.id)";
 
 export type WorkstreamStore = ReturnType<typeof workstreamStore>;
 
@@ -120,7 +125,7 @@ export function workstreamStore(db: DatabaseSync) {
     select g.id, g.workspace_id, g.name, g.origin, g.created_at, max(c.version) as version,
       exists (select 1 from user_named_workstreams u where u.workstream_id = g.id) as user_named
     from workstreams g join workstream_changes c on c.workstream_id = g.id
-    where g.id = ? group by g.id`);
+    where g.id = ? and ${shown} group by g.id`);
   const nameByUser = db.prepare("update workstreams set name = ? where id = ?");
   const markUserNamed = db.prepare(
     "insert or ignore into user_named_workstreams (workspace_id, workstream_id) select workspace_id, id from workstreams where id = ?",
@@ -149,7 +154,13 @@ export function workstreamStore(db: DatabaseSync) {
     "select version, at, cause from workstream_changes where workstream_id = ? and version = ?",
   );
   const selectByWorkspace = db.prepare(
-    "select id from workstreams where workspace_id = ? order by created_at desc, id desc",
+    `select id from workstreams g where workspace_id = ? and ${shown} order by created_at desc, id desc`,
+  );
+  const insertDeleted = db.prepare(`
+    insert into deleted_workstreams (workspace_id, workstream_id, deleted_at)
+    select workspace_id, id, ?2 from workstreams where id = ?1`);
+  const removeDeleted = db.prepare(
+    "delete from deleted_workstreams where workstream_id = ? and workspace_id = ?",
   );
   const selectChanges = db.prepare(
     "select version, at, cause from workstream_changes where workstream_id = ? and version > ? order by version",
@@ -268,6 +279,21 @@ export function workstreamStore(db: DatabaseSync) {
         for (const statement of drop) statement.run(workstreamId);
         return true;
       });
+    },
+
+    // Hides a workstream threads use, and its threads, keeping every row:
+    // what deleting one does (decision 0028).
+    hide(workstreamId: Ulid, now: Instant): void {
+      transaction(db, () => {
+        mustGet(workstreamId);
+        insertDeleted.run(workstreamId, now);
+      });
+    },
+
+    // Brings back a workstream of `workspaceId` that was hidden, with its
+    // threads, as they were. Says whether there was one.
+    restore(workstreamId: Ulid, workspaceId: Ulid): boolean {
+      return Number(removeDeleted.run(workstreamId, workspaceId).changes) === 1;
     },
 
     // A workspace's workstreams, newest first.

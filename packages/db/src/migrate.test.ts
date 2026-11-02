@@ -301,7 +301,14 @@ test("0012 renames groups to workstreams and keeps every row", () => {
   const before = ["groups", "group_changes", "group_members", "user_named_groups", "threads"].map(
     rows,
   );
-  assert.deepEqual(migrate(db, loadMigrations(), now), [12]);
+  assert.deepEqual(
+    migrate(
+      db,
+      loadMigrations().filter((m) => m.version <= 12),
+      now,
+    ),
+    [12],
+  );
   const after = [
     "workstreams",
     "workstream_changes",

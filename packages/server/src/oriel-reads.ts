@@ -117,6 +117,7 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
         name: workstream.name,
         items: workstreams.region(workstream.id, workstream.version)?.items.map((m) => m.id) ?? [],
         threads: threads.ofWorkstream(workstream.id, deps.now()).length,
+        done: threads.workstreamDone(workstream.id, deps.now()) !== null,
       }));
     },
 

@@ -48,9 +48,11 @@ const budgets = {
   // The run tool's own text, and the module of a region with no namespace or
   // item doc. The base rose for Oriel's own namespaces in every region
   // (decision 0024): by about 1,600 bytes for their reads (OA-108), then by
-  // 950 for their actions, five functions with the registry's docs (OA-69).
+  // 950 for their actions, five functions with the registry's docs (OA-69),
+  // then by 290 for marking a workstream done and reopening it, whether one
+  // is done, and where the user deletes one (decision 0028).
   tool: 600,
-  base: 4_450,
+  base: 4_740,
   // What each source adds: its item doc, its namespace if it has one.
   jira: 3_200,
   folder: 250,

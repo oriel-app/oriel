@@ -264,6 +264,7 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
         ...workstream,
         items: [],
         threads: threads.filter((t) => t.workstream.id === workstream.id).length,
+        done: false,
       })),
     threads: async () => threads,
     changeSets: async (thread) => sets.filter((set) => thread === null || set.thread === thread),

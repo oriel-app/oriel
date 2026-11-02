@@ -256,6 +256,13 @@ export function views(deps: ViewDeps) {
     return out;
   };
 
+  const doneOf = (id: Ulid): WorkstreamSummary["done"] => {
+    const done = threads.workstreamDone(id, deps.now());
+    if (!done) return null;
+    const by = done.by === "user" || done.by === "agent" || done.by === "tool" ? done.by : "other";
+    return { at: done.at, by };
+  };
+
   const workstreamSummary = (id: Ulid): WorkstreamSummary => {
     const workstream = workstreams.get(id);
     if (!workstream) throw new RangeError(`no workstream ${id}`);
@@ -272,6 +279,7 @@ export function views(deps: ViewDeps) {
       size: latest?.items.length ?? 0,
       createdAt: workstream.createdAt,
       threads: counts(threads.ofWorkstream(id, deps.now())),
+      done: doneOf(id),
     };
   };
 

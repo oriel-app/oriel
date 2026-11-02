@@ -109,6 +109,11 @@ const approval = "Approval is a person's, in the thread or through a review link
 const unsaid =
   "Text the agent writes must show where it came from before it reaches a thread, or it would read as the user's words (decision 0024).";
 const untold = "Whether an outside tool may say anything waits on its threat model (OA-75).";
+// Deleting a workstream and bringing it back, which only the user may.
+const hides =
+  "It has no Undo when no thread ever used the workstream, and otherwise it hides what was said in its threads, which is the user's call (decision 0028).";
+const unhides =
+  "It brings back what was said in a deleted workstream's threads, which is the user's call (decision 0028).";
 
 export const actions = {
   "workstream.add": {
@@ -147,20 +152,44 @@ export const actions = {
     class: { kind: "direct", inverse: "workstream.rename" },
     userOnly: { oriel: "Only the user's Undo gives a workstream's name back to Oriel." },
   },
-  // Making a workstream's Undo: only while no thread uses it, or ever did,
-  // as a deleted thread kept for what it wrote still does.
-  "workstream.delete": {
-    doc: "Deletes a workstream no thread uses.",
+  // Marking done marks its open threads done too, and reopening reopens
+  // only those (decision 0028). `mark`: only the mark made then, so an Undo
+  // never takes off a later one.
+  "workstream.done": {
+    doc: "Marks a workstream done, with its open threads.",
     input: object({ workstream: workstreamId }),
-    class: {
-      kind: "direct",
-      inverse: null,
-      why: "A deleted workstream goes with its log, and made again it would be another workstream.",
-    },
-    closed: {
-      agent: "It has no Undo, and what has none stays the user's (decision 0024).",
-      tool: "It has no Undo, and what has none stays the user's (decision 0024).",
-    },
+    class: { kind: "direct", inverse: "workstream.reopen" },
+  },
+  "workstream.reopen": {
+    doc: "Reopens a done workstream and the threads it closed.",
+    input: object({
+      workstream: workstreamId,
+      mark: optional(refine(string, isInstant, "expected when it was marked done")),
+    }),
+    class: { kind: "direct", inverse: "workstream.done" },
+    userOnly: { mark: "It names the mark an Undo takes off, which only Oriel gives." },
+  },
+  // One no thread ever used goes with its log, and has no Undo: making a
+  // workstream undoes as that. One threads use is hidden with them, and
+  // restored by its Undo (decision 0028). `threads`: how many the user was
+  // told go with it, so a thread opened since never goes unseen; none
+  // without it.
+  "workstream.delete": {
+    doc: "Deletes a workstream, with its threads.",
+    input: object({
+      workstream: workstreamId,
+      threads: optional(
+        refine(number, (n) => Number.isInteger(n) && n >= 0, "expected how many threads go"),
+      ),
+    }),
+    class: { kind: "direct", inverse: "workstream.restore" },
+    closed: { agent: hides, tool: hides },
+  },
+  "workstream.restore": {
+    doc: "Brings back a deleted workstream, with its threads.",
+    input: object({ workstream: workstreamId }),
+    class: { kind: "direct", inverse: "workstream.delete" },
+    closed: { agent: unhides, tool: unhides },
   },
   "thread.done": {
     doc: "Marks a thread done.",

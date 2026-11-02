@@ -49,11 +49,14 @@ export class ActionError extends Error {
 }
 
 // What a call changed, for the window's streams: a workstream, and whether its
-// members changed, which moves its working threads; a thread, and whether an
+// members changed, which moves its working threads, or that it went with its
+// threads; a thread, and whether an
 // entry already in its chat changed, as a held message settles, or whether
 // it is gone; or a change set of a thread, and whether it is applying now.
 export type Changed =
   | { workstream: Ulid; members: boolean }
+  // Deleted, with the threads that went with it.
+  | { workstream: Ulid; deleted: readonly Ulid[] }
   | { thread: Ulid; chat?: true }
   | { thread: Ulid; deleted: true }
   | { thread: Ulid; changeSet: Ulid; applying: boolean };
@@ -385,14 +388,130 @@ const handlers = {
     };
   },
 
-  "workstream.delete": async ({ workstream: id }, _actor, deps) => {
+  // Every open thread is marked done with it. The agent and tools are held
+  // to what holds a thread in Needs you, in any of its threads (decision
+  // 0028).
+  "workstream.done": async ({ workstream: id }, actor, deps) => {
     const workstream = mustWorkstream(deps, id);
-    if (!deps.workstreams.delete(workstream.id))
-      throw new ActionError("refused", "a thread uses it, so it stays");
+    if (bound(actor)) {
+      const its = deps.threads.ofWorkstream(workstream.id, deps.now());
+      if (its.some(({ thread }) => thread.id !== ownThread(actor) && deps.running(thread.id)))
+        throw new ActionError("refused", "the agent is answering in one of its threads");
+      for (const { thread } of its) {
+        if ((await deps.unsettled(thread.id)).some((set) => set.waits))
+          throw new ActionError(
+            "refused",
+            "a change set in one of its threads waits on you, so it stays in Needs you",
+          );
+        if (deps.threads.held(thread.id).length > 0)
+          throw new ActionError(
+            "refused",
+            "a message held in one of its threads waits on you, so it stays in Needs you",
+          );
+      }
+    }
+    const at = deps.now();
+    // Done already, it keeps who marked it and when.
+    const marked = deps.threads.markWorkstreamDone(workstream.id, at, actor);
+    if (marked === null)
+      return { output: { threads: [] as Ulid[] }, undo: null, changed: null, events: [] };
+    return {
+      output: { threads: marked },
+      undo: { action: "workstream.reopen", input: { workstream: workstream.id, mark: at } },
+      changed: { workstream: workstream.id, members: false },
+      // Each thread it marked counts as marked done too, for its time to done.
+      events: [
+        {
+          name: "workstream.marked-done",
+          workstreamId: workstream.id,
+          threads: marked.length,
+          ...by(actor),
+        },
+        ...marked.map((thread) => ({
+          name: "thread.marked-done" as const,
+          threadId: thread,
+          workstreamId: workstream.id,
+          ...by(actor),
+        })),
+      ],
+    };
+  },
+
+  "workstream.reopen": async ({ workstream: id, mark }, _actor, deps) => {
+    const workstream = mustWorkstream(deps, id);
+    const reopened = deps.threads.reopenWorkstream(workstream.id, mark ?? null, deps.now());
+    if (reopened === null)
+      throw new ActionError(
+        "refused",
+        mark === undefined ? "it isn't marked done" : "it was marked done again since",
+      );
+    return {
+      output: { threads: reopened },
+      undo: { action: "workstream.done", input: { workstream: workstream.id } },
+      changed: { workstream: workstream.id, members: false },
+      events: [],
+    };
+  },
+
+  // One no thread ever used goes with its log; one threads use is hidden
+  // with them, as the user confirmed, told how many (decision 0028). Not
+  // while a turn runs in one of them or a change set of theirs applies:
+  // either may yet write.
+  "workstream.delete": async ({ workstream: id, threads: told }, _actor, deps) => {
+    const workstream = mustWorkstream(deps, id);
+    const its = deps.threads.ofWorkstream(workstream.id, deps.now()).map(({ thread }) => thread.id);
+    if (its.length !== (told ?? 0))
+      throw told === undefined
+        ? new ActionError("refused", "a thread uses it, so it stays")
+        : new ActionError(
+            "conflict",
+            `It has ${its.length === 1 ? "1 thread" : `${its.length} threads`} now. Look again before deleting it.`,
+          );
+    if (deps.workstreams.delete(workstream.id))
+      return {
+        output: { threads: [] as Ulid[] },
+        undo: null,
+        changed: { workstream: workstream.id, members: false },
+        events: [
+          { name: "workstream.deleted", workstreamId: workstream.id, threads: 0, kept: false },
+        ],
+      };
+    // Read first, then checked and hidden with nothing awaited between, so no
+    // turn or apply starts in between.
+    const sets = (await Promise.all(its.map((thread) => deps.changeSets.ofThread(thread)))).flat();
+    if (its.some(deps.running)) throw new ThreadBusy();
+    if (sets.some((set) => deps.changeSets.applying(set.id)))
+      throw new ActionError(
+        "conflict",
+        "A change set in one of its threads is being applied. Wait for it to finish.",
+      );
+    deps.workstreams.hide(workstream.id, deps.now());
+    return {
+      output: { threads: its },
+      undo: {
+        action: "workstream.restore",
+        input: { workstream: workstream.id },
+      },
+      changed: { workstream: workstream.id, deleted: its },
+      events: [
+        {
+          name: "workstream.deleted",
+          workstreamId: workstream.id,
+          threads: its.length,
+          kept: true,
+        },
+      ],
+    };
+  },
+
+  "workstream.restore": async ({ workstream: id }, _actor, deps) => {
+    if (!deps.workstreams.restore(id, deps.workspaceId))
+      throw new ActionError("not-found", "no such deleted workstream");
+    const threads = deps.threads.ofWorkstream(id, deps.now()).length;
     return {
       output: {},
-      undo: null,
-      changed: { workstream: workstream.id, members: false },
+      undo: { action: "workstream.delete", input: { workstream: id, threads } },
+      changed: { workstream: id, members: false },
       events: [],
     };
   },
