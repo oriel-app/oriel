@@ -33,3 +33,16 @@ test("without them the server runs read-only, and no message carries a value", (
   assert.doesNotMatch(JSON.stringify(elsewhere.jira), /secret|example\.atlassian/);
   assert.equal(serverEnv("ANTHROPIC_API_KEY=  ").modelKey, null);
 });
+
+test("a model key with whitespace or non-ASCII is refused, not trimmed, as the evals refuse it", () => {
+  const key = "sk-ant-fake-0123456789abcdef";
+  // parseEnv drops an unquoted value's line ending and trailing spaces.
+  for (const file of [`ANTHROPIC_API_KEY=${key}\n`, `ANTHROPIC_API_KEY=${key}  \r\n`])
+    assert.equal(serverEnv(file).modelKey, key, JSON.stringify(file));
+  for (const value of [`"${key} "`, `" ${key}"`, `"${key}\nsecond line"`, `${key}\u00e9`]) {
+    // A refused key leaves the server on the scripted agent, as a missing one does.
+    const env = serverEnv(full.replace("secret-model-key", value));
+    assert.equal(env.modelKey, null, value);
+    assert.doesNotMatch(JSON.stringify(env), new RegExp(key));
+  }
+});

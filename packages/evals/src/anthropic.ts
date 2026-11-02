@@ -1,7 +1,6 @@
 // The one endpoint evals reach: the Anthropic Messages API, over plain fetch.
 // Only the live transport holds the API key, so everything above it (the
 // cassettes, the system under test and the judge) sees requests without it.
-import { parseEnv } from "node:util";
 import { array, literal, nullable, object, optional, string } from "@oriel/core";
 
 export type Fetch = typeof fetch;
@@ -15,13 +14,8 @@ export function isMessagesRequest(request: Request): boolean {
   return request.method === "POST" && request.url === messagesUrl;
 }
 
-// Reads ANTHROPIC_API_KEY and nothing else. Callers never print its value.
-// A key with whitespace or anything but printable ASCII is refused: a header
-// can't hold it, and the error saying so would quote it.
-export function anthropicKey(envFile: string | null): string | null {
-  const key = envFile ? parseEnv(envFile).ANTHROPIC_API_KEY : undefined;
-  return key && /^[!-~]+$/.test(key) ? key : null;
-}
+// The server's reader, so both refuse the same keys.
+export { anthropicKey } from "@oriel/agent";
 
 // Adds the key and the API version to each Messages API request. `network`
 // is the real fetch outside tests.

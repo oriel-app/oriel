@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentToken, headRefusal, leaksSecret, parse, published } from "./github.ts";
+import { agentToken, headRefusal, leaksSecret, parse, published, usage } from "./github.ts";
 
 test("only the agent token from .env is accepted", () => {
   assert.equal(agentToken("JIRA_API_TOKEN=secret\nGH_TOKEN=github_pat_abc\n"), "github_pat_abc");
@@ -115,4 +115,46 @@ test("an edit's new title is checked for values from .env, as a new PR's is", ()
   assert.equal(leaks(["pr-edit", "11", "body", "fix: https://oriel.atlassian.net"]), false);
   assert.equal(leaks(["pr-edit", "11", "body"]), false);
   assert.deepEqual(published({ op: "pr-view", number: 1 }), []);
+});
+
+test("a title and body given the wrong way round are refused, in either operation", () => {
+  const title = "fix(scripts): retitle safely (OA-115)";
+  const body = "## Summary\n\nfix: x\n";
+  assert.deepEqual(parse(["pr-edit", "11", body, title]), {
+    op: "pr-edit",
+    number: 11,
+    body,
+    title,
+  });
+  assert.ok(!("error" in parse(["pr-create", "ok-branch", title, body])));
+  for (const args of [
+    ["pr-edit", "11", title, body],
+    ["pr-edit", "11", title, "plain body"],
+    ["pr-edit", "11", "fix: x", "fix: y"],
+    // A title alone would become the body.
+    ["pr-edit", "11", title],
+    ["pr-create", "ok-branch", body, title],
+    ["pr-create", "ok-branch", "plain title", "b"],
+    ["pr-create", "ok-branch", "fix: x", "fix: y"],
+  ])
+    assert.ok("error" in parse(args), JSON.stringify(args));
+});
+
+test("a title is one line in SPEC §10's commit form", () => {
+  for (const title of ["feat: x", "fix(jira,server): y (OA-1)", "refactor!: z"])
+    assert.ok(!("error" in parse(["pr-edit", "11", "body", title])), title);
+  for (const title of [
+    "fix: x\nmore",
+    "fix: x\r",
+    "Fix: x",
+    "fix:x",
+    "fix: ",
+    "-fix: x",
+    "feat: x\u2028y",
+    "fix: x\u0085y",
+    "fix: x\vy",
+    "fix: \u0001",
+  ])
+    assert.ok("error" in parse(["pr-edit", "11", "body", title]), JSON.stringify(title));
+  assert.match(usage, /wrong way round/);
 });

@@ -137,7 +137,7 @@ console.log(
 console.log(
   modelKey
     ? `Agent: the model-backed agent (${defaultModel}), with the model key from .env. Thread titles: ${titleModel}.`
-    : "Agent: the scripted agent for local development. Set ANTHROPIC_API_KEY in .env for the model-backed one.",
+    : "Agent: the scripted agent for local development. Set ANTHROPIC_API_KEY in .env, printable characters and no spaces, for the model-backed one.",
 );
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)
