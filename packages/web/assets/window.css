@@ -385,8 +385,14 @@ a {
   color: var(--text-faint);
 }
 
-.sidebar-search-open {
+.nav-link.sidebar-search-open {
   display: none;
+}
+
+button.sidebar-search-open {
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
 
 .nav-link.sidebar-new {
@@ -810,7 +816,7 @@ button.nav-more {
     display: none;
   }
 
-  .shell[data-folded] .sidebar-search-open {
+  .shell[data-folded] .nav-link.sidebar-search-open {
     display: flex;
   }
 

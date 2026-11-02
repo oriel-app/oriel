@@ -430,6 +430,12 @@ const handOff = async (then: "propose" | "approve" | "revert") => {
 const handing = await handOff("propose");
 const handed = await handOff("approve");
 const handedBack = await handOff("revert");
+// Another thread asks where the hand-off was approved; the agent links to it.
+const askedWhere = await ask(
+  "Where did I approve the post that SYN-61 is ready?",
+  handed.serving,
+  handed.workstreamId,
+);
 
 // A workstream of one item, and one with none left, for how the page counts them.
 const single = await post<{ id: string }>("/api/workstreams", {
@@ -1147,6 +1153,38 @@ const scenes: Scene[] = [
       await page.locator(".nav-done").getByRole("link", { name: "2 dropped" }).waitFor();
     },
   },
+  // Finding your way back (OA-108, OA-110): the sidebar's search finds the
+  // hand-off by what it posted, and opens its thread there; another thread's
+  // agent links to it.
+  {
+    name: "search-results",
+    path: "/?grouping=epic",
+    on: handed.serving,
+    act: async (page) => {
+      await openSidebar(page);
+      await page.getByRole("combobox", { name: "Search threads" }).fill("ready to pick up");
+      await page.locator(".search-result").first().waitFor();
+    },
+  },
+  {
+    name: "search-opened",
+    path: "/?grouping=epic",
+    on: handed.serving,
+    act: async (page) => {
+      await openSidebar(page);
+      const field = page.getByRole("combobox", { name: "Search threads" });
+      await field.fill("ready to pick up");
+      await page.locator(".search-result").first().waitFor();
+      await field.press("Enter");
+      await page.locator(".change-set[data-opened] .diff").waitFor();
+    },
+  },
+  {
+    name: "thread-link",
+    path: `/threads/${askedWhere}`,
+    on: handed.serving,
+    act: (page) => page.locator(".chat a[href*='changeSet=']").waitFor(),
+  },
   {
     // Folded on a wide screen, the fold button counts the threads waiting on
     // the user; a narrow screen's menu does.
@@ -1157,6 +1195,20 @@ const scenes: Scene[] = [
       if ((page.viewportSize()?.width ?? 0) <= 760) return;
       await page.getByRole("button", { name: "Hide sidebar" }).click();
       await page.locator(".sidebar-fold .bar-count").waitFor();
+    },
+  },
+  {
+    // Folded, the search's icon opens the sidebar at the field.
+    name: "sidebar-folded-search",
+    path: `/workstreams/${mixed.id}`,
+    act: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) <= 760) return;
+      // The scene before may have left it folded.
+      const hide = page.getByRole("button", { name: "Hide sidebar" });
+      if (await hide.count()) await hide.click();
+      await page.getByRole("button", { name: "Search threads" }).click();
+      await page.getByRole("combobox", { name: "Search threads" }).fill("estimates");
+      await page.locator(".search-results [role=status]:not(:empty)").waitFor();
     },
   },
 ];

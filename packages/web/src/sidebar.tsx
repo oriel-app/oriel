@@ -207,7 +207,10 @@ function ThreadSearch(props: {
                     </span>
                   )}
                 </span>
-                <span class="search-result-excerpt">{result.excerpt}</span>
+                {/* A name that matched is the title above already. */}
+                {result.matched !== "name" && (
+                  <span class="search-result-excerpt">{result.excerpt}</span>
+                )}
                 <span class="nav-waiting-workstream">{result.thread.workstream.name}</span>
               </Link>
             ))}

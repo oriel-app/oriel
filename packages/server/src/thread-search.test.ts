@@ -150,3 +150,40 @@ test("the window's search events say how long the query was and what it found, n
     ["threads.search-opened", { opened: "change-set", rank: 1 }],
   ]);
 });
+
+// Its script runs in the real sandbox, as `pnpm dev`'s do. This spawns Deno.
+test("the dev server's scripted agent answers where something happened with a link to it", async (t) => {
+  const { createSandbox } = await import("@oriel/sandbox");
+  const { devPlan, scriptedAgent } = await import("./scripted-agent.ts");
+  const sandbox = createSandbox();
+  const asking = await testApp(t, {
+    writes: true,
+    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan),
+  });
+  // A post proposed through the dev plan, then a question about it.
+  const { id: workstreamId } = json<{ id: string }>(
+    await asking.post("/api/workstreams", { kind: "picked", name: "SMS", items: [sms] }),
+  );
+  const { id: poster } = json<{ id: string }>(
+    await asking.post(`/api/workstreams/${workstreamId}/threads`, { text: `post: ${testPost}` }),
+  );
+  await asking.app.settled();
+  const proposed = json<ThreadView>(await asking.get(`/api/threads/${poster}`));
+  const entry = proposed.entries.find((e) => e.kind === "change-set");
+  assert.ok(entry?.kind === "change-set");
+  const { id: thread } = json<{ id: string }>(
+    await asking.post(`/api/workstreams/${workstreamId}/threads`, {
+      text: "Where did I post the test?",
+    }),
+  );
+  await asking.app.settled();
+  const view = json<ThreadView>(await asking.get(`/api/threads/${thread}`));
+  const replies = view.entries.flatMap((e) => (e.kind === "text" ? [e.text] : []));
+  assert.ok(
+    replies.includes(
+      `It was this change set, in [post: ${testPost}](/threads/${poster}?changeSet=${entry.changeSetId}).`,
+    ),
+    replies.join("\n"),
+  );
+});

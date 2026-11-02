@@ -29,11 +29,26 @@ const weight: Record<MatchedIn, number> = { "change-set": 3, name: 2, chat: 1 };
 
 const fold = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
+// Words a question is asked with, which say nothing about what it is
+// after: "where did I approve the post?" looks for "approve" and "post".
+const asking = new Set(
+  (
+    "a an and are at did do does for from had has have how i in is it me my of on or our " +
+    "the this that to was we were what when where which who why with you your"
+  ).split(" "),
+);
+
 // The words of a query, folded: letters and digits, so punctuation and
-// accents don't stop a match.
+// accents don't stop a match. A question's own words are left out, unless
+// they are all it has.
 export function words(query: string): string[] {
-  const found = fold(query).match(/[\p{L}\p{N}]+/gu) ?? [];
-  return [...new Set(found.map((word) => word.slice(0, maxWordChars)))].slice(0, maxWords);
+  const found = [
+    ...new Set(
+      (fold(query).match(/[\p{L}\p{N}]+/gu) ?? []).map((word) => word.slice(0, maxWordChars)),
+    ),
+  ];
+  const meant = found.filter((word) => !asking.has(word));
+  return (meant.length ? meant : found).slice(0, maxWords);
 }
 
 // A field folded character by character, with where each folded unit came

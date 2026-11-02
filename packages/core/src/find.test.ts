@@ -29,6 +29,16 @@ test("a query is its words, folded, without punctuation or repeats", () => {
   assert.deepEqual(words("…"), []);
 });
 
+test("a question's own words are left out, unless they are all it has", () => {
+  assert.deepEqual(words("Where did I approve the Slack test post?"), [
+    "approve",
+    "slack",
+    "test",
+    "post",
+  ]);
+  assert.deepEqual(words("Where was it?"), ["where", "was", "it"]);
+});
+
 test("every word must start a word somewhere in what is found", () => {
   assert.deepEqual(
     find(all, "test post", 10).map((m) => m.target),
@@ -60,10 +70,10 @@ test("what a change set wrote ranks over a name, a name over what was said, then
 });
 
 test("a question in a sentence finds what matches most of its words", () => {
-  const found = find(all, "where did I approve the Slack test post?", 10);
+  // "approve" is nowhere; what wrote the post outranks the thread that talked about it.
   assert.deepEqual(
-    found.map((m) => m.target),
-    ["post"],
+    find(all, "where did I approve the Slack test post?", 10).map((m) => m.target),
+    ["post", "slack"],
   );
 });
 
