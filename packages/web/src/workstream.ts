@@ -2,7 +2,7 @@
 // opens a thread. Items are added from the window, or dropped here, and
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
-import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
+import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
 
 // A removal the user can still undo: the member as it showed, the workstream
@@ -202,13 +202,13 @@ const newer = (model: WorkstreamModel, view: WorkstreamView): WorkstreamView =>
   model.view && model.view.workstream.version > view.workstream.version ? model.view : view;
 
 // The workstream loaded, or failed to: a load that works takes back what a
-// failed one said.
+// failed one said, and that Oriel couldn't be reached.
 function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
   if (!msg.ok) {
     const lost = errorOf(msg.body);
     return { ...model, status: model.view ? "ready" : "failed", notice: lost, lost };
   }
-  const notice = model.notice === model.lost ? null : model.notice;
+  const notice = model.notice === model.lost ? null : reached(model.notice);
   return {
     ...model,
     view: newer(model, msg.body as WorkstreamView),

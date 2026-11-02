@@ -3,7 +3,7 @@
 // they're stored; change sets are acted on with explicit requests.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
-import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
+import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
   ActionLineView,
   ChangeSetView,
@@ -408,7 +408,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
       return [
-        { ...model, view: merged, status: "ready", editing },
+        { ...model, view: merged, status: "ready", editing, notice: reached(model.notice) },
         [
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
@@ -554,7 +554,8 @@ export function expected(model: ThreadModel): ThreadView | null {
 // The thread's event stream reconnected after dropping: whatever it missed
 // (an apply that ended, an edit this tab made) isn't replayed, and an ok reply
 // waits on the stream, so the thread reloads once and every change set is
-// diffed again.
+// diffed again. Once those answer, a request that couldn't reach Oriel
+// meanwhile says so no more.
 export function reconnected(model: ThreadModel): [ThreadModel, Effect[]] {
   if (model.view === null) return [model, []];
   return [model, [refresh(model), ...model.view.changeSets.map((set) => diffOf(set.id))]];

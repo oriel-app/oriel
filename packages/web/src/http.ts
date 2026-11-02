@@ -118,6 +118,13 @@ export type Report =
 export const report = (event: Report): Effect =>
   post("/api/telemetry", event, { kind: "telemetry" });
 
+// What a request that never reached Oriel says, as while it restarts. A load
+// that works once it's back takes it back: what the request did, if anything,
+// shows on the page that loaded.
+export const unreachable = "Oriel can't be reached. Is it still running?";
+export const reached = (notice: string | null): string | null =>
+  notice === unreachable ? null : notice;
+
 // What a failed reply says, for the person.
 export function errorOf(body: unknown): string {
   if (
