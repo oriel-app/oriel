@@ -263,7 +263,8 @@ function linePlace(params: URLSearchParams): LinePlace | null {
 // The grouping a Browse request names.
 function groupingOf(params: URLSearchParams): GroupingId {
   const grouping = params.get("grouping");
-  if (!isGroupingId(grouping)) throw new Refused(400, "grouping must be epic, assignee or stuck");
+  if (!isGroupingId(grouping))
+    throw new Refused(400, "grouping must be epic, assignee, stuck or linked");
   return grouping;
 }
 

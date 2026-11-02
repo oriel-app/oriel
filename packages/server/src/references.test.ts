@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { isItemId } from "@oriel/core";
 import { open } from "@oriel/db";
-import type { WindowView, WorkstreamView } from "@oriel/web/view";
+import type { ClusterPageView, WindowView, WorkstreamView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
 const standup = "slack:C0FW1WEATHR-1788684000.000100";
@@ -28,6 +28,18 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
     "the standup that names it",
   );
   assert.ok(cluster.list.slice(1).every((row) => row.id.startsWith("slack:")));
+  // Browse's rows and its page of the cluster's items are the same cluster.
+  const browse = json<WindowView>(await app.get("/api/browse?grouping=linked"));
+  assert.deepEqual(
+    browse.clusters.map((each) => each.row),
+    linked.clusters.map((each) => each.row),
+  );
+  const query = new URLSearchParams({ grouping: "linked", cluster: cluster.row.key, from: "0" });
+  const page = json<ClusterPageView>(await app.get(`/api/browse/items?${query}`));
+  assert.deepEqual(
+    page.items.map((row) => row.id),
+    cluster.list.map((row) => row.id),
+  );
   // A workstream made of it holds SYN-54 and the messages, and no epic.
   const made = json<{ id: string }>(
     await app.post("/api/workstreams", {
