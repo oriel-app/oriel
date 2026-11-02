@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // Spike: TASKS.md's measured scores for one candidate, and the screenshots its
 // judges see. Drives the installed Chrome at 4× CPU throttle.
 //
