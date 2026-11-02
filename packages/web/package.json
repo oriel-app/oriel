@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "check": "tsc -p . --noEmit && tsc -p test && oxlint --deny-warnings . && node --test"
+    "check": "tsc -p . --noEmit && tsc -p test && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   },
   "dependencies": {
     "@oriel/core": "workspace:*",

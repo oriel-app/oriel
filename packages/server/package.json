@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/main.ts",
-    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   },
   "dependencies": {
     "@oriel/agent": "workspace:*",

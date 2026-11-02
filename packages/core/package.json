@@ -8,6 +8,6 @@
     "./oriel-reads": "./src/oriel-reads.ts"
   },
   "scripts": {
-    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   }
 }
