@@ -67,6 +67,17 @@ export function itemRow(record: IndexRecord, now: Instant, sources: Presentation
 const byId = (records: readonly IndexRecord[]) =>
   new Map<ItemId, IndexRecord>(records.map((record) => [record.id, record]));
 
+// `byId`, built once for the records a zoom level is handed cluster after
+// cluster, and again only when it is handed others.
+function lastIndex(): (records: readonly IndexRecord[]) => ReadonlyMap<ItemId, IndexRecord> {
+  let last: { records: readonly IndexRecord[]; index: ReadonlyMap<ItemId, IndexRecord> } | null =
+    null;
+  return (records) => {
+    if (last?.records !== records) last = { records, index: byId(records) };
+    return last.index;
+  };
+}
+
 // The cluster's records, in its order. An ID the index no longer has is
 // skipped, not fatal.
 function members(cluster: Cluster, index: ReadonlyMap<ItemId, IndexRecord>): IndexRecord[] {
@@ -76,10 +87,11 @@ function members(cluster: Cluster, index: ReadonlyMap<ItemId, IndexRecord>): Ind
 // The "cluster" zoom level: one row per cluster. A cluster the source has
 // names the sources its anchor and items come from.
 export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<ClusterRow> {
+  const indexOf = lastIndex();
   return {
     id: "cluster",
     view(cluster, records) {
-      const index = byId(records);
+      const index = indexOf(records);
       const items = members(cluster, index);
       const anchor = cluster.anchor === null ? undefined : index.get(cluster.anchor);
       const status = { todo: 0, "in-progress": 0, done: 0 };
@@ -107,10 +119,11 @@ export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<Clu
 
 // The "list" zoom level: a cluster's items, one row each.
 export function listZoom(now: Instant, sources: Presentations): ZoomLevel<ItemRow[]> {
+  const indexOf = lastIndex();
   return {
     id: "list",
     view: (cluster, records) =>
-      members(cluster, byId(records)).map((record) => itemRow(record, now, sources)),
+      members(cluster, indexOf(records)).map((record) => itemRow(record, now, sources)),
   };
 }
 

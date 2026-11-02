@@ -185,18 +185,21 @@ export class SourceRefused extends Error {
 
 const state: Validator<State> = union(literal("todo"), literal("in-progress"), literal("done"));
 
+// Built once: every record the index reads is checked against it.
+const facetShape = object({
+  people: optional(array(object({ role: string, id: string, name: string }))),
+  state: optional(state),
+  container: optional(
+    nullable(object({ id: refine(string, isItemId, "expected an item ID"), stableId: string })),
+  ),
+  links: optional(array(object({ url: string, title: string }))),
+  kind: optional(string),
+  estimate: optional(nullable(number)),
+});
+
 // Facets as the index stores them: checked on the way in and on the way out.
 export const facets: Validator<Facets> = (input, path) => {
-  const result = object({
-    people: optional(array(object({ role: string, id: string, name: string }))),
-    state: optional(state),
-    container: optional(
-      nullable(object({ id: refine(string, isItemId, "expected an item ID"), stableId: string })),
-    ),
-    links: optional(array(object({ url: string, title: string }))),
-    kind: optional(string),
-    estimate: optional(nullable(number)),
-  })(input, path);
+  const result = facetShape(input, path);
   if (!result.ok) return result;
   // An absent facet stays absent rather than becoming a key set to undefined.
   const value = Object.fromEntries(

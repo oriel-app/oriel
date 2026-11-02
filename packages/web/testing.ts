@@ -7,6 +7,7 @@
 import type {
   ActionLineView,
   ChangeSetView,
+  ClusterPageView,
   ClusterRow,
   DiffView,
   ItemRef,
@@ -70,6 +71,17 @@ export const windowView = (over: Partial<WindowView> = {}): WindowView => ({
   items: 0,
   asOf: at,
   fixture: true,
+  ...over,
+});
+
+export const clusterPageView = (over: Partial<ClusterPageView> = {}): ClusterPageView => ({
+  grouping: "epic",
+  cluster: "10001",
+  of: "list",
+  from: 0,
+  items: [],
+  total: 0,
+  locations: {},
   ...over,
 });
 

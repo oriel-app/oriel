@@ -62,6 +62,8 @@ export type Tag =
 
 export type Effect =
   | { type: "loadWindow"; request: number; grouping: GroupingId }
+  // A page of a cluster's items, from the `from`th.
+  | { type: "loadItems"; request: number; grouping: GroupingId; cluster: string; from: number }
   // Puts the grouping in the address bar, so a reload keeps it.
   | { type: "showGrouping"; grouping: GroupingId }
   | { type: "http"; method: "GET" | "POST"; url: string; body?: unknown; tag: Tag }

@@ -38,7 +38,9 @@ import { sources } from "@oriel/sources";
 import {
   type DeletedView,
   type DeletionView,
+  type ClusterPageView,
   type FolderView,
+  type GroupingId,
   type Undoable,
   type WorkstreamDeletedView,
   type WorkstreamEndedView,
@@ -47,6 +49,7 @@ import {
   type SearchView,
   type StreamEvent,
   type ThreadsView,
+  type WindowView,
 } from "@oriel/web/view";
 import {
   ActionError,
@@ -90,6 +93,12 @@ export type ApiDeps = {
   refresh(): Promise<string | null>;
   // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
+  // Browse: a grouping's clusters as rows, with no items, and one page of a
+  // cluster's items, or null when the grouping has no such cluster now.
+  browse: {
+    rows(grouping: GroupingId): WindowView;
+    page(grouping: GroupingId, cluster: string, from: number): ClusterPageView | null;
+  };
   // The connected folder and Jira as they stand; connecting and syncing
   // either is an action.
   folder(): FolderView | null;
@@ -249,6 +258,21 @@ function linePlace(params: URLSearchParams): LinePlace | null {
   if (!Number.isSafeInteger(at.index) || at.index < 0)
     throw new Refused(400, "expected the line's place in its list");
   return { ...at, thread: at.thread };
+}
+
+// The grouping a Browse request names.
+function groupingOf(params: URLSearchParams): GroupingId {
+  const grouping = params.get("grouping");
+  if (!isGroupingId(grouping)) throw new Refused(400, "grouping must be epic, assignee or stuck");
+  return grouping;
+}
+
+// A count of items from a request: a whole number, 0 when absent.
+function fromOf(params: URLSearchParams): number {
+  const from = Number(params.get("from") ?? 0);
+  if (!Number.isSafeInteger(from) || from < 0)
+    throw new Refused(400, "from must be a whole number, from 0");
+  return from;
 }
 
 // A change-set refusal (`ChangeSetError`, by its name and code) as an HTTP
@@ -441,6 +465,27 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const synced = await deps.dispatch("source.sync", { source: "folder" }, user);
         if ("problem" in synced) throw new Refused(409, synced.problem);
         return json(200, synced);
+      },
+    },
+    {
+      // Browse's first reply: the clusters, with no items (decision 0027).
+      method: "GET",
+      path: at("/browse"),
+      run: async (_, _request, url) => json(200, deps.browse.rows(groupingOf(url.searchParams))),
+    },
+    {
+      // A page of one cluster's items, as the user opens it or asks for more.
+      method: "GET",
+      path: at("/browse/items"),
+      async run(_, _request, url) {
+        const { searchParams } = url;
+        const page = deps.browse.page(
+          groupingOf(searchParams),
+          searchParams.get("cluster") ?? "",
+          fromOf(searchParams),
+        );
+        if (!page) throw new Refused(404, "no such cluster");
+        return json(200, page);
       },
     },
     {
