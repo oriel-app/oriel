@@ -11,30 +11,35 @@ import {
   type ActionName,
   actions,
   type Actor,
+  type Approver,
   type Call,
+  type ChangeSet,
+  type ChangeSets,
   type Cluster,
   type WorkstreamMember,
   type WorkstreamOrigin,
   type IndexRecord,
   type Instant,
   type ItemId,
+  maxReasonChars,
   parseItemId,
   type TelemetryEvent,
   type Ulid,
 } from "@oriel/core";
 import type { WorkstreamStore, ThreadStore } from "@oriel/db";
-import { type GroupingId, isGroupingId } from "@oriel/web/view";
+import { type FolderView, type GroupingId, isGroupingId, type JiraView } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
-import type { Turns } from "./turns.ts";
+import { ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
 // What a workstream made for a thread from nothing is called, until a change set
 // creates its epic and it takes that epic's name.
 export const blankWorkstreamName = "New workstream";
 
-// A refusal the doors map: the window's routes to 400, 403 or 404.
+// A refusal the doors map: the window's routes to 400, 403, 404 or 409.
+// `conflict`: not now, while something else is under way or missing.
 export class ActionError extends Error {
-  readonly code: "invalid" | "refused" | "not-found";
+  readonly code: "invalid" | "refused" | "not-found" | "conflict";
   constructor(code: ActionError["code"], message: string) {
     super(message);
     this.name = "ActionError";
@@ -43,9 +48,23 @@ export class ActionError extends Error {
 }
 
 // What a call changed, for the window's streams: a workstream, and whether its
-// members changed, which moves its working threads; or a thread, and
-// whether an entry already in its chat changed, as a held message settles.
-export type Changed = { workstream: Ulid; members: boolean } | { thread: Ulid; chat?: true };
+// members changed, which moves its working threads; a thread, and whether an
+// entry already in its chat changed, as a held message settles, or whether
+// it is gone; or a change set of a thread, and whether it is applying now.
+export type Changed =
+  | { workstream: Ulid; members: boolean }
+  | { thread: Ulid; chat?: true }
+  | { thread: Ulid; deleted: true }
+  | { thread: Ulid; changeSet: Ulid; applying: boolean };
+
+// A source the user connects or syncs from the window, as it stands then; or
+// what went wrong, in plain words.
+export type SourceOutcome = { folder: FolderView } | { jira: JiraView } | { problem: string };
+
+// A change-set refusal (`ChangeSetError`, by its name and code), which the
+// window's routes map by its code.
+export const isChangeSetError = (error: unknown): error is Error & { code: string } =>
+  error instanceof Error && error.name === "ChangeSetError" && "code" in error;
 
 export type ActionDeps = {
   workspaceId: Ulid;
@@ -57,8 +76,19 @@ export type ActionDeps = {
   clusters(grouping: GroupingId): Cluster[];
   // What a change set created, which joins its workstream before the index has it.
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
-  // What becomes of a message held in a thread, whoever it is from.
-  held: Pick<Turns, "sendHeld" | "discardHeld">;
+  // What becomes of a thread's chat: the user's message, which starts a
+  // turn; a message held in it, whoever it is from; and its running turn.
+  turns: Pick<Turns, "say" | "rejected" | "stop" | "sendHeld" | "discardHeld">;
+  changeSets: ChangeSets;
+  // After a change set applied, partly or in full: what it created joins
+  // the workstream, and a live index syncs.
+  applied(set: ChangeSet): Promise<void>;
+  // Connecting a source, and the sync the user asks for. A source not
+  // connected yet can't sync: an ActionError.
+  sources: {
+    connect(input: ActionInput<"source.connect">): Promise<SourceOutcome>;
+    sync(source: ActionInput<"source.sync">["source"]): Promise<SourceOutcome>;
+  };
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
   // A thread's change sets still to apply, pending or approved: whether
@@ -77,8 +107,15 @@ type Counted = TelemetryEvent extends infer E
   : never;
 
 // What a handler did. `events` are the SPEC §7 events that count it; with
-// none, the dispatcher counts it as `action.called`.
-type Outcome<O> = { output: O; undo: Call | null; changed: Changed | null; events: Counted[] };
+// none, the dispatcher counts it as `action.called`; `counted` when what it
+// called counts it, as the change set engine and a turn do, so nothing is
+// counted twice.
+type Outcome<O> = {
+  output: O;
+  undo: Call | null;
+  changed: Changed | null;
+  events: Counted[] | "counted";
+};
 type Handler<N extends ActionName> = (
   input: ActionInput<N>,
   actor: Actor,
@@ -114,6 +151,40 @@ const mustThread = (deps: ActionDeps, id: Ulid) => {
   if (!thread || thread.workspaceId !== deps.workspaceId)
     throw new ActionError("not-found", "no such thread");
   return thread;
+};
+
+// A change set this workspace has. One of a deleted thread, kept for what it
+// wrote, is gone with it.
+const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
+  const set = await deps.changeSets.get(id);
+  if (!set || set.workspaceId !== deps.workspaceId || !deps.threads.get(set.threadId, deps.now()))
+    throw new ActionError("not-found", "no such change set");
+  return set;
+};
+
+// Who decides a change set: the user, in its thread, or a review link's
+// holder, who presents the link's token, which the engine checks.
+const approverOf = (actor: Actor, token: string | undefined): Approver => {
+  if (actor.kind === "review-link" && token !== undefined)
+    return { via: "review-link", token, by: actor.by };
+  if (actor.kind === "user" && token === undefined) return { via: "thread", by: "user" };
+  throw new ActionError("invalid", "only a review link's holder gives its token, and they must");
+};
+
+// Applies a change set, and tells when that starts and when it ends. The
+// engine marks it applying before `apply` returns its promise, so the first
+// reload sees that. What it created then joins its workstream.
+const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
+  const applying = deps.changeSets.apply(set.id);
+  deps.publish({ thread: set.threadId, changeSet: set.id, applying: true });
+  let report: Awaited<typeof applying>;
+  try {
+    report = await applying;
+  } finally {
+    deps.publish({ thread: set.threadId, changeSet: set.id, applying: false });
+  }
+  await deps.applied(await mustChangeSet(deps, set.id));
+  return report;
 };
 
 // Items as the index has them now. One it doesn't have is refused, unless
@@ -270,7 +341,8 @@ const handlers = {
 
   "workstream.rename": async ({ workstream: id, name, oriel }, actor, deps) => {
     const before = mustWorkstream(deps, id);
-    // A change set names a workstream as Oriel does, never over the user's name.
+    // A change set or a sync names a workstream as Oriel does, never over the
+    // user's name.
     if (oriel) {
       userOnly(actor, "gives a workstream's name back to Oriel, by undoing a rename");
       deps.workstreams.giveBack(before.id, name.trim());
@@ -278,7 +350,7 @@ const handlers = {
       deps.workstreams.rename(
         before.id,
         name.trim(),
-        actor.kind === "change-set" ? "oriel" : "user",
+        actor.kind === "change-set" || actor.kind === "sync" ? "oriel" : "user",
       );
     const after = mustWorkstream(deps, id);
     const renamed = after.name !== before.name || after.namedBy !== before.namedBy;
@@ -328,12 +400,13 @@ const handlers = {
         );
     }
     const at = deps.now();
-    deps.threads.markDone(thread.id, at, actor);
-    // Marked again, it was already: reopening wouldn't put it back as it was.
-    const marked = thread.state === "done" && thread.doneBy === "marked";
+    // Marked done already, it keeps who marked it and when, so there is
+    // nothing to undo and no mark to count.
+    if (!deps.threads.markDone(thread.id, at, actor))
+      return { output: {}, undo: null, changed: null, events: [] };
     return {
       output: {},
-      undo: marked ? null : { action: "thread.reopen", input: { thread: thread.id, mark: at } },
+      undo: { action: "thread.reopen", input: { thread: thread.id, mark: at } },
       changed: { thread: thread.id },
       events: [
         {
@@ -363,7 +436,7 @@ const handlers = {
 
   "held.send": async ({ thread: id, seq, text }, _actor, deps) => {
     const thread = mustThread(deps, id);
-    const sent = deps.held.sendHeld(thread.id, seq, text);
+    const sent = deps.turns.sendHeld(thread.id, seq, text);
     // A review link's holder's message is why they rejected the change set.
     const rejected = sent.from.kind === "review-link" ? { rejected: sent.from.changeSet } : {};
     return {
@@ -383,7 +456,7 @@ const handlers = {
 
   "held.discard": async ({ thread: id, seq }, _actor, deps) => {
     const thread = mustThread(deps, id);
-    const from = deps.held.discardHeld(thread.id, seq);
+    const from = deps.turns.discardHeld(thread.id, seq);
     return {
       output: {},
       undo: null,
@@ -391,17 +464,229 @@ const handlers = {
       events: [{ name: "held-message.discarded", threadId: thread.id, from: from.kind }],
     };
   },
+
+  "thread.open": async ({ workstream: id }, _actor, deps) => {
+    const workstream = mustWorkstream(deps, id);
+    const thread = deps.newId();
+    deps.threads.open(
+      { id: thread, workspaceId: deps.workspaceId, workstreamId: workstream.id },
+      deps.now(),
+    );
+    return {
+      output: { thread },
+      undo: null,
+      changed: { thread },
+      events: [
+        {
+          name: "thread.opened",
+          threadId: thread,
+          workstreamId: workstream.id,
+          regionSize: deps.workstreams.region(workstream.id, workstream.version)?.items.length ?? 0,
+        },
+      ],
+    };
+  },
+
+  // The turn counts the question, and tells the thread's pages.
+  "thread.say": async ({ thread: id, text }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    const { seq } = deps.turns.say(thread.id, text);
+    return { output: { seq }, undo: null, changed: null, events: "counted" };
+  },
+
+  "thread.stop": async ({ thread: id }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    return {
+      output: { stopped: deps.turns.stop(thread.id) },
+      undo: null,
+      changed: null,
+      events: [],
+    };
+  },
+
+  // Not while its agent answers or a change set of it applies: either may
+  // yet write.
+  "thread.delete": async ({ thread: id, via }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    if (deps.running(thread.id)) throw new ThreadBusy();
+    const deleted = deps.threads.delete(thread.id, deps.now(), (set) =>
+      deps.changeSets.applying(set),
+    );
+    if (!deleted)
+      throw new ActionError(
+        "conflict",
+        "A change set of this thread is being applied. Wait for it to finish.",
+      );
+    return {
+      output: { workstreamId: deleted.workstreamId, workstreamRemoved: deleted.workstreamRemoved },
+      undo: null,
+      changed: { thread: thread.id, deleted: true },
+      events: [
+        {
+          name: "thread.deleted",
+          threadId: thread.id,
+          workstreamId: deleted.workstreamId,
+          kept: deleted.kept,
+          workstreamRemoved: deleted.workstreamRemoved,
+          via: via ?? "menu",
+        },
+      ],
+    };
+  },
+
+  "changeset.edit": async ({ changeSet: id, remove }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    await deps.changeSets.edit(set.id, { remove: remove as Ulid[] });
+    return {
+      output: {},
+      undo: null,
+      changed: { thread: set.threadId, changeSet: set.id, applying: false },
+      events: "counted",
+    };
+  },
+
+  // Approving is what lets Oriel write, so replay follows it (decision
+  // 0003). The decision stands even if applying it is refused (another
+  // apply is under way, say): the change set says where it stands, and why.
+  "changeset.approve": async ({ changeSet: id, hash, token }, actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    await deps.changeSets.decide(set.id, "approved", approverOf(actor, token), hash);
+    try {
+      const report = await applyTold(deps, set);
+      return {
+        output: { report, problem: null },
+        undo: null,
+        changed: null,
+        events: "counted",
+      };
+    } catch (error) {
+      if (!isChangeSetError(error)) throw error;
+      return {
+        output: { report: null, problem: error.message },
+        undo: null,
+        changed: null,
+        events: "counted",
+      };
+    }
+  },
+
+  // A rejection is the thread's to answer: it asks what was wrong. The
+  // user's own reason is the answer, which starts a turn; one that can't be
+  // said, mid-turn or past the thread's caps, leaves the rejection
+  // standing, and says why. A review link's holder's is held in the thread
+  // for the user, whatever the turn or the caps, and is shorter.
+  "changeset.reject": async ({ changeSet: id, hash, reason, token }, actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    const approver = approverOf(actor, token);
+    if (approver.via === "review-link" && reason !== undefined && reason.length > maxReasonChars)
+      throw new ActionError(
+        "invalid",
+        `$.reason: expected a reason of 1 to ${maxReasonChars} characters`,
+      );
+    const decided = await deps.changeSets.decide(set.id, "rejected", approver, hash);
+    deps.publish({ thread: set.threadId, changeSet: set.id, applying: false });
+    const outcome = { undo: null, changed: null, events: "counted" } as const;
+    try {
+      deps.turns.rejected(
+        decided,
+        approver.via === "review-link" ? approver.by : null,
+        reason ?? null,
+      );
+      return { ...outcome, output: { report: null, problem: null } };
+    } catch (error) {
+      if (!(error instanceof ThreadBusy || error instanceof ThreadLimit)) throw error;
+      return { ...outcome, output: { report: null, problem: error.message } };
+    }
+  },
+
+  // Counted as `changeset.applied` only once it has applied in full, by
+  // whichever call: this one is counted as itself.
+  "changeset.apply": async ({ changeSet: id }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    return {
+      output: { report: await applyTold(deps, set) },
+      undo: null,
+      changed: null,
+      events: [],
+    };
+  },
+
+  // The warnings name changes that may already have landed, for the person
+  // to check.
+  "changeset.dismiss": async ({ changeSet: id, hash, token }, actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    const { warnings } = await deps.changeSets.dismiss(set.id, approverOf(actor, token), hash);
+    return {
+      output: { warnings },
+      undo: null,
+      changed: { thread: set.threadId, changeSet: set.id, applying: false },
+      events: "counted",
+    };
+  },
+
+  "changeset.revert": async ({ changeSet: id }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    const reverted = await deps.changeSets.revert(set.id);
+    if ("conflicts" in reverted)
+      return {
+        output: { conflicts: reverted.conflicts },
+        undo: null,
+        changed: null,
+        events: "counted",
+      };
+    return {
+      output: { revert: reverted.id },
+      undo: null,
+      changed: { thread: set.threadId, changeSet: set.id, applying: false },
+      events: "counted",
+    };
+  },
+
+  "review-link.create": async ({ changeSet: id }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    const url = await deps.changeSets.reviewLink(set.id);
+    return { output: { url: url.href }, undo: null, changed: null, events: [] };
+  },
+
+  "review-link.revoke": async ({ changeSet: id }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    await deps.changeSets.revokeReviewLink(set.id);
+    return { output: {}, undo: null, changed: null, events: [] };
+  },
+
+  // Counted as `source.connected`, when the source first syncs into the
+  // workspace.
+  "source.connect": async (input, _actor, deps) => ({
+    output: await deps.sources.connect(input),
+    undo: null,
+    changed: null,
+    events: "counted",
+  }),
+
+  // How often the user asks says whether Oriel should sync on its own. What
+  // a sync changed, every page watching hears from the sync itself.
+  "source.sync": async ({ source }, _actor, deps) => {
+    const synced = await deps.sources.sync(source);
+    return {
+      output: synced,
+      undo: null,
+      changed: null,
+      events: [{ name: "source.synced", source, ok: !("problem" in synced) }],
+    };
+  },
 } satisfies { [N in ActionName]: Handler<N> };
 
 // Why `actor` may not call the action, or null. A review-link holder may only
-// decide or dismiss the change set the link names, which no action here is
-// yet. A change set acts only through what follows its apply.
+// decide or dismiss the change set the link names, as the change set engine
+// checks. A change set acts only through what follows its apply, and a sync
+// through what follows it.
 export function refusal(name: ActionName, actor: Actor): string | null {
   const declared: ActionDeclaration = actions[name];
   if (actor.kind === "user") return null;
-  if (actor.kind === "review-link") return `${name} isn't for a review link`;
+  if (actor.kind === "review-link")
+    return declared.reviewLink ? null : `${name} isn't for a review link`;
   if (declared.class.kind === "person-only") return `${name} is the user's: ${declared.class.why}`;
-  if (actor.kind === "change-set") return null;
+  if (actor.kind === "change-set" || actor.kind === "sync") return null;
   const closed = declared.closed?.[actor.kind === "agent" ? "agent" : "tool"];
   return closed === undefined ? null : `${name} is closed to ${actor.kind}s: ${closed}`;
 }
@@ -462,9 +747,12 @@ export function dispatcher(deps: ActionDeps): Dispatch {
       throw new Error(`${name} gave an undo that isn't its inverse`);
     const at = deps.now();
     const { workspaceId } = deps;
-    const events = outcome.events.length
-      ? outcome.events
-      : [{ name: "action.called" as const, action: name, by: actor }];
+    const events =
+      outcome.events === "counted"
+        ? []
+        : outcome.events.length
+          ? outcome.events
+          : [{ name: "action.called" as const, action: name, by: actor }];
     const undid = undoes && undoes.kind !== "user" ? { undoes } : {};
     for (const event of events)
       deps.emit({ ...event, ...undid, at, workspaceId } as TelemetryEvent);

@@ -17,10 +17,9 @@
 // action closed to a door, a person's action, or a direct one with no
 // inverse says why, and an inverse names an action; and every POST route in
 // packages/server changes state only through the dispatcher, apart from the
-// three exempt below and the routes not moved yet, or moved in part, which
-// OA-70 moves. A route on a list must be as the list says, so the lists
-// only shrink. What a route does besides dispatching is its author's word:
-// the check sees only whether it dispatches.
+// three exempt below, which must be as the list says. What a route does
+// besides dispatching is its author's word: the check sees only whether it
+// dispatches.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
@@ -141,36 +140,6 @@ export const exemptRoutes: Record<string, string> = {
   "/review/open": "a read that records what was shown",
 };
 
-// POST routes not on the dispatcher yet, and what they do instead. This list
-// only shrinks: OA-70 moves the rest and empties it.
-export const unmovedRoutes: Record<string, string> = {
-  "/folder": "connects the folder",
-  "/folder/sync": "syncs the folder",
-  "/jira": "connects Jira",
-  "/jira/sync": "syncs Jira",
-  "/workstreams/:id/threads": "opens a thread and says its first message",
-  "/threads/:id/messages": "says a message",
-  "/threads/:id/stop": "stops a turn",
-  "/threads/:id/delete": "deletes a thread",
-  "/change-sets/:id/edit": "edits a change set",
-  "/change-sets/:id/approve": "approves a change set",
-  "/change-sets/:id/reject": "rejects a change set",
-  "/change-sets/:id/apply": "applies a change set",
-  "/change-sets/:id/dismiss": "dismisses a change set",
-  "/change-sets/:id/revert": "reverts a change set",
-  "/change-sets/:id/review-link": "creates a review link",
-  "/change-sets/:id/review-link/revoke": "revokes a review link",
-  "/review/decide": "decides a change set through a review link",
-  "/review/dismiss": "dismisses a change set through a review link",
-};
-
-// POST routes that call the dispatcher for part of what they do, and what
-// they do besides.
-export const partlyMovedRoutes: Record<string, string> = {
-  "/workstreams/:id/drop": "syncs the sources when a dropped link names nothing yet",
-  "/threads": "opens its thread and says its first message",
-};
-
 // A file's POST routes, by the path each declares (`at("…")`, or a regex
 // literal as written), and whether its code calls the dispatcher. A route's
 // code runs to the next route's `method`.
@@ -233,20 +202,11 @@ export function problems(repo: {
     if (path.startsWith("packages/server/src/") && !testFile.test(path))
       for (const route of postRoutes(text)) {
         routed.add(route.path);
-        const listed = route.path in exemptRoutes || route.path in unmovedRoutes;
         if (route.dispatches && route.path in exemptRoutes)
           found.add(
             `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the exempt routes`,
           );
-        if (route.dispatches && route.path in unmovedRoutes)
-          found.add(
-            `scripts/check-repo.ts: POST ${route.path} calls the dispatcher now; take it off the unmoved routes, or list it as moved in part`,
-          );
-        if (!route.dispatches && route.path in partlyMovedRoutes)
-          found.add(
-            `scripts/check-repo.ts: POST ${route.path} no longer calls the dispatcher, as the routes moved in part say it does`,
-          );
-        if (!route.dispatches && !listed)
+        if (!route.dispatches && !(route.path in exemptRoutes))
           found.add(
             `${path}: POST ${route.path} changes state without calling the dispatcher (decision 0024)`,
           );
@@ -285,13 +245,9 @@ export function problems(repo: {
         `${path}: imports packages/${other} by a relative path; packages reach each other only through @oriel/${other} and its exports`,
       );
   }
-  // Every exemption names a route; a route moved leaves the list.
+  // Every exemption names a route.
   if (routed.size > 0)
-    for (const listed of [
-      ...Object.keys(exemptRoutes),
-      ...Object.keys(unmovedRoutes),
-      ...Object.keys(partlyMovedRoutes),
-    ])
+    for (const listed of Object.keys(exemptRoutes))
       if (!routed.has(listed))
         found.add(`scripts/check-repo.ts: lists POST ${listed}, which no route declares`);
   if (repo.claudeLink !== "AGENTS.md") {

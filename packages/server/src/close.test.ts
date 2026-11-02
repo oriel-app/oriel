@@ -53,7 +53,9 @@ test("marking a thread done from a menu is marking it done, told apart in teleme
   );
   assert.deepEqual([done.state, done.doneBy], ["done", "marked"]);
   assert.deepEqual(app.lastEvent()?.data, { threadId: app.threadId, via: "menu" });
-  // The thread's page sends nothing, and is the page.
+  // The thread's page sends nothing, and is the page. Marked done again, a
+  // thread keeps its first mark (OA-119), so it is reopened first.
+  await app.post("/api/actions/thread.reopen", { thread: app.threadId });
   await app.post(`/api/threads/${app.threadId}/done`);
   assert.deepEqual(app.lastEvent()?.data, { threadId: app.threadId, via: "page" });
   const refused = await app.post(`/api/threads/${app.threadId}/done`, { via: "elsewhere" });

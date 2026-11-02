@@ -6,7 +6,6 @@ import {
   type Actor,
   type Call,
   array,
-  closeVia,
   type ChangeSet,
   type ChangeSets,
   type Conflict,
@@ -46,7 +45,7 @@ import {
   type SearchView,
   type StreamEvent,
 } from "@oriel/web/view";
-import { ActionError, checked, type Dispatch, type Fields } from "./actions.ts";
+import { ActionError, checked, type Dispatch, type Fields, isChangeSetError } from "./actions.ts";
 import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
 import type { ItemPanels } from "./panel.ts";
@@ -75,35 +74,18 @@ export type ApiDeps = {
   items: ItemPanels;
   emit(event: TelemetryEvent): void;
   now(): Instant;
-  newId(): Ulid;
-  // After a change set applied, partly or in full: what it created joins the
-  // workstream, and a live index syncs.
-  applied(set: ChangeSet): Promise<void>;
   // Syncs the sources that change outside Oriel, once, so a dropped link to
   // an item made since the last sync can be found. What went wrong, in plain
   // words, or null.
   refresh(): Promise<string | null>;
   // Revert conflicts in plain words.
   explain(conflicts: readonly Conflict[]): string;
-  // The connected folder: its state, connecting one by its typed path, and
-  // syncing it again. A refusal is a plain sentence.
-  folder: {
-    view(): FolderView | null;
-    connect(path: string): Promise<{ folder: FolderView } | { problem: string }>;
-    sync(): Promise<{ folder: FolderView } | { problem: string }>;
-  };
-  // Jira: its state, connecting it with the details the user typed, and
-  // syncing it on demand. A failure is a plain sentence.
-  jira: {
-    view(): JiraView;
-    connect(details: JiraDetails): Promise<{ jira: JiraView } | { problem: string }>;
-    sync(): Promise<{ jira: JiraView } | { problem: string }>;
-  };
+  // The connected folder and Jira as they stand; connecting and syncing
+  // either is an action.
+  folder(): FolderView | null;
+  jira(): JiraView;
   log: Log;
 };
-
-// What the user types to connect Jira. Validation messages never quote a value.
-export type JiraDetails = { site: string; email: string; token: string; project: string };
 
 // Body caps, in bytes.
 const smallBody = 4 * 1024;
@@ -165,16 +147,9 @@ const droppedBody = object({
 });
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
-const hashBody = object({ hash: string });
-const editBody = object({
-  remove: refine(array(ulidValue), (ids) => ids.length > 0, "nothing to remove"),
-});
 const tokenBody = object({ token: string });
-// A reason goes with a rejection only. The person's becomes the thread's
-// next message; a review-link holder's is held for the person, and shorter.
-const reasonValue = optional(textValue);
-const rejectBody = object({ hash: string, reason: reasonValue });
-
+// A reason goes with a rejection only. A review-link holder's is held for the
+// person, and shorter than the person's own.
 const reviewDecision = refine(
   object({
     token: string,
@@ -194,7 +169,6 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
-const closeBody = object({ via: closeVia });
 // The window makes a workstream from a cluster or from picked items; a workstream from
 // nothing comes only with its thread.
 const windowWorkstream = refine(
@@ -206,21 +180,6 @@ const windowWorkstream = refine(
     (body.kind === "cluster" || body.kind === "picked"),
   "expected a cluster or picked items",
 );
-const folderBody = object({
-  path: refine(
-    string,
-    (path) => path.trim() !== "" && path.length <= 1024 && !path.includes("\0"),
-    "expected a folder path",
-  ),
-});
-const typedValue = (max: number, what: string) =>
-  refine(string, (text) => text.trim() !== "" && text.length <= max, `expected ${what}`);
-const jiraBody = object({
-  site: typedValue(200, "a site"),
-  email: typedValue(254, "an email address"),
-  token: typedValue(1024, "an API token"),
-  project: typedValue(32, "a project key"),
-});
 const tinyBody = 256;
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
@@ -264,7 +223,7 @@ async function readJson<T>(request: Request, limit: number, validator: Validator
 }
 
 // An action's refusal as an HTTP status.
-const actionStatus = { invalid: 400, refused: 403, "not-found": 404 } as const;
+const actionStatus = { invalid: 400, refused: 403, "not-found": 404, conflict: 409 } as const;
 
 // The window's door is the user's.
 const user: Actor = { kind: "user" };
@@ -285,8 +244,7 @@ function linePlace(params: URLSearchParams): LinePlace | null {
 // A change-set refusal (`ChangeSetError`, by its name and code) as an HTTP
 // status; null for any other error.
 function changeSetStatus(error: unknown): number | null {
-  if (!(error instanceof Error) || error.name !== "ChangeSetError" || !("code" in error))
-    return null;
+  if (!isChangeSetError(error)) return null;
   return error.code === "not-found" ? 404 : error.code === "invalid" ? 400 : 409;
 }
 
@@ -316,24 +274,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!workstream || workstream.workspaceId !== deps.workspaceId)
       throw new Refused(404, "no such workstream");
     return workstream;
-  };
-  // Opens a thread on a workstream's current version, and starts its first turn
-  // when it opens with a message.
-  const openThread = (workstreamId: Ulid, version: number, text: string | undefined): Ulid => {
-    const threadId = deps.newId();
-    const now = deps.now();
-    threads.open({ id: threadId, workspaceId: deps.workspaceId, workstreamId }, now);
-    deps.emit({
-      name: "thread.opened",
-      at: now,
-      workspaceId: deps.workspaceId,
-      threadId,
-      workstreamId,
-      regionSize: workstreams.region(workstreamId, version)?.items.length ?? 0,
-    });
-    if (text !== undefined) turns.say(threadId, text);
-    else turns.touched(threadId);
-    return threadId;
   };
   const mustThread = (id: string) => {
     const thread = threads.get(id as Ulid, deps.now());
@@ -382,62 +322,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       (id) => changeSets.applying(id as Ulid),
       (id) => changeSets.writable(id as Ulid),
     );
-  };
-
-  // Every action that changes a change set tells the pages watching its
-  // thread, through this: whether it is applying now, or has changed.
-  const tell = (set: { id: Ulid; threadId: Ulid }, applying: boolean) =>
-    turns.changeSet(set.threadId, set.id, applying);
-
-  // Applies a change set, and tells when that starts and when it ends. The
-  // engine marks it applying before `apply` returns its promise, so the first
-  // reload sees that.
-  const applyTold = async (id: Ulid) => {
-    const set = await mustChangeSet(id);
-    const applying = changeSets.apply(id);
-    tell(set, true);
-    try {
-      return await applying;
-    } finally {
-      tell(set, false);
-    }
-  };
-
-  // Decides, and on approval applies at once: approving is what lets Oriel
-  // write, so replay follows it (decision 0003). A rejection is the thread's
-  // to answer: it asks what was wrong. The person's own reason is the
-  // answer, which starts a turn; one that can't be said, mid-turn or past
-  // the thread's caps, leaves the rejection standing, and says why. A
-  // review-link holder's is held in the thread for the person, whatever the
-  // turn or the caps.
-  const decide = async (
-    id: Ulid,
-    kind: "approved" | "rejected",
-    approver: Parameters<ChangeSets["decide"]>[2],
-    hash: string,
-    reason: string | null = null,
-  ) => {
-    const decided = await changeSets.decide(id, kind, approver, hash);
-    if (kind === "rejected") {
-      tell(decided, false);
-      try {
-        turns.rejected(decided, approver.via === "review-link" ? approver.by : null, reason);
-        return { report: null, problem: null };
-      } catch (error) {
-        if (!(error instanceof ThreadBusy || error instanceof ThreadLimit)) throw error;
-        return { report: null, problem: error.message };
-      }
-    }
-    // The decision stands even if applying it is refused (another apply is
-    // under way, say): the change set says where it stands, and why.
-    try {
-      const report = await applyTold(id);
-      await deps.applied(await mustChangeSet(id));
-      return { report, problem: null };
-    } catch (error) {
-      if (changeSetStatus(error) === null || !(error instanceof Error)) throw error;
-      return { report: null, problem: error.message };
-    }
   };
 
   const stream = (threadId: Ulid, after: number): Reply => {
@@ -516,7 +400,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       method: "GET",
       path: at("/folder"),
-      run: async () => json(200, { folder: deps.folder.view() }),
+      run: async () => json(200, { folder: deps.folder() }),
     },
     {
       // Connects the folder whose path the user typed: there is no native
@@ -525,8 +409,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/folder"),
       async run(_, request) {
-        const { path } = await readJson(request, smallBody, folderBody);
-        const connected = await deps.folder.connect(path);
+        const { path } = await readJson(request, smallBody, object({ path: unknown }));
+        const input = checked("source.connect", { kind: "folder", path });
+        const connected = await deps.dispatch("source.connect", input, user);
         if ("problem" in connected) throw new Refused(400, connected.problem);
         return json(200, connected);
       },
@@ -536,7 +421,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/folder/sync"),
       async run(_, request) {
         await readJson(request, smallBody, emptyBody);
-        const synced = await deps.folder.sync();
+        const synced = await deps.dispatch("source.sync", { source: "folder" }, user);
         if ("problem" in synced) throw new Refused(409, synced.problem);
         return json(200, synced);
       },
@@ -544,7 +429,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       method: "GET",
       path: at("/jira"),
-      run: async () => json(200, { jira: deps.jira.view() }),
+      run: async () => json(200, { jira: deps.jira() }),
     },
     {
       // Connects Jira with the details the user typed. They're checked
@@ -553,8 +438,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/jira"),
       async run(_, request) {
-        const details = await readJson(request, smallBody, jiraBody);
-        const connected = await deps.jira.connect(details);
+        const typed = await readJson(
+          request,
+          smallBody,
+          object({ site: unknown, email: unknown, token: unknown, project: unknown }),
+        );
+        const input = checked("source.connect", { kind: "jira", ...typed });
+        const connected = await deps.dispatch("source.connect", input, user);
         if ("problem" in connected) throw new Refused(400, connected.problem);
         return json(200, connected);
       },
@@ -566,9 +456,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/jira/sync"),
       async run(_, request) {
         await readJson(request, smallBody, emptyBody);
-        if (!deps.jira.view().connected)
-          throw new Refused(409, "Jira isn't connected to this window yet.");
-        const synced = await deps.jira.sync();
+        const synced = await deps.dispatch("source.sync", { source: "jira" }, user);
         if ("problem" in synced) throw new Refused(502, synced.problem);
         return json(200, synced);
       },
@@ -765,9 +653,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/workstreams/:id/threads"),
       async run([id = ""], request) {
-        const workstream = mustWorkstream(id);
         const { text } = await readJson(request, messageBody, openThreadBody);
-        return json(201, { id: openThread(workstream.id, workstream.version, text) });
+        const opened = checked("thread.open", { workstream: id });
+        const { thread } = await deps.dispatch("thread.open", opened, user);
+        if (text !== undefined) await deps.dispatch("thread.say", { thread, text }, user);
+        return json(201, { id: thread });
       },
     },
     {
@@ -784,13 +674,10 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/threads"),
       async run(_, request) {
         const { text } = await readJson(request, messageBody, messageBodyValue);
-        const { workstream: workstreamId } = await deps.dispatch(
-          "workstream.create",
-          { kind: "thread" },
-          user,
-        );
-        const workstream = mustWorkstream(workstreamId);
-        return json(201, { id: openThread(workstream.id, workstream.version, text), workstreamId });
+        const { workstream } = await deps.dispatch("workstream.create", { kind: "thread" }, user);
+        const { thread } = await deps.dispatch("thread.open", { workstream }, user);
+        await deps.dispatch("thread.say", { thread, text }, user);
+        return json(201, { id: thread, workstreamId: workstream });
       },
     },
     {
@@ -825,18 +712,23 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/threads/:id/messages"),
       async run([id = ""], request) {
-        const thread = mustThread(id);
-        const { text } = await readJson(request, messageBody, messageBodyValue);
-        return json(202, turns.say(thread.id, text));
+        const { text } = await readJson(request, messageBody, object({ text: unknown }));
+        const { seq } = await deps.dispatch(
+          "thread.say",
+          checked("thread.say", { thread: id, text }),
+          user,
+        );
+        return json(202, { seq });
       },
     },
     {
       method: "POST",
       path: at("/threads/:id/stop"),
       async run([id = ""], request) {
-        const thread = mustThread(id);
         await readJson(request, smallBody, emptyBody);
-        return json(200, { stopped: turns.stop(thread.id) });
+        const input = checked("thread.stop", { thread: id });
+        const { stopped } = await deps.dispatch("thread.stop", input, user);
+        return json(200, { stopped });
       },
     },
     {
@@ -860,37 +752,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // Not while its agent answers or a change set of it applies: either
-      // may yet write.
       method: "POST",
       path: at("/threads/:id/delete"),
       async run([id = ""], request) {
-        const { via } = await readJson(request, smallBody, closeBody);
-        const thread = mustThread(id);
-        if (turns.running(thread.id)) throw new ThreadBusy();
-        const now = deps.now();
-        const deleted = threads.delete(thread.id, now, (set) => changeSets.applying(set));
-        if (!deleted)
-          throw new Refused(
-            409,
-            "A change set of this thread is being applied. Wait for it to finish.",
-          );
-        turns.deleted(thread.id);
-        deps.emit({
-          name: "thread.deleted",
-          at: now,
-          workspaceId: deps.workspaceId,
-          threadId: thread.id,
-          workstreamId: deleted.workstreamId,
-          kept: deleted.kept,
-          workstreamRemoved: deleted.workstreamRemoved,
-          via: via ?? "menu",
-        });
-        const reply: DeletedView = {
-          workstreamId: deleted.workstreamId,
-          workstreamRemoved: deleted.workstreamRemoved,
-        };
-        return json(200, reply);
+        const { via } = await readJson(request, smallBody, object({ via: unknown }));
+        const input = checked("thread.delete", { thread: id, via });
+        const { undo: _, ...deleted } = await deps.dispatch("thread.delete", input, user);
+        return json(200, deleted satisfies DeletedView);
       },
     },
     {
@@ -908,36 +776,34 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/change-sets/:id/edit"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
-        const { remove } = await readJson(request, smallBody, editBody);
-        tell(await changeSets.edit(set.id, { remove }), false);
-        return changeSetReply(set.id);
+        const { remove } = await readJson(request, smallBody, object({ remove: unknown }));
+        const input = checked("changeset.edit", { changeSet: id, remove });
+        await deps.dispatch("changeset.edit", input, user);
+        return changeSetReply(input.changeSet);
       },
     },
     {
       method: "POST",
       path: at("/change-sets/:id/approve"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
-        const { hash } = await readJson(request, smallBody, hashBody);
-        const decided = await decide(set.id, "approved", { via: "thread", by: "user" }, hash);
-        return changeSetReply(set.id, decided);
+        const { hash } = await readJson(request, smallBody, object({ hash: unknown }));
+        const input = checked("changeset.approve", { changeSet: id, hash });
+        const { report, problem } = await deps.dispatch("changeset.approve", input, user);
+        return changeSetReply(input.changeSet, { report, problem });
       },
     },
     {
       method: "POST",
       path: at("/change-sets/:id/reject"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
-        const { hash, reason } = await readJson(request, messageBody, rejectBody);
-        const decided = await decide(
-          set.id,
-          "rejected",
-          { via: "thread", by: "user" },
-          hash,
-          reason ?? null,
+        const body = await readJson(
+          request,
+          messageBody,
+          object({ hash: unknown, reason: unknown }),
         );
-        return changeSetReply(set.id, decided);
+        const input = checked("changeset.reject", { changeSet: id, ...body });
+        const { report, problem } = await deps.dispatch("changeset.reject", input, user);
+        return changeSetReply(input.changeSet, { report, problem });
       },
     },
     {
@@ -967,11 +833,10 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/change-sets/:id/apply"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        const report = await applyTold(set.id);
-        await deps.applied(await mustChangeSet(set.id));
-        return changeSetReply(set.id, { report });
+        const input = checked("changeset.apply", { changeSet: id });
+        const { report } = await deps.dispatch("changeset.apply", input, user);
+        return changeSetReply(input.changeSet, { report });
       },
     },
     {
@@ -980,45 +845,44 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/change-sets/:id/dismiss"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        const { warnings } = await changeSets.dismiss(set.id);
-        tell(set, false);
-        return changeSetReply(set.id, { warnings });
+        const input = checked("changeset.dismiss", { changeSet: id });
+        const { warnings } = await deps.dispatch("changeset.dismiss", input, user);
+        return changeSetReply(input.changeSet, { warnings });
       },
     },
     {
       method: "POST",
       path: at("/change-sets/:id/revert"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        const reverted = await changeSets.revert(set.id);
-        if ("conflicts" in reverted)
+        const input = checked("changeset.revert", { changeSet: id });
+        const reverted = await deps.dispatch("changeset.revert", input, user);
+        if (reverted.conflicts)
           return json(409, {
             error: deps.explain(reverted.conflicts),
             conflicts: reverted.conflicts.length,
           });
-        tell(set, false);
-        return changeSetReply(set.id, { revert: reverted.id });
+        return changeSetReply(input.changeSet, { revert: reverted.revert });
       },
     },
     {
       method: "POST",
       path: at("/change-sets/:id/review-link"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        return json(200, { url: (await changeSets.reviewLink(set.id)).href });
+        const input = checked("review-link.create", { changeSet: id });
+        const { url } = await deps.dispatch("review-link.create", input, user);
+        return json(200, { url });
       },
     },
     {
       method: "POST",
       path: at("/change-sets/:id/review-link/revoke"),
       async run([id = ""], request) {
-        const set = await mustChangeSet(id);
         await readJson(request, smallBody, emptyBody);
-        await changeSets.revokeReviewLink(set.id);
+        const input = checked("review-link.revoke", { changeSet: id });
+        await deps.dispatch("review-link.revoke", input, user);
         return json(200, { revoked: true });
       },
     },
@@ -1044,13 +908,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run(_, request) {
         const body = await readJson(request, messageBody, reviewDecision);
         // The decision checks that the token is live for this change set.
-        const { problem } = await decide(
-          body.changeSet,
-          body.kind,
-          { via: "review-link", token: body.token, by: body.name.trim() },
-          body.hash,
-          body.reason ?? null,
-        );
+        const holder: Actor = { kind: "review-link", by: body.name.trim() };
+        const decision = { changeSet: body.changeSet, hash: body.hash, token: body.token };
+        const { problem } =
+          body.kind === "approved"
+            ? await deps.dispatch("changeset.approve", decision, holder)
+            : await deps.dispatch(
+                "changeset.reject",
+                { ...decision, ...(body.reason === undefined ? {} : { reason: body.reason }) },
+                holder,
+              );
         const set = await mustChangeSet(body.changeSet);
         return json(200, {
           changeSet: await viewOf(set),
@@ -1066,13 +933,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run(_, request) {
         const body = await readJson(request, smallBody, reviewDismissal);
         // The engine checks that the token is live for this change set.
-        const { warnings } = await changeSets.dismiss(
-          body.changeSet as Ulid,
-          { via: "review-link", token: body.token, by: body.name.trim() },
-          body.hash,
+        const { warnings } = await deps.dispatch(
+          "changeset.dismiss",
+          { changeSet: body.changeSet, hash: body.hash, token: body.token },
+          { kind: "review-link", by: body.name.trim() },
         );
         const set = await mustChangeSet(body.changeSet);
-        tell(set, false);
         return json(200, { changeSet: await viewOf(set), warnings });
       },
     },

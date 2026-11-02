@@ -227,3 +227,28 @@ test("an agent event is rewritten in place; nothing else is", () => {
   const said = threads.append(threadId, { role: "user", text: "hi" }, id(51), after(1));
   assert.equal(threads.rewrite(threadId, said, { kind: "c" }), false);
 });
+
+test("marking a thread done again keeps who marked it, and when; reopened or working again, it takes a new mark", () => {
+  const { db, threads, threadId, message } = fresh();
+  const agent = { kind: "agent", threadId } as const;
+  const mark = () => {
+    const row = db.prepare("select marked_by from done_marks where thread_id = ?").get(threadId) as
+      | { marked_by: string }
+      | undefined;
+    const thread = db.prepare("select marked_done_at from threads where id = ?").get(threadId) as {
+      marked_done_at: string | null;
+    };
+    return [row && JSON.parse(row.marked_by), thread.marked_done_at];
+  };
+  assert.equal(threads.markDone(threadId, after(1000)), true);
+  assert.equal(threads.markDone(threadId, after(2000), agent), false);
+  assert.deepEqual(mark(), [{ kind: "user" }, after(1000)]);
+  // Reopened in between, the agent's is a new mark.
+  assert.equal(threads.reopen(threadId, after(1000)), true);
+  assert.equal(threads.markDone(threadId, after(3000), agent), true);
+  assert.deepEqual(mark(), [agent, after(3000)]);
+  // Working again since, as a message makes it, the user's is a new mark.
+  message(after(4000));
+  assert.equal(threads.markDone(threadId, after(5000)), true);
+  assert.deepEqual(mark(), [{ kind: "user" }, after(5000)]);
+});

@@ -261,6 +261,7 @@ const causes: Record<WorkstreamChangeView["cause"], string> = {
   tool: " · by an outside tool",
   "review-link": " · from a review link",
   "change-set": " · by an applied change set",
+  sync: " · by a sync",
 };
 
 // The workstream's versions, newest first, folded. What an agent did names

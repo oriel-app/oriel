@@ -25,7 +25,7 @@ import { dispatcher } from "./actions.ts";
 import { intentsOf } from "./intents.ts";
 import { history } from "./turns.ts";
 import type { Step } from "./scripted-agent.ts";
-import { json, type Script, testApp } from "./testing.ts";
+import { json, type Script, testApp, unreached } from "./testing.ts";
 
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
@@ -239,7 +239,10 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     records: () => [member("SYN-1", "10001"), member("SYN-2", "10002")] as unknown as IndexRecord[],
     clusters: () => [],
     created: async () => [],
-    held: { sendHeld: () => assert.fail(), discardHeld: () => assert.fail() },
+    turns: unreached("turns"),
+    changeSets: unreached("changeSets"),
+    applied: () => assert.fail(),
+    sources: unreached("sources"),
     running: (thread) => thread === busy || thread === mine,
     unsettled: async () => [],
     emit: () => {},
