@@ -221,6 +221,8 @@ export type RunView = {
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
   // `ownAgent`: this thread's agent made every change it covers.
+  // `fromLine`: the user made every change it covers by an Undo or Redo
+  // under this thread's agent's reply.
   | {
       kind: "marker";
       from: number;
@@ -228,6 +230,7 @@ export type ChatEntry = { seq: number; at: string } & (
       added: ItemRef[];
       removed: ItemRef[];
       ownAgent?: true;
+      fromLine?: true;
     }
   | { kind: "text"; text: string }
   | { kind: "run.started"; runId: string; script: string }

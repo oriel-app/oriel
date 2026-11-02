@@ -2,7 +2,7 @@
 // opens a thread. Items are added from the window, or dropped here, and
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
-import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
+import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
 
 // A removal the user can still undo: the member as it showed, the workstream
@@ -29,6 +29,9 @@ export type WorkstreamModel = {
   name: string | null;
   pending: boolean;
   notice: string | null;
+  // What the last load that failed said, as when another tab deleted the
+  // workstream. A load that works clears it from the notice.
+  lost: string | null;
   // Members removed with ×, hidden at once, in order: the first is being
   // removed, and the rest wait for it, so each answer is known to be its own.
   // `member` is null when the page hadn't loaded it.
@@ -63,6 +66,7 @@ export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
       name: null,
       pending: false,
       notice: null,
+      lost: null,
       removing: [],
       removals: [],
       held: { pointer: false, focus: false },
@@ -197,6 +201,23 @@ export const latestUndo = (model: WorkstreamModel): Removal | null =>
 const newer = (model: WorkstreamModel, view: WorkstreamView): WorkstreamView =>
   model.view && model.view.workstream.version > view.workstream.version ? model.view : view;
 
+// The workstream loaded, or failed to: a load that works takes back what a
+// failed one said, and that Oriel couldn't be reached.
+function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
+  if (!msg.ok) {
+    const lost = errorOf(msg.body);
+    return { ...model, status: model.view ? "ready" : "failed", notice: lost, lost };
+  }
+  const notice = model.notice === model.lost ? null : reached(model.notice);
+  return {
+    ...model,
+    view: newer(model, msg.body as WorkstreamView),
+    status: "ready",
+    notice,
+    lost: null,
+  };
+}
+
 export const nothingToAdd = "Nothing that was dropped names an item. Drop a Jira item or a file.";
 
 export function workstreamReplied(
@@ -237,21 +258,12 @@ export function workstreamReplied(
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
       return [model, [get(`/api/workstreams/${model.id}`, { kind: "workstream", id: model.id })]];
     }
-    case "workstream": {
-      if (tag.id !== model.id) return [model, []];
-      if (!msg.ok)
-        return [
-          { ...model, status: model.view ? "ready" : "failed", notice: errorOf(msg.body) },
-          [],
-        ];
-      return [{ ...model, view: newer(model, msg.body as WorkstreamView), status: "ready" }, []];
-    }
-    // Loaded again after the workspace changed, maybe in another tab, which
-    // may have deleted it: the page says why it can't go on.
+    // Loaded, or loaded again after the workspace changed, maybe in another
+    // tab, which may have deleted it: the page says why it can't go on.
+    case "workstream":
     case "workstreamSynced":
       if (tag.id !== model.id) return [model, []];
-      if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];
-      return [{ ...model, view: newer(model, msg.body as WorkstreamView), status: "ready" }, []];
+      return [loaded(model, msg), []];
     case "renamed": {
       if (tag.id !== model.id || model.view === null) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];

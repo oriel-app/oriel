@@ -5,6 +5,7 @@ import {
   type ChangeSet,
   type ChangeSets,
   type Diff,
+  type WorkstreamChange,
   type WorkstreamMember,
   type IndexRecord,
   type Instant,
@@ -309,22 +310,23 @@ export function views(deps: ViewDeps) {
     activityAt,
   });
 
-  const changeView = (workstreamId: Ulid, from: number, to: number): WorkstreamChangeView[] => {
+  // A workstream's changes after version `from`, up to `to`.
+  const between = (workstreamId: Ulid, from: number, to: number): WorkstreamChange[] =>
+    workstreams.changes(workstreamId, from).filter((change) => change.version <= to);
+
+  const changeView = (changes: readonly WorkstreamChange[]): WorkstreamChangeView[] => {
     // By identity, so an item that moved since keeps its title.
     const { find } = lookup();
-    return workstreams
-      .changes(workstreamId, from)
-      .filter((change) => change.version <= to)
-      .map((change) => ({
-        version: change.version,
-        at: change.at,
-        added: change.added.map((m) => ref(find(m), m.id)),
-        removed: change.removed.map((m) => ref(find(m), m.id)),
-        cause: change.cause.kind,
-        ...(change.cause.kind === "agent"
-          ? { thread: { id: change.cause.threadId, title: title(change.cause.threadId) } }
-          : {}),
-      }));
+    return changes.map((change) => ({
+      version: change.version,
+      at: change.at,
+      added: change.added.map((m) => ref(find(m), m.id)),
+      removed: change.removed.map((m) => ref(find(m), m.id)),
+      cause: change.cause.kind,
+      ...(change.cause.kind === "agent"
+        ? { thread: { id: change.cause.threadId, title: title(change.cause.threadId) } }
+        : {}),
+    }));
   };
 
   // The items of a thread's workstream that the agent or an outside tool
@@ -360,7 +362,13 @@ export function views(deps: ViewDeps) {
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "marker") {
-      const changes = changeView(workstreamId, message.from, message.to);
+      const covered = between(workstreamId, message.from, message.to);
+      const changes = changeView(covered);
+      const causes = covered.map((change) => change.cause);
+      const ownAgent = (cause: WorkstreamChange["cause"]) =>
+        cause.kind === "agent" && cause.threadId === own.thread;
+      const fromLine = (cause: WorkstreamChange["cause"]) =>
+        cause.kind === "user" && cause.via === own.thread;
       return {
         ...at,
         kind: "marker",
@@ -370,8 +378,12 @@ export function views(deps: ViewDeps) {
         removed: changes.flatMap((c) => c.removed),
         // This thread's agent made every change it covers, so the list of
         // what it did says it already.
-        ...(changes.length > 0 && changes.every((c) => c.thread?.id === own.thread)
-          ? { ownAgent: true as const }
+        ...(causes.length > 0 && causes.every(ownAgent) ? { ownAgent: true as const } : {}),
+        // It covers the user's Undo or Redo under this thread's agent's
+        // reply, and nothing but that and what the agent did, which the
+        // lines there say.
+        ...(causes.some(fromLine) && causes.every((cause) => fromLine(cause) || ownAgent(cause))
+          ? { fromLine: true as const }
           : {}),
       };
     }
@@ -444,7 +456,7 @@ export function views(deps: ViewDeps) {
       return {
         workstream: workstreamSummary(id),
         members: members(workstreams.region(id, workstream.version)?.items ?? []),
-        changes: changeView(id, 0, workstream.version).toReversed(),
+        changes: changeView(between(id, 0, workstream.version)).toReversed(),
         threads: await Promise.all(threads.ofWorkstream(id, deps.now()).map(threadSummary)),
       };
     },

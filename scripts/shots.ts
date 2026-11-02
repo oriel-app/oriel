@@ -343,8 +343,10 @@ const longAsk = await ask(
   "I'm meeting the payments team tomorrow morning and want to walk in knowing where checkout stands. Which stories in this epic have nobody on them, and is anything stopping saved cards from shipping this quarter? A short list I can paste into the meeting notes would be ideal.",
 );
 // Answered, over items it needn't change: the user marks it done.
-await post(`/api/threads/${await ask("What's in here?")}/done`, {});
-// A later change to the workstream shows in working threads as a marker.
+const answered = await ask("What's in here?");
+await post(`/api/threads/${answered}/done`, {});
+// A later change to the workstream shows in working threads as a marker; a
+// done one keeps its version, behind, until the user writes again.
 await post(`/api/workstreams/${workstream.id}/add`, { items: ["jira:SYN-3"] });
 
 // Gift cards planned, then rejected: with no reason, the thread asks what was
@@ -935,6 +937,11 @@ const scenes: Scene[] = [
       // The rail follows the version the Undo made, without a reload.
       await page.locator(".rail-title", { hasText: "v3" }).waitFor();
     },
+  },
+  {
+    name: "thread-behind",
+    path: `/threads/${answered}`,
+    act: (page) => page.locator(".rail-note").waitFor(),
   },
   {
     name: "workstream-actions",

@@ -2286,10 +2286,6 @@ a.replies:hover {
   border-top: 1px solid var(--line);
 }
 
-.marker-version {
-  font-variant-numeric: tabular-nums;
-}
-
 .ref-title {
   color: var(--text-muted);
 }

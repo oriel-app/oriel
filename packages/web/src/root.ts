@@ -65,6 +65,7 @@ import {
   type NewThreadMsg,
   newThreadReplied,
   reconnected,
+  refresh as refreshThread,
   streamed,
   type ThreadModel,
   type ThreadMsg,
@@ -155,8 +156,7 @@ const reloadShown = (model: Model): Effect[] => {
     return [
       get(`/api/workstreams/${workstream.id}`, { kind: "workstreamSynced", id: workstream.id }),
     ];
-  if (route.page === "thread" && thread)
-    return [get(`/api/threads/${thread.id}`, { kind: "thread", id: thread.id })];
+  if (route.page === "thread" && thread) return [refreshThread(thread)];
   return [];
 };
 
@@ -272,15 +272,52 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 
 // When the window or the lists load again, something may have moved in the
 // index, so an open panel asks whether its item changed since its read.
-// However a thread's page changed, it scrolls the same way.
+// However a thread's page changed, it scrolls the same way. However the user
+// asked for a page, one already open stays as it is.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
-  const [next, effects] = updated(model, msg);
+  const [next, effects] = staying(...updated(model, msg));
   const moved = effects.some(
     (effect) =>
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
   return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
+}
+
+// The page a route opens, whatever is open in the panel beside it or where
+// in a thread it opens.
+const pageOf = (route: Route): Route =>
+  route.page === "thread" ? { page: "thread", id: route.id } : route;
+
+// Whether the page `route` names is the one on screen, loaded: a thread or
+// workstream that didn't load, or a draft (each New thread is a new one),
+// isn't.
+function onScreen(model: Model, route: Route): boolean {
+  if (!samePage(pageOf(model.route), pageOf(route))) return false;
+  if (route.item !== undefined && route.item !== model.route.item) return false;
+  if (route.page === "thread") {
+    const view = model.thread?.view;
+    if (!view) return false;
+    const { changeSet } = route;
+    return changeSet === undefined || view.changeSets.some((set) => set.id === changeSet);
+  }
+  if (route.page === "workstream") return model.workstream?.view != null;
+  return route.page !== "new-thread";
+}
+
+// Going to the page already on screen, by a link, Needs you or a search,
+// keeps it as it is: where it's scrolled, a draft, the panel. It reloads
+// nothing and only scrolls to the change set the route names, if any. Back,
+// Forward and the address bar still load it again (`routed`).
+function staying(next: Model, effects: Effect[]): [Model, Effect[]] {
+  const here = (effect: Effect): Effect[] => {
+    if (effect.type !== "navigate" || effect.stay || !onScreen(next, effect.route)) return [effect];
+    const { route } = effect;
+    return route.page === "thread" && route.changeSet !== undefined
+      ? [{ type: "showChangeSet", changeSetId: route.changeSet }]
+      : [];
+  };
+  return [next, effects.flatMap(here)];
 }
 
 function updated(model: Model, msg: Msg): [Model, Effect[]] {
@@ -522,7 +559,7 @@ function closed(model: Model, msg: Replied): [Model, Effect[]] {
     return [model, lists];
   }
   if (route.page === "thread" && route.id === threadId && model.thread !== null)
-    return [model, [...lists, get(`/api/threads/${threadId}`, { kind: "thread", id: threadId })]];
+    return [model, [...lists, refreshThread(model.thread)]];
   if (route.page === "workstream") return [model, [...lists, ...initWorkstream(route.id)[1]]];
   return [model, lists];
 }

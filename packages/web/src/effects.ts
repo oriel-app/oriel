@@ -1,4 +1,4 @@
-import type { Effect } from "./http.ts";
+import { type Effect, unreachable } from "./http.ts";
 import type { Msg } from "./root.ts";
 import { changeSetAnchor, parseRoute, routeUrl } from "./route.ts";
 import type { ThreadMsg } from "./thread.ts";
@@ -45,14 +45,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
           const body: unknown = await response.json().catch(() => null);
           dispatch({ type: "replied", tag, ok: response.ok, body });
         })
-        .catch(() =>
-          dispatch({
-            type: "replied",
-            tag,
-            ok: false,
-            body: { error: "Oriel can't be reached. Is it still running?" },
-          }),
-        );
+        .catch(() => dispatch({ type: "replied", tag, ok: false, body: { error: unreachable } }));
       return;
     }
     case "navigate": {

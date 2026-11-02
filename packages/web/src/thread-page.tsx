@@ -241,9 +241,6 @@ function ChatBlock(props: {
             {block.added.length > 0 && block.removed.length > 0 && " · "}
             {block.removed.length > 0 && <>Removed {refList(block.removed)}</>}
           </span>
-          <span class="marker-version">
-            v{block.from} → v{block.to}
-          </span>
         </li>
       );
     case "run":
@@ -1017,8 +1014,7 @@ function Region({ view }: { view: ThreadView }) {
       </h2>
       {behind && (
         <p class="rail-note">
-          The workstream is at v{view.workstream.version}. This thread catches up when you write
-          again.
+          This workstream has changed since; this thread catches up when you write again.
         </p>
       )}
       {view.members.length === 0 && !behind && (

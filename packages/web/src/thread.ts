@@ -3,7 +3,7 @@
 // they're stored; change sets are acted on with explicit requests.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
-import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
+import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
   ActionLineView,
   ChangeSetView,
@@ -48,6 +48,9 @@ export type ThreadModel = {
   notice: string | null;
   // The thread was deleted while its page was open.
   deleted: boolean;
+  // How many statuses the thread's stream has sent. A load asked for before
+  // the latest one is answered with an older running, state and version.
+  statuses: number;
   // The page shows the latest entry, so what arrives keeps it there.
   atLatest: boolean;
   // The change set the thread's address names: the page opens there instead
@@ -110,6 +113,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       notes: {},
       notice: null,
       deleted: false,
+      statuses: 0,
       atLatest: changeSet === null,
       at: changeSet === null ? null : { changeSet, shown: false },
     },
@@ -117,8 +121,9 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
   ];
 }
 
-const refresh = (model: ThreadModel): Effect =>
-  get(`/api/threads/${model.id}`, { kind: "thread", id: model.id });
+// The thread loaded again, noting what its stream has said so far.
+export const refresh = ({ id, statuses }: ThreadModel): Effect =>
+  get(`/api/threads/${id}`, { kind: "thread", id, ...(statuses > 0 && { statuses }) });
 const diffOf = (changeSetId: string): Effect =>
   post(`/api/change-sets/${changeSetId}/diff`, {}, { kind: "diff", changeSetId });
 
@@ -178,11 +183,13 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
   switch (msg.type) {
     case "draftChanged":
       return [{ ...model, draft: msg.text }, []];
+    // Sending takes the page to the latest entry, where what was said and the
+    // reply to it show, and keeps it there.
     case "sendClicked": {
       const text = model.draft.trim();
       if (text === "" || model.sending || model.view?.running) return [model, []];
       return [
-        { ...model, sending: true, notice: null },
+        { ...model, sending: true, notice: null, atLatest: true },
         [post(`/api/threads/${model.id}/messages`, { text }, { kind: "sent", threadId: model.id })],
       ];
     }
@@ -281,7 +288,12 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       // Sending is a message: not while the agent answers, nor as nothing.
       if (sending && (model.view?.running || edited === "")) return [model, []];
       return [
-        { ...model, settling: [...model.settling, seq], notice: null },
+        {
+          ...model,
+          settling: [...model.settling, seq],
+          notice: null,
+          atLatest: model.atLatest || sending,
+        },
         [
           post(
             `/api/threads/${model.id}/held/${seq}/${sending ? "send" : "discard"}`,
@@ -361,6 +373,7 @@ const nearLatest = 40;
 // names, and while the user is at the latest, the thread or a diff changing
 // (an entry, a change set's status, a reload after its workstream changed)
 // keeps them there, as does the composer emptying once a message is sent.
+// Sending one, or a held message, takes them there from anywhere.
 // Once it renders, the page is asked again, so a user who scrolled up
 // meanwhile, or is reading a run they opened, stays where they are.
 export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
@@ -382,10 +395,18 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       if (!msg.ok) return [{ ...model, status: model.view ? "ready" : "failed" }, []];
       const view = msg.body as ThreadView;
       const first = model.view === null;
-      // Entries the stream delivered after this view was built stay.
+      // Entries the stream delivered after this view was built stay, and so
+      // does a status it sent after this was asked for: the reply is older.
       const newer = model.view?.entries.filter((e) => e.seq > view.lastSeq) ?? [];
+      const said = (tag.statuses ?? 0) < model.statuses ? model.view : null;
       const merged: ThreadView = {
         ...view,
+        ...(said && {
+          running: said.running,
+          state: said.state,
+          regionVersion: said.regionVersion,
+          title: said.title,
+        }),
         entries: [...view.entries, ...newer],
         lastSeq: Math.max(view.lastSeq, model.view?.lastSeq ?? 0),
       };
@@ -395,7 +416,7 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
       return [
-        { ...model, view: merged, status: "ready", editing },
+        { ...model, view: merged, status: "ready", editing, notice: reached(model.notice) },
         [
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
@@ -541,7 +562,8 @@ export function expected(model: ThreadModel): ThreadView | null {
 // The thread's event stream reconnected after dropping: whatever it missed
 // (an apply that ended, an edit this tab made) isn't replayed, and an ok reply
 // waits on the stream, so the thread reloads once and every change set is
-// diffed again.
+// diffed again. Once those answer, a request that couldn't reach Oriel
+// meanwhile says so no more.
 export function reconnected(model: ThreadModel): [ThreadModel, Effect[]] {
   if (model.view === null) return [model, []];
   return [model, [refresh(model), ...model.view.changeSets.map((set) => diffOf(set.id))]];
@@ -555,6 +577,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
     const moved = event.regionVersion !== view.regionVersion;
     const next = {
       ...model,
+      statuses: model.statuses + 1,
       view: {
         ...view,
         running: event.running,
@@ -564,7 +587,7 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
       },
     };
     // A finished turn may have settled the thread; a new version changes the rail.
-    return [next, moved || (!event.running && view.running) ? [refresh(model)] : []];
+    return [next, moved || (!event.running && view.running) ? [refresh(next)] : []];
   }
   // Applying started, here or elsewhere: nothing can be done with it until it
   // ends, which the thread says. Once it has, or anything else changed it,
@@ -657,6 +680,7 @@ export type Block =
       added: ItemRef[];
       removed: ItemRef[];
       ownAgent?: true;
+      fromLine?: true;
     }
   // `stopped`: its turn ended before it finished, as when the user stopped it.
   | {
@@ -695,8 +719,9 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         else out.push({ kind: "reply", seq: entry.seq, text: entry.text });
         ended = false;
         break;
+      // An Undo or Redo under the agent's reply is said by its line there.
       case "marker":
-        out.push({ ...entry, kind: "marker" });
+        if (!entry.fromLine) out.push({ ...entry, kind: "marker" });
         break;
       case "run.started":
         out.push({
@@ -732,7 +757,8 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
         break;
       // The markers its own changes left just before say what its lines
-      // say, so they fold in; the rail says the version they moved it to.
+      // say, so they fold in; the rail says the version they moved it to,
+      // as it does for every marker.
       case "actions":
         for (let end = out.at(-1); end?.kind === "marker" && end.ownAgent; end = out.at(-1))
           out.pop();
