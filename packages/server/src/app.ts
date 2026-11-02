@@ -72,13 +72,14 @@ import {
   type FixtureWorkspace,
   slackAttrs,
   type SlackContext,
+  type SlackScope,
   slackPerson,
   type SlackSource,
   slackSource,
   webApi,
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
-import { itemDocs, namespacesFor, sources, specs } from "@oriel/sources";
+import { itemDocs, namespacesFor, recognizerFor, sources, specs } from "@oriel/sources";
 import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
@@ -300,6 +301,18 @@ export async function createApp(options: AppOptions): Promise<App> {
     ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
   ];
 
+  // Every connected source's recognizer, for what each sync hands it: Jira's
+  // in the project it syncs, once there is one, and Slack's in its
+  // workspace. A message synced before Jira connects names nothing in Jira
+  // until Slack syncs again.
+  const recognize = () => {
+    const project = source ? (fixture?.project.key ?? writes?.project) : undefined;
+    return recognizerFor({
+      ...(project ? { jira: { projects: [project] } } : {}),
+      ...(slack ? { slack: slack.scope } : {}),
+    });
+  };
+
   // One sync at a time, of any source, through the generic sync worker. Once
   // each ends, every page watching the workspace hears, as even one that
   // failed may have kept pages it read; nobody is watching before the turns
@@ -322,6 +335,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           source: from,
           attrs,
           facets: sources[from.kind].facets,
+          recognize: recognize(),
           index,
           workspaceId,
           full,
@@ -980,6 +994,7 @@ async function slackFrom(
 ): Promise<{
   source: SlackSource;
   context: NonNullable<SlackContext>;
+  scope: SlackScope;
   writes: NonNullable<WriterConfig["slack"]>;
 }> {
   if (mode.kind === "fixture") {
@@ -993,6 +1008,7 @@ async function slackFrom(
         log,
       }),
       context: { channels: fixture.picked, author: await slackPerson(workspace.api) },
+      scope: { workspaceUrl: fixture.team.url },
       writes: {
         credential: { headers: async () => ({}) },
         channels: fixture.picked,
@@ -1011,6 +1027,7 @@ async function slackFrom(
   return {
     source: slackSource({ api, workspaceUrl: workspace.url, channels, log }),
     context: { channels, author: await slackPerson(api) },
+    scope: { workspaceUrl: workspace.url },
     writes: {
       credential: mode.credential,
       channels,

@@ -14,6 +14,7 @@ import {
   clusterZoom,
   epicGrouping,
   listZoom,
+  linkedGrouping,
   stuckGrouping,
 } from "@oriel/groupings";
 import { sources } from "@oriel/sources";
@@ -32,6 +33,7 @@ export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,
   assignee: assigneeGrouping,
   stuck: stuckGrouping,
+  linked: linkedGrouping,
 };
 
 // The items a filter keeps (decision 0027): every search term in the key or

@@ -110,7 +110,7 @@ export function init(
     window: null,
     status: "loading",
     request: 0,
-    open: { epic: [], assignee: [], stuck: [] },
+    open: { epic: [], assignee: [], stuck: [], linked: [] },
     paging: {},
     pageRequest: 0,
     listed: {},

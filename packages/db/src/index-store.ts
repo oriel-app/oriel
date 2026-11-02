@@ -19,6 +19,8 @@ import {
   type SourceKind,
   sourceKinds,
   string,
+  type IndexPage,
+  type ItemId,
   type SyncPage,
   type Ulid,
   union,
@@ -44,6 +46,12 @@ const sourceRow = object({
 const versionRow = object({ version: nullable(number) });
 const existsRow = object({ found: number });
 const stableIdRow = object({ stable_id: string });
+const referenceRow = object({
+  source: string,
+  stable_id: string,
+  to_id: refine(string, isItemId, "expected an item ID"),
+  to_stable_id: string,
+});
 const changeRow = object({
   seq: number,
   source: refine(
@@ -139,6 +147,27 @@ export function indexStore(db: DatabaseSync) {
   const selectChanges = db.prepare(`
     select seq, source, stable_id, version, at, facets, gone from change_log
     where workspace_id = ? and seq > ? order by seq`);
+  const forgetReferences = db.prepare(
+    "delete from item_references where workspace_id = ? and source = ? and stable_id = ?",
+  );
+  const liveByHandle = db.prepare(
+    "select stable_id from items where workspace_id = ? and item_id = ? and gone_at is null",
+  );
+  const insertReference = db.prepare(`
+    insert into item_references (workspace_id, source, stable_id, to_source, to_stable_id, to_handle, at)
+    values (?, ?, ?, ?, ?, ?, ?)`);
+  const resolveWaiting = db.prepare(`
+    update item_references set to_stable_id = ?, to_handle = null
+    where workspace_id = ? and to_source = ? and to_handle = ?`);
+  const pruneWaiting = db.prepare(
+    "delete from item_references where workspace_id = ? and to_handle is not null and at < ?",
+  );
+  const selectReferences = db.prepare(`
+    select r.source, r.stable_id, i.item_id as to_id, i.stable_id as to_stable_id
+    from item_references r join items i
+      on i.workspace_id = r.workspace_id and i.source = r.to_source
+        and i.stable_id = r.to_stable_id and i.gone_at is null
+    where r.workspace_id = ? order by r.rowid`);
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
@@ -198,8 +227,28 @@ export function indexStore(db: DatabaseSync) {
     };
   };
 
-  const live = <A>(workspaceId: Ulid, source: SourceKind | null, attrs: Validator<A>) =>
-    selectLive.all(workspaceId, source, source).map((raw) => recordOf(raw, attrs));
+  // Each live item's resolved references, by its source and stable ID.
+  const referencesOf = (workspaceId: Ulid) => {
+    const by = new Map<string, { id: ItemId; stableId: string }[]>();
+    for (const raw of selectReferences.all(workspaceId)) {
+      const row = referenceRow(raw);
+      if (!row.ok) throw new Error(`corrupt reference row: ${JSON.stringify(row.issues)}`);
+      const key = `${row.value.source}\u0000${row.value.stable_id}`;
+      const named = by.get(key) ?? [];
+      named.push({ id: row.value.to_id, stableId: row.value.to_stable_id });
+      by.set(key, named);
+    }
+    return by;
+  };
+
+  const live = <A>(workspaceId: Ulid, source: SourceKind | null, attrs: Validator<A>) => {
+    const references = referencesOf(workspaceId);
+    return selectLive.all(workspaceId, source, source).map((raw) => {
+      const record = recordOf(raw, attrs);
+      const named = references.get(`${parseItemId(record.id)?.source}\u0000${record.stableId}`);
+      return named ? { ...record, facets: { ...record.facets, references: named } } : record;
+    });
+  };
 
   // A record as a read would return it: its facets in their checked shape.
   const readBack = (r: IndexRecord): IndexRecord => {
@@ -219,6 +268,8 @@ export function indexStore(db: DatabaseSync) {
       const checked = facets(JSON.parse(JSON.stringify(r.facets) ?? "null"), "$.facets");
       if (!checked.ok)
         throw new Error(`${r.id}: facets don't match: ${JSON.stringify(checked.issues)}`);
+      if (checked.value.references !== undefined)
+        throw new Error(`${r.id}: references are the index's to resolve, never a page's to set`);
       const parsed = attrs(JSON.parse(JSON.stringify(r.attrs) ?? "null"), "$.attrs");
       if (!parsed.ok)
         throw new Error(`${r.id}: attrs don't match: ${JSON.stringify(parsed.issues)}`);
@@ -258,7 +309,7 @@ export function indexStore(db: DatabaseSync) {
         logChange.run(workspaceId, from, stableId, version, now, "{}", 1);
       return {
         version,
-        apply(page: SyncPage): void {
+        apply(page: IndexPage): void {
           check(source, attrs, page);
           transaction(db, () => {
             for (const r of page.records) {
@@ -293,15 +344,46 @@ export function indexStore(db: DatabaseSync) {
                   0,
                 );
             }
-            for (const stableId of page.gone)
+            for (const r of page.records) {
+              const handle = parseItemId(r.id)?.key ?? "";
+              resolveWaiting.run(r.stableId, workspaceId, source, handle);
+            }
+            for (const [stableId, named] of Object.entries(page.references ?? {})) {
+              forgetReferences.run(workspaceId, source, stableId);
+              const kept = new Set<string>();
+              for (const id of named) {
+                const to = parseItemId(id);
+                if (!to) continue;
+                const found = liveByHandle.get(workspaceId, id);
+                const toStableId = found ? stableIdRow(found) : null;
+                const resolved = toStableId?.ok ? toStableId.value.stable_id : null;
+                if (resolved === stableId && to.source === source) continue;
+                const key = `${to.source}\u0000${resolved ?? `handle\u0000${to.key}`}`;
+                if (kept.has(key)) continue;
+                kept.add(key);
+                insertReference.run(
+                  workspaceId,
+                  source,
+                  stableId,
+                  to.source,
+                  resolved,
+                  resolved === null ? to.key : null,
+                  now,
+                );
+              }
+            }
+            for (const stableId of page.gone) {
+              forgetReferences.run(workspaceId, source, stableId);
               if (tombstone.run(now, version, workspaceId, source, stableId).changes)
                 gone(source, stableId);
+            }
           });
         },
         finish(cursor: string | null, finishedAt: Instant): number {
           return transaction(db, () => {
             saveSource.run(workspaceId, source, cursor, finishedAt);
             pruneChanges.run(workspaceId, keptSince(finishedAt));
+            pruneWaiting.run(workspaceId, keptSince(finishedAt));
             const changed = existsRow(changedIn.get(workspaceId, source, version));
             if (!changed.ok || !changed.value.found) return version - 1;
             insertSnapshot.run(workspaceId, version, source, finishedAt);

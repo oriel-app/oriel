@@ -181,7 +181,8 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
       return reply(200, "text/html; charset=utf-8", page, { "x-robots-tag": "noindex" });
     if (path === "/api/window") {
       const grouping = url.searchParams.get("grouping");
-      if (!isGroupingId(grouping)) return plain(400, "grouping must be epic, assignee or stuck");
+      if (!isGroupingId(grouping))
+        return plain(400, "grouping must be epic, assignee, stuck or linked");
       return reply(200, "application/json", JSON.stringify(site.window(grouping)));
     }
     const vendorFile = vendorFiles.get(path);

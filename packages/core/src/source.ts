@@ -56,6 +56,10 @@ export type Facets = {
   // Its estimate, or null when it has none yet. Absent when the source
   // doesn't estimate.
   estimate?: number | null;
+  // The items its text names, by stable ID, as the index resolved them
+  // (decision 0027); `id` is each one's handle now. Oriel's sync fills it
+  // and the index adds it on reading: an adapter never sets it.
+  references?: { id: ItemId; stableId: string }[];
 };
 
 // What the index keeps per item: the minimum for grouping, summaries and
@@ -81,6 +85,10 @@ export type SyncPage<K extends SourceKind = SourceKind, A = unknown> = {
   gone: string[];
   // Where the next sync resumes; null when the source keeps no cursor.
   cursor: string | null;
+  // Each record's text, by stable ID, for Oriel's sync to find references
+  // in, beside the record and never in it. The index never stores it. A
+  // record with none keeps the references it had.
+  texts?: Readonly<Record<string, string>>;
 };
 
 // A live read. Every item's content has its title and its text, so any item
@@ -122,7 +130,12 @@ export interface Source<K extends SourceKind = SourceKind, A = unknown, C = unkn
   // Index records for these items, each read on its own instead of listed,
   // for a source whose listing lags its writes. `gone` names those the source
   // doesn't have; one it can't read is in neither, as a listing skips it.
-  records?(ids: readonly ItemId<K>[]): Promise<{ records: IndexRecord<K, A>[]; gone: ItemId<K>[] }>;
+  // `texts` as a sync page has them.
+  records?(ids: readonly ItemId<K>[]): Promise<{
+    records: IndexRecord<K, A>[];
+    gone: ItemId<K>[];
+    texts?: Readonly<Record<string, string>>;
+  }>;
   // What can be written, if anything.
   readonly ops?: OpCatalogue;
 }
@@ -190,9 +203,8 @@ export const stateShape: Validator<State> = union(
   literal("done"),
 );
 export const peopleShape = array(object({ role: string, id: string, name: string }));
-export const containerShape = nullable(
-  object({ id: refine(string, isItemId, "expected an item ID"), stableId: string }),
-);
+const itemIdShape = refine(string, isItemId, "expected an item ID");
+export const containerShape = nullable(object({ id: itemIdShape, stableId: string }));
 
 // Built once: every record the index reads is checked against it.
 const facetShape = object({
@@ -202,6 +214,7 @@ const facetShape = object({
   links: optional(array(object({ url: string, title: string }))),
   kind: optional(string),
   estimate: optional(nullable(number)),
+  references: optional(array(object({ id: itemIdShape, stableId: string }))),
 });
 
 // Facets as the index stores them: checked on the way in and on the way out.

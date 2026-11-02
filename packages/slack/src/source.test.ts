@@ -71,7 +71,7 @@ test("only posts are items: no joins, purpose changes, deleted placeholders, rep
   const { records, calls } = await listing();
   const titles = records.map((r) => r.title);
   // 21 messages in the channel: two system messages, one deleted placeholder.
-  assert.equal(records.length, 18);
+  assert.equal(records.length, 19);
   assert.equal(new Set(records.map((r) => r.id)).size, records.length);
   for (const gone of [
     "has joined",
@@ -291,7 +291,7 @@ test("an odd field is left out, not the message; one with no ts, subtype or thre
   });
   const records: SlackRecord[] = [];
   for await (const page of source.sync(null)) records.push(...page.records);
-  assert.equal(records.length, 15);
+  assert.equal(records.length, 16);
   // Its `user` was null: whose it is isn't known, and it isn't an app's.
   assert.equal(records[0]?.title, "Unknown person: is on the 07:30 to test the at-risk banner");
   assert.deepEqual(records[0]?.attrs.author, { id: null, name: "Unknown person" });

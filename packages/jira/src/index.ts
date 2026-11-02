@@ -16,6 +16,7 @@ export {
   jiraText,
 } from "./attrs.ts";
 export { jiraDeclaration } from "./declaration.ts";
+export { type JiraScope, jiraRecognizer } from "./references.ts";
 export * from "./fixture.ts";
 export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 export { type Estimates, jiraNamespace } from "./namespace.ts";

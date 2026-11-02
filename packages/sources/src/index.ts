@@ -5,6 +5,8 @@ import {
   type IndexRecord,
   type NamespaceSpec,
   type OpSpecs,
+  type Recognizer,
+  recognizeAll,
   type SourceDeclaration,
   type SourceKind,
   sourceKinds,
@@ -78,4 +80,26 @@ export function namespacesFor(
   const given: Partial<Record<SourceKind, unknown>> = contexts;
   // `NamespaceContexts` gives each source the context its own namespace takes.
   return each((declaration, kind) => declaration.namespace?.(records, given[kind] as never));
+}
+
+type ScopeOf<D> = D extends { recognizer: (context: infer R) => Recognizer } ? R : never;
+
+// What only the composition root knows that each source's recognizer needs,
+// by kind: a source left out, such as one not connected, recognizes nothing.
+export type RecognizerScopes = {
+  [K in keyof Declared as [ScopeOf<Declared[K]>] extends [never] ? never : K]?: ScopeOf<
+    Declared[K]
+  >;
+};
+
+// Every source's recognizer as one, for Oriel's sync and anything else
+// holding text, such as the item panel (decision 0027).
+export function recognizerFor(scopes: RecognizerScopes): Recognizer {
+  const given: Partial<Record<SourceKind, unknown>> = scopes;
+  return recognizeAll(
+    sourceKinds.flatMap((kind) =>
+      // `RecognizerScopes` gives each source the scope its recognizer takes.
+      kind in given ? [sources[kind].recognizer(given[kind] as never)] : [],
+    ),
+  );
 }

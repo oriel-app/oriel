@@ -212,7 +212,7 @@ const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
   object({
     name: literal("grouping.switched"),
-    grouping: refine(string, isGroupingId, "expected epic, assignee or stuck"),
+    grouping: refine(string, isGroupingId, "expected epic, assignee, stuck or linked"),
   }),
   object({ name: literal("zoom.changed"), from: zoomId, to: zoomId }),
   // By the item, whose source the event keeps; the item itself isn't kept.
@@ -271,7 +271,8 @@ function linePlace(params: URLSearchParams): LinePlace | null {
 // The grouping a Browse request names.
 function groupingOf(params: URLSearchParams): GroupingId {
   const grouping = params.get("grouping");
-  if (!isGroupingId(grouping)) throw new Refused(400, "grouping must be epic, assignee or stuck");
+  if (!isGroupingId(grouping))
+    throw new Refused(400, "grouping must be epic, assignee, stuck or linked");
   return grouping;
 }
 

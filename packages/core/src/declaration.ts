@@ -2,6 +2,7 @@ import type { DeclaredFacets } from "./change-log.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
 import type { PanelOf } from "./panel.ts";
+import type { Recognizer } from "./references.ts";
 import type { IndexRecord } from "./source.ts";
 import type { Presentation } from "./zoom.ts";
 
@@ -13,7 +14,7 @@ import type { Presentation } from "./zoom.ts";
 // source shows is one more field here, not another list. An adapter writes its
 // declaration `satisfies SourceDeclaration<C>`, so the list in
 // packages/sources sees its namespace and asks for its context.
-export type SourceDeclaration<C = never> = Presentation & {
+export type SourceDeclaration<C = never, R = never> = Presentation & {
   // What its items are, in the declarations' `Item` (see `ItemDocs` in
   // bindings): shape only, never source text.
   itemDoc: string;
@@ -23,6 +24,10 @@ export type SourceDeclaration<C = never> = Presentation & {
   // Its facets beyond the common ones (state, people, container), each with
   // its label, which the change log records (decision 0027). None is `{}`.
   facets: DeclaredFacets;
+  // Its recognizer, for its own item IDs in any text (decision 0027), from
+  // `R`, what only the composition root knows of it, such as the projects
+  // it syncs. One that recognizes nothing returns none.
+  recognizer: (context: R) => Recognizer;
   // Its namespace, from the index and `C`, what only the composition root
   // knows about it, such as where a new item goes.
   namespace?: (records: readonly IndexRecord[], context: C) => NamespaceSpec;

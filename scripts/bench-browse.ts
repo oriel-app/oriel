@@ -91,7 +91,7 @@ async function measure(route: string): Promise<Row | null> {
 
 const app = await start();
 const rows: Row[] = [];
-for (const grouping of ["epic", "assignee", "stuck"]) {
+for (const grouping of ["epic", "assignee", "stuck", "linked"]) {
   const whole = await measure(`/api/window?grouping=${grouping}`);
   if (whole) rows.push(whole);
   const first = await measure(`/api/browse?grouping=${grouping}`);
