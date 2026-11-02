@@ -72,6 +72,35 @@ const maxTerms = 8;
 const maxResults = 50;
 const sourcePrefix = new RegExp(`^(${sourceKinds.join("|")}):`);
 
+// A query as search() takes it: at most 256 characters and 8 distinct
+// terms, folded, with a "jira:" prefix on a term dropped, so a full item ID
+// works as a query. `whole` is the query as one key.
+export function searchTerms(query: string): { terms: string[]; whole: string } {
+  const bounded = fold(query.slice(0, maxQueryChars));
+  const stripped = bounded
+    .split(/\s+/)
+    .map((term) => term.replace(sourcePrefix, ""))
+    .filter(Boolean);
+  return {
+    terms: [...new Set(stripped)].slice(0, maxTerms),
+    whole: bounded.trim().replace(sourcePrefix, ""),
+  };
+}
+
+// An item's key and title, folded, as search() matches them.
+const searchable = (record: IndexRecord<SourceKind, unknown>) => ({
+  key: fold(parseItemId(record.id)?.key ?? ""),
+  title: fold(record.title),
+});
+
+// Whether every term is in the item's key or title: search()'s match, for
+// Browse's item search too (decision 0027).
+export function matchesSearch(record: IndexRecord<SourceKind, unknown>, terms: readonly string[]) {
+  const { key, title } = searchable(record);
+  const haystack = `${key} ${title}`;
+  return terms.every((term) => haystack.includes(term));
+}
+
 export type IndexStore = ReturnType<typeof indexStore>;
 
 // The index the sync worker writes and the window, `search()` and the stale
@@ -317,27 +346,17 @@ export function indexStore(db: DatabaseSync) {
       limit: number,
       sources?: readonly SourceKind[],
     ): IndexRecord<SourceKind, unknown>[] {
-      const bounded = fold(query.slice(0, maxQueryChars));
-      const stripped = bounded
-        .split(/\s+/)
-        .map((term) => term.replace(sourcePrefix, ""))
-        .filter(Boolean);
-      const terms = [...new Set(stripped)].slice(0, maxTerms);
+      const { terms, whole } = searchTerms(query);
       const first = terms[0];
       const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
       if (!first) return [];
-      const whole = bounded.trim().replace(sourcePrefix, "");
       return live(workspaceId, null, unknown)
         .filter((record) => {
           const source = parseItemId(record.id)?.source;
           return !sources || (source !== undefined && sources.includes(source));
         })
-        .map((record) => {
-          const key = fold(parseItemId(record.id)?.key ?? "");
-          const title = fold(record.title);
-          return { record, key, title, haystack: `${key} ${title}` };
-        })
-        .filter(({ haystack }) => terms.every((term) => haystack.includes(term)))
+        .filter((record) => matchesSearch(record, terms))
+        .map((record) => ({ record, ...searchable(record) }))
         .sort(
           (a, b) =>
             Number(b.key === whole) - Number(a.key === whole) ||

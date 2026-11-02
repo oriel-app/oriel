@@ -11,9 +11,10 @@ import type { FolderModel, FolderMsg } from "./folder.ts";
 import type { JiraModel } from "./jira.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
-import { Chevron, type Dispatch, Link, Mark, plural, waitingNames } from "./parts.tsx";
+import { Chevron, type Dispatch, Link, Mark, plural, SearchIcon, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
+import { windowRoute } from "./update.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -34,11 +35,7 @@ export function Sidebar(props: {
   return (
     <aside id="sidebar" class="sidebar" aria-label="Sidebar">
       <div class="sidebar-head">
-        <Link
-          route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
-          dispatch={dispatch}
-          class="brand"
-        >
+        <Link route={windowRoute(model.window)} dispatch={dispatch} class="brand">
           <Mark />
           <span class="sidebar-label">Oriel</span>
         </Link>
@@ -73,7 +70,7 @@ export function Sidebar(props: {
       />
       <nav class="sidebar-pages" aria-label="Pages">
         <Link
-          route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
+          route={windowRoute(model.window)}
           dispatch={dispatch}
           class="nav-link"
           aria-current={page === "window" ? "page" : undefined}
@@ -639,15 +636,6 @@ function WindowIcon() {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M2 6.5h12M5 9.5h6M5 11.5h4" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="7" cy="7" r="4.25" />
-      <path d="M10.25 10.25L13.5 13.5" />
     </svg>
   );
 }

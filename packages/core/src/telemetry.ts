@@ -127,6 +127,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user opened what a search found: a thread, or a change set in one,
   // and where it was in the list, from 1.
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
+  // The user searched items in Browse: how long the query was and how many
+  // items it found, never what it said. One per query Browse loaded.
+  | { name: "items.searched"; queryLength: number; results: number }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );

@@ -4,7 +4,7 @@
 // return them, so they're tested without a DOM.
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
-import type { GroupingId, UndoView } from "./view.ts";
+import type { BrowseFilter, GroupingId, UndoView } from "./view.ts";
 import type { Ending } from "./ending.ts";
 
 export type Tag =
@@ -61,11 +61,21 @@ export type Tag =
   | { kind: "jiraSynced" };
 
 export type Effect =
-  | { type: "loadWindow"; request: number; grouping: GroupingId }
-  // A page of a cluster's items, from the `from`th.
-  | { type: "loadItems"; request: number; grouping: GroupingId; cluster: string; from: number }
+  // Browse under a grouping, and its filters when any is set.
+  | { type: "loadWindow"; request: number; grouping: GroupingId; filter?: BrowseFilter }
+  // A page of a cluster's items, from the `from`th, of those the filters keep.
+  | {
+      type: "loadItems";
+      request: number;
+      grouping: GroupingId;
+      cluster: string;
+      from: number;
+      filter?: BrowseFilter;
+    }
   // Puts the grouping in the address bar, so a reload keeps it.
   | { type: "showGrouping"; grouping: GroupingId }
+  // Puts Browse's filters in the address bar, in place of those there.
+  | { type: "showFilter"; filter: BrowseFilter }
   | { type: "http"; method: "GET" | "POST"; url: string; body?: unknown; tag: Tag }
   // Goes to another page, as a link would, and adds it to history, or with
   // `replace`, takes the current page's place in it. `stay`: the page stays
@@ -127,7 +137,8 @@ export type Report =
   | { name: "item.panel-opened"; item: string }
   | { name: "item.source-opened"; item: string; via: "panel" | "link" }
   | { name: "threads.searched"; queryLength: number; results: number }
-  | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number };
+  | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
+  | { name: "items.searched"; queryLength: number; results: number };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>

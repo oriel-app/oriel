@@ -13,13 +13,21 @@ import {
   plural,
   points,
   Replies,
+  SearchIcon,
 } from "./parts.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
+  type BrowseFilter,
+  type Choice,
   type ClusterRow,
   type ClusterView,
+  filtered,
   type GroupingId,
   groupingIds,
+  listSize,
+  sameFilter,
+  type StatusCategory,
+  statusCategories,
   type WorkstreamSummary,
   type ItemRow,
   pageSize,
@@ -51,8 +59,9 @@ export function WindowPage(props: {
               dispatch({ type: "window", msg: { type: "groupingPicked", grouping } })
             }
           />
-          {model.window && <Counts view={model.window} />}
+          {model.window && <Counts view={model.window} filter={model.filter} />}
         </div>
+        <Filters model={model} dispatch={dispatch} />
         {adding && (
           <p class="adding" role="status">
             Pick items to add to <strong>{adding.name}</strong>.
@@ -177,7 +186,94 @@ function Tabs(props: { picked: GroupingId; onPick(grouping: GroupingId): void })
   );
 }
 
-function Counts({ view }: { view: WindowView }) {
+const statusNames: Record<StatusCategory, string> = {
+  todo: "To do",
+  "in-progress": "In progress",
+  done: "Done",
+};
+
+// Browse's filters (decision 0027): item search, then a source, a status
+// category and an assignee, each from what the index has. The search box
+// asks once typing pauses; Enter doesn't wait.
+function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
+  const { filter } = model;
+  const send = (msg: WindowMsg) => dispatch({ type: "window", msg });
+  const pick = (over: BrowseFilter) =>
+    send({ type: "filterPicked", filter: { ...filter, q: model.query, ...over } });
+  const choices = model.window?.choices;
+  const select = (
+    label: string,
+    any: string,
+    value: string | undefined,
+    options: readonly Choice[],
+    picked: (value: string) => BrowseFilter,
+  ) => (
+    <label class="filter">
+      <span class="visually-hidden">{label}</span>
+      <select
+        value={value ?? ""}
+        data-set={value ? "" : undefined}
+        onChange={(event) => pick(picked(event.currentTarget.value))}
+      >
+        <option value="">{any}</option>
+        {/* One the address names that the index doesn't have stays shown. */}
+        {value && !options.some((option) => option.id === value) && (
+          <option value={value}>{value}</option>
+        )}
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <form
+      class="filters"
+      role="search"
+      aria-label="Filter items"
+      onSubmit={(event) => {
+        event.preventDefault();
+        pick({});
+      }}
+    >
+      <label class="filter-search">
+        <SearchIcon />
+        <span class="visually-hidden">Search items</span>
+        <input
+          type="search"
+          autocomplete="off"
+          spellcheck={false}
+          placeholder="Search items by key or title"
+          maxLength={200}
+          value={model.query}
+          onInput={(event) => send({ type: "queryTyped", text: event.currentTarget.value })}
+        />
+      </label>
+      {select("Source", "All sources", filter.source, choices?.sources ?? [], (source) => ({
+        source,
+      }))}
+      {select(
+        "Status",
+        "Any status",
+        filter.status,
+        statusCategories.map((id) => ({ id, name: statusNames[id] })),
+        (status) => ({ status: statusCategories.find((id) => id === status) }),
+      )}
+      {select("Assignee", "Anyone", filter.assignee, choices?.people ?? [], (assignee) => ({
+        assignee,
+      }))}
+      {filtered(filter) && (
+        <button type="button" class="quiet-action" onClick={() => send({ type: "filtersCleared" })}>
+          Clear filters
+        </button>
+      )}
+    </form>
+  );
+}
+
+function Counts({ view, filter }: { view: WindowView; filter: BrowseFilter }) {
   const asOf = new Date(view.asOf).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -185,7 +281,10 @@ function Counts({ view }: { view: WindowView }) {
   });
   return (
     <p class="counts">
-      {plural(view.items, "item")} in {plural(view.clusters.length, "cluster")}
+      {filtered(filter)
+        ? `${view.items} ${view.items === 1 ? "match" : "matches"}`
+        : plural(view.items, "item")}{" "}
+      in {plural(view.clusters.length, "cluster")}
       {view.fixture && (
         <span class="fixture" title="Synthetic fixture data, not your index">
           Fixture · {asOf}
@@ -210,7 +309,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   );
   if (model.window === null) return failed || <p class="loading">Loading…</p>;
   const shown = model.window;
-  const stale = shown.grouping !== model.grouping;
+  const stale = shown.grouping !== model.grouping || !sameFilter(model.shownFilter, model.filter);
   const derived = shown.clusters.some(({ row }) => row.origin.kind === "derived");
   // Headings make room for an anchor's checkbox once any cluster has one, so
   // they line up.
@@ -218,6 +317,18 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   return (
     <>
       {failed}
+      {shown.clusters.length === 0 && filtered(model.filter) && (
+        <p class="no-matches">
+          Nothing in the window matches these filters.{" "}
+          <button
+            type="button"
+            class="quiet-action"
+            onClick={() => dispatch({ type: "window", msg: { type: "filtersCleared" } })}
+          >
+            Clear filters
+          </button>
+        </p>
+      )}
       {derived && (
         <p class="derived-note">
           <span class="derived-tag">Oriel rule</span>
@@ -225,6 +336,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
         </p>
       )}
       <div
+        hidden={shown.clusters.length === 0 && filtered(model.filter)}
         class={stale ? "clusters stale" : "clusters"}
         data-grouping={shown.grouping}
         data-picking={model.selected.length > 0 || model.addTo !== null ? "" : undefined}
@@ -297,7 +409,11 @@ function Cluster(props: {
           <span class="cluster-details">
             <Origin origin={row.origin} />
             <span class="cluster-meta">
-              <span class="count">{plural(row.count, "item")}</span>
+              <span class="count">
+                {view.matched === undefined
+                  ? plural(row.count, "item")
+                  : `${view.matched} of ${plural(row.count, "item")}`}
+              </span>
               <ClusterPoints row={row} />
               <StatusBar status={row.status} />
             </span>
@@ -307,7 +423,11 @@ function Cluster(props: {
           type="button"
           class="quiet-action make-workstream"
           disabled={props.pending}
-          title={`Make a workstream of ${row.label}'s items as they are now`}
+          title={
+            view.matched === undefined
+              ? `Make a workstream of ${row.label}'s items as they are now`
+              : `Make a workstream of all ${plural(row.count, "item")} in ${row.label} as they are now, not only those that match`
+          }
           onClick={() =>
             dispatch({ type: "window", msg: { type: "clusterToWorkstream", key: row.key } })
           }
@@ -319,6 +439,8 @@ function Cluster(props: {
         <Items
           id={listId}
           cluster={row}
+          size={listSize(view)}
+          matching={view.matched !== undefined}
           items={list}
           paging={props.paging}
           selected={props.selected}
@@ -386,24 +508,29 @@ function StatusBar({ status }: { status: ClusterRow["status"] }) {
 function Items(props: {
   id: string;
   cluster: ClusterRow;
+  // How many items the list holds once loaded, and whether a filter chose
+  // them.
+  size: number;
+  matching: boolean;
   items: ItemRow[];
   paging: number | "failed" | null;
   selected: readonly string[];
   locations: Readonly<Record<string, string>>;
   dispatch: Dispatch;
 }) {
-  const { cluster, items, paging } = props;
-  if (cluster.count === 0) {
+  const { cluster, size, items, paging } = props;
+  if (size === 0) {
     return (
       <p class="no-items" id={props.id}>
-        No items.
+        {props.matching ? "None of its items match." : "No items."}
       </p>
     );
   }
-  const left = cluster.count - items.length;
+  const left = size - items.length;
   const next = (
     <More
       cluster={cluster}
+      size={size}
       left={left}
       paging={paging}
       onClick={() =>
@@ -440,11 +567,12 @@ function Items(props: {
 // The next page of a cluster's items: on its way, failed, or a button.
 function More(props: {
   cluster: ClusterRow;
+  size: number;
   left: number;
   paging: number | "failed" | null;
   onClick(): void;
 }) {
-  const { cluster, left, paging } = props;
+  const { cluster, size, left, paging } = props;
   if (typeof paging === "number")
     return (
       <p class="more-items" data-state="loading">
@@ -471,7 +599,7 @@ function More(props: {
         Show {Math.min(left, pageSize)} more
       </button>
       <span class="more-count">
-        {cluster.count - left} of {cluster.count} shown
+        {size - left} of {size} shown
       </span>
     </p>
   );

@@ -1,16 +1,22 @@
-// Where the page is: Browse, at /browse (with a grouping, and maybe a
-// workstream it is adding items to; `/` shows it too until the overview takes
+// Where the page is: Browse, at /browse (with a grouping, its filters, and
+// maybe a workstream it is adding items to; `/` shows it too until the overview takes
 // `/`), a workstream, a thread, a new thread not started yet, the Done page
 // (the threads no longer working, in two tabs, a page at a time), or a review
 // link. A thread's address may name one of its change sets, to open the
 // thread there. On any page but a review link's, `item` is the item open in
 // the panel beside it, by its ID.
-import { type GroupingId, isGroupingId } from "./view.ts";
+import {
+  type BrowseFilter,
+  browseFilter,
+  filterParams,
+  type GroupingId,
+  isGroupingId,
+} from "./view.ts";
 
 export type Route = Page & { item?: string };
 
 export type Page =
-  | { page: "window"; grouping: GroupingId; addTo: string | null }
+  | ({ page: "window"; grouping: GroupingId; addTo: string | null } & BrowseFilter)
   | { page: "workstream"; id: string }
   | { page: "thread"; id: string; changeSet?: string }
   | { page: "new-thread" }
@@ -62,6 +68,7 @@ function parsePage(pathname: string, search: string): Page {
     page: "window",
     grouping: isGroupingId(grouping) ? grouping : "epic",
     addTo: addTo && ulidShape.test(addTo) ? addTo : null,
+    ...browseFilter(query),
   };
 }
 
@@ -75,7 +82,7 @@ export function routeUrl(route: Route): string {
 function pageUrl(route: Page): string {
   switch (route.page) {
     case "window": {
-      const query = new URLSearchParams({ grouping: route.grouping });
+      const query = new URLSearchParams([["grouping", route.grouping], ...filterParams(route)]);
       if (route.addTo) query.set("addTo", route.addTo);
       return `/browse?${query}`;
     }
