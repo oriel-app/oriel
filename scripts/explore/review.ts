@@ -4,7 +4,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const [round, ...designs] = process.argv.slice(2);
-const labels = JSON.parse(readFileSync("/tmp/oriel-judge/labels.json", "utf8")) as Record<string, string>;
+const labels = JSON.parse(readFileSync("/tmp/oriel-judge/labels.json", "utf8")) as Record<
+  string,
+  string
+>;
 const dir = `/tmp/oriel-judge/${round}/review`;
 mkdirSync(dir, { recursive: true });
 const lines: string[] = [];
@@ -36,4 +39,7 @@ Score each design 1 to 5 on each of these, with one sentence each:
 
 Then name the single change that would most improve each design. Write it all as JSON to ${dir}/review.json in this shape: {"<label>": {"scanning": [score, "sentence"], "hierarchy": [...], "density": [...], "consistency": [...], "growth": [...], "change": "sentence"}}, and reply with the same JSON.`;
 writeFileSync(`${dir}/prompt.txt`, prompt);
-console.log(`${dir}/prompt.txt`, designs.map((d) => labels[d]));
+console.log(
+  `${dir}/prompt.txt`,
+  designs.map((d) => labels[d]),
+);

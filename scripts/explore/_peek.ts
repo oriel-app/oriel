@@ -2,10 +2,17 @@ import { chromium } from "playwright-core";
 const [url, out, w, full] = process.argv.slice(2);
 const browser = await chromium.launch({ channel: "chrome" });
 const page = await browser.newPage({ viewport: { width: Number(w ?? 1280), height: 800 } });
-page.on("console", (m) => { if (m.type() === "error") console.log("console:", m.text()); });
+page.on("console", (m) => {
+  if (m.type() === "error") console.log("console:", m.text());
+});
 page.on("pageerror", (e) => console.log("pageerror:", e.message));
 await page.goto(url!);
 await page.waitForTimeout(1500);
 await page.screenshot({ path: out!, fullPage: full === "full" });
-console.log(await page.evaluate(() => [document.querySelectorAll("*").length, document.documentElement.scrollHeight]));
+console.log(
+  await page.evaluate(() => [
+    document.querySelectorAll("*").length,
+    document.documentElement.scrollHeight,
+  ]),
+);
 await browser.close();

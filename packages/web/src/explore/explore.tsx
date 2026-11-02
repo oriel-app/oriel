@@ -287,6 +287,45 @@ export function Candidates({ data, cap = 5 }: { data: OverviewData; cap?: number
   );
 }
 
+// Round 9: the top candidates by weight, one line each, under their rule,
+// which shows once per group.
+export function GroupedCandidates({ data, cap = 8 }: { data: OverviewData; cap?: number }) {
+  const rows = data.candidates.slice(0, cap);
+  const groups = [...Map.groupBy(rows, (c) => c.rule)];
+  return (
+    <Section
+      id="candidates"
+      title="Not in a workstream yet"
+      count={data.candidates.length}
+      more={
+        <More shown={rows.length} total={data.candidates.length} href={browse({ held: "0" })} />
+      }
+    >
+      <div class="x-rows x-grouped">
+        {groups.map(([rule, list]) => (
+          <div key={rule} class="x-group">
+            <p class="x-rule">
+              <span class="derived-tag">Oriel rule</span>
+              {rule}
+            </p>
+            <ul>
+              {list.map((c) => (
+                <li key={c.id} class="x-line">
+                  <span class="x-title">{c.label}</span>
+                  <span class="x-sub">
+                    {c.source} · {c.detail}
+                  </span>
+                  <Make candidate={c} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 export function People({ data, cap = 5 }: { data: OverviewData; cap?: number }) {
   const [all, setAll] = useState(false);
   const rows = all ? data.people : data.people.slice(0, cap);
@@ -470,11 +509,57 @@ function OverviewR1({ data, design }: Props) {
 }
 
 // A workstream as one row: name, status, what moved, when, threads, signals.
-export function WorkstreamTable({ cards, now }: { cards: Card[]; now: string }) {
+export type Flags = {
+  mostMoved: string | null;
+  quietest: string | null;
+  talked: OverviewData["talked"];
+};
+
+export function WorkstreamTable({
+  cards,
+  now,
+  flags,
+}: {
+  cards: Card[];
+  now: string;
+  flags?: Flags;
+}) {
   return (
     <ul class="x-rows x-table">
       {cards.map((card) => (
         <li key={card.id} class="x-row x-ws" data-workstream={card.name}>
+          {flags && (
+            <span class="x-ws-flags">
+              {card.id === flags.mostMoved && (
+                <span
+                  class="x-flag"
+                  title="The workstream with the most members changed since you last looked"
+                >
+                  Most moved
+                </span>
+              )}
+              {card.id === flags.quietest && (
+                <span
+                  class="x-flag warn"
+                  title="The open workstream whose latest activity is oldest"
+                >
+                  Quiet longest
+                </span>
+              )}
+              {flags.talked
+                .filter((t) => t.workstream === card.name)
+                .slice(0, 1)
+                .map((t) => (
+                  <span
+                    key={t.id}
+                    class="x-flag"
+                    title="Named in chat messages from the last 7 days"
+                  >
+                    {t.key} named {t.refs}× in chat this week
+                  </span>
+                ))}
+            </span>
+          )}
           <a class="x-title x-ws-name" href={`/workstreams/${card.id}`}>
             {card.name}
           </a>
@@ -484,7 +569,8 @@ export function WorkstreamTable({ cards, now }: { cards: Card[]; now: string }) 
           <span class="x-ws-moved">
             {card.moved > 0 ? (
               <>
-                <strong>{card.moved}</strong> moved{card.movedDone > 0 && `, ${card.movedDone} done`}
+                <strong>{card.moved}</strong> moved
+                {card.movedDone > 0 && `, ${card.movedDone} done`}
               </>
             ) : (
               <span class="x-quiet">none moved</span>
@@ -522,14 +608,22 @@ function OverviewR2({
   roster = false,
   tokens = false,
   cap = 0,
-}: Props & { headlines?: boolean; roster?: boolean; tokens?: boolean; cap?: number }) {
+  flags = false,
+  calm = false,
+  grouped = false,
+}: Props & {
+  calm?: boolean;
+  grouped?: boolean;
+  headlines?: boolean;
+  roster?: boolean;
+  tokens?: boolean;
+  cap?: number;
+  flags?: boolean;
+}) {
   const sorted = data.workstreams.toSorted((a, b) => b.moved - a.moved);
   // Capped: the ones that moved most, and any stalled one, which a cap
   // would otherwise hide.
-  const cards =
-    cap > 0
-      ? sorted.filter((card, i) => i < cap || card.idleDays >= 14)
-      : sorted;
+  const cards = cap > 0 ? sorted.filter((card, i) => i < cap || card.idleDays >= 14) : sorted;
   return (
     <div class="x-page x-dense" data-useful>
       <div class="x-top">
@@ -543,17 +637,32 @@ function OverviewR2({
         </nav>
         <Strip data={data} />
       </div>
-      {headlines && <Headlines data={data} />}
+      {headlines && !calm && <Headlines data={data} />}
       <div class="x-columns">
         <div class="x-main">
           <NeedsYou data={data} cap={4} />
+          {calm && <Headlines data={data} only={["moved", "quiet", "talked", "top"]} />}
           <Section id="workstreams" title="Workstreams" count={sorted.length}>
-            <WorkstreamTable cards={cards} now={data.now} />
+            <WorkstreamTable
+              cards={cards}
+              now={data.now}
+              {...(flags && {
+                flags: {
+                  mostMoved: sorted[0]?.id ?? null,
+                  quietest:
+                    data.workstreams.toSorted((a, b) =>
+                      a.lastActivity.localeCompare(b.lastActivity),
+                    )[0]?.id ?? null,
+                  // The most-named item of each workstream, for the three most named.
+                  talked: data.talked.filter((t) => t.workstream !== null).slice(0, 3),
+                },
+              })}
+            />
             <More shown={cards.length} total={sorted.length} href={browse({ view: "browse" })} />
           </Section>
         </div>
         <div class="x-side">
-          <Candidates data={data} />
+          {grouped ? <GroupedCandidates data={data} /> : <Candidates data={data} />}
           {roster ? <Roster data={data} tokens={tokens} /> : <People data={data} />}
         </div>
       </div>
@@ -564,7 +673,7 @@ function OverviewR2({
 // Round 3: headlines. One computed line for each standing question, each the
 // extreme of one measure, with its rule. A fixed number of lines whatever the
 // number of sources or workstreams.
-export function Headlines({ data }: { data: OverviewData }) {
+export function Headlines({ data, only }: { data: OverviewData; only?: string[] }) {
   const cards = data.workstreams;
   const moved = cards.toSorted((a, b) => b.moved - a.moved)[0];
   const quiet = cards.toSorted((a, b) => a.lastActivity.localeCompare(b.lastActivity))[0];
@@ -630,7 +739,8 @@ export function Headlines({ data }: { data: OverviewData }) {
             <span class="key">{talked.key}</span> {talked.title}
           </span>{" "}
           <span class="x-sub">
-            named {talked.refs}× · {talked.workstream ? `in ${talked.workstream}` : "not in a workstream"}
+            named {talked.refs}× ·{" "}
+            {talked.workstream ? `in ${talked.workstream}` : "not in a workstream"}
           </span>
         </>
       ),
@@ -661,9 +771,10 @@ export function Headlines({ data }: { data: OverviewData }) {
         </>
       ),
     });
+  const shown = only ? lines.filter((line) => only.includes(line.id)) : lines;
   return (
     <section class="x-headlines" data-section="headlines" aria-label="Headlines">
-      {lines.map((line) => (
+      {shown.map((line) => (
         <p key={line.id} class="x-headline" title={line.rule}>
           <span class="x-headline-label">{line.label}</span>
           <span class="x-headline-body">{line.body}</span>
@@ -695,7 +806,11 @@ export function Roster({
         {data.people.map((p, i) => {
           const top = p.workstreams[0];
           return (
-            <li key={p.id} class={i < cap ? "x-row x-person" : "x-row x-person x-extra"} data-person>
+            <li
+              key={p.id}
+              class={i < cap ? "x-row x-person" : "x-row x-person x-extra"}
+              data-person
+            >
               {p.name}
               <span class="x-sub">
                 {p.inProgress}
@@ -728,7 +843,26 @@ function OverviewR6(props: Props) {
   return <OverviewR2 {...props} headlines roster tokens cap={8} />;
 }
 
+// Round 7: R6 with no headlines; their facts are flags on the rows they're about.
+function OverviewR7(props: Props) {
+  return <OverviewR2 {...props} roster tokens cap={8} flags />;
+}
+
+// Round 8: R6 with Needs you first, only the headlines no row right below
+// already says, and no second Needs you in the sidebar on this page.
+function OverviewR8(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens cap={8} calm />;
+}
+
+// Round 9: R8 with Not in a workstream yet as one-line rows under their rule.
+function OverviewR9(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens cap={8} calm grouped />;
+}
+
 export const layouts: Record<string, (props: Props) => ComponentChildren> = {
+  r9: OverviewR9,
+  r8: OverviewR8,
+  r7: OverviewR7,
   r6: OverviewR6,
   r5: OverviewR5,
   r4: OverviewR4,

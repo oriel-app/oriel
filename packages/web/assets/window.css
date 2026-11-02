@@ -4435,3 +4435,113 @@ a.replies:hover {
     display: none;
   }
 }
+
+/* Round 7: flags on rows. */
+.x-ws-flags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.x-ws-flags:empty {
+  display: none;
+}
+
+.x-flag {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.x-flag.warn {
+  background: var(--derived-soft);
+  color: var(--derived);
+}
+
+/* Round 8: calm. The overview says what needs you; the sidebar doesn't again. */
+html[data-design="r8"] .shell:not(:has(.x-page)) .sidebar-needs {
+  display: revert;
+}
+
+html[data-design="r8"] .shell:has(.x-page) .sidebar-needs,
+html[data-design="r9"] .shell:has(.x-page) .sidebar-needs {
+  display: none;
+}
+
+.x-main .x-headlines {
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+/* Round 9: candidates under their rule, a line each. */
+.x-grouped {
+  padding: var(--space-1) 0;
+}
+
+.x-group .x-rule {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+.x-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.x-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0.1875rem var(--space-3);
+  font-size: var(--text-md);
+  min-width: 0;
+}
+
+.x-line .x-title {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.x-line .x-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.x-line .x-make {
+  opacity: 0;
+}
+
+.x-line:hover .x-make,
+.x-line .x-make:focus-visible {
+  opacity: 1;
+}
+
+.x-grouped {
+  overflow: hidden;
+}
+
+.x-group,
+.x-group ul,
+.x-line {
+  min-width: 0;
+}
+
+.x-line .x-title {
+  flex: 0 1 auto;
+}
+
+.x-group .x-rule {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

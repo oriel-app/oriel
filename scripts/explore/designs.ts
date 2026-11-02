@@ -103,3 +103,12 @@ register({ id: "r5", query: "design=r5", useful: "[data-useful]" });
 
 // Round 6: R5 with the workstream list capped at 8, plus any stalled one.
 register({ id: "r6", query: "design=r6", useful: "[data-useful]" });
+
+// Round 7: R6 without headlines; flags on rows instead.
+register({ id: "r7", query: "design=r7", useful: "[data-useful]" });
+
+// Round 8: R6 calmer: Needs you first, four headlines, no sidebar Needs you here.
+register({ id: "r8", query: "design=r8", useful: "[data-useful]" });
+
+// Round 9: R8 with candidates as one-line rows under their rule.
+register({ id: "r9", query: "design=r9", useful: "[data-useful]" });
