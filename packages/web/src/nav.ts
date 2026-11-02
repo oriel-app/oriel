@@ -93,12 +93,13 @@ const labelOrder: Record<WaitingOn | ThreadStateId, number> = {
   review: 0,
   held: 1,
   reply: 2,
-  agent: 3,
-  apply: 4,
-  working: 5,
-  "handed-off": 6,
-  done: 7,
-  dropped: 8,
+  stalled: 3,
+  agent: 4,
+  apply: 5,
+  working: 6,
+  "handed-off": 7,
+  done: 8,
+  dropped: 9,
 };
 const rank = (thread: ThreadSummaryView) => labelOrder[thread.waitingOn ?? thread.state];
 
@@ -109,7 +110,8 @@ export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
   rank(a) - rank(b) || b.activityAt.localeCompare(a.activityAt);
 
 // Whether a thread waits on the user: a reason held for them, a change set
-// to review, or a reply. Needs you lists it, and a link to it says so.
+// to review, an apply stalled on its source, or a reply. Needs you lists
+// it, and a link to it says so.
 export const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thread.waitingOn);
 
 // A decision sent from the thread's page shows in every list at once: while

@@ -140,14 +140,16 @@ export type NoteView = {
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
 // sources, on a change set being applied, which needs nothing from the user
-// until it ends; or else the user's next message. A thread in any other state
-// waits on nothing.
-export type WaitingOn = "agent" | "held" | "review" | "apply" | "reply";
+// until it ends, unless it has stalled (OA-82), when the user should know;
+// or else the user's next message. A thread in any other state waits on
+// nothing.
+export type WaitingOn = "agent" | "held" | "review" | "apply" | "stalled" | "reply";
 
 // Whether a thread waiting so waits on the user: a message held for them, a
-// change set to review, or a reply. Needs you lists it.
+// change set to review, an apply stalled on its source, or a reply. Needs
+// you lists it.
 export const waitsOnUser = (waiting: WaitingOn | null): boolean =>
-  waiting === "held" || waiting === "review" || waiting === "reply";
+  waiting === "held" || waiting === "review" || waiting === "stalled" || waiting === "reply";
 
 // `held`: a message from anyone but the user waits on them to send it to the
 // agent or discard it.
@@ -159,7 +161,11 @@ export function waitingOn(thread: {
   state: ThreadStateId;
   running: boolean;
   held?: boolean;
-  changeSets: readonly { status: ChangeSetStatus; nextSteps: readonly { kind: string }[] }[];
+  changeSets: readonly {
+    status: ChangeSetStatus;
+    nextSteps: readonly { kind: string }[];
+    stalled?: boolean;
+  }[];
 }): WaitingOn | null {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
@@ -167,7 +173,9 @@ export function waitingOn(thread: {
   const open = (set: (typeof thread.changeSets)[number]) =>
     set.nextSteps.some((step) => step.kind !== "revert");
   if (thread.changeSets.some(open)) return "review";
-  return thread.changeSets.some((set) => set.status === "applying") ? "apply" : "reply";
+  const applying = thread.changeSets.filter((set) => set.status === "applying");
+  if (applying.some((set) => set.stalled)) return "stalled";
+  return applying.length > 0 ? "apply" : "reply";
 }
 
 // One item in the panel beside the page, read live through the reader the
@@ -383,6 +391,10 @@ export type ChangeSetView = {
   // Empty while it is being applied: then nothing else can be done with it.
   nextSteps: NextStepView[];
   applying: boolean;
+  // Applying, with no answer to its last send for a send's lease: stuck, as
+  // one hung on its source is, until the source answers or the writer gives
+  // up, when what can be done with it shows.
+  stalled: boolean;
   // A change was sent with no answer, so it may already have been made.
   sentUnapplied: boolean;
   // A source it writes to has no writer here, so it can be reviewed and

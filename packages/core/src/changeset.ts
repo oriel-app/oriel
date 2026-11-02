@@ -199,6 +199,10 @@ export interface ChangeSets {
   // Whether this instance is applying it now. Until that ends, every action
   // on it is refused as busy.
   applying(id: Ulid): boolean;
+  // Whether that apply has stalled: nothing sent or answered for a send's
+  // lease, as one hung on its source would be. It is still applying, and
+  // busy, until its source answers or the writer gives up.
+  stalled(id: Ulid): boolean;
   // Whether every source it still has to write to has a writer here. When
   // not, it can be reviewed and rejected, never approved.
   writable(id: Ulid): boolean;

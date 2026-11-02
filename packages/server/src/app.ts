@@ -747,10 +747,17 @@ export async function createApp(options: AppOptions): Promise<App> {
         (await sets.ofThread(threadId))
           .filter((set) => set.decision?.kind !== "rejected" && set.completedAt === null)
           .map(async (set) => ({
-            waits: (await sets.nextSteps(set.id)).some((step) => step.kind !== "revert"),
+            // As Needs you has it: a step for the user, or an apply stalled.
+            waits:
+              sets.stalled(set.id) ||
+              (await sets.nextSteps(set.id)).some((step) => step.kind !== "revert"),
             names: namedBy(set),
           })),
       ),
+    later: (ms, then) => {
+      const timer = setTimeout(then, ms);
+      return () => clearTimeout(timer);
+    },
     publish: (changed) => {
       if ("changeSet" in changed)
         return conversation.changeSet(changed.thread, changed.changeSet, changed.applying);

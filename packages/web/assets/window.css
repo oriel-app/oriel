@@ -243,11 +243,20 @@ a {
 
 /* The shell: the sidebar beside the page. */
 
+/* The sidebar stays on screen as the page scrolls; its column, painted
+   here, runs the page's whole height below it, however long the page. */
 .shell {
   --sidebar: 15.5rem;
+  --sidebar-bg: color-mix(in srgb, var(--bg) 96%, var(--text));
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   min-height: 100vh;
+  background: linear-gradient(
+    to right,
+    var(--sidebar-bg) calc(var(--sidebar) - 1px),
+    var(--line) calc(var(--sidebar) - 1px) var(--sidebar),
+    transparent var(--sidebar)
+  );
   transition: grid-template-columns 180ms ease;
 }
 
@@ -295,7 +304,7 @@ a {
   padding: var(--inset-top) var(--space-3) var(--space-3);
   overflow: hidden auto;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 96%, var(--text));
+  background: var(--sidebar-bg);
   scrollbar-width: thin;
 }
 
@@ -651,7 +660,7 @@ button.nav-disclose:hover {
   font-weight: 500;
 }
 
-.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"]) {
+.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
   color: var(--accent);
 }
 
@@ -680,12 +689,12 @@ button.nav-disclose:hover {
 }
 
 /* Only an agent mid-turn, or a change set applying, pulses; a change set to
-   review, or a reason held for the person, stands out. */
+   review or stalled applying, or a reason held for the person, stands out. */
 .state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot:is([data-waiting="review"], [data-waiting="held"]) {
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
   background: var(--accent);
 }
 
@@ -909,6 +918,7 @@ button.nav-more {
   .shell[data-folded] {
     --sidebar: 0rem;
     grid-template-columns: minmax(0, 1fr);
+    background: none;
   }
 
   .bar {
@@ -1092,7 +1102,7 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"]) {
+.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -2848,6 +2858,16 @@ a.replies:hover {
   padding-left: 0;
   color: var(--text-muted);
   text-decoration: underline;
+}
+
+/* An apply stuck on its source: nothing to do yet but know. */
+.apply-stuck {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .may-have-landed {

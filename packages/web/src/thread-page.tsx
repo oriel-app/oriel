@@ -17,6 +17,7 @@ import {
   points,
   Replies,
   StateChip,
+  waitingNames,
   TypeMark,
 } from "./parts.tsx";
 import { changeSetAnchor } from "./route.ts";
@@ -591,7 +592,7 @@ function ChangeSet(props: {
         <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
         {/* Announced as it moves, as when Approve and apply turns it to applying. */}
         <span class="change-set-status" role="status">
-          {statusNames[set.status]}
+          {set.stalled ? waitingNames.stalled : statusNames[set.status]}
           {set.decision &&
             set.decision.via === "review-link" &&
             ` by ${set.decision.by} via review link`}
@@ -625,6 +626,14 @@ function ChangeSet(props: {
             </ul>
           )}
         </>
+      )}
+      {/* Nothing can be done with it until its source answers or the
+          writer gives up: a send may yet land (OA-82). */}
+      {set.stalled && (
+        <p class="apply-stuck">
+          Its source hasn't answered for a while. Try again or dismiss it once it answers or Oriel
+          gives up waiting.
+        </p>
       )}
       {dismissing?.kind === "dismiss" && dismissing.warnings.length > 0 && (
         <ul class="may-have-landed">

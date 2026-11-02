@@ -50,7 +50,7 @@ export type ViewDeps = {
   asOf: () => Instant;
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
-  changeSets: Pick<ChangeSets, "ofThread" | "nextSteps" | "applying">;
+  changeSets: Pick<ChangeSets, "ofThread" | "nextSteps" | "applying" | "stalled">;
   writable: boolean;
 };
 
@@ -158,13 +158,15 @@ export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): Chang
 }
 
 // What can be done with it comes from the change set engine (`nextSteps`),
-// never from here; while it applies, nothing can.
+// never from here; while it applies, nothing can. `stalled`: its apply's
+// last send has had no answer for a send's lease.
 export function changeSetView(
   set: ChangeSet,
   all: readonly ChangeSet[],
   nextSteps: readonly NextStep[],
   applying: boolean,
   writable: boolean,
+  stalled: boolean,
 ): ChangeSetView {
   return {
     id: set.id,
@@ -172,6 +174,7 @@ export function changeSetView(
     status: applying ? "applying" : changeSetStatus(set),
     nextSteps: nextSteps.map((step) => ({ ...step })),
     applying,
+    stalled: applying && stalled,
     // A change sent with no answer may have landed.
     sentUnapplied: set.mutations.some((m) => m.status === "failed"),
     decision: set.decision && {
@@ -312,6 +315,7 @@ export function views(deps: ViewDeps) {
     Promise.all(
       (await deps.changeSets.ofThread(threadId)).map(async (set) => ({
         status: deps.changeSets.applying(set.id) ? ("applying" as const) : changeSetStatus(set),
+        stalled: deps.changeSets.stalled(set.id),
         nextSteps: await deps.changeSets.nextSteps(set.id),
       })),
     );
@@ -526,6 +530,7 @@ export function views(deps: ViewDeps) {
       sets: readonly ChangeSet[],
       steps: ReadonlyMap<string, readonly NextStep[]>,
       applying: (changeSetId: string) => boolean,
+      stalled: (changeSetId: string) => boolean,
       // Whether a change set can be approved here; by the thread's own
       // `writable` unless given.
       writable: (changeSetId: string) => boolean = () => deps.writable,
@@ -562,7 +567,14 @@ export function views(deps: ViewDeps) {
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
         changeSets: sets.map((set) =>
-          changeSetView(set, sets, steps.get(set.id) ?? [], applying(set.id), writable(set.id)),
+          changeSetView(
+            set,
+            sets,
+            steps.get(set.id) ?? [],
+            applying(set.id),
+            writable(set.id),
+            stalled(set.id),
+          ),
         ),
         writable: deps.writable,
       };

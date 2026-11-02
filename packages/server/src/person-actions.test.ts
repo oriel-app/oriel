@@ -73,6 +73,7 @@ function world() {
     running: () => false,
     unsettled: async () => [],
     emit: (event) => events.push(event),
+    later: () => () => {},
     publish: () => {},
     now: () => t0,
     newId: () => id(100),

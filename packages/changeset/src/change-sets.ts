@@ -449,10 +449,11 @@ export function changeSets(deps: ChangeSetDeps): ChangeSets {
 export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const { db, specs } = deps;
   const rows = store(db);
-  // Change sets this instance is applying. Until an apply returns, every
-  // action on its change set is refused as busy (see `busy`), so no mutation
-  // is sent twice at once and no edit races the one in flight.
-  const applying = new Set<string>();
+  // Change sets this instance is applying, each with when its apply last
+  // sent a change or heard back, or started. Until an apply returns, every action on its
+  // change set is refused as busy (see `busy`), so no mutation is sent twice
+  // at once and no edit races the one in flight.
+  const applying = new Map<string, { ms: number }>();
 
   const at = (): { now: Instant; ms: number } => {
     const now = deps.now();
@@ -1404,7 +1405,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   // may have landed, so the source's "before" may be Oriel's own value, and a
   // revert must report that rather than restore it. The caller has checked
   // `applyRefusal`.
-  const applyOnce = async (id: string): Promise<ApplyReport> => {
+  const applyOnce = async (id: string, run: { ms: number }): Promise<ApplyReport> => {
     const first = mustLoad(id);
     const report: ApplyReport = { changeSetId: first.id, applied: [], skipped: [], failed: [] };
     // Stops before sending, recording why on the row (over the version
@@ -1506,7 +1507,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const notice = spec.idempotent
         ? `Sent to ${source}, with no answer recorded yet. Try again: Oriel checks whether it landed before sending it again.`
         : uncertain;
-      const mark = `${notice} (sent ${at().now})`;
+      const sending = at();
+      const mark = `${notice} (sent ${sending.now})`;
+      run.ms = sending.ms;
       // Only from the row as this pass first read it: if another apply sent it
       // meanwhile, its send isn't repeated and its mark isn't reset.
       const sentVersion = rows.markSent(mutationId, seen, mark);
@@ -1546,6 +1549,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         }
         return unanswered(`${said}${unsure}`);
       }
+      run.ms = at().ms;
       const checked = writeResult(result);
       if (!checked.ok) {
         return unanswered(
@@ -1746,9 +1750,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         if (row) rows.markStopped(row.id, row, refusal.message);
         refuse(refusal);
       }
-      applying.add(id);
+      const run = { ms: at().ms };
+      applying.set(id, run);
       try {
-        return await applyOnce(id);
+        return await applyOnce(id, run);
       } finally {
         applying.delete(id);
       }
@@ -1756,6 +1761,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
 
     applying(id) {
       return applying.has(id);
+    },
+
+    stalled(id) {
+      const run = applying.get(id);
+      return run !== undefined && at().ms >= run.ms + sendLeaseMs;
     },
 
     writable(id) {
