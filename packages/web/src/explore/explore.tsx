@@ -515,8 +515,21 @@ export function WorkstreamTable({ cards, now }: { cards: Card[]; now: string }) 
 
 // Round 2: denser. One line per workstream, and the overview in two columns
 // where there is room, so every section starts on the first screen.
-function OverviewR2({ data, design, headlines = false }: Props & { headlines?: boolean }) {
-  const cards = data.workstreams.toSorted((a, b) => b.moved - a.moved);
+function OverviewR2({
+  data,
+  design,
+  headlines = false,
+  roster = false,
+  tokens = false,
+  cap = 0,
+}: Props & { headlines?: boolean; roster?: boolean; tokens?: boolean; cap?: number }) {
+  const sorted = data.workstreams.toSorted((a, b) => b.moved - a.moved);
+  // Capped: the ones that moved most, and any stalled one, which a cap
+  // would otherwise hide.
+  const cards =
+    cap > 0
+      ? sorted.filter((card, i) => i < cap || card.idleDays >= 14)
+      : sorted;
   return (
     <div class="x-page x-dense" data-useful>
       <div class="x-top">
@@ -534,13 +547,14 @@ function OverviewR2({ data, design, headlines = false }: Props & { headlines?: b
       <div class="x-columns">
         <div class="x-main">
           <NeedsYou data={data} cap={4} />
-          <Section id="workstreams" title="Workstreams" count={cards.length}>
+          <Section id="workstreams" title="Workstreams" count={sorted.length}>
             <WorkstreamTable cards={cards} now={data.now} />
+            <More shown={cards.length} total={sorted.length} href={browse({ view: "browse" })} />
           </Section>
         </div>
         <div class="x-side">
           <Candidates data={data} />
-          <People data={data} />
+          {roster ? <Roster data={data} tokens={tokens} /> : <People data={data} />}
         </div>
       </div>
     </div>
@@ -663,7 +677,61 @@ function OverviewR3(props: Props) {
   return <OverviewR2 {...props} headlines />;
 }
 
+// Round 4: everyone in progress, one short line each, where the side column
+// has room beside the workstreams; the first five, and "N more", where not.
+export function Roster({
+  data,
+  cap = 5,
+  tokens = false,
+}: {
+  data: OverviewData;
+  cap?: number;
+  tokens?: boolean;
+}) {
+  const [all, setAll] = useState(false);
+  return (
+    <Section id="people" title="In progress, by person" count={data.people.length}>
+      <ul class={`x-rows x-roster${all ? " all" : ""}${tokens ? " tokens" : ""}`}>
+        {data.people.map((p, i) => {
+          const top = p.workstreams[0];
+          return (
+            <li key={p.id} class={i < cap ? "x-row x-person" : "x-row x-person x-extra"} data-person>
+              {p.name}
+              <span class="x-sub">
+                {p.inProgress}
+                {top && <span class="x-where">{` · ${top.name} (${top.count})`}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {!all && !tokens && (
+        <span class="x-narrow-only">
+          <More shown={cap} total={data.people.length} onClick={() => setAll(true)} />
+        </span>
+      )}
+    </Section>
+  );
+}
+
+function OverviewR4(props: Props) {
+  return <OverviewR2 {...props} headlines roster />;
+}
+
+// Round 5: on a narrow screen, everyone as a wrapped line of name and count.
+function OverviewR5(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens />;
+}
+
+// Round 6: R5 with the workstream list capped.
+function OverviewR6(props: Props) {
+  return <OverviewR2 {...props} headlines roster tokens cap={8} />;
+}
+
 export const layouts: Record<string, (props: Props) => ComponentChildren> = {
+  r6: OverviewR6,
+  r5: OverviewR5,
+  r4: OverviewR4,
   r3: OverviewR3,
   r1: OverviewR1,
   r2: OverviewR2,

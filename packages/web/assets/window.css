@@ -4382,3 +4382,56 @@ a.replies:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* Round 4: the roster. */
+.x-roster .x-person {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: 0.1875rem;
+  font-size: var(--text-sm);
+}
+
+.x-roster .x-person .x-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.x-narrow-only {
+  display: none;
+}
+
+@container page (max-width: 999px) {
+  .x-roster:not(.all) .x-extra {
+    display: none;
+  }
+
+  .x-narrow-only {
+    display: block;
+  }
+}
+
+/* Round 5: on a narrow screen, the roster as tokens. */
+@container page (max-width: 999px) {
+  .x-roster.tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .x-roster.tokens .x-person,
+  .x-roster.tokens .x-extra {
+    display: inline-flex;
+    gap: var(--space-1);
+    padding: 0;
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .x-roster.tokens .x-where {
+    display: none;
+  }
+}

@@ -94,3 +94,12 @@ register({ id: "r2", query: "design=r2", useful: "[data-useful]" });
 
 // Round 3: R2 with a band of headlines.
 register({ id: "r3", query: "design=r3", useful: "[data-useful]" });
+
+// Round 4: R3 with everyone in progress beside the workstreams.
+register({ id: "r4", query: "design=r4", useful: "[data-useful]" });
+
+// Round 5: R4 with the narrow roster as tokens.
+register({ id: "r5", query: "design=r5", useful: "[data-useful]" });
+
+// Round 6: R5 with the workstream list capped at 8, plus any stalled one.
+register({ id: "r6", query: "design=r6", useful: "[data-useful]" });
