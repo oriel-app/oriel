@@ -37,11 +37,14 @@ test("an epic no workstream holds is a cluster of the epic grouping, weighted by
   const records = [
     epic("SYN-1"),
     story("SYN-2", "SYN-1", "todo", 2),
-    story("SYN-3", "SYN-1", "done", 6),
+    story("SYN-3", "SYN-1", "in-progress", 6),
     story("SYN-4", "SYN-1", "todo", 8),
+    // Done, or held, it asks nothing more of the user.
+    story("SYN-6", "SYN-1", "done", 1),
+    story("SYN-7", "SYN-1", "todo", 1),
     epic("SYN-5"),
   ];
-  assert.deepEqual(candidates(records), [
+  assert.deepEqual(candidates(records, ["jira:SYN-7"]), [
     {
       subject: { kind: "cluster", grouping: "epic", key: "11" },
       rule: "An epic no workstream holds",

@@ -1,17 +1,17 @@
 // Jira's candidates for the overview (decision 0027): an epic no workstream
 // holds, as a cluster Make a workstream copies with its items, weighted by
-// how many of them changed this week; and an item in progress that hasn't
-// changed in 14 days, which has stalled.
+// how many of its open items that no workstream holds changed this week;
+// and an item in progress with no update in `stuckDays`, which has stalled.
 import {
   type Candidate,
   daysSince,
   type IndexRecord,
   type OverviewOf,
+  stalled,
+  stuckDays,
   thisWeek,
   weights,
 } from "@oriel/core";
-
-const stalledAfter = 14;
 
 export const jiraOverview: OverviewOf = ({ records, held, now }) => {
   const childrenOf = Map.groupBy(
@@ -21,21 +21,20 @@ export const jiraOverview: OverviewOf = ({ records, held, now }) => {
   return records.flatMap((record): Candidate[] => {
     if (held(record)) return [];
     if (record.facets.kind === "epic") return record.facets.state === "done" ? [] : [epic(record)];
-    const idle = daysSince(record.updatedAt, now);
-    if (record.facets.state !== "in-progress" || idle < stalledAfter) return [];
+    if (!stalled(record, now)) return [];
     return [
       {
         subject: { kind: "item", id: record.id },
-        rule: `In progress, no update in ${stalledAfter} days`,
+        rule: `In progress, no update in ${stuckDays} days`,
         weight: weights.stalled,
-        detail: `${idle} days idle`,
+        detail: `${daysSince(record.updatedAt, now)} days idle`,
       },
     ];
   });
 
   function epic(record: IndexRecord): Candidate {
-    const changed = (childrenOf.get(record.stableId) ?? []).filter((child) =>
-      thisWeek(child.updatedAt, now),
+    const changed = (childrenOf.get(record.stableId) ?? []).filter(
+      (child) => child.facets.state !== "done" && !held(child) && thisWeek(child.updatedAt, now),
     ).length;
     return {
       subject: { kind: "cluster", grouping: "epic", key: record.stableId },

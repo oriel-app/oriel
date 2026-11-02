@@ -57,7 +57,15 @@ const day = 86_400_000;
 export const daysSince = (at: Instant, now: Instant): number =>
   Math.max(0, Math.floor((Date.parse(now) - Date.parse(at)) / day));
 
-// Whether `at` is within the 7 days before `now`, or after it, as a clock
-// that runs behind the source's would put it.
+// Whether `at` is within 7 days of `now`: before it, or after it, as a
+// clock that runs behind the source's would put it.
 export const thisWeek = (at: Instant, now: Instant): boolean =>
-  Date.parse(now) - Date.parse(at) < 7 * day;
+  Math.abs(Date.parse(now) - Date.parse(at)) < 7 * day;
+
+// How long an item not done goes without an update before it is stuck:
+// Browse's Stuck grouping and the overview's signals share it.
+export const stuckDays = 14;
+
+// Whether an item in progress has had no update in `stuckDays`.
+export const stalled = (record: IndexRecord, now: Instant): boolean =>
+  record.facets.state === "in-progress" && daysSince(record.updatedAt, now) >= stuckDays;

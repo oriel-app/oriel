@@ -20,8 +20,10 @@ test("a file edited in the last 7 days that no workstream holds is a candidate",
     file("fresh", "2026-10-24T12:00:01.000Z"),
     file("old", "2026-10-23T12:00:00.000Z"),
     file("held", "2026-10-29T12:00:00.000Z"),
-    // A clock behind the folder's puts an edit after now: still this week.
+    // A clock behind the folder's puts an edit after now: still this week,
+    // unless it's further off than a week.
     file("ahead", "2026-10-31T09:00:00.000Z"),
+    file("far-ahead", "2026-11-07T12:00:00.000Z"),
   ];
   const found = folderOverview({
     records,

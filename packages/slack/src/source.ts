@@ -196,7 +196,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           if (roots.length > cap - listed) capped = true;
           for (const m of roots.slice(0, cap - listed)) {
             oldest = m.ts;
-            const { author, body } = await named(m);
+            const { author, body, parts } = await named(m);
             const times = [m.ts, m.latest_reply, m.edited?.ts].filter(
               (ts): ts is string => ts !== undefined && tsShape.test(ts),
             );
@@ -213,7 +213,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
                 channel: { id: channel, name },
                 author,
                 replies: m.reply_count ?? 0,
-                ...(asks(body) && { asks: true as const }),
+                ...(asks(parts.map((part) => part.text).join("")) && { asks: true as const }),
               },
             });
           }
