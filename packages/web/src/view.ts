@@ -170,6 +170,25 @@ export type Undoable<T> = T & { undo: UndoView | null };
 
 export type ThreadsView = { threads: ThreadSummaryView[] };
 
+// What the sidebar's search found (OA-110): a thread, or one of its change
+// sets, with the words around the match. `query` is the query it answers, as
+// the server read it.
+export type SearchResultView = {
+  thread: {
+    id: string;
+    title: string | null;
+    state: ThreadStateId;
+    workstream: { id: string; name: string };
+  };
+  changeSet: {
+    id: string;
+    state: "pending" | "approved" | "applied" | "rejected" | "reverted";
+  } | null;
+  matched: "name" | "chat" | "change-set";
+  excerpt: string;
+};
+export type SearchView = { query: string; results: SearchResultView[] };
+
 // A run's record, as its transcript shows it.
 export type RunView = {
   outcome: "ok" | "threw" | "timeout" | "limit";

@@ -18,6 +18,7 @@ import {
   StateChip,
   TypeMark,
 } from "./parts.tsx";
+import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { lines, type Piece } from "./text-diff.ts";
 import {
@@ -472,7 +473,14 @@ function ChangeSet(props: {
   const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
   const approvable = set.nextSteps.some((step) => step.kind === "approve");
   return (
-    <section class="change-set" data-status={set.status} aria-busy={busy}>
+    <section
+      id={changeSetAnchor(set.id)}
+      class="change-set"
+      data-status={set.status}
+      data-opened={model.at?.changeSet === set.id || undefined}
+      aria-busy={busy}
+      tabIndex={-1}
+    >
       <header class="change-set-head">
         <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
         {/* Announced as it moves, as when Approve and apply turns it to applying. */}

@@ -32,9 +32,9 @@ export type ThreadRead = {
   link: string;
 };
 
-// One change a change set made or proposes: the sentence its diff says it
-// with, and the text it writes.
-export type ChangeRead = { sentence: string; text: readonly string[] };
+// One change a change set made or proposes: the source it writes to, as a
+// person knows it, the sentence its diff says it with, and the text it writes.
+export type ChangeRead = { source: string; sentence: string; text: readonly string[] };
 
 export type ChangeSetRead = {
   id: Ulid;

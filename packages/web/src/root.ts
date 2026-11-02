@@ -51,6 +51,13 @@ import {
 } from "./review.ts";
 import type { Route } from "./route.ts";
 import {
+  initSearch,
+  type SearchModel,
+  type SearchMsg,
+  searchReplied,
+  updateSearch,
+} from "./search.ts";
+import {
   initNewThread,
   initThread,
   keptAtLatest,
@@ -100,6 +107,8 @@ export type Model = {
   closing: ClosingModel;
   // The item open in the panel beside the page, as the route names it.
   panel: PanelModel | null;
+  // The sidebar's search over the workspace's threads.
+  search: SearchModel;
 };
 
 export type Msg =
@@ -112,6 +121,7 @@ export type Msg =
   | { type: "jira"; msg: JiraMsg }
   | { type: "closing"; msg: ClosingMsg }
   | { type: "panel"; msg: PanelMsg }
+  | { type: "search"; msg: SearchMsg }
   // A plain click on a link to an item: it opens in the panel.
   | { type: "itemOpened"; id: string }
   | { type: "panelClosed" }
@@ -174,6 +184,7 @@ export function init(route: Route): [Model, Effect[]] {
     threads: null,
     closing: initClosing(),
     panel: null,
+    search: initSearch(),
   };
   return withPanel(...enter(empty, route));
 }
@@ -242,7 +253,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       return [{ ...base, workstream }, [...leaving, ...effects, ...lists, ...watching]];
     }
     case "thread": {
-      const [thread, effects] = initThread(route.id);
+      const [thread, effects] = initThread(route.id, route.changeSet ?? null);
       return [{ ...base, thread }, [...leaving, ...effects, ...lists, ...watching]];
     }
     case "new-thread":
@@ -317,6 +328,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [panel, effects] = updatePanel(model.panel, msg.msg);
       return [{ ...model, panel }, effects];
     }
+    case "search": {
+      const [search, effects] = updateSearch(model.search, msg.msg);
+      return [{ ...model, search }, effects];
+    }
     // Opening the panel adds to history, so Back closes it; another item
     // takes its place.
     case "itemOpened": {
@@ -389,6 +404,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Telemetry is best effort; the window carries on either way.
     case "telemetry":
       return [model, []];
+    case "search": {
+      const [search, effects] = searchReplied(model.search, msg);
+      return [{ ...model, search }, effects];
+    }
     case "item":
     case "itemStamp": {
       if (model.panel === null) return [model, []];

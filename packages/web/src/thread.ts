@@ -46,6 +46,9 @@ export type ThreadModel = {
   deleted: boolean;
   // The page shows the latest entry, so what arrives keeps it there.
   atLatest: boolean;
+  // The change set the thread's address names: the page opens there instead
+  // of at the latest entry, once it has rendered, and marks it.
+  at: { changeSet: string; shown: boolean } | null;
 };
 
 // A step offered for a whole change set. Removing a line is its own message.
@@ -80,7 +83,7 @@ export type ThreadMsg =
   // The page shows what changed, and what the user did meanwhile.
   | { type: "rendered" };
 
-export function initThread(id: string): [ThreadModel, Effect[]] {
+export function initThread(id: string, changeSet: string | null = null): [ThreadModel, Effect[]] {
   return [
     {
       id,
@@ -99,7 +102,8 @@ export function initThread(id: string): [ThreadModel, Effect[]] {
       notes: {},
       notice: null,
       deleted: false,
-      atLatest: true,
+      atLatest: changeSet === null,
+      at: changeSet === null ? null : { changeSet, shown: false },
     },
     [get(`/api/threads/${id}`, { kind: "thread", id })],
   ];
@@ -305,21 +309,32 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         !(up && below > 1) && (Math.abs(below) <= nearLatest || (below > 0 && model.atLatest));
       return atLatest === model.atLatest ? [model, []] : [{ ...model, atLatest }, []];
     }
-    case "rendered":
-      return [model, model.view && model.atLatest ? [{ type: "showLatest" }] : []];
+    case "rendered": {
+      if (model.view === null) return [model, []];
+      const { at } = model;
+      if (at === null || at.shown) return [model, model.atLatest ? [{ type: "showLatest" }] : []];
+      // A change set the thread doesn't have, as in a stale link: its latest.
+      if (!model.view.changeSets.some((set) => set.id === at.changeSet))
+        return [{ ...model, at: null, atLatest: true }, [{ type: "showLatest" }]];
+      return [
+        { ...model, at: { ...at, shown: true } },
+        [{ type: "showChangeSet", changeSetId: at.changeSet }],
+      ];
+    }
   }
 }
 
 const nearLatest = 40;
 
-// A thread opens at its latest entry, and while the user is there, the
-// thread or a diff changing (an entry, a change set's status, a reload after
-// its workstream changed) keeps them there, as does the composer emptying once a
-// message is sent. Once it renders, the page is asked
-// again, so a user who scrolled up meanwhile, or is reading a run they
-// opened, stays where they are.
+// A thread opens at its latest entry, or at the change set its address
+// names, and while the user is at the latest, the thread or a diff changing
+// (an entry, a change set's status, a reload after its workstream changed)
+// keeps them there, as does the composer emptying once a message is sent.
+// Once it renders, the page is asked again, so a user who scrolled up
+// meanwhile, or is reading a run they opened, stays where they are.
 export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
-  if (after.view === null || !after.atLatest) return [];
+  const opening = after.at !== null && !after.at.shown;
+  if (after.view === null || (!after.atLatest && !opening)) return [];
   const changed =
     after.view !== before?.view ||
     after.diffs !== before?.diffs ||

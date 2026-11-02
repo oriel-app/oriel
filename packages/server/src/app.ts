@@ -87,6 +87,7 @@ import { type ConnectionStore, type JiraConnection, jiraSite } from "./connectio
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
+import { orielReads } from "./oriel-reads.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
@@ -517,6 +518,34 @@ export async function createApp(options: AppOptions): Promise<App> {
       }));
     },
   };
+  // Oriel's own data, read one way for the agent's namespaces and the
+  // window's search (decision 0024, OA-108). What a change set wrote is named
+  // from the index: people by their facets, and Slack's channels and authors
+  // by the messages indexed from them.
+  const reads = orielReads({
+    workspaceId,
+    workstreams,
+    threads,
+    changeSets: {
+      ofThread: (id) => sets.ofThread(id),
+      changes: (set, known) => sets.changes(set, known),
+    },
+    title: (id) => viewer.title(id),
+    known: () => {
+      const all = records();
+      const titles = new Map<string, string>(all.map((record) => [record.id, record.title]));
+      const names = new Map<string, string>();
+      for (const record of all)
+        for (const person of record.facets.people ?? []) names.set(person.id, person.name);
+      if (slack)
+        for (const { attrs } of index.records(workspaceId, "slack", slackAttrs)) {
+          names.set(attrs.channel.id, attrs.channel.name);
+          if (attrs.author.id !== null) names.set(attrs.author.id, attrs.author.name);
+        }
+      return { name: (id) => names.get(id) ?? null, title: (id) => titles.get(id) ?? null };
+    },
+    now,
+  });
   const regionBindings = (region: Region) => {
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
@@ -529,6 +558,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         slack: slack?.context,
       }),
       items: itemDocs,
+      oriel: reads,
     });
   };
 
@@ -763,6 +793,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       changeSets: sets,
       turns: conversation,
       views: viewer,
+      reads,
       items: itemPanels({ reader, records, sources, now }),
       emit,
       now,

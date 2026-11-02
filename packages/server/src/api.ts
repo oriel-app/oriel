@@ -23,6 +23,7 @@ import {
   holderReason,
   number,
   object,
+  type OrielReads,
   optional,
   parseItemId,
   refine,
@@ -41,6 +42,7 @@ import {
   type FolderView,
   isGroupingId,
   type JiraView,
+  type SearchView,
   type StreamEvent,
 } from "@oriel/web/view";
 import { ActionError, checked, type Dispatch, type Fields } from "./actions.ts";
@@ -62,6 +64,8 @@ export type ApiDeps = {
   changeSets: ChangeSets;
   turns: Turns;
   views: Views;
+  // Oriel's own threads and change sets, and the one search over them.
+  reads: OrielReads;
   // One item for the panel beside the page, read live, and when the index
   // last saw it change.
   items: ItemPanels;
@@ -135,6 +139,9 @@ const nameValue = refine(
 );
 const textValue = messageText;
 const maxDropped = 50;
+// A search reads this much of its query, and finds this many at most.
+const maxQueryChars = 200;
+const searchLimit = 20;
 const droppedFile = object({
   name: refine(string, (name) => name.length <= 255, "expected at most 255 characters"),
   modified: number,
@@ -211,6 +218,7 @@ const jiraBody = object({
   project: typedValue(32, "a project key"),
 });
 const tinyBody = 256;
+const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
   object({
@@ -224,6 +232,13 @@ const windowEvent = union(
     name: literal("item.source-opened"),
     item: itemIdValue,
     via: union(literal("panel"), literal("link")),
+  }),
+  // How long the query was, never what it said.
+  object({ name: literal("threads.searched"), queryLength: count, results: count }),
+  object({
+    name: literal("threads.search-opened"),
+    opened: union(literal("thread"), literal("change-set")),
+    rank: count,
   }),
 );
 
@@ -542,7 +557,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What only the window knows happened. Four events, fixed fields.
+      // What only the window knows happened. Six events, fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
@@ -557,15 +572,41 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
               ? { name: event.name, at, workspaceId, from: event.from, to: event.to }
               : event.name === "item.panel-opened"
                 ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
-                : {
-                    name: event.name,
-                    at,
-                    workspaceId,
-                    source: sourceOf(event.item),
-                    via: event.via,
-                  },
+                : event.name === "item.source-opened"
+                  ? {
+                      name: event.name,
+                      at,
+                      workspaceId,
+                      source: sourceOf(event.item),
+                      via: event.via,
+                    }
+                  : { ...event, at, workspaceId },
         );
         return json(202, {});
+      },
+    },
+    {
+      // The sidebar's search over the workspace's threads and what their
+      // change sets wrote: the one search the agent's thread.find() runs.
+      method: "GET",
+      path: at("/search"),
+      async run(_, _request, url) {
+        const query = (url.searchParams.get("q") ?? "").slice(0, maxQueryChars);
+        const found = await deps.reads.find(query, searchLimit);
+        return json(200, {
+          query,
+          results: found.map((hit) => ({
+            thread: {
+              id: hit.thread.id,
+              title: hit.thread.name,
+              state: hit.thread.state,
+              workstream: hit.thread.workstream,
+            },
+            changeSet: hit.changeSet && { id: hit.changeSet.id, state: hit.changeSet.state },
+            matched: hit.matched,
+            excerpt: hit.excerpt,
+          })),
+        } satisfies SearchView);
       },
     },
     {

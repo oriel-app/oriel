@@ -1,4 +1,5 @@
 import type { Instant, ItemId, SourceKind, Ulid } from "./ids.ts";
+import type { ChangeRead } from "./oriel-reads.ts";
 import type { RunRef } from "./run.ts";
 import type { CapturedMutation, NewRef } from "./sandbox.ts";
 import type { FieldValues, WriteResult } from "./source.ts";
@@ -124,6 +125,11 @@ export type Diff = {
   }[];
 };
 
+// What Oriel already knows to name a change by, without asking a source:
+// what a person calls an ID an op names (a person, a channel), and an
+// item's title.
+export type Known = { name(id: string): string | null; title(id: ItemId): string | null };
+
 export type ChangeSetPatch = {
   remove?: Ulid[];
   set?: { mutationId: Ulid; args: unknown }[];
@@ -153,6 +159,9 @@ export interface ChangeSets {
   ofThread(threadId: Ulid): Promise<ChangeSet[]>;
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
+  // What it made or proposes, one line per change, in its diff's own words,
+  // read from its rows and `known`, never from a source (`changesOf`).
+  changes(set: ChangeSet, known: Known): Promise<ChangeRead[]>;
   edit(id: Ulid, patch: ChangeSetPatch): Promise<ChangeSet>;
   // `reviewed` is the hash from the diff the person saw. The decision is
   // refused if the change set has changed since.

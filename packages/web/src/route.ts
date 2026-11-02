@@ -1,7 +1,8 @@
 // Where the page is: the window (with a grouping, and maybe a workstream it is
 // adding items to), a workstream, a thread, a new thread not started yet, the
 // Done page (the threads no longer working, in two tabs, a page at a time),
-// or a review link. On any page but a review link's, `item` is the item open
+// or a review link. A thread's address may name one of its change sets, to
+// open the thread there. On any page but a review link's, `item` is the item open
 // in the panel beside it, by its ID.
 import { type GroupingId, isGroupingId } from "./view.ts";
 
@@ -10,7 +11,7 @@ export type Route = Page & { item?: string };
 export type Page =
   | { page: "window"; grouping: GroupingId; addTo: string | null }
   | { page: "workstream"; id: string }
-  | { page: "thread"; id: string }
+  | { page: "thread"; id: string; changeSet?: string }
   | { page: "new-thread" }
   // `tab`: the dropped threads; absent for the done and handed-off ones.
   // `number`: the tab's page, from 1; absent for the first.
@@ -21,6 +22,7 @@ const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
 const workstreamPath = new RegExp(`^/workstreams/(${ulid})$`);
 const threadPath = new RegExp(`^/threads/(${ulid})$`);
 const reviewPath = /^\/review\/([A-Za-z0-9_-]{1,64})$/;
+const ulidShape = new RegExp(`^${ulid}$`);
 
 // An item ID's shape, loosely: the server checks each source's key.
 const itemShape = /^[a-z]+:[^\s/]{1,500}$/;
@@ -36,7 +38,12 @@ function parsePage(pathname: string, search: string): Page {
   const workstream = workstreamPath.exec(pathname)?.[1];
   if (workstream) return { page: "workstream", id: workstream };
   const thread = threadPath.exec(pathname)?.[1];
-  if (thread) return { page: "thread", id: thread };
+  if (thread) {
+    const changeSet = query.get("changeSet");
+    return changeSet !== null && ulidShape.test(changeSet)
+      ? { page: "thread", id: thread, changeSet }
+      : { page: "thread", id: thread };
+  }
   const token = reviewPath.exec(pathname)?.[1];
   if (token) return { page: "review", token };
   if (pathname === "/threads/new") return { page: "new-thread" };
@@ -53,7 +60,7 @@ function parsePage(pathname: string, search: string): Page {
   return {
     page: "window",
     grouping: isGroupingId(grouping) ? grouping : "epic",
-    addTo: addTo && new RegExp(`^${ulid}$`).test(addTo) ? addTo : null,
+    addTo: addTo && ulidShape.test(addTo) ? addTo : null,
   };
 }
 
@@ -74,7 +81,9 @@ function pageUrl(route: Page): string {
     case "workstream":
       return `/workstreams/${route.id}`;
     case "thread":
-      return `/threads/${route.id}`;
+      return route.changeSet
+        ? `/threads/${route.id}?${new URLSearchParams({ changeSet: route.changeSet })}`
+        : `/threads/${route.id}`;
     case "new-thread":
       return "/threads/new";
     case "done": {
@@ -86,6 +95,20 @@ function pageUrl(route: Page): string {
     case "review":
       return `/review/${route.token}`;
   }
+}
+
+// The element a change set's block is on a thread's page, which the page
+// scrolls to when its address names that change set.
+export const changeSetAnchor = (changeSetId: string): string => `change-set-${changeSetId}`;
+
+// A thread's page, or a change set on one, at an address inside Oriel, as a
+// reply links to it: a path, never another site. Anything else is null.
+export function inAppRoute(target: string): Route | null {
+  if (!target.startsWith("/threads/")) return null;
+  const url = URL.parse(target, "http://oriel.invalid");
+  if (url === null || url.origin !== "http://oriel.invalid") return null;
+  const route = parseRoute(url.pathname, url.search);
+  return route.page === "thread" ? route : null;
 }
 
 // A link to a source, only when it is http(s): anything else renders as text.
