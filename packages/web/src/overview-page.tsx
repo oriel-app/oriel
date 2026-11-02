@@ -239,9 +239,15 @@ function More(props: { section: OverviewSection; hidden: number; dispatch: Dispa
   );
 }
 
-// How long ago an instant was, in the reader's clock: "5m", "3h", "9d".
-function ago(instant: string): string {
+// How long a thread has waited, in the reader's clock: "just now", or
+// "waiting 5m", "3h", "9d".
+function waited(instant: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(instant)) / 60_000));
+  if (minutes < 1) return "just now";
+  return `waiting ${ago(minutes)}`;
+}
+
+function ago(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
   return `${Math.floor(minutes / (60 * 24))}d`;
@@ -272,7 +278,7 @@ function NeedsYou(props: { view: OverviewView; model: OverviewModel; dispatch: D
               <StateChip state={thread.state} waitingOn={thread.waitingOn} />
               <span class="overview-sub">{thread.workstream.name}</span>
               <span class="overview-age" title={`Waiting since ${day(thread.activityAt)}`}>
-                waiting {ago(thread.activityAt)}
+                {waited(thread.activityAt)}
               </span>
             </li>
           ))}

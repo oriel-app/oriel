@@ -4477,8 +4477,15 @@ button.overview-title:hover {
   flex-wrap: nowrap;
 }
 
+/* The title says what is asked, so the workstream's name gives way first. */
 .overview-thread .overview-title {
-  min-width: 6rem;
+  flex: 0 0 auto;
+  max-width: 70%;
+}
+
+.overview-thread .overview-sub {
+  flex: 0 1 auto;
+  min-width: 2rem;
 }
 
 .overview-thread .overview-title,
@@ -4526,8 +4533,22 @@ button.overview-title:hover {
     grid-template-columns: minmax(0, 1fr) 4rem 6.5rem 3rem;
   }
 
-  .overview-workstream .overview-spark,
-  .overview-thread .overview-sub {
+  .overview-workstream .overview-spark {
     display: none;
+  }
+
+  /* Narrow, the workstream's name goes under the title, muted. */
+  .overview-thread {
+    flex-wrap: wrap;
+  }
+
+  .overview-thread .overview-title {
+    flex: 1 1 0;
+    max-width: none;
+  }
+
+  .overview-thread .overview-sub {
+    flex: 1 0 100%;
+    order: 1;
   }
 }
