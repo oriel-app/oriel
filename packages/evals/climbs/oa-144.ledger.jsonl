@@ -1,10 +1,10 @@
-{"round":"01M6ECCJD9CZTS8RRS0K9EXK32","label":"B1: main","split":"train","runs":48,"usd":1.2263186}
-{"round":"01M6ECM4FD5AKHFJGCQG6QRDEN","label":"B2: main","split":"train","runs":48,"usd":0.9229731999999999}
-{"round":"01M6ECV9TKZ73TSCBTVT366A6V","label":"Q1: fix 1, quote word for word","split":"train","runs":48,"usd":0.9336781999999999}
-{"round":"01M6ECZAPBZH1SWP77B89RNMFB","label":"Q2: fix 1","split":"train","runs":48,"usd":0.9421023999999999}
-{"round":"01M6ED2HTD3Y1ZXWRJP5TFB2DG","label":"Q3: fix 1","split":"train","runs":48,"usd":0.9588833999999999}
-{"round":"01M6ED5PMJKT7GWJDSB4KDB3CC","label":"Q4: fix 1","split":"train","runs":48,"usd":0.9207338}
-{"round":"01M6EDAB0E71GJ75YYP4X7QB9Y","label":"T1a: trim 1, write rules in the run result","split":"train","runs":48,"usd":1.1099916}
-{"round":"01M6EDDKPAD9G22QX0V6F9AV05","label":"T1b: trim 1, write rules in the run result","split":"train","runs":48,"usd":0.9504845999999996}
-{"round":"01M6EDHYB0B45XFFTD2BNRDTQK","label":"T1'a: T1 + a file by its title","split":"train","runs":48,"usd":1.0671956000000002}
-{"round":"01M6EDP80TCWYZ2HJBE693VPF0","label":"T1'b: T1 + a file by its title","split":"train","runs":48,"usd":0.9457407999999999}
+{"round":"01M6ECCJD9CZTS8RRS0K9EXK32","label":"B1: main","split":"train","trials":48,"usd":1.2263186}
+{"round":"01M6ECM4FD5AKHFJGCQG6QRDEN","label":"B2: main","split":"train","trials":48,"usd":0.9229731999999999}
+{"round":"01M6ECV9TKZ73TSCBTVT366A6V","label":"Q1: fix 1, quote word for word","split":"train","trials":48,"usd":0.9336781999999999}
+{"round":"01M6ECZAPBZH1SWP77B89RNMFB","label":"Q2: fix 1","split":"train","trials":48,"usd":0.9421023999999999}
+{"round":"01M6ED2HTD3Y1ZXWRJP5TFB2DG","label":"Q3: fix 1","split":"train","trials":48,"usd":0.9588833999999999}
+{"round":"01M6ED5PMJKT7GWJDSB4KDB3CC","label":"Q4: fix 1","split":"train","trials":48,"usd":0.9207338}
+{"round":"01M6EDAB0E71GJ75YYP4X7QB9Y","label":"T1a: trim 1, write rules in the run result","split":"train","trials":48,"usd":1.1099916}
+{"round":"01M6EDDKPAD9G22QX0V6F9AV05","label":"T1b: trim 1, write rules in the run result","split":"train","trials":48,"usd":0.9504845999999996}
+{"round":"01M6EDHYB0B45XFFTD2BNRDTQK","label":"T1'a: T1 + a file by its title","split":"train","trials":48,"usd":1.0671956000000002}
+{"round":"01M6EDP80TCWYZ2HJBE693VPF0","label":"T1'b: T1 + a file by its title","split":"train","trials":48,"usd":0.9457407999999999}
