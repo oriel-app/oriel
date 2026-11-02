@@ -24,3 +24,9 @@
 {"round":"01M6EEKJZWTA8G21ZJMA6PTR5F","label":"Fa: final, all cases (records)","split":"all","trials":76,"usd":1.5324925999999999}
 {"round":"01M6EERKQB3XA1ZZAN7D12MDGT","label":"Fb: final, test","split":"test","trials":28,"usd":0.5733713791044776,"estimated":true}
 {"round":"01M6EERKQB3XA1ZZAN7D12MDGT","label":"Fb: final, test","split":"test","trials":28,"usd":0.5143984000000001}
+{"round":"01M6EG5XPG91PE46ENP99PVQN7","label":"R: final text on the rebased tree (records)","split":"all","trials":80,"usd":1.6325334615384615,"estimated":true}
+{"round":"01M6EG5XPG91PE46ENP99PVQN7","label":"R: final text on the rebased tree (records)","split":"all","trials":80,"usd":1.7378724000000003}
+{"round":"01M6EGEF5BNEVQFJD8JX7EPYB9","label":"R2: final text, train, re-record","split":"train","trials":52,"usd":1.0671529175438597,"estimated":true}
+{"round":"01M6EGEF5BNEVQFJD8JX7EPYB9","label":"R2: final text, train, re-record","split":"train","trials":52,"usd":0.9517008}
+{"round":"01M6EGJD2FH5F63DTGEHNXDQ8R","label":"R3: final text, train, re-record","split":"train","trials":52,"usd":1.0609252099585063,"estimated":true}
+{"round":"01M6EGJD2FH5F63DTGEHNXDQ8R","label":"R3: final text, train, re-record","split":"train","trials":52,"usd":0.9145749999999998}
