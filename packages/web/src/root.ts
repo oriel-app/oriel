@@ -67,7 +67,7 @@ import {
   reviewReplied,
   updateReview,
 } from "./review.ts";
-import type { Route } from "./route.ts";
+import { type Route, routeUrl } from "./route.ts";
 import {
   initSearch,
   type SearchModel,
@@ -96,6 +96,7 @@ import {
   type Model as WindowModel,
   type Msg as WindowMsg,
   update as updateWindow,
+  windowRoute,
 } from "./update.ts";
 import type {
   ChangeSetSummaryView,
@@ -248,7 +249,9 @@ export function windowTelemetry(before: WindowModel, after: WindowModel): Effect
   if (after.grouping !== before.grouping)
     return [report({ name: "grouping.switched", grouping: after.grouping })];
   const shown = after.window?.grouping;
-  if (shown === undefined || after.open === before.open) return [];
+  // Clusters a search opened as its window loaded aren't the user's zoom.
+  if (shown === undefined || after.open === before.open || after.window !== before.window)
+    return [];
   const was = before.open[shown].length;
   const now = after.open[shown].length;
   if (now === was) return [];
@@ -283,14 +286,20 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
   switch (route.page) {
     case "window": {
       if (model.window === null) {
-        const [window, effects] = initWindow(route.grouping, route.addTo);
+        const [window, effects] = initWindow(route.grouping, route.addTo, route);
         return [{ ...base, window }, [...leaving, ...effects, ...lists, ...watching]];
       }
+      // The address's filters, then its grouping, each loading the window
+      // only if it changed; the last load stands.
+      const [refiltered, filtering] = updateWindow(model.window, {
+        type: "filterRouted",
+        filter: route,
+      });
       const [window, effects] =
-        route.grouping === model.window.grouping
-          ? [model.window, []]
-          : updateWindow(model.window, { type: "groupingPicked", grouping: route.grouping });
-      const loads = effects.filter((effect) => effect.type === "loadWindow");
+        route.grouping === refiltered.grouping
+          ? [refiltered, filtering]
+          : updateWindow(refiltered, { type: "groupingPicked", grouping: route.grouping });
+      const loads = effects.filter((effect) => effect.type === "loadWindow").slice(-1);
       return [
         { ...base, window: { ...window, addTo: route.addTo } },
         [...leaving, ...loads, ...lists, ...watching],
@@ -399,7 +408,22 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "window": {
       if (model.window === null) return [model, []];
       const [window, effects] = updateWindow(model.window, msg.msg);
-      return [{ ...model, window }, [...effects, ...windowTelemetry(model.window, window)]];
+      // The page's own address follows the grouping and filters, as the
+      // address bar does, so a panel opened or closed keeps them.
+      const { route } = model;
+      const following: Route =
+        route.page === "window"
+          ? {
+              ...windowRoute(window),
+              addTo: route.addTo,
+              ...(route.item !== undefined && { item: route.item }),
+            }
+          : route;
+      const shown = routeUrl(following) === routeUrl(route) ? route : following;
+      return [
+        { ...model, window, route: shown },
+        [...effects, ...windowTelemetry(model.window, window)],
+      ];
     }
     case "workstream": {
       if (model.workstream === null) return [model, []];

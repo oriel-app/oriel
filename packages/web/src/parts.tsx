@@ -480,6 +480,15 @@ export function Assignee({ name }: { name: string | null }) {
   );
 }
 
+export function SearchIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25L13.5 13.5" />
+    </svg>
+  );
+}
+
 export function Chevron() {
   return (
     <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true">

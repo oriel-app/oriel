@@ -1,11 +1,18 @@
 // The window: clusters under a grouping, at two zoom levels, and the items
 // the user picks to make or grow a workstream.
-import { type Effect, errorOf, post, type Replied } from "./http.ts";
+import { type Effect, errorOf, post, type Replied, report } from "./http.ts";
+import type { Route } from "./route.ts";
+import { pauseMs } from "./search.ts";
 import {
+  type BrowseFilter,
   type ClusterPageView,
   type ClusterView,
+  filtered,
+  filterFrom,
   type GroupingId,
   isGroupingId,
+  listSize,
+  sameFilter,
   type WorkstreamSummary,
   type WindowView,
 } from "./view.ts";
@@ -18,6 +25,18 @@ export type Zoom = "cluster" | "list";
 
 export type Model = {
   grouping: GroupingId;
+  // The filters the window shows, as its address has them (decision 0027),
+  // and those the window on screen was loaded with, which differ while
+  // another loads.
+  filter: BrowseFilter;
+  shownFilter: BrowseFilter;
+  // What the search box holds, which becomes the filter's query once typing
+  // pauses; the latest keystroke, whose pause alone counts.
+  query: string;
+  typed: number;
+  // The window on its way answers a new query: it is counted, and opens the
+  // clusters with matches.
+  searched: boolean;
   // The window last loaded. It stays on screen while another grouping loads.
   window: WindowView | null;
   status: "loading" | "ready" | "failed";
@@ -58,6 +77,13 @@ export type Msg =
   | { type: "moreClicked"; key: string }
   | { type: "itemsLoaded"; request: number; page: ClusterPageView }
   | { type: "itemsFailed"; request: number; key: string; from: number }
+  // Browse's filters: the search box typed in, and its pause; a filter picked,
+  // or every one cleared; or the address naming others, as Back does.
+  | { type: "queryTyped"; text: string }
+  | { type: "queryPaused"; typed: number }
+  | { type: "filterPicked"; filter: BrowseFilter }
+  | { type: "filtersCleared" }
+  | { type: "filterRouted"; filter: BrowseFilter }
   | { type: "itemToggled"; id: string }
   | { type: "selectionCleared" }
   // Turns a cluster into a workstream: a copy of its members now.
@@ -66,11 +92,21 @@ export type Msg =
   | { type: "selectionAdded"; workstreamId: string }
   | Replied;
 
-// `grouping` is what the address bar asked for, if anything.
-export function init(grouping: string | null, addTo: string | null = null): [Model, Effect[]] {
+// `grouping` and `filter` are what the address bar asked for, if anything.
+export function init(
+  grouping: string | null,
+  addTo: string | null = null,
+  filter: BrowseFilter = {},
+): [Model, Effect[]] {
   const picked = isGroupingId(grouping) ? grouping : "epic";
+  const shown = filterFrom(filter);
   const model: Model = {
     grouping: picked,
+    filter: shown,
+    shownFilter: shown,
+    query: shown.q ?? "",
+    typed: 0,
+    searched: shown.q !== undefined,
     window: null,
     status: "loading",
     request: 0,
@@ -92,25 +128,72 @@ export function init(grouping: string | null, addTo: string | null = null): [Mod
 function more(model: Model, key: string): [Model, Effect[]] {
   const cluster = model.window?.clusters.find((each) => each.row.key === key);
   if (!model.window || !cluster || typeof model.paging[key] === "number") return [model, []];
-  if (cluster.list.length >= cluster.row.count) return [model, []];
+  // The window on screen is under other filters than those its pages would
+  // be asked for.
+  if (!sameFilter(model.shownFilter, model.filter)) return [model, []];
+  if (cluster.list.length >= listSize(cluster)) return [model, []];
   const request = model.pageRequest + 1;
   const { grouping } = model.window;
   return [
     { ...model, pageRequest: request, paging: { ...model.paging, [key]: request } },
-    [{ type: "loadItems", request, grouping, cluster: key, from: cluster.list.length }],
+    [pageOf(model, { request, grouping, cluster: key, from: cluster.list.length })],
   ];
 }
 
+// The request for a page of a cluster's items, under the window's filters.
+function pageOf(
+  model: Model,
+  page: { request: number; grouping: GroupingId; cluster: string; from: number },
+): Effect {
+  return { type: "loadItems", ...page, ...(filtered(model.filter) && { filter: model.filter }) };
+}
+
+// A new query opens this many of the clusters with matches, at most, so the
+// matches show without a click, and few pages are asked for at once.
+const revealed = 10;
+
 // A newly loaded window, with the items of each cluster open in it on their
 // way again from the first. Until they come, a cluster the window on screen
-// shows open keeps the items it has, so the list doesn't jump.
+// shows open keeps the items it has, so the list doesn't jump. One that
+// answers a new query is counted, and opens the clusters with matches.
 function shown(model: Model, window: WindowView): [Model, Effect[]] {
-  const open = model.open[window.grouping].filter((key) =>
-    window.clusters.some(({ row }) => row.key === key && row.count > 0),
+  const counted: Effect[] = model.searched
+    ? [
+        report({
+          name: "items.searched",
+          queryLength: [...(model.filter.q ?? "")].length,
+          results: window.items,
+        }),
+      ]
+    : [];
+  const matching = window.clusters
+    .filter((cluster) => listSize(cluster) > 0)
+    .slice(0, revealed)
+    .map(({ row }) => row.key);
+  const opened = model.searched
+    ? {
+        ...model.open,
+        [window.grouping]: [...new Set([...model.open[window.grouping], ...matching])],
+      }
+    : model.open;
+  const open = opened[window.grouping].filter((key) =>
+    window.clusters.some((cluster) => cluster.row.key === key && listSize(cluster) > 0),
   );
-  const ready = { ...model, window, status: "ready" as const, paging: {}, listed: {} };
-  if (open.length === 0) return [ready, []];
-  const before = model.window?.grouping === window.grouping ? model.window.clusters : [];
+  const ready = {
+    ...model,
+    window,
+    status: "ready" as const,
+    paging: {},
+    listed: {},
+    open: opened,
+    searched: false,
+    shownFilter: model.filter,
+  };
+  if (open.length === 0) return [ready, counted];
+  // Kept only from a window of the same grouping under the same filters.
+  const same =
+    model.window?.grouping === window.grouping && sameFilter(model.shownFilter, model.filter);
+  const before = same && model.window ? model.window.clusters : [];
   const kept = {
     ...window,
     clusters: window.clusters.map((cluster) => {
@@ -123,9 +206,9 @@ function shown(model: Model, window: WindowView): [Model, Effect[]] {
   for (const key of open) {
     const request = next.pageRequest + 1;
     next = { ...next, pageRequest: request, paging: { ...next.paging, [key]: request } };
-    effects.push({ type: "loadItems", request, grouping: window.grouping, cluster: key, from: 0 });
+    effects.push(pageOf(next, { request, grouping: window.grouping, cluster: key, from: 0 }));
   }
-  return [next, effects];
+  return [next, [...counted, ...effects]];
 }
 
 // A page of a cluster's items, put in place: the first replaces what the
@@ -139,7 +222,7 @@ function paged(model: Model, page: ClusterPageView): [Model, Effect[]] {
   const paging = { ...model.paging };
   delete paging[page.cluster];
   const moved =
-    page.total !== cluster.row.count || (page.from > 0 && model.listed[page.cluster] !== page.of);
+    page.total !== listSize(cluster) || (page.from > 0 && model.listed[page.cluster] !== page.of);
   if (moved) return load({ ...model, paging }, model.grouping);
   const listed = page.from === 0 ? { ...model.listed, [page.cluster]: page.of } : model.listed;
   const had = new Set(page.from === 0 ? [] : cluster.list.map((item) => item.id));
@@ -154,10 +237,21 @@ function paged(model: Model, page: ClusterPageView): [Model, Effect[]] {
 
 function load(model: Model, grouping: GroupingId): [Model, Effect[]] {
   const request = model.request + 1;
+  const { filter } = model;
   return [
     { ...model, grouping, status: "loading", request },
-    [{ type: "loadWindow", request, grouping }],
+    [{ type: "loadWindow", request, grouping, ...(filtered(filter) && { filter }) }],
   ];
+}
+
+// The window under other filters, and the address saying so unless it
+// already does. A new query is counted once it loads.
+function refilter(model: Model, filter: BrowseFilter, address: boolean): [Model, Effect[]] {
+  if (sameFilter(filter, model.filter)) return [model, []];
+  // A query still on its way stays to be counted, unless it is gone.
+  const searched = filter.q !== undefined && (model.searched || filter.q !== model.filter.q);
+  const [next, effects] = load({ ...model, filter, searched }, model.grouping);
+  return [next, address ? [...effects, { type: "showFilter", filter }] : effects];
 }
 
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
@@ -209,6 +303,27 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       );
       const window = model.window && clusters ? { ...model.window, clusters } : model.window;
       return [{ ...model, paging, window }, []];
+    }
+    case "queryTyped": {
+      const typed = model.typed + 1;
+      const next = { ...model, query: msg.text, typed };
+      // Emptied, the search goes at once.
+      if (msg.text.trim() === "")
+        return refilter(next, filterFrom({ ...model.filter, q: "" }), true);
+      const paused = { type: "window", msg: { type: "queryPaused", typed } } as const;
+      return [next, [{ type: "after", ms: pauseMs, msg: paused }]];
+    }
+    case "queryPaused":
+      if (msg.typed !== model.typed) return [model, []];
+      return refilter(model, filterFrom({ ...model.filter, q: model.query }), true);
+    case "filterPicked":
+      return refilter({ ...model, query: msg.filter.q ?? "" }, filterFrom(msg.filter), true);
+    case "filtersCleared":
+      return refilter({ ...model, query: "", typed: model.typed + 1 }, {}, true);
+    case "filterRouted": {
+      const filter = filterFrom(msg.filter);
+      if (sameFilter(filter, model.filter)) return [model, []];
+      return refilter({ ...model, query: filter.q ?? "", typed: model.typed + 1 }, filter, false);
     }
     case "itemToggled": {
       if (model.selected.includes(msg.id)) {
@@ -264,6 +379,16 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
       ];
     }
   }
+}
+
+// Browse's address for the window as it is: its grouping and filters.
+export function windowRoute(model: Model | null): Extract<Route, { page: "window" }> {
+  return {
+    page: "window",
+    grouping: model?.grouping ?? "epic",
+    addTo: null,
+    ...(model ? model.filter : {}),
+  };
 }
 
 export function zoomOf(model: Model, key: string): Zoom {

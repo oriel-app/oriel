@@ -793,6 +793,31 @@ const scenes: Scene[] = [
       await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
     },
   },
+  {
+    name: "browse-search",
+    path: "/browse?grouping=epic&q=sms&source=slack",
+    on: chatty,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+      await itemsShown(page);
+    },
+  },
+  {
+    name: "browse-search-all",
+    path: "/browse?grouping=epic&q=sms",
+    on: chatty,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+      await itemsShown(page);
+    },
+  },
+  {
+    name: "browse-search-none",
+    path: "/browse?grouping=epic&q=nothing-like-this",
+    act: (page) => page.locator(".no-matches").waitFor(),
+  },
   { name: "assignee", path: "/?grouping=assignee", act: (page) => shown(page, "assignee") },
   {
     name: "assignee-expanded",

@@ -2,7 +2,15 @@ import { type Effect, unreachable } from "./http.ts";
 import type { Msg } from "./root.ts";
 import { changeSetAnchor, parseRoute, routeUrl } from "./route.ts";
 import type { ThreadMsg } from "./thread.ts";
-import type { ClusterPageView, GroupingId, StreamEvent, WindowView } from "./view.ts";
+import {
+  type BrowseFilter,
+  type ClusterPageView,
+  filterKeys,
+  filterParams,
+  type GroupingId,
+  type StreamEvent,
+  type WindowView,
+} from "./view.ts";
 
 // Where the page last scrolled itself to a thread's latest entry, until the
 // scroll event that says so.
@@ -18,7 +26,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
   switch (effect.type) {
     case "loadWindow": {
       const { request } = effect;
-      loadWindow(effect.grouping).then(
+      loadWindow(effect.grouping, effect.filter ?? {}).then(
         (window) => dispatch({ type: "window", msg: { type: "windowLoaded", request, window } }),
         () => dispatch({ type: "window", msg: { type: "windowFailed", request } }),
       );
@@ -26,7 +34,7 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
     }
     case "loadItems": {
       const { request, cluster } = effect;
-      loadItems(effect.grouping, cluster, effect.from).then(
+      loadItems(effect.grouping, cluster, effect.from, effect.filter ?? {}).then(
         (page) => dispatch({ type: "window", msg: { type: "itemsLoaded", request, page } }),
         () =>
           dispatch({
@@ -34,6 +42,13 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
             msg: { type: "itemsFailed", request, key: cluster, from: effect.from },
           }),
       );
+      return;
+    }
+    case "showFilter": {
+      const url = new URL(location.href);
+      for (const key of filterKeys) url.searchParams.delete(key);
+      for (const [key, value] of filterParams(effect.filter)) url.searchParams.set(key, value);
+      history.replaceState(null, "", url);
       return;
     }
     case "showGrouping": {
@@ -177,8 +192,9 @@ export function watchLatest(send: (msg: ThreadMsg) => void): () => void {
 }
 
 // Browse's clusters, with no items: they load as each opens.
-async function loadWindow(grouping: GroupingId): Promise<WindowView> {
-  const response = await fetch(`/api/browse?grouping=${grouping}`);
+async function loadWindow(grouping: GroupingId, filter: BrowseFilter): Promise<WindowView> {
+  const query = new URLSearchParams([["grouping", grouping], ...filterParams(filter)]);
+  const response = await fetch(`/api/browse?${query}`);
   if (!response.ok) throw new Error(`GET /api/browse: ${response.status}`);
   // Our own server's reply, in the shape view.ts declares for both sides.
   return (await response.json()) as WindowView;
@@ -188,8 +204,14 @@ async function loadItems(
   grouping: GroupingId,
   cluster: string,
   from: number,
+  filter: BrowseFilter,
 ): Promise<ClusterPageView> {
-  const query = new URLSearchParams({ grouping, cluster, from: String(from) });
+  const query = new URLSearchParams([
+    ["grouping", grouping],
+    ["cluster", cluster],
+    ["from", String(from)],
+    ...filterParams(filter),
+  ]);
   const response = await fetch(`/api/browse/items?${query}`);
   if (!response.ok) throw new Error(`GET /api/browse/items: ${response.status}`);
   return (await response.json()) as ClusterPageView;

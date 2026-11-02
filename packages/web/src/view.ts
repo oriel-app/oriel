@@ -5,7 +5,7 @@
 // Source text (titles, content) is always text here, never HTML.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { PanelBlock } from "@oriel/core/panel";
-import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
+import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
 export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
@@ -19,7 +19,59 @@ export function isGroupingId(value: unknown): value is GroupingId {
 
 // A cluster's row, and its items so far. Browse's first reply has none:
 // they load when the cluster opens, `pageSize` at a time (decision 0027).
-export type ClusterView = { row: ClusterRow; list: ItemRow[] };
+// Under a filter, `matched` is how many of its items match, which are all its
+// list holds; the row still counts them all.
+export type ClusterView = { row: ClusterRow; list: ItemRow[]; matched?: number };
+
+// How many items a cluster's list holds once every page has loaded.
+export const listSize = (cluster: ClusterView): number => cluster.matched ?? cluster.row.count;
+
+export const statusCategories = ["todo", "in-progress", "done"] as const;
+
+// Browse's filters (decision 0027), as its address and its requests carry
+// them: item search, matched as search() matches, and a source, a status
+// category and an assignee, by the person's ID. Each is absent when unset.
+export type BrowseFilter = {
+  q?: string;
+  source?: string;
+  status?: StatusCategory;
+  assignee?: string;
+};
+
+export const filterKeys = ["q", "source", "status", "assignee"] as const;
+
+// The filters an address or a request names. A blank one is unset, and so is
+// a status that isn't a category; the server checks the rest.
+export function browseFilter(params: URLSearchParams): BrowseFilter {
+  const filter: BrowseFilter = {};
+  for (const key of filterKeys) {
+    const value = params.get(key)?.trim();
+    if (!value) continue;
+    if (key === "status") {
+      const status = statusCategories.find((category) => category === value);
+      if (status) filter.status = status;
+    } else filter[key] = value;
+  }
+  return filter;
+}
+
+// The filters as address or request parameters, in one order, the unset left
+// out.
+export function filterParams(filter: BrowseFilter): [string, string][] {
+  return filterKeys.flatMap((key) => {
+    const value = filter[key];
+    return value ? [[key, value]] : [];
+  });
+}
+
+export const filtered = (filter: BrowseFilter): boolean => filterParams(filter).length > 0;
+
+// The filters alone, from anything that carries them, as an address does.
+export const filterFrom = (from: BrowseFilter): BrowseFilter =>
+  browseFilter(new URLSearchParams(filterParams(from)));
+
+export const sameFilter = (a: BrowseFilter, b: BrowseFilter): boolean =>
+  `${new URLSearchParams(filterParams(a))}` === `${new URLSearchParams(filterParams(b))}`;
 
 export const pageSize = 50;
 
@@ -48,7 +100,12 @@ export type WindowView = {
   // Where each item shown lives in its source, by ID, for an http(s)
   // location only: where a Cmd/Ctrl or middle click on its row goes.
   locations?: Readonly<Record<string, string>>;
+  // What Browse's filters can pick from: the sources the index has items
+  // from, and the people assigned an item, by name.
+  choices?: { sources: Choice[]; people: Choice[] };
 };
+
+export type Choice = { id: string; name: string };
 
 // The folder of markdown files the user connected, read-only: its real path,
 // how many files the index has from it, and when it last synced.

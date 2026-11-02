@@ -13,6 +13,7 @@ import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
+import { windowRoute } from "./update.ts";
 import { useProgram } from "./use-program.ts";
 import { WindowPage } from "./window-page.tsx";
 
@@ -218,11 +219,7 @@ function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu():
           </span>
         )}
       </button>
-      <Link
-        route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
-        dispatch={dispatch}
-        class="brand"
-      >
+      <Link route={windowRoute(model.window)} dispatch={dispatch} class="brand">
         <Mark />
         Oriel
       </Link>
