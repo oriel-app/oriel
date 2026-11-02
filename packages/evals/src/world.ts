@@ -58,7 +58,8 @@ export const evalFolderId: Ulid = ulid(Date.UTC(2026, 8, 1), new Uint8Array(10).
 // differs on every run.
 export const evalFolderLocation = "file:///eval/folder/";
 
-const fixedId: Ulid = ulid(0, new Uint8Array(10));
+// Every case's workspace and workstream.
+export const fixedId: Ulid = ulid(0, new Uint8Array(10));
 
 // A file's item ID, from its path in the folder fixture.
 export const fileId = (path: string): ItemId<"folder"> =>

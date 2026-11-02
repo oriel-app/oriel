@@ -34,6 +34,7 @@ import type {
   ThreadView,
 } from "@oriel/web/view";
 import { waitingOn } from "@oriel/web/view";
+import { actionLineView } from "./action-lines.ts";
 import { agentEvent, type AgentEvent } from "./agent.ts";
 
 export type ViewDeps = {
@@ -320,16 +321,35 @@ export function views(deps: ViewDeps) {
         added: change.added.map((m) => ref(find(m), m.id)),
         removed: change.removed.map((m) => ref(find(m), m.id)),
         cause: change.cause.kind,
+        ...(change.cause.kind === "agent"
+          ? { thread: { id: change.cause.threadId, title: title(change.cause.threadId) } }
+          : {}),
       }));
+  };
+
+  // The items of a thread's workstream that the agent or an outside tool
+  // put there, by the handle each joined under, and who.
+  const broughtIn = (threadId: Ulid): Map<string, "agent" | "tool"> => {
+    const thread = threads.get(threadId, deps.now());
+    const by = new Map<string, "agent" | "tool">();
+    for (const change of thread ? workstreams.changes(thread.workstreamId, 0) : []) {
+      for (const member of change.removed) by.delete(member.id);
+      for (const member of change.added)
+        if (change.cause.kind === "agent" || change.cause.kind === "tool")
+          by.set(member.id, change.cause.kind);
+        else by.delete(member.id);
+    }
+    return by;
   };
 
   // A stored chat message as the window shows it; null for an agent event
   // in a shape this server doesn't know.
   const entry = (
     message: Message,
-    workstreamId: Ulid,
+    own: { thread: Ulid; workstream: Ulid },
     region: ReadonlySet<string>,
   ): ChatEntry | null => {
+    const workstreamId = own.workstream;
     const at = { seq: message.seq, at: message.at };
     if (message.role === "user") return { ...at, kind: "user", text: message.text };
     if (message.role === "held") {
@@ -376,6 +396,12 @@ export function views(deps: ViewDeps) {
       }
       case "change-set":
         return { ...at, kind: "change-set", changeSetId: event.changeSetId };
+      case "actions":
+        return {
+          ...at,
+          kind: "actions",
+          lines: event.lines.map((line) => actionLineView(line, own)),
+        };
       case "limit":
         return { ...at, kind: "limit", reason: event.reason };
       case "error":
@@ -418,7 +444,7 @@ export function views(deps: ViewDeps) {
       if (!thread) return null;
       return entry(
         message,
-        thread.workstreamId,
+        { thread: thread.id, workstream: thread.workstreamId },
         regionIds(thread.workstreamId, thread.regionVersion),
       );
     },
@@ -450,7 +476,7 @@ export function views(deps: ViewDeps) {
       };
       const entries = messages.flatMap((m) => {
         if (m.role === "marker") version = m.to;
-        return entry(m, thread.workstreamId, idsAt(version)) ?? [];
+        return entry(m, { thread: id, workstream: thread.workstreamId }, idsAt(version)) ?? [];
       });
       return {
         id,
@@ -489,6 +515,15 @@ export function views(deps: ViewDeps) {
         };
       };
       const rows = new Map(set.mutations.map((m) => [m.id, m]));
+      const brought = broughtIn(set.threadId);
+      const named = (line: Diff["lines"][number]) =>
+        [
+          ...new Set(
+            [line.target, ...line.fields.flatMap((f) => [f.before, f.after])].filter(
+              (value): value is string => typeof value === "string" && brought.has(value),
+            ),
+          ),
+        ].map((id) => ({ key: keyOf(id), by: brought.get(id) ?? "agent" }));
       return {
         changeSetId: diff.changeSetId,
         hash: diff.hash,
@@ -507,6 +542,7 @@ export function views(deps: ViewDeps) {
             makes: line.makes,
             applied,
             error,
+            brought: named(line),
             fields: line.fields.map((field) => ({
               name: field.name,
               before: display(field.name, field.before, person),

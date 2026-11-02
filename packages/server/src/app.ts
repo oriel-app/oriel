@@ -20,6 +20,7 @@ import {
   type IndexRecord,
   type Instant,
   instant,
+  isItemId,
   type ItemId,
   type Log,
   parseItemId,
@@ -87,6 +88,7 @@ import { type ConnectionStore, type JiraConnection, jiraSite } from "./connectio
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
+import { intentsOf } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
@@ -195,6 +197,7 @@ export const limits: AgentLimits = {
     maxScriptBytes: 16_384,
     maxReads: 50,
     maxMutations: 20,
+    maxIntents: 20,
     maxResultBytes: 65_536,
     maxConsoleBytes: 16_384,
   },
@@ -544,7 +547,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
   });
-  const regionBindings = (region: Region) => {
+  const regionBindings = (region: Region, thread?: Ulid) => {
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
     // What the last sync found on the boards; nothing before one.
@@ -557,6 +560,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       }),
       items: itemDocs,
       oriel: reads,
+      ...(thread ? { thread } : {}),
     });
   };
 
@@ -595,10 +599,19 @@ export async function createApp(options: AppOptions): Promise<App> {
       return deno.run(script, bindings, runOptions);
     },
   };
+  // The agent's intents apply through the dispatcher, made below, as the
+  // turn that recorded them ends.
+  let intents: ReturnType<typeof intentsOf> | null = null;
   const agentDeps: ServerAgentDeps = {
     sandbox,
     bindingsFor: regionBindings,
     changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
+    actions: {
+      apply: (turn, recorded) => {
+        if (!intents) throw new Error("Oriel's actions aren't ready yet");
+        return intents.apply(turn, recorded);
+      },
+    },
     runs: { record: (run, reads) => runs.record(run, reads) },
     limits: caps,
     now,
@@ -632,6 +645,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
   });
 
+  // The items a change set names, as targets or, by each op's catalogue,
+  // among its arguments; never a new item's ref.
+  const namedBy = (set: ChangeSet): ItemId[] => {
+    const refs = (op: string, args: unknown) =>
+      sourceKinds.flatMap((kind) => {
+        const spec = specs[kind]?.ops[op];
+        if (!spec) return [];
+        try {
+          return spec.refs(args);
+        } catch {
+          return [];
+        }
+      });
+    const named = set.mutations.flatMap((m) => [
+      ...(m.target !== null && isItemId(m.target) ? [m.target] : []),
+      ...refs(m.op, m.args).filter(isItemId),
+    ]);
+    return [...new Set(named)];
+  };
+
   // Oriel's own actions, through one dispatcher (decision 0024). Each call
   // publishes once to the window's streams: a workstream's working threads
   // follow it, with markers; a thread's pages hear it changed; and every
@@ -650,6 +683,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     held: conversation,
+    running: conversation.running,
+    unsettled: async (threadId) =>
+      Promise.all(
+        (await sets.ofThread(threadId))
+          .filter((set) => set.decision?.kind !== "rejected" && set.completedAt === null)
+          .map(async (set) => ({
+            waits: (await sets.nextSteps(set.id)).some((step) => step.kind !== "revert"),
+            names: namedBy(set),
+          })),
+      ),
     publish: (changed) => {
       conversation.acted(
         "thread" in changed
@@ -663,6 +706,13 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
     newId,
+  });
+
+  intents = intentsOf({
+    dispatch,
+    workstreams,
+    title: viewer.title,
+    startedBy: conversation.startedBy,
   });
 
   // What a change set created joins its thread's workstream, so later turns can

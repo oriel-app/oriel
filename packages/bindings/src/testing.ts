@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import {
   type Bindings,
   type CapturedMutation,
+  type Intent,
   guestMessage,
   type ItemId,
   parseItemId,
@@ -103,7 +104,8 @@ export function movingReader(reader: Reader, from: ItemId<"jira">, to: ItemId<"j
 
 export type GuestRun = {
   mutations: CapturedMutation[];
-  // Capture errors, one per rejected write.
+  intents: Intent[];
+  // Capture errors, one per rejected write or intent.
   rejected: string[];
   reads: { fn: string; args: unknown[]; outsideRegion: boolean }[];
   logs: string[];
@@ -112,8 +114,8 @@ export type GuestRun = {
 };
 
 // Runs the shim in a Node child with an empty environment, sends the script
-// as reply 0, answers reads with `bindings.read` and captures writes with
-// `bindings.capture`. A script `guestStart` refuses never starts a child.
+// as reply 0, answers reads with `bindings.read`, captures writes with
+// `bindings.capture` and records intents with `bindings.intend`. A script `guestStart` refuses never starts a child.
 export async function runGuest(bindings: Bindings, script: string): Promise<GuestRun> {
   const start = guestStart(script);
   if (!start.ok) throw new Error(start.error.message);
@@ -128,6 +130,7 @@ export async function runGuest(bindings: Bindings, script: string): Promise<Gues
   const exited = once(child, "close");
   const run: GuestRun = {
     mutations: [],
+    intents: [],
     rejected: [],
     reads: [],
     logs: [],
@@ -159,6 +162,14 @@ export async function runGuest(bindings: Bindings, script: string): Promise<Gues
     if (message.kind === "write") {
       try {
         run.mutations.push(bindings.capture(message.fn, message.args, message.ref));
+      } catch (error) {
+        run.rejected.push(error instanceof Error ? error.message : String(error));
+      }
+      continue;
+    }
+    if (message.kind === "intent") {
+      try {
+        run.intents.push(bindings.intend(message.fn, message.args));
       } catch (error) {
         run.rejected.push(error instanceof Error ? error.message : String(error));
       }

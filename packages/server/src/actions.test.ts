@@ -69,6 +69,10 @@ function world() {
       sendHeld: () => assert.fail("nothing is held"),
       discardHeld: () => assert.fail("nothing is held"),
     },
+    // No turn runs and no change set waits here; agent-actions.test.ts
+    // holds the agent to both.
+    running: () => false,
+    unsettled: async () => [],
     emit: (event) => events.push(event),
     publish: (changed) => published.push(changed),
     now: () => t0,

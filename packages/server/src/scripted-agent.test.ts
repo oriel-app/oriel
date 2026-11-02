@@ -72,6 +72,7 @@ test("history joins the agent's text, summarizes runs, and names marker items by
           result: {
             reads: [],
             mutations: [],
+            intents: [],
             transcript: [{ kind: "return", value: { left: 2 } }],
             outcome: "ok",
             wallMs: 3,

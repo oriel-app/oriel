@@ -190,8 +190,9 @@ export function postRoutes(text: string): { path: string; dispatches: boolean }[
 }
 
 // What an action's declaration leaves unsaid: why a door is closed to it, why
-// it is a person's, or why a direct one has no inverse; or an inverse that
-// names no action.
+// it or part of its input is a person's, or why a direct one has no inverse;
+// or an inverse that names no action. The agent's functions are generated
+// from the same declarations, so none can be missing.
 export function actionProblems(declared: Record<string, ActionDeclaration>): string[] {
   const at = "packages/core/src/actions.ts";
   const found: string[] = [];
@@ -207,6 +208,9 @@ export function actionProblems(declared: Record<string, ActionDeclaration>): str
       found.push(`${at}: ${name} has no inverse and doesn't say why (decision 0024)`);
     if (kind.kind === "direct" && kind.inverse !== null && !Object.hasOwn(declared, kind.inverse))
       found.push(`${at}: ${name}'s inverse ${kind.inverse} isn't an action (decision 0024)`);
+    for (const [part, why] of Object.entries(action.userOnly ?? {}))
+      if (blank(why))
+        found.push(`${at}: ${name}'s ${part} is the user's without a reason (decision 0024)`);
   }
   return found;
 }

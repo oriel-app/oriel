@@ -13,6 +13,7 @@ import {
   type GuestMessage,
   guestMessage,
   type HostReply,
+  type Intent,
   type Log,
   type NewRef,
   type ProxiedRead,
@@ -69,6 +70,7 @@ const hints = {
   memory: "Work through items in smaller batches and keep less in memory.",
   reads: "Use the list functions to read many items at once.",
   mutations: "Propose fewer changes in one run.",
+  intents: "Ask for fewer of Oriel's actions in one run: one call can add or remove many items.",
   result: "Return a summary (counts, IDs, a few fields) instead of whole items.",
   console: "Log less; return data instead of printing it.",
   stdout: "Use console.log for output and return the result; don't write to stdout directly.",
@@ -118,7 +120,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
     // A script that is too big or doesn't compile never reaches Deno.
     const refuse = (last: TranscriptEntry, outcome: Exclude<RunResult["outcome"], "ok">) =>
       finished(
-        { reads: [], mutations: [], transcript: [last], outcome },
+        { reads: [], mutations: [], intents: [], transcript: [last], outcome },
         now() - started,
         null,
         log,
@@ -223,6 +225,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
 
       const reads: ReadRecord[] = [];
       const mutations: CapturedMutation[] = [];
+      const intents: Intent[] = [];
       const transcript: TranscriptEntry[] = [];
       const logs: string[] = [];
       const refs = new Set<NewRef>();
@@ -363,6 +366,21 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
               return;
             }
             if (ref !== null) refs.add(ref);
+            return;
+          }
+          case "intent": {
+            if (intents.length >= limits.maxIntents) {
+              const text = `the script recorded more than ${limits.maxIntents} of Oriel's actions`;
+              end("limit", fail("limit", text, hints.intents));
+              return;
+            }
+            // Recorded, never applied here: the turn applies them when it
+            // ends. The bindings' refusal names the function.
+            try {
+              intents.push(bindings.intend(message.fn, message.args));
+            } catch (error) {
+              end("threw", fail("runtime", errorText(error)));
+            }
             return;
           }
           case "log": {
@@ -523,13 +541,14 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
             cold_start_ms: coldStartMs,
             reads: proxied.length,
             mutations: mutations.length,
+            ...(intents.length ? { intents: intents.length } : {}),
           });
           reject(signal.reason);
           return;
         }
         const { outcome, last } = ending ?? exited(code, killedBy);
         transcript.push(last);
-        const result = { reads: proxied, mutations, transcript, outcome };
+        const result = { reads: proxied, mutations, intents, transcript, outcome };
         resolve(finished(result, now() - job.started, coldStartMs, log));
       });
     });
@@ -550,6 +569,8 @@ function finished(
     cold_start_ms: coldStartMs,
     reads: result.reads.length,
     mutations: result.mutations.length,
+    // Only a run that recorded any of Oriel's actions says so.
+    ...(result.intents.length ? { intents: result.intents.length } : {}),
   });
   return { ...result, wallMs, coldStartMs };
 }

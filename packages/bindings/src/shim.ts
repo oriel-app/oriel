@@ -10,7 +10,7 @@ import { type Fn, globals, parameters, pathOf, spaceNames } from "./describe.ts"
 
 // JSON lines: calls go out on stdout, replies come back on stdin. Reply 0
 // carries the script; the guest's own reads count from 1. Reads await their
-// reply; writes are sent in call order and never awaited. A create names its
+// reply; writes and intents are sent in call order and never awaited. A create names its
 // item `new:N`, counting from 1 within the run. Console output becomes log
 // messages, so nothing else reaches stdout. Under Node (tests only) stdio is
 // `process`'s.
@@ -84,6 +84,9 @@ const __oriel = (() => {
     if (creates) refs += 1;
     return ref ?? undefined;
   };
+  const intend = (fn, args) => {
+    send({ kind: "intent", fn, args: trim(args) });
+  };
   // An error shows its name and message, a Map or Set its entries; at most 50
   // entries each and 4000 characters a value.
   const plain = (key, value) => {
@@ -137,7 +140,7 @@ const __oriel = (() => {
     });
     listen();
   };
-  return { read, write, start };
+  return { read, write, intend, start };
 })();
 `;
 
@@ -148,6 +151,7 @@ export function stubs(fns: readonly Fn[]): string {
   const call = (fn: Fn) => {
     const path = JSON.stringify(pathOf(fn));
     if (fn.kind === "read") return `(...args: unknown[]) => __oriel.read(${path}, args)`;
+    if (fn.kind === "intent") return `(...args: unknown[]): void => __oriel.intend(${path}, args)`;
     return `(...args: unknown[]) => __oriel.write(${path}, args, ${fn.creates})`;
   };
   // Every namespace, even one this region has no functions in, so each name

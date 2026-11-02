@@ -36,6 +36,7 @@ const stubModule = (text: string) =>
     "  read(fn: string, args: unknown[]): Promise<never>;",
     "  write(fn: string, args: unknown[], creates: true): Declared['NewRef'];",
     "  write(fn: string, args: unknown[], creates: false): void;",
+    "  intend(fn: string, args: unknown[]): void;",
     "};",
     text,
     "type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;",

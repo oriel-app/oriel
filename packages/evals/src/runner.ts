@@ -13,6 +13,8 @@ import {
   nullable,
   number,
   object,
+  optional,
+  record,
   string,
   union,
   unknown,
@@ -38,13 +40,14 @@ import type { Cassettes } from "./cassette.ts";
 import {
   type Grade,
   gradeExactDiff,
+  gradeIntents,
   gradeJudge,
   gradeMentions,
   gradeSurfaced,
   gradeZeroMutations,
 } from "./graders.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
-import { buildWorld } from "./world.ts";
+import { buildWorld, fixedId } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
@@ -67,14 +70,19 @@ export type SystemInput = {
   fetch: Fetch;
 };
 
-// What it hands back: the mutations its change set captured, the reply the
-// user sees, and its transcript, kept verbatim for the case's transcript file.
+// What it hands back: the mutations its change set captured, the calls its
+// intents applied as (none, when it says nothing of them), the reply the user
+// sees, and its transcript, kept verbatim for the case's transcript file.
 export const systemOutput = object({
   mutations: array(capturedMutation),
+  intents: optional(array(object({ action: string, input: record(unknown) }))),
   reply: string,
   transcript: array(unknown),
 });
-export type SystemOutput = Infer<typeof systemOutput>;
+// A system may leave its intents out, as one that never asks for actions.
+export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents"> & {
+  intents?: Infer<typeof systemOutput>["intents"];
+};
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
 
@@ -230,7 +238,10 @@ async function grade(
       if (!loaded.golden) throw new Error(`${expectation.golden} was not loaded`);
       grades.push(gradeExactDiff(loaded.golden, output.mutations));
     }
-    if (expectation.grader === "zero-mutations") grades.push(gradeZeroMutations(output.mutations));
+    if (expectation.grader === "zero-mutations")
+      grades.push(gradeZeroMutations(output.mutations, output.intents ?? []));
+    if (expectation.grader === "intents")
+      grades.push(gradeIntents(expectation.calls, output.intents ?? [], output.mutations, fixedId));
     if (expectation.grader === "surfaced") {
       // A file is named by its title, and a Slack message by its author.
       const named =

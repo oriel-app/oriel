@@ -17,6 +17,7 @@ import {
   type WorkstreamOrigin,
   type IndexRecord,
   type Instant,
+  type ItemId,
   parseItemId,
   type TelemetryEvent,
   type Ulid,
@@ -58,6 +59,11 @@ export type ActionDeps = {
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a message held in a thread, whoever it is from.
   held: Pick<Turns, "sendHeld" | "discardHeld">;
+  // Whether a turn runs in a thread now.
+  running(threadId: Ulid): boolean;
+  // A thread's change sets still to apply, pending or approved: whether
+  // each waits on the user, and the items it names.
+  unsettled(threadId: Ulid): Promise<{ waits: boolean; names: readonly ItemId[] }[]>;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
   now(): Instant;
@@ -87,6 +93,13 @@ const by = (actor: Actor): { by?: Actor } => (actor.kind === "user" ? {} : { by:
 const userOnly = (actor: Actor, what: string) => {
   if (actor.kind !== "user") throw new ActionError("refused", `only the user ${what}`);
 };
+
+// The agent and outside tools, whom the host holds to what a person may
+// still do (decision 0024); and the agent's own thread, whose turn is the
+// one acting.
+const bound = (actor: Actor) => actor.kind === "agent" || actor.kind === "tool";
+const ownThread = (actor: Actor) => (actor.kind === "agent" ? actor.threadId : null);
+const keys = (ids: readonly string[]) => ids.map((id) => parseItemId(id)?.key ?? id).join(", ");
 
 const mustWorkstream = (deps: ActionDeps, id: Ulid) => {
   const workstream = deps.workstreams.get(id);
@@ -199,6 +212,24 @@ const handlers = {
       if (!member) throw new ActionError("invalid", `${item} isn't in this workstream`);
       return member;
     });
+    // A change set still to apply in any of the workstream's threads would
+    // stop partway without what it names (decision 0018), and a turn running
+    // in another of them works in the workstream as it is.
+    if (bound(actor)) {
+      const others = deps.threads.ofWorkstream(workstream.id, deps.now());
+      if (others.some(({ thread }) => thread.id !== ownThread(actor) && deps.running(thread.id)))
+        throw new ActionError("refused", "the agent is answering in another of its threads");
+      const sets = await Promise.all(others.map(({ thread }) => deps.unsettled(thread.id)));
+      const pending = new Set<string>(sets.flat().flatMap((set) => set.names));
+      const held = [...new Set([...items, ...named.map((m) => m.id)])].filter((id) =>
+        pending.has(id),
+      );
+      if (held.length)
+        throw new ActionError(
+          "refused",
+          `${keys(held)} ${held.length === 1 ? "is" : "are"} in a change set that hasn't applied yet, in one of its threads`,
+        );
+    }
     const change = deps.workstreams.remove(workstream.id, named, actor, deps.now());
     // Back under the handle the index has now; one it no longer has can't
     // come back.
@@ -264,6 +295,22 @@ const handlers = {
 
   "thread.done": async ({ thread: id, via }, actor, deps) => {
     const thread = mustThread(deps, id);
+    // The thread stays in Needs you while it waits on the user, for a
+    // change set or a held message, and isn't closed under another turn.
+    if (bound(actor)) {
+      if (thread.id !== ownThread(actor) && deps.running(thread.id))
+        throw new ActionError("refused", "the agent is answering in it");
+      if ((await deps.unsettled(thread.id)).some((set) => set.waits))
+        throw new ActionError(
+          "refused",
+          "a change set in it waits on you, so it stays in Needs you",
+        );
+      if (deps.threads.held(thread.id).length > 0)
+        throw new ActionError(
+          "refused",
+          "a message held in it waits on you, so it stays in Needs you",
+        );
+    }
     deps.threads.markDone(thread.id, deps.now(), actor);
     return {
       output: {},
@@ -328,9 +375,10 @@ export function refusal(name: ActionName, actor: Actor): string | null {
 type Output<N extends ActionName> = Awaited<ReturnType<(typeof handlers)[N]>>["output"];
 type Result<N extends ActionName> = Output<N> & { undo: Call | null };
 // A call site names the action and passes its own input type, so a renamed
-// key fails to typecheck rather than at run time. `untyped` is the one door
+// key fails to typecheck rather than at run time. `untyped` is for the doors
 // whose action is known only at run time: an Undo sent back to
-// /api/actions/:name. Either way the dispatcher checks the input.
+// /api/actions/:name, and the intents a turn's run recorded. Either way the
+// dispatcher checks the input.
 export type Dispatch = {
   <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
   untyped(name: ActionName, input: unknown, actor: Actor): Promise<{ undo: Call | null }>;

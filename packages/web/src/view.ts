@@ -141,6 +141,8 @@ export type WorkstreamChangeView = {
   added: ItemRef[];
   removed: ItemRef[];
   cause: "user" | "agent" | "tool" | "review-link" | "change-set";
+  // The thread whose agent made it, when the agent did.
+  thread?: { id: string; title: string | null };
 };
 
 export type ThreadSummaryView = {
@@ -162,6 +164,19 @@ export type WorkstreamView = {
 };
 
 export type WorkstreamsView = { workstreams: WorkstreamSummary[] };
+
+// One of Oriel's own actions the agent asked for, as the host carried it out
+// (decision 0024): what it did, in a sentence that names the workstream or
+// thread it touched, or what it didn't do, and why. The model's own reply is
+// never the record. `touched` links where it was. `undo` is the call that
+// undoes an applied one.
+export type ActionLineView = {
+  text: string;
+  applied: boolean;
+  why: string | null;
+  touched: { kind: "workstream" | "thread"; id: string } | null;
+  undo: UndoView | null;
+};
 
 // The call that undoes one of Oriel's own actions, built by the server from
 // what the action changed (decision 0024). The window sends it back as it
@@ -209,6 +224,8 @@ export type ChatEntry = { seq: number; at: string } & (
   | { kind: "run.finished"; runId: string; run: RunView }
   | { kind: "search"; runId: string; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; changeSetId: string }
+  // What Oriel did with the actions the agent asked for, under its reply.
+  | { kind: "actions"; lines: ActionLineView[] }
   // A message from anyone but the user, which only they can send to the
   // agent, edited or not. `outcome` is null while it waits on them.
   | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
@@ -293,6 +310,10 @@ export type DiffView = {
     applied: boolean;
     // Why apply stopped at this change, in plain words; null otherwise.
     error: string | null;
+    // The items it names, as its target or a value, that the agent or an
+    // outside tool put in the workstream, so an approver can tell (decision
+    // 0024).
+    brought: { key: string; by: "agent" | "tool" }[];
     // `items`: on a field whose values name items, those items.
     fields: {
       name: string;

@@ -1,8 +1,9 @@
 // A three-story region and hand-written bindings over it: a fixture for this
 // package's tests, not a model of what packages/bindings generates. Its shim
 // keeps the bindings' contract: the entry file is the shim alone, which
-// starts the script with the bindings `jira` and `search` as parameters.
-import { type Bindings, type CapturedMutation, isItemId, isNewRef } from "@oriel/core";
+// starts the script with the bindings `jira`, `workstream` and `search` as
+// parameters.
+import { type Bindings, type CapturedMutation, type Intent, isItemId, isNewRef } from "@oriel/core";
 import { runtime } from "./fake-runtime.ts";
 
 export const stories = [
@@ -28,8 +29,13 @@ const jira = Object.freeze({
   second: () => __oriel.read("jira.second", []),
   hold: () => __oriel.read("jira.hold", []),
 });
+const workstream = Object.freeze({
+  add: (input: unknown): void => {
+    __oriel.intend("workstream.add", [input]);
+  },
+});
 const search = (query: string) => __oriel.read("search", [query]);
-__oriel.start({ jira, search });
+__oriel.start({ jira, workstream, search });
 `;
 
 // What the typecheck holds scripts to, shaped like the real declarations.
@@ -42,6 +48,9 @@ const dts = `declare const jira: {
   first(): Promise<string>;
   second(): Promise<string>;
   hold(): Promise<never>;
+};
+declare const workstream: {
+  add(input: { items: string[] }): void;
 };
 declare function search(query: string): Promise<unknown[]>;
 declare const console: {
@@ -104,6 +113,14 @@ export function fakeBindings(onHold: () => void = () => {}): Bindings {
         default:
           throw new Error(`unknown write: ${fn}`);
       }
+    },
+    intend(fn, args): Intent {
+      const items = (args[0] as { items?: unknown } | undefined)?.items;
+      if (fn !== "workstream.add") throw new Error(`unknown action: ${fn}`);
+      if (!Array.isArray(items)) throw new TypeError(`${fn}: $.items: expected an array`);
+      const stray = items.find((id) => !inRegion.has(String(id)));
+      if (stray !== undefined) throw new Error(`${fn}: ${String(stray)} is not in this region`);
+      return { action: fn, input: { workstream: "the region's", items } };
     },
   };
 }

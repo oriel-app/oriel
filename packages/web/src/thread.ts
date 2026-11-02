@@ -5,6 +5,7 @@ import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type {
+  ActionLineView,
   ChangeSetView,
   NextStepView,
   ChatEntry,
@@ -619,6 +620,7 @@ export type Block =
     }
   | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; seq: number; changeSetId: string }
+  | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
       kind: "held";
       seq: number;
@@ -679,6 +681,9 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         break;
       case "change-set":
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
+        break;
+      case "actions":
+        out.push({ kind: "actions", seq: entry.seq, lines: entry.lines });
         break;
       case "limit":
         out.push({ kind: "notice", seq: entry.seq, tone: "limit", text: entry.reason });

@@ -3,7 +3,7 @@
 // content, and only as tool results (SPEC §5). Nothing here reads a clock or
 // makes an ID, so a turn against fixtures sends the same bytes every time and
 // its cassettes replay.
-import type { CapturedMutation, RunResult, TranscriptEntry } from "@oriel/core";
+import type { CapturedMutation, Intent, RunResult, TranscriptEntry } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import type { ModelMessage, ToolCall, ToolResult, ToolSpec } from "./provider.ts";
 
@@ -71,7 +71,8 @@ export const roundClosed = "Noted.";
 // The thread so far, then the user's new message. Runs and markers carry
 // source content (a run's summary, a file's name), so each becomes a tool
 // result: the call is the run's own script when the history kept it, else a
-// stand-in script that is only a comment. Markers before the first user
+// stand-in script that is only a comment. So does Oriel's note of what it did
+// with a turn's actions. Markers before the first user
 // message are dropped: the region the tool declares is already the latest.
 // An assistant message with no text is treated as absent: it would send
 // nothing, so it can't close a round.
@@ -110,7 +111,12 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
               `// Run ${message.runId}, earlier in this thread. Its script isn't kept; the result is its summary.`,
             message.summary,
           ]
-        : ["// Oriel's note that the workstream changed. Not a run.", message.text];
+        : message.role === "marker"
+          ? ["// Oriel's note that the workstream changed. Not a run.", message.text]
+          : [
+              "// Oriel's note of what it did with the actions a run asked for. Not a run.",
+              message.text,
+            ];
     pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });
@@ -130,24 +136,43 @@ function entry(item: TranscriptEntry): string[] {
 
 const changes = (count: number) => (count === 1 ? "1 change" : `${count} changes`);
 
+const actions = (count: number) =>
+  count === 1 ? "1 of Oriel's actions" : `${count} of Oriel's actions`;
+
 const mutationLines = (mutations: readonly CapturedMutation[]) =>
   mutations.map((m) => json({ op: m.op, target: m.target, ref: m.ref, args: m.args }));
 
-// A run as the model reads it: its transcript, then what became of its writes.
-// No run ID, timing or other value a replay can't reproduce.
-export function runResultText(result: RunResult, replaced: number): string {
+const intentLines = (intents: readonly Intent[]) =>
+  intents.map((intent) => json({ action: intent.action, input: intent.input }));
+
+// A run as the model reads it: its transcript, then what became of its writes
+// and of the actions it asked for. `replaced` and `replacedIntents` are what
+// it replaced of an earlier run's. No run ID, timing or other value a replay
+// can't reproduce.
+export function runResultText(result: RunResult, replaced: number, replacedIntents = 0): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
+  const asked = result.intents.length;
   if (result.outcome !== "ok") {
     if (count) lines.push(`It captured ${changes(count)} before it stopped; they were discarded.`);
+    if (asked) lines.push(`It recorded ${actions(asked)} before it stopped; they were discarded.`);
     return lines.join("\n");
   }
-  if (!count) return lines.join("\n");
-  lines.push(`Captured ${changes(count)}:`, ...mutationLines(result.mutations));
-  lines.push(
-    replaced
-      ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and become the change set the user reviews when this turn ends.`
-      : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
-  );
+  if (count) {
+    lines.push(`Captured ${changes(count)}:`, ...mutationLines(result.mutations));
+    lines.push(
+      replaced
+        ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and become the change set the user reviews when this turn ends.`
+        : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
+    );
+  }
+  if (asked) {
+    lines.push(`Recorded ${actions(asked)}:`, ...intentLines(result.intents));
+    lines.push(
+      replacedIntents
+        ? `They replace the ${actions(replacedIntents)} an earlier run in this turn recorded, and apply when this turn ends.`
+        : "They apply when this turn ends, unless a later run in this turn records actions instead.",
+    );
+  }
   return lines.join("\n");
 }

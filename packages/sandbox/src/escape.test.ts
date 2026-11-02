@@ -38,6 +38,7 @@ const limits: RunLimits = {
   maxScriptBytes: 16_384,
   maxReads: 20,
   maxMutations: 20,
+  maxIntents: 20,
   maxResultBytes: 65_536,
   maxConsoleBytes: 16_384,
 };

@@ -7,7 +7,9 @@ import {
   type OrielReads,
   type Reader,
   type Region,
+  type Ulid,
 } from "@oriel/core";
+import { intended } from "./actions.ts";
 import { describe, type Fn, type ItemDocs, type Namespaces, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { type Host, live, outside } from "./fn.ts";
@@ -29,10 +31,19 @@ const defined = (args: object) =>
 // that source's op catalogue. `namespaces` are the sources' own namespaces,
 // and `items` what each source's items are, as their adapters declare them;
 // `oriel` reads the workspace's own threads, for Oriel's namespaces, and
-// without it the workspace has none. The composition root passes them in.
+// without it the workspace has none. Oriel's actions are recorded as
+// intents, each checked against its declaration, with the region's
+// workstream and `thread` as the agent's own, and each item a workstream
+// gains in the region or found by this run's search(). The composition root passes them in.
 export function bindingsFor(
   region: Region,
-  options: { reader: Reader; namespaces: Namespaces; items?: ItemDocs; oriel?: OrielReads },
+  options: {
+    reader: Reader;
+    namespaces: Namespaces;
+    items?: ItemDocs;
+    oriel?: OrielReads;
+    thread?: Ulid;
+  },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
   const fns = describe(scope);
@@ -107,6 +118,20 @@ export function bindingsFor(
           throw new TypeError("an op's arguments are an object");
         if (ref !== null) created.set(ref, entry.op);
         return { op: entry.op, target: built.target, ref, args: defined(checked.value) };
+      } catch (error) {
+        throw named(fn, error);
+      }
+    },
+
+    intend(fn, args) {
+      const entry = byPath.get(fn);
+      if (entry?.kind !== "intent") throw new Error(`${JSON.stringify(fn)} isn't an action here`);
+      try {
+        return intended(entry, args, {
+          workstream: region.workstreamId,
+          thread: options.thread ?? null,
+          reaches: (id) => members.has(id) || found.has(id),
+        });
       } catch (error) {
         throw named(fn, error);
       }

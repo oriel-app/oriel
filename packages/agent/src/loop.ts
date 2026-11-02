@@ -6,15 +6,15 @@
 // stops, a per-thread cap ends the turn (SPEC §9), or the signal aborts. Each
 // response may use only what the thread's token cap leaves.
 //
-// One change set per turn: the mutations of the last run in the turn that
-// finished and captured any. A later run replaces an earlier one's, as the
-// model is told, and a run that fails captures nothing. The change set is
-// captured when the turn ends, however it ends, except on abort.
+// One proposal per turn (proposal.ts): the mutations of the last run in the
+// turn that finished and captured any, and the intents of the last that
+// recorded any. A later run replaces an earlier one's, as the model is told,
+// and a run that fails proposes nothing. Both settle when the turn ends,
+// however it ends, except on abort.
 import { createHash } from "node:crypto";
 import {
   array,
   type Bindings,
-  type CapturedMutation,
   isInstant,
   isItemId,
   type Log,
@@ -25,9 +25,9 @@ import {
   type RunResult,
   type SearchHit,
   string,
-  type Ulid,
 } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
+import { proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
   type ModelEvent,
@@ -132,10 +132,7 @@ async function* turn(
     return;
   }
 
-  // The turn's change set to be: the last finished run's captured mutations.
-  const turnState: { proposal: { runId: Ulid; mutations: CapturedMutation[] } | null } = {
-    proposal: null,
-  };
+  const proposed = proposal();
 
   // One `run` call: refused without a run if it isn't one, else a run in the
   // sandbox, recorded whatever its outcome. `charge` is the usage of the
@@ -153,7 +150,7 @@ async function* turn(
       return refuse("The run tool takes an object with one field, script: a string of TypeScript.");
     const { script } = parsed.value;
     signal.throwIfAborted();
-    const bindings = deps.bindingsFor(region);
+    const bindings = deps.bindingsFor(region, thread.id);
     const runId = deps.newId();
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
@@ -165,6 +162,7 @@ async function* turn(
       dts: bindings.dts,
       shim: bindings.shim,
       capture: (fn, args, ref) => bindings.capture(fn, args, ref),
+      intend: (fn, args) => bindings.intend(fn, args),
       read: async (fn, args) => {
         const answer = await bindings.read(fn, args);
         const found = fn === "search" ? searchHits(answer.value) : null;
@@ -211,14 +209,10 @@ async function* turn(
     // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
     if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
-    let replaced = 0;
-    if (result.outcome === "ok" && result.mutations.length) {
-      replaced = turnState.proposal?.mutations.length ?? 0;
-      turnState.proposal = { runId, mutations: result.mutations };
-    }
+    const replaced = proposed.ran(runId, result);
     return {
       callId: call.id,
-      content: runResultText(result, replaced),
+      content: runResultText(result, replaced.mutations, replaced.intents),
       isError: result.outcome !== "ok",
     };
   }
@@ -226,7 +220,7 @@ async function* turn(
   try {
     const conversation = deps.provider.converse({
       system: systemPrompt,
-      tools: [runTool(deps.bindingsFor(region).dts)],
+      tools: [runTool(deps.bindingsFor(region, thread.id).dts)],
       messages: threadMessages(input.history, input.text),
       signal,
       log,
@@ -306,23 +300,6 @@ async function* turn(
     yield failed(errorText(error));
   }
 
-  const { proposal } = turnState;
-  if (proposal && !signal.aborted) {
-    const { runId, mutations } = proposal;
-    try {
-      const changeSet = await deps.changeSets.capture(
-        { id: runId, threadId: thread.id, workspaceId: thread.workspaceId },
-        mutations,
-      );
-      log("agent.change-set", {
-        run_id: runId,
-        change_set_id: changeSet.id,
-        mutations: mutations.length,
-      });
-      yield { kind: "change-set", changeSetId: changeSet.id };
-    } catch (error) {
-      yield failed(`The proposed changes couldn't be saved for review: ${errorText(error)}`);
-    }
-  }
+  yield* proposed.settle(deps, thread, signal, log);
   yield done();
 }

@@ -256,6 +256,7 @@ for (const [name, region] of [
           "declare const __oriel: {",
           "  read(fn: string, args: unknown[]): Promise<never>;",
           "  write(fn: string, args: unknown[], creates: boolean): never;",
+          "  intend(fn: string, args: unknown[]): void;",
           "};",
           stubs(fns),
           "type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;",

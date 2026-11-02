@@ -1,9 +1,11 @@
 // The interface the server builds the agent against. The lead owns it: change
 // it there first.
 import type {
+  ActionLine,
   Bindings,
   ChangeSets,
   Instant,
+  Intent,
   Log,
   ProxiedRead,
   Region,
@@ -41,6 +43,9 @@ export type ChatMessage =
   | { role: "assistant"; text: string; at: Instant }
   // "added SYN-12", "removed plan.md" (decision 0018).
   | { role: "marker"; text: string; at: Instant }
+  // What Oriel did with the intents a turn recorded: each call, applied or
+  // refused and why (decision 0024).
+  | { role: "actions"; text: string; at: Instant }
   // A compact record of a sandbox run, for history. With its script, history
   // replays the run faithfully.
   | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };
@@ -60,6 +65,10 @@ export type AgentEvent =
   | { kind: "search"; runId: Ulid; hits: SearchHit[] }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
+  // What became of the intents the turn's last run (`runId`) recorded,
+  // applied or refused, one line each: the host's record, shown under the
+  // agent's reply (decision 0024).
+  | { kind: "actions"; runId: Ulid; lines: ActionLine[] }
   // A per-thread cap that ends the turn: turns or tokens (SPEC §9). A
   // run-level cap (wall time, reads, mutations, output) isn't one: it shows as
   // `run.finished` with that outcome, and the model sees the error and can
@@ -84,10 +93,19 @@ export type AgentLimits = {
 export type AgentDeps = {
   provider: Provider;
   sandbox: Sandbox;
-  // The server wires each source's namespace in.
-  bindingsFor: (region: Region) => Bindings;
+  // The server wires each source's namespace in. Oriel's own actions
+  // default to the thread's workstream and the thread.
+  bindingsFor: (region: Region, thread: Ulid) => Bindings;
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
+  // Applies a turn's intents as the thread's agent, once its change set, if
+  // it proposed one, is captured; says what it applied and what it refused.
+  actions: {
+    apply(
+      turn: { thread: Thread; changeSetId: Ulid | null },
+      intents: readonly Intent[],
+    ): Promise<ActionLine[]>;
+  };
   runs: { record(run: Run, reads: ProxiedRead[]): void };
   limits: AgentLimits;
   now: () => Instant;

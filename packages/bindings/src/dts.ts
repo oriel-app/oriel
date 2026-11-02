@@ -6,6 +6,7 @@ import { type Scope, spaceNames } from "./describe.ts";
 import type { Fn } from "./fn.ts";
 import { itemTypes } from "./items.ts";
 import { orielTypes } from "./oriel.ts";
+import { actionTypes } from "./actions.ts";
 
 const header = [
   "// This region's module. Your script is the body of an async function: await",
@@ -29,6 +30,7 @@ const footer = [
 function signature(fn: Fn): string {
   const params = fn.params.map((p) => `${p.name}${p.optional ? "?" : ""}: ${p.type}`).join(", ");
   if (fn.kind === "read") return `${fn.name}(${params}): Promise<${fn.returns}>`;
+  if (fn.kind === "intent") return `${fn.name}(${params}): void`;
   return `${fn.name}(${params}): ${fn.creates ? "NewRef" : "void"}`;
 }
 
@@ -50,6 +52,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...itemTypes(scope.docs),
     ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
     ...orielTypes,
+    ...actionTypes,
     "",
     ...spaceNames.flatMap((name) => namespace(name, fns)),
     ...fns
