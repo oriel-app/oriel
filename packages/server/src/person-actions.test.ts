@@ -52,6 +52,10 @@ function world() {
       decided.push(`${kind} via ${approver.via}`);
       return set;
     },
+    // An edit that changes nothing, and a dismissal of one dismissed already,
+    // which the engine doesn't count.
+    edit: async () => set,
+    dismiss: async () => ({ changeSet: set, warnings: [] }),
   });
   const events: TelemetryEvent[] = [];
   const dispatch = dispatcher({
@@ -166,4 +170,23 @@ test("the window's routes count what they do: a stop as the call it is, and a sy
   assert.equal((await app.post("/api/folder/sync")).status, 409);
   assert.equal(app.app.telemetry().length, before);
   assert.equal(json<ThreadView>(await app.get(`/api/threads/${threadId}`)).state, "working");
+  // A connect that fails emits no source.connected, so it counts as itself.
+  assert.equal((await app.post("/api/folder", { path: "/nonexistent/oriel" })).status, 400);
+  assert.deepEqual(app.app.telemetry().at(-1)?.data, {
+    action: "source.connect",
+    by: { kind: "user" },
+  });
+});
+
+test("a call the change set engine doesn't count, such as an edit that changes nothing, is counted as itself", async () => {
+  const w = world();
+  await w.dispatch("changeset.edit", { changeSet: w.changeSetId, remove: [id(60)] }, user);
+  await w.dispatch("changeset.dismiss", { changeSet: w.changeSetId }, user);
+  assert.deepEqual(
+    w.events.map(({ at: _at, workspaceId: _ws, ...event }) => event),
+    [
+      { name: "action.called", action: "changeset.edit", by: user },
+      { name: "action.called", action: "changeset.dismiss", by: user },
+    ],
+  );
 });

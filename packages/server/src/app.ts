@@ -339,8 +339,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   const written = new Map<string, { id: ItemId<"jira">; stableId: string; at: Instant }>();
   // The first sync of a source into this workspace connects it, whenever
   // that sync is. Jira's is announced once, though two syncs may both start
-  // as the first.
+  // as the first. `announced` counts them, so connecting from the window can
+  // tell whether it was counted so.
+  let announced = 0;
   const connected = (kind: SourceKind) => {
+    announced += 1;
     emit({ name: "source.connected", at: now(), workspaceId, source: kind });
   };
   let jiraAnnounced = false;
@@ -687,8 +690,13 @@ export async function createApp(options: AppOptions): Promise<App> {
     changeSets: sets,
     applied: (set) => applied(set),
     sources: {
-      connect: (input) =>
-        input.kind === "folder" ? connectFolder(input.path) : connectJira(input),
+      connect: async (input) => {
+        const before = announced;
+        const outcome = await (input.kind === "folder"
+          ? connectFolder(input.path)
+          : connectJira(input));
+        return { outcome, counted: announced > before };
+      },
       sync: async (kind) => {
         if (kind === "folder") {
           if (!folder) throw new ActionError("conflict", "No folder is connected.");

@@ -86,7 +86,11 @@ export type ActionDeps = {
   // Connecting a source, and the sync the user asks for. A source not
   // connected yet can't sync: an ActionError.
   sources: {
-    connect(input: ActionInput<"source.connect">): Promise<SourceOutcome>;
+    // `counted`: it emitted `source.connected`, as a source's first sync
+    // into the workspace does.
+    connect(
+      input: ActionInput<"source.connect">,
+    ): Promise<{ outcome: SourceOutcome; counted: boolean }>;
     sync(source: ActionInput<"source.sync">["source"]): Promise<SourceOutcome>;
   };
   // Whether a turn runs in a thread now.
@@ -153,12 +157,20 @@ const mustThread = (deps: ActionDeps, id: Ulid) => {
   return thread;
 };
 
-// A change set this workspace has. One of a deleted thread, kept for what it
-// wrote, is gone with it.
-const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
+// A change set this workspace has, or null. One of a deleted thread, kept
+// for what it wrote, is gone with it.
+export const liveChangeSet = async (
+  deps: Pick<ActionDeps, "changeSets" | "threads" | "workspaceId" | "now">,
+  id: Ulid,
+): Promise<ChangeSet | null> => {
   const set = await deps.changeSets.get(id);
-  if (!set || set.workspaceId !== deps.workspaceId || !deps.threads.get(set.threadId, deps.now()))
-    throw new ActionError("not-found", "no such change set");
+  return set && set.workspaceId === deps.workspaceId && deps.threads.get(set.threadId, deps.now())
+    ? set
+    : null;
+};
+const mustChangeSet = async (deps: ActionDeps, id: Ulid) => {
+  const set = await liveChangeSet(deps, id);
+  if (!set) throw new ActionError("not-found", "no such change set");
   return set;
 };
 
@@ -536,12 +548,13 @@ const handlers = {
 
   "changeset.edit": async ({ changeSet: id, remove }, _actor, deps) => {
     const set = await mustChangeSet(deps, id);
-    await deps.changeSets.edit(set.id, { remove: remove as Ulid[] });
+    const edited = await deps.changeSets.edit(set.id, { remove: remove as Ulid[] });
     return {
       output: {},
       undo: null,
       changed: { thread: set.threadId, changeSet: set.id, applying: false },
-      events: "counted",
+      // The engine counts an edit that changed something.
+      events: edited.hash === set.hash ? [] : "counted",
     };
   },
 
@@ -615,12 +628,13 @@ const handlers = {
   // to check.
   "changeset.dismiss": async ({ changeSet: id, hash, token }, actor, deps) => {
     const set = await mustChangeSet(deps, id);
-    const { warnings } = await deps.changeSets.dismiss(set.id, approverOf(actor, token), hash);
+    const dismissed = await deps.changeSets.dismiss(set.id, approverOf(actor, token), hash);
     return {
-      output: { warnings },
+      output: { warnings: dismissed.warnings },
       undo: null,
       changed: { thread: set.threadId, changeSet: set.id, applying: false },
-      events: "counted",
+      // The engine counts one it dismissed, not one that was already.
+      events: dismissed.changeSet.decision?.id === set.decision?.id ? [] : "counted",
     };
   },
 
@@ -654,14 +668,12 @@ const handlers = {
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  // Counted as `source.connected`, when the source first syncs into the
-  // workspace.
-  "source.connect": async (input, _actor, deps) => ({
-    output: await deps.sources.connect(input),
-    undo: null,
-    changed: null,
-    events: "counted",
-  }),
+  // Counted as `source.connected` when the source first syncs into the
+  // workspace, and otherwise, failed or connected again, as itself.
+  "source.connect": async (input, _actor, deps) => {
+    const { outcome, counted } = await deps.sources.connect(input);
+    return { output: outcome, undo: null, changed: null, events: counted ? "counted" : [] };
+  },
 
   // How often the user asks says whether Oriel should sync on its own. What
   // a sync changed, every page watching hears from the sync itself.

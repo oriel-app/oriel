@@ -20,7 +20,6 @@ import {
   maxItems,
   messageText,
   maxNameChars,
-  holderReason,
   number,
   object,
   type OrielReads,
@@ -45,7 +44,14 @@ import {
   type SearchView,
   type StreamEvent,
 } from "@oriel/web/view";
-import { ActionError, checked, type Dispatch, type Fields, isChangeSetError } from "./actions.ts";
+import {
+  ActionError,
+  checked,
+  type Dispatch,
+  type Fields,
+  isChangeSetError,
+  liveChangeSet,
+} from "./actions.ts";
 import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
 import type { ItemPanels } from "./panel.ts";
@@ -148,8 +154,8 @@ const droppedBody = object({
 const openThreadBody = object({ text: optional(textValue) });
 const messageBodyValue = object({ text: textValue });
 const tokenBody = object({ token: string });
-// A reason goes with a rejection only. A review-link holder's is held for the
-// person, and shorter than the person's own.
+// A reason goes with a rejection only. How long a holder's may be is the
+// dispatcher's to check.
 const reviewDecision = refine(
   object({
     token: string,
@@ -157,7 +163,7 @@ const reviewDecision = refine(
     kind: union(literal("approved"), literal("rejected")),
     name: nameValue,
     hash: string,
-    reason: optional(holderReason),
+    reason: optional(string),
   }),
   (body) => body.kind === "rejected" || body.reason === undefined,
   "only a rejection takes a reason",
@@ -281,11 +287,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       throw new Refused(404, "no such thread");
     return thread;
   };
-  // A change set of a deleted thread, kept for what it wrote, is gone with it.
   const mustChangeSet = async (id: string) => {
-    const set = await changeSets.get(id as Ulid);
-    if (!set || set.workspaceId !== deps.workspaceId || !threads.get(set.threadId, deps.now()))
-      throw new Refused(404, "no such change set");
+    const set = await liveChangeSet(deps, id as Ulid);
+    if (!set) throw new Refused(404, "no such change set");
     return set;
   };
 
