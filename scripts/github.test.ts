@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentToken, headRefusal, leaksSecret, parse } from "./github.ts";
+import { agentToken, headRefusal, leaksSecret, parse, published } from "./github.ts";
 
 test("only the agent token from .env is accepted", () => {
   assert.equal(agentToken("JIRA_API_TOKEN=secret\nGH_TOKEN=github_pat_abc\n"), "github_pat_abc");
@@ -81,4 +81,36 @@ test("a title or body carrying a value from .env is caught", () => {
   assert.equal(leaksSecret(["fix: x", "see https://oriel.atlassian.net/browse/SYN-1"], env), false);
   assert.equal(leaksSecret(["fix: abc", "plain body"], env), false);
   assert.equal(leaksSecret(["anything"], null), false);
+});
+
+test("pr-edit takes an optional title after the body, never empty", () => {
+  assert.deepEqual(parse(["pr-edit", "11", "new body", "feat: x (OA-1, OA-2)"]), {
+    op: "pr-edit",
+    number: 11,
+    body: "new body",
+    title: "feat: x (OA-1, OA-2)",
+  });
+  for (const args of [
+    ["pr-edit", "11", "body", ""],
+    ["pr-edit", "11", "body", "  "],
+    ["pr-edit", "11", "  ", "title"],
+    ["pr-edit", "0", "body", "title"],
+    ["pr-edit", "11", "body", "title", "extra"],
+  ])
+    assert.ok("error" in parse(args), JSON.stringify(args));
+});
+
+test("an edit's new title is checked for values from .env, as a new PR's is", () => {
+  const env = "ANTHROPIC_API_KEY=sk-ant-fakefakefake\nJIRA_SITE=https://oriel.atlassian.net\n";
+  const leaks = (args: string[]) => {
+    const operation = parse(args);
+    assert.ok(!("error" in operation), JSON.stringify(args));
+    return leaksSecret(published(operation), env);
+  };
+  assert.equal(leaks(["pr-edit", "11", "body", "fix: sk-ant-fakefakefake"]), true);
+  assert.equal(leaks(["pr-edit", "11", "sk-ant-fakefakefake", "fix: x"]), true);
+  assert.equal(leaks(["pr-create", "ok-branch", "fix: sk-ant-fakefakefake", "b"]), true);
+  assert.equal(leaks(["pr-edit", "11", "body", "fix: https://oriel.atlassian.net"]), false);
+  assert.equal(leaks(["pr-edit", "11", "body"]), false);
+  assert.deepEqual(published({ op: "pr-view", number: 1 }), []);
 });
