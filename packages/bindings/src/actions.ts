@@ -89,11 +89,11 @@ export const intentFns: readonly IntentFn[] = (Object.keys(actions) as ActionNam
 
 // What the actions are, and the types their inputs name.
 export const actionTypes = [
-  "/** Workstream and thread actions skip review: they apply as your turn ends, unless Oriel refuses one. Use one only when the user asks. The user undoes one with Undo under your reply, not Revert. */",
+  "/** Workstream and thread actions skip review and apply as your turn ends, unless Oriel refuses one. Use one only when asked; the user undoes it with Undo under your reply, not Revert. */",
   "/** Only the user deletes a workstream, with Delete on its page. */",
   "type WorkstreamId = string;",
   "type ThreadId = string;",
-  "/** One joining a workstream: in this region, or found by this run's search(). */",
+  "/** In this region, or found by this run's search(). */",
   "type ItemId = string;",
 ];
 

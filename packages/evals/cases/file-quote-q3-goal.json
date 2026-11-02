@@ -1,0 +1,16 @@
+{
+  "id": "file-quote-q3-goal",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "files": ["plans/q3-launch.md"],
+  "prompt": "What's the goal of the Q3 launch? Quote the plan.",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "surfaced",
+      "file": "plans/q3-launch.md",
+      "text": ["passengers rebook in two taps"]
+    }
+  ]
+}

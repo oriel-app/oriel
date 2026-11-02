@@ -1,0 +1,16 @@
+{
+  "id": "file-quote-q3-open-questions",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "files": ["plans/q3-launch-notes.md"],
+  "prompt": "What's still undecided for the Q3 launch? Quote the notes.",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "surfaced",
+      "file": "plans/q3-launch-notes.md",
+      "text": ["Who signs off the SMS wording"]
+    }
+  ]
+}
