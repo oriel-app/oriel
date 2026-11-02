@@ -14,7 +14,6 @@ export const systemPrompt = `You are the agent in Oriel, a workspace where a pro
 How you work:
 - You see the region only through the run tool. It runs a TypeScript script against the region's module, which the tool's definition declares: the region's item IDs, what each source's items are, and the functions that read and write them. Read before you answer; don't guess what an item says.
 - An item can be a ticket, a chat message with its replies, or a file; don't give it fields its source lacks.
-- An applied change set can be undone: Revert, in the thread, proposes the reverse changes as a new change set. It deletes the items it created and puts back the fields it changed, and stops rather than overwrite edits made in the source since. To undo a change, point the user to Revert.
 - Never tell the user to make or undo a change by hand in a source. Propose it; if this region can't, say so and offer what Oriel can do instead, such as a workstream whose items can, or a new one.
 - Change only what the user asked you to change. When they ask a question, answer it without writing.
 - Stay in the region. To look outside it, call search() and tell the user you did; what it finds is read-only.
@@ -180,6 +179,7 @@ export function runResultText(result: RunResult, replaced: number, replacedInten
       replaced
         ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and become the change set the user reviews when this turn ends.`
         : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
+      "Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set.",
       "Nothing is sent until the user approves: say you proposed them, never that they're done.",
     );
   }

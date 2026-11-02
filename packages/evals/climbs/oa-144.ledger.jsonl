@@ -12,3 +12,7 @@
 {"round":"01M6EDYQNYWT9JB6G0G80CR2X3","label":"T2a: module dedupes","split":"train","trials":48,"usd":1.1225265999999998}
 {"round":"01M6EE2HN9J04PAK2QN5ART9C8","label":"T2b: module dedupes","split":"train","trials":48,"usd":1.0091480727272726,"estimated":true}
 {"round":"01M6EE2HN9J04PAK2QN5ART9C8","label":"T2b: module dedupes","split":"train","trials":48,"usd":0.9871223999999998}
+{"round":"01M6EE7KB7D5QFJH4Z8F9FDSW1","label":"T3a: Revert where a change set is","split":"train","trials":48,"usd":1.0073126,"estimated":true}
+{"round":"01M6EE7KB7D5QFJH4Z8F9FDSW1","label":"T3a: Revert where a change set is","split":"train","trials":48,"usd":0.9202764}
+{"round":"01M6EEA3KAWGAKTT7020X70Z84","label":"T3b: Revert where a change set is","split":"train","trials":48,"usd":1.0006175076923076,"estimated":true}
+{"round":"01M6EEA3KAWGAKTT7020X70Z84","label":"T3b: Revert where a change set is","split":"train","trials":48,"usd":0.9940072000000002}
