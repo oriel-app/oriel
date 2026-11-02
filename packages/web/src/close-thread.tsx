@@ -51,70 +51,22 @@ export function ThreadMenu(props: {
 // close failed.
 export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Dispatch }) {
   const send = (msg: ClosingMsg) => dispatch({ type: "closing", msg });
-  const dialog = useRef<HTMLDialogElement>(null);
   const { asking } = model;
   const asked = asking !== null;
-  useLayoutEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (asked && !element.open) element.showModal();
-    if (!asked && element.open) element.close();
-  }, [asked]);
   const pending = asking !== null && model.pending.includes(asking.threadId);
   return (
     <>
-      <dialog
-        ref={dialog}
-        class="confirm"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-body"
-        // Escape cancels here, and closes nothing behind, such as the drawer.
-        onKeyDown={(event) => {
-          if (event.key === "Escape") event.stopPropagation();
-        }}
-        onCancel={(event) => {
-          event.preventDefault();
-          send({ type: "deleteCancelled" });
-        }}
-      >
-        {asking && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              send({ type: "deleteConfirmed" });
-            }}
-          >
-            <h2 id="confirm-title" class="confirm-title">
-              Delete “{asking.title}”?
-            </h2>
-            <p id="confirm-body" class="confirm-body">
-              {asking.deletion ? deletionWarning(asking.deletion) : "Checking what it changed…"}
-            </p>
-            {model.problem && (
-              <p class="confirm-problem" role="alert">
-                {model.problem}
-              </p>
-            )}
-            <div class="confirm-actions">
-              <button
-                type="button"
-                class="button"
-                autoFocus
-                onClick={() => send({ type: "deleteCancelled" })}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="button danger"
-                disabled={asking.deletion === null || pending}
-              >
-                {pending ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-          </form>
-        )}
-      </dialog>
+      <Confirm
+        open={asked}
+        id="confirm"
+        title={asking && <>Delete “{asking.title}”?</>}
+        body={asking?.deletion ? deletionWarning(asking.deletion) : "Checking what it changed…"}
+        problem={model.problem}
+        ready={asking?.deletion != null}
+        pending={pending}
+        onConfirm={() => send({ type: "deleteConfirmed" })}
+        onCancel={() => send({ type: "deleteCancelled" })}
+      />
       {!asked && model.problem && (
         <p class="closing-problem" role="alert">
           {model.problem}
@@ -128,5 +80,74 @@ export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Di
         </p>
       )}
     </>
+  );
+}
+
+// The one question a delete asks first, as a modal the keyboard can answer:
+// Cancel has focus, Enter deletes, and Escape cancels, closing nothing
+// behind it, such as the drawer. `ready`: the person has been told what it
+// would lose.
+export function Confirm(props: {
+  open: boolean;
+  id: string;
+  title: ComponentChildren;
+  body: ComponentChildren;
+  problem: string | null;
+  ready: boolean;
+  pending: boolean;
+  onConfirm(): void;
+  onCancel(): void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const { open, id } = props;
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (open && !element.open) element.showModal();
+    if (!open && element.open) element.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={dialog}
+      class="confirm"
+      aria-labelledby={`${id}-title`}
+      aria-describedby={`${id}-body`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") event.stopPropagation();
+      }}
+      onCancel={(event) => {
+        event.preventDefault();
+        props.onCancel();
+      }}
+    >
+      {open && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            props.onConfirm();
+          }}
+        >
+          <h2 id={`${id}-title`} class="confirm-title">
+            {props.title}
+          </h2>
+          <p id={`${id}-body`} class="confirm-body">
+            {props.body}
+          </p>
+          {props.problem && (
+            <p class="confirm-problem" role="alert">
+              {props.problem}
+            </p>
+          )}
+          <div class="confirm-actions">
+            <button type="button" class="button" autoFocus onClick={props.onCancel}>
+              Cancel
+            </button>
+            <button type="submit" class="button danger" disabled={!props.ready || props.pending}>
+              {props.pending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </form>
+      )}
+    </dialog>
   );
 }

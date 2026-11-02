@@ -506,6 +506,38 @@ const trim = async (page: Page) => {
   }
 };
 
+// A workstream with two threads, on a server of its own, to mark done and
+// delete from its header (OA-124). Each scene puts it back first: open, and
+// not deleted.
+const ending = (await writing()).serving;
+const ended = await post<{ id: string }>(
+  "/api/workstreams",
+  { kind: "picked", name: "Gift cards", items: ["jira:SYN-23", "jira:SYN-99"] },
+  ending,
+);
+const estimating = await ask("Which of these still need estimates?", ending, ended.id);
+await ask("Who owns the balance screen?", ending, ended.id);
+const endedPage = `/workstreams/${ended.id}`;
+// A review link to its change set, which says once it's deleted.
+const endedReview = new URL(
+  (
+    await post<{ url: string }>(
+      `/api/change-sets/${await changeSetOf(ending, estimating)}/review-link`,
+      {},
+      ending,
+    )
+  ).url,
+).pathname;
+const reset = async () => {
+  for (const undo of ["workstream.restore", "workstream.reopen"])
+    await call(ending, "POST", `/api/actions/${undo}`, { workstream: ended.id }).catch(() => {});
+};
+const unend = async (page: Page) => {
+  await reset();
+  await page.reload();
+  await page.locator(".workstream-actions").waitFor();
+};
+
 // Threads on a server whose clock moves on eight days partway through: the
 // two asked before that and left unsettled are dropped, beside two done.
 const idling = await (async () => {
@@ -793,6 +825,97 @@ const scenes: Scene[] = [
     path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: trim,
+  },
+  {
+    // The header's endings: Mark done, and Delete…
+    name: "ending-header",
+    path: endedPage,
+    on: ending,
+    act: unend,
+  },
+  {
+    // Delete asks first, saying how many threads go with it.
+    name: "ending-confirm",
+    path: endedPage,
+    on: ending,
+    act: async (page) => {
+      await unend(page);
+      await page.locator(".workstream-actions .head-action[data-danger]").click();
+      await page.locator("dialog[open] .confirm-body").waitFor();
+    },
+  },
+  {
+    // Marked done: it says so, with Undo, and leaves the sidebar.
+    name: "ending-done",
+    path: endedPage,
+    on: ending,
+    act: async (page) => {
+      await unend(page);
+      await page.getByRole("button", { name: "Mark done" }).click();
+      await page.locator(".undo", { hasText: "done, with" }).waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
+    // The Done page leads with it.
+    name: "ending-done-page",
+    path: endedPage,
+    on: ending,
+    act: async (page) => {
+      await unend(page);
+      await call(
+        ending,
+        "POST",
+        `${endedPage.replace("/workstreams", "/api/workstreams")}/done`,
+        {},
+      );
+      await page.goto(new URL("/done", ending.url).href);
+      await page.locator('.done-page section[aria-labelledby="done-workstreams"]').waitFor();
+    },
+  },
+  {
+    // Deleted: only what went, with Undo.
+    name: "ending-deleted",
+    path: endedPage,
+    on: ending,
+    act: async (page) => {
+      await unend(page);
+      await page.locator(".workstream-actions .head-action[data-danger]").click();
+      await page.locator("dialog[open]").getByRole("button", { name: "Delete" }).click();
+      await page.locator(".undo", { hasText: "Deleted" }).waitFor();
+      await openSidebar(page);
+    },
+  },
+  {
+    // Its review link, once it's deleted, says so.
+    name: "ending-review",
+    path: endedReview,
+    on: ending,
+    refused: 404,
+    act: async (page) => {
+      await reset();
+      await call(ending, "POST", `/api/workstreams/${ended.id}/delete`, { threads: 2 });
+      await page.goto(new URL(endedReview, ending.url).href);
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card", { hasText: "was deleted" }).waitFor();
+    },
+  },
+  {
+    // A swipe on it in the sidebar shows Mark done and Delete.
+    name: "ending-swipe",
+    path: endedPage,
+    on: ending,
+    act: async (page) => {
+      await unend(page);
+      await openSidebar(page);
+      const row = page.locator(".nav-workstream-menu .swipe").first();
+      await row.hover();
+      for (let i = 0; i < 48; i++) {
+        await page.mouse.wheel(10, 0);
+        await page.waitForTimeout(16);
+      }
+      await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
+    },
   },
   {
     // One of them undone: back where it was.
@@ -1336,6 +1459,7 @@ try {
   await connecting.close();
   await empty.close();
   await picking.close();
+  await ending.close();
   await chatty.close();
   for (const { serving } of [handing, handed, handedBack]) await serving.close();
   await idling.close();

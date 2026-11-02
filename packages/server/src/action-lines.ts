@@ -55,7 +55,14 @@ const words: { [N in ActionName]: Words } = {
       : `Renamed ${quoted(undo["name"])} to ${quoted(input["name"])}`,
     `rename ${place} to ${quoted(input["name"])}`,
   ],
+  // Done already, it keeps who marked it, and there is nothing to undo.
+  "workstream.done": (_, place, undo) => [
+    undo === null ? `Left ${place} marked done, as it already was` : `Marked ${place} done`,
+    `mark ${place} done`,
+  ],
+  "workstream.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
   "workstream.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
+  "workstream.restore": (_, place) => [`Brought back ${place}`, `bring back ${place}`],
   // Marked done already, it keeps who marked it, and there is nothing to undo.
   "thread.done": (_, place, undo) => [
     undo === null ? `Left ${place} marked done, as it already was` : `Marked ${place} done`,

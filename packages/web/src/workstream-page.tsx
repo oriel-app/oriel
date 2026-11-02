@@ -1,6 +1,9 @@
 // A workstream: ask about it, see its threads, and curate its items.
+import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
+import { EndButtons, EndingNotes } from "./end-workstream.tsx";
+import { deleted, type EndingModel } from "./ending.ts";
 import {
   askPrompt,
   type WorkstreamModel,
@@ -14,19 +17,22 @@ import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.
 import { Member } from "./thread-page.tsx";
 import type {
   WorkstreamChangeView,
+  WorkstreamSummary,
   WorkstreamView,
   ThreadStateId,
   ThreadSummaryView,
 } from "./view.ts";
 
 // `threads`: the workstream's, from the list the sidebar keeps, so they move as
-// it does.
+// it does. `ending`: what was last done to any workstream, or failed, which
+// this page shows among its own Undos, in the one stack.
 export function WorkstreamPage(props: {
   model: WorkstreamModel;
   threads: ThreadSummaryView[];
+  ending: EndingModel;
   dispatch: Dispatch;
 }) {
-  const { model, threads, dispatch } = props;
+  const { model, threads, ending, dispatch } = props;
   const send = (msg: WorkstreamMsg) => dispatch({ type: "workstream", msg });
   const { view } = model;
   const list = useRef<HTMLUListElement>(null);
@@ -75,6 +81,24 @@ export function WorkstreamPage(props: {
     }
     send({ type: "memberRemoved", id });
   };
+  const notes = <EndingNotes model={ending} dispatch={dispatch} />;
+  // Deleted, or being deleted, the page holds only what went, and its Undo.
+  if (deleted(ending, model.id)) {
+    const gone = ending.ended?.workstreamId === model.id ? ending.ended : null;
+    return (
+      <main class="page workstream-page">
+        <h1 class="page-title">{view?.workstream.name ?? gone?.name}</h1>
+        <p class="rail-empty">
+          {gone
+            ? "Deleted. Nothing lists it or its threads now, and its items stay in their sources."
+            : "Deleting…"}
+        </p>
+        <div class="undos" role="status">
+          {notes}
+        </div>
+      </main>
+    );
+  }
   if (view === null)
     return (
       <main class="page">
@@ -85,6 +109,9 @@ export function WorkstreamPage(props: {
         ) : (
           <p class="loading">Loading…</p>
         )}
+        <div class="undos" role="status">
+          {notes}
+        </div>
       </main>
     );
   const { workstream } = view;
@@ -99,17 +126,25 @@ export function WorkstreamPage(props: {
     >
       <main class="page workstream-page">
         <header class="workstream-head">
-          <input
-            class="workstream-title"
-            value={model.name ?? workstream.name}
-            aria-label="Workstream name"
-            maxLength={120}
-            onInput={(event) => send({ type: "nameEdited", name: event.currentTarget.value })}
-            onBlur={() => send({ type: "nameSaved" })}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-          />
+          <div class="workstream-title-row">
+            <input
+              class="workstream-title"
+              value={model.name ?? workstream.name}
+              aria-label="Workstream name"
+              maxLength={120}
+              onInput={(event) => send({ type: "nameEdited", name: event.currentTarget.value })}
+              onBlur={() => send({ type: "nameSaved" })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+            />
+            <EndButtons
+              workstream={workstream}
+              done={workstream.done !== null}
+              busy={ending.pending !== null}
+              dispatch={dispatch}
+            />
+          </div>
           <p class="workstream-origin">
             {workstream.origin.kind === "cluster"
               ? `Copied from a cluster in the ${workstream.origin.grouping} grouping`
@@ -119,6 +154,12 @@ export function WorkstreamPage(props: {
             {" · "}
             {plural(workstream.size, "item")} · v{workstream.version}
           </p>
+          {workstream.done && (
+            <p class="workstream-done">
+              <StateChip state="done" waitingOn={null} /> Marked done {when(workstream.done.at)}
+              {doneBy[workstream.done.by]}
+            </p>
+          )}
         </header>
 
         <form
@@ -192,7 +233,9 @@ export function WorkstreamPage(props: {
             latest={latest}
             onUndo={undo}
             onHold={(by, held) => send({ type: "undoHeld", by, held })}
-          />
+          >
+            {notes}
+          </Undos>
         </section>
 
         <History view={view} dispatch={dispatch} />
@@ -200,6 +243,14 @@ export function WorkstreamPage(props: {
     </DropZone>
   );
 }
+
+// Who marked it done, when it wasn't the user.
+const doneBy: Record<NonNullable<WorkstreamSummary["done"]>["by"], string> = {
+  user: "",
+  agent: " by the agent",
+  tool: " by an outside tool",
+  other: "",
+};
 
 const rowOf = (list: HTMLUListElement | null, id: string) =>
   list?.querySelector(`[data-item="${CSS.escape(id)}"]`) ?? null;
@@ -215,6 +266,7 @@ function Undos(props: {
   latest: Removal | null;
   onUndo(removal: Removal): void;
   onHold(by: Hold, held: boolean): void;
+  children?: ComponentChildren;
 }) {
   const { onHold } = props;
   return (
@@ -250,6 +302,7 @@ function Undos(props: {
           </p>
         );
       })}
+      {props.children}
     </div>
   );
 }

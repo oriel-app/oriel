@@ -5,6 +5,7 @@
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import type { GroupingId, UndoView } from "./view.ts";
+import type { Ending } from "./ending.ts";
 
 export type Tag =
   | { kind: "workstreams" }
@@ -18,6 +19,9 @@ export type Tag =
   // The workstream loaded again after a sync: only its view changes.
   | { kind: "workstreamSynced"; id: string }
   | { kind: "renamed"; id: string }
+  // The workstream was marked done, reopened or deleted, or one of those
+  // undone (decision 0028).
+  | { kind: "ended"; id: string; how: Ending["kind"] | "undone"; name: string }
   | { kind: "threadOpened"; workstreamId: string }
   | { kind: "threadStarted"; draft: number }
   // `statuses`: how many statuses the thread's stream had sent when it was

@@ -81,6 +81,7 @@ export const workstreamSummary = (over: Partial<WorkstreamSummary> = {}): Workst
   size: 0,
   createdAt: at,
   threads: { working: 0, done: 0, "handed-off": 0, dropped: 0 },
+  done: null,
   ...over,
 });
 

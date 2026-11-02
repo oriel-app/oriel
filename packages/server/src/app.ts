@@ -725,7 +725,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     publish: (changed) => {
       if ("changeSet" in changed)
         return conversation.changeSet(changed.thread, changed.changeSet, changed.applying);
-      if ("deleted" in changed) return conversation.deleted(changed.thread);
+      if ("deleted" in changed) {
+        // Every page watching a thread that went with its workstream says so.
+        if ("thread" in changed) return conversation.deleted(changed.thread);
+        for (const thread of changed.deleted) conversation.deleted(thread);
+        return conversation.acted({ thread: null, workstream: null, moves: [] });
+      }
       conversation.acted(
         "thread" in changed
           ? { thread: changed.thread, chat: changed.chat === true, workstream: null, moves: [] }

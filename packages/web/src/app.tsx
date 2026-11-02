@@ -7,6 +7,7 @@ import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
+import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
 import type { Model, Msg } from "./root.ts";
@@ -94,6 +95,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         </ItemLinksContext.Provider>
       )}
       <Closing model={model.closing} dispatch={dispatch} />
+      <Endings
+        model={model.ending}
+        shownByPage={model.route.page === "workstream"}
+        dispatch={dispatch}
+      />
     </div>
   );
 }
@@ -144,6 +150,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
           <WorkstreamPage
             model={model.workstream}
             threads={workstreamThreads(model, model.workstream.id)}
+            ending={model.ending}
             dispatch={dispatch}
           />
         )
@@ -152,15 +159,18 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
       return model.thread && <ThreadPage model={model.thread} dispatch={dispatch} />;
     case "new-thread":
       return model.newThread && <NewThreadPage model={model.newThread} dispatch={dispatch} />;
-    case "done":
+    case "done": {
+      const where = nav(model);
       return (
         <DonePage
-          finished={model.threads && nav(model).finished}
+          finished={model.threads && where.finished}
+          workstreams={where.done}
           tab={doneTab(model.route)}
           number={model.route.number ?? 1}
           dispatch={dispatch}
         />
       );
+    }
     case "review":
       return null;
   }

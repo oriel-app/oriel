@@ -41,6 +41,24 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       cause: WorkstreamChange["cause"]["kind"];
       undoes?: Actor;
     }
+  // The workstream was marked done, by the user unless `by` says otherwise,
+  // with `threads`, how many of its threads that marked done (decision 0028).
+  | {
+      name: "workstream.marked-done";
+      workstreamId: Ulid;
+      threads: number;
+      by?: Actor;
+      undoes?: Actor;
+    }
+  // The user deleted the workstream, with `threads`, how many went with it.
+  // `kept`: threads used it, so its rows stay, out of sight, for its Undo.
+  | {
+      name: "workstream.deleted";
+      workstreamId: Ulid;
+      threads: number;
+      kept: boolean;
+      undoes?: Actor;
+    }
   | { name: "thread.opened"; threadId: Ulid; workstreamId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
   // `held`: it was a message held from someone else, which the user sent to
@@ -56,7 +74,16 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The thread was marked done, as one over read-only items needs: by the
   // user, on its page, or from a menu or a swipe on a list of threads; or by
   // someone else, who closed nothing in the window.
-  | { name: "thread.marked-done"; threadId: Ulid; via?: CloseVia; by?: Actor; undoes?: Actor }
+  // `workstreamId`: it was marked done with its workstream, which closed
+  // nothing else in the window (decision 0028).
+  | {
+      name: "thread.marked-done";
+      threadId: Ulid;
+      via?: CloseVia;
+      by?: Actor;
+      undoes?: Actor;
+      workstreamId?: Ulid;
+    }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
   // stay, out of sight. `workstreamRemoved`: its workstream, made for it, went too.
   | {

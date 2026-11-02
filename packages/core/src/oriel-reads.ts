@@ -20,6 +20,8 @@ export type WorkstreamRead = {
   items: readonly ItemId[];
   // How many threads it has.
   threads: number;
+  // Whether it is done (decision 0028).
+  done: boolean;
 };
 
 export type ThreadRead = {

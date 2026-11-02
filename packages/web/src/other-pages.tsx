@@ -1,18 +1,22 @@
 // The Done page, and a review link's page.
+import { WorkstreamMenu } from "./end-workstream.tsx";
+import { threadCount } from "./ending.ts";
 import { Threads } from "./workstream-page.tsx";
 import { type DoneTab, doneRoute, doneShown } from "./nav.ts";
-import { type Dispatch, Link, Mark, plural } from "./parts.tsx";
+import { type Dispatch, Link, Mark, plural, when } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
 import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
-import type { ChangeSetView, DiffView, ThreadSummaryView } from "./view.ts";
+import type { ChangeSetView, DiffView, ThreadSummaryView, WorkstreamSummary } from "./view.ts";
 
 // The threads no longer working, most recently active first, a page at a
 // time, in two tabs: done, with handed-off ones, which say so; and dropped.
 // Each tab counts its threads. Threads that need the user aren't here: the
-// sidebar keeps them in sight.
+// sidebar keeps them in sight. The Done tab leads with the done workstreams,
+// each a link to its page (decision 0028).
 export function DonePage(props: {
   finished: ThreadSummaryView[] | null;
+  workstreams: WorkstreamSummary[];
   tab: DoneTab;
   number: number;
   dispatch: Dispatch;
@@ -44,6 +48,34 @@ export function DonePage(props: {
         {tabLink("done", "Done", counts.done)}
         {tabLink("dropped", "Dropped", counts.dropped)}
       </nav>
+      {tab === "done" && props.workstreams.length > 0 && (
+        <section class="section" aria-labelledby="done-workstreams">
+          <h2 id="done-workstreams" class="section-title">
+            Workstreams
+          </h2>
+          <ul class="thread-list">
+            {props.workstreams.map((workstream) => (
+              <li key={workstream.id}>
+                <WorkstreamMenu workstream={workstream} done dispatch={dispatch}>
+                  <Link
+                    route={{ page: "workstream", id: workstream.id }}
+                    dispatch={dispatch}
+                    class="thread-link"
+                  >
+                    <span class="thread-link-title">{workstream.name}</span>
+                    <span class="thread-link-workstream">
+                      {plural(threadCount(workstream), "thread")}
+                    </span>
+                    {workstream.done && (
+                      <span class="thread-link-at">{when(workstream.done.at)}</span>
+                    )}
+                  </Link>
+                </WorkstreamMenu>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {page.total === 0 ? (
         <p class="rail-empty">
           {tab === "dropped"
@@ -52,6 +84,7 @@ export function DonePage(props: {
         </p>
       ) : (
         <>
+          {tab === "done" && props.workstreams.length > 0 && <h2 class="section-title">Threads</h2>}
           <Threads threads={page.threads} dispatch={dispatch} showWorkstream said={tab} />
           {page.pages > 1 && (
             <nav class="pager" aria-label={`Pages of ${tab} threads`}>

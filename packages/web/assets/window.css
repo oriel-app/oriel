@@ -525,6 +525,12 @@ button.sidebar-search-open {
   padding-left: var(--space-1);
 }
 
+/* The workstream's menu and swipe hold its link, and take its place. */
+.nav-workstream-menu {
+  flex: 1;
+  min-width: 0;
+}
+
 .nav-disclose {
   display: inline-grid;
   flex: none;
@@ -1864,6 +1870,55 @@ a.replies:hover {
   margin: var(--space-1) 0 0;
   color: var(--text-faint);
   font-size: var(--text-sm);
+}
+
+.workstream-done {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* The name, with Mark done or Reopen, and Delete, beside it (decision 0028). */
+.workstream-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workstream-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+}
+
+.head-action {
+  display: inline-grid;
+  place-items: center;
+  width: var(--head-row);
+  height: var(--head-row);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.head-action:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.head-action[data-danger]:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.head-action:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .members {

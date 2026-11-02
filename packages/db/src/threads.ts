@@ -59,6 +59,7 @@ const heldContent = refine(
   (held) => heldText(held.from, held.text),
   "expected a held message within its sender's limit",
 );
+const workstreamMarkRow = object({ done_at: instantValue, done_by: string, threads: string });
 const wroteRow = object({
   applied: number,
   reverted: number,
@@ -110,8 +111,10 @@ export type Wrote = { applied: number; reverted: number; unconfirmed: number; so
 export type Deleted = { workstreamId: Ulid; kept: boolean; workstreamRemoved: boolean };
 
 // A thread the user deleted is gone from every list and lookup; one kept for
-// what it wrote is in deleted_threads.
-const live = "not exists (select 1 from deleted_threads d where d.thread_id = threads.id)";
+// what it wrote is in deleted_threads. So is every thread of a workstream
+// the user deleted, which keeps them for its Undo (decision 0028).
+const live = `not exists (select 1 from deleted_threads d where d.thread_id = threads.id)
+  and not exists (select 1 from deleted_workstreams w where w.workstream_id = threads.workstream_id)`;
 
 // A working thread with no activity this long is dropped.
 const idleMs = 7 * 24 * 60 * 60 * 1000;
@@ -253,6 +256,21 @@ export function threadStore(db: DatabaseSync) {
       and not exists (select 1 from threads where workstream_id = ?1)
       and not exists (select 1 from workstream_members where workstream_id = ?1 and removed_version is null)`);
   const dropEmpty = dropWorkstream.map((sql) => db.prepare(sql));
+  // Latest first.
+  const selectWorkstreamMarks = db.prepare(
+    "select done_at, done_by, threads from workstream_done_marks where workstream_id = ? order by done_at desc",
+  );
+  // Two marks in one instant are one, holding both marks' threads.
+  const markWorkstream = db.prepare(`
+    insert into workstream_done_marks (workspace_id, workstream_id, done_at, done_by, threads)
+    select workspace_id, id, ?2, ?3, ?4 from workstreams where id = ?1
+    on conflict (workstream_id, done_at) do update set
+      threads = (select json_group_array(value) from (
+        select value from json_each(workstream_done_marks.threads)
+        union select value from json_each(excluded.threads)))`);
+  const unmarkWorkstream = db.prepare(
+    "delete from workstream_done_marks where workstream_id = ?1 and (?2 is null or done_at = ?2)",
+  );
 
   const wrote = (id: Ulid): Wrote => {
     const row = wroteRow(selectWrote.get(id));
@@ -406,6 +424,35 @@ export function threadStore(db: DatabaseSync) {
     };
   };
 
+  // The workstream's done marks, latest first: when, who (by kind) and the
+  // threads each marked done.
+  const workstreamMarks = (workstreamId: Ulid) =>
+    selectWorkstreamMarks.all(workstreamId).map((raw) => {
+      const row = workstreamMarkRow(raw);
+      if (!row.ok)
+        throw new Error(`corrupt workstream_done_marks row: ${JSON.stringify(row.issues)}`);
+      const by: unknown = JSON.parse(row.value.done_by);
+      const marked: unknown = JSON.parse(row.value.threads);
+      return {
+        at: row.value.done_at,
+        by: (typeof by === "object" && by !== null && "kind" in by
+          ? by.kind
+          : "user") as Actor["kind"],
+        threads: Array.isArray(marked) ? marked.filter((id): id is Ulid => isUlid(id)) : [],
+      };
+    });
+
+  // Whether the workstream is done now: marked done, and none of its threads
+  // working since its latest mark (decision 0028).
+  const workstreamDone = (workstreamId: Ulid, now: Instant) => {
+    const [done] = workstreamMarks(workstreamId);
+    if (!done) return null;
+    const working = ids(selectByWorkstream.all(workstreamId)).some(
+      (id) => get(id, now)?.state === "working",
+    );
+    return working ? null : { at: done.at, by: done.by };
+  };
+
   const summary = (id: Ulid, now: Instant): ThreadSummary => {
     const thread = get(id, now);
     if (!thread) throw new RangeError(`no thread ${id}`);
@@ -435,6 +482,63 @@ export function threadStore(db: DatabaseSync) {
         if (Number(mark.run(now, id).changes) !== 1) throw new RangeError(`no thread ${id}`);
         markedBy.run(id, JSON.stringify(by));
         return true;
+      });
+    },
+
+    // The workstream's done mark, while it is done: when, and who marked it.
+    workstreamDone,
+
+    // Marks the workstream done, and each of its open threads, working or
+    // dropped, with the same time, recording who did and which threads it
+    // marked: what reopening it undoes (decision 0028). A thread done or
+    // handed off already keeps its state, and who marked it. An earlier mark
+    // stays, with the threads it marked, as when a thread worked in the
+    // workstream since. Null, and nothing changes, when the workstream is
+    // done already.
+    markWorkstreamDone(
+      workstreamId: Ulid,
+      now: Instant,
+      by: Actor = { kind: "user" },
+    ): Ulid[] | null {
+      return transaction(db, () => {
+        if (workstreamDone(workstreamId, now)) return null;
+        const marked = ids(selectByWorkstream.all(workstreamId)).filter((id) => {
+          const state = get(id, now)?.state;
+          if (state !== "working" && state !== "dropped") return false;
+          mark.run(now, id);
+          markedBy.run(id, JSON.stringify(by));
+          return true;
+        });
+        const changes = markWorkstream.run(
+          workstreamId,
+          now,
+          JSON.stringify(by),
+          JSON.stringify(marked),
+        ).changes;
+        if (Number(changes) < 1) throw new RangeError(`no workstream ${workstreamId}`);
+        return marked;
+      });
+    },
+
+    // Takes the workstream's done marks off, and the mark each put on its
+    // threads, where that is still the thread's: one marked again since
+    // stays done. With `at`, only the latest mark, if it was made then, as
+    // an Undo takes off. The threads it reopened, as of `now`, leaving out
+    // one working again already; or null if it had no such mark.
+    reopenWorkstream(workstreamId: Ulid, at: Instant | null, now: Instant): Ulid[] | null {
+      return transaction(db, () => {
+        const marks = workstreamMarks(workstreamId);
+        const taken = at === null ? marks : marks.slice(0, 1).filter((done) => done.at === at);
+        if (taken.length === 0) return null;
+        unmarkWorkstream.run(workstreamId, at);
+        return taken.flatMap((done) =>
+          done.threads.filter((id) => {
+            const was = get(id, now);
+            if (Number(unmark.run(id, done.at).changes) !== 1) return false;
+            unmarkedBy.run(id);
+            return was?.state === "done" && was.doneBy === "marked";
+          }),
+        );
       });
     },
 

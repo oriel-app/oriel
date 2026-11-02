@@ -24,6 +24,15 @@ import {
   initWorkstream,
   updateWorkstream,
 } from "./workstream.ts";
+import {
+  deleted as deletedWorkstream,
+  type EndingModel,
+  type EndingMsg,
+  endingReplied,
+  initEnding,
+  leftPage,
+  updateEnding,
+} from "./ending.ts";
 import { type Effect, get, type Replied, report } from "./http.ts";
 import {
   initJira,
@@ -106,6 +115,9 @@ export type Model = {
   threads: ThreadSummaryView[] | null;
   // Threads being marked done or deleted from a list of them.
   closing: ClosingModel;
+  // Workstreams being marked done, reopened or deleted, from wherever, and
+  // what was last done, with its Undo.
+  ending: EndingModel;
   // The item open in the panel beside the page, as the route names it.
   panel: PanelModel | null;
   // The sidebar's search over the workspace's threads.
@@ -121,6 +133,7 @@ export type Msg =
   | { type: "folder"; msg: FolderMsg }
   | { type: "jira"; msg: JiraMsg }
   | { type: "closing"; msg: ClosingMsg }
+  | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
   | { type: "search"; msg: SearchMsg }
   // A plain click on a link to an item: it opens in the panel.
@@ -152,7 +165,8 @@ const lists: Effect[] = [loadWorkstreams, loadThreads, loadFolder, loadJira];
 // The workstream or thread on screen, loaded again.
 const reloadShown = (model: Model): Effect[] => {
   const { route, workstream, thread } = model;
-  if (route.page === "workstream" && workstream)
+  // One deleted, or being deleted, is gone until its Undo, which loads it then.
+  if (route.page === "workstream" && workstream && !deletedWorkstream(model.ending, workstream.id))
     return [
       get(`/api/workstreams/${workstream.id}`, { kind: "workstreamSynced", id: workstream.id }),
     ];
@@ -183,6 +197,7 @@ export function init(route: Route): [Model, Effect[]] {
     workstreams: null,
     threads: null,
     closing: initClosing(),
+    ending: initEnding(),
     panel: null,
     search: initSearch(),
   };
@@ -231,7 +246,13 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     { type: route.page === "thread" ? "unwatchThreads" : "watchThreads" },
   ];
   // A draft left behind is dropped: nothing was made for it.
-  const base = { ...model, route, thread: null, newThread: null };
+  const base = {
+    ...model,
+    route,
+    thread: null,
+    newThread: null,
+    ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
+  };
   switch (route.page) {
     case "window": {
       if (model.window === null) {
@@ -359,6 +380,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "closing": {
       const [closing, effects] = updateClosing(model.closing, msg.msg);
       return [{ ...model, closing }, effects];
+    }
+    case "ending": {
+      const [ending, effects] = updateEnding(model.ending, msg.msg);
+      return [{ ...model, ending }, effects];
     }
     case "panel": {
       if (model.panel === null) return [model, []];
@@ -504,6 +529,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
         msg.tag.kind === "workstreamChanged" ||
         msg.tag.kind === "restored";
       return [{ ...model, workstream }, moved ? [...effects, loadWorkstreams] : effects];
+    }
+    // Its threads moved with it, so both lists load again, and its page, if
+    // it is on screen and still there.
+    case "ended": {
+      const next = { ...model, ending: endingReplied(model.ending, msg) };
+      const { route } = model;
+      const here = route.page === "workstream" && route.id === msg.tag.id;
+      return [next, [loadWorkstreams, loadThreads, ...(here ? reloadShown(next) : [])]];
     }
     // A drop changes its workstream's count wherever the user is by the time it
     // answers. Its notice goes to the workstream's page or one of its threads,

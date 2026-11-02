@@ -39,6 +39,9 @@ import {
   type DeletedView,
   type DeletionView,
   type FolderView,
+  type Undoable,
+  type WorkstreamDeletedView,
+  type WorkstreamEndedView,
   isGroupingId,
   type JiraView,
   type SearchView,
@@ -286,6 +289,15 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!thread || thread.workspaceId !== deps.workspaceId)
       throw new Refused(404, "no such thread");
     return thread;
+  };
+  // A workstream marked done or reopened, and how many threads came along.
+  const ended = async (
+    id: string,
+    carried: number,
+    undo: Call | null,
+  ): Promise<Undoable<WorkstreamEndedView> | null> => {
+    const view = await views.workstream(id as Ulid);
+    return view && { ...view, carried, undo };
   };
   const mustChangeSet = async (id: string) => {
     const set = await liveChangeSet(deps, id as Ulid);
@@ -654,6 +666,40 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // Marks the workstream done, with its open threads, or reopens it, with
+      // those (decision 0028).
+      method: "POST",
+      path: at("/workstreams/:id/done"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("workstream.done", { workstream: id });
+        const { undo, threads: marked } = await deps.dispatch("workstream.done", input, user);
+        return json(200, await ended(id, marked.length, undo));
+      },
+    },
+    {
+      method: "POST",
+      path: at("/workstreams/:id/reopen"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("workstream.reopen", { workstream: id });
+        const { undo, threads: reopened } = await deps.dispatch("workstream.reopen", input, user);
+        return json(200, await ended(id, reopened.length, undo));
+      },
+    },
+    {
+      // `threads`: how many threads the user was told go with it.
+      method: "POST",
+      path: at("/workstreams/:id/delete"),
+      async run([id = ""], request) {
+        const body = await readJson(request, smallBody, object({ threads: unknown }));
+        const input = checked("workstream.delete", { workstream: id, threads: body.threads });
+        const { undo, threads: gone } = await deps.dispatch("workstream.delete", input, user);
+        const deleted = { threads: gone.length, undo };
+        return json(200, deleted satisfies Undoable<WorkstreamDeletedView>);
+      },
+    },
+    {
       method: "POST",
       path: at("/workstreams/:id/threads"),
       async run([id = ""], request) {
@@ -900,6 +946,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const opened = await changeSets.openReview(token);
         if (!opened)
           throw new Refused(404, "This review link has expired, was revoked, or was already used.");
+        // Its thread went with a workstream the user deleted, which they may
+        // bring back, and the link with it (decision 0028).
+        if (!(await liveChangeSet(deps, opened.changeSet.id)))
+          throw new Refused(
+            404,
+            "The workstream this change set is in was deleted, so it can't be reviewed now.",
+          );
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),
