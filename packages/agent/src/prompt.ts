@@ -151,6 +151,13 @@ function entry(item: TranscriptEntry): string[] {
 
 const changes = (count: number) => (count === 1 ? "1 change" : `${count} changes`);
 
+// What captured changes are, wherever the agent meets them: in the result of
+// the run that captured them, and in the thread's history in later turns.
+export const capturedRules = [
+  "Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set.",
+  "Nothing is sent until the user approves: say you proposed them, never that they're done.",
+];
+
 const actions = (count: number) =>
   count === 1 ? "1 of Oriel's actions" : `${count} of Oriel's actions`;
 
@@ -179,8 +186,7 @@ export function runResultText(result: RunResult, replaced: number, replacedInten
       replaced
         ? `They replace the ${changes(replaced)} an earlier run in this turn captured, and become the change set the user reviews when this turn ends.`
         : "They become the change set the user reviews when this turn ends, unless a later run in this turn captures changes instead.",
-      "Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set.",
-      "Nothing is sent until the user approves: say you proposed them, never that they're done.",
+      ...capturedRules,
     );
   }
   if (asked) {

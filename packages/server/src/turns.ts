@@ -14,7 +14,7 @@ import type {
   Thread,
   Ulid,
 } from "@oriel/core";
-import type { Titler } from "@oriel/agent";
+import { capturedRules, type Titler } from "@oriel/agent";
 import {
   type Agent,
   agentEvent,
@@ -125,7 +125,7 @@ export type TurnDeps = {
 const maxSummaryChars = 2_000;
 
 // A run as history keeps it: how it ended and what it returned or why it
-// failed, cut short.
+// failed, cut short, and for a run that captured changes, what they are.
 function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): string {
   const { result } = event;
   const last = result.transcript.at(-1);
@@ -135,9 +135,10 @@ function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): strin
       : last?.kind === "error"
         ? `failed: ${last.error.message}`
         : "returned nothing";
-  const captured = result.mutations.length ? `; captured ${result.mutations.length} changes` : "";
-  const text = `${result.outcome}; ${detail}${captured}`;
-  return text.length > maxSummaryChars ? `${text.slice(0, maxSummaryChars - 1)}…` : text;
+  const short = `${result.outcome}; ${detail}`;
+  const cut = short.length > maxSummaryChars ? `${short.slice(0, maxSummaryChars - 1)}…` : short;
+  if (!result.mutations.length) return cut;
+  return `${cut}; captured ${result.mutations.length} changes (${capturedRules.join(" ")})`;
 }
 
 // What the agent reads of the host's list under a reply: each call as it

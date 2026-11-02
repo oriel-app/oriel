@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Ulid } from "@oriel/core";
+import type { RunResult, Ulid } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
-import { roundClosed, runTool, systemPrompt, threadMessages } from "./prompt.ts";
+import {
+  capturedRules,
+  roundClosed,
+  runResultText,
+  runTool,
+  systemPrompt,
+  threadMessages,
+} from "./prompt.ts";
 import type { ModelMessage } from "./provider.ts";
 import { t0 } from "./testing.ts";
 
@@ -148,4 +155,39 @@ test("history: an assistant message with no text is absent, so it doesn't stand 
     ["assistant", roundClosed],
     ["user", "And now?"],
   ]);
+});
+
+test("a run's result carries what its writes are and what to do when it fails", () => {
+  const result = (over: Partial<RunResult>): RunResult => ({
+    reads: [],
+    mutations: [],
+    intents: [],
+    transcript: [],
+    outcome: "ok",
+    wallMs: 0,
+    coldStartMs: null,
+    ...over,
+  });
+  const captured = runResultText(
+    result({
+      mutations: [{ op: "setEstimate", target: "jira:SYN-1", ref: null, args: { points: 3 } }],
+    }),
+    0,
+  );
+  for (const rule of capturedRules) assert.ok(captured.includes(rule), rule);
+  const failed = (hint?: string) =>
+    runResultText(
+      result({
+        outcome: "threw",
+        transcript: [
+          {
+            kind: "error",
+            error: { phase: "runtime", message: "boom", logs: [], ...(hint ? { hint } : {}) },
+          },
+        ],
+      }),
+      0,
+    );
+  assert.equal(failed(), "Failed at runtime: boom\nHint: fix the script and run it again.");
+  assert.equal(failed("Check the ID."), "Failed at runtime: boom\nHint: Check the ID.");
 });

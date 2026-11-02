@@ -97,3 +97,26 @@ test("a run after the one that captured, which only read, doesn't take the chang
   assert.ok(runs[0]?.endsWith(`; they are change set ${set.id}`), String(runs[0]));
   assert.ok(!runs[1]?.includes("change set"), String(runs[1]));
 });
+
+test("in a later turn, a run that captured still says its changes wait on the user and Revert undoes them", async (t) => {
+  const histories: ChatMessage[][] = [];
+  const app = await testApp(t, {
+    plan: (input) => {
+      histories.push(input.history);
+      return [{ run: "rename" }, { text: "I proposed a new title." }];
+    },
+    scripts: { rename },
+  });
+  const { id: workstreamId } = json<{ id: string }>(await app.post("/api/workstreams", checkout));
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Rename SYN-23" }),
+  );
+  await app.app.settled();
+  await app.post(`/api/threads/${threadId}/messages`, { text: "Did it change?" });
+  await app.app.settled();
+  const [run] = (histories.at(-1) ?? []).flatMap((m) => (m.role === "run" ? [m.summary] : []));
+  assert.match(
+    run ?? "",
+    /^ok; returned null; captured 1 changes \(Once applied, the user undoes them with Revert in the thread, which proposes the reverse as a new change set\. Nothing is sent until the user approves: say you proposed them, never that they're done\.\); they are change set /,
+  );
+});
