@@ -1,6 +1,7 @@
 export * from "./actions.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
+export * from "./find.ts";
 export * from "./workstream.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";

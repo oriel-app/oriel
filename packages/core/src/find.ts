@@ -1,8 +1,9 @@
-// Matching and ranking for the one search over Oriel's threads (OA-108,
-// OA-110): pure, so it is tested without a database or a clock. The read
-// layer (oriel-reads.ts) gathers what each thread and change set says; this
-// says which match a query, best first, and the words around each match.
-import type { MatchedIn } from "@oriel/core";
+// The one search over Oriel's threads (OA-108, OA-110): pure, so it is
+// tested without a database or a clock. The server's read layer gathers the
+// workspace's threads, what was said in them and what their change sets
+// wrote; this says which match a query, best first, and the words around
+// each match. An eval's workspace is searched by the same code.
+import type { ChangeSetRead, MatchedIn, ThreadFound, ThreadRead } from "./oriel-reads.ts";
 
 // What can be found: a thread, by its name and what was said in it, or a
 // change set, by what it wrote. `at` breaks ties, latest first.
@@ -125,4 +126,52 @@ export function find<T>(all: readonly Findable<T>[], query: string, limit: numbe
     )
     .slice(0, Math.max(0, limit))
     .map((s) => s.match);
+}
+
+// Threads by their names and what was said in them (`said`), and change sets
+// by what each wrote, where, and where it stands, so "approved" finds the
+// change set the person approved.
+export function findThreads(
+  threads: readonly ThreadRead[],
+  said: (thread: ThreadRead) => string,
+  sets: readonly ChangeSetRead[],
+  query: string,
+  limit: number,
+): ThreadFound[] {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const all: Findable<{ thread: ThreadRead; changeSet: ChangeSetRead | null }>[] = [
+    ...threads.map((thread) => ({
+      target: { thread, changeSet: null },
+      at: thread.activityAt,
+      fields: [
+        { in: "name" as const, text: thread.name ?? "" },
+        { in: "chat" as const, text: said(thread) },
+      ],
+    })),
+    ...sets.flatMap((set) => {
+      const thread = byId.get(set.thread);
+      if (!thread) return [];
+      const stood = set.decided
+        ? `${set.state} ${set.decided.kind} by ${set.decided.by}`
+        : set.state;
+      return [
+        {
+          target: { thread, changeSet: set },
+          at: set.decided?.at ?? set.createdAt,
+          fields: [
+            ...set.changes.map((change) => ({
+              in: "change-set" as const,
+              text: [`${change.source}: ${change.sentence}`, ...change.text].join("\n"),
+            })),
+            { in: "change-set" as const, text: stood },
+          ],
+        },
+      ];
+    }),
+  ];
+  return find(all, query, limit).map(({ target, matched, excerpt }) => ({
+    ...target,
+    matched,
+    excerpt,
+  }));
 }

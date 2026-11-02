@@ -10,6 +10,7 @@ import {
   type ChangeSetRead,
   type ChangeSets,
   type ChangeSetState,
+  findThreads,
   type Instant,
   type Known,
   type OrielReads,
@@ -18,7 +19,6 @@ import {
   type Ulid,
 } from "@oriel/core";
 import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
-import { type Findable, find } from "./find.ts";
 import { changeSetStatus } from "./views.ts";
 
 export type OrielReadDeps = {
@@ -85,29 +85,24 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
     }));
 
   // Each thread's change sets, newest first, read as a person reads them.
-  const setsOf = async (
-    ids: readonly Ulid[],
-  ): Promise<{ set: ChangeSet; read: ChangeSetRead }[]> => {
+  const setsOf = async (ids: readonly Ulid[]): Promise<ChangeSetRead[]> => {
     const known = deps.known();
     const each = await Promise.all(
       ids.map(async (thread) => {
         const all = await deps.changeSets.ofThread(thread);
         return Promise.all(
-          all.map(async (set) => ({
-            set,
-            read: {
-              id: set.id,
-              thread,
-              state: changeSetState(set, all),
-              createdAt: set.createdAt,
-              decided: set.decision && {
-                kind: set.decision.kind,
-                by: set.decision.by,
-                at: set.decision.at,
-              },
-              changes: await deps.changeSets.changes(set, known),
-              link: changeSetLink(thread, set.id),
+          all.map(async (set): Promise<ChangeSetRead> => ({
+            id: set.id,
+            thread,
+            state: changeSetState(set, all),
+            createdAt: set.createdAt,
+            decided: set.decision && {
+              kind: set.decision.kind,
+              by: set.decision.by,
+              at: set.decision.at,
             },
+            changes: await deps.changeSets.changes(set, known),
+            link: changeSetLink(thread, set.id),
           })),
         );
       }),
@@ -115,9 +110,9 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
     return each
       .flat()
       .toSorted((a, b) =>
-        a.set.createdAt === b.set.createdAt
-          ? b.set.id.localeCompare(a.set.id)
-          : b.set.createdAt.localeCompare(a.set.createdAt),
+        a.createdAt === b.createdAt
+          ? b.id.localeCompare(a.id)
+          : b.createdAt.localeCompare(a.createdAt),
       );
   };
 
@@ -141,51 +136,18 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
       const live = ids.filter(
         (id) => threads.get(id, deps.now())?.workspaceId === deps.workspaceId,
       );
-      return (await setsOf(live)).map(({ read }) => read);
+      return setsOf(live);
     },
 
     async find(query, limit) {
       const all = threadReads();
-      const byId = new Map(all.map((thread) => [thread.id, thread]));
-      const sets = await setsOf(all.map((thread) => thread.id));
-      const findable: Findable<{ thread: ThreadRead; changeSet: ChangeSetRead | null }>[] = [
-        ...all.map((thread) => ({
-          target: { thread, changeSet: null },
-          at: thread.activityAt,
-          fields: [
-            { in: "name" as const, text: thread.name ?? "" },
-            { in: "chat" as const, text: said(threads.messages(thread.id)) },
-          ],
-        })),
-        ...sets.flatMap(({ set, read }) => {
-          const thread = byId.get(read.thread);
-          if (!thread) return [];
-          // What it wrote, where, and where it stands, so "approved" finds
-          // the change set the person approved.
-          const wrote = read.changes.map((change) =>
-            [`${change.source}: ${change.sentence}`, ...change.text].join("\n"),
-          );
-          const stood = [
-            read.state,
-            read.decided ? `${read.decided.kind} by ${read.decided.by}` : "",
-          ];
-          return [
-            {
-              target: { thread, changeSet: read },
-              at: set.decision?.at ?? set.createdAt,
-              fields: [
-                ...wrote.map((text) => ({ in: "change-set" as const, text })),
-                { in: "change-set" as const, text: stood.join(" ") },
-              ],
-            },
-          ];
-        }),
-      ];
-      return find(findable, query, limit).map(({ target, matched, excerpt }) => ({
-        ...target,
-        matched,
-        excerpt,
-      }));
+      return findThreads(
+        all,
+        (thread) => said(threads.messages(thread.id)),
+        await setsOf(all.map((thread) => thread.id)),
+        query,
+        limit,
+      );
     },
   };
 }

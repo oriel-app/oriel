@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Findable, find, words } from "./find.ts";
+import { type Findable, find, findThreads, words } from "./find.ts";
+import type { ChangeSetRead, ThreadRead } from "./oriel-reads.ts";
 
 const thread = (target: string, at: string, name: string, chat = ""): Findable<string> => ({
   target,
@@ -88,4 +89,39 @@ test("an accented word matches its plain spelling, and points at it as written",
 test("an empty query, or a limit of none, finds nothing", () => {
   assert.deepEqual(find(all, "  ", 10), []);
   assert.deepEqual(find(all, "slack", 0), []);
+});
+
+const read = (id: string, name: string, activityAt: string): ThreadRead => ({
+  id: id as ThreadRead["id"],
+  name,
+  state: "done",
+  workstream: { id: "w" as ThreadRead["id"], name: "Weather" },
+  activityAt: activityAt as ThreadRead["activityAt"],
+  link: `/threads/${id}`,
+});
+
+test("threads and change sets are found by what each says, and a change set by where it stands", () => {
+  const asking = read("t2", "Where did I approve the Slack test post?", "2026-10-05");
+  const posting = read("t1", "Try a Slack post", "2026-10-02");
+  const set: ChangeSetRead = {
+    id: "c1" as ChangeSetRead["id"],
+    thread: posting.id,
+    state: "applied",
+    createdAt: "2026-10-02" as ChangeSetRead["createdAt"],
+    decided: { kind: "approved", by: "Amara", at: "2026-10-02" as ChangeSetRead["createdAt"] },
+    changes: [{ source: "Slack", sentence: "Post in #weather as Amara.", text: ["Test post"] }],
+    link: "/threads/t1?changeSet=c1",
+  };
+  const found = findThreads([asking, posting], () => "", [set], "approved slack test post", 5);
+  // The thread asking repeats the question; the change set answers it.
+  assert.deepEqual(
+    found.map((f) => [f.thread.id, f.changeSet?.id ?? null, f.matched]),
+    [["t1", "c1", "change-set"]],
+  );
+  assert.equal(found[0]?.excerpt, "Slack: Post in #weather as Amara. Test post");
+  // A change set of a thread not listed isn't found.
+  assert.deepEqual(
+    findThreads([asking], () => "", [set], "test post", 5).map((f) => f.thread.id),
+    ["t2"],
+  );
 });

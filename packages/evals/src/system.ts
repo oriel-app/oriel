@@ -71,6 +71,7 @@ export function agentSystem(options: AgentSystemOptions = {}): SystemUnderTest {
       ...(input.slack ? { slack: input.slack } : {}),
       edited: input.case.edited ?? 0,
       folderEdited: input.case.folderEdited ?? 0,
+      ...(input.case.oriel ? { oriel: input.case.oriel } : {}),
     });
     try {
       return await turn(world, input, options);
@@ -99,7 +100,12 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
     bindingsFor: (r) =>
-      bindingsFor(r, { reader: world.reader, namespaces: world.namespaces, items: world.items }),
+      bindingsFor(r, {
+        reader: world.reader,
+        namespaces: world.namespaces,
+        items: world.items,
+        oriel: world.oriel,
+      }),
     runs: records.runs,
     changeSets: records.changeSets,
     limits: options.limits ?? evalLimits,
