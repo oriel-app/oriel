@@ -1,18 +1,21 @@
 // A climb: a hill-climb's pre-registered plan, as the CLI enforces it. Its
 // file, `climbs/<name>.json`, freezes the cases (each by its content hash,
-// with the group a comparison guards it in), the runs a case each round, and
-// a cap on what its rounds may spend. Its ledger, `climbs/<name>.ledger.jsonl`,
-// has one line per round with what it cost. Both are committed: the plan
+// with the group a comparison guards it in), the trials a case each round,
+// and a cap on what its rounds may spend. Its ledger,
+// `climbs/<name>.ledger.jsonl`, books each round twice: its estimate as it
+// starts, then what it cost as it ends, so a round stopped partway stays
+// booked at its estimate. Both are committed: the plan
 // before the first round, the ledger as it grows. The plan's prose (the
 // changes to try, in order, and any later change to the plan, with why) is
 // `climbs/<name>.md`.
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   type Infer,
   isUlid,
   literal,
   number,
   object,
+  optional,
   record,
   refine,
   string,
@@ -51,14 +54,16 @@ const ledgerEntry = object({
   round: refine(string, isUlid, "expected a ULID"),
   label: string,
   split: roundSplit,
-  runs: count,
+  trials: count,
   usd: refine(number, (n) => Number.isFinite(n) && n >= 0, "expected dollars"),
+  // The line booked as the round starts; the round's last line counts.
+  estimated: optional(literal(true)),
 });
-export type LedgerEntry = Infer<typeof ledgerEntry>;
+export type LedgerEntry = Omit<Infer<typeof ledgerEntry>, "estimated"> & { estimated?: true };
 
-// What a round costs before any has run: on the high side, so the first
-// round can't overshoot by much.
-export const firstRunEstimate = 0.05;
+// What a trial costs before any round has ended: on the high side, so the
+// first round can't overshoot by much.
+export const firstTrialEstimate = 0.05;
 
 const fileOf = (dir: URL, climb: string, suffix: string) => new URL(`${climb}${suffix}`, dir);
 
@@ -80,7 +85,8 @@ export function loadClimb(
     if (!line.trim()) continue;
     const entry = ledgerEntry(JSON.parse(line));
     if (!entry.ok) return { problem: `${ledgerFile.pathname} line ${i + 1} is not a ledger entry` };
-    ledger.push(entry.value);
+    const { estimated, ...booked } = entry.value;
+    ledger.push(estimated ? { ...booked, estimated } : booked);
   }
   return { climb: parsed.value, ledger };
 }
@@ -95,6 +101,7 @@ export function freezeClimb(
 ): string | null {
   const file = fileOf(dir, climb, ".json");
   if (existsSync(file)) return `${file.pathname} exists; a climb's plan is frozen once written`;
+  mkdirSync(dir, { recursive: true });
   const frozen: Climb = {
     cap: plan.cap,
     reps: plan.reps,
@@ -122,12 +129,20 @@ export function unfrozen(climb: Climb, cases: readonly LoadedCase[]): string[] {
   return problems;
 }
 
-export const spent = (ledger: readonly LedgerEntry[]) => ledger.reduce((n, e) => n + e.usd, 0);
+// Each round's last line: its cost once it ended, else its estimate.
+const rounds = (ledger: readonly LedgerEntry[]) => [
+  ...new Map(ledger.map((e) => [e.round, e])).values(),
+];
 
-// A round's cost before it runs: its runs at the ledger's mean cost a run.
-export function estimate(ledger: readonly LedgerEntry[], runs: number): number {
-  const done = ledger.reduce((n, e) => n + e.runs, 0);
-  return runs * (done ? spent(ledger) / done : firstRunEstimate);
+export const spent = (ledger: readonly LedgerEntry[]) =>
+  rounds(ledger).reduce((n, e) => n + e.usd, 0);
+
+// A round's cost before it runs: its trials at the mean cost of a trial in
+// the rounds that ended.
+export function estimate(ledger: readonly LedgerEntry[], trials: number): number {
+  const ended = rounds(ledger).filter((e) => !e.estimated);
+  const done = ended.reduce((n, e) => n + e.trials, 0);
+  return trials * (done ? ended.reduce((n, e) => n + e.usd, 0) / done : firstTrialEstimate);
 }
 
 export function writeLedger(dir: URL, climb: string, entry: LedgerEntry): void {

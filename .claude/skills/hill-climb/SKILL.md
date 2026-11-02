@@ -24,11 +24,11 @@ The harness is `packages/evals`; there is no other runner or grader. Live rounds
   - the fix you expect is found;
   - most neutral trims are kept.
 
-  Past that, more runs don't help: a guard on a group of a few cases is limited by its cases. On the oa-144 suite this gave k = 4.
+  Past that, more trials don't help: a guard on a group of a few cases is limited by its cases. On the oa-144 suite this gave k = 4.
 
 **Rounds**
 
-- `pnpm evals --env <main checkout>/.env --climb <name> --label "<what changed>"` runs train, k runs a case.
+- `pnpm evals --env <main checkout>/.env --climb <name> --label "<what changed>"` runs train, k trials a case (a trial is one go at a case: the agent's turn and its grades).
   - The CLI refuses to run if a case changed since the freeze, or if the round's estimate would pass the cap.
   - It books the round's cost in `climbs/<name>.ledger.jsonl`. Commit the ledger as it grows.
 - `--split test` and `--split all` are for the final step only.
@@ -43,14 +43,14 @@ The harness is `packages/evals`; there is no other runner or grader. Live rounds
 - **A trim** isn't meant to improve anything. `compare … --trim` keeps it when the one-sided 95% lower bound on the pass-rate difference is above −8 points, and no group is worse. Judge a trim on two rounds of its own against two of the baseline: `compare a+b c+d --trim`.
 - **Baselines:**
   - The baseline is the last kept state's rounds, pooled with `+`.
-  - After a kept fix, run one more round of it, so later trims have 2k runs a case to compare with.
+  - After a kept fix, run one more round of it, so later trims have 2k trials a case to compare with.
   - `pnpm evals aa <round>+<round>` on two rounds of one state is a free A/A check.
-- **Reading transcripts:** read train transcripts only (`.evals/<round>/transcripts/`: a case's first run is `<case>.json`, its later ones `<case>.rep<n>.json`), to find the behaviour behind a failure. A fix must come from train evidence. If only test shows a failure, write a train case that reproduces it, before its baseline.
+- **Reading transcripts:** read train transcripts only (`.evals/<round>/transcripts/`: a case's first trial is `<case>.json`, its later ones `<case>.rep<n>.json`), to find the behaviour behind a failure. A fix must come from train evidence. If only test shows a failure, write a train case that reproduces it, before its baseline.
 - **Prefer structural changes.** Moving a rule to where the agent meets it (a run's result, a type's doc, a refusal from Oriel) beats rewording a sentence. Rewording is brittle, and a module trim can move behaviour far from the words cut.
 
 **Final**
 
-- Run the starting state on test (`--split test`), then the final state on all cases (`--split all`), in one session. The final round's first run of each case records the cassettes.
+- Run the starting state on test twice (`--split test`), then the final state on all cases (`--split all`) and once more on test, all in one session. The trim bar needs two rounds an arm: at one, even a perfect result can't clear the margin, and `compare` says so. The final all-cases round's first trial of each case records the cassettes.
 - **The bar:** `compare <test baseline> <final> --trim` on test. The headline is the target group's test rate before and after, with intervals and p.
 - Test runs once. If it misses the bar, report it; don't tune on it.
 - `pnpm -s --filter @oriel/evals evals:ci` must exit 0. Remove a `failing` mark that now passes, and say so.

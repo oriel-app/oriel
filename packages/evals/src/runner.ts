@@ -1,7 +1,7 @@
 // A round: every case run through the system under test, once or `reps`
-// times, graded, and written to its own directory under the gitignored
-// `.evals/`: one JSONL line per run (`results.jsonl`), a full transcript per
-// run (`transcripts/`), and a summary per split with a confidence interval and
+// times (trials), graded, and written to its own directory under the gitignored
+// `.evals/`: one JSONL line per trial (`results.jsonl`), a full transcript per
+// trial (`transcripts/`), and a summary per split with a confidence interval and
 // what the round's model calls cost (`summary.json`).
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -103,7 +103,7 @@ export const caseResult = object({
   hash: string,
   split,
   kind: number,
-  // Which of the case's runs this is, from 0; absent for the first.
+  // Which of the case's trials this is, from 0; absent for the first.
   rep: optional(number),
   // The case's group in a climb, which a comparison guards on its own;
   // absent outside one.
@@ -116,7 +116,7 @@ export const caseResult = object({
   unrecorded: nullable(string),
   ms: number,
 });
-// `rep` and `group` are left out when absent, so a round of single runs
+// `rep` and `group` are left out when absent, so a round of single trials
 // outside a climb reads as rounds always have.
 export type CaseResult = Omit<Infer<typeof caseResult>, "rep" | "group"> & {
   rep?: number;
@@ -137,7 +137,7 @@ export type Spend = { usd: number; tokens: Usage };
 export type Summary = {
   model: string;
   judgeModel: string;
-  // Runs a case; absent for one. Each split's rate counts runs.
+  // Trials a case; absent for one. Each split's rate counts trials.
   reps?: number;
   splits: Record<Split, Rate & { failed: number; errored: number }>;
   spend?: Spend;
@@ -155,10 +155,10 @@ export type RoundOptions = {
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
-  // The cassettes one run's model calls go through, the judge's included.
-  // They are committed only when the run finishes without error.
+  // The cassettes one trial's model calls go through, the judge's included.
+  // They are committed only when the trial finishes without error.
   transport: (caseId: string, rep: number) => Cassettes;
-  // Runs a case. Absent: one.
+  // Trials a case. Absent: one.
   reps?: number;
   // Each case's group, by ID, in a climb.
   groups?: ReadonlyMap<string, string>;
@@ -175,12 +175,12 @@ export async function runRound(options: RoundOptions): Promise<Round> {
     throw new Error(`the judge model must differ from the model under test (${options.model})`);
   mkdirSync(new URL("transcripts/", options.out), { recursive: true });
   const reps = options.reps ?? 1;
-  // Every case's first run, then every case's second, and so on, so a
-  // network outage costs many cases a run each, not one case all of them.
-  const runs = Array.from({ length: reps }, (_, rep) =>
+  // Every case's first trial, then every case's second, and so on, so a
+  // network outage costs many cases a trial each, not one case all of them.
+  const trials = Array.from({ length: reps }, (_, rep) =>
     options.cases.map((loaded) => ({ loaded, rep })),
   ).flat();
-  const done = await pool(runs, options.concurrency ?? 1, ({ loaded, rep }) =>
+  const done = await pool(trials, options.concurrency ?? 1, ({ loaded, rep }) =>
     runCase(loaded, rep, options),
   );
   const results = done.map((d) => d.result);
@@ -481,7 +481,7 @@ export function formatRound(round: Round, failing: Failing = new Map()): string 
     // Past a known failure, name what else broke.
     const marked = known ? undefined : failing.get(r.id);
     const why = r.error ?? r.grades.find((g) => !g.pass && g.grader !== marked)?.detail ?? "";
-    const which = r.rep ? `, run ${r.rep + 1}` : "";
+    const which = r.rep ? `, trial ${r.rep + 1}` : "";
     lines.push(
       `${known ? "fail (known)" : r.outcome}  ${r.id} (${r.split}, kind ${r.kind}${which}): ${why}`,
     );

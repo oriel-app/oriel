@@ -60,8 +60,11 @@ export type SplitChange = {
   // The chance of a gain at least this large with no change.
   better: number;
   // The lower end of the one-sided bound on candidate minus baseline,
-  // stratified by case.
+  // stratified by case, and what it would be if every candidate trial passed:
+  // when that can't clear the margin, the arms are too small to show a trim
+  // no worse, whatever it does.
   low: number;
+  best: number;
   groups: GroupChange[];
   // Cases whose pass rate moved, as baseline and candidate tallies.
   moved: { id: string; baseline: Tally; candidate: Tally }[];
@@ -71,9 +74,9 @@ export type Change = {
   mode: Mode;
   splits: SplitChange[];
   // Case IDs only one arm ran, whose split or content changed, or with no
-  // finished run in an arm.
+  // finished trial in an arm.
   unpaired: string[];
-  // Runs that errored, left out of every count: an error says nothing about
+  // Trials that errored, left out of every count: an error says nothing about
   // the change.
   errored: number;
   // Why to revert; empty to keep.
@@ -88,18 +91,18 @@ const groupOf = (r: CaseResult) =>
 
 const sum = (tallies: readonly Tally[]): Tally => ({
   passed: tallies.reduce((n, t) => n + t.passed, 0),
-  runs: tallies.reduce((n, t) => n + t.runs, 0),
+  trials: tallies.reduce((n, t) => n + t.trials, 0),
 });
-const rateOf = (t: Tally) => wilson(t.passed, t.runs);
+const rateOf = (t: Tally) => wilson(t.passed, t.trials);
 const gain = (cases: readonly { baseline: Tally; candidate: Tally }[]) =>
   cases.reduce(
-    (n, c) => n + c.candidate.passed / c.candidate.runs - c.baseline.passed / c.baseline.runs,
+    (n, c) => n + c.candidate.passed / c.candidate.trials - c.baseline.passed / c.baseline.trials,
     0,
   );
 
-// Each arm is every run of one state of the agent, from one round or several
+// Each arm is every trial of one state of the agent, from one round or several
 // pooled. Only the splits both arms ran are compared, and a case only when
-// both arms ran it with the same content and finished a run.
+// both arms ran it with the same content and finished a trial.
 export function compareChange(
   baseline: readonly CaseResult[],
   candidate: readonly CaseResult[],
@@ -109,10 +112,10 @@ export function compareChange(
     const byId = new Map<string, { first: CaseResult; tally: Tally; mixed: boolean }>();
     for (const r of results) {
       const seen = byId.get(r.id);
-      const entry = seen ?? { first: r, tally: { passed: 0, runs: 0 }, mixed: false };
+      const entry = seen ?? { first: r, tally: { passed: 0, trials: 0 }, mixed: false };
       if (r.hash !== entry.first.hash || r.split !== entry.first.split) entry.mixed = true;
       if (r.outcome !== "error") {
-        entry.tally.runs += 1;
+        entry.tally.trials += 1;
         if (r.outcome === "pass") entry.tally.passed += 1;
       }
       byId.set(r.id, entry);
@@ -129,7 +132,7 @@ export function compareChange(
       !now.mixed &&
       was.first.hash === now.first.hash &&
       was.first.split === now.first.split;
-    if (!same || !was.tally.runs || !now.tally.runs) return [];
+    if (!same || !was.tally.trials || !now.tally.trials) return [];
     const r = now.first;
     return [{ id, split: r.split, group: groupOf(r), baseline: was.tally, candidate: now.tally }];
   });
@@ -161,10 +164,18 @@ export function compareChange(
         candidate: rateOf(c),
         better: gain(own) > 0 ? stratifiedTest(own, "better") : 1,
         low: differenceLow(own, method.z),
+        best: differenceLow(
+          own.map((p) => ({
+            baseline: p.baseline,
+            candidate: { passed: p.candidate.trials, trials: p.candidate.trials },
+          })),
+          method.z,
+        ),
         groups,
         moved: own
           .filter(
-            (p) => p.baseline.passed / p.baseline.runs !== p.candidate.passed / p.candidate.runs,
+            (p) =>
+              p.baseline.passed / p.baseline.trials !== p.candidate.passed / p.candidate.trials,
           )
           .map(({ id, baseline, candidate }) => ({ id, baseline, candidate })),
       },
@@ -182,7 +193,11 @@ function why(s: SplitChange, mode: Mode): string[] {
     .map((g) => `${s.split}: ${g.group} is worse (p=${g.worse.toFixed(3)})`);
   if (mode === "better" && s.better > method.alpha)
     reasons.push(`${s.split}: not better beyond noise (p=${s.better.toFixed(3)})`);
-  if (mode === "no-worse" && s.low <= -method.margin)
+  if (mode === "no-worse" && s.best <= -method.margin)
+    reasons.push(
+      `${s.split}: too few trials to show no worse; even every trial passing gives ${points(s.best)}, so pool more rounds in each arm`,
+    );
+  else if (mode === "no-worse" && s.low <= -method.margin)
     reasons.push(
       `${s.split}: can't rule out a drop of ${size(method.margin)} (bound ${points(s.low)})`,
     );
@@ -191,7 +206,7 @@ function why(s: SplitChange, mode: Mode): string[] {
 
 const size = (difference: number) => `${Math.abs(difference * 100).toFixed(1)} points`;
 const points = (difference: number) => `${difference < 0 ? "−" : "+"}${size(difference)}`;
-const tally = (t: Tally) => `${t.passed}/${t.runs}`;
+const tally = (t: Tally) => `${t.passed}/${t.trials}`;
 const cell = (r: Rate) => `${r.passed}/${r.cases} ${percent(r.rate)}`.padEnd(13);
 
 export function formatChange(change: Change): string {
@@ -216,7 +231,7 @@ export function formatChange(change: Change): string {
   }
   if (change.unpaired.length)
     lines.push(`not compared (new, gone, edited or never finished): ${change.unpaired.join(", ")}`);
-  if (change.errored) lines.push(`errored runs, left out: ${change.errored}`);
+  if (change.errored) lines.push(`errored trials, left out: ${change.errored}`);
   const rule =
     change.mode === "better"
       ? `better beyond noise at p ≤ ${method.alpha}`
@@ -229,18 +244,21 @@ export function formatChange(change: Change): string {
   return lines.join("\n");
 }
 
-// An A/A check: every way to split runs of one unchanged agent into two
-// arms of equal size, by run slot (a round and a run within it), each judged
+// An A/A check: every way to split trials of one unchanged agent into two
+// arms as equal as can be, by trial slot (a round and a trial within it), each judged
 // both ways as if it were a change. A fix kept is a false keep; a trim
-// reverted, a false revert; a group flagged worse, a false guard. With an odd
-// count of slots one arm gets the extra slot.
+// reverted, a false revert; a group flagged worse, a false guard.
 export type NoChange = { judged: number; better: number; noWorse: number; guarded: number };
 
-export function noChange(runs: readonly { slot: string; result: CaseResult }[]): NoChange {
-  const slots = [...new Set(runs.map((r) => r.slot))];
+export function noChange(trials: readonly { slot: string; result: CaseResult }[]): NoChange {
+  const slots = [...new Set(trials.map((r) => r.slot))];
   if (slots.length < 2 || slots.length > 16)
-    throw new Error(`an A/A check needs 2 to 16 run slots, not ${slots.length}`);
-  const [first, ...rest] = slots;
+    throw new Error(`an A/A check needs 2 to 16 trial slots, not ${slots.length}`);
+  // With an even count, subsets holding the first slot, so each split is
+  // drawn once; with an odd count, every subset of the smaller size.
+  const even = slots.length % 2 === 0;
+  const [first, ...others] = slots;
+  const rest = even ? others : slots;
   const tally: NoChange = { judged: 0, better: 0, noWorse: 0, guarded: 0 };
   const judge = (baseline: CaseResult[], candidate: CaseResult[]) => {
     const fix = compareChange(baseline, candidate, "better");
@@ -250,13 +268,12 @@ export function noChange(runs: readonly { slot: string; result: CaseResult }[]):
     if (keeps(trim)) tally.noWorse += 1;
     if (trim.splits.some((s) => s.groups.some((g) => g.worse <= method.guard))) tally.guarded += 1;
   };
-  // Subsets holding the first slot, so each split is drawn once.
-  const size = Math.ceil(slots.length / 2) - 1;
+  const size = even ? slots.length / 2 - 1 : (slots.length - 1) / 2;
   const choose = (from: number, picked: string[]) => {
     if (picked.length === size) {
-      const chosen = new Set([first, ...picked]);
+      const chosen = new Set(even ? [first, ...picked] : picked);
       const arm = (side: boolean) =>
-        runs.filter((r) => chosen.has(r.slot) === side).map((r) => r.result);
+        trials.filter((r) => chosen.has(r.slot) === side).map((r) => r.result);
       judge(arm(true), arm(false));
       judge(arm(false), arm(true));
       return;

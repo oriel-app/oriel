@@ -107,7 +107,7 @@ test("only cases in both rounds, in the same split and unedited, are compared", 
   );
 });
 
-test("a run that errored is left out, so an outage can't look like a fix", () => {
+test("a trial that errored is left out, so an outage can't look like a fix", () => {
   // The baseline lost five train cases to judge outages; the candidate didn't.
   const baseline = [
     ...no(5).map((_, i) => result(`train-${i}`, "train", false, "error")),
@@ -120,5 +120,5 @@ test("a run that errored is left out, so an outage can't look like a fix", () =>
     outage.splits.map((s) => s.split),
     ["test"],
   );
-  assert.match(formatChange(outage), /errored runs, left out: 5\n/);
+  assert.match(formatChange(outage), /errored trials, left out: 5\n/);
 });

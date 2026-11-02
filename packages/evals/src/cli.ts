@@ -45,18 +45,18 @@ export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baselin
            [--climb <name> [--split train|test|all] [--label <text>]]
          runs every case against the live model and records its cassettes;
          --env names the .env holding ANTHROPIC_API_KEY (default: the repo root's);
-         --climb runs a climb's round: its frozen cases, each its runs a case,
+         --climb runs a climb's round: its frozen cases, each its trials a case,
          train alone unless --split says otherwise, refused past its cap
        pnpm evals compare <baseline rounds> <candidate rounds> [--trim]
          a fix must be better beyond noise; with --trim, no worse within the margin
        pnpm evals aa <rounds>
-         judges every split of an unchanged agent's runs as if it were a change
-       pnpm evals freeze <climb> --cap <dollars> --reps <runs a case>
+         judges every split of an unchanged agent's trials as if it were a change
+       pnpm evals freeze <climb> --cap <dollars> --reps <trials a case>
          writes a climb's plan over the cases as they are now
        pnpm --filter @oriel/evals evals:ci
          replays the cassettes; fails on any error and on failed deterministic cases
 A round is the ULID naming its directory under .evals/; join rounds of one
-agent with + to pool their runs.`;
+agent with + to pool their trials; a round may be in only one arm, once.`;
 
 export type Command =
   | {
@@ -98,8 +98,11 @@ function parse(args: readonly string[]) {
   }
 }
 
-// Rounds joined with +, each a ULID.
-const isRounds = (value: string) => value.split("+").every(isUlid);
+// Rounds joined with +, each a ULID, none twice.
+const isRounds = (value: string) => {
+  const ids = value.split("+");
+  return ids.every(isUlid) && new Set(ids).size === ids.length;
+};
 const roundsOf = (value: string) => value.split("+");
 const dollars = (value: string | undefined) =>
   value !== undefined && /^\d+(\.\d+)?$/.test(value) && Number(value) > 0 ? Number(value) : null;
@@ -149,7 +152,8 @@ export function parseCommand(args: readonly string[]): Command | { error: string
     verb === "compare" &&
     rest.length === 2 &&
     flags === undefined &&
-    [first, second].every(isRounds)
+    [first, second].every(isRounds) &&
+    !first.split("+").some((id) => second.split("+").includes(id))
   )
     return { command: "compare", baseline: first, candidate: second, ...(trim ? { trim } : {}) };
   if (verb === "aa" && rest.length === 1 && flags === undefined && !trim && isRounds(first))
@@ -251,12 +255,12 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     return 0;
   }
   if (command.command === "aa") {
-    const runs = roundsOf(command.rounds).flatMap((id) =>
+    const trials = roundsOf(command.rounds).flatMap((id) =>
       round(id).map((result) => ({ slot: `${id}:${result.rep ?? 0}`, result })),
     );
-    const aa = noChange(runs);
+    const aa = noChange(trials);
     const share = (n: number) => `${n} of ${aa.judged} (${Math.round((100 * n) / aa.judged)}%)`;
-    io.log(`A/A: ${aa.judged} comparisons of an unchanged agent's runs against each other`);
+    io.log(`A/A: ${aa.judged} comparisons of an unchanged agent's trials against each other`);
     io.log(`  kept as a fix (false keep): ${share(aa.better)}`);
     io.log(`  reverted as a trim (false revert): ${share(aa.judged - aa.noWorse)}`);
     io.log(`  a group flagged worse (false guard): ${share(aa.guarded)}`);
@@ -289,6 +293,8 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
     return 0;
   }
+  // What the round books as it starts, before it has cost anything.
+  let booked = 0;
   if (plan) {
     const changed = unfrozen(plan.climb, runnable);
     for (const problem of changed) io.error(problem);
@@ -300,6 +306,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     }
     const before = spent(plan.ledger);
     const next = estimate(plan.ledger, cases.length * plan.climb.reps);
+    booked = next;
     if (before + next > plan.climb.cap) {
       io.error(
         `refused: this round would cost about ${usd(next)}, taking the climb to ${usd(before + next)} of its ${usd(plan.climb.cap)} cap`,
@@ -324,6 +331,20 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
   const live = key ? anthropicFetch(key.key, io.network) : null;
   const id = ulid(io.now());
   const reps = plan ? plan.climb.reps : 1;
+  const climb = plan && command.command === "live" && command.climb ? command.climb : null;
+  const entry = {
+    round: id,
+    label: command.command === "live" ? (command.label ?? "") : "",
+    split,
+  };
+  // Booked at its estimate first, so a round stopped partway still counts.
+  if (climb)
+    writeLedger(climbs, climb, {
+      ...entry,
+      trials: cases.length * reps,
+      usd: booked,
+      estimated: true,
+    });
   const ran = await runRound({
     cases,
     fixture,
@@ -332,7 +353,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     system,
     model: command.model,
     judgeModel: command.judge,
-    // A case's first run records its cassettes; the others only spend.
+    // A case's first trial records its cassettes; the others only spend.
     transport: (caseId, rep) => {
       const dir = cassetteDir(io.cassettes, caseId, command.model, command.judge);
       if (live && rep > 0) return { fetch: live, commit: () => null };
@@ -351,23 +372,14 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     cases.flatMap((c) => (c.case.failing ? [[c.case.id, c.case.failing.grader] as const] : [])),
   );
   io.log(`round ${id} (${command.command}, ${command.model}, judge ${command.judge})`);
-  if (reps > 1) io.log(`${reps} runs a case; each split counts runs`);
+  if (reps > 1) io.log(`${reps} trials a case; each split counts trials`);
   io.log(formatRound(ran, failing));
   io.log(`results: .evals/${id}/`);
   const cost = ran.summary.spend?.usd ?? 0;
-  if (plan && command.command === "live" && command.climb) {
-    const label = command.label ?? "";
-    writeLedger(climbs, command.climb, {
-      round: id,
-      label,
-      split,
-      runs: ran.results.length,
-      usd: cost,
-    });
+  if (plan && climb) {
+    writeLedger(climbs, climb, { ...entry, trials: ran.results.length, usd: cost });
     const total = spent(plan.ledger) + cost;
-    io.log(
-      `spent ${usd(cost)}; climb ${command.climb} has spent ${usd(total)} of ${usd(plan.climb.cap)}`,
-    );
+    io.log(`spent ${usd(cost)}; climb ${climb} has spent ${usd(total)} of ${usd(plan.climb.cap)}`);
   } else if (live) io.log(`spent ${usd(cost)}`);
   if (baseline) io.log(formatChange(compareChange(readResults(baseline), ran.results, "better")));
   return exitCode(ran.results, command.command, failing);
