@@ -4179,3 +4179,355 @@ a.replies:hover {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* The overview (decision 0027): the window's first view, as wide as the
+   page allows. Two columns where there is room: Needs you, the headlines and
+   the workstreams, then what no workstream holds yet and who has work in
+   progress beside them. */
+
+.overview {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+  padding: var(--inset-top) var(--space-6) 6rem;
+  container: overview / inline-size;
+}
+
+.overview-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: var(--head-row);
+}
+
+.overview-counts {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.overview-since {
+  color: var(--text-muted);
+}
+
+.overview-stat {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+button.overview-stat:not(:disabled) {
+  cursor: pointer;
+  text-decoration: underline dotted var(--text-faint);
+  text-underline-offset: 3px;
+}
+
+button.overview-stat:not(:disabled):hover {
+  color: var(--accent);
+}
+
+.overview-loading,
+.overview-problem,
+.overview-quiet {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.overview-columns {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container overview (min-width: 900px) {
+  .overview-columns {
+    grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
+  }
+}
+
+.overview-main,
+.overview-side {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+  min-width: 0;
+}
+
+.overview-section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.overview-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.overview-count {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.overview-head-more {
+  margin-left: auto;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.overview-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.overview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  padding: 0.375rem var(--space-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-md);
+}
+
+.overview-row:first-child {
+  border-top: 0;
+}
+
+.overview-title {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+a.overview-title:hover,
+button.overview-title:hover {
+  color: var(--accent);
+}
+
+.overview-title .key {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.overview-sub,
+.overview-age,
+.overview-last,
+.overview-note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.overview-age {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-note {
+  margin: 0;
+}
+
+.overview-more {
+  justify-self: start;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.overview-changed .overview-rows {
+  max-width: 40rem;
+}
+
+/* The headlines: one computed line per standing question. */
+.overview-headlines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0 var(--space-6);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.overview-headline {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) 0;
+  font-size: var(--text-md);
+}
+
+.overview-headline-label {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: help;
+}
+
+.overview-headline-body {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A workstream, a line each, and its detail under it. */
+.overview-workstream {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.5rem 5rem 7.5rem 4rem;
+  align-items: center;
+}
+
+.overview-workstream-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.overview-workstream .status-bar {
+  width: 100%;
+}
+
+.overview-moved {
+  font-size: var(--text-sm);
+}
+
+.overview-last {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-workstream-detail {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.overview-moved-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.overview-moved-items .overview-title {
+  max-width: 18rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+
+.overview-signal {
+  color: var(--derived);
+  cursor: help;
+}
+
+.overview-spark {
+  width: 56px;
+  height: 17px;
+}
+
+.overview-spark polyline {
+  fill: none;
+  stroke: var(--in-progress);
+  stroke-width: 1.4;
+}
+
+.overview-spark[data-quiet] polyline {
+  stroke: var(--line-strong);
+}
+
+/* A thread waiting on the user: one line, its title and workstream cut short. */
+.overview-thread {
+  flex-wrap: nowrap;
+}
+
+.overview-thread .overview-title {
+  min-width: 6rem;
+}
+
+.overview-thread .overview-title,
+.overview-thread .overview-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.overview-thread .state-chip,
+.overview-thread .overview-age {
+  flex: none;
+}
+
+/* In progress, by person: a short line each. */
+.overview-person {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  padding-block: 0.25rem;
+  font-size: var(--text-sm);
+}
+
+.overview-person .overview-title {
+  flex: none;
+  white-space: nowrap;
+}
+
+.overview-person .overview-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.view-tabs {
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .overview {
+    padding-inline: var(--space-3);
+  }
+
+  .overview-workstream {
+    grid-template-columns: minmax(0, 1fr) 4rem 6.5rem 3rem;
+  }
+
+  .overview-workstream .overview-spark,
+  .overview-thread .overview-sub {
+    display: none;
+  }
+}

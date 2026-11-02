@@ -61,6 +61,15 @@ import {
   withAdds,
 } from "./panel.ts";
 import {
+  initOverview,
+  leaving as left,
+  loadOverview,
+  type OverviewModel,
+  type OverviewMsg,
+  overviewReplied,
+  updateOverview,
+} from "./overview.ts";
+import {
   initReview,
   type ReviewModel,
   type ReviewMsg,
@@ -110,6 +119,7 @@ import type {
 
 export type Model = {
   route: Route;
+  overview: OverviewModel | null;
   window: WindowModel | null;
   workstream: WorkstreamModel | null;
   thread: ThreadModel | null;
@@ -145,6 +155,7 @@ export type Model = {
 };
 
 export type Msg =
+  | { type: "overview"; msg: OverviewMsg }
   | { type: "window"; msg: WindowMsg }
   | { type: "workstream"; msg: WorkstreamMsg }
   | { type: "thread"; msg: ThreadMsg }
@@ -198,17 +209,20 @@ const reloadShown = (model: Model): Effect[] => {
 };
 
 // However the workspace changed, and whoever changed it, every page hears it
-// the same way: the lists load again, and so does a workstream's page on screen.
-// A thread's page hears its own thread, and its workstream, on its own stream.
+// the same way: the lists load again, and so does a workstream's page or the
+// overview on screen. A thread's page hears its own thread, and its
+// workstream, on its own stream.
 const workspaceChanged = (model: Model): Effect[] => [
   loadThreads,
   loadWorkstreams,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
+  ...(model.route.page === "overview" ? [loadOverview] : []),
 ];
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
     route,
+    overview: null,
     window: null,
     workstream: null,
     thread: null,
@@ -268,7 +282,10 @@ export function windowTelemetry(before: WindowModel, after: WindowModel): Effect
 // stops watching, and entering, by a link, Back or the same link again,
 // loads it fresh and watches again from its last entry.
 function enter(model: Model, route: Route): [Model, Effect[]] {
-  const leaving: Effect[] = model.thread ? [{ type: "unsubscribe" }] : [];
+  const leaving: Effect[] = [
+    ...(model.thread ? [{ type: "unsubscribe" } as const] : []),
+    ...(model.route.page === "overview" && route.page !== "overview" ? left(model.overview) : []),
+  ];
   // A thread's own stream says when any thread moves; every other page
   // watches them all. A review link's page loads on its own, watching nothing.
   const watching: Effect[] = [
@@ -284,6 +301,12 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     panelList: samePage(model.route, route) ? model.panelList : null,
   };
   switch (route.page) {
+    case "overview": {
+      const [overview, effects] = initOverview();
+      // What it showed until now stays on screen while it loads again.
+      const kept = model.overview?.view ? { ...overview, view: model.overview.view } : overview;
+      return [{ ...base, overview: kept }, [...leaving, ...effects, ...lists, ...watching]];
+    }
     case "window": {
       if (model.window === null) {
         const [window, effects] = initWindow(route.grouping, route.addTo, route);
@@ -405,6 +428,11 @@ function staying(next: Model, effects: Effect[]): [Model, Effect[]] {
 
 function updated(model: Model, msg: Msg): [Model, Effect[]] {
   switch (msg.type) {
+    case "overview": {
+      if (model.overview === null) return [model, []];
+      const [overview, effects] = updateOverview(model.overview, msg.msg);
+      return [{ ...model, overview }, effects];
+    }
     case "window": {
       if (model.window === null) return [model, []];
       const [window, effects] = updateWindow(model.window, msg.msg);
@@ -561,9 +589,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const { threads, changeSets } = msg.body as ThreadsView;
       return [{ ...model, threads, changeSets }, []];
     }
-    // Telemetry is best effort; the window carries on either way.
+    // Telemetry is best effort; the window carries on either way. So is
+    // marking the overview seen.
     case "telemetry":
+    case "overviewLeft":
       return [model, []];
+    case "overview":
+      if (model.overview === null) return [model, []];
+      return [{ ...model, overview: overviewReplied(model.overview, msg) }, []];
     case "search": {
       const [search, effects] = searchReplied(model.search, msg);
       return [{ ...model, search }, effects];
@@ -606,6 +639,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "folderConnected":
     case "folderSynced": {
       const { model: folder, synced } = folderReplied(model.folder, msg);
+      if (synced && model.route.page === "overview") return [{ ...model, folder }, [loadOverview]];
       if (!synced || model.window === null) return [{ ...model, folder }, []];
       const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
       return [{ ...model, folder, window }, effects];
@@ -621,7 +655,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [window, effects] = model.window
         ? updateWindow(model.window, { type: "retryClicked" })
         : [null, []];
-      return [{ ...model, jira, window }, [...effects, ...reloadShown(model)]];
+      const overview = model.route.page === "overview" ? [loadOverview] : [];
+      return [{ ...model, jira, window }, [...effects, ...reloadShown(model), ...overview]];
     }
     case "createWorkstream":
     case "addToWorkstream": {

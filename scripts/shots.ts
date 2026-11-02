@@ -17,6 +17,9 @@
 // proposed on one, approved on the next, and reverted on the last (OA-28).
 // One more has 120 more stories in SYN's checkout epic, so Browse pages them.
 //
+// The overview opens at `/`, with the counts strip, Needs you, the
+// headlines and the workstreams, and who has work in progress beside them.
+//
 // `pnpm shots --width 1440 panel-` takes only the scenes whose names
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
 // and 390px, and the onboarding.
@@ -710,7 +713,16 @@ async function openAll(page: Page): Promise<void> {
   await itemsShown(page);
 }
 
+// Once the overview has loaded.
+async function overviewShown(page: Page): Promise<void> {
+  await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
+}
+
 const scenes: Scene[] = [
+  // The overview (decision 0027): with workstreams, threads waiting and the
+  // folder beside Jira; and with Slack beside Jira.
+  { name: "overview", path: "/", act: overviewShown },
+  { name: "overview-slack", path: "/", on: chatty, act: overviewShown },
   {
     name: "jira-connect",
     path: "/?grouping=epic",
@@ -1802,6 +1814,7 @@ async function onboarding(): Promise<void> {
     await page.getByRole("button", { name: "Connect" }).click();
     await page.locator(".connect-jira").waitFor({ state: "detached" });
     const connected = performance.now();
+    await page.getByRole("link", { name: "Browse", exact: true }).click();
     await shown(page, "epic");
     await count("epics");
     const checkoutEpic = page.locator(".cluster", { hasText: "Checkout" }).first();

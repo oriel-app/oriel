@@ -357,16 +357,13 @@ function headlines(
   const quiet = workstreams.toSorted(
     (a, b) => a.lastActivity.localeCompare(b.lastActivity) || a.id.localeCompare(b.id),
   )[0];
-  if (quiet && workstreams.length > 1)
+  if (quiet && quiet.idleDays > 0 && workstreams.length > 1)
     lines.push({
       id: "quiet",
       label: "Quiet longest",
       rule: "The open workstream whose latest member update or thread activity is oldest",
       subject: { kind: "workstream", id: quiet.id, name: quiet.name },
-      detail:
-        quiet.idleDays === 0
-          ? "something moved today"
-          : `nothing moved in ${quiet.idleDays} ${quiet.idleDays === 1 ? "day" : "days"}`,
+      detail: `nothing moved in ${quiet.idleDays} ${quiet.idleDays === 1 ? "day" : "days"}`,
     });
   // Chat messages from the last 7 days, and the items they name.
   const named = new Map<string, number>();

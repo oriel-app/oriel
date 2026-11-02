@@ -15,6 +15,7 @@ import {
   Replies,
   SearchIcon,
 } from "./parts.tsx";
+import { ViewTabs } from "./overview-page.tsx";
 import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
 import {
   type BrowseFilter,
@@ -54,6 +55,7 @@ export function WindowPage(props: {
     <div class="window-layout">
       <main class="window" aria-busy={model.status === "loading"}>
         <div class="window-head">
+          <ViewTabs current="browse" dispatch={dispatch} />
           <Tabs
             picked={model.grouping}
             onPick={(grouping) =>
@@ -79,7 +81,7 @@ export function WindowPage(props: {
 
 // Until Jira is connected, the window asks for it first: the one place the
 // onboarding names the token, in its field's label.
-function ConnectJira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
+export function ConnectJira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
   const send = (msg: JiraMsg) => dispatch({ type: "jira", msg });
   const field = (
     name: JiraField,
@@ -492,7 +494,7 @@ const categories = [
 ] as const;
 
 // Items by status category, as one bar. Its parts are counts, not estimates.
-function StatusBar({ status }: { status: ClusterRow["status"] }) {
+export function StatusBar({ status }: { status: ClusterRow["status"] }) {
   const shown = categories.filter(([category]) => status[category] > 0);
   if (shown.length === 0) return <span class="status-bar empty" />;
   const label = shown.map(([category, name]) => `${status[category]} ${name}`).join(", ");

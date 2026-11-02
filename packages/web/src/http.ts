@@ -6,6 +6,7 @@ import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import type { BrowseFilter, GroupingId, UndoView } from "./view.ts";
 import type { Ending } from "./ending.ts";
+import type { OverviewSection } from "@oriel/core/overview";
 
 export type Tag =
   | { kind: "workstreams" }
@@ -42,6 +43,9 @@ export type Tag =
   | { kind: "reviewOpened" }
   | { kind: "reviewDecided" }
   | { kind: "telemetry" }
+  // The overview, and the user leaving it, which marks what it showed seen.
+  | { kind: "overview" }
+  | { kind: "overviewLeft" }
   // The sidebar's search, by the query it asked about.
   | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.
@@ -138,7 +142,9 @@ export type Report =
   | { name: "item.source-opened"; item: string; via: "panel" | "link" }
   | { name: "threads.searched"; queryLength: number; results: number }
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
-  | { name: "items.searched"; queryLength: number; results: number };
+  | { name: "items.searched"; queryLength: number; results: number }
+  | { name: "overview.opened" }
+  | { name: "overview.more-opened"; section: OverviewSection };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>
