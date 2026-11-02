@@ -80,8 +80,10 @@ export type Touched = { kind: Owned; id: Ulid | null; name: string | null };
 
 // One line of the host's list under the agent's reply: an intent it applied,
 // with the call that undoes it, or one it refused, and why. The model's own
-// reply is never the record.
+// reply is never the record, and `undo` stays as the apply gave it. `since`:
+// what the user did with it from the Undo under the reply, undone or done
+// again, and the call the next click sends, if any.
 export type ActionLine = { call: Intent; touched: Touched } & (
-  | { applied: true; undo: Call | null }
+  | { applied: true; undo: Call | null; since?: { undone: boolean; next: Call | null } }
   | { applied: false; why: string }
 );

@@ -1,7 +1,9 @@
 // The host's list under the agent's reply, as the window shows it (decision
 // 0024): a plain sentence for each call it applied, and for each it refused,
 // with why, naming the workstream or thread it touched. Every action has its
-// words here, so one the registry gains can't show without them.
+// words here, so one the registry gains can't show without them. An applied
+// one offers its Undo, through the one path every Undo takes; once the user
+// undid it, it says so and offers the call that does it again, if any.
 import { type ActionLine, type ActionName, parseItemId, type Ulid } from "@oriel/core";
 import type { ActionLineView } from "@oriel/web/view";
 
@@ -19,11 +21,13 @@ function listed(value: unknown, every = false): string {
   return `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
 }
 
-const quoted = (name: unknown) => `“${String(name)}”`;
+// As the workstream has it: a name is trimmed when it is given.
+const quoted = (name: unknown) => `“${String(name).trim()}”`;
 
 // What each action did, then what it would have done, given its input, the
 // place it touched, and what its undo gives back: the items an add added,
-// none of those it already had, and a rename's name before.
+// none of those it already had, and a rename's name before, none when the
+// name was already that.
 type Words = (
   input: Record<string, unknown>,
   place: string,
@@ -47,11 +51,13 @@ const words: { [N in ActionName]: Words } = {
   ],
   "workstream.rename": (input, place, undo) => [
     undo === null
-      ? `Named ${place} ${quoted(input["name"])}`
+      ? `Left ${place} named ${quoted(input["name"])}, as it already was`
       : `Renamed ${quoted(undo["name"])} to ${quoted(input["name"])}`,
     `rename ${place} to ${quoted(input["name"])}`,
   ],
+  "workstream.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
   "thread.done": (_, place) => [`Marked ${place} done`, `mark ${place} done`],
+  "thread.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
   // A person's, so never the agent's; worded all the same.
   "held.send": (_, place) => [`Sent a held message in ${place}`, `send a held message in ${place}`],
   "held.discard": (_, place) => [
@@ -74,15 +80,20 @@ export function actionLineView(
       : `a ${touched.kind}`;
   const undo = line.applied && line.undo ? (line.undo.input as Record<string, unknown>) : null;
   const [done, not] = words[call.action](call.input, place, undo);
+  const undone = line.applied && line.since?.undone === true;
+  const offer = line.applied ? (line.since ? line.since.next : line.undo) : null;
   return {
-    text: line.applied ? `${done}.` : `Didn't ${not}: ${line.why}.`,
+    text: line.applied
+      ? `${done}${undone ? ", which you undid" : ""}.`
+      : `Didn't ${not}: ${line.why}.`,
     applied: line.applied,
+    ...(undone ? { undone: true as const } : {}),
     why: line.applied ? null : line.why,
     // Nothing links to the thread the list is in.
     touched:
       touched.id === null || (mine && touched.kind === "thread")
         ? null
         : { kind: touched.kind, id: touched.id },
-    undo: line.applied && line.undo ? { action: line.undo.action, input: line.undo.input } : null,
+    undo: offer && { action: offer.action, input: offer.input },
   };
 }

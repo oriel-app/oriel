@@ -259,3 +259,27 @@ test("Oriel names the workstreams it makes, and a name the user gives one is the
   assert.equal(workstreams.rename(workstream.id, "My checkout", "user"), false);
   assert.equal(workstreams.rename(ulid(2, new Uint8Array(10)), "x", "oriel"), false);
 });
+
+test("a workstream no thread uses is deleted with its log; one a thread uses stays", () => {
+  const { db, workspaceId, workstreams, create } = fresh();
+  const free = ulid(5, new Uint8Array(10));
+  create([syn1, syn2], free);
+  workstreams.rename(free, "Mine");
+  workstreams.remove(free, [syn2], user, later(1));
+  assert.equal(workstreams.delete(free), true);
+  assert.equal(workstreams.get(free), null);
+  for (const table of ["workstream_members", "workstream_changes", "user_named_workstreams"])
+    assert.equal(
+      db.prepare(`select count(*) as n from ${table} where workstream_id = ?`).get(free)?.["n"],
+      0,
+      table,
+    );
+  const used = ulid(6, new Uint8Array(10));
+  create([syn3], used);
+  db.prepare(
+    "insert into threads (id, workspace_id, workstream_id, region_version, created_at) values (?, ?, ?, 1, ?)",
+  ).run(ulid(7, new Uint8Array(10)), workspaceId, used, t0);
+  assert.equal(workstreams.delete(used), false);
+  assert.ok(workstreams.get(used));
+  assert.throws(() => workstreams.delete(free), /no workstream/);
+});

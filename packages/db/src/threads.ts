@@ -22,6 +22,7 @@ import {
   union,
 } from "@oriel/core";
 import { transaction } from "./open.ts";
+import { dropWorkstream } from "./workstreams.ts";
 
 const ulidValue = refine(string, isUlid, "expected a ULID");
 const instantValue = refine(string, isInstant, "expected an instant");
@@ -163,6 +164,14 @@ export function threadStore(db: DatabaseSync) {
     select seq, role, content, at from messages
     where thread_id = ? and role = 'held' and json_extract(content, '$.outcome') is null
     order by seq`);
+  const unmark = db.prepare(
+    `update threads set marked_done_at = null
+    where id = ?1 and marked_done_at is not null and (?2 is null or marked_done_at = ?2) and ${live}`,
+  );
+  const unmarkedBy = db.prepare("delete from done_marks where thread_id = ?");
+  const rewriteAgent = db.prepare(
+    "update messages set content = ?3 where thread_id = ?1 and seq = ?2 and role = 'agent'",
+  );
   const settleHeld = db.prepare(`
     update messages set content = json_set(content, '$.outcome', ?3)
     where thread_id = ?1 and seq = ?2 and role = 'held'
@@ -243,12 +252,7 @@ export function threadStore(db: DatabaseSync) {
     where g.id = ?1 and json_extract(g.origin, '$.kind') = 'thread'
       and not exists (select 1 from threads where workstream_id = ?1)
       and not exists (select 1 from workstream_members where workstream_id = ?1 and removed_version is null)`);
-  const dropWorkstream = [
-    "delete from workstream_members where workstream_id = ?",
-    "delete from workstream_changes where workstream_id = ?",
-    "delete from user_named_workstreams where workstream_id = ?",
-    "delete from workstreams where id = ?",
-  ].map((sql) => db.prepare(sql));
+  const dropEmpty = dropWorkstream.map((sql) => db.prepare(sql));
 
   const wrote = (id: Ulid): Wrote => {
     const row = wroteRow(selectWrote.get(id));
@@ -428,6 +432,17 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
+    // Takes the thread's done mark off, so it is as it was before: working,
+    // unless something else settled it. With `at`, only the mark made then.
+    // False if it had none, or another.
+    reopen(id: Ulid, at: Instant | null = null): boolean {
+      return transaction(db, () => {
+        if (Number(unmark.run(id, at).changes) !== 1) return false;
+        unmarkedBy.run(id);
+        return true;
+      });
+    },
+
     // What deleting the thread would lose: what it wrote, which stays in
     // its sources but can no longer be reverted from here.
     wrote(id: Ulid): Wrote {
@@ -453,7 +468,7 @@ export function threadStore(db: DatabaseSync) {
         }
         for (const statement of purge) statement.run(id);
         const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
-        if (empty) for (const statement of dropWorkstream) statement.run(thread.workstream_id);
+        if (empty) for (const statement of dropEmpty) statement.run(thread.workstream_id);
         return { workstreamId: thread.workstream_id, kept: false, workstreamRemoved: empty };
       });
     },
@@ -506,6 +521,13 @@ export function threadStore(db: DatabaseSync) {
       });
     },
 
+    // The user acted in the thread on its workstream, as by an Undo under
+    // the agent's reply: it catches up, with a marker, whatever its state,
+    // as their message would make it.
+    catchUp(id: Ulid, now: Instant, markerId: Ulid): Move | null {
+      return transaction(db, () => move(id, now, markerId));
+    },
+
     // After the workstream changed: each of its working threads moves to the
     // latest version, with a marker. Settled and dropped ones keep theirs
     // until a new message. `newId` names each marker.
@@ -529,6 +551,15 @@ export function threadStore(db: DatabaseSync) {
         const held = message(raw);
         return held.role === "held" ? [held] : [];
       });
+    },
+
+    // An event of the agent's at `seq`, as the host now has it: the list
+    // under its reply, once the user undid a line of it. False if there's
+    // none there.
+    rewrite(id: Ulid, seq: number, event: unknown): boolean {
+      const json = JSON.stringify(event);
+      if (json === undefined) throw new TypeError("a message's content must be JSON");
+      return Number(rewriteAgent.run(id, seq, json).changes) === 1;
     },
 
     // The user sent or discarded the message held at `seq`. False, and

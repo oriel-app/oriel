@@ -256,7 +256,11 @@ const handlers = {
     );
     return {
       output: { workstream: id },
-      undo: null,
+      // One made for a thread from nothing is that thread's from the start.
+      undo:
+        origin.kind === "thread"
+          ? null
+          : { action: "workstream.delete", input: { workstream: id } },
       changed: { workstream: id, members: false },
       events: [
         { name: "workstream.created", workstreamId: id, origin: origin.kind, size, ...by(actor) },
@@ -293,6 +297,18 @@ const handlers = {
     };
   },
 
+  "workstream.delete": async ({ workstream: id }, _actor, deps) => {
+    const workstream = mustWorkstream(deps, id);
+    if (!deps.workstreams.delete(workstream.id))
+      throw new ActionError("refused", "a thread uses it, so it stays");
+    return {
+      output: {},
+      undo: null,
+      changed: { workstream: workstream.id, members: false },
+      events: [],
+    };
+  },
+
   "thread.done": async ({ thread: id, via }, actor, deps) => {
     const thread = mustThread(deps, id);
     // The thread stays in Needs you while it waits on the user, for a
@@ -311,10 +327,13 @@ const handlers = {
           "a message held in it waits on you, so it stays in Needs you",
         );
     }
-    deps.threads.markDone(thread.id, deps.now(), actor);
+    const at = deps.now();
+    deps.threads.markDone(thread.id, at, actor);
+    // Marked again, it was already: reopening wouldn't put it back as it was.
+    const marked = thread.state === "done" && thread.doneBy === "marked";
     return {
       output: {},
-      undo: null,
+      undo: marked ? null : { action: "thread.reopen", input: { thread: thread.id, mark: at } },
       changed: { thread: thread.id },
       events: [
         {
@@ -324,6 +343,21 @@ const handlers = {
           ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
         },
       ],
+    };
+  },
+
+  "thread.reopen": async ({ thread: id, mark }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    // What a change set settled, or handed off, a message reopens.
+    if (thread.state !== "done" || thread.doneBy !== "marked")
+      throw new ActionError("refused", "it isn't marked done");
+    if (!deps.threads.reopen(thread.id, mark ?? null))
+      throw new ActionError("refused", "it was marked done again since");
+    return {
+      output: {},
+      undo: { action: "thread.done", input: { thread: thread.id } },
+      changed: { thread: thread.id },
+      events: [],
     };
   },
 
@@ -378,10 +412,16 @@ type Result<N extends ActionName> = Output<N> & { undo: Call | null };
 // key fails to typecheck rather than at run time. `untyped` is for the doors
 // whose action is known only at run time: an Undo sent back to
 // /api/actions/:name, and the intents a turn's run recorded. Either way the
-// dispatcher checks the input.
+// dispatcher checks the input. An Undo of what someone else did names them
+// in `undoes`, which its events carry.
 export type Dispatch = {
   <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
-  untyped(name: ActionName, input: unknown, actor: Actor): Promise<{ undo: Call | null }>;
+  untyped(
+    name: ActionName,
+    input: unknown,
+    actor: Actor,
+    undoes?: Actor,
+  ): Promise<{ undo: Call | null }>;
 };
 
 // An action's input from what a request carried, checked as the dispatcher
@@ -408,6 +448,7 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     name: N,
     raw: unknown,
     actor: Actor,
+    undoes?: Actor,
   ): Promise<Result<N>> => {
     const why = refusal(name, actor);
     if (why !== null) throw new ActionError("refused", why);
@@ -424,7 +465,9 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     const events = outcome.events.length
       ? outcome.events
       : [{ name: "action.called" as const, action: name, by: actor }];
-    for (const event of events) deps.emit({ ...event, at, workspaceId } as TelemetryEvent);
+    const undid = undoes && undoes.kind !== "user" ? { undoes } : {};
+    for (const event of events)
+      deps.emit({ ...event, ...undid, at, workspaceId } as TelemetryEvent);
     if (outcome.changed) deps.publish(outcome.changed);
     return { ...(outcome.output as Output<typeof name>), undo: outcome.undo };
   };

@@ -72,3 +72,63 @@ test("a rename says the name it had, from its undo; each item is named once", ()
     "Removed SYN-3 from this workstream.",
   );
 });
+
+test("names are quoted as the workstream has them, and a rename to the same name says so", () => {
+  const rename = (name: string): ActionLine => ({
+    call: { action: "workstream.rename", input: { workstream: own.workstream, name } },
+    touched,
+    applied: true,
+    undo: null,
+  });
+  assert.equal(
+    actionLineView(rename(" Boarding "), own).text,
+    "Left this workstream named “Boarding”, as it already was.",
+  );
+  const made: ActionLine = {
+    call: {
+      action: "workstream.create",
+      input: { kind: "picked", name: " Gates ", items: ids("SYN-3") },
+    },
+    touched: { kind: "workstream", id: ulid(3, new Uint8Array(10)), name: "Gates" },
+    applied: true,
+    undo: { action: "workstream.delete", input: { workstream: ulid(3, new Uint8Array(10)) } },
+  };
+  assert.equal(actionLineView(made, own).text, "Made the workstream “Gates” with SYN-3.");
+});
+
+test("an undone line says so and offers the call that does it again, if any", () => {
+  const thread = { kind: "thread" as const, id: own.thread, name: null };
+  const done: ActionLine = {
+    call: { action: "thread.done", input: { thread: own.thread } },
+    touched: thread,
+    applied: true,
+    undo: { action: "thread.reopen", input: { thread: own.thread } },
+  };
+  const again = { action: "thread.done" as const, input: { thread: own.thread } };
+  const undone = actionLineView({ ...done, since: { undone: true, next: again } }, own);
+  assert.deepEqual(
+    [undone.text, undone.undone, undone.undo],
+    ["Marked this thread done, which you undid.", true, again],
+  );
+  const gone = actionLineView({ ...done, since: { undone: true, next: null } }, own);
+  assert.equal(gone.undo, null);
+  // Done again, it says what the agent did, and offers the Undo the redo gave.
+  const reopen = { action: "thread.reopen" as const, input: { thread: own.thread } };
+  const redone = actionLineView({ ...done, since: { undone: false, next: reopen } }, own);
+  assert.deepEqual(
+    [redone.text, redone.undone, redone.undo],
+    ["Marked this thread done.", undefined, reopen],
+  );
+  assert.equal(
+    actionLineView(
+      {
+        call: { action: "thread.reopen", input: { thread: own.thread } },
+        touched: thread,
+        applied: true,
+        undo: null,
+      },
+      own,
+    ).text,
+    "Reopened this thread.",
+  );
+});

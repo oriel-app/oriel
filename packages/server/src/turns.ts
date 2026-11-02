@@ -145,7 +145,8 @@ const actionsText = (lines: readonly ActionLine[]): string =>
   lines
     .map((line) => {
       const call = JSON.stringify(line.call);
-      return line.applied ? `applied ${call}` : `refused ${call}: ${line.why}`;
+      if (!line.applied) return `refused ${call}: ${line.why}`;
+      return `applied ${call}${line.since?.undone ? ", which the user then undid" : ""}`;
     })
     .join("\n");
 

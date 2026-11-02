@@ -28,6 +28,7 @@ import {
   type NewThreadModel,
   removable,
   stepLabel,
+  lineKey,
   type ThreadModel,
   type ThreadMsg,
 } from "./thread.ts";
@@ -280,12 +281,7 @@ function ChatBlock(props: {
     case "actions":
       return (
         <li class="actions-block" aria-label="What the agent did in Oriel">
-          <ActionLines lines={block.lines} />
-          {block.version && (
-            <span class="marker-version">
-              v{block.version.from} → v{block.version.to}
-            </span>
-          )}
+          <ActionLines seq={block.seq} lines={block.lines} model={props.model} send={props.send} />
         </li>
       );
     case "held":
@@ -314,26 +310,49 @@ function ChatBlock(props: {
 
 // What Oriel did with the actions the agent asked for, as the host says it,
 // under the agent's reply (decision 0024): each sentence links where it
-// changed something. Undo on each comes with OA-88.
-function ActionLines({ lines }: { lines: ActionLineView[] }) {
+// changed something, and each that applied has its Undo, or once undone,
+// its Redo, if it can be done again.
+function ActionLines(props: {
+  seq: number;
+  lines: ActionLineView[];
+  model: ThreadModel;
+  send: (msg: ThreadMsg) => void;
+}) {
   const dispatch = useContext(ItemLinksContext)?.dispatch;
+  const { seq, model, send } = props;
   return (
     <ul class="action-lines">
-      {lines.map((line, i) => (
-        <li key={i} data-applied={line.applied ? "yes" : "no"}>
-          {line.touched && dispatch ? (
-            <Link
-              route={
-                line.touched.kind === "thread"
-                  ? { page: "thread", id: line.touched.id }
-                  : { page: "workstream", id: line.touched.id }
-              }
-              dispatch={dispatch}
+      {props.lines.map((line, index) => (
+        <li
+          key={index}
+          data-applied={line.applied ? "yes" : "no"}
+          data-undone={line.undone ? "yes" : undefined}
+        >
+          <span class="action-text">
+            {line.touched && dispatch ? (
+              <Link
+                route={
+                  line.touched.kind === "thread"
+                    ? { page: "thread", id: line.touched.id }
+                    : { page: "workstream", id: line.touched.id }
+                }
+                dispatch={dispatch}
+              >
+                {line.text}
+              </Link>
+            ) : (
+              line.text
+            )}
+          </span>
+          {line.undo && (
+            <button
+              type="button"
+              class="undo-action"
+              disabled={model.undoing.includes(lineKey(seq, index))}
+              onClick={() => send({ type: "lineUndoClicked", seq, index })}
             >
-              {line.text}
-            </Link>
-          ) : (
-            line.text
+              {line.undone ? "Redo" : "Undo"}
+            </button>
           )}
         </li>
       ))}

@@ -3,7 +3,7 @@
 // they're stored; change sets are acted on with explicit requests.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
-import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
+import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
 import type {
   ActionLineView,
   ChangeSetView,
@@ -36,6 +36,9 @@ export type ThreadModel = {
   editing: Readonly<Record<string, string>>;
   // Held messages with a send or discard in flight, by place.
   settling: readonly number[];
+  // Lines under the agent's reply with an Undo or redo in flight, by their
+  // list's place and theirs in it (`lineKey`).
+  undoing: readonly string[];
   // What the last request about a change set said, when it failed.
   problems: Readonly<Record<string, string>>;
   // Review links minted here, by change set.
@@ -75,6 +78,9 @@ export type ThreadMsg =
   | { type: "heldEdited"; seq: number; text: string }
   | { type: "heldEditCancelled"; seq: number }
   | { type: "heldDiscardClicked"; seq: number }
+  // What the agent did in Oriel, undone from the list under its reply, or
+  // done again: the line at `index` in the list at `seq`.
+  | { type: "lineUndoClicked"; seq: number; index: number }
   // Dropped on the thread: added to its workstream, which the thread then follows.
   | { type: "dropped"; dropped: Dropped }
   // The page moved: `below`, how far the chat's end is below the window's
@@ -98,6 +104,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       reasons: {},
       editing: {},
       settling: [],
+      undoing: [],
       problems: {},
       links: {},
       notes: {},
@@ -126,6 +133,14 @@ const heldAt = (entries: readonly ChatEntry[], seq: number) =>
     (entry): entry is Extract<ChatEntry, { kind: "held" }> =>
       entry.kind === "held" && entry.seq === seq && entry.outcome === null,
   ) ?? null;
+
+export const lineKey = (seq: number, index: number) => `${seq}:${index}`;
+
+// The line at `index` in the list under the agent's reply at `seq`.
+const lineAt = (entries: readonly ChatEntry[], seq: number, index: number) => {
+  const list = entries.find((entry) => entry.kind === "actions" && entry.seq === seq);
+  return list?.kind === "actions" ? (list.lines[index] ?? null) : null;
+};
 
 // Each step's route; approving the rest is approving the set as it stands.
 const routes: Record<SetStep, string> = {
@@ -272,6 +287,21 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
             `/api/threads/${model.id}/held/${seq}/${sending ? "send" : "discard"}`,
             sending && edited !== undefined ? { text: edited } : {},
             { kind: "held", threadId: model.id, seq },
+          ),
+        ],
+      ];
+    }
+    case "lineUndoClicked": {
+      const { seq, index } = msg;
+      const undo = lineAt(model.view?.entries ?? [], seq, index)?.undo;
+      if (!undo || model.undoing.includes(lineKey(seq, index))) return [model, []];
+      return [
+        { ...model, undoing: [...model.undoing, lineKey(seq, index)], notice: null },
+        [
+          undoing(
+            undo,
+            { kind: "lineUndone", threadId: model.id, seq, index },
+            { thread: model.id, seq, index },
           ),
         ],
       ];
@@ -452,6 +482,17 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         [refresh(model)],
       ];
     }
+    // Its line says what came of it, once the thread reloads; a refusal, as
+    // when another page undid it first, says why.
+    case "lineUndone": {
+      if (tag.threadId !== model.id) return [model, []];
+      const key = lineKey(tag.seq, tag.index);
+      const undoing = model.undoing.filter((each) => each !== key);
+      return [
+        msg.ok ? { ...model, undoing } : { ...model, undoing, notice: errorOf(msg.body) },
+        [refresh(model)],
+      ];
+    }
     case "reviewLink": {
       if (!msg.ok)
         return [
@@ -628,13 +669,7 @@ export type Block =
     }
   | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; seq: number; changeSetId: string }
-  // `version`: how the agent's own changes moved this thread's workstream.
-  | {
-      kind: "actions";
-      seq: number;
-      lines: ActionLineView[];
-      version: { from: number; to: number } | null;
-    }
+  | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
       kind: "held";
       seq: number;
@@ -697,19 +732,12 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
         break;
       // The markers its own changes left just before say what its lines
-      // say, so they fold in, as the version they moved the thread to.
-      case "actions": {
-        let to: number | null = null;
-        let from = 0;
-        for (let end = out.at(-1); end?.kind === "marker" && end.ownAgent; end = out.at(-1)) {
-          to ??= end.to;
-          from = end.from;
+      // say, so they fold in; the rail says the version they moved it to.
+      case "actions":
+        for (let end = out.at(-1); end?.kind === "marker" && end.ownAgent; end = out.at(-1))
           out.pop();
-        }
-        const version = to === null ? null : { from, to };
-        out.push({ kind: "actions", seq: entry.seq, lines: entry.lines, version });
+        out.push({ kind: "actions", seq: entry.seq, lines: entry.lines });
         break;
-      }
       case "limit":
         out.push({ kind: "notice", seq: entry.seq, tone: "limit", text: entry.reason });
         break;

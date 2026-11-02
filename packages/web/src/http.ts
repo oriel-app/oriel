@@ -4,7 +4,7 @@
 // return them, so they're tested without a DOM.
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
-import type { GroupingId } from "./view.ts";
+import type { GroupingId, UndoView } from "./view.ts";
 
 export type Tag =
   | { kind: "workstreams" }
@@ -26,6 +26,8 @@ export type Tag =
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "held"; threadId: string; seq: number }
+  // A line under the agent's reply was undone, or done again.
+  | { kind: "lineUndone"; threadId: string; seq: number; index: number }
   | { kind: "reviewLink"; changeSetId: string }
   | { kind: "threads" }
   | { kind: "markedDone"; threadId: string }
@@ -85,6 +87,21 @@ export const post = (url: string, body: unknown, tag: Tag): Effect => ({
   body,
   tag,
 });
+
+// An Undo, sent back as the server gave it, to the one path every Undo takes
+// (decision 0024). `line`: the line under the agent's reply it is from, by
+// its thread, its list's place in the chat and its own in the list, which
+// then says what came of it.
+export function undoing(
+  undo: UndoView,
+  tag: Tag,
+  line?: { thread: string; seq: number; index: number },
+): Effect {
+  const at = line
+    ? `?${new URLSearchParams({ thread: line.thread, seq: `${line.seq}`, line: `${line.index}` })}`
+    : "";
+  return post(`/api/actions/${undo.action}${at}`, undo.input, tag);
+}
 
 // Pilot telemetry only the page knows happened, as the server takes it.
 export type Report =

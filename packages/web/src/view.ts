@@ -169,10 +169,12 @@ export type WorkstreamsView = { workstreams: WorkstreamSummary[] };
 // (decision 0024): what it did, in a sentence that names the workstream or
 // thread it touched, or what it didn't do, and why. The model's own reply is
 // never the record. `touched` links where it was. `undo` is the call that
-// undoes an applied one.
+// undoes an applied one, or, once the user undid it (`undone`), the one that
+// does it again.
 export type ActionLineView = {
   text: string;
   applied: boolean;
+  undone?: true;
   why: string | null;
   touched: { kind: "workstream" | "thread"; id: string } | null;
   undo: UndoView | null;

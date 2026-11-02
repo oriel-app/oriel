@@ -329,3 +329,80 @@ test("every action is declared with a doc, its class and, if closed, why", () =>
     "{ workstream: WorkstreamId; items: ItemId[] }",
   );
 });
+
+test("marking done undoes as reopening, unless it was marked already; reopening, as marking done", async () => {
+  const w = world();
+  const marked = await w.dispatch("thread.done", { thread: w.threadId }, user);
+  assert.deepEqual(marked.undo, {
+    action: "thread.reopen",
+    input: { thread: w.threadId, mark: t0 },
+  });
+  assert.equal((await w.dispatch("thread.done", { thread: w.threadId }, user)).undo, null);
+  // Only the mark it names: one made at another time stays.
+  await assert.rejects(
+    w.dispatch("thread.reopen", { thread: w.threadId, mark: instant(new Date(0)) }, user),
+    (error: unknown) => refused("refused")(error) && /marked done again since/.test(String(error)),
+  );
+  const reopened = await w.dispatch("thread.reopen", { thread: w.threadId, mark: t0 }, user);
+  assert.deepEqual(reopened.undo, { action: "thread.done", input: { thread: w.threadId } });
+  assert.deepEqual(w.published.at(-1), { thread: w.threadId });
+  // Only a thread marked done reopens.
+  await assert.rejects(
+    w.dispatch("thread.reopen", { thread: w.threadId }, user),
+    (error: unknown) => refused("refused")(error) && /isn't marked done/.test(String(error)),
+  );
+  // The agent and tools may reopen as they may mark done.
+  assert.equal(refusal("thread.reopen", { kind: "agent", threadId: w.threadId }), null);
+});
+
+test("making a workstream undoes as deleting it, which only the user may, while no thread uses it", async () => {
+  const w = world();
+  const made = await w.dispatch(
+    "workstream.create",
+    { kind: "picked", name: "Later", items: ["jira:SYN-3"] },
+    { kind: "agent", threadId: w.threadId },
+  );
+  assert.deepEqual(made.undo, {
+    action: "workstream.delete",
+    input: { workstream: made.workstream },
+  });
+  // A workstream made for a thread from nothing is that thread's.
+  assert.equal((await w.dispatch("workstream.create", { kind: "thread" }, user)).undo, null);
+  const agent: Actor = { kind: "agent", threadId: w.threadId };
+  await assert.rejects(
+    w.dispatch("workstream.delete", { workstream: made.workstream }, agent),
+    refused("refused"),
+  );
+  assert.match(refusal("workstream.delete", agent) ?? "", /closed to agents: It has no Undo/);
+  await assert.rejects(
+    w.dispatch("workstream.delete", { workstream: w.workstreamId }, user),
+    (error: unknown) => refused("refused")(error) && /a thread uses it/.test(String(error)),
+  );
+  assert.ok(w.workstreams.get(w.workstreamId));
+  const deleted = await w.dispatch("workstream.delete", { workstream: made.workstream }, user);
+  assert.equal(deleted.undo, null);
+  assert.equal(w.workstreams.get(made.workstream), null);
+  assert.deepEqual(w.published.at(-1), { workstream: made.workstream, members: false });
+  await assert.rejects(
+    w.dispatch("workstream.delete", { workstream: made.workstream }, user),
+    refused("not-found"),
+  );
+});
+
+test("an Undo of someone else's action says whose in its events; the user's own goes unsaid", async () => {
+  const w = world();
+  const agent: Actor = { kind: "agent", threadId: w.threadId };
+  const input = { workstream: w.workstreamId, items: ["jira:SYN-2"] };
+  await w.dispatch.untyped("workstream.remove", input, user, agent);
+  assert.deepEqual(w.events.at(-1), {
+    name: "action.called",
+    action: "workstream.remove",
+    by: user,
+    undoes: agent,
+    at: t0,
+    workspaceId: id(0),
+  });
+  await w.dispatch.untyped("workstream.add", input, user, user);
+  assert.equal(w.events.at(-1)?.name, "workstream.item-added");
+  assert.ok(!("undoes" in (w.events.at(-1) ?? {})));
+});
