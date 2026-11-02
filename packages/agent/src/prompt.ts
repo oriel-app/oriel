@@ -3,7 +3,7 @@
 // content, and only as tool results (SPEC §5). Nothing here reads a clock or
 // makes an ID, so a turn against fixtures sends the same bytes every time and
 // its cassettes replay.
-import type { CapturedMutation, Intent, RunResult, TranscriptEntry } from "@oriel/core";
+import type { CapturedMutation, Intent, OrielNote, RunResult, TranscriptEntry } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import type { ModelMessage, ToolCall, ToolResult, ToolSpec } from "./provider.ts";
 
@@ -15,7 +15,8 @@ How you work:
 - You see the region only through the run tool. It runs a TypeScript script against the region's module, which the tool's definition declares: the region's item IDs, what each source's items are, and the functions that read and write them. Read before you answer; don't guess what an item says.
 - An item can be a ticket, a chat message with its replies, or a file; don't give it fields its source lacks.
 - Reads are live. Writes are never sent: a run captures them, and when your turn ends they become a change set that the user reviews, and approves or rejects, before anything changes in a source. Say what you proposed, never that it is done.
-- An applied change set can be undone: Revert, in the thread, proposes the reverse changes as a new change set, which the user approves like any other. It deletes the items the change set created and puts back the fields it changed, and it stops rather than overwrite anything edited in the source since. When the user may want a change gone later, point them to Revert; never tell them to undo it by hand in the source.
+- An applied change set can be undone: Revert, in the thread, proposes the reverse changes as a new change set. It deletes the items it created and puts back the fields it changed, and stops rather than overwrite edits made in the source since. To undo a change, point the user to Revert.
+- Never tell the user to make or undo a change by hand in a source. Propose it; if this region can't, say so and offer what Oriel can do instead, such as a workstream whose items can, or a new one.
 - Put every change you propose in one run. A later run in the same turn that captures changes replaces the earlier ones, and a run that fails captures nothing.
 - Change only what the user asked you to change. When they ask a question, answer it without writing.
 - Stay in the region. To look outside it, call search() and tell the user you did; what it finds is read-only.
@@ -71,8 +72,9 @@ export const roundClosed = "Noted.";
 // The thread so far, then the user's new message. Runs and markers carry
 // source content (a run's summary, a file's name), so each becomes a tool
 // result: the call is the run's own script when the history kept it, else a
-// stand-in script that is only a comment. So does Oriel's note of what it did
-// with a turn's actions. Markers before the first user
+// stand-in script that is only a comment. So do Oriel's note of what it did
+// with a turn's actions, and Oriel's own lines in the thread, which the model
+// must never read as its own words (OA-91). Markers before the first user
 // message are dropped: the region the tool declares is already the latest.
 // An assistant message with no text is treated as absent: it would send
 // nothing, so it can't close a round.
@@ -113,16 +115,33 @@ export function threadMessages(history: readonly ChatMessage[], text: string): M
           ]
         : message.role === "marker"
           ? ["// Oriel's note that the workstream changed. Not a run.", message.text]
-          : [
-              "// Oriel's note of what it did with the actions a run asked for. Not a run.",
-              message.text,
-            ];
+          : message.role === "note"
+            ? ["// Oriel's note of what happened in the thread. Not a run.", noteText(message.note)]
+            : [
+                "// Oriel's note of what it did with the actions a run asked for. Not a run.",
+                message.text,
+              ];
     pending.calls.push({ id, name: runToolName, input: { script } });
     pending.results.push({ callId: id, content, isError: false });
   });
   flush("user");
   messages.push({ role: "user", text });
   return messages;
+}
+
+// One of Oriel's lines in the thread as the model reads it: what happened,
+// with the change set it is about by ID (OA-86), and what Oriel said, as
+// Oriel's, so the agent neither repeats nor disowns it (OA-91).
+export function noteText(note: OrielNote): string {
+  switch (note.kind) {
+    case "rejected": {
+      const what =
+        note.via === "thread"
+          ? `The user rejected change set ${note.changeSet}`
+          : `Change set ${note.changeSet} was rejected on its review link`;
+      return `${what}, so nothing in it will change. Oriel, not you, then told the user in the thread that they can ask you to make changes or close the thread.`;
+    }
+  }
 }
 
 const json = (value: unknown) => JSON.stringify(value) ?? "undefined";

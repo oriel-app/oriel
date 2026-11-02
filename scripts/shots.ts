@@ -183,6 +183,8 @@ const fillJira = async (page: Page, token: string) => {
   await page.locator('input[name="token"]').fill(token);
 };
 const chatty = (await writing({ kind: "fixture" })).serving;
+// A server whose threads are each rejected for real once, in a shot.
+const answering = (await writing()).serving;
 
 // A request as the window sends it.
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
@@ -347,17 +349,19 @@ await post(`/api/threads/${await ask("What's in here?")}/done`, {});
 // A later change to the workstream shows in working threads as a marker.
 await post(`/api/workstreams/${workstream.id}/add`, { items: ["jira:SYN-3"] });
 
-// Gift cards planned, then rejected: with no reason, the thread asks what was
-// wrong; with one, the agent proposes a revised change set below the
-// rejected one; and with one from a review link, it is held in the thread,
+// Gift cards planned, then rejected: Oriel's line asks what was wrong; the
+// person's answer, their next message, gets a revised change set below the
+// folded rejected one; and a review link's reason is held in the thread,
 // under the reviewer's name, until the person sends it on or discards it.
 const rejected = async (reason?: string, reviewer?: string) => {
   const threadId = await ask("Plan gift cards");
   const setId = await changeSetOf(server, threadId);
   const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {});
   const why = reason === undefined ? {} : { reason };
-  if (reviewer === undefined) await post(`/api/change-sets/${setId}/reject`, { hash, ...why });
-  else {
+  if (reviewer === undefined) {
+    await post(`/api/change-sets/${setId}/reject`, { hash });
+    if (reason !== undefined) await post(`/api/threads/${threadId}/messages`, { text: reason });
+  } else {
     const minted = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {});
     const token = new URL(minted.url).pathname.split("/").at(-1);
     await post("/api/review/open", { token });
@@ -1051,14 +1055,33 @@ const scenes: Scene[] = [
     },
   },
   {
-    // A reason typed to go with Reject.
-    name: "thread-reject-reason",
-    path: `/threads/${planned}`,
+    // Reject, answered: Oriel's line asks what was wrong, and the message box
+    // waits for the answer, already typed into. Each shot rejects a thread
+    // of its own.
+    name: "thread-rejected-answering",
+    path: "/",
+    on: answering,
     act: async (page) => {
+      const { id: workstreamId } = await post<{ id: string }>(
+        "/api/workstreams",
+        checkout,
+        answering,
+      );
+      const threadId = await ask("Plan gift cards", answering, workstreamId);
+      await page.goto(new URL(`/threads/${threadId}`, answering.url).href);
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
-      await page
-        .getByRole("textbox", { name: "Why reject it (optional)" })
-        .fill('Title should be "Checkout v2: wallets and gift cards"');
+      await page.getByRole("button", { name: "Reject" }).click();
+      await page.locator(".oriel-note").waitFor();
+      await page.keyboard.type('Title should be "Checkout v2: wallets and gift cards"');
+    },
+  },
+  {
+    // A rejected change set, shown again.
+    name: "thread-rejected-shown",
+    path: `/threads/${rejectedBare}`,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await page.getByRole("button", { name: "Hide", exact: true }).waitFor();
     },
   },
   {
@@ -1330,6 +1353,7 @@ try {
   await empty.close();
   await picking.close();
   await chatty.close();
+  await answering.close();
   for (const { serving } of [handing, handed, handedBack]) await serving.close();
   await idling.close();
   rmSync(dirname(notes), { recursive: true, force: true });

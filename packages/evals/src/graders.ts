@@ -297,6 +297,18 @@ export function gradeMentions(texts: readonly string[], reply: string): Grade {
   return { grader: "mentions", pass: false, detail };
 }
 
+export function gradeAvoids(texts: readonly string[], reply: string): Grade {
+  const said = normalized(reply);
+  const found = texts.filter((t) => said.includes(normalized(t)));
+  if (!found.length)
+    return { grader: "avoids", pass: true, detail: `none of ${texts.length} texts said` };
+  return {
+    grader: "avoids",
+    pass: false,
+    detail: `said: ${found.map((t) => JSON.stringify(t)).join(", ")}`,
+  };
+}
+
 // The judge's instructions hold no case content: the question, the region's
 // items and the reply all go in the user turn, as one JSON document.
 export const judgeSystem = `You grade one reply from an assistant that works on a product manager's Jira project.

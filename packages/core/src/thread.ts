@@ -54,3 +54,18 @@ export const maxHeldChars: Record<HeldSender["kind"], number> = {
 // What a held message says: not blank, and within its sender's limit.
 export const heldText = (from: HeldSender, text: string): boolean =>
   text.trim() !== "" && text.length <= maxHeldChars[from.kind];
+
+// A line Oriel writes in a thread about what someone did. It is Oriel's,
+// never the agent's: the window shows it as Oriel's, and the agent reads it
+// as a note from Oriel, never as something it said (OA-91). Each kind is one
+// variant. `rejected`: a change set of the thread was rejected, in the thread
+// or on its review link, and Oriel asks what was wrong with it, naming the
+// change set so two rejections can't be confused (OA-86).
+export const orielNote = union(
+  object({
+    kind: literal("rejected"),
+    changeSet: refine(string, isUlid, "expected a change set ID"),
+    via: union(literal("thread"), literal("review-link")),
+  }),
+);
+export type OrielNote = Infer<typeof orielNote>;

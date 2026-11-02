@@ -25,6 +25,7 @@ import {
   type Block,
   blocks,
   expected,
+  folded,
   type NewThreadModel,
   removable,
   stepLabel,
@@ -40,6 +41,7 @@ import {
   type ItemRef,
   type ItemValue,
   type MemberView,
+  type NoteView,
   type RunView,
   type ThreadView,
   holding,
@@ -290,6 +292,12 @@ function ChatBlock(props: {
           <HeldMessage block={block} model={props.model} view={props.view} send={props.send} />
         </li>
       );
+    case "note":
+      return (
+        <li class="oriel-note" role="note">
+          <OrielNote note={block.note} />
+        </li>
+      );
     // A limit is a per-thread cap that ended the turn; a run's own cap stays
     // inside its folded transcript.
     case "notice":
@@ -306,6 +314,17 @@ function ChatBlock(props: {
         </li>
       );
   }
+}
+
+// One of Oriel's own lines, never the agent's (OA-91): after a rejection,
+// what the user can do next.
+function OrielNote({ note }: { note: NoteView }) {
+  return (
+    <p>
+      {note.via === "thread" ? "Change rejected." : "Change rejected on its review link."} You can
+      ask the agent to make changes or close the thread.
+    </p>
+  );
 }
 
 // What Oriel did with the actions the agent asked for, as the host says it,
@@ -532,6 +551,33 @@ function ChangeSet(props: {
   const steps = set.nextSteps.flatMap((step) => (step.kind === "remove" ? [] : [step]));
   const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
   const approvable = set.nextSteps.some((step) => step.kind === "approve");
+  if (folded(model, set))
+    return (
+      <section
+        id={changeSetAnchor(set.id)}
+        class="change-set"
+        data-status={set.status}
+        data-folded
+        tabIndex={-1}
+      >
+        <header class="change-set-head">
+          <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
+          <span class="change-set-status" role="status">
+            {statusNames[set.status]}
+            {set.decision?.via === "review-link" && ` by ${set.decision.by} via review link`}
+          </span>
+          {diff && <span class="change-set-count">{plural(diff.lines.length, "change")}</span>}
+          <button
+            type="button"
+            class="quiet-action"
+            aria-expanded={false}
+            onClick={() => send({ type: "foldToggled", changeSetId: set.id })}
+          >
+            Show
+          </button>
+        </header>
+      </section>
+    );
   return (
     <section
       id={changeSetAnchor(set.id)}
@@ -550,6 +596,16 @@ function ChangeSet(props: {
             set.decision.via === "review-link" &&
             ` by ${set.decision.by} via review link`}
         </span>
+        {set.status === "rejected" && model.unfolded.includes(set.id) && (
+          <button
+            type="button"
+            class="quiet-action"
+            aria-expanded={true}
+            onClick={() => send({ type: "foldToggled", changeSetId: set.id })}
+          >
+            Hide
+          </button>
+        )}
       </header>
       {diff ? (
         <Diff
@@ -583,9 +639,10 @@ function ChangeSet(props: {
             step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";
           const decides = forward && step.kind !== "retry";
           const disabled = busy || ((decides || step.kind === "reject") && !diff);
-          const click = () =>
-            send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind });
-          const button = (
+          // Approve and apply is the one primary action. Reject is one
+          // click: the thread then asks what was wrong, and the message box
+          // waits for the answer.
+          return (
             <button
               key={step.kind}
               type="button"
@@ -593,38 +650,12 @@ function ChangeSet(props: {
                 forward ? "button primary" : step.kind === "dismiss" ? "quiet-action" : "button"
               }
               disabled={disabled}
-              onClick={click}
+              onClick={() =>
+                send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind })
+              }
             >
               {stepLabel(step.kind, set)}
             </button>
-          );
-          // A reason is optional: it goes to the thread as the next message.
-          // An Undo is Oriel's, not the agent's, so it has nothing to revise.
-          if (step.kind !== "reject" || set.revertOf) return button;
-          return (
-            <span key={step.kind} class="reject-with">
-              <input
-                class="reason-field"
-                value={model.reasons[set.id] ?? ""}
-                placeholder="What's wrong? (optional)"
-                aria-label="Why reject it (optional)"
-                maxLength={8000}
-                disabled={busy}
-                onInput={(event) =>
-                  send({
-                    type: "reasonChanged",
-                    changeSetId: set.id,
-                    text: event.currentTarget.value,
-                  })
-                }
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || event.isComposing || disabled) return;
-                  event.preventDefault();
-                  click();
-                }}
-              />
-              {button}
-            </span>
           );
         })}
         {set.status === "open" && (set.readOnly ?? !view.writable) && (

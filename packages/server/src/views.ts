@@ -359,6 +359,10 @@ export function views(deps: ViewDeps) {
       const sender = { kind: from.kind, by: from.by, changeSetId: from.changeSet };
       return { ...at, kind: "held", from: sender, text, outcome };
     }
+    if (message.role === "note") {
+      const { kind, changeSet, via } = message.note;
+      return { ...at, kind: "note", note: { kind, changeSetId: changeSet, via } };
+    }
     if (message.role === "marker") {
       const changes = changeView(workstreamId, message.from, message.to);
       return {

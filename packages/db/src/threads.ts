@@ -10,6 +10,8 @@ import {
   heldText,
   type Instant,
   isInstant,
+  orielNote,
+  type OrielNote,
   isUlid,
   literal,
   nullable,
@@ -42,7 +44,13 @@ const nextRow = object({ next: number });
 const versionRow = object({ version: nullable(number) });
 const messageRow = object({
   seq: number,
-  role: union(literal("user"), literal("agent"), literal("marker"), literal("held")),
+  role: union(
+    literal("user"),
+    literal("agent"),
+    literal("marker"),
+    literal("held"),
+    literal("note"),
+  ),
   content: string,
   at: instantValue,
 });
@@ -71,11 +79,13 @@ const wroteRow = object({
 // A marker says the thread moved from one version of its workstream to a later
 // one; what changed between them is in the workstream's own log, so it isn't
 // copied here. A held entry is a message from anyone but the user, which
-// waits for them (decision 0024).
+// waits for them (decision 0024). A note is Oriel's own line about what
+// someone did, never the agent's (OA-91).
 export type NewMessage =
   | { role: "user"; text: string }
   | { role: "agent"; event: unknown }
   | { role: "marker"; from: number; to: number }
+  | { role: "note"; note: OrielNote }
   | Omit<Held, "outcome">;
 
 // A held message, who it is from, and what the user did with it: sent it to
@@ -311,7 +321,9 @@ export function threadStore(db: DatabaseSync) {
           ? { text: message.text }
           : message.role === "held"
             ? { from: message.from, text: message.text, outcome: null }
-            : { from: message.from, to: message.to };
+            : message.role === "note"
+              ? message.note
+              : { from: message.from, to: message.to };
     if (message.role === "held" && !heldContent(content).ok)
       throw new RangeError("a held message's sender or text is past its limits");
     const json = JSON.stringify(content);
@@ -357,6 +369,11 @@ export function threadStore(db: DatabaseSync) {
       const held = heldContent(content);
       if (!held.ok) throw new Error(`corrupt held message ${seq}`);
       return { seq, at: when, role, ...held.value };
+    }
+    if (role === "note") {
+      const note = orielNote(content);
+      if (!note.ok) throw new Error(`corrupt note ${seq}`);
+      return { seq, at: when, role, note: note.value };
     }
     const marker = markerContent(content);
     if (!marker.ok) throw new Error(`corrupt marker ${seq}`);

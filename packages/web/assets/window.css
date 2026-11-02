@@ -2533,6 +2533,37 @@ a.replies:hover {
   text-decoration: line-through;
 }
 
+/* A rejected change set folds to its head: Show or Hide sits at its end. */
+.change-set-head:has(> .quiet-action) {
+  justify-content: flex-start;
+}
+
+.change-set-head > .quiet-action {
+  margin-left: auto;
+}
+
+.change-set[data-folded] .change-set-head {
+  border-bottom: 0;
+}
+
+.change-set-count {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* One of Oriel's own lines, never the agent's reply: it reads as a note. */
+.oriel-note {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) var(--space-3);
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.oriel-note p {
+  margin: 0;
+}
+
 .diff {
   margin: 0;
   padding: 0;
@@ -2821,23 +2852,6 @@ a.replies:hover {
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
-}
-
-/* Reject, with what's wrong typed beside it when there's something to say. */
-.reject-with {
-  display: inline-flex;
-  flex: 1 1 16rem;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.reason-field {
-  flex: 1;
-  min-width: 0;
-  padding: 0.3125rem var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
 }
 
 .link-field {

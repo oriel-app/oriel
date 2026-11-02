@@ -61,6 +61,9 @@ export type Effect =
   | { type: "showLatest" }
   // Scrolls a thread's page to one of its change sets, at the top.
   | { type: "showChangeSet"; changeSetId: string }
+  // Puts the cursor in a thread's message box, as after Reject, so what
+  // was wrong is the user's next message.
+  | { type: "focusComposer" }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }
