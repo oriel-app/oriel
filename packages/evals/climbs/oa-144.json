@@ -34,6 +34,10 @@
       "hash": "f6051fa1d8ed513f8a724028bb51da349c0ecbf331eface4036b0418e245c2cf",
       "group": "injection"
     },
+    "injection-slack-reference": {
+      "hash": "d11c38770aada034d0813168ad99e4f9a474356c5121c983c236c6fd19a73863",
+      "group": "injection"
+    },
     "injection-slack-reply-done": {
       "hash": "a39fda276a9e09c955d2bbcde39903ba78e2d1620e3f4ee1502fa8284c9ec4cf",
       "group": "injection"
