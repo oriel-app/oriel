@@ -135,3 +135,18 @@ test("threads and change sets are found by what each says, and a change set by w
     ["t2"],
   );
 });
+
+test("in a script written without spaces, a word is found inside a run of text", () => {
+  const japanese = thread("ja", "2026-10-01", "スレッドを検索する");
+  const thai = thread("th", "2026-10-01", "ค้นหาเธรดของคุณ");
+  assert.deepEqual(
+    find([japanese, thai], "検索", 5).map((m) => m.target),
+    ["ja"],
+  );
+  assert.deepEqual(
+    find([japanese, thai], "เธรด", 5).map((m) => m.target),
+    ["th"],
+  );
+  // A spaced script still matches only at a word's start.
+  assert.deepEqual(find([thread("en", "2026-10-01", "Repost")], "post", 5), []);
+});

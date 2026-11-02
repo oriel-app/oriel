@@ -117,12 +117,13 @@ test("another thread's agent finds where the user approved the post, with a link
   );
   assert.equal(value.workstreams[0]?.name, "SMS updates");
   assert.equal(value.workstreams[0]?.threads, 2);
-  // Reading Oriel's own data reads no item: it isn't the escape hatch.
+  // What other threads said and wrote is from outside the region, on the
+  // record as search() is; names and IDs aren't.
   assert.deepEqual(
     run.run.reads.map((read) => [read.fn, read.outsideRegion]),
     [
-      ["thread.find", false],
-      ["thread.changeSets", false],
+      ["thread.find", true],
+      ["thread.changeSets", true],
       ["thread.list", false],
       ["workstream.list", false],
     ],
@@ -185,5 +186,87 @@ test("the dev server's scripted agent answers where something happened with a li
       `It was this change set, in [post: ${testPost}](/threads/${poster}?changeSet=${entry.changeSetId}).`,
     ),
     replies.join("\n"),
+  );
+});
+
+test("a reason held from a review link's holder is never found, since it hasn't reached the agent", async (t) => {
+  const app = await testApp(t, {
+    writes: true,
+    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    plan: () => [{ run: "post" }],
+    scripts: { post },
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "SMS updates", items: [sms] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Try a Slack post" }),
+  );
+  await app.app.settled();
+  const [set] = json<ThreadView>(await app.get(`/api/threads/${threadId}`)).changeSets;
+  assert.ok(set);
+  const minted = json<{ url: string }>(await app.post(`/api/change-sets/${set.id}/review-link`));
+  const token = new URL(minted.url).pathname.split("/").at(-1);
+  const opened = json<{ diff: DiffView }>(await app.post("/api/review/open", { token }));
+  const decided = await app.post("/api/review/decide", {
+    token,
+    changeSet: set.id,
+    kind: "rejected",
+    name: "Someone",
+    hash: opened.diff.hash,
+    reason: "zebracorn instructions for the agent",
+  });
+  assert.equal(decided.status, 200);
+  await app.app.settled();
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  assert.ok(
+    view.entries.some((e) => e.kind === "held"),
+    "the reason is held in the thread",
+  );
+  assert.deepEqual(json<SearchView>(await app.get("/api/search?q=zebracorn")).results, []);
+});
+
+test("a reply streamed in fragments is found as one text, and threads list by their latest activity", async (t) => {
+  const listed: Script = async (bindings) => ({
+    value: (await bindings.read("thread.list", [])).value,
+  });
+  const app = await testApp(t, {
+    plan: (input) =>
+      input.text === "First"
+        ? [{ text: "Zebracorn po" }, { text: "sts are in." }]
+        : input.text === "List them"
+          ? [{ run: "listed" }]
+          : [],
+    scripts: { listed },
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "SMS", items: ["jira:SYN-61"] }),
+  );
+  const open = async (text: string) => {
+    const { id } = json<{ id: string }>(
+      await app.post(`/api/workstreams/${workstreamId}/threads`, { text }),
+    );
+    await app.app.settled();
+    return id;
+  };
+  const first = await open("First");
+  app.advance(1000);
+  const second = await open("Second");
+  app.advance(1000);
+  // The older thread moves again.
+  await app.post(`/api/threads/${first}/messages`, { text: "Again" });
+  await app.app.settled();
+  const [found] = json<SearchView>(await app.get("/api/search?q=zebracorn%20posts")).results;
+  assert.equal(found?.thread.id, first);
+  assert.match(found?.excerpt ?? "", /Zebracorn posts are in\./);
+  app.advance(1000);
+  const lister = await open("List them");
+  const view = json<ThreadView>(await app.get(`/api/threads/${lister}`));
+  const run = view.entries.find((e) => e.kind === "run.finished");
+  assert.ok(run?.kind === "run.finished");
+  const threads = JSON.parse(run.run.returned ?? "[]") as { id: string }[];
+  assert.deepEqual(
+    threads.map((thread) => thread.id),
+    [lister, first, second],
   );
 });

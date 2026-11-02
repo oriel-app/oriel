@@ -6,6 +6,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   array,
   type CapturedMutation,
+  type ChangeSetState,
+  changeSetStates,
   type Infer,
   type Issue,
   isInstant,
@@ -22,6 +24,8 @@ import {
   refine,
   type Result,
   string,
+  type ThreadState,
+  threadStates,
   union,
   unknown,
   type Validator,
@@ -132,7 +136,11 @@ const orielWorkspace = object({
     object({
       id: ulidText,
       name: text,
-      state: union(literal("working"), literal("done"), literal("handed-off"), literal("dropped")),
+      state: refine(
+        string,
+        (state): state is ThreadState => (threadStates as readonly string[]).includes(state),
+        `expected one of ${threadStates.join(", ")}`,
+      ),
       workstream: object({ id: ulidText, name: text }),
       activityAt: instantText,
       said: array(text),
@@ -142,12 +150,10 @@ const orielWorkspace = object({
     object({
       id: ulidText,
       thread: ulidText,
-      state: union(
-        literal("pending"),
-        literal("approved"),
-        literal("applied"),
-        literal("rejected"),
-        literal("reverted"),
+      state: refine(
+        string,
+        (state): state is ChangeSetState => (changeSetStates as readonly string[]).includes(state),
+        `expected one of ${changeSetStates.join(", ")}`,
       ),
       createdAt: instantText,
       decided: nullable(

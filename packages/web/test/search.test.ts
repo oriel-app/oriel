@@ -2,6 +2,7 @@
 // a thread's address that names a change set, and a reply's link to one.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { changeSetLink, threadLink } from "@oriel/core/oriel-reads";
 import type { Effect } from "../src/http.ts";
 import { parse } from "../src/markdown.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
@@ -138,6 +139,15 @@ test("a thread's address may name one of its change sets", () => {
     page: "thread",
     id: threadId,
   });
+});
+
+test("the links the agent's reads give open where they say", () => {
+  assert.deepEqual(inAppRoute(changeSetLink(threadId, setId)), {
+    page: "thread",
+    id: threadId,
+    changeSet: setId,
+  });
+  assert.deepEqual(inAppRoute(threadLink(threadId)), { page: "thread", id: threadId });
 });
 
 test("a reply links to a thread or a change set in Oriel, and never elsewhere that way", () => {

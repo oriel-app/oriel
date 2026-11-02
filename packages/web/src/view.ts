@@ -3,6 +3,7 @@
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
+import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
 
@@ -180,10 +181,7 @@ export type SearchResultView = {
     state: ThreadStateId;
     workstream: { id: string; name: string };
   };
-  changeSet: {
-    id: string;
-    state: "pending" | "approved" | "applied" | "rejected" | "reverted";
-  } | null;
+  changeSet: { id: string; state: ChangeSetState } | null;
   matched: "name" | "chat" | "change-set";
   excerpt: string;
 };

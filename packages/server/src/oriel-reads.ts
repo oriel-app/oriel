@@ -19,6 +19,7 @@ import {
   type Ulid,
 } from "@oriel/core";
 import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
+import { history } from "./turns.ts";
 import { changeSetStatus } from "./views.ts";
 
 export type OrielReadDeps = {
@@ -48,41 +49,34 @@ export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): Chang
   return status === "rejected" ? "rejected" : "pending";
 }
 
-// What was said in a thread, as one text: the user's words, the agent's
-// replies, and messages held from others.
-function said(messages: readonly Message[]): string {
-  return messages
-    .flatMap((m) => {
-      if (m.role === "user" || m.role === "held") return [m.text];
-      if (m.role !== "agent") return [];
-      const { event } = m;
-      return typeof event === "object" &&
-        event !== null &&
-        "kind" in event &&
-        event.kind === "text" &&
-        "text" in event &&
-        typeof event.text === "string"
-        ? [event.text]
-        : [];
-    })
+// What was said in a thread, as one text: the user's words and the agent's
+// replies, joined up as the agent's own history has them. A message held
+// from anyone else is in neither until the user sends it, as their own
+// (decision 0024).
+const said = (messages: readonly Message[]): string =>
+  history(messages, () => "")
+    .flatMap((m) => (m.role === "user" || m.role === "assistant" ? [m.text] : []))
     .join("\n");
-}
 
 export function orielReads(deps: OrielReadDeps): OrielReads {
   const { threads, workstreams } = deps;
 
+  // Most recently active first, as the sidebar lists them.
   const threadReads = (): ThreadRead[] =>
-    threads.list(deps.workspaceId, deps.now()).map(({ thread, activityAt }) => ({
-      id: thread.id,
-      name: deps.title(thread.id),
-      state: thread.state,
-      workstream: {
-        id: thread.workstreamId,
-        name: workstreams.get(thread.workstreamId)?.name ?? "",
-      },
-      activityAt,
-      link: threadLink(thread.id),
-    }));
+    threads
+      .list(deps.workspaceId, deps.now())
+      .toSorted((a, b) => b.activityAt.localeCompare(a.activityAt))
+      .map(({ thread, activityAt }) => ({
+        id: thread.id,
+        name: deps.title(thread.id),
+        state: thread.state,
+        workstream: {
+          id: thread.workstreamId,
+          name: workstreams.get(thread.workstreamId)?.name ?? "",
+        },
+        activityAt,
+        link: threadLink(thread.id),
+      }));
 
   // Each thread's change sets, newest first, read as a person reads them.
   const setsOf = async (ids: readonly Ulid[]): Promise<ChangeSetRead[]> => {

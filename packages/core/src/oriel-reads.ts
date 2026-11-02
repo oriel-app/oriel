@@ -10,7 +10,8 @@ import type { ThreadState } from "./thread.ts";
 // Where a change set stands, in the words a person uses for it: waiting on
 // them, approved and not yet landed, applied (in full or in part), rejected,
 // or undone by a revert that applied.
-export type ChangeSetState = "pending" | "approved" | "applied" | "rejected" | "reverted";
+export const changeSetStates = ["pending", "approved", "applied", "rejected", "reverted"] as const;
+export type ChangeSetState = (typeof changeSetStates)[number];
 
 export type WorkstreamRead = {
   id: Ulid;

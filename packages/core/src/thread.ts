@@ -8,7 +8,8 @@ import { boolean, type Infer, literal, object, refine, string, union } from "./v
 // Working until a change set applies or the user marks it done; handed off
 // when the assignee changes or an external link is attached; dropped after 7
 // idle days. A new message makes any of the others working again.
-export type ThreadState = "working" | "done" | "handed-off" | "dropped";
+export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
+export type ThreadState = (typeof threadStates)[number];
 
 export type Thread = {
   id: Ulid;

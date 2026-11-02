@@ -534,9 +534,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     known: () => {
       const all = records();
       const titles = new Map<string, string>(all.map((record) => [record.id, record.title]));
-      const names = new Map<string, string>();
-      for (const record of all)
-        for (const person of record.facets.people ?? []) names.set(person.id, person.name);
+      const names = people();
       if (slack)
         for (const { attrs } of index.records(workspaceId, "slack", slackAttrs)) {
           names.set(attrs.channel.id, attrs.channel.name);

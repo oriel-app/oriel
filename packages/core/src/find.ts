@@ -66,10 +66,17 @@ function folded(text: string): { text: string; from: number[] } {
   return { text: out, from };
 }
 
-// Where `word` starts a word in `text`, or -1.
+// Scripts written without spaces between words, where a word may start
+// anywhere in a run of letters.
+const unspaced =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+
+// Where `word` starts a word in `text`, or -1. In a script without spaces,
+// anywhere it appears.
 function startOf(text: string, word: string): number {
+  const anywhere = unspaced.test(word);
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1))
-    if (at === 0 || !/[\p{L}\p{N}]/u.test(text[at - 1] ?? "")) return at;
+    if (anywhere || at === 0 || !/[\p{L}\p{N}]/u.test(text[at - 1] ?? "")) return at;
   return -1;
 }
 
