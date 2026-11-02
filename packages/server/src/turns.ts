@@ -3,7 +3,16 @@
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type WorkstreamStore, type Message, type Move, type ThreadStore } from "@oriel/db";
-import type { HeldSender, Instant, Log, TelemetryEvent, Thread, Ulid } from "@oriel/core";
+import type {
+  ActionLine,
+  Actor,
+  HeldSender,
+  Instant,
+  Log,
+  TelemetryEvent,
+  Thread,
+  Ulid,
+} from "@oriel/core";
 import type { Titler } from "@oriel/agent";
 import {
   type Agent,
@@ -130,6 +139,16 @@ function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): strin
   return text.length > maxSummaryChars ? `${text.slice(0, maxSummaryChars - 1)}…` : text;
 }
 
+// What the agent reads of the host's list under a reply: each call as it
+// applied or was refused, by ID, never by name.
+const actionsText = (lines: readonly ActionLine[]): string =>
+  lines
+    .map((line) => {
+      const call = JSON.stringify(line.call);
+      return line.applied ? `applied ${call}` : `refused ${call}: ${line.why}`;
+    })
+    .join("\n");
+
 // Tokens the turns in `messages` spent, from their `done` events.
 export function spent(messages: readonly Message[]): { inputTokens: number; outputTokens: number } {
   const total = { inputTokens: 0, outputTokens: 0 };
@@ -175,6 +194,8 @@ export function history(
       ended = false;
     }
     if (event.value.kind === "done") ended = true;
+    if (event.value.kind === "actions")
+      out.push({ role: "actions", text: actionsText(event.value.lines), at: message.at });
     if (event.value.kind === "run.started") scripts.set(event.value.runId, event.value.script);
     if (event.value.kind === "run.finished") {
       const script = scripts.get(event.value.runId);
@@ -194,7 +215,8 @@ export type Turns = ReturnType<typeof turns>;
 
 export function turns(deps: TurnDeps) {
   const { threads, workstreams } = deps;
-  const running = new Map<Ulid, { controller: AbortController; done: Promise<void> }>();
+  // Each running turn, and who started it.
+  const running = new Map<Ulid, { controller: AbortController; done: Promise<void>; by: Actor }>();
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
   // Pages watching the whole workspace: every list, and a workstream's page.
   const anyWatchers = new Set<(threadId: Ulid | null) => void>();
@@ -317,8 +339,13 @@ export function turns(deps: TurnDeps) {
 
   // The user's message, and a turn to answer it, which runs on after this
   // returns. A settled thread catches up with its workstream first. Counting it
-  // is the caller's.
-  const start = (threadId: Ulid, text: string): { seq: number; at: Instant; workspaceId: Ulid } => {
+  // is the caller's. `by` started it: only a turn the user started applies
+  // the agent's actions (decision 0024).
+  const start = (
+    threadId: Ulid,
+    text: string,
+    by: Actor,
+  ): { seq: number; at: Instant; workspaceId: Ulid } => {
     if (running.has(threadId)) throw new ThreadBusy();
     // The per-thread caps hold whatever agent is plugged in (SPEC §9).
     const earlier = threads.messages(threadId);
@@ -342,7 +369,7 @@ export function turns(deps: TurnDeps) {
       running.delete(threadId);
       publish(threadId, { type: "status", running: false });
     });
-    running.set(threadId, { controller, done });
+    running.set(threadId, { controller, done, by });
     publish(threadId, { type: "status", running: true });
     if (first) title(threadId, text);
     return { seq: said.seq, at: now, workspaceId: thread.workspaceId };
@@ -351,7 +378,7 @@ export function turns(deps: TurnDeps) {
   // The user's message, counted. `cause` says it was their reason for
   // rejecting a change set.
   const say = (threadId: Ulid, text: string, cause?: { rejected: Ulid }): { seq: number } => {
-    const { seq, at, workspaceId } = start(threadId, text);
+    const { seq, at, workspaceId } = start(threadId, text, { kind: "user" });
     deps.emit({ name: "question.asked", at, workspaceId, threadId, ...cause });
     return { seq };
   };
@@ -389,6 +416,9 @@ export function turns(deps: TurnDeps) {
 
   return {
     running: (threadId: Ulid): boolean => running.has(threadId),
+
+    // Who started the thread's running turn, or null with none running.
+    startedBy: (threadId: Ulid): Actor | null => running.get(threadId)?.by ?? null,
 
     // Calls `listener` with each new chat entry and status change until the
     // returned function is called.
@@ -503,7 +533,8 @@ export function turns(deps: TurnDeps) {
       const capped = capReached(threads.messages(threadId), deps.caps) !== null;
       if (held.from.kind === "review-link" && held.from.askFirst && !capped) ask(threadId, false);
       const sent = text ?? held.text;
-      const { seq } = start(threadId, sent);
+      // Sent on, the words and the turn are the user's.
+      const { seq } = start(threadId, sent, { kind: "user" });
       threads.settle(threadId, at, "sent");
       return { seq, from: held.from, edited: sent !== held.text };
     },

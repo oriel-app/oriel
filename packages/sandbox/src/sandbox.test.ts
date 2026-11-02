@@ -17,6 +17,7 @@ const limits: RunLimits = {
   maxScriptBytes: 16_384,
   maxReads: 20,
   maxMutations: 20,
+  maxIntents: 20,
   maxResultBytes: 65_536,
   maxConsoleBytes: 16_384,
 };
@@ -616,4 +617,42 @@ test("an aborted signal rejects before Deno starts", async () => {
     }),
     reason,
   );
+});
+
+test("Oriel's actions are recorded in order, never answered, beside the writes", async () => {
+  const { result, logged } = await go(`
+    workstream.add({ items: ["jira:SYN-1"] });
+    jira.setEstimate("jira:SYN-1", 2);
+    workstream.add({ items: ["jira:SYN-3", "jira:SYN-2"] });
+    return "asked";
+  `);
+  assert.equal(result.outcome, "ok");
+  assert.deepEqual(result.intents, [
+    { action: "workstream.add", input: { workstream: "the region's", items: ["jira:SYN-1"] } },
+    {
+      action: "workstream.add",
+      input: { workstream: "the region's", items: ["jira:SYN-3", "jira:SYN-2"] },
+    },
+  ]);
+  assert.equal(result.mutations.length, 1);
+  assert.equal(logged.at(-1)?.fields?.["intents"], 2);
+});
+
+test("an action the bindings refuse stops the run, naming it", async () => {
+  const { result } = await go(`workstream.add({ items: ["jira:SYN-99"] });\nreturn "asked";`);
+  assert.equal(result.outcome, "threw");
+  assert.deepEqual(result.intents, []);
+  assert.match(errorOf(result.transcript.at(-1)).message, /workstream\.add: jira:SYN-99/);
+});
+
+test("the intent cap stops the run", async () => {
+  const { result } = await go(
+    `for (let i = 0; i < 3; i++) workstream.add({ items: ["jira:SYN-1"] });\nreturn "asked";`,
+    { maxIntents: 2 },
+  );
+  assert.equal(result.outcome, "limit");
+  assert.equal(result.intents.length, 2);
+  const error = errorOf(result.transcript.at(-1));
+  assert.match(error.message, /more than 2 of Oriel's actions/);
+  assert.match(error.hint ?? "", /one call can add or remove many items/);
 });

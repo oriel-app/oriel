@@ -1,6 +1,7 @@
-// Graders. Four are programmatic: the captured change set against a golden
-// diff, zero mutations, text surfaced to the user as content, and text the
-// reply mentions. The fifth
+// Graders. Five are programmatic: the captured change set against a golden
+// diff, zero mutations (and zero intents), the calls the turn's intents
+// applied as, text surfaced to the user as content, and text the reply
+// mentions. The sixth
 // is an LLM judge for open-ended output, which checks a rubric of claims one
 // by one and must be a different model from the one under test.
 import {
@@ -169,10 +170,60 @@ export function gradeExactDiff(
   return { grader: "exact-diff", pass: false, detail: parts.filter(Boolean).join(". ") };
 }
 
-export function gradeZeroMutations(actual: readonly CapturedMutation[]): Grade {
-  if (!actual.length) return { grader: "zero-mutations", pass: true, detail: "no mutations" };
-  const detail = `${actual.length} captured: ${actual.map(describer(actual)).join("; ")}`;
-  return { grader: "zero-mutations", pass: false, detail };
+// An Oriel action the turn asked for, as the eval system says it applied.
+export type AppliedCall = { action: string; input: Record<string, unknown> };
+
+const callLine = (call: AppliedCall) => `${call.action} ${JSON.stringify(call.input)}`;
+
+// Nothing proposed: no mutation, and no intent either, as an Oriel action is
+// handled like a write (decision 0024).
+export function gradeZeroMutations(
+  actual: readonly CapturedMutation[],
+  intents: readonly AppliedCall[] = [],
+): Grade {
+  if (!actual.length && !intents.length)
+    return { grader: "zero-mutations", pass: true, detail: "no mutations" };
+  const parts = [
+    actual.length ? `${actual.length} captured: ${actual.map(describer(actual)).join("; ")}` : "",
+    intents.length ? `${intents.length} actions: ${intents.map(callLine).join("; ")}` : "",
+  ];
+  return { grader: "zero-mutations", pass: false, detail: parts.filter(Boolean).join(". ") };
+}
+
+// The calls the turn's intents applied as, in order: each the expected
+// action, on the case's own workstream where it names one, with the same
+// items in any order; and nothing written.
+export function gradeIntents(
+  expected: readonly { action: string; items?: readonly string[] }[],
+  actual: readonly AppliedCall[],
+  mutations: readonly CapturedMutation[],
+  workstream: string,
+): Grade {
+  const same = (a: readonly unknown[], b: readonly string[]) =>
+    a.length === b.length && b.every((id) => a.includes(id));
+  const problems = [
+    ...expected.flatMap((want, i) => {
+      const call = actual[i];
+      if (!call) return [`missing: ${want.action}`];
+      const items = call.input["items"];
+      const wrong =
+        call.action !== want.action ||
+        ("workstream" in call.input && call.input["workstream"] !== workstream) ||
+        (want.items !== undefined && !(Array.isArray(items) && same(items, want.items)));
+      return wrong
+        ? [`expected ${want.action} ${JSON.stringify(want.items ?? [])}, got ${callLine(call)}`]
+        : [];
+    }),
+    ...actual.slice(expected.length).map((call) => `unexpected: ${callLine(call)}`),
+    ...(mutations.length ? [`${mutations.length} mutations captured`] : []),
+  ];
+  if (!problems.length)
+    return {
+      grader: "intents",
+      pass: true,
+      detail: expected.length === 1 ? "1 call matches" : `${expected.length} calls match`,
+    };
+  return { grader: "intents", pass: false, detail: problems.join("; ") };
 }
 
 // Unicode compatibility forms, markdown emphasis, case and runs of whitespace

@@ -84,6 +84,7 @@ const goldenPath = refine(
 // Slack message by its author's name.
 // `mentions` is text the reply contains, such as the name of a control in
 // Oriel. `claims` are a rubric for the judge, each one checkable on its own.
+const itemIdText = refine(string, isItemId, "expected an item ID like jira:SYN-12");
 const surfacedItem = object({
   grader: literal("surfaced"),
   item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
@@ -96,6 +97,12 @@ const has = (input: unknown, key: string) =>
 const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
   "zero-mutations": object({ grader: literal("zero-mutations") }),
+  // The calls a turn's intents apply as, in order, each on the case's own
+  // workstream: an action and, for one that takes items, which.
+  intents: object({
+    grader: literal("intents"),
+    calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemIdText)) })),
+  }),
   // An item, unless it names only a file.
   surfaced: ((input, path = "$") => {
     if (has(input, "item") && has(input, "file"))
@@ -247,6 +254,8 @@ function rules(evalCase: EvalCase): Issue[] {
   });
   if (graders.includes("exact-diff") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "a golden diff and zero mutations contradict" });
+  if (graders.includes("intents") && graders.includes("zero-mutations"))
+    found.push({ path: "$.expect", message: "intents and zero mutations contradict" });
   const judged = isJudged(evalCase.kind);
   if (judged && !graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });

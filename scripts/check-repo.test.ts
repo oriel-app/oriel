@@ -456,3 +456,22 @@ test("a route whose action is known only at run time dispatches through the unty
     [{ path: "/a", dispatches: true }],
   );
 });
+
+test("input only the user gives must say why, as a closed door must", () => {
+  const input = Object.assign(() => ({ ok: true as const, value: {} }), {
+    shape: { kind: "unknown" as const },
+  });
+  assert.deepEqual(
+    actionProblems({
+      "thread.done": {
+        doc: "Done.",
+        input,
+        class: { kind: "direct", inverse: null, why: "Reopening comes later." },
+        userOnly: { via: "Where in the window the user closed it from.", from: " " },
+      },
+    }),
+    [
+      "packages/core/src/actions.ts: thread.done's from is the user's without a reason (decision 0024)",
+    ],
+  );
+});

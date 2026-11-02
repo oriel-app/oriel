@@ -2377,6 +2377,50 @@ a.replies:hover {
 
 /* The escape hatch: what came from outside the workstream, read-only. */
 
+/* A diff line naming an item the agent or a tool put in the workstream. */
+.brought {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* What Oriel did with the agent's actions, under its reply: the host's
+   record, set apart from the model's words. */
+.actions-block {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunk);
+}
+
+.actions-block .marker-version {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.action-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action-lines li {
+  padding: 0.125rem 0;
+}
+
+.action-lines li[data-applied="no"] {
+  color: var(--danger);
+}
+
+.action-lines a {
+  color: inherit;
+}
+
 .search-block {
   padding: var(--space-2) var(--space-3);
   border: 1px dashed var(--derived-line);

@@ -1,0 +1,15 @@
+{
+  "id": "remove-done-boarding",
+  "split": "train",
+  "kind": 2,
+  "region": "boarding-epic",
+  "prompt": "Remove the done stories from this workstream.",
+  "expect": [
+    {
+      "grader": "intents",
+      "calls": [
+        { "action": "workstream.remove", "items": ["jira:SYN-13", "jira:SYN-68", "jira:SYN-91"] }
+      ]
+    }
+  ]
+}

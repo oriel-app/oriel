@@ -2,7 +2,7 @@
 // Runs stay folded until opened; a search is its own block; a change set is
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
-import { useEffect } from "preact/hooks";
+import { useContext, useEffect } from "preact/hooks";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -32,6 +32,7 @@ import {
   type ThreadMsg,
 } from "./thread.ts";
 import {
+  type ActionLineView,
   type ChangeSetView,
   type DiffView,
   type HeldFrom,
@@ -276,6 +277,17 @@ function ChatBlock(props: {
         </li>
       );
     }
+    case "actions":
+      return (
+        <li class="actions-block" aria-label="What the agent did in Oriel">
+          <ActionLines lines={block.lines} />
+          {block.version && (
+            <span class="marker-version">
+              v{block.version.from} → v{block.version.to}
+            </span>
+          )}
+        </li>
+      );
     case "held":
       return (
         <li class="held-block" data-outcome={block.outcome ?? "held"}>
@@ -298,6 +310,35 @@ function ChatBlock(props: {
         </li>
       );
   }
+}
+
+// What Oriel did with the actions the agent asked for, as the host says it,
+// under the agent's reply (decision 0024): each sentence links where it
+// changed something. Undo on each comes with OA-88.
+function ActionLines({ lines }: { lines: ActionLineView[] }) {
+  const dispatch = useContext(ItemLinksContext)?.dispatch;
+  return (
+    <ul class="action-lines">
+      {lines.map((line, i) => (
+        <li key={i} data-applied={line.applied ? "yes" : "no"}>
+          {line.touched && dispatch ? (
+            <Link
+              route={
+                line.touched.kind === "thread"
+                  ? { page: "thread", id: line.touched.id }
+                  : { page: "workstream", id: line.touched.id }
+              }
+              dispatch={dispatch}
+            >
+              {line.text}
+            </Link>
+          ) : (
+            line.text
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // The thread's items by address, so a link to one in a reply, or in a diff's
@@ -775,6 +816,20 @@ function NewItem({ line }: { line: Line }) {
   );
 }
 
+// Who put the items a line names in the workstream, when it wasn't a person:
+// an approver who doesn't know the workstream can then tell (decision 0024).
+function Brought({ brought }: { brought: Line["brought"] }) {
+  const who = { agent: "The agent", tool: "An outside tool" } as const;
+  return (["agent", "tool"] as const).map((by) => {
+    const keys = brought.filter((item) => item.by === by).map((item) => item.key);
+    return keys.length ? (
+      <p key={by} class="brought">
+        {who[by]} put {keys.join(", ")} in this workstream.
+      </p>
+    ) : null;
+  });
+}
+
 // A change set's lines: a new item as a card, an edit as each field's old
 // and new text with only the changed words marked, and a delete as every
 // field it empties. The lines the change set engine says can be left out
@@ -802,6 +857,7 @@ export function Diff(props: {
           data-applied={line.applied ? "" : undefined}
           data-stopped={line.error ? "" : undefined}
         >
+          <Brought brought={line.brought} />
           {line.kind === "create" && line.fields.length > 0 ? (
             <NewItem line={line} />
           ) : (

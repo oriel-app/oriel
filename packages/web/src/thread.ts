@@ -5,6 +5,7 @@ import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type {
+  ActionLineView,
   ChangeSetView,
   NextStepView,
   ChatEntry,
@@ -607,7 +608,15 @@ export function newThreadReplied(model: NewThreadModel, msg: Replied): [NewThrea
 export type Block =
   | { kind: "user"; seq: number; text: string }
   | { kind: "reply"; seq: number; text: string }
-  | { kind: "marker"; seq: number; from: number; to: number; added: ItemRef[]; removed: ItemRef[] }
+  | {
+      kind: "marker";
+      seq: number;
+      from: number;
+      to: number;
+      added: ItemRef[];
+      removed: ItemRef[];
+      ownAgent?: true;
+    }
   // `stopped`: its turn ended before it finished, as when the user stopped it.
   | {
       kind: "run";
@@ -619,6 +628,13 @@ export type Block =
     }
   | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
   | { kind: "change-set"; seq: number; changeSetId: string }
+  // `version`: how the agent's own changes moved this thread's workstream.
+  | {
+      kind: "actions";
+      seq: number;
+      lines: ActionLineView[];
+      version: { from: number; to: number } | null;
+    }
   | {
       kind: "held";
       seq: number;
@@ -680,6 +696,20 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
       case "change-set":
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
         break;
+      // The markers its own changes left just before say what its lines
+      // say, so they fold in, as the version they moved the thread to.
+      case "actions": {
+        let to: number | null = null;
+        let from = 0;
+        for (let end = out.at(-1); end?.kind === "marker" && end.ownAgent; end = out.at(-1)) {
+          to ??= end.to;
+          from = end.from;
+          out.pop();
+        }
+        const version = to === null ? null : { from, to };
+        out.push({ kind: "actions", seq: entry.seq, lines: entry.lines, version });
+        break;
+      }
       case "limit":
         out.push({ kind: "notice", seq: entry.seq, tone: "limit", text: entry.reason });
         break;

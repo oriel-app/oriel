@@ -19,6 +19,7 @@ import {
   type SourceKind,
   sourceKinds,
 } from "@oriel/core";
+import { intentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
 import { itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
@@ -99,10 +100,11 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
   return { ids, docs, sources };
 }
 
-// `items`, then each namespace in source order, then Oriel's own, then the
-// escape hatch. The order is the order of the declarations, so it is part of
-// the byte-stable output. A namespace's write must name an op in its
-// catalogue that a run may capture; revert-only ops are never offered.
+// `items`, then each namespace in source order, then Oriel's own (its reads,
+// then its actions, in registry order), then the escape hatch. The order is
+// the order of the declarations, so it is part of the byte-stable output. A
+// namespace's write must name an op in its catalogue that a run may capture;
+// revert-only ops are never offered.
 export function describe(scope: Scope): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
@@ -113,5 +115,5 @@ export function describe(scope: Scope): Fn[] {
       return { ...fn, space: kind, spec: entry };
     }),
   );
-  return [...itemFns, ...namespaced, ...orielFns, searchFn];
+  return [...itemFns, ...namespaced, ...orielFns, ...intentFns, searchFn];
 }

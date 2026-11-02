@@ -12,3 +12,4 @@ paths:
 - Oriel's own namespaces (`workstream`, `thread`) are the same in every region. Their reads go through the `OrielReads` the composition root passes in; thread names, chat and what change sets wrote come back as run results, never in the `.d.ts`.
 - An item's identity is the source's stable ID; `jira:ORL-12` is only its handle.
 - The stubs and the `.d.ts` are generated from one description, and a test typechecks the stubs against the `.d.ts` so the two can't drift.
+- Oriel's actions (`workstream.*`, `thread.done`) are generated from the registry in `packages/core/src/actions.ts`, never written per action. A run only records them as intents, each checked against its declaration. `workstream.add` takes a `search()` hit and is not a write: an item a workstream gains must be in the region or found by this run's search.

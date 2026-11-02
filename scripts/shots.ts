@@ -227,6 +227,19 @@ const ask = async (text: string, on: Serving = server, workstreamId = workstream
   return opened.id;
 };
 const thread = await ask("Which stories here still need estimates?");
+// The boarding epic's workstream, its finished stories taken out by the
+// agent and its thread closed: what Oriel did, listed under the reply, and
+// the workstream's log naming the agent's thread (OA-69).
+const boarding = await post<{ id: string }>("/api/workstreams", {
+  kind: "cluster",
+  grouping: "epic",
+  cluster: "10002",
+});
+const tidied = await ask(
+  "Take the finished stories out of this workstream and close the thread",
+  server,
+  boarding.id,
+);
 // Asked for estimates where the board takes none.
 const unpointedThread = await ask(
   "Estimate the unestimated ones",
@@ -890,6 +903,19 @@ const scenes: Scene[] = [
         .getByRole("button", { name: "Sync" })
         .click();
       await page.locator(".jira .source-problem").waitFor();
+    },
+  },
+  {
+    name: "thread-actions",
+    path: `/threads/${tidied}`,
+    act: (page) => page.locator(".actions-block").waitFor(),
+  },
+  {
+    name: "workstream-actions",
+    path: `/workstreams/${boarding.id}`,
+    act: async (page) => {
+      await page.locator(".history summary").click();
+      await page.locator(".changes li").first().waitFor();
     },
   },
   {

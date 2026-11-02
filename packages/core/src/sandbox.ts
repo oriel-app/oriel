@@ -1,3 +1,4 @@
+import type { ActionName } from "./actions.ts";
 import type { ItemId } from "./ids.ts";
 import type { Log, RunOutcome } from "./run.ts";
 import {
@@ -22,7 +23,7 @@ export function isNewRef(value: string): value is NewRef {
 
 // Guest → host, one JSON object per line on stdout. Guest output is untrusted:
 // the host parses every line with `guestMessage`. Reads get a reply; writes are
-// queued as captured mutations and never answered.
+// queued as captured mutations, and intents recorded, never answered.
 export const guestMessage = union(
   object({ kind: literal("read"), id: number, fn: string, args: array(unknown) }),
   object({
@@ -31,6 +32,7 @@ export const guestMessage = union(
     args: array(unknown),
     ref: nullable(refine(string, isNewRef, "expected a new:N ref")),
   }),
+  object({ kind: literal("intent"), fn: string, args: array(unknown) }),
   object({ kind: literal("log"), text: string }),
   object({ kind: literal("done"), value: unknown }),
   object({ kind: literal("threw"), message: string }),
@@ -49,16 +51,25 @@ export type CapturedMutation = {
   args: unknown;
 };
 
+// One of Oriel's own actions a run asked for (decision 0024), its input
+// checked and its defaults filled in: never applied in the run. When the
+// turn ends, the last finished run's intents apply, in the order it recorded
+// them.
+export type Intent = { action: ActionName; input: Record<string, unknown> };
+
 // A region's bindings, built per run: the declarations the agent codes
 // against, the guest stubs generated from the same description, and the host
 // side. `read` proxies live. `capture` validates a write against the source's
-// op catalogue and throws if its target is outside the region. What either
-// throws names the function, and the sandbox passes it on as it is.
+// op catalogue and throws if its target is outside the region. `intend`
+// checks one of Oriel's own actions against its declaration and throws if it
+// adds an item the run can't reach. What any of them throws names the
+// function, and the sandbox passes it on as it is.
 export type Bindings = {
   dts: string;
   shim: string;
   read(fn: string, args: readonly unknown[]): Promise<{ value: unknown; outsideRegion: boolean }>;
   capture(fn: string, args: readonly unknown[], ref: NewRef | null): CapturedMutation;
+  intend(fn: string, args: readonly unknown[]): Intent;
 };
 
 export type RunLimits = {
@@ -66,6 +77,7 @@ export type RunLimits = {
   maxScriptBytes: number;
   maxReads: number;
   maxMutations: number;
+  maxIntents: number;
   maxResultBytes: number;
   maxConsoleBytes: number;
 };
@@ -103,6 +115,7 @@ export type TranscriptEntry =
 export type RunResult = {
   reads: ProxiedRead[];
   mutations: CapturedMutation[];
+  intents: Intent[];
   transcript: TranscriptEntry[];
   // A sandbox rejects with the reason when the run is aborted, so a result is
   // never "aborted"; the run record says that (`Run`).

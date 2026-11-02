@@ -195,7 +195,7 @@ export function WorkstreamPage(props: {
           />
         </section>
 
-        <History view={view} />
+        <History view={view} dispatch={dispatch} />
       </main>
     </DropZone>
   );
@@ -263,8 +263,9 @@ const causes: Record<WorkstreamChangeView["cause"], string> = {
   "change-set": " · by an applied change set",
 };
 
-// The workstream's versions, newest first, folded.
-function History({ view }: { view: WorkstreamView }) {
+// The workstream's versions, newest first, folded. What an agent did names
+// the thread it did it in.
+function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch }) {
   return (
     <details class="history">
       <summary>{plural(view.changes.length, "version")}</summary>
@@ -283,7 +284,16 @@ function History({ view }: { view: WorkstreamView }) {
                   ]
                     .filter(Boolean)
                     .join(" · ")}
-              {causes[change.cause]}
+              {change.thread ? (
+                <>
+                  {causes.agent} in{" "}
+                  <Link route={{ page: "thread", id: change.thread.id }} dispatch={dispatch}>
+                    {change.thread.title ?? "a thread"}
+                  </Link>
+                </>
+              ) : (
+                causes[change.cause]
+              )}
             </span>
             <span class="change-at">{when(change.at)}</span>
           </li>

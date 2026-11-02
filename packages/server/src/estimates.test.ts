@@ -112,6 +112,7 @@ test("the scripted agent says why a run failed instead of pointing to a change s
       run: async () => ({
         reads: [],
         mutations: [],
+        intents: [],
         transcript: [{ kind: "error", error: { phase: "runtime", message: refused, logs: [] } }],
         outcome: "threw",
         wallMs: 1,

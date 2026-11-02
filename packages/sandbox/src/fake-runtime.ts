@@ -3,7 +3,8 @@
 // calls out on stdout, replies in on stdin. Reply 0 carries the script's
 // stripped body, which runs as an async function with the bindings as its
 // parameters. The guest's own reads count from 1, and a create names its item
-// `new:N`, counting from 1. Console output becomes log messages.
+// `new:N`, counting from 1. Intents, like writes, are sent and never
+// answered. Console output becomes log messages.
 import type { NewRef } from "@oriel/core";
 
 type Sink = { writeSync(bytes: Uint8Array): number };
@@ -18,6 +19,7 @@ type Waiter = { resolve(value: unknown): void; reject(error: Error): void };
 export type FakeRuntime = {
   read(fn: string, args: readonly unknown[]): Promise<unknown>;
   write(fn: string, args: readonly unknown[], creates: boolean): NewRef | null;
+  intend(fn: string, args: readonly unknown[]): void;
   start(bindings: Record<string, unknown>): void;
 };
 
@@ -98,6 +100,9 @@ export function runtime(deno: GuestDeno, scope: { console: unknown }): FakeRunti
       const ref: NewRef | null = creates ? `new:${++refs}` : null;
       send({ kind: "write", fn, args, ref });
       return ref;
+    },
+    intend(fn, args) {
+      send({ kind: "intent", fn, args });
     },
     start(bindings) {
       pending.set(0, {

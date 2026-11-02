@@ -5,6 +5,7 @@ export * from "./find.ts";
 export * from "./workstream.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";
+export * from "./intents.ts";
 export * from "./namespace.ts";
 export * from "./ops.ts";
 export * from "./oriel-reads.ts";

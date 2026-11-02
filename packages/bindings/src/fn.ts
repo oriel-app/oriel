@@ -2,11 +2,13 @@
 // host state a run gives them. Core's `NamespaceSpec` describes a source's
 // namespace; this adds where each function lives and what the host knows.
 import {
+  type ActionName,
   type ItemId,
   type NamespaceHost,
   type NamespaceRead,
   type NamespaceWrite,
   type OrielReads,
+  type Param,
   parseItemId,
   type Reader,
   type ReadResult,
@@ -47,7 +49,19 @@ export type WriteFn = NamespaceWrite & {
   spec: { args: Validator<unknown>; revertOnly: boolean };
 };
 
-export type Fn = ReadFn | WriteFn;
+// One of Oriel's own actions, generated from the registry (decision 0024).
+// It takes one `input` object, typed as the agent's door has it, and a run
+// only records it, as an intent that applies when the turn ends.
+export type IntentFn = {
+  kind: "intent";
+  space: OrielSpace;
+  name: string;
+  doc: string;
+  action: ActionName;
+  params: readonly Param<unknown>[];
+};
+
+export type Fn = ReadFn | WriteFn | IntentFn;
 
 export const pathOf = (fn: Fn): string => (fn.space ? `${fn.space}.${fn.name}` : fn.name);
 

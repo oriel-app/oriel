@@ -6,6 +6,7 @@ import {
   type CapturedMutation,
   type ChangeSet,
   type Instant,
+  type Intent,
   instant,
   type ItemId,
   type MutationRecord,
@@ -99,13 +100,15 @@ export function fixtureRegion(name: string): Region {
   };
 }
 
-export const regionBindings = (region: Region) => bindingsFor(region, { reader, namespaces });
+export const regionBindings = (region: Region, threadId?: Ulid) =>
+  bindingsFor(region, { reader, namespaces, ...(threadId ? { thread: threadId } : {}) });
 
 export const runLimits: RunLimits = {
   wallMs: 60_000,
   maxScriptBytes: 16_384,
   maxReads: 50,
   maxMutations: 20,
+  maxIntents: 20,
   maxResultBytes: 65_536,
   maxConsoleBytes: 16_384,
 };
@@ -199,12 +202,25 @@ export function scriptedProvider(steps: Step[]) {
   return { provider, conversations, unplayed: () => queue.length };
 }
 
-// Runs and change sets in memory. As the real change-set engine does, a
-// capture needs its run recorded first.
+// Runs, change sets and the turns' intents in memory. As the real
+// change-set engine does, a capture needs its run recorded first. Every
+// intent applies, with no Undo.
 export function memoryRecords(newId: () => Ulid) {
   const runs: { run: Run; reads: ProxiedRead[] }[] = [];
   const changeSets: { changeSet: ChangeSet; mutations: CapturedMutation[] }[] = [];
-  const deps: Pick<AgentDeps, "runs" | "changeSets"> = {
+  const applied: { changeSetId: Ulid | null; intents: Intent[] }[] = [];
+  const deps: Pick<AgentDeps, "runs" | "changeSets" | "actions"> = {
+    actions: {
+      async apply(turn, intents) {
+        applied.push({ changeSetId: turn.changeSetId, intents: [...intents] });
+        return intents.map((call) => ({
+          call,
+          touched: { kind: "thread" as const, id: turn.thread.id, name: null },
+          applied: true as const,
+          undo: null,
+        }));
+      },
+    },
     runs: { record: (run, reads) => void runs.push({ run, reads }) },
     changeSets: {
       async capture(ref, mutations) {
@@ -242,7 +258,7 @@ export function memoryRecords(newId: () => Ulid) {
       },
     },
   };
-  return { runs, changeSets, deps };
+  return { runs, changeSets, applied, deps };
 }
 
 // Time is passed in: every sandbox duration comes out as 0.

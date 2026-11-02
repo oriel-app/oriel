@@ -46,6 +46,13 @@ export type ActionDeclaration = {
   class: ActionClass;
   // The doors it is closed to, each with why.
   closed?: Partial<Record<Door, string>>;
+  // What of its input only the user gives, in the window, each with why: a
+  // field, or a union's alternative by its `kind`. The other doors'
+  // functions leave it out.
+  userOnly?: Readonly<Record<string, string>>;
+  // The field whose items join a workstream. The agent's must be in its
+  // region or found by its search() in that run, as the host checks.
+  joins?: string;
 };
 
 export const maxNameChars = 120;
@@ -92,6 +99,7 @@ export const actions = {
     doc: "Adds items to a workstream. The items themselves don't change.",
     input: object({ workstream: workstreamId, items }),
     class: { kind: "direct", inverse: "workstream.remove" },
+    joins: "items",
   },
   "workstream.remove": {
     doc: "Takes items out of a workstream. The items themselves don't change.",
@@ -110,6 +118,12 @@ export const actions = {
       inverse: null,
       why: "Deleting a workstream no thread uses is its Undo, which comes with the story that shows what the agent did under its reply.",
     },
+    userOnly: {
+      cluster:
+        "A cluster's items are the window's: the agent's region and search() don't reach them.",
+      thread: "It comes with a thread started from nothing, which only the user starts.",
+    },
+    joins: "items",
   },
   "workstream.rename": {
     doc: "Names a workstream.",
@@ -117,6 +131,7 @@ export const actions = {
     // undoes, so Oriel may name the workstream again. Only the user's Undo says so.
     input: object({ workstream: workstreamId, name, oriel: optional(literal(true)) }),
     class: { kind: "direct", inverse: "workstream.rename" },
+    userOnly: { oriel: "Only the user's Undo gives a workstream's name back to Oriel." },
   },
   "thread.done": {
     doc: "Marks a thread done.",
@@ -126,6 +141,7 @@ export const actions = {
       inverse: null,
       why: "Reopening a thread is its Undo, which comes with the story that shows what the agent did under its reply.",
     },
+    userOnly: { via: "It says where in the window the user closed the thread from." },
   },
   // A held message: words from anyone but the user, such as a review link's
   // holder, which wait in the thread and reach the agent only as the user

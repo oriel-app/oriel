@@ -4,7 +4,8 @@
 // the real sandbox. It reaches the model through the Anthropic provider over
 // the round's cassettes, so a live round records and CI replays.
 //
-// Runs and the change set are kept in memory. The change-set engine itself
+// Runs, the change set and the intents are kept in memory: every intent
+// applies, as the calls the server's dispatcher would get. The change-set engine itself
 // needs the server's database (runs, workstreams and the index); the agent hands
 // it the same mutations either way.
 import {
@@ -18,8 +19,10 @@ import { bindingsFor } from "@oriel/bindings";
 import {
   type CapturedMutation,
   type ChangeSet,
+  type Intent,
   type Instant,
   type MutationRecord,
+  planned,
   type Run,
   type Sandbox,
   type Thread,
@@ -40,6 +43,7 @@ export const evalLimits: AgentLimits = {
     maxScriptBytes: 16_384,
     maxReads: 100,
     maxMutations: 50,
+    maxIntents: 20,
     maxResultBytes: 65_536,
     maxConsoleBytes: 16_384,
   },
@@ -99,15 +103,17 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r) =>
+    bindingsFor: (r, threadId) =>
       bindingsFor(r, {
         reader: world.reader,
         namespaces: world.namespaces,
         items: world.items,
         oriel: world.oriel,
+        thread: threadId,
       }),
     runs: records.runs,
     changeSets: records.changeSets,
+    actions: records.actions,
     limits: options.limits ?? evalLimits,
     now: () => input.now,
     newId,
@@ -129,7 +135,12 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const ended = events.find((e) => e.kind === "error" || e.kind === "limit");
   if (ended?.kind === "error") throw new Error(`the agent's turn failed: ${ended.message}`);
   if (ended?.kind === "limit") throw new Error(`the agent hit a limit: ${ended.reason}`);
-  return { mutations: records.captured(), reply: replyOf(events), transcript: events };
+  return {
+    mutations: records.captured(),
+    intents: records.applied(),
+    reply: replyOf(events),
+    transcript: events,
+  };
 }
 
 // What the user sees: the agent's text, a paragraph break wherever a run
@@ -165,7 +176,20 @@ function counter(now: Instant): () => Ulid {
 function memoryRecords(newId: () => Ulid, now: Instant) {
   const runs = new Set<Ulid>();
   const sets: CapturedMutation[][] = [];
-  const recorder: Pick<AgentDeps, "runs" | "changeSets"> = {
+  const calls: Intent[] = [];
+  const recorder: Pick<AgentDeps, "runs" | "changeSets" | "actions"> = {
+    actions: {
+      async apply(turn, intents) {
+        const applied = planned(intents, { thread: turn.thread.id });
+        calls.push(...applied);
+        return applied.map((call) => ({
+          call,
+          touched: { kind: "workstream" as const, id: null, name: null },
+          applied: true as const,
+          undo: null,
+        }));
+      },
+    },
     runs: { record: (run: Run) => void runs.add(run.id) },
     changeSets: {
       async capture(ref, mutations) {
@@ -204,5 +228,5 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
     },
   };
   // The turn's change set: a turn captures at most one.
-  return { ...recorder, captured: () => sets.at(-1) ?? [] };
+  return { ...recorder, captured: () => sets.at(-1) ?? [], applied: () => [...calls] };
 }
