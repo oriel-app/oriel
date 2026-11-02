@@ -1,6 +1,6 @@
 # 0005 Own canvas
 
-Accepted 2026-10-28.
+Accepted 2026-10-28. Superseded by 0029.
 
 **Decision.** The phase 2 canvas is built in `packages/canvas`, not taken from a library.
 
