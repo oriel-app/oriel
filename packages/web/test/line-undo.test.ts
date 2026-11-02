@@ -28,7 +28,12 @@ const list: ChatEntry = {
   kind: "actions",
   lines: [
     actionLine({ text: "Removed SYN-10 from this workstream.", undo }),
-    actionLine({ text: "Didn't mark this thread done: no.", applied: false, why: "no" }),
+    actionLine({
+      text: "Didn't mark this thread done: no.",
+      applied: false,
+      why: "no",
+      undo: null,
+    }),
   ],
 };
 
