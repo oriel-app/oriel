@@ -2,7 +2,7 @@
 // real source and transport, as the window's connect does.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Credential, instant, ulid } from "@oriel/core";
+import { type Credential, instant, syncSource, ulid } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs } from "./attrs.ts";
@@ -10,7 +10,6 @@ import { checkConnection } from "./connect.ts";
 import { fixtureSnapshot } from "./fixture.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 import { jiraSource } from "./source.ts";
-import { syncSource } from "./sync.ts";
 import { basicAuth, readTransport } from "./transport.ts";
 
 const fixture = loadJiraFixture();

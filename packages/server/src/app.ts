@@ -33,6 +33,7 @@ import {
   SourceRefused,
   type SourceKind,
   sourceKinds,
+  syncSource,
   type Ulid,
   ulid,
   type Validator,
@@ -62,7 +63,6 @@ import {
   JiraFailed,
   jiraSource,
   readTransport,
-  syncSource,
 } from "@oriel/jira";
 import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
 import {

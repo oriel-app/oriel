@@ -1,26 +1,38 @@
 // The sync worker: drives a source's `sync` into the index, one snapshot
-// version per sync. Any source works; Jira is the first.
+// version per sync. It is Oriel's, not any one source's: every source syncs
+// through it, and what a sync does beyond storing records runs here, never
+// in an adapter's package.
 import {
-  facets,
-  type IndexRecord,
   type Instant,
   isInstant,
   type ItemId,
-  type Log,
   parseItemId,
-  type Source,
   type SourceKind,
-  type SyncPage,
   type Ulid,
-  type Validator,
-} from "@oriel/core";
-import type { IndexStore } from "@oriel/db";
+} from "./ids.ts";
+import type { Log } from "./run.ts";
+import { facets, type IndexRecord, type Source, type SyncPage } from "./source.ts";
+import type { Validator } from "./validate.ts";
+
+// What the sync worker needs of the index. The index store (packages/db) is
+// one; core names only what it calls.
+export type SyncIndex = {
+  source(workspaceId: Ulid, kind: SourceKind): { cursor: string | null } | null;
+  beginSync<A>(
+    workspaceId: Ulid,
+    source: SourceKind,
+    attrs: Validator<A>,
+    now: Instant,
+  ): { apply(page: SyncPage): void; finish(cursor: string | null, finishedAt: Instant): number };
+  liveStableIds(workspaceId: Ulid, source: SourceKind): string[];
+  goneStableIds(workspaceId: Ulid, source: SourceKind): string[];
+};
 
 export type SyncOptions<K extends SourceKind, A> = {
   source: Source<K, A>;
   // The source's attrs shape; each record is checked against it.
   attrs: Validator<A>;
-  index: IndexStore;
+  index: SyncIndex;
   workspaceId: Ulid;
   // A full sweep lists everything and marks what the source no longer returns
   // as gone. Otherwise the sync resumes from the stored cursor, and is a full

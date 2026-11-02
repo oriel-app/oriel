@@ -124,6 +124,7 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
       '@oriel/db':
         specifier: workspace:*
         version: link:../db
