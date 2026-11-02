@@ -39,10 +39,23 @@ test("the stratified test is the hypergeometric tail, convolved across cases", (
   near(stratifiedTest([arms([4, 4], [4, 4]), arms([0, 4], [0, 4])], "worse"), 1);
 });
 
-test("the bound on a drop is wide for few runs and narrows as runs grow", () => {
-  near(differenceLow({ passed: 8, runs: 8 }, { passed: 4, runs: 4 }), -0.4035215);
-  near(differenceLow({ passed: 44, runs: 44 }, { passed: 44, runs: 44 }), -0.0579374);
-  near(differenceLow({ passed: 40, runs: 44 }, { passed: 36, runs: 44 }), -0.2143296);
+test("the bound on a drop narrows with runs, and ignores how far apart the cases are", () => {
+  const twelve = (arm: (i: number) => ReturnType<typeof arms>) =>
+    Array.from({ length: 12 }, (_, i) => arm(i));
+  near(differenceLow(twelve(() => arms([4, 4], [4, 4]))), -0.1007353);
+  near(differenceLow(twelve(() => arms([8, 8], [8, 8]))), -0.0543873);
+  // Four cases that always fail beside eight that always pass: no wider.
+  near(
+    differenceLow(twelve((i) => (i < 4 ? arms([0, 8], [0, 8]) : arms([8, 8], [8, 8])))),
+    -0.0543873,
+  );
+  // Two cases dropping three runs in eight each.
+  near(
+    differenceLow(twelve((i) => (i < 2 ? arms([8, 8], [5, 8]) : arms([8, 8], [8, 8])))),
+    -0.1243706,
+  );
+  near(differenceLow([arms([8, 8], [4, 4])]), -0.2804165);
+  assert.equal(differenceLow([]), -1);
 });
 
 const run = (

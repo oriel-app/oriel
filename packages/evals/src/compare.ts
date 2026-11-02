@@ -130,7 +130,7 @@ export type Mode = "better" | "no-worse";
 // one-sided level of the stratified test a fix must pass; `guard` the level
 // at which a group counts as worse, looser because a guard should err towards
 // revert; `margin` the drop in pass rate a trim may not be shown to exceed,
-// at the one-sided 95% bound `z` gives.
+// at the one-sided 95% bound, stratified by case, that `z` gives.
 export const method = { alpha: 0.05, guard: 0.1, margin: 0.08, z: 1.645 } as const;
 
 export type GroupChange = {
@@ -149,7 +149,8 @@ export type SplitChange = {
   candidate: Rate;
   // The chance of a gain at least this large with no change.
   better: number;
-  // The lower end of the one-sided bound on candidate minus baseline.
+  // The lower end of the one-sided bound on candidate minus baseline,
+  // stratified by case.
   low: number;
   groups: GroupChange[];
   // Cases whose pass rate moved, as baseline and candidate tallies.
@@ -249,7 +250,7 @@ export function compareChange(
         baseline: rateOf(b),
         candidate: rateOf(c),
         better: gain(own) > 0 ? stratifiedTest(own, "better") : 1,
-        low: differenceLow(b, c, method.z),
+        low: differenceLow(own, method.z),
         groups,
         moved: own
           .filter(

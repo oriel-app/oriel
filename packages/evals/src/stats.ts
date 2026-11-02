@@ -88,13 +88,25 @@ export function stratifiedTest(
   return Math.min(1, tail);
 }
 
-// Newcombe's hybrid score interval for the difference of two pass rates
-// (candidate minus baseline), from each arm's Wilson interval: its lower end,
-// one-sided at `z` (1.645 for 95%). It treats runs as independent, which
-// overstates the noise when both arms ran the same cases, so it errs towards
-// "worse".
-export function differenceLow(baseline: Tally, candidate: Tally, z = 1.645): number {
-  const b = wilson(baseline.passed, baseline.runs, z);
-  const c = wilson(candidate.passed, candidate.runs, z);
-  return c.rate - b.rate - Math.sqrt((c.rate - c.low) ** 2 + (b.high - b.rate) ** 2);
+// The lower end of a one-sided bound, at `z` (1.645 for 95%), on how much
+// the pass rate moved from baseline to candidate, averaged over cases that
+// each ran in both arms. Each case's rates are smoothed (Jeffreys: half a
+// pass and half a fail added) only for its variance, so a case that passed
+// every run, or none, still counts as uncertain. Stratifying by case keeps
+// the spread between cases, some always failing and others always passing,
+// out of the noise: only each case's own run-to-run variation counts.
+export function differenceLow(
+  cases: readonly { baseline: Tally; candidate: Tally }[],
+  z = 1.645,
+): number {
+  if (!cases.length) return -1;
+  let moved = 0;
+  let variance = 0;
+  for (const { baseline: b, candidate: c } of cases) {
+    moved += c.passed / c.runs - b.passed / b.runs;
+    const smoothed = (t: Tally) => (t.passed + 0.5) / (t.runs + 1);
+    const spread = (t: Tally) => (smoothed(t) * (1 - smoothed(t))) / t.runs;
+    variance += spread(b) + spread(c);
+  }
+  return (moved - z * Math.sqrt(variance)) / cases.length;
 }
