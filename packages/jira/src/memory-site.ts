@@ -25,6 +25,9 @@ type Issue = {
   issueType: string;
   summary: string;
   description: string;
+  // The description as rich text a teammate wrote in Jira; the plain text
+  // above is what Oriel writes and reads back.
+  document?: unknown;
   labels: string[];
   comments: FixtureIssue["comments"];
   epic: string | null;
@@ -131,7 +134,7 @@ export function memorySite(
     key: issue.key,
     fields: {
       summary: issue.summary,
-      description: issue.description ? textToAdf(issue.description) : null,
+      description: issue.document ?? (issue.description ? textToAdf(issue.description) : null),
       issuetype: type(issue.issueType),
       labels: issue.labels,
       parent: issue.epic ? { id: from.get(issue.epic)?.id ?? "1", key: issue.epic } : undefined,
@@ -221,7 +224,10 @@ export function memorySite(
       if (method === "PUT") {
         const fields = (body as { fields: Record<string, unknown> }).fields;
         if ("summary" in fields) issue.summary = String(fields.summary);
-        if ("description" in fields) issue.description = adfToText(fields.description);
+        if ("description" in fields) {
+          issue.description = adfToText(fields.description);
+          delete issue.document;
+        }
         if (pointsField in fields)
           issue.points =
             typeof fields[pointsField] === "number" ? (fields[pointsField] as number) : null;
@@ -400,5 +406,89 @@ export function memorySite(
       if (!issue) throw new Error(`no issue ${key}`);
       Object.assign(issue, change, { updated: tick() });
     },
+    // A teammate writes the description in Jira's editor, as rich text.
+    describe(key: string, document: unknown) {
+      const issue = issues.get(key);
+      if (!issue) throw new Error(`no issue ${key}`);
+      Object.assign(issue, { document, description: adfToText(document), updated: tick() });
+    },
   };
 }
+
+const text = (words: string, marks?: unknown[]) => ({
+  type: "text",
+  text: words,
+  ...(marks ? { marks } : {}),
+});
+const paragraph = (...content: unknown[]) => ({ type: "paragraph", content });
+const item = (...content: unknown[]) => ({ type: "listItem", content: [paragraph(...content)] });
+
+// A description as Jira's editor writes it, for `describe`: a heading, lists,
+// marks, a code block and links, one of them to a scheme no browser should
+// follow, and a table, a panel and a mention, which the panel has no blocks
+// for.
+export const richDescription = {
+  type: "doc",
+  version: 1,
+  content: [
+    paragraph(
+      text("Same as the app, for browsers that support it. "),
+      text("Hide the button", [{ type: "strong" }]),
+      text(" otherwise."),
+    ),
+    { type: "heading", attrs: { level: 2 }, content: [text("Acceptance")] },
+    {
+      type: "bulletList",
+      content: [
+        item(text("Shows only where "), text("canMakePayment()", [{ type: "code" }])),
+        item(text("Falls back to the card form, "), text("never", [{ type: "em" }])),
+        item(
+          text("Matches the "),
+          text("app's flow", [
+            { type: "link", attrs: { href: "https://design.example.com/wallet" } },
+          ]),
+        ),
+      ],
+    },
+    {
+      type: "orderedList",
+      attrs: { order: 1 },
+      content: [item(text("Ship to 10% of browsers")), item(text("Then everyone"))],
+    },
+    {
+      type: "codeBlock",
+      attrs: { language: "ts" },
+      content: [text("if (await wallet.canMakePayment()) show(button);\nelse hide(button);")],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "warning" },
+      content: [paragraph(text("Apple Pay needs the domain file first."))],
+    },
+    {
+      type: "table",
+      content: [
+        {
+          type: "tableRow",
+          content: [
+            { type: "tableHeader", content: [paragraph(text("Browser"))] },
+            { type: "tableHeader", content: [paragraph(text("Wallet"))] },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            { type: "tableCell", content: [paragraph(text("Safari"))] },
+            { type: "tableCell", content: [paragraph(text("Apple Pay"))] },
+          ],
+        },
+      ],
+    },
+    paragraph(
+      { type: "mention", attrs: { id: "esme", text: "@Esme Whitlock" } },
+      text(" to check "),
+      text("this", [{ type: "link", attrs: { href: "javascript:alert(1)" } }]),
+      text(" before the review."),
+    ),
+  ],
+};

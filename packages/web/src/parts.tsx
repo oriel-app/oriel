@@ -212,7 +212,13 @@ export function Replies(props: { id: string; replies: { count: number; url: stri
 // to that item (`ItemLink`).
 export function Markdown({ text, linksTo }: { text: string; linksTo: Sites }) {
   const read = useMemo(() => parse(text), [text]);
-  return <>{read.map((prose, i) => block(prose, i, linksTo))}</>;
+  return <ProseBlocks prose={read} linksTo={linksTo} />;
+}
+
+// Blocks already read, from markdown or by a source's server side, such as
+// Jira's rich text, the same way.
+export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; linksTo: Sites }) {
+  return <>{prose.map((each, i) => block(each, i, linksTo))}</>;
 }
 
 type Sites = ReadonlySet<string> | "any";
@@ -303,6 +309,12 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
       );
     case "route":
       return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
+    case "mention":
+      return (
+        <span key={key} class="mention">
+          {inline.text}
+        </span>
+      );
   }
 }
 
@@ -322,6 +334,14 @@ function RouteLink(props: { route: Route; label: ComponentChildren }) {
 function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChildren }) {
   const { href, sites, label } = props;
   const links = useContext(ItemLinksContext);
+  // Blocks a source's side read are checked there too; an address that
+  // isn't http(s) is text all the same.
+  if (!safeHref(href))
+    return (
+      <span>
+        {label} ({href})
+      </span>
+    );
   if (links?.items.has(addressOf(href)))
     return <ItemLink item={{ id: null, url: href }}>{label}</ItemLink>;
   return sites === "any" || opens(href, sites) ? (

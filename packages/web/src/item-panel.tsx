@@ -1,12 +1,22 @@
 // The panel beside the page: an item in its source's own view, read live, as
 // Oriel's own elements. Source text is always text here: a file's markdown is
 // read into the same blocks an agent's reply is, and anything else shows as
-// written, line by line. Nothing here sets HTML.
+// written, line by line, or in the blocks its source's side read it into.
+// Nothing here sets HTML.
 import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
 import { behind, type PanelModel } from "./panel.ts";
-import { type Dispatch, initials, ItemKey, keyLabel, Markdown, plural, when } from "./parts.tsx";
+import {
+  type Dispatch,
+  initials,
+  ItemKey,
+  keyLabel,
+  Markdown,
+  plural,
+  ProseBlocks,
+  when,
+} from "./parts.tsx";
 import { safeHref } from "./route.ts";
 import type { ItemPanelView, PanelBlock } from "./view.ts";
 
@@ -147,6 +157,15 @@ function Block({ block }: { block: PanelBlock }) {
           ) : (
             <Plain text={block.text} />
           )}
+        </section>
+      );
+    case "rich":
+      return (
+        <section class="panel-text">
+          {block.heading !== null && <h3 class="panel-heading">{block.heading}</h3>}
+          <div class="reply panel-prose">
+            <ProseBlocks prose={block.prose} linksTo="any" />
+          </div>
         </section>
       );
     case "messages":

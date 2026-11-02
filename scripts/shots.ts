@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
-import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
+import { memorySite, memorySiteOrigin, richDescription } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
 import { memoryStore } from "../packages/server/src/connection.ts";
 import type { SlackMode } from "../packages/server/src/app.ts";
@@ -145,6 +145,9 @@ const live = async () => {
 };
 const offline = await live();
 offline.site.outage("offline");
+// A teammate wrote SYN-23's description in Jira's editor, as rich text.
+const described = await live();
+described.site.describe("SYN-23", richDescription);
 // A server that syncs SYN from a board that takes no estimates, as a
 // team-managed board with no points field does.
 const unpointed = await serve(0, {
@@ -793,6 +796,31 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-thread").last().waitFor();
     },
   },
+  // A description as written in Jira's editor keeps its structure (OA-93).
+  {
+    name: "panel-jira-rich",
+    window: true,
+    path: "/?grouping=epic&item=jira%3ASYN-23",
+    on: described.serving,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".item-panel .panel-text").waitFor();
+    },
+  },
+  // What the Slack fixture marks (OA-94): mentions, here, and a reply also
+  // sent to the channel; an edit; a file with no text; an unknown person.
+  ...[
+    ["sms", "1788782400.000100"],
+    ["edited", "1788884400.000100"],
+    ["file", "1789290600.000100"],
+    ["unknown", "1789982100.000100"],
+  ].map(([name, ts]): Scene => ({
+    name: `panel-slack-${name}`,
+    window: true,
+    path: `/workstreams/${fares.id}?item=${encodeURIComponent(`slack:C0FW1WEATHR-${ts}`)}`,
+    on: chatty,
+    act: (page) => page.locator(".item-panel .panel-thread").last().waitFor(),
+  })),
   {
     name: "panel-folder",
     window: true,
@@ -810,6 +838,29 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.locator(".rail .members").waitFor();
       await page.locator(".rail a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  // Stepping through the list the panel was opened from, and adding the item
+  // to the workstream the window is adding to (OA-95).
+  {
+    name: "panel-step",
+    window: true,
+    path: `/workstreams/${mixed.id}`,
+    act: async (page) => {
+      await page.locator(".workstream-page .members").waitFor();
+      await page.locator(".workstream-page .members a.key").first().click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  {
+    name: "panel-add",
+    window: true,
+    path: `/?grouping=epic&addTo=${single.id}`,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page.locator(".item a.key", { hasText: "SYN-23" }).click();
       await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
@@ -1473,6 +1524,7 @@ try {
   await server.close();
   await refusing.serving.close();
   await offline.serving.close();
+  await described.serving.close();
   await unpointed.close();
   await unanswered.serving.close();
   inFlight.release();

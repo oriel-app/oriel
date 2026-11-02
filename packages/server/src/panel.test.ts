@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { PanelBlock } from "@oriel/core";
 import type { ItemPanelView, ItemStampView, WindowView } from "@oriel/web/view";
+import { richDescription } from "@oriel/jira/testing";
 import { json, t0, testApp } from "./testing.ts";
 
 const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
@@ -45,6 +46,21 @@ test("a Jira issue shows its status, assignee, estimate, description and comment
   assert.equal(block(view, "text")?.heading, "Description");
   assert.equal(block(view, "text")?.format, "plain");
   assert.equal(block(view, "messages")?.heading, "Comments");
+});
+
+test("a description written with structure keeps it: a list, a heading, code and a link", async (t) => {
+  const app = await testApp(t, { live: true });
+  app.site?.describe("SYN-23", richDescription);
+  const view = json<ItemPanelView>(await app.get(path("jira:SYN-23")));
+  const rich = block(view, "rich");
+  assert.equal(rich?.heading, "Description");
+  assert.equal(block(view, "text"), undefined);
+  const kinds = rich?.prose.map((prose) => prose.kind);
+  assert.ok(kinds?.includes("heading") && kinds.includes("list") && kinds.includes("code"));
+  const wire = JSON.stringify(rich);
+  assert.match(wire, /"kind":"link","href":"https:\/\/design\.example\.com\/wallet"/);
+  // The link to a script is its words, and nothing reads as markup.
+  assert.doesNotMatch(wire, /javascript:/);
 });
 
 test("on a board that takes no estimates, the issue has no estimate to lack", async (t) => {

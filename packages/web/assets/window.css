@@ -3729,6 +3729,16 @@ a.replies:hover {
   border-top: 1px solid var(--line);
 }
 
+/* A person or channel the source's text names, set apart from the words
+   around it. */
+.mention {
+  padding: 0 0.2em;
+  border-radius: 0.25rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
 /* Who wrote it beside what they wrote, as a conversation reads. */
 .panel-message {
   display: grid;
