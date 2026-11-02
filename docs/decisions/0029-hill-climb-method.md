@@ -40,4 +40,4 @@ Repeats make a single case's flip visible. The stratified test uses them without
 
 - A climb costs more per round and less per decision. A fix decision is one round of k runs a case against the last kept state; a trim is two rounds against two.
 - The new rule has a blind spot: a drop confined to one or two cases, below the 8-point margin, can be kept.
-- `compareRounds` and its tests encode the old rule. They stay until the maintainer retires them, since a PR doesn't edit the tests that define the behaviour it changes.
+- `compareRounds`, the old rule, is gone. Its four tests are rewritten for `compareChange` (SPEC §11).

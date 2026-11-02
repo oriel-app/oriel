@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Split } from "./case.ts";
-import { compareRounds, formatComparison } from "./compare.ts";
+import { compareChange, formatChange, keeps } from "./compare.ts";
 import type { CaseResult } from "./runner.ts";
 import { signTest, wilson } from "./stats.ts";
 
@@ -54,39 +54,33 @@ const round = (train: boolean[], test: boolean[]) => [
 const no = (n: number) => Array.from({ length: n }, () => false);
 const yes = (n: number) => Array.from({ length: n }, () => true);
 
-test("keep a change only when both splits improve beyond noise", () => {
-  const baseline = round(no(8), no(8));
-  const kept = compareRounds(baseline, round([...yes(5), ...no(3)], [...yes(6), ...no(2)]));
-  assert.equal(kept.keep, true);
+// With one run a case, a fix's test is the sign test over the cases that
+// moved (decision 0029 replaced the rule that both splits must improve).
+test("with one run a case, a fix is kept only when its split improves beyond noise", () => {
+  const baseline = round(no(8), []);
+  const kept = compareChange(baseline, round([...yes(5), ...no(3)], []), "better");
+  assert.ok(keeps(kept));
   assert.deepEqual(
-    kept.splits.map((s) => [s.split, s.fixed.length, s.broken.length, s.improved]),
-    [
-      ["train", 5, 0, true],
-      ["test", 6, 0, true],
-    ],
+    kept.splits.map((s) => [s.split, s.moved.length]),
+    [["train", 5]],
   );
-  assert.match(formatComparison(kept), /\nkeep: both splits improved beyond noise$/);
+  assert.match(formatChange(kept), /\nkeep: better beyond noise at p ≤ 0\.05/);
 
   // Three fixed cases could be a coin flip: p = 1/8.
-  const noisy = compareRounds(baseline, round([...yes(5), ...no(3)], [...yes(3), ...no(5)]));
-  assert.equal(noisy.keep, false);
-  assert.match(formatComparison(noisy), /\nrevert: test did not improve beyond noise$/);
+  const noisy = compareChange(baseline, round([...yes(3), ...no(5)], []), "better");
+  assert.equal(keeps(noisy), false);
+  assert.match(formatChange(noisy), /\nrevert: train: not better beyond noise \(p=0\.125\)$/);
 });
 
 test("a change that fixes as many cases as it breaks is noise", () => {
-  const baseline = round(no(6), [true, true, false, false]);
-  const traded = compareRounds(baseline, round(yes(6), [false, false, true, true]));
-  const [train, test] = traded.splits;
-  assert.equal(train?.improved, true);
+  const baseline = round([true, true, false, false, ...no(4)], []);
+  const traded = compareChange(baseline, round([false, false, true, true, ...no(4)], []), "better");
+  const [train] = traded.splits;
   assert.deepEqual(
-    [test?.fixed, test?.broken],
-    [
-      ["test-2", "test-3"],
-      ["test-0", "test-1"],
-    ],
+    train?.moved.map((m) => m.id),
+    ["train-0", "train-1", "train-2", "train-3"],
   );
-  assert.equal(test?.improved, false);
-  assert.equal(traded.keep, false);
+  assert.equal(keeps(traded), false);
 });
 
 test("only cases in both rounds, in the same split and unedited, are compared", () => {
@@ -97,7 +91,7 @@ test("only cases in both rounds, in the same split and unedited, are compared", 
     { ...result("train-5", "train", true), hash: "an edited case" },
     result("brand-new", "test", true),
   ];
-  const compared = compareRounds(baseline, candidate);
+  const compared = compareChange(baseline, candidate, "better");
   assert.deepEqual(compared.unpaired, ["brand-new", "retired", "test-4", "train-5"]);
   assert.deepEqual(
     compared.splits.map((s) => [s.split, s.baseline.cases, s.candidate.passed]),
@@ -106,25 +100,25 @@ test("only cases in both rounds, in the same split and unedited, are compared", 
       ["test", 5, 5],
     ],
   );
-  assert.equal(compared.keep, true);
+  assert.ok(keeps(compared));
   assert.match(
-    formatComparison(compared),
-    /not compared \(new, gone or edited\): brand-new, retired, test-4, train-5/,
+    formatChange(compared),
+    /not compared \(new, gone, edited or never finished\): brand-new, retired, test-4, train-5/,
   );
 });
 
-test("a case that errored in either round is left out, so an outage can't look like a fix", () => {
+test("a run that errored is left out, so an outage can't look like a fix", () => {
   // The baseline lost five train cases to judge outages; the candidate didn't.
   const baseline = [
     ...no(5).map((_, i) => result(`train-${i}`, "train", false, "error")),
     ...round([], no(5)),
   ];
-  const outage = compareRounds(baseline, round(yes(5), yes(5)));
-  assert.deepEqual(outage.errored, ["train-0", "train-1", "train-2", "train-3", "train-4"]);
-  assert.deepEqual(outage.splits[0]?.baseline.cases, 0);
-  assert.equal(outage.keep, false);
-  assert.match(
-    formatComparison(outage),
-    /not compared \(errored in a round\): train-0, train-1, train-2, train-3, train-4\nrevert: train did not improve/,
+  const outage = compareChange(baseline, round(yes(5), yes(5)), "better");
+  assert.equal(outage.errored, 5);
+  assert.deepEqual(outage.unpaired, ["train-0", "train-1", "train-2", "train-3", "train-4"]);
+  assert.deepEqual(
+    outage.splits.map((s) => s.split),
+    ["test"],
   );
+  assert.match(formatChange(outage), /errored runs, left out: 5\n/);
 });
