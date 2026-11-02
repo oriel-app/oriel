@@ -4,17 +4,19 @@ import { doneTabs, donePage, nav, perPage } from "../src/nav.ts";
 import { init, type Model } from "../src/root.ts";
 import { parseRoute, type Route, routeUrl } from "../src/route.ts";
 import type { ThreadSummaryView } from "../src/view.ts";
+import { threadSummary } from "../testing.ts";
 
-const thread = (n: number, state: ThreadSummaryView["state"]): ThreadSummaryView => ({
-  id: `T${n}`,
-  title: `Thread ${n}`,
-  workstream: { id: "01JBZ0000000000000000000G1", name: "Launch" },
-  state,
-  doneBy: state === "done" ? "marked" : null,
-  waitingOn: null,
-  // Thread 1 is the most recently active.
-  activityAt: new Date(Date.UTC(2026, 9, 30) - n * 60_000).toISOString(),
-});
+const thread = (n: number, state: ThreadSummaryView["state"]): ThreadSummaryView =>
+  threadSummary({
+    id: `T${n}`,
+    title: `Thread ${n}`,
+    workstream: { id: "01JBZ0000000000000000000G1", name: "Launch" },
+    state,
+    doneBy: state === "done" ? "marked" : null,
+    waitingOn: null,
+    // Thread 1 is the most recently active.
+    activityAt: new Date(Date.UTC(2026, 9, 30) - n * 60_000).toISOString(),
+  });
 
 test("the Done tab holds done and handed-off threads, and the Dropped tab dropped ones", () => {
   const model: Model = {

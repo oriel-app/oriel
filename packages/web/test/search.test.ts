@@ -8,7 +8,8 @@ import { parse } from "../src/markdown.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
 import { inAppRoute, parseRoute, routeUrl } from "../src/route.ts";
 import { initSearch, pauseMs, type SearchMsg } from "../src/search.ts";
-import type { ChangeSetView, SearchResultView, SearchView, ThreadView } from "../src/view.ts";
+import type { ChangeSetView, SearchResultView, SearchView } from "../src/view.ts";
+import { changeSetView, searchResult, threadView } from "../testing.ts";
 
 const threadId = "01JBZ0000000000000000000T1";
 const setId = "01JBZ0000000000000000000C1";
@@ -23,17 +24,18 @@ function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   return [model, effects];
 }
 
-const result = (changeSet: string | null): SearchResultView => ({
-  thread: {
-    id: threadId,
-    title: "Try a Slack post",
-    state: "done",
-    workstream: { id: "01JBZ0000000000000000000G1", name: "SMS updates" },
-  },
-  changeSet: changeSet === null ? null : { id: changeSet, state: "applied" },
-  matched: changeSet ? "change-set" : "name",
-  excerpt: "Test post from Oriel",
-});
+const result = (changeSet: string | null): SearchResultView =>
+  searchResult({
+    thread: {
+      id: threadId,
+      title: "Try a Slack post",
+      state: "done",
+      workstream: { id: "01JBZ0000000000000000000G1", name: "SMS updates" },
+    },
+    changeSet: changeSet === null ? null : { id: changeSet, state: "applied" },
+    matched: changeSet ? "change-set" : "name",
+    excerpt: "Test post from Oriel",
+  });
 
 const answered = (request: number, results: SearchResultView[]): Msg => ({
   type: "replied",
@@ -179,27 +181,14 @@ test("a reply links to a thread or a change set in Oriel, and never elsewhere th
   });
 });
 
-const set = (id: string): ChangeSetView => ({
-  id,
-  status: "applied",
-  nextSteps: [],
-  applying: false,
-  sentUnapplied: false,
-  decision: null,
-  errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-});
+const set = (id: string): ChangeSetView => changeSetView({ id, status: "applied", nextSteps: [] });
 
-const view: ThreadView = {
+const view = threadView({
   id: threadId,
   title: "Try a Slack post",
   workstream: { id: "01JBZ0000000000000000000G1", name: "SMS updates", version: 1 },
   state: "done",
   doneBy: "applied",
-  regionVersion: 1,
-  members: [],
   entries: [
     { seq: 1, at, kind: "user", text: "Post a test" },
     { seq: 2, at, kind: "change-set", changeSetId: setId },
@@ -208,8 +197,7 @@ const view: ThreadView = {
   lastSeq: 3,
   running: false,
   changeSets: [set(setId)],
-  writable: true,
-};
+});
 const loaded: Msg = {
   type: "replied",
   tag: { kind: "thread", id: threadId },

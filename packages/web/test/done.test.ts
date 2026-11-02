@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { donePage, workstreamThreads, nav, perPage } from "../src/nav.ts";
 import { init, type Model, update } from "../src/root.ts";
 import { parseRoute, routeUrl } from "../src/route.ts";
-import type { WorkstreamView, ThreadSummaryView } from "../src/view.ts";
+import type { ThreadSummaryView } from "../src/view.ts";
+import { threadSummary, workstreamSummary, workstreamView } from "../testing.ts";
 
 const workstreamA = "01JBZ0000000000000000000G1";
 const workstreamB = "01JBZ0000000000000000000G2";
@@ -12,16 +13,17 @@ const thread = (
   n: number,
   state: ThreadSummaryView["state"] = "done",
   workstreamId = workstreamA,
-): ThreadSummaryView => ({
-  id: `T${n}`,
-  title: `Thread ${n}`,
-  workstream: { id: workstreamId, name: workstreamId === workstreamA ? "Launch" : "Billing" },
-  state,
-  doneBy: state === "done" ? "marked" : null,
-  waitingOn: null,
-  // Thread 1 is the most recently active.
-  activityAt: new Date(Date.UTC(2026, 9, 30) - n * 60_000).toISOString(),
-});
+): ThreadSummaryView =>
+  threadSummary({
+    id: `T${n}`,
+    title: `Thread ${n}`,
+    workstream: { id: workstreamId, name: workstreamId === workstreamA ? "Launch" : "Billing" },
+    state,
+    doneBy: state === "done" ? "marked" : null,
+    waitingOn: null,
+    // Thread 1 is the most recently active.
+    activityAt: new Date(Date.UTC(2026, 9, 30) - n * 60_000).toISOString(),
+  });
 
 const many = (count: number) => Array.from({ length: count }, (_, i) => thread(i + 1));
 
@@ -99,12 +101,12 @@ test("the Done page is at /done, with its page number past the first", () => {
 });
 
 test("a workstream's page lists the threads the sidebar does, as they move", () => {
-  const view = {
-    workstream: { id: workstreamA },
+  const view = workstreamView({
+    workstream: workstreamSummary({ id: workstreamA }),
     members: [],
     changes: [],
     threads: [thread(2, "working")],
-  } as unknown as WorkstreamView;
+  });
   const [entered] = init({ page: "workstream", id: workstreamA });
   const loaded = update(entered, {
     type: "replied",

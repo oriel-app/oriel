@@ -5,6 +5,13 @@ import { nav } from "../src/nav.ts";
 import { init, type Model, update } from "../src/root.ts";
 import { expected, initThread, threadReplied, type ThreadModel } from "../src/thread.ts";
 import type { ChangeSetView, ThreadSummaryView, ThreadView } from "../src/view.ts";
+import {
+  changeSetView,
+  diffView,
+  threadSummary,
+  threadView,
+  workstreamSummary,
+} from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const other = "01JBZ0000000000000000000T2";
@@ -13,47 +20,39 @@ const setId = "01JBZ0000000000000000000C1";
 const secondSet = "01JBZ0000000000000000000C2";
 const at = "2026-10-31T09:00:00.000Z";
 
-const open = (changeSetId: string): ChangeSetView => ({
-  id: changeSetId,
-  status: "open",
-  nextSteps: [{ kind: "approve" }, { kind: "reject" }],
-  applying: false,
-  sentUnapplied: false,
-  decision: null,
-  errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-});
+const open = (changeSetId: string): ChangeSetView =>
+  changeSetView({
+    id: changeSetId,
+    status: "open",
+    nextSteps: [{ kind: "approve" }, { kind: "reject" }],
+    applying: false,
+    decision: null,
+  });
 
-const threadView = (changeSets: ChangeSetView[]): ThreadView => ({
-  id,
-  title: "Estimate the launch",
-  workstream: { id: workstreamId, name: "Launch", version: 1 },
-  state: "working",
-  doneBy: null,
-  regionVersion: 1,
-  members: [],
-  entries: [],
-  lastSeq: 0,
-  running: false,
-  changeSets,
-  writable: true,
-});
+const viewWith = (changeSets: ChangeSetView[]): ThreadView =>
+  threadView({
+    id,
+    title: "Estimate the launch",
+    workstream: { id: workstreamId, name: "Launch", version: 1 },
+    state: "working",
+    running: false,
+    changeSets,
+    writable: true,
+  });
 
 const summary = (
   threadId: string,
   waitingOn: ThreadSummaryView["waitingOn"],
   state: ThreadSummaryView["state"] = "working",
-): ThreadSummaryView => ({
-  id: threadId,
-  title: "Estimate the launch",
-  workstream: { id: workstreamId, name: "Launch" },
-  state,
-  doneBy: state === "done" ? "applied" : null,
-  waitingOn,
-  activityAt: at,
-});
+): ThreadSummaryView =>
+  threadSummary({
+    id: threadId,
+    title: "Estimate the launch",
+    workstream: { id: workstreamId, name: "Launch" },
+    state,
+    doneBy: state === "done" ? "applied" : null,
+    waitingOn,
+  });
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
   type: "replied",
@@ -66,25 +65,21 @@ const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
 // and the sidebar's lists.
 function onPage(changeSets = [open(setId)]): Model {
   let [thread] = initThread(id);
-  [thread] = threadReplied(thread, replied({ kind: "thread", id }, threadView(changeSets)));
+  [thread] = threadReplied(thread, replied({ kind: "thread", id }, viewWith(changeSets)));
   for (const set of changeSets)
     [thread] = threadReplied(
       thread,
-      replied({ kind: "diff", changeSetId: set.id }, { changeSetId: set.id, hash: "h", lines: [] }),
+      replied({ kind: "diff", changeSetId: set.id }, diffView({ changeSetId: set.id, hash: "h" })),
     );
   return {
     ...init({ page: "thread", id })[0],
     thread,
     workstreams: [
-      {
+      workstreamSummary({
         id: workstreamId,
         name: "Launch",
-        origin: { kind: "picked" },
-        version: 1,
-        size: 0,
-        createdAt: at,
         threads: { working: 2, done: 0, "handed-off": 0, dropped: 0 },
-      },
+      }),
     ],
     threads: [summary(id, "review"), summary(other, "review")],
   };
@@ -180,7 +175,7 @@ test("once the server shows the decision, its view stands", () => {
     thread,
     replied(
       { kind: "thread", id },
-      threadView([
+      viewWith([
         {
           ...open(setId),
           status: "stopped",

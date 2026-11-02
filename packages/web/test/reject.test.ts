@@ -14,50 +14,39 @@ import {
   type ThreadModel,
   type ThreadMsg,
 } from "../src/thread.ts";
-import type { ChangeSetView, ChatEntry, ThreadSummaryView, ThreadView } from "../src/view.ts";
+import type { ChatEntry } from "../src/view.ts";
+import { changeSetView, diffView, threadSummary, threadView } from "../testing.ts";
 
 const id = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
 const at = "2026-10-31T09:00:00.000Z";
 
-const openSet: ChangeSetView = {
+const openSet = changeSetView({
   id: setId,
   status: "open",
   nextSteps: [{ kind: "approve" }, { kind: "reject" }],
-  applying: false,
-  sentUnapplied: false,
   decision: null,
-  errors: [],
-  revertOf: null,
-  reverts: [],
-  createdAt: at,
-};
+});
 
-const threadView: ThreadView = {
+const view = threadView({
   id,
   title: "Rename the practice story",
   workstream: { id: workstreamId, name: "Practice", version: 1 },
   state: "working",
-  doneBy: null,
-  regionVersion: 1,
-  members: [],
   entries: [],
-  lastSeq: 0,
   running: false,
   changeSets: [openSet],
   writable: true,
-};
+});
 
-const summary: ThreadSummaryView = {
+const summary = threadSummary({
   id,
   title: "Rename the practice story",
   workstream: { id: workstreamId, name: "Practice" },
   state: "working",
-  doneBy: null,
   waitingOn: "review",
-  activityAt: at,
-};
+});
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
   type: "replied",
@@ -69,10 +58,10 @@ const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({
 // The thread's page with its change set loaded and diffed, and the sidebar.
 function onPage(): Model {
   let [thread] = initThread(id);
-  [thread] = threadReplied(thread, replied({ kind: "thread", id }, threadView));
+  [thread] = threadReplied(thread, replied({ kind: "thread", id }, view));
   [thread] = threadReplied(
     thread,
-    replied({ kind: "diff", changeSetId: setId }, { changeSetId: setId, hash: "h", lines: [] }),
+    replied({ kind: "diff", changeSetId: setId }, diffView({ changeSetId: setId, hash: "h" })),
   );
   return { ...init({ page: "thread", id })[0], thread, threads: [summary] };
 }
@@ -171,7 +160,7 @@ test("a review link sends a reason with a rejection only", () => {
     opening,
     replied(
       { kind: "reviewOpened" },
-      { changeSet: openSet, diff: { changeSetId: setId, hash: "h1", lines: [] } },
+      { changeSet: openSet, diff: diffView({ changeSetId: setId, hash: "h1" }) },
     ),
   );
   let model = updateReview(shown, { type: "nameChanged", name: "Ana" })[0];
