@@ -1,6 +1,6 @@
 # 0018 Groups the user curates; threads follow their group
 
-Accepted 2026-10-29. Amends 0004. Amended by 0024: agents and outside tools add and remove members too, without approval and with Undo. Amended by 0026: a group is now called a workstream; read "group" here as "workstream". Amended by OA-88: an Undo or Redo, from a thread's own list, of an agent's action on that thread's workstream counts as a message from its user for catching up: the thread moves to the workstream's new version, with a marker, even when it is done, handed off or dropped, and it keeps its state. Amended by 0028: a workstream ends done or deleted; marking it done marks its open threads done, and deleting one that threads use hides it with them, with an Undo.
+Accepted 2026-10-29. Amends 0004. Amended by 0024: agents and outside tools add and remove members too, without approval and with Undo. Amended by 0026: a group is now called a workstream; read "group" here as "workstream". Amended by OA-88: an Undo or Redo, from a thread's own list, of an agent's action on that thread's workstream counts as a message from its user for catching up: the thread moves to the workstream's new version, with a marker, even when it is done, handed off or dropped, and it keeps its state. Amended by 0028: a workstream ends done or deleted; marking it done marks its open threads done, and deleting one that threads use hides it with them, with an Undo. Amended by 0027: citing an item into a thread is one more way for a workstream's membership to change, as the user's action with Undo.
 
 Adds: none
 
