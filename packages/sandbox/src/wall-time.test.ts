@@ -1,7 +1,7 @@
 // The run's wall-time cap, apart from sandbox.test.ts: each test here waits
 // the cap out, so they wait in parallel with that file's.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, test } from "node:test";
 import type { Bindings } from "@oriel/core";
 import { fakeBindings } from "./fake-bindings.ts";
 import { createSandbox } from "./sandbox.ts";
@@ -9,6 +9,11 @@ import { runner } from "./testing.ts";
 
 // Time is passed in: every duration comes out as 0.
 const go = runner(createSandbox({ now: () => 0 }));
+
+// A run that compiles first, so the cap's tests start with the compile worker
+// warm, as they did after the tests before them in sandbox.test.ts: a cold
+// one, beside the other files' slow compiles, could eat the 1 s cap.
+before(() => go("return 1;"));
 
 test("the wall-time kill comes back as a clean limit error that names the cap", async () => {
   const { result } = await go(`for (;;) {}`, { wallMs: 1_000 });
