@@ -1,4 +1,4 @@
-# 0029 Hill-climbs run to a frozen plan, with repeats and a held-out test
+# 0030 Hill-climbs run to a frozen plan, with repeats and a held-out test
 
 Accepted 2026-11-02 (OA-144, OA-54). Changes SPEC §8's hill-climb rule.
 

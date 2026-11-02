@@ -55,7 +55,7 @@ const no = (n: number) => Array.from({ length: n }, () => false);
 const yes = (n: number) => Array.from({ length: n }, () => true);
 
 // With one run a case, a fix's test is the sign test over the cases that
-// moved (decision 0029 replaced the rule that both splits must improve).
+// moved (decision 0030 replaced the rule that both splits must improve).
 test("with one run a case, a fix is kept only when its split improves beyond noise", () => {
   const baseline = round(no(8), []);
   const kept = compareChange(baseline, round([...yes(5), ...no(3)], []), "better");
