@@ -237,6 +237,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         comments.push({
           author: comment.author?.displayName ?? "Unknown",
           body: adfToText(comment.body),
+          ...(plainDocument(comment.body) ? {} : { bodyDoc: comment.body }),
           at: comment.created,
         });
       if (!page.comments.length || comments.length >= page.total) return comments;

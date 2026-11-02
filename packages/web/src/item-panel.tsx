@@ -333,8 +333,9 @@ const minute = 60_000;
 // Messages as a conversation reads: one header for each day, saying how long
 // after the message before it was when that's a day or more; each message
 // with who wrote it and when, a run by one person within a few minutes under
-// their name once. Mentions are set apart, files listed apart from the text,
-// and an edit marked after it.
+// their name once. Mentions are set apart, text written with structure keeps
+// it, as a description does, files are listed apart from the text, and an
+// edit is marked after it.
 function Messages({ messages, before }: { messages: PanelMessage[]; before: string | null }) {
   const days = daysOf(messages, before);
   return (
@@ -375,7 +376,13 @@ function Messages({ messages, before }: { messages: PanelMessage[]; before: stri
                 </p>
               </>
             )}
-            <Plain spans={message.spans ?? [{ kind: "text", text: message.text }]} />
+            {message.prose ? (
+              <div class="reply panel-prose">
+                <ProseBlocks prose={message.prose} linksTo="any" />
+              </div>
+            ) : (
+              <Plain spans={message.spans ?? [{ kind: "text", text: message.text }]} />
+            )}
             {message.files && message.files.length > 0 && (
               <ul class="panel-files" aria-label="Files">
                 {message.files.map((file, j) => (

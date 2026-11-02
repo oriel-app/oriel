@@ -30,13 +30,15 @@ export type PanelBlock =
 
 // A message: its author, when (an instant) and its text as written. A source
 // may say more: the same text with what it marks in it (a mention, a channel) set apart
-// (`spans`, whose text keeps its line breaks), when it was last edited, the files it shared, by name, apart
+// (`spans`, whose text keeps its line breaks), or, written with structure
+// such as a list or code, as typed blocks (`prose`), when it was last edited, the files it shared, by name, apart
 // from its text, and its own words about it, such as "Also sent to #fares".
 export type PanelMessage = {
   author: string;
   at: string;
   text: string;
   spans?: PanelInline[];
+  prose?: PanelProse[];
   edited?: string;
   files?: string[];
   labels?: string[];

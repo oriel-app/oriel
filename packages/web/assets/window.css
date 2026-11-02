@@ -3827,6 +3827,7 @@ a.replies:hover {
 
 .panel-message .panel-said,
 .panel-message .panel-plain,
+.panel-message .panel-prose,
 .panel-message .panel-files,
 .panel-message .panel-edited {
   grid-column: 2;

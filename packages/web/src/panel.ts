@@ -4,7 +4,14 @@
 // item change, which says when the read has fallen behind its source. From
 // it, the item can be added to the workstream the page is about, with Undo.
 import { type Effect, errorOf, get, post, type Replied, report, undoing } from "./http.ts";
-import type { ItemPanelView, ItemStampView, PanelInline, Undoable, UndoView } from "./view.ts";
+import type {
+  ItemPanelView,
+  ItemStampView,
+  PanelInline,
+  Undoable,
+  UndoView,
+  WorkstreamView,
+} from "./view.ts";
 
 export type PanelModel = {
   id: string;
@@ -27,6 +34,14 @@ export type PanelAdd = { adding: boolean; added: Added | null; problem: string |
 // undoes it; null when it was in already, and nothing was added.
 export type Added = { workstreamId: string; name: string; undo: UndoView | null };
 
+// The adds the panel made that can still be undone, one for each item, with
+// the workstream version each made. They outlast the panel moving on, so an
+// item's line and its Undo come back with it (decision 0024).
+export type PanelAdds = readonly { id: string; version: number; added: Added }[];
+
+// A workstream as a page on screen shows it: its version, and its members then.
+export type ShownWorkstream = { id: string; version: number; members: ReadonlySet<string> };
+
 // The workstream the page is about, which the panel's item can be added to:
 // the workstream's page, a thread's, or the window adding to one. `members`,
 // when the page knows them.
@@ -40,8 +55,10 @@ export type PanelMsg =
 const path = (id: string) => `/api/items/${encodeURIComponent(id)}`;
 const read = (id: string): Effect => get(path(id), { kind: "item", id });
 
-// Opens `id`'s panel, reading it, and says it was opened.
-export function openPanel(id: string): [PanelModel, Effect[]] {
+// Opens `id`'s panel, reading it, and says it was opened. An add of it the
+// panel made before, which can still be undone, shows again.
+export function openPanel(id: string, adds: PanelAdds = []): [PanelModel, Effect[]] {
+  const kept = adds.find((each) => each.id === id);
   return [
     {
       id,
@@ -49,6 +66,7 @@ export function openPanel(id: string): [PanelModel, Effect[]] {
       view: null,
       changedAt: null,
       problem: null,
+      ...(kept ? { add: { adding: false, added: kept.added, problem: null } } : {}),
     },
     [read(id), report({ name: "item.panel-opened", item: id })],
   ];
@@ -112,6 +130,79 @@ export function panelReplied(model: PanelModel, msg: Replied): [PanelModel, Effe
       : [model, []];
   if (!msg.ok) return [{ ...model, status: "failed", problem: errorOf(msg.body) }, []];
   return [{ ...model, status: "ready", view: msg.body as ItemPanelView, changedAt: null }, []];
+}
+
+// The adds kept after a reply from adding or undoing, whichever item the
+// panel shows by then: an add that can be undone is kept, in place of the
+// item's last; one undone goes.
+export function keptAdds(adds: PanelAdds, msg: Replied): PanelAdds {
+  const { tag } = msg;
+  if ((tag.kind !== "panelAdded" && tag.kind !== "panelAddUndone") || !msg.ok) return adds;
+  const others = adds.filter((each) => each.id !== tag.id);
+  if (tag.kind === "panelAddUndone") return others;
+  const { workstream, undo } = msg.body as Undoable<WorkstreamView>;
+  if (undo === null) return adds;
+  const added = { workstreamId: tag.workstreamId, name: tag.name, undo };
+  return [...others, { id: tag.id, version: workstream.version, added }];
+}
+
+// The adds that still stand, by what a page shows of a workstream: one goes
+// once it shows the workstream, at the version the add made or later,
+// without the item, as when it was removed some other way. One it shows
+// with the item at a later version stands as of that version. A page that
+// shows an older version tells nothing.
+export function standingAdds(adds: PanelAdds, shown: readonly ShownWorkstream[]): PanelAdds {
+  let changed = false;
+  const standing = adds.flatMap((add) => {
+    const seen = shown.find(
+      (workstream) => workstream.id === add.added.workstreamId && workstream.version >= add.version,
+    );
+    if (!seen || (seen.version === add.version && seen.members.has(add.id))) return [add];
+    changed = true;
+    return seen.members.has(add.id) ? [{ ...add, version: seen.version }] : [];
+  });
+  return changed ? standing : adds;
+}
+
+// For the open item's add, once the workstreams list shows its workstream
+// changed since the add stood: that workstream, loaded again, says whether
+// it still does.
+export function checkAdd(
+  adds: PanelAdds,
+  id: string,
+  workstreams: readonly { id: string; version: number }[] | null,
+): Effect[] {
+  const add = adds.find((each) => each.id === id);
+  const listed = add && workstreams?.find((each) => each.id === add.added.workstreamId);
+  return add && listed && listed.version > add.version ? recheckAdd(adds, id) : [];
+}
+
+// An item's add's workstream, loaded again, as after its Undo failed: only
+// the workstream says whether that was because the add no longer stands.
+export function recheckAdd(adds: PanelAdds, id: string): Effect[] {
+  const workstreamId = adds.find((each) => each.id === id)?.added.workstreamId;
+  return workstreamId
+    ? [get(`/api/workstreams/${workstreamId}`, { kind: "panelAddChecked", workstreamId })]
+    : [];
+}
+
+// What a workstream's view shows of it, for `standingAdds`.
+export const shownOf = (view: WorkstreamView): ShownWorkstream => ({
+  id: view.workstream.id,
+  version: view.workstream.version,
+  members: new Set(view.members.map((member) => member.ref.id)),
+});
+
+// The panel without an add that no longer stands.
+export function withAdds(model: PanelModel, adds: PanelAdds): PanelModel {
+  const { add } = model;
+  const added = add?.added;
+  if (!add || !added?.undo) return model;
+  const stands = adds.some(
+    (each) => each.id === model.id && each.added.workstreamId === added.workstreamId,
+  );
+  if (stands) return model;
+  return { ...model, add: { ...add, added: null } };
 }
 
 // Asks the index when the item last changed, without reading its source.
