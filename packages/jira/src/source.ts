@@ -26,7 +26,7 @@ import {
 } from "@oriel/core";
 import { type JiraAttrs, type JiraContent, jiraText } from "./attrs.ts";
 import { jiraOps } from "./ops.ts";
-import { adfToText } from "./adf.ts";
+import { adfToText, plainDocument } from "./adf.ts";
 import { type JiraBoards, jiraBoards } from "./boards.ts";
 import {
   api,
@@ -184,6 +184,9 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
         moves: movesOf(found.transitions, found.fields.status.name),
         summary,
         description,
+        ...(plainDocument(found.fields.description)
+          ? {}
+          : { descriptionDoc: found.fields.description }),
         comments,
         links: links.map((link) => ({
           linkId: String(link.id),

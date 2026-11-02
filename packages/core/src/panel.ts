@@ -13,17 +13,55 @@ export type PanelBlock =
   // reads it into its own blocks, as it does an agent's reply; `plain`: shown
   // as written, line by line.
   | { kind: "text"; heading: string | null; text: string; format: "markdown" | "plain" }
+  // A body of text the source wrote with structure, such as a description in
+  // Jira's editor, as typed blocks the server read it into: never markup.
+  | { kind: "rich"; heading: string | null; prose: PanelProse[] }
   // Messages in the order they were written, each with its author and when
   // (an instant), such as a conversation or an issue's comments. `empty` says
   // what none means here.
   | {
       kind: "messages";
       heading: string | null;
-      messages: { author: string; at: string; text: string }[];
+      messages: PanelMessage[];
       empty: string;
     }
   // Oriel's own words about the read, such as a file too large to show.
   | { kind: "note"; text: string };
+
+// A message: its author, when (an instant) and its text as written. A source
+// may say more: the same text with what it marks in it (a mention, a channel) set apart
+// (`spans`, whose text keeps its line breaks), when it was last edited, the files it shared, by name, apart
+// from its text, and its own words about it, such as "Also sent to #fares".
+export type PanelMessage = {
+  author: string;
+  at: string;
+  text: string;
+  spans?: PanelInline[];
+  edited?: string;
+  files?: string[];
+  labels?: string[];
+};
+
+// Rich text's blocks and what is inside them, as the web shows an agent's
+// reply. A link's `href` is http(s), or the source's text has none: anything
+// else is plain text. A mention names a person, or people (everyone here, a
+// group); a channel names a conversation, such as #fares. Each as the source
+// wrote it.
+export type PanelInline =
+  | { kind: "text"; text: string }
+  | { kind: "break" }
+  | { kind: "code"; text: string }
+  | { kind: "strong" | "em"; children: PanelInline[] }
+  | { kind: "link"; href: string; children: PanelInline[] }
+  | { kind: "mention" | "channel"; text: string };
+
+export type PanelProse =
+  | { kind: "paragraph"; children: PanelInline[] }
+  | { kind: "heading"; level: number; children: PanelInline[] }
+  | { kind: "list"; ordered: boolean; start: number; tight: boolean; items: PanelProse[][] }
+  | { kind: "quote"; children: PanelProse[] }
+  | { kind: "code"; text: string }
+  | { kind: "rule" };
 
 // A source's view of an item: its blocks, and a title when the item's own
 // would only repeat them, as a message's first line repeats the message. Null

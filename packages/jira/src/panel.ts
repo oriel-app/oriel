@@ -1,12 +1,15 @@
 // A Jira issue as the panel beside the page shows it, from a live read: its
 // type, status, assignee and estimate, its description and its comments.
 import type { PanelBlock, PanelOf } from "@oriel/core";
+import { adfToProse } from "./adf.ts";
 import { jiraContent } from "./attrs.ts";
 
 export const jiraPanel: PanelOf = (content) => {
   const read = jiraContent(content);
   if (!read.ok) return null;
   const issue = read.value;
+  // A description written with structure keeps it, read into typed blocks.
+  const prose = issue.descriptionDoc === undefined ? [] : adfToProse(issue.descriptionDoc);
   const blocks: PanelBlock[] = [
     {
       kind: "facts",
@@ -29,13 +32,15 @@ export const jiraPanel: PanelOf = (content) => {
         ...(issue.labels.length > 0 ? [{ name: "Labels", value: issue.labels.join(", ") }] : []),
       ],
     },
-    // Rich text arrives as plain text, which stays as written.
-    {
-      kind: "text",
-      heading: "Description",
-      text: issue.description === "" ? "No description." : issue.description,
-      format: "plain",
-    },
+    // Otherwise it is plain text, which stays as written.
+    prose.length > 0
+      ? { kind: "rich", heading: "Description", prose }
+      : {
+          kind: "text",
+          heading: "Description",
+          text: issue.description === "" ? "No description." : issue.description,
+          format: "plain",
+        },
     {
       kind: "messages",
       heading: "Comments",

@@ -121,6 +121,12 @@ export function DropZone(props: {
 export type ItemLinks = { dispatch: Dispatch; items: ReadonlyMap<string, string> };
 export const ItemLinksContext = createContext<ItemLinks | null>(null);
 
+// The list on the page that holds a link to an item, by item ID, in the
+// order it shows them: a Browse cluster's items, a workstream's members, a
+// thread's rail or search results. An item opened from it can step through it
+// in the panel.
+export const ItemListContext = createContext<readonly string[] | null>(null);
+
 // An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
 
@@ -135,9 +141,12 @@ export function ItemLink(props: {
   children: ComponentChildren;
 }) {
   const links = useContext(ItemLinksContext);
+  const list = useContext(ItemListContext);
   const href = safeHref(props.item.url);
   const id = props.item.id ?? (href ? links?.items.get(addressOf(href)) : undefined) ?? null;
   const dispatch = id === null ? null : (links?.dispatch ?? null);
+  const opened = (id: string): Msg =>
+    list?.includes(id) ? { type: "itemOpened", id, list } : { type: "itemOpened", id };
   if (id === null || dispatch === null) {
     if (!href) return <span class={props.class}>{props.children}</span>;
     return (
@@ -151,7 +160,7 @@ export function ItemLink(props: {
       <button
         type="button"
         class={props.class ? `${props.class} item-link` : "item-link"}
-        onClick={() => dispatch({ type: "itemOpened", id })}
+        onClick={() => dispatch(opened(id))}
       >
         {props.children}
       </button>
@@ -160,7 +169,7 @@ export function ItemLink(props: {
     const to = clickTo(event);
     if (to === "page") {
       event.preventDefault();
-      dispatch({ type: "itemOpened", id });
+      dispatch(opened(id));
     } else if (to === "new-tab") dispatch({ type: "sourceOpened", id, via: "link" });
   };
   return (
@@ -212,10 +221,22 @@ export function Replies(props: { id: string; replies: { count: number; url: stri
 // to that item (`ItemLink`).
 export function Markdown({ text, linksTo }: { text: string; linksTo: Sites }) {
   const read = useMemo(() => parse(text), [text]);
-  return <>{read.map((prose, i) => block(prose, i, linksTo))}</>;
+  return <ProseBlocks prose={read} linksTo={linksTo} />;
+}
+
+// Blocks already read, from markdown or by a source's server side, such as
+// Jira's rich text, the same way.
+export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; linksTo: Sites }) {
+  return <>{prose.map((each, i) => block(each, i, linksTo))}</>;
 }
 
 type Sites = ReadonlySet<string> | "any";
+
+// What is inside a block, already read, such as a message's text with its
+// mentions.
+export function Inlines({ inlines, linksTo }: { inlines: readonly Inline[]; linksTo: Sites }) {
+  return <>{inlines.map((inline, i) => span(inline, i, linksTo))}</>;
+}
 
 function block(prose: Prose, key: number, to: Sites): ComponentChildren {
   const spans = (inlines: Inline[]) => inlines.map((inline, i) => span(inline, i, to));
@@ -303,6 +324,13 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
       );
     case "route":
       return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
+    case "mention":
+    case "channel":
+      return (
+        <span key={key} class="mention" data-kind={inline.kind}>
+          {inline.text}
+        </span>
+      );
   }
 }
 
@@ -322,6 +350,14 @@ function RouteLink(props: { route: Route; label: ComponentChildren }) {
 function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChildren }) {
   const { href, sites, label } = props;
   const links = useContext(ItemLinksContext);
+  // Blocks a source's side read are checked there too; an address that
+  // isn't http(s) is text all the same.
+  if (!safeHref(href))
+    return (
+      <span>
+        {label} ({href})
+      </span>
+    );
   if (links?.items.has(addressOf(href)))
     return <ItemLink item={{ id: null, url: href }}>{label}</ItemLink>;
   return sites === "any" || opens(href, sites) ? (

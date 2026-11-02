@@ -7,6 +7,7 @@ import {
   Chevron,
   type Dispatch,
   ItemLink,
+  ItemListContext,
   keyLabel,
   Link,
   plural,
@@ -391,17 +392,19 @@ function Items(props: {
     );
   }
   return (
-    <ul class="items" id={props.id}>
-      {props.items.map((item) => (
-        <Item
-          key={item.id}
-          item={item}
-          picked={props.selected.includes(item.id)}
-          url={props.locations[item.id] ?? null}
-          dispatch={props.dispatch}
-        />
-      ))}
-    </ul>
+    <ItemListContext.Provider value={props.items.map((item) => item.id)}>
+      <ul class="items" id={props.id}>
+        {props.items.map((item) => (
+          <Item
+            key={item.id}
+            item={item}
+            picked={props.selected.includes(item.id)}
+            url={props.locations[item.id] ?? null}
+            dispatch={props.dispatch}
+          />
+        ))}
+      </ul>
+    </ItemListContext.Provider>
   );
 }
 

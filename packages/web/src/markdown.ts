@@ -12,7 +12,9 @@ export type Inline =
   | { kind: "code"; text: string }
   | { kind: "strong" | "em"; children: Inline[] }
   | { kind: "link"; href: string; children: Inline[] }
-  | { kind: "route"; route: Route; children: Inline[] };
+  | { kind: "route"; route: Route; children: Inline[] }
+  // A person or a channel a source's text names; markdown has neither.
+  | { kind: "mention" | "channel"; text: string };
 
 export type Prose =
   | { kind: "paragraph"; children: Inline[] }

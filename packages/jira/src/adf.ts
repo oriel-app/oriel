@@ -1,6 +1,17 @@
-// Atlassian Document Format, Jira's rich text, to and from plain text. Text is
-// content, never markup, both ways: nothing in it is interpreted.
-import { array, type Infer, object, optional, record, string, unknown } from "@oriel/core";
+// Atlassian Document Format, Jira's rich text, to and from plain text, and
+// into the panel's typed blocks. Text is content, never markup, every way:
+// nothing in it is interpreted.
+import {
+  array,
+  type Infer,
+  object,
+  optional,
+  type PanelInline,
+  type PanelProse,
+  record,
+  string,
+  unknown,
+} from "@oriel/core";
 
 // Plain text as a document: blank lines split paragraphs and single newlines
 // become hard breaks. `adfToText` reads it back unchanged, except that a run
@@ -167,4 +178,145 @@ function text(n: Node): string {
   const words = n.text ?? "";
   const link = n.marks?.find((mark) => mark.type === "link")?.attrs?.href;
   return typeof link === "string" && link && link !== words ? `${words} (${link})` : words;
+}
+
+// Whether a document is only paragraphs of unmarked text, which plain text
+// says as well.
+export function plainDocument(doc: unknown): boolean {
+  const root = node(doc);
+  const plain = (n: Node): boolean =>
+    ["doc", "paragraph", "text", "hardBreak"].includes(n.type) &&
+    (n.marks ?? []).length === 0 &&
+    children(n).every(plain);
+  return root === null || plain(root);
+}
+
+// Lists and quotes nest at most this deep; deeper, their text is a paragraph.
+const deepest = 8;
+
+// A document as the panel's blocks: paragraphs, headings, lists, quotes, code
+// and rules, with bold, italics, code, links and mentions inside them. What
+// has no block of its own reads as text: a table row by row, a panel or an
+// expand as its contents, an attachment as "[attachment]". A link is kept
+// only to an http(s) address; any other is its words.
+export function adfToProse(doc: unknown): PanelProse[] {
+  const root = node(doc);
+  return root ? proseOf(root, 0) : [];
+}
+
+function proseOf(n: Node, depth: number): PanelProse[] {
+  const inner = () => children(n).flatMap((child) => proseOf(child, depth + 1));
+  const said = (inlines: PanelInline[]): PanelProse[] =>
+    inlines.length === 0 ? [] : [{ kind: "paragraph", children: inlines }];
+  if (depth >= deepest) return said(textInline(render(n)));
+  switch (n.type) {
+    case "doc":
+    case "panel":
+    case "layoutSection":
+    case "layoutColumn":
+    case "bodiedExtension":
+    case "mediaSingle":
+    case "mediaGroup":
+    case "listItem":
+      return children(n).flatMap((child) => proseOf(child, depth));
+    case "paragraph":
+    case "decisionItem":
+      return said(inlinesOf(n));
+    case "heading": {
+      const level = Math.min(Math.max(Number(attr(n, "level")) || 1, 1), 6);
+      return [{ kind: "heading", level, children: inlinesOf(n) }];
+    }
+    case "bulletList":
+    case "decisionList":
+    case "orderedList":
+    case "taskList": {
+      const ordered = n.type === "orderedList";
+      const items = children(n).map((item) => proseOf(item, depth + 1));
+      return [
+        {
+          kind: "list",
+          ordered,
+          start: ordered ? Number(attr(n, "order")) || 1 : 1,
+          // An item of more than one block keeps its paragraphs apart.
+          tight: items.every((item) => item.length <= 1),
+          items,
+        },
+      ];
+    }
+    case "taskItem":
+      return said([
+        { kind: "text", text: attr(n, "state") === "DONE" ? "☑ " : "☐ " },
+        ...inlinesOf(n),
+      ]);
+    case "blockquote":
+      return [{ kind: "quote", children: inner() }];
+    case "codeBlock":
+      return [{ kind: "code", text: children(n).map(render).join("") }];
+    case "rule":
+      return [{ kind: "rule" }];
+    case "expand":
+    case "nestedExpand": {
+      const title = attr(n, "title");
+      return [
+        ...(title ? said([{ kind: "strong", children: [{ kind: "text", text: title }] }]) : []),
+        ...inner(),
+      ];
+    }
+    case "table":
+      return children(n).flatMap((row) => said(textInline(render(row))));
+    case "blockCard":
+    case "embedCard":
+      return said(inlineOf({ ...n, type: "inlineCard" }));
+    default:
+      if (blockTypes.has(n.type) || children(n).some((child) => blockTypes.has(child.type)))
+        return inner();
+      return said(inlineOf(n));
+  }
+}
+
+const textInline = (text: string): PanelInline[] => (text ? [{ kind: "text", text }] : []);
+
+const inlinesOf = (n: Node): PanelInline[] => children(n).flatMap(inlineOf);
+
+function inlineOf(n: Node): PanelInline[] {
+  switch (n.type) {
+    case "text":
+      return marked(n);
+    case "hardBreak":
+      return [{ kind: "break" }];
+    case "mention":
+      return [{ kind: "mention", text: render(n) }];
+    case "inlineCard": {
+      const url = attr(n, "url");
+      const href = webHref(url);
+      return href ? [{ kind: "link", href, children: textInline(url) }] : textInline(url);
+    }
+    case "paragraph":
+    case "heading":
+      return inlinesOf(n);
+    default:
+      return n.text === undefined && n.content !== undefined ? inlinesOf(n) : textInline(render(n));
+  }
+}
+
+// A text node with its marks: code, then strong and em, then a link around
+// them all. Other marks (strike, underline, colour) leave it as it is.
+function marked(n: Node): PanelInline[] {
+  const words = n.text ?? "";
+  if (words === "") return [];
+  const marks = new Set((n.marks ?? []).map((mark) => mark.type));
+  let out: PanelInline[] = [
+    marks.has("code") ? { kind: "code", text: words } : { kind: "text", text: words },
+  ];
+  if (marks.has("em")) out = [{ kind: "em", children: out }];
+  if (marks.has("strong")) out = [{ kind: "strong", children: out }];
+  const link = n.marks?.find((mark) => mark.type === "link")?.attrs?.href;
+  const href = typeof link === "string" ? webHref(link) : null;
+  return href ? [{ kind: "link", href, children: out }] : out;
+}
+
+// An address the panel may link to: http(s) only, as the browser writes it.
+function webHref(href: string): string | null {
+  const url = URL.parse(href);
+  return url && (url.protocol === "http:" || url.protocol === "https:") ? url.href : null;
 }

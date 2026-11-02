@@ -13,7 +13,15 @@ import {
   type Removal,
   undoable,
 } from "./workstream.ts";
-import { type Dispatch, DropZone, Link, plural, StateChip, when } from "./parts.tsx";
+import {
+  type Dispatch,
+  DropZone,
+  ItemListContext,
+  Link,
+  plural,
+  StateChip,
+  when,
+} from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
 import type {
   WorkstreamChangeView,
@@ -218,15 +226,17 @@ export function WorkstreamPage(props: {
           {members.length === 0 ? (
             <p class="rail-empty">No items. Add some from the window.</p>
           ) : (
-            <ul class="members" ref={list}>
-              {members.map((member) => (
-                <Member
-                  key={member.ref.id}
-                  member={member}
-                  onRemove={() => remove(member.ref.id)}
-                />
-              ))}
-            </ul>
+            <ItemListContext.Provider value={members.map((member) => member.ref.id)}>
+              <ul class="members" ref={list}>
+                {members.map((member) => (
+                  <Member
+                    key={member.ref.id}
+                    member={member}
+                    onRemove={() => remove(member.ref.id)}
+                  />
+                ))}
+              </ul>
+            </ItemListContext.Provider>
           )}
           <Undos
             removals={model.removals}

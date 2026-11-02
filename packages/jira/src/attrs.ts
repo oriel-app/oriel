@@ -22,6 +22,7 @@ import {
   type State,
   string,
   union,
+  unknown,
   type Validator,
 } from "@oriel/core";
 
@@ -37,7 +38,8 @@ export type JiraAttrs = {
 
 export type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 
-// Full content, read live at run time. Rich text arrives as plain text.
+// Full content, read live at run time. Rich text arrives as plain text, and
+// a structured description as Jira's rich text too, for the panel.
 export type JiraContent = {
   issueType: string;
   status: { name: string; category: State };
@@ -50,6 +52,9 @@ export type JiraContent = {
   labels: string[];
   summary: string;
   description: string;
+  // The description as Jira's rich text, for the panel, when it has more
+  // than paragraphs of plain text: a list, a heading, code, a link, a mark.
+  descriptionDoc?: unknown;
   comments: { author: string; body: string; at: Instant }[];
   links: { linkId: string; url: string; title: string }[];
   // What any item's read returns: the summary as the title, and the summary,
@@ -83,6 +88,7 @@ export const jiraContent = object({
   labels: array(string),
   summary: string,
   description: string,
+  descriptionDoc: optional(unknown),
   comments: array(
     object({
       author: string,

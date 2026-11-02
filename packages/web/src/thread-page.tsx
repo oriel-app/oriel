@@ -10,6 +10,7 @@ import {
   DropZone,
   ItemKey,
   ItemLinksContext,
+  ItemListContext,
   Link,
   Markdown,
   plural,
@@ -257,15 +258,17 @@ function ChatBlock(props: {
           <p class="search-label">
             Searched outside this workstream · {plural(block.hits.length, "result")} · read-only
           </p>
-          <ul class="hits">
-            {block.hits.map((hit) => (
-              <li key={hit.id}>
-                <ItemKey item={hit} />
-                <span class="hit-title">{hit.title}</span>
-                {hit.inRegion && <span class="in-region">in this workstream</span>}
-              </li>
-            ))}
-          </ul>
+          <ItemListContext.Provider value={block.hits.map((hit) => hit.id)}>
+            <ul class="hits">
+              {block.hits.map((hit) => (
+                <li key={hit.id}>
+                  <ItemKey item={hit} />
+                  <span class="hit-title">{hit.title}</span>
+                  {hit.inRegion && <span class="in-region">in this workstream</span>}
+                </li>
+              ))}
+            </ul>
+          </ItemListContext.Provider>
         </li>
       );
     case "change-set": {
@@ -1051,11 +1054,13 @@ function Region({ view }: { view: ThreadView }) {
       {view.members.length === 0 && !behind && (
         <p class="rail-note">No items yet. What a change set here creates joins this workstream.</p>
       )}
-      <ul class="members compact">
-        {view.members.map((member) => (
-          <Member key={member.ref.id} member={member} />
-        ))}
-      </ul>
+      <ItemListContext.Provider value={view.members.map((member) => member.ref.id)}>
+        <ul class="members compact">
+          {view.members.map((member) => (
+            <Member key={member.ref.id} member={member} />
+          ))}
+        </ul>
+      </ItemListContext.Provider>
     </aside>
   );
 }

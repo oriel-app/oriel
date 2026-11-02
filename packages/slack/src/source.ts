@@ -36,7 +36,7 @@ import {
   slackText,
   slackTitle,
 } from "./attrs.ts";
-import { mentionedUsers, plainText } from "./mrkdwn.ts";
+import { mentionedUsers, type SlackPart, textParts, unnamedChannels } from "./mrkdwn.ts";
 
 export type SlackSource = Source<"slack", SlackAttrs, SlackContent>;
 
@@ -259,18 +259,36 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           results.push({ id, status: "gone", reason: thread === "forbidden" ? thread : "deleted" });
           continue;
         }
-        const { author, body } = await named(root);
+        // A channel mentioned with no name is named where it is one the user
+        // picked; any other stays its ID.
+        const channelNamed = async (id: string) => {
+          if (!channels.includes(id)) return null;
+          const found = await nameOf(id);
+          return typeof found === "string" ? found : null;
+        };
+        const { author, body, parts, files } = await named(root, channelNamed);
         const replies = [];
         for (const reply of thread.filter((m) => m.ts !== ts && posted.has(m.subtype))) {
-          const said = await named(reply);
-          replies.push({ author: said.author, at: tsInstant(reply.ts), body: said.body });
+          const said = await named(reply, channelNamed);
+          const edited = editedOf(reply);
+          replies.push({
+            author: said.author,
+            at: tsInstant(reply.ts),
+            body: said.body,
+            parts: said.parts,
+            ...(said.files.length > 0 && { files: said.files }),
+            ...(edited && { editedAt: edited }),
+            ...(reply.subtype === "thread_broadcast" && { broadcast: true as const }),
+          });
         }
         const content = {
           channel: { id: channel, name },
           author,
           postedAt: tsInstant(ts),
-          editedAt: root.edited && tsShape.test(root.edited.ts) ? tsInstant(root.edited.ts) : null,
+          editedAt: editedOf(root),
           body,
+          parts,
+          ...(files.length > 0 && { files }),
           replies,
         };
         results.push({
@@ -283,6 +301,10 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
     },
   };
 }
+
+// When a message's text last changed, or null if it never has.
+const editedOf = (m: Message): Instant | null =>
+  m.edited && tsShape.test(m.edited.ts) ? tsInstant(m.edited.ts) : null;
 
 // A message someone posted in the channel, not a reply to another.
 export function isRoot(m: Message | undefined): m is Message {
@@ -326,12 +348,22 @@ export function slackReads(api: SlackApi, log: Log) {
       }
       return found;
     };
-    // A message's author and body, with every mention in it named.
-    return async (m: Message): Promise<{ author: SlackPerson; body: string }> => {
+    // A message's author and body, with every mention in it named, and its
+    // own text in parts and its files apart, for the panel. `channel` names
+    // a channel mentioned with no name beside it, where it can.
+    return async (
+      m: Message,
+      channel: (id: string) => Promise<string | null> = async () => null,
+    ): Promise<{ author: SlackPerson; body: string; parts: SlackPart[]; files: string[] }> => {
       const text = m.text ?? "";
       const ids = [...new Set([...(m.user ? [m.user] : []), ...mentionedUsers(text)])];
       const names = new Map(
         await Promise.all(ids.map(async (id) => [id, await lookup(id)] as const)),
+      );
+      const channels = new Map(
+        await Promise.all(
+          unnamedChannels(text).map(async (id) => [id, await channel(id)] as const),
+        ),
       );
       // The author is the person in `user`, even when an app posted for them
       // and `bot_id` is set too (decision 0021). Only a message with no
@@ -341,13 +373,16 @@ export function slackReads(api: SlackApi, log: Log) {
         : m.user
           ? { id: m.user, name: names.get(m.user) ?? `Unknown person (${m.user})` }
           : { id: null, name: `${m.username ?? m.bot_profile?.name ?? "An app"} (app)` };
-      const files = (m.files ?? []).map(
-        (file) => `[File: ${file.title ?? file.name ?? "untitled"}]`,
+      const files = (m.files ?? []).map((file) => file.title ?? file.name ?? "untitled");
+      const parts = textParts(
+        text,
+        (id) => names.get(id) ?? null,
+        (id) => channels.get(id) ?? null,
       );
-      const body = [plainText(text, (id) => names.get(id) ?? null), ...files]
+      const body = [parts.map((part) => part.text).join(""), ...files.map((f) => `[File: ${f}]`)]
         .filter((part) => part.trim() !== "")
         .join("\n");
-      return { author, body };
+      return { author, body, parts, files };
     };
   };
 

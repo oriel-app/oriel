@@ -10,7 +10,8 @@ import { Closing } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
-import type { Model, Msg } from "./root.ts";
+import { currentWorkstream, type Model, type Msg } from "./root.ts";
+import { placeIn } from "./panel.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import { useProgram } from "./use-program.ts";
 import { WindowPage } from "./window-page.tsx";
@@ -91,7 +92,12 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       </div>
       {model.panel && (
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <ItemPanel model={model.panel} dispatch={dispatch} />
+          <ItemPanel
+            model={model.panel}
+            place={placeIn(model.panelList, model.panel.id)}
+            workstream={currentWorkstream(model)}
+            dispatch={dispatch}
+          />
         </ItemLinksContext.Provider>
       )}
       <Closing model={model.closing} dispatch={dispatch} />
