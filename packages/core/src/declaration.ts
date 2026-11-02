@@ -1,6 +1,7 @@
 import type { DeclaredFacets } from "./change-log.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
+import type { OverviewOf } from "./overview.ts";
 import type { PanelOf } from "./panel.ts";
 import type { Recognizer } from "./references.ts";
 import type { IndexRecord } from "./source.ts";
@@ -28,6 +29,9 @@ export type SourceDeclaration<C = never, R = never> = Presentation & {
   // `R`, what only the composition root knows of it, such as the projects
   // it syncs. One that recognizes nothing returns none.
   recognizer: (context: R) => Recognizer;
+  // Its candidates for the overview's Not in a workstream yet, each with its
+  // rule and weight (decision 0027). One that finds none returns none.
+  overview: OverviewOf;
   // Its namespace, from the index and `C`, what only the composition root
   // knows about it, such as where a new item goes.
   namespace?: (records: readonly IndexRecord[], context: C) => NamespaceSpec;

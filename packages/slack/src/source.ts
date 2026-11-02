@@ -35,6 +35,7 @@ import {
   type SlackRecord,
   slackText,
   slackTitle,
+  asks,
 } from "./attrs.ts";
 import { mentionedUsers, type SlackPart, textParts, unnamedChannels } from "./mrkdwn.ts";
 
@@ -208,7 +209,12 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
               location: permalink(workspaceUrl, channel, m.ts),
               updatedAt: tsInstant(times.toSorted().at(-1) ?? m.ts),
               facets: slackFacets(),
-              attrs: { channel: { id: channel, name }, author, replies: m.reply_count ?? 0 },
+              attrs: {
+                channel: { id: channel, name },
+                author,
+                replies: m.reply_count ?? 0,
+                ...(asks(body) && { asks: true as const }),
+              },
             });
           }
           listed += records.length;

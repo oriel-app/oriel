@@ -2,6 +2,7 @@
 import type { SourceDeclaration } from "@oriel/core";
 import { jiraPresentation } from "./attrs.ts";
 import { type Estimates, jiraItemDoc, jiraNamespace } from "./namespace.ts";
+import { jiraOverview } from "./overview.ts";
 import { jiraPanel } from "./panel.ts";
 import { type JiraScope, jiraRecognizer } from "./references.ts";
 import { jiraSpecs } from "./specs.ts";
@@ -14,6 +15,7 @@ export const jiraDeclaration = {
   // a board that takes no estimates.
   recognizer: jiraRecognizer,
   facets: { estimate: { label: "Estimate", of: (record) => record.facets.estimate ?? null } },
+  overview: jiraOverview,
   namespace: (records, estimates: Estimates) =>
     jiraNamespace(new Map(records.map((record) => [record.id, record.facets.kind])), estimates),
   specs: jiraSpecs,

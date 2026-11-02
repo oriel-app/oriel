@@ -36,6 +36,9 @@ export type SlackAttrs = {
   channel: { id: string; name: string };
   author: SlackPerson;
   replies: number;
+  // Its text asks something: a sentence in it ends in a question mark.
+  // Absent when it doesn't, or when synced before Oriel kept it.
+  asks?: true;
 };
 
 export type SlackRecord = IndexRecord<"slack", SlackAttrs>;
@@ -79,7 +82,12 @@ export const slackAttrs = object({
   channel,
   author: person,
   replies: number,
+  asks: optional(literal(true)),
 }) satisfies Validator<SlackAttrs>;
+
+// Whether a message's plain text asks something: a question mark ending a
+// sentence, not one inside a link.
+export const asks = (body: string): boolean => /\?(?=\s|$)/.test(body);
 
 // What a read returns, checked where it is used: a reader may sit behind any
 // transport.

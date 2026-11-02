@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./panel": "./src/panel.ts",
-    "./oriel-reads": "./src/oriel-reads.ts"
+    "./oriel-reads": "./src/oriel-reads.ts",
+    "./overview": "./src/overview.ts"
   },
   "scripts": {
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"
