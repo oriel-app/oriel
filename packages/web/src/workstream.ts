@@ -2,7 +2,7 @@
 // opens a thread. Items are added from the window, or dropped here, and
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
-import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
+import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
 
 // A removal the user can still undo: the member as it showed, the workstream
@@ -112,13 +112,7 @@ export function updateWorkstream(
       );
       return [
         { ...model, held, removals: rest, notice: null },
-        [
-          post(`/api/actions/${undone.undo.action}`, undone.undo.input, {
-            kind: "restored",
-            id: model.id,
-          }),
-          ...restarts,
-        ],
+        [undoing(undone.undo, { kind: "restored", id: model.id }), ...restarts],
       ];
     }
     case "undoHeld": {

@@ -240,6 +240,18 @@ const tidied = await ask(
   server,
   boarding.id,
 );
+// The same again, with the removal undone from under the reply (OA-88).
+const untidied = await ask(
+  "Take the finished stories out of this workstream and close the thread",
+  server,
+  (
+    await post<{ id: string }>("/api/workstreams", {
+      kind: "cluster",
+      grouping: "epic",
+      cluster: "10002",
+    })
+  ).id,
+);
 // Asked for estimates where the board takes none.
 const unpointedThread = await ask(
   "Estimate the unestimated ones",
@@ -909,6 +921,20 @@ const scenes: Scene[] = [
     name: "thread-actions",
     path: `/threads/${tidied}`,
     act: (page) => page.locator(".actions-block").waitFor(),
+  },
+  {
+    name: "thread-actions-undone",
+    path: `/threads/${untidied}`,
+    // Each variant shares the server: only the first one clicks.
+    act: async (page) => {
+      const lines = page.locator(".action-lines");
+      await lines.waitFor();
+      if ((await lines.getByRole("button", { name: "Redo" }).count()) === 0)
+        await lines.getByRole("button", { name: "Undo" }).first().click();
+      await lines.getByRole("button", { name: "Redo" }).waitFor();
+      // The rail follows the version the Undo made, without a reload.
+      await page.locator(".rail-title", { hasText: "v3" }).waitFor();
+    },
   },
   {
     name: "workstream-actions",

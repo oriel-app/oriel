@@ -2396,13 +2396,6 @@ a.replies:hover {
   background: var(--surface-sunk);
 }
 
-.actions-block .marker-version {
-  margin-left: auto;
-  white-space: nowrap;
-  color: var(--text-faint);
-  font-size: var(--text-sm);
-}
-
 .action-lines {
   margin: 0;
   padding: 0;
@@ -2410,7 +2403,24 @@ a.replies:hover {
 }
 
 .action-lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
   padding: 0.125rem 0;
+}
+
+.action-lines li[data-undone="yes"] .action-text {
+  color: var(--text-muted);
+}
+
+.action-lines .undo-action {
+  font-size: var(--text-sm);
+}
+
+.action-lines .undo-action:disabled {
+  color: var(--text-faint);
+  cursor: default;
 }
 
 .action-lines li[data-applied="no"] {

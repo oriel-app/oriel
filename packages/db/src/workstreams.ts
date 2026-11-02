@@ -90,6 +90,15 @@ function distinct(members: readonly WorkstreamMember[]): (WorkstreamMember & { s
   return [...seen.values()];
 }
 
+// Everything a workstream holds, then the workstream: what deleting one
+// takes. A thread names its workstream, so none may be left to.
+export const dropWorkstream = [
+  "delete from workstream_members where workstream_id = ?",
+  "delete from workstream_changes where workstream_id = ?",
+  "delete from user_named_workstreams where workstream_id = ?",
+  "delete from workstreams where id = ?",
+];
+
 export type WorkstreamStore = ReturnType<typeof workstreamStore>;
 
 export function workstreamStore(db: DatabaseSync) {
@@ -134,6 +143,9 @@ export function workstreamStore(db: DatabaseSync) {
   const selectChanges = db.prepare(
     "select version, at, cause from workstream_changes where workstream_id = ? and version > ? order by version",
   );
+  // A thread works in it, or one deleted and kept for what it wrote did.
+  const selectUsed = db.prepare("select 1 from threads where workstream_id = ? limit 1");
+  const drop = dropWorkstream.map((sql) => db.prepare(sql));
   const selectTouched = db.prepare(`
     select stable_id, item_id, added_version, removed_version from workstream_members
     where workstream_id = ? and (added_version = ? or removed_version = ?)
@@ -233,6 +245,17 @@ export function workstreamStore(db: DatabaseSync) {
         mustGet(workstreamId);
         nameByUser.run(name, workstreamId);
         unmarkUserNamed.run(workstreamId);
+      });
+    },
+
+    // Deletes the workstream with its log, unless a thread uses it. Says
+    // whether it did.
+    delete(workstreamId: Ulid): boolean {
+      return transaction(db, () => {
+        mustGet(workstreamId);
+        if (selectUsed.get(workstreamId) !== undefined) return false;
+        for (const statement of drop) statement.run(workstreamId);
+        return true;
       });
     },
 

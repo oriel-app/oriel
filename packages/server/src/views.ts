@@ -405,7 +405,18 @@ export function views(deps: ViewDeps) {
         return {
           ...at,
           kind: "actions",
-          lines: event.lines.map((line) => actionLineView(line, own)),
+          lines: event.lines.map((line) => {
+            const view = actionLineView(line, own);
+            // Nothing links to what is gone since, as a workstream whose
+            // making was undone.
+            const { touched } = view;
+            const gone =
+              touched &&
+              (touched.kind === "workstream"
+                ? !workstreams.get(touched.id as Ulid)
+                : !threads.get(touched.id as Ulid, deps.now()));
+            return gone ? { ...view, touched: null } : view;
+          }),
         };
       case "limit":
         return { ...at, kind: "limit", reason: event.reason };

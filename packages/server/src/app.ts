@@ -88,7 +88,7 @@ import { type ConnectionStore, type JiraConnection, jiraSite } from "./connectio
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
-import { intentsOf } from "./intents.ts";
+import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
@@ -714,6 +714,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     title: viewer.title,
     startedBy: conversation.startedBy,
   });
+  const undoLine = lineUndo({
+    dispatch,
+    threads,
+    workspaceId,
+    rewritten: (thread, own) => {
+      const moved = own ? threads.catchUp(thread, now(), newId()) : null;
+      conversation.acted({ thread, chat: true, workstream: null, moves: moved ? [moved] : [] });
+    },
+    now,
+  });
 
   // What a change set created joins its thread's workstream, so later turns can
   // work on it (decision 0018); the workstream's working threads follow. A workstream
@@ -838,6 +848,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       threads,
       records,
       dispatch,
+      undoLine,
       changeSets: sets,
       turns: conversation,
       views: viewer,

@@ -4,6 +4,7 @@
 // route's size cap. GETs read; nothing a GET does opens, decides or writes.
 import {
   type Actor,
+  type Call,
   array,
   closeVia,
   type ChangeSet,
@@ -46,6 +47,7 @@ import {
   type StreamEvent,
 } from "@oriel/web/view";
 import { ActionError, checked, type Dispatch, type Fields } from "./actions.ts";
+import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
@@ -61,6 +63,8 @@ export type ApiDeps = {
   records(): readonly IndexRecord[];
   // Oriel's own actions, through the one dispatcher (decision 0024).
   dispatch: Dispatch;
+  // The user's Undo of a line under the agent's reply, or their redo of it.
+  undoLine(at: LinePlace, call: Call, actor: Actor): Promise<{ undo: Call | null }>;
   changeSets: ChangeSets;
   turns: Turns;
   views: Views;
@@ -264,6 +268,19 @@ const actionStatus = { invalid: 400, refused: 403, "not-found": 404 } as const;
 
 // The window's door is the user's.
 const user: Actor = { kind: "user" };
+
+// The line under the agent's reply an Undo names, as `?thread=…&seq=…&line=…`,
+// or null for an Undo from anywhere else.
+function linePlace(params: URLSearchParams): LinePlace | null {
+  const [thread, seq, index] = [params.get("thread"), params.get("seq"), params.get("line")];
+  if (thread === null && seq === null && index === null) return null;
+  const at = { thread: thread ?? "", seq: Number(seq ?? NaN), index: Number(index ?? NaN) };
+  if (!isUlid(at.thread) || !Number.isSafeInteger(at.seq) || at.seq < 1)
+    throw new Refused(400, "expected the line's thread and the seq of its list");
+  if (!Number.isSafeInteger(at.index) || at.index < 0)
+    throw new Refused(400, "expected the line's place in its list");
+  return { ...at, thread: at.thread };
+}
 
 // A change-set refusal (`ChangeSetError`, by its name and code) as an HTTP
 // status; null for any other error.
@@ -637,13 +654,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       // An Undo: the call the server gave for one of Oriel's own actions,
       // sent back as it is, so only an action that undoes another. The reply
-      // is that call's own undo.
+      // is that call's own undo. One from a line under the agent's reply
+      // names the line, which then says what came of it.
       method: "POST",
       path: /^\/api\/actions\/([a-z]+\.[a-z]+)$/,
-      async run([name = ""], request) {
+      async run([name = ""], request, url) {
         if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
-        const { undo } = await deps.dispatch.untyped(name, input, user);
+        const at = linePlace(url.searchParams);
+        const { undo } = at
+          ? await deps.undoLine(at, { action: name, input } as Call, user)
+          : await deps.dispatch.untyped(name, input, user);
         return json(200, { undo });
       },
     },

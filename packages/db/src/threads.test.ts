@@ -200,3 +200,30 @@ test("a working thread is dropped after 7 idle days, and activity resets the clo
   assert.deepEqual(state(after(7 * day)), ["working", null]);
   assert.deepEqual(state(after(13 * day)), ["dropped", null]);
 });
+
+test("reopening takes the done mark off, leaving whatever else settled it", () => {
+  const { db, threads, threadId, changeSet, state } = fresh();
+  assert.equal(threads.reopen(threadId), false);
+  threads.markDone(threadId, after(1000), { kind: "agent", threadId });
+  assert.equal(threads.reopen(threadId), true);
+  assert.deepEqual(state(after(2000)), ["working", null]);
+  assert.equal(db.prepare("select count(*) as n from done_marks").get()?.["n"], 0);
+  changeSet([{ after: { points: 3 }, at: after(3000) }]);
+  threads.markDone(threadId, after(4000));
+  threads.reopen(threadId);
+  assert.deepEqual(state(after(5000)), ["done", "applied"]);
+});
+
+test("an agent event is rewritten in place; nothing else is", () => {
+  const { threads, threadId } = fresh();
+  const seq = threads.append(threadId, { role: "agent", event: { kind: "a" } }, id(50), t0);
+  assert.equal(threads.rewrite(threadId, seq, { kind: "b" }), true);
+  assert.deepEqual(threads.messages(threadId).at(-1), {
+    seq,
+    at: t0,
+    role: "agent",
+    event: { kind: "b" },
+  });
+  const said = threads.append(threadId, { role: "user", text: "hi" }, id(51), after(1));
+  assert.equal(threads.rewrite(threadId, said, { kind: "c" }), false);
+});

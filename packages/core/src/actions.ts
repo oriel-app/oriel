@@ -5,7 +5,7 @@
 // any door is closed to it. The server holds the handlers and the one
 // dispatcher every door calls. Source writes stay in their source's
 // catalogue (decision 0019); they aren't declared again here.
-import { isItemId, isUlid, type Ulid } from "./ids.ts";
+import { isInstant, isItemId, isUlid, type Ulid } from "./ids.ts";
 import {
   array,
   type Described,
@@ -102,22 +102,20 @@ export const actions = {
     joins: "items",
   },
   "workstream.remove": {
-    doc: "Takes items out of a workstream. The items themselves don't change.",
+    doc: "Takes items out of a workstream.",
     input: object({ workstream: workstreamId, items }),
     class: { kind: "direct", inverse: "workstream.add" },
   },
   "workstream.create": {
-    doc: "Makes a workstream: from a cluster of the window, from picked items, or empty, for a thread started from nothing.",
+    // From a cluster of the window, from picked items, or empty, for a
+    // thread started from nothing.
+    doc: "Makes a workstream of the given items.",
     input: union(
       object({ kind: literal("cluster"), grouping: string, cluster: string }),
       object({ kind: literal("picked"), name, items }),
       object({ kind: literal("thread") }),
     ),
-    class: {
-      kind: "direct",
-      inverse: null,
-      why: "Deleting a workstream no thread uses is its Undo, which comes with the story that shows what the agent did under its reply.",
-    },
+    class: { kind: "direct", inverse: "workstream.delete" },
     userOnly: {
       cluster:
         "A cluster's items are the window's: the agent's region and search() don't reach them.",
@@ -133,15 +131,38 @@ export const actions = {
     class: { kind: "direct", inverse: "workstream.rename" },
     userOnly: { oriel: "Only the user's Undo gives a workstream's name back to Oriel." },
   },
-  "thread.done": {
-    doc: "Marks a thread done.",
-    input: object({ thread: threadId, via: closeVia }),
+  // Making a workstream's Undo: only while no thread uses it, or ever did,
+  // as a deleted thread kept for what it wrote still does.
+  "workstream.delete": {
+    doc: "Deletes a workstream no thread uses.",
+    input: object({ workstream: workstreamId }),
     class: {
       kind: "direct",
       inverse: null,
-      why: "Reopening a thread is its Undo, which comes with the story that shows what the agent did under its reply.",
+      why: "A deleted workstream goes with its log, and made again it would be another workstream.",
     },
+    closed: {
+      agent: "It has no Undo, and what has none stays the user's (decision 0024).",
+      tool: "It has no Undo, and what has none stays the user's (decision 0024).",
+    },
+  },
+  "thread.done": {
+    doc: "Marks a thread done.",
+    input: object({ thread: threadId, via: closeVia }),
+    class: { kind: "direct", inverse: "thread.reopen" },
     userOnly: { via: "It says where in the window the user closed the thread from." },
+  },
+  // Marking done's Undo: a thread marked done works again. One a change set
+  // settled, or a hand-off, takes a message instead. `mark`: only the mark
+  // made then, so an Undo never takes off a later one.
+  "thread.reopen": {
+    doc: "Reopens a thread marked done.",
+    input: object({
+      thread: threadId,
+      mark: optional(refine(string, isInstant, "expected when it was marked done")),
+    }),
+    class: { kind: "direct", inverse: "thread.done" },
+    userOnly: { mark: "It names the mark an Undo takes off, which only Oriel gives." },
   },
   // A held message: words from anyone but the user, such as a review link's
   // holder, which wait in the thread and reach the agent only as the user

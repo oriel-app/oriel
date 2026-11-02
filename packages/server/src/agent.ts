@@ -117,6 +117,9 @@ const actionLine: Validator<ActionLine> = union(
     touched,
     applied: literal(true),
     undo: nullable(intent as Validator<unknown> as Validator<Call>),
+    since: optional(
+      object({ undone: boolean, next: nullable(intent as Validator<unknown> as Validator<Call>) }),
+    ),
   }),
   object({ call: intent, touched, applied: literal(false), why: string }),
 );

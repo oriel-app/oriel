@@ -81,7 +81,7 @@ test("a removal is counted in telemetry; an action by a name Oriel hasn't is not
     ["action.called", { action: "workstream.remove", by: { kind: "user" } }],
   );
   // Only an Undo goes this way, so only an action that undoes another.
-  assert.equal((await app.post("/api/actions/workstream.delete", { workstream: id })).status, 404);
+  assert.equal((await app.post("/api/actions/held.discard", { thread: id, seq: 1 })).status, 404);
   assert.equal((await app.post("/api/actions/workstream.create", { kind: "thread" })).status, 404);
   // A workstream from nothing comes only with its thread.
   assert.equal((await app.post("/api/workstreams", { kind: "thread" })).status, 400);

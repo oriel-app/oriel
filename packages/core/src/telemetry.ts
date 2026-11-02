@@ -17,7 +17,9 @@ export type CloseVia = "page" | "menu" | "swipe";
 
 // Events that can come from an Oriel action say who acted in `by`, which only
 // an actor other than the user fills in; or, by their `cause`, who changed a
-// workstream (decision 0024).
+// workstream (decision 0024). An Undo's events name, in `undoes`, whose
+// action it undid, unless it was the user's own: the agent's, say, from the
+// list under its reply.
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind }
   // The user asked for a sync, and whether it worked.
@@ -37,6 +39,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       workstreamId: Ulid;
       source: SourceKind;
       cause: WorkstreamChange["cause"]["kind"];
+      undoes?: Actor;
     }
   | { name: "thread.opened"; threadId: Ulid; workstreamId: Ulid; regionSize: number }
   // `rejected`: the message was the reason given for rejecting that change set.
@@ -53,7 +56,7 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The thread was marked done, as one over read-only items needs: by the
   // user, on its page, or from a menu or a swipe on a list of threads; or by
   // someone else, who closed nothing in the window.
-  | { name: "thread.marked-done"; threadId: Ulid; via?: CloseVia; by?: Actor }
+  | { name: "thread.marked-done"; threadId: Ulid; via?: CloseVia; by?: Actor; undoes?: Actor }
   // The user deleted the thread. `kept`: it wrote to a source, so its records
   // stay, out of sight. `workstreamRemoved`: its workstream, made for it, went too.
   | {
@@ -95,5 +98,5 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // and where it was in the list, from 1.
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
   // A call of an Oriel action that no event above counts.
-  | { name: "action.called"; action: string; by: Actor }
+  | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );
