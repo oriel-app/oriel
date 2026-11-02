@@ -190,6 +190,8 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
           // their message, which reads them.
           const roots = found.filter(isRoot);
           const records: SlackRecord[] = [];
+          // Each message's text, for Oriel's sync to find references in.
+          const texts: Record<string, string> = {};
           if (roots.length > cap - listed) capped = true;
           for (const m of roots.slice(0, cap - listed)) {
             oldest = m.ts;
@@ -198,6 +200,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
               (ts): ts is string => ts !== undefined && tsShape.test(ts),
             );
             const key = slackKey(channel, m.ts);
+            texts[key] = body;
             records.push({
               id: itemId("slack", key),
               stableId: key,
@@ -209,7 +212,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
             });
           }
           listed += records.length;
-          yield { records, gone: [], cursor: null };
+          yield { records, gone: [], cursor: null, texts };
           cursor = next;
           if (listed >= cap && cursor) capped = true;
           if (capped) break;

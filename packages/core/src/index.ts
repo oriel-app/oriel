@@ -11,6 +11,7 @@ export * from "./namespace.ts";
 export * from "./ops.ts";
 export * from "./oriel-reads.ts";
 export * from "./panel.ts";
+export * from "./references.ts";
 export * from "./run.ts";
 export * from "./shape.ts";
 export * from "./sandbox.ts";

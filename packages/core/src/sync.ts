@@ -3,6 +3,7 @@
 // through it, and what a sync does beyond storing records runs here, never
 // in an adapter's package.
 import type { DeclaredFacets } from "./change-log.ts";
+import type { Recognizer } from "./references.ts";
 import {
   type Instant,
   isInstant,
@@ -15,6 +16,14 @@ import type { Log } from "./run.ts";
 import { facets, type IndexRecord, type Source, type SyncPage } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
+// A page as the sync worker hands it to the index: the records, without
+// their texts, and the item IDs each record's text names, by stable ID,
+// for the index to resolve. A record left out of `references` keeps what it
+// had.
+export type IndexPage = Omit<SyncPage, "texts"> & {
+  references?: Readonly<Record<string, readonly ItemId[]>>;
+};
+
 // What the sync worker needs of the index. The index store (packages/db) is
 // one; core names only what it calls.
 export type SyncIndex = {
@@ -25,7 +34,7 @@ export type SyncIndex = {
     attrs: Validator<A>,
     now: Instant,
     declared?: DeclaredFacets,
-  ): { apply(page: SyncPage): void; finish(cursor: string | null, finishedAt: Instant): number };
+  ): { apply(page: IndexPage): void; finish(cursor: string | null, finishedAt: Instant): number };
   liveStableIds(workspaceId: Ulid, source: SourceKind): string[];
   goneStableIds(workspaceId: Ulid, source: SourceKind): string[];
 };
@@ -37,6 +46,9 @@ export type SyncOptions<K extends SourceKind, A> = {
   // The source's declared facets, which the change log records beside the
   // common ones: its declaration's `facets`. None when left out.
   facets?: DeclaredFacets;
+  // Every source's recognizer as one, run over each record's text (decision
+  // 0027). None found when left out.
+  recognize?: Recognizer;
   index: SyncIndex;
   workspaceId: Ulid;
   // A full sweep lists everything and marks what the source no longer returns
@@ -70,6 +82,7 @@ export async function syncSource<K extends SourceKind, A>(
   options: SyncOptions<K, A>,
 ): Promise<SyncReport> {
   const { source, attrs, index, workspaceId, log } = options;
+  const recognize = options.recognize ?? (() => []);
   const stored = index.source(workspaceId, source.kind)?.cursor ?? null;
   const cursor = options.full ? null : stored;
   const full = cursor === null;
@@ -79,7 +92,7 @@ export async function syncSource<K extends SourceKind, A>(
   const read =
     items.length && source.records
       ? await source.records(items.map((i) => i.id))
-      : { records: [], gone: [] };
+      : { records: [], gone: [], texts: {} };
   const run = index.beginSync(workspaceId, source.kind, attrs, options.clock(), options.facets);
   // Every stable ID the source returned, skipped ones included: a record that
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
@@ -101,7 +114,17 @@ export async function syncSource<K extends SourceKind, A>(
       });
       return false;
     });
-    run.apply({ records: valid, gone: page.gone, cursor: page.cursor });
+    // Each text is read here and goes no further: only the IDs it names do.
+    const texts = page.texts ?? {};
+    const references = Object.fromEntries(
+      valid.flatMap((record) => {
+        const text = Object.hasOwn(texts, record.stableId) ? texts[record.stableId] : undefined;
+        if (text === undefined) return [];
+        const named = recognize(text).filter((id) => id !== record.id);
+        return [[record.stableId, named]];
+      }),
+    );
+    run.apply({ records: valid, gone: page.gone, cursor: page.cursor, references });
     records += valid.length;
     gone += page.gone.length;
   };
@@ -153,6 +176,7 @@ export async function syncSource<K extends SourceKind, A>(
         .filter((item) => read.gone.includes(item.id) && live.has(item.stableId))
         .map((item) => item.stableId),
       cursor: null,
+      ...(read.texts ? { texts: read.texts } : {}),
     });
   }
   if (full) {
@@ -176,6 +200,8 @@ function check<A>(kind: SourceKind, attrs: Validator<A>, record: IndexRecord): s
   const checked = facets(JSON.parse(JSON.stringify(record.facets) ?? "null"), "$.facets");
   if (!checked.ok)
     return checked.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");
+  if (checked.value.references !== undefined)
+    return "references are Oriel's to find, never an adapter's to set";
   if (!isInstant(record.updatedAt)) return "updatedAt is not a canonical instant";
   const parsed = attrs(JSON.parse(JSON.stringify(record.attrs) ?? "null"), "$.attrs");
   if (!parsed.ok) return parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");

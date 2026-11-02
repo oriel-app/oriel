@@ -245,7 +245,7 @@ async function newWorkstream(
     return { name: input.name.trim(), origin: { kind: "picked" }, list, size };
   }
   if (!isGroupingId(input.grouping))
-    throw new ActionError("invalid", "$.grouping: expected epic, assignee or stuck");
+    throw new ActionError("invalid", "$.grouping: expected epic, assignee, stuck or linked");
   const cluster = deps.clusters(input.grouping).find((c) => c.key === input.cluster);
   if (!cluster) throw new ActionError("not-found", "no such cluster in that grouping");
   const ids = cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds];

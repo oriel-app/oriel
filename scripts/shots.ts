@@ -42,7 +42,7 @@ import { devPlan, scriptedAgent, type Step } from "../packages/server/src/script
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 
-type Grouping = "epic" | "assignee" | "stuck";
+type Grouping = "epic" | "assignee" | "stuck" | "linked";
 type Scene = {
   name: string;
   path: string;
@@ -803,6 +803,16 @@ const scenes: Scene[] = [
     },
   },
   { name: "stuck", path: "/?grouping=stuck", act: (page) => shown(page, "stuck") },
+  // Items with what names them or what they name, across Jira and Slack.
+  {
+    name: "linked",
+    path: "/?grouping=linked",
+    on: chatty,
+    act: async (page) => {
+      await shown(page, "linked");
+      await openFirstCluster(page);
+    },
+  },
   {
     name: "no-estimates-epic",
     path: "/?grouping=epic",

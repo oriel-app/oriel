@@ -82,4 +82,6 @@ export const folderDeclaration = {
   panel: folderPanel,
   // A file has no facet beyond its kind, which never changes.
   facets: {},
+  // Nothing names a file by its key, a hash, so the folder recognizes none.
+  recognizer: () => () => [],
 } satisfies SourceDeclaration;

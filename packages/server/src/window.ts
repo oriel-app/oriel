@@ -5,6 +5,7 @@ import {
   clusterZoom,
   epicGrouping,
   listZoom,
+  linkedGrouping,
   stuckGrouping,
 } from "@oriel/groupings";
 import { sources } from "@oriel/sources";
@@ -21,6 +22,7 @@ export const groupings: Record<GroupingId, Grouping> = {
   epic: epicGrouping,
   assignee: assigneeGrouping,
   stuck: stuckGrouping,
+  linked: linkedGrouping,
 };
 
 // Where each of `rows` lives in its source, for an http(s) location only.

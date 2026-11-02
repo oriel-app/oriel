@@ -20,8 +20,8 @@ test("the picked channel's messages are in the window, in clusters that say Slac
   const byEpic = json<WindowView>(await app.get("/api/window?grouping=epic"));
   const own = byEpic.clusters.find((c) => c.row.key === "no-epics-in-source");
   assert.equal(own?.row.origin.kind, "derived");
-  assert.equal(own?.list.length, 18);
-  assert.equal(slackRows(byEpic).length, 18);
+  assert.equal(own?.list.length, 19);
+  assert.equal(slackRows(byEpic).length, 19);
   const row = own?.list.find((r) => r.title.startsWith("Dara Nikolaidis: Decision:"));
   assert.deepEqual(row && { ...row, title: undefined }, {
     id: "slack:C0FW1WEATHR-1788444000.000100",
@@ -40,8 +40,8 @@ test("the picked channel's messages are in the window, in clusters that say Slac
   });
   const byAssignee = json<WindowView>(await app.get("/api/window?grouping=assignee"));
   const none = byAssignee.clusters.find((c) => c.row.key === "no-assignees-in-source");
-  assert.equal(none?.list.filter((r) => r.id.startsWith("slack:")).length, 18);
-  assert.equal(slackRows(byAssignee).length, 18);
+  assert.equal(none?.list.filter((r) => r.id.startsWith("slack:")).length, 19);
+  assert.equal(slackRows(byAssignee).length, 19);
   // A message isn't work that can be stuck.
   assert.deepEqual(slackRows(json<WindowView>(await app.get("/api/window?grouping=stuck"))), []);
   const connects = app.app.telemetry().filter((e) => e.name === "source.connected");
@@ -112,7 +112,7 @@ test("Slack syncs each time the server starts, and connects once", async (t) => 
   const again = await testApp(t, { db, slack: { kind: "fixture" } });
   assert.equal(
     slackRows(json<WindowView>(await again.get("/api/window?grouping=epic"))).length,
-    18,
+    19,
   );
   const connects = again.app.telemetry().filter((e) => e.name === "source.connected");
   assert.deepEqual(
@@ -143,7 +143,7 @@ test("live Slack reads only the channels picked by name, through the Web API", a
   const app = await testApp(t, {
     slack: { kind: "live", credential, channels: ["#weather-disruptions"], fetch: send },
   });
-  assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 18);
+  assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
   assert.ok(
     calls.every((c) => c.params.channel === undefined || c.params.channel === "C0FW1WEATHR"),
   );

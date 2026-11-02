@@ -30,6 +30,7 @@ const groupingNames: Record<GroupingId, string> = {
   epic: "Epic",
   assignee: "Assignee",
   stuck: "Stuck",
+  linked: "Linked",
 };
 
 export function WindowPage(props: {

@@ -205,7 +205,7 @@ const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
   object({
     name: literal("grouping.switched"),
-    grouping: refine(string, isGroupingId, "expected epic, assignee or stuck"),
+    grouping: refine(string, isGroupingId, "expected epic, assignee, stuck or linked"),
   }),
   object({ name: literal("zoom.changed"), from: zoomId, to: zoomId }),
   // By the item, whose source the event keeps; the item itself isn't kept.

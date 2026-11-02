@@ -10,7 +10,7 @@ import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
 export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
-export const groupingIds = ["epic", "assignee", "stuck"] as const;
+export const groupingIds = ["epic", "assignee", "stuck", "linked"] as const;
 export type GroupingId = (typeof groupingIds)[number];
 
 export function isGroupingId(value: unknown): value is GroupingId {

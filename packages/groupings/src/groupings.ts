@@ -1,4 +1,4 @@
-// The phase 1 groupings: by epic, by assignee and "stuck". They work from
+// The phase 1 groupings: by epic, by assignee, "stuck" and linked. They work from
 // core's facets alone, so they span sources and know none of them (decision
 // 0019). A cluster the source has (an epic, an assignee, no epic) says so;
 // one Oriel derives carries a rule, true of every item it holds and of no
@@ -198,5 +198,40 @@ export const stuckGrouping: Grouping = {
           ]
         : []),
     ];
+  },
+};
+
+// One cluster per item another item's text names (decision 0027), anchored
+// on it, holding the items that name it and then those it names. A
+// reference is no hierarchy: every cluster is derived, an item may show in
+// several, and an item nothing names and that names nothing shows in none.
+// The most linked come first.
+export const linkedGrouping: Grouping = {
+  id: "linked",
+  label: "Linked",
+  group(records) {
+    const sorted = records.toSorted(byKey);
+    const live = new Map(sorted.map((record) => [identity(record.id, record.stableId), record]));
+    const named = (record: IndexRecord) =>
+      (record.facets.references ?? []).flatMap(
+        (to) => live.get(identity(to.id, to.stableId)) ?? [],
+      );
+    const naming = new Map<IndexRecord, IndexRecord[]>();
+    for (const record of sorted)
+      for (const to of named(record)) naming.set(to, [...(naming.get(to) ?? []), record]);
+    return [...naming]
+      .map(([anchor, from]): Cluster => {
+        const linked = [...new Set([...from, ...named(anchor)])].filter((r) => r !== anchor);
+        return {
+          key: `${parseItemId(anchor.id)?.source ?? ""}:${anchor.stableId}`,
+          label: anchor.title,
+          anchor: anchor.id,
+          itemIds: ids(linked),
+          origin: { derived: "Items that name it, or that it names" },
+        };
+      })
+      .toSorted(
+        (a, b) => b.itemIds.length - a.itemIds.length || byItemId(a.anchor ?? "", b.anchor ?? ""),
+      );
   },
 };

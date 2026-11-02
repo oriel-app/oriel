@@ -78,7 +78,7 @@ test("messages load against the Slack fixture's picked channel: posts only, neve
     "other-message.json: $.expect[0].item: not one of the case's messages",
     "reply.json: $.messages[0]: not a message in the Slack fixture's picked channel",
   ]);
-  assert.equal(slackMessages(slack).length, 18);
+  assert.equal(slackMessages(slack).length, 19);
 });
 
 async function world(t: TestContext, input: Partial<WorldInput>) {
