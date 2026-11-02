@@ -5,8 +5,9 @@
 // The module has `items.*` for every item in the region, whatever its source;
 // a namespace for each source whose adapter declares one (a writable source:
 // its read helpers and a write per op it lets a run capture) and that the
-// region holds items from; and `search()`. A source without a namespace still
-// gets `items.*` (decision 0019). The composition root passes the
+// region holds items from; Oriel's own namespaces, `workstream` and
+// `thread`, the same in every region (decision 0024); and `search()`. A
+// source without a namespace still gets `items.*` (decision 0019). The composition root passes the
 // namespaces in; bindings know no source.
 import {
   byItemId,
@@ -18,8 +19,9 @@ import {
   type SourceKind,
   sourceKinds,
 } from "@oriel/core";
-import { checkedId, type Fn } from "./fn.ts";
+import { checkedId, type Fn, orielSpaces } from "./fn.ts";
 import { itemFns, searchFn } from "./items.ts";
+import { orielFns } from "./oriel.ts";
 
 export type { Fn } from "./fn.ts";
 export { pathOf } from "./fn.ts";
@@ -40,7 +42,7 @@ export type ItemDocs = Partial<Record<SourceKind, string>>;
 // don't name it. Namespaces are read-only globals a script may shadow, so a
 // script can still name its own `items` or `folder`; the global functions
 // are parameters of the script's function, which it can't redeclare.
-export const spaceNames = ["items", ...sourceKinds] as const;
+export const spaceNames = ["items", ...sourceKinds, ...orielSpaces] as const;
 export const globals = [...spaceNames, "search"] as const;
 export const parameters: readonly string[] = ["search"];
 
@@ -97,10 +99,10 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
   return { ids, docs, sources };
 }
 
-// `items`, then each namespace in source order, then the escape hatch. The
-// order is the order of the declarations, so it is part of the byte-stable
-// output. A namespace's write must name an op in its catalogue that a run may
-// capture; revert-only ops are never offered.
+// `items`, then each namespace in source order, then Oriel's own, then the
+// escape hatch. The order is the order of the declarations, so it is part of
+// the byte-stable output. A namespace's write must name an op in its
+// catalogue that a run may capture; revert-only ops are never offered.
 export function describe(scope: Scope): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
@@ -111,5 +113,5 @@ export function describe(scope: Scope): Fn[] {
       return { ...fn, space: kind, spec: entry };
     }),
   );
-  return [...itemFns, ...namespaced, searchFn];
+  return [...itemFns, ...namespaced, ...orielFns, searchFn];
 }

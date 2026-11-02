@@ -3,6 +3,7 @@
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
+import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow } from "@oriel/groupings/view";
 
@@ -169,6 +170,22 @@ export type UndoView = { action: string; input: unknown };
 export type Undoable<T> = T & { undo: UndoView | null };
 
 export type ThreadsView = { threads: ThreadSummaryView[] };
+
+// What the sidebar's search found (OA-110): a thread, or one of its change
+// sets, with the words around the match. `query` is the query it answers, as
+// the server read it.
+export type SearchResultView = {
+  thread: {
+    id: string;
+    title: string | null;
+    state: ThreadStateId;
+    workstream: { id: string; name: string };
+  };
+  changeSet: { id: string; state: ChangeSetState } | null;
+  matched: "name" | "chat" | "change-set";
+  excerpt: string;
+};
+export type SearchView = { query: string; results: SearchResultView[] };
 
 // A run's record, as its transcript shows it.
 export type RunView = {

@@ -1,0 +1,147 @@
+// The one read layer over Oriel's own data (decision 0024, OA-108): the
+// workspace's workstreams and threads, what each thread's change sets wrote
+// where, and the one search over them. The agent's `workstream` and `thread`
+// namespaces and the window's search route both call it, so both doors find
+// the same things. It reads no source: what a change set wrote is told from
+// its rows and the index (`ChangeSets.changes`).
+import {
+  type ChangeSet,
+  changeSetLink,
+  type ChangeSetRead,
+  type ChangeSets,
+  type ChangeSetState,
+  findThreads,
+  type Instant,
+  type Known,
+  type OrielReads,
+  type ThreadRead,
+  threadLink,
+  type Ulid,
+} from "@oriel/core";
+import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
+import { history } from "./turns.ts";
+import { changeSetStatus } from "./views.ts";
+
+export type OrielReadDeps = {
+  workspaceId: Ulid;
+  workstreams: WorkstreamStore;
+  threads: ThreadStore;
+  changeSets: Pick<ChangeSets, "ofThread" | "changes">;
+  // A thread's title as the window shows it, or null before it has one.
+  title(threadId: Ulid): string | null;
+  // What a person calls an ID a change set names, such as a channel, and an
+  // item's title, from what Oriel has indexed.
+  known(): Known;
+  now(): Instant;
+};
+
+// Where a change set stands, in a person's words. One a revert undid, in any
+// part, is reverted; one applied in part is applied; one approved but
+// stopped before anything landed is still approved.
+export function changeSetState(set: ChangeSet, all: readonly ChangeSet[]): ChangeSetState {
+  const undone = all.some(
+    (other) => other.revertOf === set.id && other.mutations.some((m) => m.status === "applied"),
+  );
+  if (undone) return "reverted";
+  const status = changeSetStatus(set);
+  if (status === "applied" || status === "partial") return "applied";
+  if (status === "approved" || status === "stopped") return "approved";
+  return status === "rejected" ? "rejected" : "pending";
+}
+
+// What was said in a thread, as one text: the user's words and the agent's
+// replies, joined up as the agent's own history has them. A message held
+// from anyone else is in neither until the user sends it, as their own
+// (decision 0024).
+const said = (messages: readonly Message[]): string =>
+  history(messages, () => "")
+    .flatMap((m) => (m.role === "user" || m.role === "assistant" ? [m.text] : []))
+    .join("\n");
+
+export function orielReads(deps: OrielReadDeps): OrielReads {
+  const { threads, workstreams } = deps;
+
+  // Most recently active first, as the sidebar lists them.
+  const threadReads = (): ThreadRead[] =>
+    threads
+      .list(deps.workspaceId, deps.now())
+      .toSorted((a, b) => b.activityAt.localeCompare(a.activityAt))
+      .map(({ thread, activityAt }) => ({
+        id: thread.id,
+        name: deps.title(thread.id),
+        state: thread.state,
+        workstream: {
+          id: thread.workstreamId,
+          name: workstreams.get(thread.workstreamId)?.name ?? "",
+        },
+        activityAt,
+        link: threadLink(thread.id),
+      }));
+
+  // Each thread's change sets, newest first, read as a person reads them.
+  const setsOf = async (ids: readonly Ulid[]): Promise<ChangeSetRead[]> => {
+    const known = deps.known();
+    const each = await Promise.all(
+      ids.map(async (thread) => {
+        const all = await deps.changeSets.ofThread(thread);
+        return Promise.all(
+          all.map(async (set): Promise<ChangeSetRead> => ({
+            id: set.id,
+            thread,
+            state: changeSetState(set, all),
+            createdAt: set.createdAt,
+            decided: set.decision && {
+              kind: set.decision.kind,
+              by: set.decision.by,
+              at: set.decision.at,
+            },
+            changes: await deps.changeSets.changes(set, known),
+            link: changeSetLink(thread, set.id),
+          })),
+        );
+      }),
+    );
+    return each
+      .flat()
+      .toSorted((a, b) =>
+        a.createdAt === b.createdAt
+          ? b.id.localeCompare(a.id)
+          : b.createdAt.localeCompare(a.createdAt),
+      );
+  };
+
+  return {
+    async workstreams() {
+      return workstreams.list(deps.workspaceId).map((workstream) => ({
+        id: workstream.id,
+        name: workstream.name,
+        items: workstreams.region(workstream.id, workstream.version)?.items.map((m) => m.id) ?? [],
+        threads: threads.ofWorkstream(workstream.id, deps.now()).length,
+      }));
+    },
+
+    async threads() {
+      return threadReads();
+    },
+
+    async changeSets(thread) {
+      const ids = thread === null ? threadReads().map((t) => t.id) : [thread];
+      // A thread that isn't in the workspace, or was deleted, has none to show.
+      const live = ids.filter(
+        (id) => threads.get(id, deps.now())?.workspaceId === deps.workspaceId,
+      );
+      return setsOf(live);
+    },
+
+    async find(query, limit) {
+      const all = threadReads();
+      return findThreads(
+        all,
+        (thread) => said(threads.messages(thread.id)),
+        await setsOf(all.map((thread) => thread.id)),
+        query,
+        limit,
+      );
+    },
+  };
+}

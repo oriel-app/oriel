@@ -27,6 +27,11 @@ import {
   type ReadResult,
   type Region,
   type SearchHit,
+  changeSetLink,
+  findThreads,
+  noThreads,
+  type OrielReads,
+  threadLink,
   type Ulid,
   ulid,
 } from "@oriel/core";
@@ -34,6 +39,7 @@ import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/fo
 import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import { itemDocs, namespacesFor } from "@oriel/sources";
+import type { OrielWorkspace } from "./case.ts";
 import {
   buildFolder,
   diskDependent,
@@ -73,6 +79,8 @@ export type WorldInput = {
   // How many of each fixture's edits are applied.
   edited: number;
   folderEdited: number;
+  // Oriel's own threads and change sets in the workspace, if any.
+  oriel?: OrielWorkspace;
 };
 
 export type World = {
@@ -82,6 +90,8 @@ export type World = {
   reader: Reader;
   namespaces: Namespaces;
   items: ItemDocs;
+  // Oriel's own data, as the agent's namespaces read it.
+  oriel: OrielReads;
   // Each region item as its source holds it, for the judge: a file with its
   // path and title, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -164,6 +174,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     reader,
     namespaces,
     items: itemDocs,
+    oriel: orielOf(input.oriel),
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
@@ -232,4 +243,30 @@ async function connectSlack(fixture: SlackFixture) {
   const author = fixture.users[0]?.id;
   if (!author) throw new Error("the Slack fixture has no people");
   return { source, index, context: { channels: fixture.picked, author } };
+}
+
+// A case's workspace as the agent's namespaces read it, searched by the same
+// code the server's is. Its workstreams are the ones its threads name.
+export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
+  if (!workspace) return noThreads;
+  const threads = workspace.threads
+    .map(({ said: _said, ...thread }) => ({ ...thread, link: threadLink(thread.id) }))
+    .toSorted((a, b) => b.activityAt.localeCompare(a.activityAt));
+  const said = new Map(workspace.threads.map((thread) => [thread.id, thread.said.join("\n")]));
+  const sets = workspace.changeSets
+    .map((set) => ({ ...set, link: changeSetLink(set.thread, set.id) }))
+    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const workstreams = [...new Map(threads.map((t) => [t.workstream.id, t.workstream])).values()];
+  return {
+    workstreams: async () =>
+      workstreams.map((workstream) => ({
+        ...workstream,
+        items: [],
+        threads: threads.filter((t) => t.workstream.id === workstream.id).length,
+      })),
+    threads: async () => threads,
+    changeSets: async (thread) => sets.filter((set) => thread === null || set.thread === thread),
+    find: async (query, limit) =>
+      findThreads(threads, (thread) => said.get(thread.id) ?? "", sets, query, limit),
+  };
 }

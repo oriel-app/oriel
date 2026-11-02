@@ -6,6 +6,7 @@ import {
   type Approver,
   array,
   type CapturedMutation,
+  type ChangeRead,
   type ChangeSet,
   type ChangeSetPatch,
   type ChangeSets,
@@ -19,6 +20,7 @@ import {
   isItemId,
   isNewRef,
   type Issue,
+  type Known,
   type Log,
   literal,
   type MutationRecord,
@@ -357,6 +359,67 @@ export function explainConflicts(
     return `${item}'s ${c.field} is now ${JSON.stringify(c.actual)}, not ${JSON.stringify(c.expected)}`;
   });
   return `Stopped, so nothing was overwritten: ${parts.join("; ")}.`;
+}
+
+// What a change set made, or proposes, one line per change, in its diff's own
+// words, from its rows and what Oriel already knows, never from a source: so
+// listing or searching every change set costs no source a request. A value a
+// diff reads live is as the change set recorded it: what applied found, or
+// what the person approved it from. `known` gives what a person calls an ID
+// an op names (a person, a channel) and an item's title, where Oriel knows
+// them. Each line has the source it writes to, as a person knows it, and the
+// text it writes there.
+export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Promise<ChangeRead[]> {
+  const titles = new Map<string, string | null>();
+  const lines: ChangeRead[] = [];
+  for (const m of set.mutations) {
+    const found = specFor(specs, m, set.mutations);
+    if (!found || !found.spec.args(m.args).ok) {
+      lines.push({
+        source: found ? catalogueFor(specs, found.kind).name : "",
+        sentence: `${staleArgs}.`,
+        text: [],
+      });
+      continue;
+    }
+    const { kind, spec } = found;
+    const catalogue = catalogueFor(specs, kind);
+    const after = spec.after(m.args);
+    const before = m.applied?.before ?? approvedFrom(m.preview) ?? {};
+    const title = (id: ItemId | NewRef): string | null =>
+      isNewRef(id) ? (titles.get(id) ?? null) : known.title(id);
+    const subject: Subject =
+      m.target === null
+        ? null
+        : isNewRef(m.target)
+          ? { kind: "new", ref: m.target, title: title(m.target) }
+          : {
+              kind: "item",
+              id: m.target,
+              title: known.title(m.target) ?? text(before[catalogue.titleField]),
+            };
+    const sentence = await spec.describe(m.args, {
+      subject,
+      before,
+      name: async (id) => known.name(id),
+      title: async (id) => title(id),
+    });
+    if (m.ref !== null) titles.set(m.ref, text(after[catalogue.titleField]));
+    // Words it writes: text values, and a link's title, never an ID.
+    const written = Object.entries(after).flatMap(([field, value]) => {
+      if (catalogue.fields[field] === "item") return [];
+      const words =
+        typeof value === "object" && value !== null && "title" in value ? value.title : value;
+      return typeof words === "string" &&
+        words.trim() !== "" &&
+        !isItemId(words) &&
+        !isNewRef(words)
+        ? [words]
+        : [];
+    });
+    lines.push({ source: catalogue.name, sentence, text: written });
+  }
+  return lines;
 }
 
 // Change sets over the writers built from `deps.writerConfig`. A diff reads a
@@ -1593,6 +1656,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     async diff(id) {
       return diff(mustLoad(id));
     },
+
+    changes: (set, known) => changesOf(set, specs, known),
 
     async edit(id, patch) {
       const parsed = patchValue(patch, "$.patch");

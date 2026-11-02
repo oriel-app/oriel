@@ -6,10 +6,14 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   array,
   type CapturedMutation,
+  type ChangeSetState,
+  changeSetStates,
   type Infer,
   type Issue,
+  isInstant,
   isItemId,
   isNewRef,
+  isUlid,
   type ItemId,
   literal,
   type NewRef,
@@ -20,6 +24,8 @@ import {
   refine,
   type Result,
   string,
+  type ThreadState,
+  threadStates,
   union,
   unknown,
   type Validator,
@@ -119,6 +125,50 @@ const expectation: Validator<Expectation> = (input, path = "$") => {
   return expectations[grader](input, path);
 };
 
+// Oriel's own data in the case's workspace, as the agent's thread.* reads
+// return it (decision 0024, OA-108): its threads, with what was said in each,
+// and their change sets, with what each wrote where. IDs are fixed, so the
+// links the agent writes replay.
+const ulidText = refine(string, isUlid, "expected a ULID");
+const instantText = refine(string, isInstant, "expected an instant");
+const orielWorkspace = object({
+  threads: atLeastOne(
+    object({
+      id: ulidText,
+      name: text,
+      state: refine(
+        string,
+        (state): state is ThreadState => (threadStates as readonly string[]).includes(state),
+        `expected one of ${threadStates.join(", ")}`,
+      ),
+      workstream: object({ id: ulidText, name: text }),
+      activityAt: instantText,
+      said: array(text),
+    }),
+  ),
+  changeSets: array(
+    object({
+      id: ulidText,
+      thread: ulidText,
+      state: refine(
+        string,
+        (state): state is ChangeSetState => (changeSetStates as readonly string[]).includes(state),
+        `expected one of ${changeSetStates.join(", ")}`,
+      ),
+      createdAt: instantText,
+      decided: nullable(
+        object({
+          kind: union(literal("approved"), literal("rejected")),
+          by: text,
+          at: instantText,
+        }),
+      ),
+      changes: atLeastOne(object({ source: text, sentence: text, text: array(text) })),
+    }),
+  ),
+});
+export type OrielWorkspace = Infer<typeof orielWorkspace>;
+
 // The region holds a Jira fixture region's items, files from the folder
 // fixture, messages from the Slack fixture, or any mix of them.
 const evalCaseShape = object({
@@ -140,6 +190,8 @@ const evalCaseShape = object({
       ),
     ),
   ),
+  // Oriel's own threads and change sets in the workspace. Absent: none.
+  oriel: optional(orielWorkspace),
   // How many of the Jira fixture's source edits are applied before the case
   // runs. Absent means none.
   edited: optional(whole),

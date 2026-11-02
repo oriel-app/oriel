@@ -43,11 +43,13 @@ const dts = (kinds: readonly SourceKind[], namespaces: Namespaces, items: ItemDo
 const shape = (text: string) => text.replace(/^ {2}\| ".*$\n?/gm, "").length;
 
 const budgets = {
-  systemPrompt: 2_800,
+  // Rose by 250 to steer the agent to Oriel's own threads (OA-108).
+  systemPrompt: 3_050,
   // The run tool's own text, and the module of a region with no namespace or
-  // item doc.
+  // item doc. The base rose once, by about 1,600 bytes, for Oriel's own
+  // namespaces in every region (decision 0024, OA-108).
   tool: 600,
-  base: 1_900,
+  base: 3_500,
   // What each source adds: its item doc, its namespace if it has one.
   jira: 3_200,
   folder: 250,

@@ -1,16 +1,18 @@
 // The markdown an agent writes, as plain data the page renders as elements:
 // paragraphs, headings, lists, quotes, code, tables and rules, with bold,
-// italics, code and links inside them. It never becomes HTML, since a reply can
+// italics, code and links inside them: to the web, or to a thread in Oriel,
+// as the agent's thread.* reads give it. It never becomes HTML, since a reply can
 // quote source content anyone can write. A reply is read while it streams, so
 // a mark without its closing half stays as typed.
-import { safeHref } from "./route.ts";
+import { inAppRoute, type Route, safeHref } from "./route.ts";
 
 export type Inline =
   | { kind: "text"; text: string }
   | { kind: "break" }
   | { kind: "code"; text: string }
   | { kind: "strong" | "em"; children: Inline[] }
-  | { kind: "link"; href: string; children: Inline[] };
+  | { kind: "link"; href: string; children: Inline[] }
+  | { kind: "route"; route: Route; children: Inline[] };
 
 export type Prose =
   | { kind: "paragraph"; children: Inline[] }
@@ -369,7 +371,8 @@ export const opens = (href: string, sites: ReadonlySet<string>): boolean =>
 // stays as typed.
 const longestTarget = 2_048;
 
-// `[label](https://…)`. A link that isn't to the web stays as typed.
+// `[label](https://…)`, or `[label](/threads/…)` to a thread in Oriel. A link
+// that is to neither stays as typed.
 function link(line: Line, from: number): { node: Inline; end: number } | null {
   const { text } = line;
   const close = line.brackets.get(from);
@@ -408,12 +411,12 @@ function link(line: Line, from: number): { node: Inline; end: number } | null {
     skipSpaces();
   }
   if (text[at] !== ")") return null;
+  const children = () => inline(text.slice(from + 1, close), line.depth + 1);
+  const route = inAppRoute(target);
+  if (route) return { node: { kind: "route", route, children: children() }, end: at + 1 };
   const href = safeHref(target);
   if (!href) return null;
-  return {
-    node: { kind: "link", href, children: inline(text.slice(from + 1, close), line.depth + 1) },
-    end: at + 1,
-  };
+  return { node: { kind: "link", href, children: children() }, end: at + 1 };
 }
 
 // `**strong**`, `*em*`, `***both***`, and the same with `_`. An opening mark is

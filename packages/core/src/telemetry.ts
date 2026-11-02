@@ -87,6 +87,13 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
+  // The user searched their threads from the sidebar: how long the query was
+  // and how many it found, never what it said. One per query the window
+  // asked about, once typing paused.
+  | { name: "threads.searched"; queryLength: number; results: number }
+  // The user opened what a search found: a thread, or a change set in one,
+  // and where it was in the list, from 1.
+  | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor }
 );

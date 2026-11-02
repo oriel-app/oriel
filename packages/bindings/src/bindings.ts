@@ -3,6 +3,8 @@ import {
   type CapturedMutation,
   type ItemId,
   type NewRef,
+  noThreads,
+  type OrielReads,
   type Reader,
   type Region,
 } from "@oriel/core";
@@ -26,10 +28,11 @@ const defined = (args: object) =>
 // or a story an earlier create in this run made, and its arguments must pass
 // that source's op catalogue. `namespaces` are the sources' own namespaces,
 // and `items` what each source's items are, as their adapters declare them;
-// the composition root passes them in.
+// `oriel` reads the workspace's own threads, for Oriel's namespaces, and
+// without it the workspace has none. The composition root passes them in.
 export function bindingsFor(
   region: Region,
-  options: { reader: Reader; namespaces: Namespaces; items?: ItemDocs },
+  options: { reader: Reader; namespaces: Namespaces; items?: ItemDocs; oriel?: OrielReads },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
   const fns = describe(scope);
@@ -58,6 +61,7 @@ export function bindingsFor(
       for (const hit of hits) found.add(hit.id);
       return hits;
     },
+    oriel: options.oriel ?? noThreads,
   };
   // The ref the next create must carry. Every correctly numbered create uses
   // one up, so a rejected create can't shift the numbering of later ones.

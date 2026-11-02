@@ -1,6 +1,6 @@
 import type { Effect } from "./http.ts";
 import type { Msg } from "./root.ts";
-import { parseRoute, routeUrl } from "./route.ts";
+import { changeSetAnchor, parseRoute, routeUrl } from "./route.ts";
 import type { ThreadMsg } from "./thread.ts";
 import type { GroupingId, StreamEvent, WindowView } from "./view.ts";
 
@@ -70,6 +70,14 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       scrollBy(0, below);
       // Another in the same frame may not move it, and has no event to skip.
       if (scrollY !== was) shownAt = scrollY;
+      return;
+    }
+    case "showChangeSet": {
+      const set = document.getElementById(changeSetAnchor(effect.changeSetId));
+      if (!set) return;
+      set.scrollIntoView({ block: "start" });
+      // Readers start there too.
+      set.focus({ preventScroll: true });
       return;
     }
     case "subscribe": {

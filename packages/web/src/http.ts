@@ -34,6 +34,8 @@ export type Tag =
   | { kind: "reviewOpened" }
   | { kind: "reviewDecided" }
   | { kind: "telemetry" }
+  // The sidebar's search, by the query it asked about.
+  | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.
   | { kind: "item"; id: string }
   | { kind: "itemStamp"; id: string }
@@ -55,6 +57,8 @@ export type Effect =
   | { type: "navigate"; route: Route; replace?: true; stay?: true }
   // Scrolls a thread's page to its latest entry.
   | { type: "showLatest" }
+  // Scrolls a thread's page to one of its change sets, at the top.
+  | { type: "showChangeSet"; changeSetId: string }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }
@@ -87,7 +91,9 @@ export type Report =
   | { name: "grouping.switched"; grouping: GroupingId }
   | { name: "zoom.changed"; from: "cluster" | "list"; to: "cluster" | "list" }
   | { name: "item.panel-opened"; item: string }
-  | { name: "item.source-opened"; item: string; via: "panel" | "link" };
+  | { name: "item.source-opened"; item: string; via: "panel" | "link" }
+  | { name: "threads.searched"; queryLength: number; results: number }
+  | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>

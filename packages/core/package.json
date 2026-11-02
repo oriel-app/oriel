@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./panel": "./src/panel.ts"
+    "./panel": "./src/panel.ts",
+    "./oriel-reads": "./src/oriel-reads.ts"
   },
   "scripts": {
     "check": "tsc -p . && oxlint --deny-warnings . && node --test"

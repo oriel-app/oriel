@@ -4,7 +4,7 @@
 // sandbox runs each script against the region's bindings, the run is
 // recorded, and what it captures becomes a change set.
 import { createHash } from "node:crypto";
-import { array, type Log, parseItemId, type RunResult } from "@oriel/core";
+import { array, type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
 import {
   type Agent,
   type ServerAgentDeps,
@@ -13,9 +13,10 @@ import {
   type TurnInput,
 } from "./agent.ts";
 
-// Text to say, a script to run, or a search, which is a run whose result
-// renders as its own block.
-export type Step = { text: string } | { run: string } | { search: string };
+// Text to say, a script to run, a search, which is a run whose result
+// renders as its own block, or a look through Oriel's own threads, which
+// answers with a link to the best match.
+export type Step = { text: string } | { run: string } | { search: string } | { threads: string };
 
 // Its system prompt is a constant, like the real agent's: no source content.
 const systemPrompt = "oriel scripted agent v1";
@@ -58,7 +59,11 @@ async function* steps(
       continue;
     }
     const script =
-      "run" in step ? step.run : `return await search(${JSON.stringify(step.search)}, 10);`;
+      "run" in step
+        ? step.run
+        : "search" in step
+          ? `return await search(${JSON.stringify(step.search)}, 10);`
+          : `return await thread.find(${JSON.stringify(step.threads)}, 1);`;
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
     const bindings = deps.bindingsFor(region);
@@ -112,6 +117,7 @@ async function* steps(
       const hits = array(searchHit)(returned(result));
       if (hits.ok) yield { kind: "search", runId, hits: hits.value };
     }
+    if ("threads" in step) yield { kind: "text", text: linkTo(returned(result)) };
     if (result.mutations.length === 0) continue;
     if (result.mutations.length > deps.limits.maxMutationsPerChangeSet) {
       yield {
@@ -156,6 +162,20 @@ return first ?? null;`;
 const slackAsk = /^\s*(post|reply)\b[:\s]*([\s\S]*)$/i;
 
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
+const threadsAsk = /^\s*where\b/i;
+
+// A reply linking to the first thing thread.find() returned, as the agent's
+// would.
+function linkTo(found: unknown): string {
+  const [first] = Array.isArray(found) ? found : [];
+  const hit = typeof first === "object" && first !== null ? (first as Partial<ThreadFound>) : {};
+  const { thread, changeSet } = hit;
+  if (!thread) return "I couldn't find that in any thread.";
+  const name = thread.name ?? "a new thread";
+  return changeSet
+    ? `It was this change set, in [${name}](${changeSet.link}).`
+    : `It was in [${name}](${thread.link}).`;
+}
 // Words a person adds around what they're looking for, which an index search
 // would require every item to contain.
 const filler = new Set([
@@ -179,11 +199,16 @@ const filler = new Set([
   "with",
 ]);
 
-// What `pnpm dev` answers with: a search when asked to find something, an
-// estimate change when asked about estimates, a Slack post or reply when
-// asked to "post: …" or "reply: …", and otherwise a read of every item in
-// the region.
+// What `pnpm dev` answers with: a link to a thread when asked where
+// something happened, a search when asked to find something, an estimate
+// change when asked about estimates, a Slack post or reply when asked to
+// "post: …" or "reply: …", and otherwise a read of every item in the region.
 export function devPlan(input: TurnInput): Step[] {
+  if (threadsAsk.test(input.text))
+    return [
+      { text: "I'll look through your threads." },
+      { threads: input.text.replace(/[?.!"]+/g, " ").trim() },
+    ];
   const slackAsked = slackAsk.exec(input.text);
   if (slackAsked) {
     const fn = slackAsked[1]?.toLowerCase() === "reply" ? "reply" : "postMessage";

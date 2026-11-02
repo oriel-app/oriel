@@ -11,6 +11,8 @@ import type { JiraModel } from "./jira.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, stateNames, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
+import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
+import type { SearchResultView } from "./view.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -61,17 +63,14 @@ export function Sidebar(props: {
           )}
         </button>
       </div>
+      <ThreadSearch
+        search={model.search}
+        dispatch={dispatch}
+        folded={props.folded}
+        onFold={props.onFold}
+        newThread={page === "new-thread"}
+      />
       <nav class="sidebar-pages" aria-label="Pages">
-        <Link
-          route={{ page: "new-thread" }}
-          dispatch={dispatch}
-          class="nav-link"
-          title="Start a thread from nothing, such as a plan for a new epic"
-          aria-current={page === "new-thread" ? "page" : undefined}
-        >
-          <PlusIcon />
-          <span class="sidebar-label">New thread</span>
-        </Link>
         <Link
           route={{ page: "window", grouping: model.window?.grouping ?? "epic", addTo: null }}
           dispatch={dispatch}
@@ -82,9 +81,14 @@ export function Sidebar(props: {
           <span class="sidebar-label">Window</span>
         </Link>
       </nav>
-      <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
-      <Workstreams where={where} dispatch={dispatch} />
-      <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
+      {/* While a search shows its results, they take the lists' place. */}
+      {!searching(model.search) && (
+        <>
+          <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
+          <Workstreams where={where} dispatch={dispatch} />
+          <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
+        </>
+      )}
       <div class="sources">
         <Jira jira={model.jira} dispatch={dispatch} />
         <Folder folder={model.folder} dispatch={dispatch} />
@@ -92,6 +96,145 @@ export function Sidebar(props: {
     </aside>
   );
 }
+
+// The search field, at the top, with New thread beside it as an icon; folded,
+// both are icons, and the search's opens the sidebar at the field. Typing
+// finds threads by name, by what was said in them and by what their change
+// sets wrote. The arrow keys move through the results, Enter opens one, at
+// the change set that matched, and Escape clears the field.
+function ThreadSearch(props: {
+  search: SearchModel;
+  dispatch: Dispatch;
+  folded: boolean;
+  onFold(): void;
+  newThread: boolean;
+}) {
+  const { search, dispatch } = props;
+  const send = (msg: SearchMsg) => dispatch({ type: "search", msg });
+  const shown = searching(search) ? (search.results ?? []) : [];
+  const optionId = (index: number) => `thread-search-${index}`;
+  const keyed = (event: KeyboardEvent) => {
+    const msg: SearchMsg | null =
+      event.key === "ArrowDown"
+        ? { type: "moved", by: 1 }
+        : event.key === "ArrowUp"
+          ? { type: "moved", by: -1 }
+          : event.key === "Enter"
+            ? { type: "entered" }
+            : event.key === "Escape" && search.query !== ""
+              ? { type: "cleared" }
+              : null;
+    if (msg === null) return;
+    event.preventDefault();
+    // Escape here clears the field, and closes nothing else.
+    event.stopPropagation();
+    send(msg);
+  };
+  return (
+    <div class="sidebar-search">
+      <div class="sidebar-search-row" role="search">
+        <button
+          type="button"
+          class="sidebar-search-open nav-link"
+          title="Search threads"
+          onClick={() => {
+            props.onFold();
+            requestAnimationFrame(() => document.getElementById(fieldId)?.focus());
+          }}
+        >
+          <SearchIcon />
+          <span class="sidebar-label">Search threads</span>
+        </button>
+        <label class="sidebar-search-field">
+          <SearchIcon />
+          <span class="visually-hidden">Search threads</span>
+          <input
+            id={fieldId}
+            type="text"
+            role="combobox"
+            autocomplete="off"
+            spellcheck={false}
+            placeholder="Search threads"
+            aria-expanded={shown.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={shown.length > 0 ? optionId(search.active) : undefined}
+            value={search.query}
+            onInput={(event) => send({ type: "typed", text: event.currentTarget.value })}
+            onKeyDown={keyed}
+          />
+        </label>
+        <Link
+          route={{ page: "new-thread" }}
+          dispatch={dispatch}
+          class="sidebar-new nav-link"
+          title="New thread: start from nothing, such as a plan for a new epic"
+          aria-label="New thread"
+          aria-current={props.newThread ? "page" : undefined}
+        >
+          <PlusIcon />
+        </Link>
+      </div>
+      {searching(search) && (
+        <div class="search-results">
+          <p class="rail-empty" role="status">
+            {search.failed
+              ? "Oriel couldn't search just now. Keep typing to try again."
+              : search.results === null
+                ? ""
+                : search.results.length === 0
+                  ? "No thread matches that."
+                  : plural(search.results.length, "result")}
+          </p>
+          <div id={listId} role="listbox" aria-label="Threads found" class="search-list">
+            {shown.map((result, index) => (
+              <Link
+                key={`${result.thread.id}-${result.changeSet?.id ?? ""}`}
+                route={resultRoute(result)}
+                dispatch={dispatch}
+                msg={{ type: "search", msg: { type: "picked", index } }}
+                id={optionId(index)}
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === search.active}
+                class="search-result"
+              >
+                <span class="search-result-head">
+                  <span class="nav-name">{result.thread.title ?? "New thread"}</span>
+                  {result.changeSet && (
+                    <span class="search-result-set" data-state={result.changeSet.state}>
+                      {changeSetNames[result.changeSet.state]}
+                    </span>
+                  )}
+                </span>
+                {/* A name that matched is the title above already. */}
+                {result.matched !== "name" && (
+                  <span class="search-result-excerpt">{result.excerpt}</span>
+                )}
+                <span class="nav-waiting-workstream">{result.thread.workstream.name}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const fieldId = "thread-search";
+const listId = "thread-search-results";
+
+// Whether the field holds a query, so its results show instead of the lists.
+const searching = (search: SearchModel) => search.query.trim() !== "";
+
+// A change set a search found, by where it stands.
+const changeSetNames: Record<NonNullable<SearchResultView["changeSet"]>["state"], string> = {
+  pending: "Change set waiting",
+  approved: "Change set approved",
+  applied: "Change set applied",
+  rejected: "Change set rejected",
+  reverted: "Change set reverted",
+};
 
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
@@ -495,6 +638,15 @@ function WindowIcon() {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M2 6.5h12M5 9.5h6M5 11.5h4" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25L13.5 13.5" />
     </svg>
   );
 }

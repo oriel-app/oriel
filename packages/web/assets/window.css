@@ -339,6 +339,135 @@ a {
   gap: 1px;
 }
 
+/* The search over threads, with New thread beside it as an icon. */
+
+.sidebar-search {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sidebar-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sidebar-search-field {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 1.875rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-faint);
+}
+
+.sidebar-search-field:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.sidebar-search-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+}
+
+.sidebar-search-field input::placeholder {
+  color: var(--text-faint);
+}
+
+.nav-link.sidebar-search-open {
+  display: none;
+}
+
+button.sidebar-search-open {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.nav-link.sidebar-new {
+  flex: none;
+  justify-content: center;
+  width: 1.875rem;
+  padding: 0;
+}
+
+.search-results {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.search-results .rail-empty:empty {
+  display: none;
+}
+
+.search-list {
+  display: grid;
+  gap: 1px;
+}
+
+.search-result {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.search-result:hover,
+.search-result[aria-selected="true"] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.search-result-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+.search-result-set {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.search-result-set:is([data-state="rejected"], [data-state="reverted"]) {
+  color: var(--text-faint);
+}
+
+.search-result-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.search-result .nav-waiting-workstream {
+  font-size: var(--text-xs);
+}
+
+.search-result .nav-waiting-workstream::before {
+  content: none;
+}
+
 .nav-link {
   display: flex;
   align-items: center;
@@ -675,6 +804,20 @@ button.nav-more {
 
   .shell[data-folded] :is(.sidebar-needs, .sidebar-workstreams, .sidebar-done, .sidebar .sources) {
     display: none;
+  }
+
+  /* Search and New thread as two icons; the search's opens the sidebar. */
+  .shell[data-folded] .sidebar-search-row {
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .shell[data-folded] :is(.sidebar-search-field, .search-results) {
+    display: none;
+  }
+
+  .shell[data-folded] .nav-link.sidebar-search-open {
+    display: flex;
   }
 
   .shell[data-folded] .nav-link {
@@ -2283,6 +2426,20 @@ a.replies:hover {
   border-radius: var(--radius-lg);
   background: var(--surface);
   overflow: hidden;
+}
+
+/* The change set a link opened the thread at: marked, and clear of the bar. */
+.change-set[data-opened] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.change-set:focus {
+  outline: none;
+}
+
+.change-set[id] {
+  scroll-margin-top: calc(var(--head-row) + var(--space-4));
 }
 
 .change-set .change-set {

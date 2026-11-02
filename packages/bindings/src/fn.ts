@@ -6,6 +6,7 @@ import {
   type NamespaceHost,
   type NamespaceRead,
   type NamespaceWrite,
+  type OrielReads,
   parseItemId,
   type Reader,
   type ReadResult,
@@ -17,15 +18,22 @@ import {
 } from "@oriel/core";
 
 // Per-run host state: what a namespace's functions get, plus every item in
-// the region and the index, for `items` and `search()`.
+// the region and the index, for `items` and `search()`, and Oriel's own
+// data, for its namespaces.
 export type Host = NamespaceHost & {
   ids: readonly ItemId[];
   search(query: string, limit: number): Promise<SearchHit[]>;
+  oriel: OrielReads;
 };
 
+// Oriel's own namespaces, in every region's module (decision 0024), named
+// for the registry's actions: `workstream.*` and `thread.*`.
+export const orielSpaces = ["workstream", "thread"] as const;
+export type OrielSpace = (typeof orielSpaces)[number];
+
 // The namespace a function lives in: `items` for any item, one per source
-// that declares one, or null for a global.
-export type Space = "items" | SourceKind | null;
+// that declares one, one of Oriel's own, or null for a global.
+export type Space = "items" | SourceKind | OrielSpace | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;

@@ -12,25 +12,38 @@ import type { ItemRow, ThreadStateId, WaitingOn } from "./view.ts";
 export type Dispatch = (msg: Msg) => void;
 
 // An in-app link: a real href, so it opens in a new tab too, and a plain
-// click that stays in the page.
+// click that stays in the page. `msg` is what that click sends, where
+// following the link does more than go there, as opening a search result
+// does; by default, that the link was followed.
 export function Link(props: {
   route: Route;
   dispatch: Dispatch;
+  msg?: Msg;
   class?: string;
   title?: string;
+  id?: string;
+  role?: "option";
+  tabIndex?: number;
   children: ComponentChildren;
   "aria-current"?: "page" | undefined;
+  "aria-label"?: string;
+  "aria-selected"?: boolean;
 }) {
   return (
     <a
       href={routeUrl(props.route)}
       class={props.class}
       title={props.title}
+      id={props.id}
+      role={props.role}
+      tabIndex={props.tabIndex}
       aria-current={props["aria-current"]}
+      aria-label={props["aria-label"]}
+      aria-selected={props["aria-selected"]}
       onClick={(event) => {
         if (clickTo(event) !== "page") return;
         event.preventDefault();
-        props.dispatch({ type: "linkClicked", route: props.route });
+        props.dispatch(props.msg ?? { type: "linkClicked", route: props.route });
       }}
     >
       {props.children}
@@ -288,7 +301,22 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
       return (
         <MarkdownLink key={key} href={inline.href} sites={to} label={spans(inline.children)} />
       );
+    case "route":
+      return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
   }
+}
+
+// A reply's link to a thread in Oriel, or a change set in one: it opens in
+// the window, as any in-app link does. Where nothing can navigate, as on a
+// review link's page, it is its label.
+function RouteLink(props: { route: Route; label: ComponentChildren }) {
+  const links = useContext(ItemLinksContext);
+  if (links === null) return <span>{props.label}</span>;
+  return (
+    <Link route={props.route} dispatch={links.dispatch}>
+      {props.label}
+    </Link>
+  );
 }
 
 function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChildren }) {
