@@ -35,6 +35,7 @@ const viewWith = (changeSets: ChangeSetView[]): ThreadView =>
     title: "Estimate the launch",
     workstream: { id: workstreamId, name: "Launch", version: 1 },
     state: "working",
+    entries: [],
     running: false,
     changeSets,
     writable: true,
@@ -52,6 +53,7 @@ const summary = (
     state,
     doneBy: state === "done" ? "applied" : null,
     waitingOn,
+    activityAt: at,
   });
 
 const replied = (tag: Replied["tag"], body: unknown, ok = true): Replied => ({

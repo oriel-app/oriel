@@ -9,7 +9,7 @@ import {
   type ThreadSummaryView,
   waitingOn,
 } from "../src/view.ts";
-import { threadSummary, threadView, workstreamSummary } from "../testing.ts";
+import { threadSummary, threadView, workstreamSummary, workstreamView } from "../testing.ts";
 
 const workstreamA = "01JBZ0000000000000000000G1";
 const workstreamB = "01JBZ0000000000000000000G2";
@@ -106,12 +106,12 @@ test("every page but a review link loads what the sidebar shows, the folder incl
 
 test("a drop on a workstream's page updates the page, and the workstreams reload for their counts", () => {
   const [model] = init({ page: "workstream", id: workstreamA });
-  const view = {
+  const view = workstreamView({
     workstream: workstream(workstreamA, "Launch"),
     members: [],
     changes: [],
     threads: [],
-  };
+  });
   const [after, effects] = update(model, {
     type: "replied",
     tag: { kind: "dropped", workstreamId: workstreamA },
@@ -140,7 +140,7 @@ test("a drop on a thread reaches the thread, even after a visit to its workstrea
   // The thread has loaded, in workstream A.
   const loaded = {
     ...entered.thread,
-    view: { workstream: { id: workstreamA } },
+    view: threadView({ workstream: { id: workstreamA, name: "Launch", version: 1 } }),
   } as Model["thread"];
   const [, effects] = update(
     { ...entered, thread: loaded },
@@ -148,7 +148,7 @@ test("a drop on a thread reaches the thread, even after a visit to its workstrea
       type: "replied",
       tag: { kind: "dropped", workstreamId: workstreamA },
       ok: true,
-      body: { workstream: {}, added: ["jira:OA-5"], refused: [] },
+      body: { workstream: workstreamView(), added: ["jira:OA-5"], refused: [] },
     },
   );
   const urls = effects.flatMap((effect) => (effect.type === "http" ? [effect.url] : []));
@@ -163,7 +163,7 @@ test("a drop that answers after the user moved on still reloads the workstreams"
     type: "replied",
     tag: { kind: "dropped", workstreamId: workstreamA },
     ok: true,
-    body: { workstream: {}, added: ["jira:OA-5"], refused: [] },
+    body: { workstream: workstreamView(), added: ["jira:OA-5"], refused: [] },
   });
   assert.ok(effects.some((effect) => effect.type === "http" && effect.url === "/api/workstreams"));
 });

@@ -124,7 +124,6 @@ export const diffView = (over: Partial<DiffView> = {}): DiffView => ({
   ...over,
 });
 
-// `lastSeq` is the last entry's unless given.
 export const threadView = (over: Partial<ThreadView> = {}): ThreadView => ({
   id: threadId,
   title: null,
@@ -134,7 +133,7 @@ export const threadView = (over: Partial<ThreadView> = {}): ThreadView => ({
   regionVersion: 1,
   members: [],
   entries: [],
-  lastSeq: over.entries?.at(-1)?.seq ?? 0,
+  lastSeq: 0,
   running: false,
   changeSets: [],
   writable: true,

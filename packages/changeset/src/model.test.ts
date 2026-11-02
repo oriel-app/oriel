@@ -1058,7 +1058,7 @@ async function run(sequence: number, shared: ReturnType<typeof setup>) {
   return { landed: jira.landings.length, reverts: checked, reached };
 }
 
-test("model: random histories keep the change-set invariants", async () => {
+test("model: random histories keep the change-set invariants", async (t) => {
   const shared = setup();
   let landed = 0;
   let reverts = 0;
@@ -1070,7 +1070,12 @@ test("model: random histories keep the change-set invariants", async () => {
     for (const [state, n] of Object.entries(outcome.reached))
       reached[state] = (reached[state] ?? 0) + n;
   }
-  if (sequences < histories) return;
+  if (sequences < histories) {
+    t.diagnostic(
+      `walked ${sequences} of ${histories} histories; CI=true walks all and checks what they reached`,
+    );
+    return;
+  }
   // And the states the offered-step invariants are about: a dismissed set
   // with applied rows and one sent unanswered, a gone item, stale arguments,
   // an apply in flight, and a revert dismissed partway.

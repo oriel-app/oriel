@@ -271,8 +271,10 @@ const thread = (entries: ChatEntry[], changeSets: ChangeSetView[] = []): ThreadV
     state: "working",
     regionVersion: 1,
     entries,
+    lastSeq: entries.at(-1)?.seq ?? 0,
     running: false,
     changeSets,
+    writable: false,
   });
 
 const openSet = changeSetView({
@@ -725,7 +727,7 @@ test("what's dropped on a thread joins its workstream; the thread reloads to sho
   const reply = (added: string[]) =>
     threadReplied(
       model,
-      ok({ kind: "dropped", workstreamId }, { workstream: {}, added, refused: [] }),
+      ok({ kind: "dropped", workstreamId }, { workstream: workstreamView(), added, refused: [] }),
     );
   assert.deepEqual(reply(["jira:OA-5"])[1], [
     { type: "http", method: "GET", url: `/api/threads/${id}`, tag: { kind: "thread", id } },
