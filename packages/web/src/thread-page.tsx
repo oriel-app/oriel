@@ -279,8 +279,13 @@ function ChatBlock(props: {
     }
     case "actions":
       return (
-        <li class="actions-block">
+        <li class="actions-block" aria-label="What the agent did in Oriel">
           <ActionLines lines={block.lines} />
+          {block.version && (
+            <span class="marker-version">
+              v{block.version.from} → v{block.version.to}
+            </span>
+          )}
         </li>
       );
     case "held":
@@ -313,29 +318,26 @@ function ChatBlock(props: {
 function ActionLines({ lines }: { lines: ActionLineView[] }) {
   const dispatch = useContext(ItemLinksContext)?.dispatch;
   return (
-    <>
-      <p class="actions-label">What the agent did in Oriel</p>
-      <ul class="action-lines">
-        {lines.map((line, i) => (
-          <li key={i} data-applied={line.applied ? "yes" : "no"}>
-            {line.touched && dispatch ? (
-              <Link
-                route={
-                  line.touched.kind === "thread"
-                    ? { page: "thread", id: line.touched.id }
-                    : { page: "workstream", id: line.touched.id }
-                }
-                dispatch={dispatch}
-              >
-                {line.text}
-              </Link>
-            ) : (
-              line.text
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
+    <ul class="action-lines">
+      {lines.map((line, i) => (
+        <li key={i} data-applied={line.applied ? "yes" : "no"}>
+          {line.touched && dispatch ? (
+            <Link
+              route={
+                line.touched.kind === "thread"
+                  ? { page: "thread", id: line.touched.id }
+                  : { page: "workstream", id: line.touched.id }
+              }
+              dispatch={dispatch}
+            >
+              {line.text}
+            </Link>
+          ) : (
+            line.text
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

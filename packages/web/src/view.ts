@@ -218,7 +218,15 @@ export type RunView = {
 // one reply streamed in parts; a run's start and finish share its `runId`.
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
-  | { kind: "marker"; from: number; to: number; added: ItemRef[]; removed: ItemRef[] }
+  // `ownAgent`: this thread's agent made every change it covers.
+  | {
+      kind: "marker";
+      from: number;
+      to: number;
+      added: ItemRef[];
+      removed: ItemRef[];
+      ownAgent?: true;
+    }
   | { kind: "text"; text: string }
   | { kind: "run.started"; runId: string; script: string }
   | { kind: "run.finished"; runId: string; run: RunView }

@@ -249,7 +249,6 @@ export function devPlan(input: TurnInput): Step[] {
     return [
       { text: "I'll take the finished stories out of this workstream." },
       { run: tidyScript(/\bclose\b/i.test(input.text)) },
-      { text: "Oriel lists below what it did." },
     ];
   }
   if (/\b(estimate|estimates|points|unestimated)\b/i.test(input.text)) {

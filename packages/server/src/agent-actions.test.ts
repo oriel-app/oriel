@@ -98,8 +98,10 @@ test("a removal the agent asked for applies at the turn's end, as the agent's, a
     action: "workstream.remove",
     by: { kind: "agent", threadId: app.threadId },
   });
-  // The thread moved to the new version, with its marker.
-  assert.ok(view.entries.some((e) => e.kind === "marker"));
+  // The thread moved to the new version, with its marker, which says it is
+  // the agent's own change, for the list of what it did to fold in.
+  const marker = view.entries.find((e) => e.kind === "marker");
+  assert.ok(marker?.kind === "marker" && marker.ownAgent === true);
 });
 
 test("the turn's last run that asked for actions gives them, adjacent calls merge, and marking its own thread done comes last", async (t) => {

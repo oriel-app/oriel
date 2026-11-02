@@ -368,6 +368,11 @@ export function views(deps: ViewDeps) {
         to: message.to,
         added: changes.flatMap((c) => c.added),
         removed: changes.flatMap((c) => c.removed),
+        // This thread's agent made every change it covers, so the list of
+        // what it did says it already.
+        ...(changes.length > 0 && changes.every((c) => c.thread?.id === own.thread)
+          ? { ownAgent: true as const }
+          : {}),
       };
     }
     const checked = agentEvent(message.event);
