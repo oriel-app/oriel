@@ -2,6 +2,7 @@
 // (server-sent events), and prompt caching on the system prompt, the tool and
 // the turn's growing tail. The API key stays in this closure: it is sent as a
 // header and never logged, put in an error or kept on an object.
+import { parseEnv } from "node:util";
 import {
   type Conversation,
   type ConversationRequest,
@@ -23,6 +24,16 @@ export const defaultModel = "claude-opus-5-5";
 // With `fallbacks: "default"`, a response a safety classifier declines is
 // retried on the model Anthropic recommends for that category.
 export const fallbackBeta = "server-side-fallback-2026-07-01";
+
+// The model key from a `.env`'s text: ANTHROPIC_API_KEY and nothing else,
+// for the server and the evals alike. Callers never print its value. A key
+// with whitespace or anything but printable ASCII is refused, not trimmed: a
+// header can't hold it, and the error saying so would quote it. parseEnv
+// already drops an unquoted value's line ending and trailing spaces.
+export function anthropicKey(envFile: string | null): string | null {
+  const key = envFile ? parseEnv(envFile).ANTHROPIC_API_KEY : undefined;
+  return key && /^[!-~]+$/.test(key) ? key : null;
+}
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 

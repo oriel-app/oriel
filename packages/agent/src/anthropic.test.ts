@@ -3,7 +3,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";
-import { anthropicProvider, apiVersion, fallbackBeta, messagesUrl } from "./anthropic.ts";
+import {
+  anthropicKey,
+  anthropicProvider,
+  apiVersion,
+  fallbackBeta,
+  messagesUrl,
+} from "./anthropic.ts";
 import { runTool, systemPrompt, threadMessages } from "./prompt.ts";
 import {
   type ConversationRequest,
@@ -579,4 +585,25 @@ test("a history that ends in a marker closes its tool round before the user's me
     { role: "assistant", content: [{ type: "text", text: "Noted." }] },
     { role: "user", content: [{ type: "text", text: "And now?" }] },
   ]);
+});
+
+test("the model key is ANTHROPIC_API_KEY as a header can hold it, never trimmed or mended", () => {
+  const key = "sk-ant-fake-0123456789abcdef";
+  // parseEnv drops an unquoted value's line ending and trailing spaces.
+  for (const file of [`ANTHROPIC_API_KEY=${key}\n`, `ANTHROPIC_API_KEY=${key}  \r\n`])
+    assert.equal(anthropicKey(file), key, JSON.stringify(file));
+  for (const file of [
+    null,
+    "",
+    "ANTHROPIC_API_KEY=\n",
+    `GH_TOKEN=${key}\n`,
+    `ANTHROPIC_API_KEY="${key} "\n`,
+    `ANTHROPIC_API_KEY=" ${key}"\n`,
+    `ANTHROPIC_API_KEY="${key}\n"\n`,
+    `ANTHROPIC_API_KEY="${key}\nsecond line"\n`,
+    `ANTHROPIC_API_KEY=${key} ${key}\n`,
+    `ANTHROPIC_API_KEY=${key}\u00e9\n`,
+    `ANTHROPIC_API_KEY=${key}\u0000\n`,
+  ])
+    assert.equal(anthropicKey(file), null, JSON.stringify(file));
 });

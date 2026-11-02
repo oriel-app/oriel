@@ -15,7 +15,9 @@ export const usage = `usage: pnpm -s github <operation>
   pr-create <branch> <title> <body>
   pr-edit <number> <body> [title]
   pr-enqueue <number>
-  runs [branch]`;
+  runs [branch]
+A title is one line, type(scope): summary (SPEC §10), and a body never is,
+so a title and body given the wrong way round are refused.`;
 
 export type Operation =
   | { op: "pr-list" }
@@ -28,6 +30,14 @@ export type Operation =
 const branchName = /^[a-z0-9]+(-[a-z0-9]+){0,2}$/;
 const prNumber = (value: string | undefined) =>
   value && /^[1-9][0-9]*$/.test(value) ? Number(value) : null;
+// pr-create takes the title before the body and pr-edit after it, so each is
+// told by its shape: a title is one line, SPEC §10's `type(scope): summary`,
+// and a body never is. A pair given the wrong way round is refused rather
+// than published swapped. Neither is a flag, so `--title x` can't become a
+// body or `--draft` a title.
+const isTitle = (text: string) =>
+  /^[a-z]+(\([a-z0-9,-]+\))?!?: (?=\S)[^\p{Cc}\p{Zl}\p{Zp}]+$/u.test(text);
+const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") && !isTitle(text);
 
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
@@ -38,15 +48,15 @@ export function parse(args: readonly string[]): Operation | { error: string } {
   }
   if (op === "pr-create" && rest.length === 3) {
     const [branch = "", title = "", body = ""] = rest;
-    if (branchName.test(branch) && title.trim()) return { op, branch, title, body };
+    if (branchName.test(branch) && isTitle(title) && isBody(body))
+      return { op, branch, title, body };
   }
   if (op === "pr-edit" && (rest.length === 2 || rest.length === 3)) {
     const [, body = "", title] = rest;
     const number = prNumber(rest[0]);
-    // Neither is a flag, so `--title x` can't become a body or `--draft` a title.
-    const ok = number && body.trim() && !body.startsWith("--");
-    if (ok && title === undefined) return { op, number, body };
-    if (ok && title?.trim() && !title.startsWith("-")) return { op, number, body, title };
+    if (number && isBody(body) && title === undefined) return { op, number, body };
+    if (number && isBody(body) && title !== undefined && isTitle(title))
+      return { op, number, body, title };
   }
   if (op === "runs" && rest.length <= 1) {
     const branch = rest[0] ?? null;
