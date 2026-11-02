@@ -16,6 +16,7 @@ import {
   type ChangeSet,
   type ChangeSets,
   type Cluster,
+  type WorkstreamChange,
   type WorkstreamMember,
   type WorkstreamOrigin,
   type IndexRecord,
@@ -120,10 +121,13 @@ type Outcome<O> = {
   changed: Changed | null;
   events: Counted[] | "counted";
 };
+
+// `cause` is what a workstream's log records as having made a version.
 type Handler<N extends ActionName> = (
   input: ActionInput<N>,
   actor: Actor,
   deps: ActionDeps,
+  cause: WorkstreamChange["cause"],
 ) => Promise<Outcome<unknown>>;
 
 // The user's own doing goes unsaid in an event; anyone else is named.
@@ -260,12 +264,12 @@ async function newWorkstream(
 }
 
 const handlers = {
-  "workstream.add": async ({ workstream: id, items }, actor, deps) => {
+  "workstream.add": async ({ workstream: id, items }, actor, deps, cause) => {
     const workstream = mustWorkstream(deps, id);
     const change = deps.workstreams.add(
       workstream.id,
       await members(deps, items, actor),
-      actor,
+      cause,
       deps.now(),
     );
     const added = (change?.added ?? []).map((member) => member.id);
@@ -284,7 +288,7 @@ const handlers = {
     };
   },
 
-  "workstream.remove": async ({ workstream: id, items }, actor, deps) => {
+  "workstream.remove": async ({ workstream: id, items }, actor, deps, cause) => {
     const workstream = mustWorkstream(deps, id);
     // By identity: a moved item is removed under its current handle, and
     // one the index no longer has under the handle the workstream shows.
@@ -313,7 +317,7 @@ const handlers = {
           `${keys(held)} ${held.length === 1 ? "is" : "are"} in a change set that hasn't applied yet, in one of its threads`,
         );
     }
-    const change = deps.workstreams.remove(workstream.id, named, actor, deps.now());
+    const change = deps.workstreams.remove(workstream.id, named, cause, deps.now());
     // Back under the handle the index has now; one it no longer has can't
     // come back.
     const live = new Map(records.map((record) => [identity(record), record.id]));
@@ -710,7 +714,8 @@ type Result<N extends ActionName> = Output<N> & { undo: Call | null };
 // whose action is known only at run time: an Undo sent back to
 // /api/actions/:name, and the intents a turn's run recorded. Either way the
 // dispatcher checks the input. An Undo of what someone else did names them
-// in `undoes`, which its events carry.
+// in `undoes`, which its events carry. One from the list under a thread's
+// agent's reply names that thread (`via`), which a workstream's log records.
 export type Dispatch = {
   <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor): Promise<Result<N>>;
   untyped(
@@ -718,6 +723,7 @@ export type Dispatch = {
     input: unknown,
     actor: Actor,
     undoes?: Actor,
+    via?: Ulid,
   ): Promise<{ undo: Call | null }>;
 };
 
@@ -746,12 +752,15 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     raw: unknown,
     actor: Actor,
     undoes?: Actor,
+    via?: Ulid,
   ): Promise<Result<N>> => {
     const why = refusal(name, actor);
     if (why !== null) throw new ActionError("refused", why);
     const declared: ActionDeclaration = actions[name];
     const handler = handlers[name] as Handler<typeof name>;
-    const outcome = await handler(checked(name, raw as Fields<N>), actor, deps);
+    const cause =
+      actor.kind === "user" && via !== undefined ? { kind: "user" as const, via } : actor;
+    const outcome = await handler(checked(name, raw as Fields<N>), actor, deps, cause);
     if (
       outcome.undo &&
       (declared.class.kind !== "direct" || outcome.undo.action !== declared.class.inverse)

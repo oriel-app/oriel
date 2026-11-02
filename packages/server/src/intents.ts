@@ -154,7 +154,13 @@ export function lineUndo(deps: LineUndoDeps) {
     try {
       // A redo undoes the user's own Undo.
       const undoes: Actor = undone ? actor : { kind: "agent", threadId: at.thread };
-      const { undo } = await deps.dispatch.untyped(offered.action, offered.input, actor, undoes);
+      const { undo } = await deps.dispatch.untyped(
+        offered.action,
+        offered.input,
+        actor,
+        undoes,
+        at.thread,
+      );
       // As stored now: another of its lines may have changed meanwhile.
       const { list } = lineAt(at);
       const lines = list.lines.map((each, i) =>

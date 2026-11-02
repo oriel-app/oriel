@@ -44,7 +44,9 @@ export type WorkstreamChange = {
   at: Instant;
   added: WorkstreamMember[];
   removed: WorkstreamMember[];
-  cause: Actor;
+  // Who made it. `via`: the thread under whose agent's reply the user undid,
+  // or did again, what the agent did, which the line there says.
+  cause: Exclude<Actor, { kind: "user" }> | { kind: "user"; via?: Ulid };
 };
 
 // One version of a workstream's membership: what a thread works in, what a run

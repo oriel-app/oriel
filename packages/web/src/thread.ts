@@ -680,6 +680,7 @@ export type Block =
       added: ItemRef[];
       removed: ItemRef[];
       ownAgent?: true;
+      fromLine?: true;
     }
   // `stopped`: its turn ended before it finished, as when the user stopped it.
   | {
@@ -718,8 +719,9 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         else out.push({ kind: "reply", seq: entry.seq, text: entry.text });
         ended = false;
         break;
+      // An Undo or Redo under the agent's reply is said by its line there.
       case "marker":
-        out.push({ ...entry, kind: "marker" });
+        if (!entry.fromLine) out.push({ ...entry, kind: "marker" });
         break;
       case "run.started":
         out.push({
@@ -755,7 +757,8 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
         out.push({ kind: "change-set", seq: entry.seq, changeSetId: entry.changeSetId });
         break;
       // The markers its own changes left just before say what its lines
-      // say, so they fold in; the rail says the version they moved it to.
+      // say, so they fold in; the rail says the version they moved it to,
+      // as it does for every marker.
       case "actions":
         for (let end = out.at(-1); end?.kind === "marker" && end.ownAgent; end = out.at(-1))
           out.pop();
