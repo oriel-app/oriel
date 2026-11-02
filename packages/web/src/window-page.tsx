@@ -16,7 +16,14 @@ import {
   SearchIcon,
 } from "./parts.tsx";
 import { ViewTabs } from "./overview-page.tsx";
-import { type Model, type Msg as WindowMsg, pickedName, type Zoom, zoomOf } from "./update.ts";
+import {
+  windowRoute,
+  type Model,
+  type Msg as WindowMsg,
+  pickedName,
+  type Zoom,
+  zoomOf,
+} from "./update.ts";
 import {
   type BrowseFilter,
   type Choice,
@@ -55,7 +62,7 @@ export function WindowPage(props: {
     <div class="window-layout">
       <main class="window" aria-busy={model.status === "loading"}>
         <div class="window-head">
-          <ViewTabs current="browse" dispatch={dispatch} />
+          <ViewTabs current="browse" browse={windowRoute(model)} dispatch={dispatch} />
           <Tabs
             picked={model.grouping}
             onPick={(grouping) =>

@@ -220,7 +220,7 @@ export function store(db: DatabaseSync) {
     "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values (?, ?, ?, ?)",
   );
   const markLinkOpened = db.prepare(
-    "update review_links set opened_at = ? where change_set_id = ? and revoked_at is null and opened_at is null",
+    "update review_links set opened_at = ? where token_hash = ? and opened_at is null",
   );
   const selectUnopened = db.prepare(`
     select l.change_set_id, s.thread_id, l.created_at
@@ -508,9 +508,9 @@ export function store(db: DatabaseSync) {
       insertLink.run(tokenHash, workspaceId, changeSetId, at);
     },
 
-    // The change set's live link was opened at `at`, if it hadn't been.
-    markLinkOpened(changeSetId: Ulid, at: Instant): void {
-      markLinkOpened.run(at, changeSetId);
+    // The link was first opened at `at`, unless it had been before.
+    markLinkOpened(tokenHash: string, at: Instant): void {
+      markLinkOpened.run(at, tokenHash);
     },
 
     // Links made after `after` that are neither revoked nor opened, oldest

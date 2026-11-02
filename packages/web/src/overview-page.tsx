@@ -27,14 +27,20 @@ import type {
 } from "./view.ts";
 import { ConnectJira, StatusBar } from "./window-page.tsx";
 
-export function OverviewPage(props: { model: OverviewModel; jira: JiraModel; dispatch: Dispatch }) {
-  const { model, jira, dispatch } = props;
+export function OverviewPage(props: {
+  model: OverviewModel;
+  jira: JiraModel;
+  // Browse as the user last left it.
+  browse: Route;
+  dispatch: Dispatch;
+}) {
+  const { model, jira, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
   return (
     <main class="overview" aria-busy={view === null && model.problem === null}>
       <div class="overview-top">
-        <ViewTabs current="overview" dispatch={dispatch} />
+        <ViewTabs current="overview" browse={browse} dispatch={dispatch} />
         {view && <Counts view={view} model={model} dispatch={dispatch} />}
       </div>
       {view && model.opened.includes("changed") && <Changed view={view} dispatch={dispatch} />}
@@ -61,7 +67,7 @@ export function OverviewPage(props: { model: OverviewModel; jira: JiraModel; dis
             <NeedsYou view={view} model={model} dispatch={dispatch} />
             <Headlines view={view} dispatch={dispatch} />
             <PinnedSlot />
-            <Workstreams view={view} model={model} dispatch={dispatch} />
+            <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
           </div>
           <div class="overview-side">
             <People view={view} dispatch={dispatch} />
@@ -85,8 +91,12 @@ function PinnedSlot() {
 }
 
 // The window's two views, side by side at the top of each.
-export function ViewTabs(props: { current: "overview" | "browse"; dispatch: Dispatch }) {
-  const { current, dispatch } = props;
+export function ViewTabs(props: {
+  current: "overview" | "browse";
+  browse: Route;
+  dispatch: Dispatch;
+}) {
+  const { current, browse, dispatch } = props;
   return (
     <nav class="tabs view-tabs" aria-label="Window">
       <Link
@@ -97,7 +107,7 @@ export function ViewTabs(props: { current: "overview" | "browse"; dispatch: Disp
         Overview
       </Link>
       <Link
-        route={{ page: "window", grouping: "epic", addTo: null }}
+        route={browse}
         dispatch={dispatch}
         aria-current={current === "browse" ? "page" : undefined}
       >
@@ -157,7 +167,9 @@ function Counts(props: { view: OverviewView; model: OverviewModel; dispatch: Dis
 
 // What changed, by workstream, most first, and what no workstream holds.
 function Changed({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
-  const { workstreams, elsewhere } = view.changed;
+  const { elsewhere } = view.changed;
+  const workstreams = view.changed.workstreams.slice(0, shown.workstreams);
+  const rest = view.changed.workstreams.length - workstreams.length;
   return (
     <section class="overview-changed" aria-label="What changed, by workstream">
       <ul class="overview-rows">
@@ -173,6 +185,11 @@ function Changed({ view, dispatch }: { view: OverviewView; dispatch: Dispatch })
             <span class="overview-sub">{plural(each.moved, "item")} moved</span>
           </li>
         ))}
+        {rest > 0 && (
+          <li class="overview-row">
+            <span class="overview-sub">and {plural(rest, "more workstream")}, below</span>
+          </li>
+        )}
         {elsewhere > 0 && (
           <li class="overview-row">
             <span class="overview-title">Not in a workstream</span>
@@ -337,21 +354,27 @@ function Item({ item }: { item: ItemRef }) {
   );
 }
 
-// Every open workstream, a line each: the ones that moved most, and any gone
-// quiet, which a cap would hide, until "more".
-function Workstreams(props: { view: OverviewView; model: OverviewModel; dispatch: Dispatch }) {
-  const { view, model, dispatch } = props;
+// Every open workstream, a line each: the ones that moved most, and a few
+// gone quiet, which a cap would hide, until "more".
+function Workstreams(props: {
+  view: OverviewView;
+  model: OverviewModel;
+  browse: Route;
+  dispatch: Dispatch;
+}) {
+  const { view, model, browse, dispatch } = props;
   const all = view.workstreams;
   const open = model.opened.includes("workstreams");
-  const rows = open
-    ? all
-    : all.filter((row, at) => at < shown.workstreams || row.signals.length > 0);
+  // The first few, and then any gone quiet, which a cap would hide, a few
+  // more at most.
+  const quiet = all.slice(shown.workstreams).filter((row) => row.quiet);
+  const rows = open ? all : [...all.slice(0, shown.workstreams), ...quiet.slice(0, shown.quiet)];
   return (
     <Section id="workstreams" title="Workstreams" count={all.length}>
       {all.length === 0 ? (
         <p class="overview-quiet">
           No workstreams yet. Make one from what isn't in a workstream yet, or from{" "}
-          <Link route={{ page: "window", grouping: "epic", addTo: null }} dispatch={dispatch}>
+          <Link route={browse} dispatch={dispatch}>
             Browse
           </Link>
           .

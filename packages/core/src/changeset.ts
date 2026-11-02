@@ -186,7 +186,7 @@ export interface ChangeSets {
   // What the review page shows; null for a dead or unknown token. It records
   // nothing: whoever shows it says whether it was opened, with this.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;
-  reviewLinkOpened(id: Ulid): Promise<void>;
+  reviewLinkOpened(token: string): Promise<void>;
   // The workspace's live review links nobody has opened, oldest first:
   // what the overview's Needs you lists (decision 0027).
   unopenedLinks(

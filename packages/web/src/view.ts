@@ -594,9 +594,11 @@ export type WorkstreamRowView = {
   movedItems: ItemRef[];
   // Changes logged to its members on each of the last 14 days, oldest first.
   activity: number[];
-  // Its latest member update or thread activity, and the whole days since.
+  // Its latest member update or thread activity, and the whole days since;
+  // `quiet` once that is as long as an item takes to count as stuck.
   lastActivity: string;
   idleDays: number;
+  quiet: boolean;
   threads: { working: number; waiting: number; done: number; dropped: number };
   signals: SignalView[];
 };

@@ -9,6 +9,8 @@ import {
   type IndexRecord,
   type Instant,
   parseItemId,
+  stalled,
+  stuckDays,
   thisWeek,
   type WorkstreamMember,
 } from "@oriel/core";
@@ -54,8 +56,6 @@ export type OverviewInput = {
 
 // How many rows a capped section sends.
 export const caps = { candidates: 8, people: 10 };
-
-const stalledAfter = 14;
 
 const identity = (source: string, stableId: string) => `${source}\u0000${stableId}`;
 const identityOf = (item: { id: string; stableId: string }) =>
@@ -123,24 +123,21 @@ export function overviewView(input: OverviewInput): OverviewView {
         workstream.createdAt,
       );
       const idleDays = daysSince(lastActivity as Instant, now);
-      const stalled = members.filter(
-        (record) =>
-          record.facets.state === "in-progress" && daysSince(record.updatedAt, now) >= stalledAfter,
-      ).length;
+      const stuck = members.filter((record) => stalled(record, now)).length;
       const signals: SignalView[] = [
-        ...(idleDays >= stalledAfter
+        ...(idleDays >= stuckDays
           ? [
               {
                 text: `Nothing moved in ${idleDays} days`,
-                rule: `No member update and no thread activity in ${stalledAfter} days`,
+                rule: `No member update and no thread activity in ${stuckDays} days`,
               },
             ]
           : []),
-        ...(stalled > 0
+        ...(stuck > 0
           ? [
               {
-                text: `${stalled} in progress, no update in ${stalledAfter} days`,
-                rule: `A member in progress with no update in ${stalledAfter} days`,
+                text: `${stuck} in progress, no update in ${stuckDays} days`,
+                rule: `A member in progress with no update in ${stuckDays} days`,
               },
             ]
           : []),
@@ -165,6 +162,7 @@ export function overviewView(input: OverviewInput): OverviewView {
         activity,
         lastActivity,
         idleDays,
+        quiet: idleDays >= stuckDays,
         threads: {
           working: threads.filter((t) => t.state === "working" && !waitsOnUser(t.waitingOn)).length,
           waiting: threads.filter((t) => waitsOnUser(t.waitingOn)).length,

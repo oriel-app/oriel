@@ -22,7 +22,8 @@ export type OverviewMsg =
 export const loadOverview: Effect = get("/api/overview", { kind: "overview" });
 
 // How many rows a section shows until "more" is asked for.
-export const shown = { needsYou: 4, workstreams: 8 } as const;
+// `quiet`: how many workstreams gone quiet show past the first few.
+export const shown = { needsYou: 4, workstreams: 8, quiet: 4 } as const;
 
 // Entering the overview loads it fresh, and counts as opening it.
 export function initOverview(): [OverviewModel, Effect[]] {

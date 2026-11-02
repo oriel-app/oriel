@@ -13,6 +13,7 @@ import {
   type Instant,
   type ItemId,
   isInverse,
+  isOverviewSection,
   isItemId,
   isUlid,
   type Log,
@@ -237,13 +238,7 @@ const windowEvent = union(
   object({ name: literal("overview.opened") }),
   object({
     name: literal("overview.more-opened"),
-    section: union(
-      literal("changed"),
-      literal("needs-you"),
-      literal("workstreams"),
-      literal("candidates"),
-      literal("people"),
-    ),
+    section: refine(string, isOverviewSection, "expected one of the overview's sections"),
   }),
 );
 
@@ -1073,7 +1068,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           );
         }
         deps.emit({ name: "review-link.opened", at: deps.now(), workspaceId, changeSetId });
-        await changeSets.reviewLinkOpened(changeSetId);
+        await changeSets.reviewLinkOpened(token);
         return json(200, {
           changeSet: await viewOf(opened.changeSet),
           diff: views.diff(opened.diff, opened.changeSet, changeSets.applying(opened.changeSet.id)),

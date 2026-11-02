@@ -73,4 +73,14 @@ export const stalled = (record: IndexRecord, now: Instant): boolean =>
 // The overview's sections with a "more", as telemetry names them: what
 // changed since the user looked, Needs you, the workstreams, Not in a
 // workstream yet, and in progress by person.
-export type OverviewSection = "changed" | "needs-you" | "workstreams" | "candidates" | "people";
+export const overviewSections = [
+  "changed",
+  "needs-you",
+  "workstreams",
+  "candidates",
+  "people",
+] as const;
+export type OverviewSection = (typeof overviewSections)[number];
+
+export const isOverviewSection = (value: string): value is OverviewSection =>
+  overviewSections.some((section) => section === value);
