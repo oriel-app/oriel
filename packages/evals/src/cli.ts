@@ -1,8 +1,11 @@
 // `pnpm evals` runs every case live, recording its cassettes, for local
 // hillclimbing; `evals:ci` replays the cassettes and never reaches the network.
-import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
+import { openChecked } from "@oriel/folder";
 import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { anthropicFetch, anthropicKey, type Fetch, sameModel } from "./anthropic.ts";
@@ -83,38 +86,46 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   return { error: usage };
 }
 
-// Reads a file only if it is a regular one: a link isn't followed and a pipe
-// or device isn't waited on. Null for anything else; no error carries content.
-export function readRegularFile(path: string): string | null {
-  let fd: number;
+// Reads a .env as the folder source reads a file (decision 0019): no link on
+// the way to it, no second link to it, no pipe or device. Null when nothing
+// is there; no problem quotes the file.
+async function readEnv(path: string): Promise<{ text: string | null } | { problem: string }> {
+  const absolute = resolve(path);
+  let expected: { dev: bigint; ino: bigint };
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    expected = lstatSync(absolute, { bigint: true });
   } catch {
-    return null;
+    return { text: null };
   }
+  const opened = await openChecked(absolute, expected);
+  if (opened.status === "vanished") return { text: null };
+  if (opened.status === "forbidden") return { problem: `${path} can't be read` };
+  if (opened.status === "changed")
+    return { problem: `${path} is not a regular file with one link; it is refused` };
   try {
-    return fstatSync(fd).isFile() ? readFileSync(fd, "utf8") : null;
+    return { text: await opened.handle.readFile("utf8") };
   } finally {
-    closeSync(fd);
+    await opened.handle.close();
   }
 }
 
 // The model key for a live round, from the .env `--env` names, or else the
 // repo root's. Only ANTHROPIC_API_KEY is kept, and no problem quotes a value.
-export function modelKey(
+export async function modelKey(
   env: string | undefined,
   rootEnv: URL,
-): { key: string } | { problem: string } {
-  if (env === undefined) {
-    const key = anthropicKey(existsSync(rootEnv) ? readFileSync(rootEnv, "utf8") : null);
-    return key
-      ? { key }
-      : { problem: "ANTHROPIC_API_KEY must be set in .env; env.example lists it." };
-  }
-  const text = readRegularFile(env);
-  if (text === null) return { problem: `--env ${env} is not a regular file` };
-  const key = anthropicKey(text);
-  return key ? { key } : { problem: `ANTHROPIC_API_KEY must be set in ${env}` };
+): Promise<{ key: string } | { problem: string }> {
+  const read = await readEnv(env ?? fileURLToPath(rootEnv));
+  if ("problem" in read) return read;
+  if (env !== undefined && read.text === null) return { problem: `no file at ${env}` };
+  const key = anthropicKey(read.text);
+  if (key) return { key };
+  return {
+    problem:
+      env === undefined
+        ? "ANTHROPIC_API_KEY must be set in .env; env.example lists it."
+        : `ANTHROPIC_API_KEY must be set in ${env}`,
+  };
 }
 
 // What a round reads, writes and reaches. Tests pass their own, so none reads
@@ -172,7 +183,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.error(`no baseline round at ${baseline.pathname}`);
     return 1;
   }
-  const key = command.command === "live" ? modelKey(command.env, io.envFile) : null;
+  const key = command.command === "live" ? await modelKey(command.env, io.envFile) : null;
   if (key && "problem" in key) {
     io.error(key.problem);
     return 1;

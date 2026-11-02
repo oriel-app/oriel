@@ -43,8 +43,10 @@ export function parse(args: readonly string[]): Operation | { error: string } {
   if (op === "pr-edit" && (rest.length === 2 || rest.length === 3)) {
     const [, body = "", title] = rest;
     const number = prNumber(rest[0]);
-    if (number && body.trim() && title === undefined) return { op, number, body };
-    if (number && body.trim() && title?.trim()) return { op, number, body, title };
+    // Neither is a flag, so `--title x` can't become a body or `--draft` a title.
+    const ok = number && body.trim() && !body.startsWith("--");
+    if (ok && title === undefined) return { op, number, body };
+    if (ok && title?.trim() && !title.startsWith("-")) return { op, number, body, title };
   }
   if (op === "runs" && rest.length <= 1) {
     const branch = rest[0] ?? null;

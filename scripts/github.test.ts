@@ -96,6 +96,8 @@ test("pr-edit takes an optional title after the body, never empty", () => {
     ["pr-edit", "11", "  ", "title"],
     ["pr-edit", "0", "body", "title"],
     ["pr-edit", "11", "body", "title", "extra"],
+    ["pr-edit", "11", "body", "--draft"],
+    ["pr-edit", "11", "--title", "x"],
   ])
     assert.ok("error" in parse(args), JSON.stringify(args));
 });

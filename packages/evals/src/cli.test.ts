@@ -1,13 +1,24 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { type TestContext, test } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { ulid } from "@oriel/core";
 import type { Fetch } from "./anthropic.ts";
 import { defaults, type Io, main, modelKey, parseCommand, usage } from "./cli.ts";
-import { repoRoot } from "./repo.ts";
 import { streamed, tempDir } from "./testing.ts";
+
+// A temp directory by its real path: on macOS the temp root is under a link
+// (/var), and a .env is read only with no link on the way to it.
+const realDir = (t: TestContext) => pathToFileURL(`${realpathSync(fileURLToPath(tempDir(t)))}/`);
 
 const a = ulid(Date.UTC(2026, 9, 28), new Uint8Array(10));
 const b = ulid(Date.UTC(2026, 9, 29), new Uint8Array(10));
@@ -92,38 +103,53 @@ function writeEnv(dir: URL, text = envText): string {
   return path;
 }
 
-test("the model key comes from the named .env, which must be a regular file", (t) => {
-  const dir = tempDir(t);
+test("the model key comes from the named .env, which must be a regular file with one link", async (t) => {
+  const dir = realDir(t);
   const path = writeEnv(dir);
   const root = new URL("missing/.env", dir);
-  assert.deepEqual(modelKey(path, root), { key: fakeKey });
+  assert.deepEqual(await modelKey(path, root), { key: fakeKey });
   const link = fileURLToPath(new URL("link.env", dir));
   symlinkSync(path, link);
-  for (const env of [link, fileURLToPath(dir), "/dev/null", fileURLToPath(new URL("none", dir))])
-    assert.deepEqual(modelKey(env, root), { problem: `--env ${env} is not a regular file` });
-  assert.deepEqual(modelKey(undefined, root), {
-    problem: "ANTHROPIC_API_KEY must be set in .env; env.example lists it.",
-  });
-  assert.deepEqual(modelKey(undefined, new URL(".env", dir)), { key: fakeKey });
+  const linkedDir = fileURLToPath(new URL("linked", dir));
+  symlinkSync(fileURLToPath(dir), linkedDir);
+  // A link above the file is refused too: at the open on macOS, after it elsewhere.
+  assert.ok("problem" in (await modelKey(join(linkedDir, ".env"), root)));
+  for (const env of [link, fileURLToPath(dir), "/dev/null"])
+    assert.deepEqual(await modelKey(env, root), {
+      problem: `${env} is not a regular file with one link; it is refused`,
+    });
+  // A second, hard link to the .env is refused too, the original with it.
+  linkSync(path, fileURLToPath(new URL("hard.env", dir)));
+  assert.ok("problem" in (await modelKey(path, root)));
+  const none = fileURLToPath(new URL("none", dir));
+  assert.deepEqual(await modelKey(none, root), { problem: `no file at ${none}` });
 });
 
-test("a key a header can't hold is refused, so no error quotes it", (t) => {
-  const dir = tempDir(t);
-  const root = new URL("missing/.env", dir);
+test("without --env the key comes from the root .env, as before", async (t) => {
+  const dir = realDir(t);
+  assert.deepEqual(await modelKey(undefined, new URL("missing/.env", dir)), {
+    problem: "ANTHROPIC_API_KEY must be set in .env; env.example lists it.",
+  });
+  writeEnv(dir);
+  assert.deepEqual(await modelKey(undefined, new URL(".env", dir)), { key: fakeKey });
+});
+
+test("a key a header can't hold is refused, so no error quotes it", async (t) => {
+  const root = new URL("missing/.env", realDir(t));
   for (const text of [
     `GH_TOKEN=${fakeToken}\n`,
     `ANTHROPIC_API_KEY="${fakeKey}\nsecond line"\n`,
     `ANTHROPIC_API_KEY="${fakeKey} "\n`,
   ]) {
-    const path = writeEnv(dir, text);
-    const result = modelKey(path, root);
-    assert.deepEqual(result, { problem: `ANTHROPIC_API_KEY must be set in ${path}` });
+    const path = writeEnv(realDir(t), text);
+    assert.deepEqual(await modelKey(path, root), {
+      problem: `ANTHROPIC_API_KEY must be set in ${path}`,
+    });
   }
 });
 
-test("a live round with --env sends the key to the model alone: no output or file holds it", async (t) => {
-  const dir = tempDir(t);
-  const env = writeEnv(dir);
+// One case, graded without a judge.
+function writeCase(dir: URL): URL {
   const cases = new URL("cases/", dir);
   mkdirSync(cases);
   writeFileSync(
@@ -137,6 +163,13 @@ test("a live round with --env sends the key to the model alone: no output or fil
       expect: [{ grader: "mentions", text: ["Revert"] }],
     }),
   );
+  return cases;
+}
+
+test("a live round with --env sends the key to the model alone: no output or file holds it", async (t) => {
+  const dir = realDir(t);
+  const env = writeEnv(dir);
+  const cases = writeCase(dir);
   const sent: { key: string | null; request: string }[] = [];
   const network: Fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -180,10 +213,10 @@ test("a live round with --env sends the key to the model alone: no output or fil
 });
 
 test("a live round whose --env isn't a regular file stops before any model call", async (t) => {
-  const dir = tempDir(t);
+  const dir = realDir(t);
   const lines: string[] = [];
   const io: Io = {
-    cases: new URL("packages/evals/cases/", repoRoot),
+    cases: writeCase(dir),
     cassettes: new URL("cassettes/", dir),
     rounds: new URL("rounds/", dir),
     envFile: new URL("missing/.env", dir),
@@ -196,5 +229,7 @@ test("a live round whose --env isn't a regular file stops before any model call"
   const command = parseCommand(["--env", fileURLToPath(dir)]);
   assert.ok(!("error" in command));
   assert.equal(await main(command, io), 1);
-  assert.equal(lines.at(-1), `--env ${fileURLToPath(dir)} is not a regular file`);
+  assert.deepEqual(lines, [
+    `${fileURLToPath(dir)} is not a regular file with one link; it is refused`,
+  ]);
 });
