@@ -1,9 +1,12 @@
 // A reply as the user reads it, with each chip (decision 0032) drawn as the
-// window draws it, from the case's world: a Jira item by its key, title and
-// status as the index holds them once the case's edits are in, a file by its
-// title, a Slack message by its author, a thread or change set as a link to
-// it in the window and where it stands, a workstream by its name and whether
-// it is done. Every grader reads what the user reads, so a reply that names
+// window draws it, from the case's world: a Jira item by its key and title
+// as the index holds them once the case's edits are in, a file by its
+// title, a Slack message by its author, an item the region holds that is
+// gone from the index by its key, a thread or change set as a link to it in
+// the window and where it stands, a workstream by its name and whether it is
+// done. An item's status, which its chip also shows, is left out: it is the
+// source's fact, which the agent didn't state, and a judge would hold the
+// agent to it. Every grader reads what the user reads, so a reply that names
 // things by ID is graded as fairly as one that writes names.
 //
 // It also counts what didn't resolve: a chip nothing in the world has, which
@@ -28,6 +31,8 @@ export type World = {
   folder: FolderFixture | null;
   slack: SlackFixture | null;
   oriel: OrielWorkspace | undefined;
+  // The items the case's region holds, by ID.
+  held: readonly string[];
   // A window chat case's workstreams, by name, and when it asks.
   window: { workstreams: readonly { name: string }[]; now: Instant } | null;
 };
@@ -44,16 +49,8 @@ const standing = (name: string, chip: ChipView) => {
 // What each ID the world holds reads as, drawn.
 export function resolver(world: World): (id: string) => string | null {
   const names = new Map<string, string>();
-  for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records) {
-    const key = record.id.slice("jira:".length);
-    const status = record.attrs["status"];
-    const name = `${key} ${plain(record.title)}`;
-    const state = typeof status === "string" ? { name: status, category: "todo" as const } : null;
-    names.set(
-      record.id,
-      standing(name, { kind: "item", source: "jira", key, name, url: null, state }),
-    );
-  }
+  for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records)
+    names.set(record.id, `${record.id.slice("jira:".length)} ${plain(record.title)}`);
   for (const file of world.folder?.files ?? [])
     names.set(fileId(file.path), plain(fileTitle(file.path)));
   for (const channel of world.slack?.channels ?? [])
@@ -82,6 +79,9 @@ export function resolver(world: World): (id: string) => string | null {
     const chip: ChipView = { kind: "change-set", thread: set.thread, name, state: set.state };
     names.set(set.id, standing(link, chip));
   }
+  for (const id of world.held)
+    if (!names.has(id))
+      names.set(id, `${id.startsWith("jira:") ? `${id.slice(5)} ` : ""}Not in the index`);
   return (id) => names.get(id) ?? null;
 }
 

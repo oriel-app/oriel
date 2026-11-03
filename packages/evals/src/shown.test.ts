@@ -15,6 +15,7 @@ const resolve = resolver({
   edited: 0,
   folder: null,
   slack: null,
+  held: ["jira:SYN-23", "jira:SYN-999"],
   oriel: {
     threads: [
       {
@@ -39,7 +40,7 @@ test("each chip reads as the window draws it, with where it stands", () => {
   );
   assert.equal(
     seen.text,
-    "SYN-23 Pay with a phone wallet on the website (In Progress) is in Boarding (Open); " +
+    "SYN-23 Pay with a phone wallet on the website is in Boarding (Open); " +
       `[Estimate the weather stories](/threads/${thread}) (Needs you) is on it. Not \`[[jira:SYN-9]]\`.`,
   );
   assert.deepEqual(gradeRefs(seen), {
@@ -50,6 +51,11 @@ test("each chip reads as the window draws it, with where it stands", () => {
 });
 
 test("a look-alike ID is unknown, and fails refs; a reply naming nothing by ID isn't graded", () => {
+  // One the region holds, gone from the index, is its key.
+  assert.equal(
+    shown("[[jira:SYN-999]] is gone.", resolve).text,
+    "SYN-999 Not in the index is gone.",
+  );
   const seen = shown("It's [[01K8Y0000000000000000000T4]].", resolve);
   assert.equal(seen.text, "It's unknown reference.");
   assert.equal(gradeRefs(seen)?.pass, false);

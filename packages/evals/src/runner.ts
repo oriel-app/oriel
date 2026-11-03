@@ -60,7 +60,7 @@ import {
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
-import { buildWorld, fixedId } from "./world.ts";
+import { buildWorld, fileId, fixedId } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
@@ -316,6 +316,11 @@ async function grade(
       folder: options.folder ?? null,
       slack: options.slack ?? null,
       oriel: loaded.case.oriel,
+      held: [
+        ...(loaded.region?.items ?? []),
+        ...(loaded.case.files ?? []).map(fileId),
+        ...(loaded.case.messages ?? []),
+      ],
       window: loaded.case.window
         ? { workstreams: loaded.case.window.workstreams, now: loaded.case.window.at ?? options.now }
         : null,

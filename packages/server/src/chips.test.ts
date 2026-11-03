@@ -181,3 +181,44 @@ test("only an agent's answer has chips: a planted [[id]] in a Jira description s
   // Read as an answer, the same words would be two chips.
   assert.equal(kinds(parse(planted, { chips: true })).length, 2);
 });
+
+test("an item the workstream holds, deleted from its source since, is its key, not unknown", async (t) => {
+  const app = await testApp(t, {
+    live: true,
+    plan: () => [{ text: "[[jira:SYN-23]] was deleted; [[jira:SYN-9998]] was never here." }],
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", {
+      kind: "picked",
+      name: "Checkout",
+      items: ["jira:SYN-23"],
+    }),
+  );
+  app.site?.remove("SYN-23");
+  app.advance(60_000);
+  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "What happened?" }),
+  );
+  await app.app.settled();
+  const view = json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  assert.deepEqual(view.chips, {
+    "jira:SYN-23": {
+      kind: "item",
+      source: "jira",
+      key: "SYN-23",
+      name: "Not in the index",
+      url: null,
+      state: null,
+    },
+    "jira:SYN-9998": null,
+  });
+  // Only the one Oriel knows nothing of is noted.
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "chip.unknown")
+      .map((e) => e.data),
+    [{ threadId, count: 1 }],
+  );
+});

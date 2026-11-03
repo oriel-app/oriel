@@ -498,18 +498,37 @@ export function views(deps: ViewDeps) {
     }
   };
 
-  // What each ID an agent's answer names is, as its chip draws it (decision
+  // What each ID a thread's answers name is, as its chip draws it (decision
   // 0032): an item from the index, by its handle now, or a thread, change
   // set or workstream from Oriel's own data; null for one Oriel can't
-  // resolve. Nothing comes from the answer's own words.
-  const chips = async (ids: readonly string[]): Promise<Chips> => {
+  // resolve. An item the thread's workstream has held, gone from the index
+  // since, is its key, as the workstream shows it. Nothing comes from the
+  // answer's own words.
+  const chips = async (ids: readonly string[], threadId: Ulid): Promise<Chips> => {
     const { byId } = lookup();
     const asOf = deps.asOf();
     const now = deps.now();
+    const workstreamId = threads.get(threadId, now)?.workstreamId;
+    const held = new Set(
+      workstreamId
+        ? workstreams.changes(workstreamId, 0).flatMap((change) => change.added.map((m) => m.id))
+        : [],
+    );
     const chip = async (id: string): Promise<ChipView | null> => {
       const parsed = parseItemId(id);
       if (parsed) {
         const record = byId.get(id as ItemId);
+        if (!record && held.has(id as ItemId)) {
+          const name = "Not in the index";
+          return {
+            kind: "item",
+            source: parsed.source,
+            key: parsed.key,
+            name,
+            url: null,
+            state: null,
+          };
+        }
         if (!record) return null;
         const row = itemRow(record, asOf, deps.presentations);
         const { key, title: name, status: state } = row;
@@ -631,7 +650,7 @@ export function views(deps: ViewDeps) {
           ),
         ),
         writable: deps.writable,
-        chips: await chips(answered(entries)),
+        chips: await chips(answered(entries), id),
         ...(threads.isWindowChat(id) ? { windowChat: true as const } : {}),
       };
     },

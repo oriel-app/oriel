@@ -123,7 +123,7 @@ export type TurnDeps = {
   snapshot: () => number;
   // What each ID an answer names as a chip is; null for one Oriel can't
   // resolve (decision 0032).
-  chips: (ids: readonly string[]) => Promise<Chips>;
+  chips: (ids: readonly string[], threadId: Ulid) => Promise<Chips>;
   now: () => Instant;
   newId: () => Ulid;
   log: Log;
@@ -383,7 +383,7 @@ export function turns(deps: TurnDeps) {
       () => "",
     ).flatMap((message) => (message.role === "assistant" ? chipIds(message.text) : []));
     if (said.length === 0) return;
-    const resolved = await deps.chips([...new Set(said)]);
+    const resolved = await deps.chips([...new Set(said)], thread.id);
     const unknown = Object.keys(resolved).filter((id) => resolved[id] === null);
     if (unknown.length === 0 || !threads.get(thread.id, deps.now())) return;
     const at = deps.now();
