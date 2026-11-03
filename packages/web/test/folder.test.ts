@@ -54,3 +54,42 @@ test("the window shows the folder, and loads again once one is added", () => {
     ["loadWindow", "/api/sources"],
   );
 });
+
+test("on the desktop app, Choose a folder asks the server's picker once; cancelling changes nothing", () => {
+  const loaded = folderReplied(
+    initFolder(),
+    ok({ kind: "folder" }, { folder: null, picker: true }),
+  ).model;
+  assert.equal(loaded.picker, true);
+  const opened = updateFolder(loaded, { type: "opened" })[0];
+  const [pending, effects] = updateFolder(opened, { type: "pickClicked" });
+  assert.deepEqual(effects, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/folder/pick",
+      body: {},
+      tag: { kind: "folderPicked" },
+    },
+  ]);
+  assert.deepEqual(updateFolder(pending, { type: "pickClicked" })[1], []);
+  const cancelled = folderReplied(
+    pending,
+    ok({ kind: "folderPicked" }, { folder: null, picked: false }),
+  );
+  assert.deepEqual(
+    [cancelled.model.pending, cancelled.model.open, cancelled.model.view, cancelled.synced],
+    [false, true, null, false],
+  );
+  const picked = folderReplied(
+    pending,
+    ok({ kind: "folderPicked" }, { folder: notes, picked: true }),
+  );
+  assert.deepEqual([picked.model.view, picked.model.open, picked.synced], [notes, false, true]);
+  // Under pnpm dev, no picker: the path form.
+  assert.equal(
+    folderReplied(initFolder(), ok({ kind: "folder" }, { folder: null, picker: false })).model
+      .picker,
+    false,
+  );
+});

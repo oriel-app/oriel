@@ -50,6 +50,7 @@ import {
   Lines,
   mayShow,
   mayUse,
+  notificationText,
   opensOutside,
   parseRequest,
   pathEnd,
@@ -401,7 +402,7 @@ async function handle(request: Request): Promise<string | null> {
     case "folder.pick":
       return pickFolder(request.prompt);
     case "notify":
-      return notify(request.title, request.body);
+      return notify(request.title, request.body, request.open);
     case "secret.get":
       return secrets.get(request.name);
     case "secret.set":
@@ -431,13 +432,35 @@ async function pickFolder(prompt: string): Promise<string | null> {
   }
 }
 
-async function notify(title: string, body: string): Promise<null> {
+// Notifications on screen, kept so a click still reaches them.
+const shown = new Set<Notification>();
+
+// Only while the window isn't in front: then the person is already looking.
+// A click brings it forward on `open`, a path on the server's origin.
+async function notify(title: string, body: string, open: string): Promise<null> {
+  if (!window || window.isFocused()) return null;
   if (!Notification.isSupported()) throw new Error("this system shows no notifications");
+  const notice = new Notification({
+    title: notificationText(process.platform, title),
+    body: notificationText(process.platform, body),
+  });
+  shown.add(notice);
+  notice.once("close", () => shown.delete(notice));
+  notice.once("click", () => {
+    shown.delete(notice);
+    show();
+    if (!origin) return;
+    const url = new URL(open, origin).href;
+    if (mayShow(url, origin, true) && window?.webContents.getURL() !== url)
+      void window?.loadURL(url);
+  });
   await new Promise<void>((resolve, reject) => {
-    const shown = new Notification({ title, body });
-    shown.once("show", () => resolve());
-    shown.once("failed", (_, error) => reject(new Error(error)));
-    shown.show();
+    notice.once("show", () => resolve());
+    notice.once("failed", (_, error) => {
+      shown.delete(notice);
+      reject(new Error(error));
+    });
+    notice.show();
   });
   return null;
 }

@@ -5,7 +5,7 @@
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { type Dispatch, Link } from "./parts.tsx";
-import { ProviderRow } from "./provider-row.tsx";
+import { ProviderRow, Switch } from "./provider-row.tsx";
 import type { SettingsSection } from "./route.ts";
 import type { SettingsModel, SettingsMsg } from "./settings.ts";
 import type { ModelPick, SendKey, SettingsChange, SettingsView, TextSize } from "./view.ts";
@@ -14,6 +14,7 @@ const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
   { id: "appearance", name: "Appearance" },
   { id: "asking", name: "Asking" },
+  { id: "notifications", name: "Notifications" },
 ];
 
 export function SettingsPage(props: {
@@ -54,8 +55,10 @@ export function SettingsPage(props: {
             <Providers model={model} view={view} send={send} change={change} />
           ) : section === "appearance" ? (
             <Appearance view={view} change={change} />
-          ) : (
+          ) : section === "asking" ? (
             <Asking view={view} change={change} />
+          ) : (
+            <Notifications view={view} change={change} />
           )}
         </div>
       </div>
@@ -359,6 +362,35 @@ function Asking(props: { view: SettingsView; change(change: SettingsChange): voi
         value={view.send}
         onPick={(send) => change({ send: send as SendKey })}
       />
+    </section>
+  );
+}
+
+// One switch: a desktop notification when a thread newly needs you, while
+// Oriel's window isn't in front. Only the desktop app shows them.
+function Notifications(props: { view: SettingsView; change(change: SettingsChange): void }) {
+  const { view, change } = props;
+  return (
+    <section class="settings-section" aria-labelledby="settings-notifications">
+      <h2 id="settings-notifications" class="settings-title">
+        Notifications
+      </h2>
+      {view.notifies ? (
+        <div class="settings-field settings-switch">
+          <span class="settings-field-name">Notify me when a thread needs me</span>
+          <span class="settings-field-about">
+            A change set to review, an answer waiting on you, or a held message, while Oriel's
+            window isn't in front. Clicking one opens its thread.
+          </span>
+          <Switch
+            on={view.notify}
+            label="Notify me when a thread needs me"
+            onChange={(notify) => change({ notify })}
+          />
+        </div>
+      ) : (
+        <p class="settings-lede">Only the desktop app shows notifications.</p>
+      )}
     </section>
   );
 }

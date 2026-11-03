@@ -772,7 +772,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [{ ...model, newThread }, effects];
     }
     case "folder":
-    case "folderConnected": {
+    case "folderConnected":
+    case "folderPicked": {
       const { model: folder, synced } = folderReplied(model.folder, msg);
       return synced ? sourceSynced({ ...model, folder }, []) : [{ ...model, folder }, []];
     }

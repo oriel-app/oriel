@@ -119,6 +119,8 @@ export type ApiDeps = {
   // The connected folder and Jira as they stand, and every connected source
   // as the sidebar lists them; connecting and syncing any is an action.
   folder(): FolderView | null;
+  // The system's folder picker, on the desktop app only.
+  pickFolder?: (prompt: string) => Promise<string | null>;
   jira(): JiraView;
   sources(): SourceView[];
   settings: SettingsService;
@@ -534,11 +536,34 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       method: "GET",
       path: at("/folder"),
-      run: async () => json(200, { folder: deps.folder() }),
+      run: async () => json(200, { folder: deps.folder(), picker: deps.pickFolder !== undefined }),
     },
     {
-      // Connects the folder whose path the user typed: there is no native
-      // picker on localhost. Only a directory is taken; its items sync into
+      // On the desktop app, the system's folder picker, through the shell,
+      // then the folder picked is connected as a typed one is. Cancelling
+      // changes nothing.
+      method: "POST",
+      path: at("/folder/pick"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        if (!deps.pickFolder)
+          throw new Refused(409, "Type the folder's path: there's no picker here.");
+        let picked: string | null;
+        try {
+          picked = await deps.pickFolder("Choose a folder of markdown files for Oriel to read.");
+        } catch {
+          throw new Refused(409, "The folder picker didn't open. Try again.");
+        }
+        if (picked === null) return json(200, { folder: deps.folder(), picked: false });
+        const input = checked("source.connect", { kind: "folder", path: picked });
+        const connected = await deps.dispatch("source.connect", input, user);
+        if ("problem" in connected) throw new Refused(400, connected.problem);
+        return json(200, { ...connected, picked: true });
+      },
+    },
+    {
+      // Connects the folder whose path the user typed, under `pnpm dev`,
+      // which has no picker. Only a directory is taken; its items sync into
       // the index at once.
       method: "POST",
       path: at("/folder"),

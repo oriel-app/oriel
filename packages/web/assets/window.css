@@ -5145,6 +5145,17 @@ button.overview-title:hover {
   border: 0;
 }
 
+.settings-switch {
+  grid-template-columns: 1fr auto;
+  column-gap: var(--space-3);
+}
+
+.settings-switch .switch {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+}
+
 .settings-field + .settings-field {
   margin-top: var(--space-3);
 }

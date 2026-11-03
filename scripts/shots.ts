@@ -319,6 +319,8 @@ const configured = async (settings: Partial<Settings> = {}) => {
     // As the desktop app has it, so the path and key fields show.
     cliPaths: true,
     keys: { store: noKey, check: async () => "rejected" },
+    notify: async () => {},
+    pickFolder: async () => null,
   });
 };
 const settingsServer = await configured();
@@ -854,6 +856,12 @@ const scenes: Scene[] = [
     path: "/settings/asking",
     on: settingsServer,
     act: (page) => page.locator(".choices").waitFor(),
+  },
+  {
+    name: "settings-notifications",
+    path: "/settings/notifications",
+    on: settingsServer,
+    act: (page) => page.locator(".settings-switch .switch").waitFor(),
   },
   // The overview (decision 0027): with workstreams, threads waiting and the
   // folder beside Jira; and with Slack beside Jira.

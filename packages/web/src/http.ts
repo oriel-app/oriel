@@ -68,6 +68,7 @@ export type Tag =
   | { kind: "itemStamp"; id: string }
   | { kind: "folder" }
   | { kind: "folderConnected" }
+  | { kind: "folderPicked" }
   | { kind: "jira" }
   | { kind: "jiraConnected" }
   | { kind: "sources" }

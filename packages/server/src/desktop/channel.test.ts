@@ -67,7 +67,12 @@ test("answers are matched by id, in any order", async () => {
   lines.ready("http://127.0.0.1:4320/");
   const folder = lines.shell.ask({ kind: "folder.pick", prompt: "Connect a folder" });
   const kept = lines.shell.ask({ kind: "secret.set", name: "jira", secret: "{}" });
-  const told = lines.shell.ask({ kind: "notify", title: "Changed", body: "SYN-21 changed." });
+  const told = lines.shell.ask({
+    kind: "notify",
+    title: "Changed",
+    body: "SYN-21 changed.",
+    open: "/threads/01J",
+  });
   assert.deepEqual(
     out.slice(1).map((line) => (line as { id: number }).id),
     [1, 2, 3],

@@ -179,3 +179,13 @@ test("a CLI's path is taken from the page only where Settings allows it, behind 
   assert.equal(view.providers[0]?.path, "/opt/homebrew/bin/claude");
   assert.deepEqual(looked.at(-1), "/opt/homebrew/bin/claude");
 });
+
+test("notifications are on by default, kept when turned off, and anything else reads as on", () => {
+  inFolder((path) => {
+    assert.equal(settingsFile(path, quiet).get().notify, true);
+    settingsFile(path, quiet).set({ ...defaultSettings, notify: false });
+    assert.equal(settingsFile(path, quiet).get().notify, false);
+    writeFileSync(path, JSON.stringify({ notify: "no" }));
+    assert.equal(settingsFile(path, quiet).get().notify, true);
+  });
+});

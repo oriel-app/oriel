@@ -100,7 +100,7 @@ const pagePaths = [
   /^\/$/,
   /^\/browse$/,
   /^\/done$/,
-  /^\/settings(?:\/(?:appearance|asking))?$/,
+  /^\/settings(?:\/(?:appearance|asking|notifications))?$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
   // A thread not started yet: a draft in the browser until its first message.
