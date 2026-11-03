@@ -34,14 +34,14 @@ try {
   const context = await browser.newContext({ viewport: { width: 2360, height: 900 } });
   const tab = await context.newPage();
   await tab.setContent(
-    `<body style="margin:0;display:flex;background:#888;gap:0">${["light", "dark"]
+    `<body style="margin:0;display:flex;align-items:flex-start;background:#888;gap:0">${["light", "dark"]
       .map(
         (t) => `<img style="width:1180px;display:block" src="data:image/png;base64,${shots[t]}">`,
       )
       .join("")}</body>`,
   );
   await tab.waitForFunction("[...document.images].every((i) => i.complete)");
-  const height = await tab.evaluate("Math.max(...[...document.images].map((i) => i.height))");
+  const height = await tab.evaluate("Math.max(...[...document.images].map((i) => i.naturalHeight))");
   await tab.setViewportSize({ width: 2360, height });
   await tab.screenshot({ path: `${out}/specimen.png` });
   writeFileSync(`${out}/contrast.json`, JSON.stringify(contrast, null, 1));
