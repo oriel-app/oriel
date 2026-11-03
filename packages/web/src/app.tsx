@@ -19,6 +19,7 @@ import { useProgram } from "./use-program.ts";
 import { OverviewPage } from "./overview-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
+import { WindowChat } from "./window-chat-view.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   const [model, dispatch] = useProgram(program);
@@ -87,6 +88,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       data-folded={folded || undefined}
       data-drawer={drawer || undefined}
       data-panel={model.panel ? "" : undefined}
+      data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
     >
       <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
       <button
@@ -104,6 +106,11 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
           </WorkspaceContext.Provider>
         </ItemLinksContext.Provider>
       </div>
+      {model.route.page === "overview" && model.chat.open && !model.panel && (
+        <WorkspaceContext.Provider value={workspace}>
+          <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
+        </WorkspaceContext.Provider>
+      )}
       {model.panel && (
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
           <WorkspaceContext.Provider value={workspace}>
@@ -170,6 +177,8 @@ function Page(props: { model: Model; added: Undos; dispatch: Dispatch }) {
             ending={model.ending}
             jira={model.jira}
             browse={windowRoute(model.window)}
+            chat={model.chat}
+            ongoing={model.thread !== null}
             dispatch={dispatch}
           />
         )

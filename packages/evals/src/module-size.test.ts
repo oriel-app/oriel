@@ -116,3 +116,17 @@ test("an item doc is one line and can't close its comment", () => {
       JSON.stringify(doc),
     );
 });
+
+test("the window chat's window namespace adds within its budget, in its module only", () => {
+  // The overview's shape and window.overview(), in a window chat only (decision 0027).
+  const window = 1_500;
+  const region = regionOf([]);
+  const plain = bindingsFor(region, { reader: world.reader, namespaces: {} }).dts;
+  const chat = bindingsFor(region, {
+    reader: world.reader,
+    namespaces: {},
+    overview: async () => ({ view: null, items: [] }),
+  }).dts;
+  const added = shape(chat) - shape(plain);
+  assert.ok(added > 0 && added <= window, `window adds ${added} bytes`);
+});

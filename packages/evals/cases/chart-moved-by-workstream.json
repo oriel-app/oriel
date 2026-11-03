@@ -1,0 +1,20 @@
+{
+  "id": "chart-moved-by-workstream",
+  "split": "train",
+  "kind": 2,
+  "window": {
+    "workstreams": [
+      { "name": "Boarding", "region": "boarding-epic" },
+      { "name": "Checkout", "region": "checkout-epic" },
+      { "name": "Weather", "region": "weather-epic" },
+      { "name": "Picked", "region": "picked" }
+    ],
+    "at": "2026-10-01T12:00:00.000Z"
+  },
+  "edited": 3,
+  "prompt": "Chart what moved since I looked, by workstream",
+  "expect": [
+    { "grader": "blocks", "form": "bars", "read": "window.overview" },
+    { "grader": "zero-mutations" }
+  ]
+}

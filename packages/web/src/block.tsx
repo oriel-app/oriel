@@ -1,0 +1,89 @@
+// A block under the agent's reply (decision 0030): a table, bars or rows of
+// items, which Oriel built from a read's result. One renderer, for a
+// thread's page and the window chat. It is typed data, so every text in it,
+// a synced title included, renders as text; its caption says where it came
+// from. One from outside the workstream, as what search() found is (the
+// escape hatch), says so and is read-only.
+import { ItemListContext, Member } from "./parts.tsx";
+import type { BlockView } from "./view.ts";
+
+const number = (value: number) => value.toLocaleString("en-US");
+
+const cellText = (cell: string | number | boolean | null) =>
+  cell === null ? "—" : typeof cell === "boolean" ? (cell ? "yes" : "no") : String(cell);
+
+export function BlockFigure({ block }: { block: BlockView }) {
+  return (
+    <figure class="answer-block" data-form={block.form} data-outside={block.outside || undefined}>
+      {block.outside && <p class="search-label">Outside this workstream · read-only</p>}
+      <BlockBody block={block} />
+      {block.more > 0 && <p class="block-more">and {number(block.more)} more</p>}
+      <figcaption>{block.caption}</figcaption>
+    </figure>
+  );
+}
+
+function BlockBody({ block }: { block: BlockView }) {
+  switch (block.form) {
+    case "bars": {
+      // One series, ranked, each value labelled; nothing grows past the
+      // largest, and a value under zero draws no bar.
+      const top = Math.max(...block.bars.map((bar) => bar.value), 0);
+      return (
+        <ol class="block-bars">
+          {block.bars.map((bar, i) => (
+            <li key={i}>
+              <span class="block-bar-label">{bar.label}</span>
+              <span class="block-bar-track" aria-hidden="true">
+                <span
+                  class="block-bar"
+                  style={{ width: `${top > 0 ? (Math.max(bar.value, 0) / top) * 100 : 0}%` }}
+                />
+              </span>
+              <span class="block-bar-value">{number(bar.value)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    case "table":
+      return (
+        <table class="block-table">
+          <thead>
+            <tr>
+              {block.columns.map((column, j) => (
+                <th
+                  key={column}
+                  scope="col"
+                  class={typeof block.rows[0]?.[j] === "number" ? "num" : undefined}
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j} class={typeof cell === "number" ? "num" : undefined}>
+                    {typeof cell === "number" ? number(cell) : cellText(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    case "rows":
+      return (
+        <ItemListContext.Provider value={block.items.map((item) => item.ref.id)}>
+          <ul class="members compact">
+            {block.items.map((item, i) => (
+              <Member key={i} member={item} inRegion={item.inRegion === true} />
+            ))}
+          </ul>
+        </ItemListContext.Provider>
+      );
+  }
+}

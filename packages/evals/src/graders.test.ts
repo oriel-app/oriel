@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CapturedMutation } from "@oriel/core";
+import { buildBlock, type CapturedMutation } from "@oriel/core";
 import type { Fetch } from "./anthropic.ts";
 import {
+  gradeBlocks,
   gradeExactDiff,
   gradeJudge,
   gradeSurfaced,
@@ -307,4 +308,47 @@ test("a judge that can't give every verdict is an error, not a failure", async (
     const api = judgeApi(() => response);
     await assert.rejects(gradeJudge(judgeInput(api.fetch)), error);
   }
+});
+
+test("blocks: each block shown must be the one its read builds, and one of the expected form must show", () => {
+  const answered = {
+    value: {
+      workstreams: [
+        { name: "Checkout", moved: 4 },
+        { name: "Weather", moved: 9 },
+      ],
+    },
+    outside: true,
+    fields: {
+      source: "the overview",
+      lists: { workstreams: { name: "Workstream", moved: "Moved" } },
+    },
+  };
+  const built = buildBlock(
+    {
+      read: "window.overview",
+      args: undefined,
+      from: "workstreams",
+      form: "bars",
+      label: "name",
+      value: "moved",
+    },
+    answered,
+  );
+  assert.ok(built.ok && built.block.form === "bars");
+  const expected = { form: "bars", read: "window.overview" } as const;
+  assert.equal(gradeBlocks(expected, [{ block: built.block, answered }]).pass, true);
+
+  // A number that isn't the read's fails, however it got there.
+  const tampered = {
+    ...built.block,
+    bars: built.block.bars.map((bar) => ({ ...bar, value: bar.value + 1 })),
+  };
+  const grade = gradeBlocks(expected, [{ block: tampered, answered }]);
+  assert.equal(grade.pass, false);
+  assert.match(grade.detail, /doesn't match what its read answered/);
+
+  // So does a block whose read never answered, and a turn with no such block.
+  assert.equal(gradeBlocks(expected, [{ block: built.block, answered: null }]).pass, false);
+  assert.match(gradeBlocks(expected, []).detail, /no bars block from window\.overview was shown/);
 });

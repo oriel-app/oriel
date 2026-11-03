@@ -111,7 +111,11 @@ test("the dev plan's scripts typecheck and run in the sandbox", async (t) => {
     await app.app.settled();
     const { id } = JSON.parse(String(opened.body)) as { id: string };
     return JSON.parse(String((await app.get(`/api/threads/${id}`)).body)) as {
-      entries: { kind: string; run?: { outcome: string; error: unknown } }[];
+      entries: {
+        kind: string;
+        run?: { outcome: string; error: unknown };
+        block?: { outside: boolean };
+      }[];
     };
   };
   for (const text of ["What's here?", "Which stories need estimates?", "find weather"]) {
@@ -119,7 +123,8 @@ test("the dev plan's scripts typecheck and run in the sandbox", async (t) => {
     const finished = view.entries.find((e) => e.kind === "run.finished");
     assert.deepEqual([text, finished?.run?.outcome, finished?.run?.error], [text, "ok", null]);
     if (text.includes("estimates")) assert.ok(view.entries.some((e) => e.kind === "change-set"));
-    if (text.startsWith("find")) assert.ok(view.entries.some((e) => e.kind === "search"));
+    if (text.startsWith("find"))
+      assert.ok(view.entries.some((e) => e.kind === "block" && e.block?.outside));
   }
   // The real sandbox's read lines name the thread and the run (SPEC §9).
   const reads = app.logged.filter((line) => line.message === "sandbox.read");

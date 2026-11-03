@@ -27,6 +27,10 @@ const threadId = refine(string, isUlid, "expected a thread's id");
 const listWorkstreams: Fn = {
   space: "workstream",
   outsideRegion: false,
+  fields: {
+    source: "your workstreams",
+    lists: { "": { name: "Workstream", threads: "Threads", done: "Done" } },
+  },
   ...read({
     name: "list",
     doc: "Every workstream, newest first, with its items' IDs.",
@@ -39,6 +43,10 @@ const listWorkstreams: Fn = {
 const listThreads: Fn = {
   space: "thread",
   outsideRegion: false,
+  fields: {
+    source: "your threads",
+    lists: { "": { name: "Thread", state: "State", activityAt: "Last active" } },
+  },
   ...read({
     name: "list",
     doc: "Every thread, most recently active first.",

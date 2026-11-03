@@ -5,6 +5,7 @@ import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
+  BlockView,
   ActionLineView,
   ChangeSetView,
   NextStepView,
@@ -667,9 +668,10 @@ export function newThreadReplied(model: NewThreadModel, msg: Replied): [NewThrea
   ];
 }
 
-// The chat as blocks: a reply streamed in parts is one block, and a run's
-// start and finish are one block.
-export type Block =
+// The chat as entries: a reply streamed in parts is one entry, and a run's
+// start and finish are one entry. ("Block" is the glossary's word for what
+// Oriel builds from a read, which is one kind of entry here; decision 0030.)
+export type Entry =
   | { kind: "user"; seq: number; text: string }
   | { kind: "reply"; seq: number; text: string }
   | {
@@ -691,7 +693,7 @@ export type Block =
       run: RunView | null;
       stopped: boolean;
     }
-  | { kind: "search"; seq: number; hits: (ItemRef & { inRegion: boolean })[] }
+  | { kind: "block"; seq: number; block: BlockView }
   | { kind: "change-set"; seq: number; changeSetId: string }
   | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
@@ -704,8 +706,8 @@ export type Block =
   | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string }
   | { kind: "note"; seq: number; note: NoteView };
 
-export function blocks(entries: readonly ChatEntry[]): Block[] {
-  const out: Block[] = [];
+export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
+  const out: Entry[] = [];
   for (const entry of entries) {
     const last = out.at(-1);
     switch (entry.kind) {
@@ -747,8 +749,8 @@ export function blocks(entries: readonly ChatEntry[]): Block[] {
           });
         break;
       }
-      case "search":
-        out.push({ kind: "search", seq: entry.seq, hits: entry.hits });
+      case "block":
+        out.push({ kind: "block", seq: entry.seq, block: entry.block });
         break;
       case "held":
         out.push(entry);

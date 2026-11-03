@@ -168,3 +168,27 @@ test("the model-backed agent runs a turn through the server's deps", async (t) =
   const done = view.entries.at(-1);
   assert.equal(done?.kind, "done");
 });
+
+test("a block the agent asks for is stored, shown under the reply with its rows as Browse shows them, and counted", async (t) => {
+  const shown: Script = async (bindings) => {
+    await bindings.read("items.list", []);
+    return { value: (await bindings.read("show", [{ read: "items.list", form: "rows" }])).value };
+  };
+  const app = await testApp(t, {
+    scripts: { list: shown },
+    agent: (deps) => agent({ ...deps, provider: provider("list") }),
+  });
+  const id = await thread(app);
+  const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
+  assert.deepEqual(
+    view.entries.map((e) => e.kind),
+    ["user", "run.started", "run.finished", "text", "block", "done"],
+  );
+  const entry = view.entries.find((e) => e.kind === "block");
+  assert.ok(entry?.kind === "block" && entry.block.form === "rows");
+  assert.ok(entry.block.items.length > 0);
+  assert.ok(entry.block.items.every((item) => item.row !== null && item.ref.title !== null));
+  assert.equal(entry.block.caption, "Computed by Oriel from this workstream's items, read live");
+  const counted = app.app.telemetry().find((e) => e.name === "block.shown");
+  assert.deepEqual(counted?.data, { threadId: id, form: "rows" });
+});

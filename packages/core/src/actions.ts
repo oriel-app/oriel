@@ -77,8 +77,11 @@ const items = refine(
   (list) => list.length > 0 && list.length <= maxItems,
   `expected 1 to ${maxItems} items`,
 );
-// Where in the window the user closed a thread from.
-export const closeVia = optional(union(literal("page"), literal("menu"), literal("swipe")));
+// Where in the window the user closed a thread from: its page, a list's menu
+// or swipe, or New chat in the window chat (decision 0027).
+export const closeVia = optional(
+  union(literal("page"), literal("menu"), literal("swipe"), literal("new-chat")),
+);
 // What the user says in a thread.
 export const messageText = refine(
   string,
@@ -135,12 +138,14 @@ export const actions = {
       object({ kind: literal("cluster"), grouping: string, cluster: string }),
       object({ kind: literal("picked"), name, items }),
       object({ kind: literal("thread") }),
+      object({ kind: literal("window") }),
     ),
     class: { kind: "direct", inverse: "workstream.delete" },
     userOnly: {
       cluster:
         "A cluster's items are the window's: the agent's region and search() don't reach them.",
       thread: "It comes with a thread started from nothing, which only the user starts.",
+      window: "It comes with the window chat's first question, which only the user asks.",
     },
     joins: "items",
   },
@@ -208,6 +213,23 @@ export const actions = {
     }),
     class: { kind: "direct", inverse: "thread.done" },
     userOnly: { mark: "It names the mark an Undo takes off, which only Oriel gives." },
+  },
+  // New chat in the window chat (decision 0027): the window shows a fresh
+  // chat from the next question on. The old one is marked done as the
+  // user's action, unless a change set or a held message in it waits on
+  // them: then it stays working, in Needs you.
+  "window.new-chat": {
+    doc: "Starts a fresh window chat, and marks the old one done unless it waits on the user.",
+    input: object({}),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "It changes only which chat the window shows; reopening the old chat undoes its mark.",
+    },
+    closed: {
+      agent: "It changes what the user's window shows, which is the user's.",
+      tool: "It changes what the user's window shows, which is the user's.",
+    },
   },
   "thread.open": {
     doc: "Opens a thread on a workstream, in the workstream's latest version.",

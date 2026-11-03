@@ -167,19 +167,27 @@ const mutationLines = (mutations: readonly CapturedMutation[]) =>
 const intentLines = (intents: readonly Intent[]) =>
   intents.map((intent) => json({ action: intent.action, input: intent.input }));
 
-// A run as the model reads it: its transcript, then what became of its writes
-// and of the actions it asked for. `replaced` and `replacedIntents` are what
-// it replaced of an earlier run's. No run ID, timing or other value a replay
-// can't reproduce.
-export function runResultText(result: RunResult, replaced: number, replacedIntents = 0): string {
+// A run as the model reads it: its transcript, then what became of its writes,
+// of the actions it asked for and of the blocks it asked Oriel to show.
+// `replaced` and `replacedIntents` are what it replaced of an earlier run's;
+// `shown`, Oriel's line for each block. No run ID, timing or other value a
+// replay can't reproduce.
+export function runResultText(
+  result: RunResult,
+  replaced: number,
+  replacedIntents = 0,
+  shown: readonly string[] = [],
+): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
   const asked = result.intents.length;
   if (result.outcome !== "ok") {
     if (count) lines.push(`It captured ${changes(count)} before it stopped; they were discarded.`);
     if (asked) lines.push(`It recorded ${actions(asked)} before it stopped; they were discarded.`);
+    if (shown.length) lines.push("Oriel shows no block from a run that stopped.");
     return lines.join("\n");
   }
+  lines.push(...shown);
   if (count) {
     lines.push(`Captured ${changes(count)}:`, ...mutationLines(result.mutations));
     lines.push(

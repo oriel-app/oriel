@@ -78,6 +78,14 @@ import {
   updateOverview,
 } from "./overview.ts";
 import {
+  initWindowChat,
+  loadWindowChat,
+  updateWindowChat,
+  type WindowChatModel,
+  type WindowChatMsg,
+  windowChatReplied,
+} from "./window-chat.ts";
+import {
   initReview,
   type ReviewModel,
   type ReviewMsg,
@@ -128,6 +136,9 @@ import type {
 export type Model = {
   route: Route;
   overview: OverviewModel | null;
+  // The window chat's ask bar and whether it is open. While the overview is
+  // on screen, its thread is `thread`.
+  chat: WindowChatModel;
   window: WindowModel | null;
   workstream: WorkstreamModel | null;
   thread: ThreadModel | null;
@@ -165,6 +176,7 @@ export type Model = {
 
 export type Msg =
   | { type: "overview"; msg: OverviewMsg }
+  | { type: "chat"; msg: WindowChatMsg }
   | { type: "window"; msg: WindowMsg }
   | { type: "workstream"; msg: WorkstreamMsg }
   | { type: "thread"; msg: ThreadMsg }
@@ -236,6 +248,7 @@ export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {
     route,
     overview: null,
+    chat: initWindowChat(),
     window: null,
     workstream: null,
     thread: null,
@@ -319,7 +332,10 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       const [overview, effects] = initOverview();
       // What it showed until now stays on screen while it loads again.
       const kept = model.overview?.view ? { ...overview, view: model.overview.view } : overview;
-      return [{ ...base, overview: kept }, [...leaving, ...effects, ...lists, ...watching]];
+      return [
+        { ...base, overview: kept },
+        [...leaving, ...effects, loadWindowChat, ...lists, ...watching],
+      ];
     }
     case "window": {
       if (model.window === null) {
@@ -463,6 +479,16 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       if (model.workstream === null) return [model, []];
       const [workstream, effects] = updateWorkstream(model.workstream, msg.msg);
       return [{ ...model, workstream }, effects];
+    }
+    case "chat": {
+      // The window chat's thread is the overview's only.
+      if (model.route.page !== "overview") return [model, []];
+      const [state, effects] = updateWindowChat(
+        { chat: model.chat, thread: model.thread },
+        msg.msg,
+      );
+      const left = msg.msg.type === "newChatClicked" ? [loadWorkstreams, loadThreads] : [];
+      return [{ ...model, ...state }, [...effects, ...left]];
     }
     case "thread": {
       if (model.thread === null) return [model, []];
@@ -619,6 +645,18 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "telemetry":
     case "overviewLeft":
       return [model, []];
+    case "windowChat":
+    case "windowChatAsked":
+    case "windowChatNew": {
+      // Answered after the user left the overview: the chat waits for them,
+      // and loads again when they're back.
+      if (model.route.page !== "overview")
+        return [{ ...model, chat: { ...model.chat, asking: false } }, []];
+      const [state, effects] = windowChatReplied({ chat: model.chat, thread: model.thread }, msg);
+      const made =
+        msg.tag.kind === "windowChatAsked" && msg.ok ? [loadWorkstreams, loadThreads] : [];
+      return [{ ...model, ...state }, [...effects, ...made]];
+    }
     case "overview":
       if (model.overview === null) return [model, []];
       return [{ ...model, overview: overviewReplied(model.overview, msg) }, []];

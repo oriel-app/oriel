@@ -16,7 +16,7 @@ import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
-import type { ItemRow, ThreadStateId, WaitingOn } from "./view.ts";
+import type { ItemRow, MemberView, ThreadStateId, WaitingOn } from "./view.ts";
 
 export type Dispatch = (msg: Msg) => void;
 
@@ -532,4 +532,45 @@ export function when(instant: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// An item as Browse lists it: its type, key, title, and its status or
+// replies; or a line saying the index no longer has it.
+export function Member({
+  member,
+  onRemove,
+  inRegion = false,
+}: {
+  member: MemberView;
+  onRemove?: () => void;
+  // Found outside the workstream, though it holds this one too.
+  inRegion?: boolean;
+}) {
+  const { ref, row } = member;
+  return (
+    <li class={row ? "member" : "member gone"} data-item={ref.id}>
+      <TypeMark row={row} />
+      <ItemKey item={ref} />
+      <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>
+      {row?.status ? (
+        <span class="status" data-category={row.status.category}>
+          {row.status.name}
+        </span>
+      ) : (
+        row?.replies && <Replies id={ref.id} replies={row.replies} />
+      )}
+      {inRegion && <span class="in-region">in this workstream</span>}
+      {onRemove && (
+        <button
+          type="button"
+          class="remove-member"
+          title={`Remove ${ref.key} from this workstream`}
+          aria-label={`Remove ${ref.key}`}
+          onClick={onRemove}
+        >
+          ×
+        </button>
+      )}
+    </li>
+  );
 }

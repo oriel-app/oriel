@@ -2686,13 +2686,6 @@ a.replies:hover {
   color: inherit;
 }
 
-.search-block {
-  padding: var(--space-2) var(--space-3);
-  border: 1px dashed var(--derived-line);
-  border-radius: var(--radius-lg);
-  background: var(--derived-soft);
-}
-
 .search-label {
   margin: 0 0 var(--space-1);
   color: var(--derived);
@@ -2702,24 +2695,97 @@ a.replies:hover {
   text-transform: uppercase;
 }
 
-.hits {
+/* A block under the agent's reply (decision 0030): Oriel's, built from a
+   read, with its caption saying which. */
+.answer-block {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunk);
+}
+
+.answer-block[data-outside] {
+  border: 1px dashed var(--derived-line);
+  background: var(--derived-soft);
+}
+
+.answer-block figcaption {
+  margin-top: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.block-more {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.block-bars {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(4rem, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.hits li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 0.125rem 0;
+.block-bars li {
+  display: contents;
 }
 
-.hit-title {
-  min-width: 0;
+.block-bar-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.block-bar-track {
+  display: block;
+  height: 0.625rem;
+}
+
+.block-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.block-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.block-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.block-table th {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: left;
+}
+
+.block-table th,
+.block-table td {
+  padding: 0.25rem var(--space-2) 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.block-table th.num,
+.block-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-block .members {
+  margin: 0;
 }
 
 .in-region {
@@ -4652,5 +4718,163 @@ button.overview-title:hover {
   .overview-thread .overview-sub {
     flex: 1 0 100%;
     order: 1;
+  }
+}
+
+/* The window chat (decisions 0027 and 0030): the ask bar under the counts
+   strip, its questions to start from, and the chat beside the overview
+   while it has a conversation. */
+.ask {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-5);
+}
+
+.ask-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ask-input {
+  flex: 1;
+  min-width: 0;
+  height: 2.375rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-lg);
+}
+
+.ask-input:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.ask-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-question {
+  height: var(--chip-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--chip-line);
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--chip-font);
+  cursor: pointer;
+}
+
+.ask-question:hover:not(:disabled) {
+  background: var(--chip-bg-hover);
+  color: var(--text);
+}
+
+.ask-problem {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+.window-chat {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(var(--panel), 100vw);
+  padding: var(--inset-top) var(--space-4) var(--space-4);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+  transition:
+    opacity var(--duration-panel) var(--ease-out),
+    transform var(--duration-panel) var(--ease-out);
+}
+
+@starting-style {
+  .window-chat {
+    opacity: 0;
+    transform: translateX(var(--slide-panel));
+  }
+}
+
+.window-chat-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--head-row);
+}
+
+.window-chat-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.window-chat-close {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-xl);
+  cursor: pointer;
+}
+
+.window-chat-close:hover {
+  background: var(--surface-hover);
+}
+
+.window-chat-entries {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.window-chat-empty {
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+/* On a narrow window it opens as a sheet over the overview. */
+@media (max-width: 760px) {
+  .window-chat {
+    top: auto;
+    left: 0;
+    width: 100vw;
+    height: min(85vh, 100%);
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+
+  @starting-style {
+    .window-chat {
+      transform: translateY(var(--space-6));
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-chat {
+    transition: none;
   }
 }

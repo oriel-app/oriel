@@ -104,6 +104,13 @@ const expectations = {
     grader: literal("intents"),
     calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemIdText)) })),
   }),
+  // A block of `form` from `read` was shown, and every block shown is the
+  // one Oriel builds from what its read answered (decision 0030).
+  blocks: object({
+    grader: literal("blocks"),
+    form: union(literal("bars"), literal("table"), literal("rows")),
+    read: text,
+  }),
   // An item, unless it names only a file.
   surfaced: ((input, path = "$") => {
     if (has(input, "item") && has(input, "file"))
@@ -203,6 +210,16 @@ const evalCaseShape = object({
   ),
   // Oriel's own threads and change sets in the workspace. Absent: none.
   oriel: optional(orielWorkspace),
+  // The case asks in the window chat (decision 0027): its region is empty,
+  // its agent reads window.overview(), and the overview's workstreams hold
+  // these fixture regions. Slack is connected, as in a window with it.
+  // `at`: when the user looks, if not at the eval clock.
+  window: optional(
+    object({
+      workstreams: array(object({ name: text, region: text })),
+      at: optional(instantText),
+    }),
+  ),
   // What the thread said before the prompt, oldest first: the user's
   // messages, the agent's replies, and Oriel's own lines, such as asking
   // what was wrong with a rejected change set. Absent: a new thread.
@@ -241,12 +258,11 @@ export function parseEvalCase(input: unknown): Result<EvalCase> {
 
 function rules(evalCase: EvalCase): Issue[] {
   const found: Issue[] = [];
-  if (
-    evalCase.region === undefined &&
-    evalCase.files === undefined &&
-    evalCase.messages === undefined
-  )
+  const held = [evalCase.region, evalCase.files, evalCase.messages].some((x) => x !== undefined);
+  if (!held && evalCase.window === undefined)
     found.push({ path: "$", message: "a case's region needs a fixture region, files, or both" });
+  if (held && evalCase.window !== undefined)
+    found.push({ path: "$.window", message: "the window chat's region is empty" });
   for (const key of ["files", "messages"] as const) {
     const listed: readonly string[] = evalCase[key] ?? [];
     listed.forEach((entry, i) => {
@@ -358,6 +374,10 @@ function loadCase(
   const region = named === undefined ? null : fixture.regions.find((r) => r.name === named);
   if (region === undefined)
     problems.push(`$.region: no fixture region named ${JSON.stringify(named)}`);
+  evalCase.window?.workstreams.forEach((workstream, i) => {
+    if (!fixture.regions.some((r) => r.name === workstream.region))
+      problems.push(`$.window.workstreams[${i}].region: no fixture region by that name`);
+  });
   if ((evalCase.edited ?? 0) > fixture.edits.length)
     problems.push(`$.edited: the fixture has ${fixture.edits.length} source edits`);
   problems.push(...fileProblems(evalCase, folder));
@@ -375,7 +395,8 @@ function loadCase(
       return;
     }
     if (e.item.startsWith("slack:")) {
-      if (!messages.includes(e.item))
+      // The window chat's overview shows the picked channel's messages.
+      if (!(evalCase.window ? posted.has(e.item) : messages.includes(e.item)))
         problems.push(`$.expect[${i}].item: not one of the case's messages`);
     } else if (region !== undefined && !region?.items.some((id) => id === e.item))
       problems.push(`$.expect[${i}].item: not in region ${region?.name ?? "(none)"}`);

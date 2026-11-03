@@ -33,6 +33,7 @@ import {
   union,
   unknown,
   type Validator,
+  startQuestions,
 } from "@oriel/core";
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
 import { sources } from "@oriel/sources";
@@ -246,6 +247,10 @@ const windowEvent = union(
   object({
     name: literal("overview.more-opened"),
     section: refine(string, isOverviewSection, "expected one of the overview's sections"),
+  }),
+  object({
+    name: literal("window-chat.question-used"),
+    question: union(...startQuestions.map((question) => literal(question))),
   }),
 );
 
@@ -841,6 +846,50 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const { thread } = await deps.dispatch("thread.open", { workstream }, user);
         await deps.dispatch("thread.say", { thread, text }, user);
         return json(201, { id: thread, workstreamId: workstream });
+      },
+    },
+    {
+      // The window chat the window shows (decision 0027): the newest one the
+      // user hasn't left with New chat, while it is working; else none, and
+      // the next question makes one.
+      method: "GET",
+      path: at("/window-chat"),
+      run: async () =>
+        json(200, { thread: deps.threads.windowChat(deps.workspaceId, deps.now())?.id ?? null }),
+    },
+    {
+      // A question in the window chat. The first makes its thread, on an
+      // empty workstream of its own, which shows in the sidebar from then on;
+      // opening the overview makes nothing.
+      method: "POST",
+      path: at("/window-chat/messages"),
+      async run(_, request) {
+        const { text } = await readJson(request, messageBody, messageBodyValue);
+        const open = deps.threads.windowChat(deps.workspaceId, deps.now());
+        if (open) {
+          const { seq } = await deps.dispatch("thread.say", { thread: open.id, text }, user);
+          return json(202, { id: open.id, seq });
+        }
+        const { workstream } = await deps.dispatch("workstream.create", { kind: "window" }, user);
+        const { thread } = await deps.dispatch("thread.open", { workstream }, user);
+        deps.emit({
+          name: "window-chat.opened",
+          at: deps.now(),
+          workspaceId: deps.workspaceId,
+          threadId: thread,
+        });
+        const { seq } = await deps.dispatch("thread.say", { thread, text }, user);
+        return json(201, { id: thread, seq });
+      },
+    },
+    {
+      // New chat: the window chat starts afresh with the next question.
+      method: "POST",
+      path: at("/window-chat/new"),
+      async run(_, request) {
+        await readJson(request, tinyBody, emptyBody);
+        const { left } = await deps.dispatch("window.new-chat", {}, user);
+        return json(200, { left });
       },
     },
     {

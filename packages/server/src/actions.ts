@@ -37,6 +37,8 @@ import { identity, memberOf } from "./views.ts";
 // What a workstream made for a thread from nothing is called, until a change set
 // creates its epic and it takes that epic's name.
 export const blankWorkstreamName = "New workstream";
+// What the window chat's own workstream is called until the user names it.
+export const windowChatName = "Window chat";
 
 // A refusal the doors map: the window's routes to 400, 403, 404 or 409.
 // `conflict`: not now, while something else is under way or missing.
@@ -239,6 +241,15 @@ const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
 
 const lookAgainMs = 60_000;
 
+// What in a thread waits on the user, in words, or null: a change set to
+// decide, or a message held for them.
+async function waitsOn(deps: ActionDeps, threadId: Ulid): Promise<string | null> {
+  if ((await deps.unsettled(threadId)).some((set) => set.waits))
+    return "a change set in it waits on you";
+  if (deps.threads.held(threadId).length > 0) return "a message held in it waits on you";
+  return null;
+}
+
 // Items as the index has them now. One it doesn't have is refused, unless
 // the change set acting created it, as it joins before the next sync.
 async function members(
@@ -270,6 +281,10 @@ async function newWorkstream(
     userOnly(actor, "starts a thread from nothing");
     return { name: blankWorkstreamName, origin: { kind: "thread" }, list: [], size: 0 };
   }
+  if (input.kind === "window") {
+    userOnly(actor, "asks the window chat's first question");
+    return { name: windowChatName, origin: { kind: "window" }, list: [], size: 0 };
+  }
   if (input.kind === "picked") {
     const list = await members(deps, input.items, actor);
     const size = new Set(list.map((m) => `${m.id}`)).size;
@@ -296,6 +311,42 @@ async function newWorkstream(
     },
     list,
     size: list.length,
+  };
+}
+
+// Marks a thread done: from its page or a list, by the agent or a tool, or
+// as New chat leaves the window chat.
+async function markDone(
+  { thread: id, via }: ActionInput<"thread.done">,
+  actor: Actor,
+  deps: ActionDeps,
+): Promise<Outcome<Record<string, never>>> {
+  const thread = mustThread(deps, id);
+  // The thread stays in Needs you while it waits on the user, for a
+  // change set or a held message, and isn't closed under another turn.
+  if (bound(actor)) {
+    if (thread.id !== ownThread(actor) && deps.running(thread.id))
+      throw new ActionError("refused", "the agent is answering in it");
+    const waits = await waitsOn(deps, thread.id);
+    if (waits) throw new ActionError("refused", `${waits}, so it stays in Needs you`);
+  }
+  const at = deps.now();
+  // Marked done already, it keeps who marked it and when, so there is
+  // nothing to undo and no mark to count.
+  if (!deps.threads.markDone(thread.id, at, actor))
+    return { output: {}, undo: null, changed: null, events: [] };
+  return {
+    output: {},
+    undo: { action: "thread.reopen", input: { thread: thread.id, mark: at } },
+    changed: { thread: thread.id },
+    events: [
+      {
+        name: "thread.marked-done",
+        threadId: thread.id,
+        // Only the user closes it from somewhere in the window.
+        ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
+      },
+    ],
   };
 }
 
@@ -379,9 +430,10 @@ const handlers = {
     );
     return {
       output: { workstream: id },
-      // One made for a thread from nothing is that thread's from the start.
+      // One made for a thread from nothing, or the window chat, is that
+      // thread's from the start.
       undo:
-        origin.kind === "thread"
+        origin.kind === "thread" || origin.kind === "window"
           ? null
           : { action: "workstream.delete", input: { workstream: id } },
       changed: { workstream: id, members: false },
@@ -549,43 +601,7 @@ const handlers = {
     };
   },
 
-  "thread.done": async ({ thread: id, via }, actor, deps) => {
-    const thread = mustThread(deps, id);
-    // The thread stays in Needs you while it waits on the user, for a
-    // change set or a held message, and isn't closed under another turn.
-    if (bound(actor)) {
-      if (thread.id !== ownThread(actor) && deps.running(thread.id))
-        throw new ActionError("refused", "the agent is answering in it");
-      if ((await deps.unsettled(thread.id)).some((set) => set.waits))
-        throw new ActionError(
-          "refused",
-          "a change set in it waits on you, so it stays in Needs you",
-        );
-      if (deps.threads.held(thread.id).length > 0)
-        throw new ActionError(
-          "refused",
-          "a message held in it waits on you, so it stays in Needs you",
-        );
-    }
-    const at = deps.now();
-    // Marked done already, it keeps who marked it and when, so there is
-    // nothing to undo and no mark to count.
-    if (!deps.threads.markDone(thread.id, at, actor))
-      return { output: {}, undo: null, changed: null, events: [] };
-    return {
-      output: {},
-      undo: { action: "thread.reopen", input: { thread: thread.id, mark: at } },
-      changed: { thread: thread.id },
-      events: [
-        {
-          name: "thread.marked-done",
-          threadId: thread.id,
-          // Only the user closes it from somewhere in the window.
-          ...(actor.kind === "user" ? { via: via ?? "page" } : { by: actor }),
-        },
-      ],
-    };
-  },
+  "thread.done": markDone,
 
   "thread.reopen": async ({ thread: id, mark }, _actor, deps) => {
     const thread = mustThread(deps, id);
@@ -635,11 +651,17 @@ const handlers = {
 
   "thread.open": async ({ workstream: id }, _actor, deps) => {
     const workstream = mustWorkstream(deps, id);
+    // The first thread on a window chat's workstream is that window chat,
+    // made by its first question; any later one is an ordinary thread.
+    const chat =
+      workstream.origin.kind === "window" &&
+      deps.threads.ofWorkstream(workstream.id, deps.now()).length === 0;
     const thread = deps.newId();
     deps.threads.open(
       { id: thread, workspaceId: deps.workspaceId, workstreamId: workstream.id },
       deps.now(),
     );
+    if (chat) deps.threads.startWindowChat(thread);
     return {
       output: { thread },
       undo: null,
@@ -842,6 +864,27 @@ const handlers = {
       undo: null,
       changed: null,
       events: [{ name: "source.synced", source, ok: !("problem" in synced) }],
+    };
+  },
+
+  // The window chat's old thread is no longer the window's. A turn still
+  // running in it stops, so it proposes nothing behind the user's back. It
+  // is then marked done as the user's action, as `thread.done` does, unless
+  // a change set or a held message in it waits on them: then it stays
+  // working, in Needs you (decision 0027).
+  "window.new-chat": async (_, actor, deps) => {
+    const thread = deps.threads.windowChat(deps.workspaceId, deps.now());
+    if (!thread) return { output: { left: null }, undo: null, changed: null, events: [] };
+    deps.turns.stop(thread.id);
+    deps.threads.leaveWindowChat(thread.id, deps.now());
+    const kept = (await waitsOn(deps, thread.id)) !== null;
+    const done = kept ? null : await markDone({ thread: thread.id, via: "new-chat" }, actor, deps);
+    const counted = !done || done.events === "counted" ? [] : done.events;
+    return {
+      output: { left: thread.id },
+      undo: null,
+      changed: { thread: thread.id },
+      events: [...counted, { name: "window-chat.new-chat", threadId: thread.id, kept }],
     };
   },
 

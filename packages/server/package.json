@@ -2,6 +2,10 @@
   "name": "@oriel/server",
   "private": true,
   "type": "module",
+  "exports": {
+    "./overview": "./src/overview.ts",
+    "./window": "./src/window.ts"
+  },
   "scripts": {
     "start": "node src/main.ts",
     "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"

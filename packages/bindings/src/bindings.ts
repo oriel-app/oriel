@@ -7,6 +7,7 @@ import {
   type OrielReads,
   type Reader,
   type Region,
+  type SearchHit,
   type Ulid,
 } from "@oriel/core";
 import { intended } from "./actions.ts";
@@ -34,7 +35,9 @@ const defined = (args: object) =>
 // without it the workspace has none. Oriel's actions are recorded as
 // intents, each checked against its declaration, with the region's
 // workstream and `thread` as the agent's own, and each item a workstream
-// gains in the region or found by this run's search(). The composition root passes them in.
+// gains in the region or found by this run's search(). `show` builds a
+// block from a read the turn ran (decision 0030). The composition root
+// passes them in.
 export function bindingsFor(
   region: Region,
   options: {
@@ -43,10 +46,14 @@ export function bindingsFor(
     items?: ItemDocs;
     oriel?: OrielReads;
     thread?: Ulid;
+    show?: (spec: unknown) => string;
+    // The window chat's overview, with the items it shows as the index has
+    // them; its thread's module gets `window` only with it (decision 0027).
+    overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
-  const fns = describe(scope);
+  const fns = describe(scope, { window: options.overview !== undefined });
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
   const created = new Map<NewRef, string>();
@@ -73,6 +80,12 @@ export function bindingsFor(
       return hits;
     },
     oriel: options.oriel ?? noThreads,
+    show:
+      options.show ?? (() => "Oriel shows blocks only in a thread's turn; this one isn't shown."),
+    // Each read gets its own, below, which says what it reached.
+    overview: async () => {
+      throw new Error("only the window chat reads the overview");
+    },
   };
   // The ref the next create must carry. Every correctly numbered create uses
   // one up, so a rejected create can't shift the numbering of later ones.
@@ -88,18 +101,38 @@ export function bindingsFor(
       // A read that reached any item outside the region, as a namespace read
       // of what search() found can, is the escape hatch too.
       let outsideRegion = entry.outsideRegion;
+      // What it reached outside the region, for the escape-hatch block.
+      const reached: SearchHit[] = [];
       const own: Host = {
         ...host,
         read: (ids, view) => {
           if (ids.some((id) => !members.has(id))) outsideRegion = true;
           return host.read(ids, view);
         },
+        search: async (query, limit) => {
+          const hits = await host.search(query, limit);
+          reached.push(...hits);
+          return hits;
+        },
+        overview: async () => {
+          if (!options.overview) return host.overview();
+          const { view, items } = await options.overview();
+          for (const item of items) found.add(item.id);
+          reached.push(...items);
+          return view;
+        },
       };
       try {
-        return { value: await entry.run(args, own), outsideRegion };
+        const value = await entry.run(args, own);
+        return { value, outsideRegion, ...(reached.length ? { found: reached } : {}) };
       } catch (error) {
         throw named(fn, error);
       }
+    },
+
+    fields(fn) {
+      const entry = byPath.get(fn);
+      return entry?.kind === "read" ? (entry.fields ?? null) : null;
     },
 
     capture(fn, args, ref): CapturedMutation {

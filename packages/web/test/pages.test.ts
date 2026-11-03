@@ -14,7 +14,7 @@ import { initReview, reviewReplied, reviewSteps, updateReview } from "../src/rev
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import { parseRoute, routeUrl, safeHref } from "../src/route.ts";
 import {
-  blocks,
+  entriesOf,
   initThread,
   removable,
   stepLabel,
@@ -483,7 +483,7 @@ test("the chat joins a streamed reply and a run's start and finish into one bloc
     returned: "3",
     error: null,
   };
-  const out = blocks([
+  const out = entriesOf([
     { seq: 1, at, kind: "user", text: "Hi" },
     { seq: 2, at, kind: "text", text: "Let me " },
     { seq: 3, at, kind: "text", text: "look." },
@@ -601,9 +601,9 @@ test("a problem the server reports alongside a decision shows on the change set"
 
 test("a run its turn never finished shows as stopped once the turn ends", () => {
   const started = { seq: 1, at, kind: "run.started" as const, runId: "r1", script: "x" };
-  const [running] = blocks([started]);
+  const [running] = entriesOf([started]);
   assert.equal(running?.kind === "run" && running.stopped, false);
-  const [stopped] = blocks([started, { seq: 2, at, kind: "done" }]);
+  const [stopped] = entriesOf([started, { seq: 2, at, kind: "done" }]);
   assert.equal(stopped?.kind === "run" && stopped.stopped, true);
 });
 

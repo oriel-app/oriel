@@ -19,6 +19,7 @@ import {
 import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
 import { history } from "./turns.ts";
 import { changeSetState } from "./views.ts";
+import { listedWorkstreams } from "./window-chat.ts";
 
 export type OrielReadDeps = {
   workspaceId: Ulid;
@@ -96,13 +97,18 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
 
   return {
     async workstreams() {
-      return workstreams.list(deps.workspaceId).map((workstream) => ({
-        id: workstream.id,
-        name: workstream.name,
-        items: workstreams.region(workstream.id, workstream.version)?.items.map((m) => m.id) ?? [],
-        threads: threads.ofWorkstream(workstream.id, deps.now()).length,
-        done: threads.workstreamDone(workstream.id, deps.now()) !== null,
-      }));
+      const listed = listedWorkstreams({ workstreams, threads, now: deps.now });
+      return workstreams
+        .list(deps.workspaceId)
+        .filter(listed)
+        .map((workstream) => ({
+          id: workstream.id,
+          name: workstream.name,
+          items:
+            workstreams.region(workstream.id, workstream.version)?.items.map((m) => m.id) ?? [],
+          threads: threads.ofWorkstream(workstream.id, deps.now()).length,
+          done: threads.workstreamDone(workstream.id, deps.now()) !== null,
+        }));
     },
 
     async threads() {

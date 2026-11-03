@@ -41,6 +41,7 @@ const workstreamOrigin: Validator<WorkstreamOrigin> = union(
   }),
   object({ kind: literal("picked") }),
   object({ kind: literal("thread") }),
+  object({ kind: literal("window") }),
 );
 const cause: Validator<WorkstreamChange["cause"]> = union(
   object({ kind: literal("user"), via: ulidValue }),

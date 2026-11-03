@@ -93,8 +93,33 @@ const finishScript = (keys: readonly string[]) =>
 // threads and a change set (OA-113), written once those exist.
 let linkedReply = "";
 
+// The window chat's answers (decision 0030): each with a block Oriel builds
+// from the overview, in each of its forms, or the rows a search found,
+// which Oriel shows unasked.
+const windowAnswers: [RegExp, string, string][] = [
+  [
+    /^chart/i,
+    `await window.overview();
+await show({ read: "window.overview", from: "workstreams", form: "bars", label: "name", value: "size" });`,
+    "Here are your workstreams by how many items each holds.",
+  ],
+  [
+    /^which workstreams/i,
+    `await window.overview();
+await show({ read: "window.overview", from: "workstreams", form: "table", columns: ["name", "size", "moved", "idleDays"] });`,
+    "Here they are, with how long each has been quiet.",
+  ],
+  [
+    /become a workstream/i,
+    `return (await search("vehicle", 6)).length;`,
+    "These vehicle stories sit in no workstream yet. Say the word and I'll make one of them.",
+  ],
+];
+
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  const answer = windowAnswers.find(([asked]) => asked.test(input.text));
+  if (answer) return [{ run: answer[1] }, { text: answer[2] }];
   if (/\bplan\b/i.test(input.text))
     return [
       { run: planScript(/rename/i.test(input.text), /\bonly\b/i.test(input.text)) },
@@ -727,6 +752,38 @@ const scenes: Scene[] = [
   // folder beside Jira; and with Slack beside Jira.
   { name: "overview", path: "/", act: overviewShown },
   { name: "overview-slack", path: "/", on: chatty, act: overviewShown },
+  // The window chat (decision 0030): the ask bar with questions to start
+  // from, then an answer with each form of block, beside the overview or,
+  // on a narrow window, as a sheet. Each starts a fresh chat.
+  {
+    name: "ask-bar",
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await post("/api/window-chat/new", {});
+      await page.reload();
+      await overviewShown(page);
+    },
+  },
+  ...(
+    [
+      ["ask-bars", "Chart my workstreams by size", "bars"],
+      ["ask-table", "Which workstreams are quiet?", "table"],
+      ["ask-rows", "What should become a workstream?", "rows"],
+    ] as const
+  ).map(([name, question, form]): Scene => ({
+    name,
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await post("/api/window-chat/new", {});
+      await page.locator(".ask-input").fill(question);
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator(`.window-chat .answer-block[data-form="${form}"]`).waitFor();
+      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+    },
+  })),
   {
     // Make a workstream on the cluster of SYN-54 and the messages that name
     // it, with its Undo.
@@ -1441,7 +1498,7 @@ const scenes: Scene[] = [
       await page.locator(".change-set .diff").waitFor();
       // Approving waits for the diff to be shown, and the thread to reload.
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
-      await page.locator(".search-block").waitFor();
+      await page.locator(".answer-block[data-outside]").waitFor();
     },
   },
   {

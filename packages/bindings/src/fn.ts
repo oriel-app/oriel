@@ -12,6 +12,7 @@ import {
   parseItemId,
   type Reader,
   type ReadResult,
+  type ResultFields,
   type SearchHit,
   type SourceKind,
   sourceKinds,
@@ -26,6 +27,12 @@ export type Host = NamespaceHost & {
   ids: readonly ItemId[];
   search(query: string, limit: number): Promise<SearchHit[]>;
   oriel: OrielReads;
+  // Builds the block a run asks for from a read its turn ran, and says what
+  // it did (decision 0030).
+  show(spec: unknown): string;
+  // The overview, in a window chat's module only (decision 0027). Its items
+  // count as this run's search() hits.
+  overview(): Promise<unknown>;
 };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
@@ -35,11 +42,14 @@ export type OrielSpace = (typeof orielSpaces)[number];
 
 // The namespace a function lives in: `items` for any item, one per source
 // that declares one, one of Oriel's own, or null for a global.
-export type Space = "items" | SourceKind | OrielSpace | null;
+// `window`: the window chat's own (decision 0027).
+export type Space = "items" | SourceKind | OrielSpace | "window" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;
   outsideRegion: boolean;
+  // What its result holds that a block can show (decision 0030).
+  fields?: ResultFields;
   run(args: readonly unknown[], host: Host): Promise<unknown>;
 };
 

@@ -1,4 +1,6 @@
 import type { Actor } from "./actions.ts";
+import type { BlockForm } from "./block.ts";
+import type { StartQuestion } from "./window-chat.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
@@ -14,7 +16,8 @@ import type { ZoomId } from "./zoom.ts";
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a
 // swipe on one.
-export type CloseVia = "page" | "menu" | "swipe";
+// Or New chat, in the window chat, which marks the old chat done.
+export type CloseVia = "page" | "menu" | "swipe" | "new-chat";
 
 // Events that can come from an Oriel action say who acted in `by`, which only
 // an actor other than the user fills in; or, by their `cause`, who changed a
@@ -123,6 +126,17 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
+  // A block the agent asked for showed under its reply, by its form
+  // (decision 0030).
+  | { name: "block.shown"; threadId: Ulid; form: BlockForm }
+  // A block the agent asked for and Oriel refused; the agent was told why.
+  | { name: "block.refused"; threadId: Ulid }
+  // The window chat (decision 0027): its first question made it; New chat
+  // left it, `kept` working when something in it waits on the user.
+  | { name: "window-chat.opened"; threadId: Ulid }
+  | { name: "window-chat.new-chat"; threadId: Ulid; kept: boolean }
+  // The user asked one of the questions to start from, by its kind.
+  | { name: "window-chat.question-used"; question: StartQuestion }
   // The user searched their threads from the sidebar: how long the query was
   // and how many it found, never what it said. One per query the window
   // asked about, once typing paused.

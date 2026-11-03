@@ -19,6 +19,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ItemDocs, Namespaces } from "@oriel/bindings";
 import {
+  type ChangeLogEntry,
+  type Cluster,
+  facetChanges,
+  type IndexRecord,
+  type Instant,
   type WorkstreamMember,
   type ItemId,
   itemId,
@@ -38,7 +43,9 @@ import {
 import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
 import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
-import { itemDocs, namespacesFor } from "@oriel/sources";
+import { overviewItems, overviewView } from "@oriel/server/overview";
+import { groupings } from "@oriel/server/window";
+import { itemDocs, namespacesFor, sources } from "@oriel/sources";
 import type { OrielWorkspace } from "./case.ts";
 import {
   buildFolder,
@@ -82,6 +89,9 @@ export type WorldInput = {
   folderEdited: number;
   // Oriel's own threads and change sets in the workspace, if any.
   oriel?: OrielWorkspace;
+  // A window chat's: the overview's workstreams, by fixture region, and the
+  // eval clock the overview counts back from (decision 0027).
+  window?: { workstreams: readonly { name: string; region: string }[]; now: Instant };
 };
 
 export type World = {
@@ -93,6 +103,9 @@ export type World = {
   items: ItemDocs;
   // Oriel's own data, as the agent's namespaces read it.
   oriel: OrielReads;
+  // A window chat's overview, as window.overview() reads it, with the items
+  // it shows; absent for any other thread.
+  overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
   // Each region item as its source holds it, for the judge: a file with its
   // path and title, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -116,12 +129,15 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     version: 1,
     workspaceId: fixedId,
     items: members,
-    origin: input.region?.origin ?? { kind: "picked" },
+    origin: input.window ? { kind: "window" } : (input.region?.origin ?? { kind: "picked" }),
   };
   const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
   if (input.messages?.length && !input.slack)
     throw new Error("the region holds messages, but no Slack fixture");
-  const slack = input.messages?.length && input.slack ? await connectSlack(input.slack) : null;
+  const slack =
+    (input.messages?.length || input.window) && input.slack
+      ? await connectSlack(input.slack)
+      : null;
   // As the app has them: Slack posts as the fixture's first person, in its
   // picked channel, while it is connected.
   const namespaces = namespacesFor([...snapshot.records, ...(slack?.index ?? [])], {
@@ -170,12 +186,15 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     },
   };
 
+  const records = [...snapshot.records, ...(folder?.index ?? []), ...(slack?.index ?? [])];
+  const window = input.window;
   return {
     region,
     reader,
     namespaces,
     items: itemDocs,
     oriel: orielOf(input.oriel),
+    ...(window ? { overview: async () => windowOverview(input, window, records) } : {}),
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
@@ -272,3 +291,88 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
       findThreads(threads, (thread) => said.get(thread.id) ?? "", sets, query, limit),
   };
 }
+
+// The window chat's overview over the case's world, built by the server's
+// own `overviewView` (decision 0027), so it is the page's. What changed
+// since the user last looked is what the case's Jira edits changed, logged
+// as a sync would log them; they last looked before the first edit.
+function windowOverview(
+  input: WorldInput,
+  window: NonNullable<WorldInput["window"]>,
+  records: readonly IndexRecord[],
+): { view: unknown; items: SearchHit[] } {
+  const { now } = window;
+  const before = fixtureSnapshot(input.fixture, evalSite, 0).records;
+  const after = new Map(
+    fixtureSnapshot(input.fixture, evalSite, input.edited).records.map((r) => [r.stableId, r]),
+  );
+  const editedAt = new Map(
+    input.fixture.edits.slice(0, input.edited).map((edit) => [`jira:${edit.key}`, edit.at]),
+  );
+  const changes: ChangeLogEntry[] = before
+    .flatMap((was) => {
+      const is = after.get(was.stableId);
+      const facets = is ? facetChanges(sources.jira.facets, was, is) : null;
+      if (is && !facets) return [];
+      const at = (editedAt.get(was.id) ?? now) as Instant;
+      return [
+        {
+          seq: 0,
+          source: "jira" as const,
+          stableId: was.stableId,
+          version: 2,
+          at,
+          facets: facets ?? {},
+          gone: !is,
+        },
+      ];
+    })
+    .map((entry, i) => ({ ...entry, seq: i + 1 }));
+  const stableIds = new Map(input.fixture.issues.map((i) => [`jira:${i.key}`, i.id]));
+  const workstreams = window.workstreams.map((workstream, i) => {
+    const region = input.fixture.regions.find((r) => r.name === workstream.region);
+    if (!region) throw new Error(`no fixture region named ${workstream.region}`);
+    return {
+      id: ulid(Date.parse(now), new Uint8Array(10).fill(i + 1)),
+      name: workstream.name,
+      createdAt: now,
+      members: region.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
+    };
+  });
+  const clustered = new Map<string, Cluster[]>();
+  const view = overviewView({
+    records,
+    changes,
+    seen: { at: firstEdit(input.fixture) ?? now, seq: 0 },
+    workstreams,
+    threads: [],
+    unopened: [],
+    clusters: (grouping) => {
+      const found = clustered.get(grouping) ?? groupings[grouping].group(records, now);
+      clustered.set(grouping, found);
+      return found;
+    },
+    now,
+  });
+  const byId = new Map(records.map((record) => [record.id as string, record]));
+  const items = overviewItems(view).flatMap((id) => {
+    const record = byId.get(id);
+    return record
+      ? [
+          {
+            id: record.id,
+            title: record.title,
+            location: record.location,
+            updatedAt: record.updatedAt,
+          },
+        ]
+      : [];
+  });
+  return { view, items };
+}
+
+// Just before the fixture's first edit: when the user last looked.
+const firstEdit = (fixture: JiraFixture): Instant | null => {
+  const first = fixture.edits.map((edit) => edit.at).toSorted()[0];
+  return first ? (new Date(Date.parse(first) - 1).toISOString() as Instant) : null;
+};

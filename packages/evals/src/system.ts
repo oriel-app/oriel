@@ -14,6 +14,7 @@ import {
   type AgentLimits,
   agent,
   anthropicProvider,
+  answerOf,
 } from "@oriel/agent";
 import { bindingsFor } from "@oriel/bindings";
 import {
@@ -22,7 +23,9 @@ import {
   type Intent,
   type Instant,
   type MutationRecord,
+  type Answered,
   planned,
+  readKey,
   type Run,
   type Sandbox,
   type Thread,
@@ -76,6 +79,14 @@ export function agentSystem(options: AgentSystemOptions = {}): SystemUnderTest {
       edited: input.case.edited ?? 0,
       folderEdited: input.case.folderEdited ?? 0,
       ...(input.case.oriel ? { oriel: input.case.oriel } : {}),
+      ...(input.case.window
+        ? {
+            window: {
+              workstreams: input.case.window.workstreams,
+              now: input.case.window.at ?? input.now,
+            },
+          }
+        : {}),
     });
     try {
       return await turn(world, input, options);
@@ -90,6 +101,7 @@ export const system: SystemUnderTest = agentSystem();
 async function turn(world: World, input: SystemInput, options: AgentSystemOptions) {
   const newId = counter(input.now);
   const records = memoryRecords(newId, input.now);
+  const answered = new Map<string, Answered>();
   const { region } = world;
   const thread: Thread = {
     id: newId(),
@@ -103,14 +115,27 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r, threadId) =>
-      bindingsFor(r, {
+    bindingsFor: (r, threadId, show) => {
+      const bindings = bindingsFor(r, {
         reader: world.reader,
         namespaces: world.namespaces,
         items: world.items,
         oriel: world.oriel,
         thread: threadId,
-      }),
+        ...(show ? { show } : {}),
+        ...(world.overview ? { overview: world.overview } : {}),
+      });
+      // What each read answered, so the blocks grader can build each block
+      // again from its read.
+      return {
+        ...bindings,
+        read: async (fn, args) => {
+          const answer = await bindings.read(fn, args);
+          if (fn !== "show") answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
+          return answer;
+        },
+      };
+    },
     runs: records.runs,
     changeSets: records.changeSets,
     actions: records.actions,
@@ -138,6 +163,16 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   return {
     mutations: records.captured(),
     intents: records.applied(),
+    blocks: events.flatMap((event) =>
+      event.kind === "block"
+        ? [
+            {
+              block: event.block,
+              answered: answered.get(readKey(event.block.spec.read, event.block.spec.args)) ?? null,
+            },
+          ]
+        : [],
+    ),
     reply: replyOf(events),
     transcript: events,
   };

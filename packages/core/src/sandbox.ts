@@ -1,6 +1,8 @@
 import type { ActionName } from "./actions.ts";
 import type { ItemId } from "./ids.ts";
 import type { Log, RunOutcome } from "./run.ts";
+import type { SearchHit } from "./source.ts";
+import type { ResultFields } from "./block.ts";
 import {
   array,
   type Infer,
@@ -67,7 +69,15 @@ export type Intent = { action: ActionName; input: Record<string, unknown> };
 export type Bindings = {
   dts: string;
   shim: string;
-  read(fn: string, args: readonly unknown[]): Promise<{ value: unknown; outsideRegion: boolean }>;
+  // `found`: the items outside the region the read reached, as search()
+  // and the window chat's window.overview() do: the escape-hatch block.
+  read(
+    fn: string,
+    args: readonly unknown[],
+  ): Promise<{ value: unknown; outsideRegion: boolean; found?: SearchHit[] }>;
+  // What a read declares of its result, for a block (decision 0030); null
+  // for a read a block can't use.
+  fields?(fn: string): ResultFields | null;
   capture(fn: string, args: readonly unknown[], ref: NewRef | null): CapturedMutation;
   intend(fn: string, args: readonly unknown[]): Intent;
 };
