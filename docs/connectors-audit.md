@@ -1,6 +1,6 @@
 # What adding a source costs
 
-An audit for decision 0049, taken on main at `81aafecb` (2026-11-03). It lists every place outside a connector's own package that a new source must touch today, says whether each is the source's own code or a list a declaration could feed, and sets the target.
+An audit for decision 0049, taken on main at `81aafecb` (2026-11-03) and still true at `de9f10c6`. It lists every place outside a connector's own package that a new source must touch today, says whether each is the source's own code or a list a declaration could feed, and sets the target.
 
 **Now: 41 files outside the connector's package, 36 to edit and 5 to add, in 8 packages and `scripts/`. When one is missed, the compiler catches 2 of them.**
 **Target: one entry in `packages/sources`, and for a writable connector one more line in `packages/changeset/src/writers.ts`. A test catches a missed one.**
