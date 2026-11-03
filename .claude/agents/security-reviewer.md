@@ -10,29 +10,37 @@ You need the diff, from the diff file you were given. If you got only paths, say
 
 Read first:
 
-- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003 and 0006.
+- SPEC.md §1, §4, §5, §7 and §9, and decisions 0003, 0006 and 0036.
 - Every `.claude/rules/*.md`, whichever paths changed.
 - The changed code and its callers.
 
 ## Threat model
 
+Oriel runs on the user's own machine: on localhost with `pnpm dev` and, for pilots, as the desktop app (decision 0036). That is a native shell with the server as its child on 127.0.0.1, behind a per-launch secret cookie. There is no hosted instance. The review relay, once built, is the one hosted piece. Its store should only ever see ciphertext, but the page that decrypts a review holds the link's key, so whoever controls that page's host reads every link opened while they do.
+
 What an attacker wants:
 
 - **Credentials:**
-  - the maintainer's Jira credential, which can write to the site, and the Anthropic key;
-  - a pilot PM's own Jira token, typed in when they connect a source;
-  - an instance's secret link, which is the only access control on a hosted instance;
-  - a live review link.
-- **Content:** a PM's Jira content, which is real company data on a hosted instance.
-- **A write to Jira that no person approved.**
+  - the maintainer's Jira and Slack credentials, which can write, and the Anthropic key;
+  - a pilot PM's own tokens, typed in when they connect a source and kept in the OS keychain on the desktop app;
+  - the desktop app's launch secret, which is the only access control on its server;
+  - the sign-in of the user's command-line agent, which Oriel must never read, store or relay;
+  - a live review link, and the key in its fragment;
+  - the update signing key, which only the maintainer holds, offline, and the Developer ID certificate, which only the maintainer's release environment holds.
+- **Content:** a PM's source content, which is real company data on their machine, and must never reach the relay or a log in the clear.
+- **A write to a source that no person approved.**
+- **Code execution on the user's machine,** through the agent's command-line tool, an update, or the shell.
 
 Who controls what:
 
 - Anyone who can edit a Jira issue controls its titles, descriptions and comments. Synced content is attacker-controlled: prompt injection.
 - The model, steered by that content, controls the script it writes and every word it says. Treat everything the sandbox guest prints and everything the model outputs as untrusted.
-- Any website open in the user's browser can send requests to a localhost instance, which has no login. That includes a link inside attacker-edited Jira content.
+- Any website open in the user's browser can send requests to the local server, which has no login. That includes a link inside attacker-edited Jira content. Under `pnpm dev`, only Host and Origin checks stop it; on the desktop app, the launch secret does too.
+- Every other user account on the machine shares loopback, and so can reach the server's port.
+- The model also drives the user's own command-line agent (decision 0036). Any tool of that CLI's besides Oriel's `run` would turn prompt injection into code execution, or an unapproved write, on the user's machine. That covers its shell, files, web and hooks, and the tool servers, plugins, skills and subagents in the user's or managed configuration, such as the user's own tool server for Jira.
 - Link unfurlers in Slack and Teams, and email scanners, fetch every review link they see.
-- Anyone holding a review link or an instance's URL can send requests.
+- Anyone holding a review link can send requests to it, even after it is revoked. The relay's operator, or whoever breaks into it, holds every ciphertext and every sealed decision, and whoever controls the decrypting page's host can read the keys and seal any decision.
+- Whoever controls the network or the release host can offer an update.
 - The person connecting a source types its site URL.
 - A PR's code runs on the maintainer's machine, where `.env` is readable by any process, when someone checks out the branch or runs `pnpm check`.
 
@@ -44,7 +52,12 @@ Who controls what:
   - a review-link approval without a live token and a typed name, or one reachable by GET;
   - replay sending anything other than the captured arguments, beyond 0003's one exception: a ref to an item an earlier create in the same change set made, sent as that item's ID;
   - a mutation target, or a read other than `search()`, outside the region, which only the host can enforce.
-- **Browser:**
+- **Browser and the desktop shell:**
+  - a request served without the launch secret on the desktop app, other than the review link page's own routes with their token, which are listed in decision 0036;
+  - a route the harness uses to reach `run` that skips the launch secret without a per-turn capability of its own;
+  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a keychain entry outside Oriel's own;
+  - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
+  - the webview navigating away from the server's origin, or any bridge from the page to the shell;
   - a state-changing request without an Origin or Host check;
   - a GET that changes state;
   - responses readable cross-origin, or through DNS rebinding.
@@ -58,11 +71,25 @@ Who controls what:
   - source content or model output rendered as HTML without escaping;
   - shell commands or URLs built from input;
   - source content in a system prompt.
+- **The command-line agent:**
+  - the agent able to reach any CLI tool besides Oriel's `run`, including tool servers, plugins, skills, subagents, hooks, settings and project files from the user's, managed or project configuration;
+  - a harness that doesn't check, on the person's machine at each start, that the CLI reports only `run`;
+  - Oriel reading, storing or passing on the CLI's sign-in;
+  - a vendor API key, or the launch secret, in the CLI's environment;
+  - a CLI path or argument built from content or model output.
+- **Updates and the relay:**
+  - an update applied without checking the manifest's Ed25519 signature, the archive's hash and its code signature, or one that isn't newer than the running version;
+  - the update signing key anywhere online, CI included;
+  - item content, a key or anything not encrypted sent to the relay;
+  - a decision from the relay replayed without checking its seal, the approval hash, and that the link is still live (not revoked, expired or decided);
+  - the decrypting page served by the same origin as the store, or deployed other than from the repo through the maintainer's environment;
+  - a local review link that outlives the launch that made it, before the relay exists.
 - **Exfiltration through what the UI renders:** images or auto-fetched URLs in model output, and links that aren't built from item IDs and the validated site.
 - **SSRF:** a request to a host taken from input without checking it against the source's expected domain.
 - **Secrets:**
   - tokens or keys in logs, errors, telemetry, run records, fixtures, cassettes (they record live model calls), URLs, Referer headers or the database;
-  - review-link tokens or instance links that are stored unhashed, compared in non-constant time, or not drawn from a CSPRNG.
+  - review-link tokens or the launch secret stored unhashed, compared in non-constant time, or not drawn from a CSPRNG;
+  - a review link's fragment key in a log, telemetry, the database or any request to the relay.
 - **Data exposure:** an endpoint, log line or telemetry event carrying item content where IDs would do (SPEC §7).
 - **Supply chain, CI and the maintainer's machine:**
   - packages outside the allowlist or without an ADR;
