@@ -402,14 +402,18 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
         {state && ` (${state})`}
       </span>
     );
+  // Without a key, the icon keeps the name's first word beside it instead.
+  const name = chipName(view.name);
+  const space = key ? -1 : name.indexOf(" ");
+  const first = space < 0 ? name : name.slice(0, space);
   const body = (
     <>
       <span class="chip-lead">
         <ChipIcon view={view} />
-        {key && <span class="chip-key">{key}</span>}
+        {key ? <span class="chip-key">{key}</span> : <span class="chip-name">{first}</span>}
       </span>
       {key && " "}
-      <span class="chip-name">{chipName(view.name)}</span>
+      {(key || space >= 0) && <span class="chip-name">{key ? name : name.slice(space)}</span>}
       {state && <span class="chip-state">{state}</span>}
     </>
   );

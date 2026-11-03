@@ -553,9 +553,11 @@ const plan = handed.serving.app
   .clusters.flatMap((c) => c.list)
   .find((row) => row.id.startsWith("folder:") && row.title === "Launch plan");
 linkedReply = [
-  `[[jira:SYN-61]] went to the team in [[${handed.threadId}]], when you approved [[${handed.setId}]],`,
-  `which also replied to [[${smsCopy}]] in [[${handed.workstreamId}]].`,
-  `You asked where that was in [[${askedWhere}]].`,
+  [
+    `[[jira:SYN-61]] went to the team in [[${handed.threadId}]], when you approved [[${handed.setId}]],`,
+    `which also replied to [[${smsCopy}]] in [[${handed.workstreamId}]].`,
+    `You asked where that was in [[${askedWhere}]].`,
+  ].join(" "),
   "",
   `- [[${plan?.id ?? "folder:missing"}]] says what ships first.`,
   "- [[jira:SYN-6100]] is no story Oriel has.",
