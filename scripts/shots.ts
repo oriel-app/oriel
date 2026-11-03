@@ -297,9 +297,12 @@ const answering = (await writing()).serving;
 // text, which the server writes into the page.
 const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
 writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
+// The desktop app's secret store, with no key in it yet.
+const noKey = { get: async () => null, set: async () => {}, delete: async () => {} };
 const configured = async (settings: Partial<Settings> = {}) => {
   const chooser = models({
     key: null,
+    kept: noKey,
     env: { PATH: codexBin },
     check: async () => ({
       ok: true,
@@ -313,8 +316,9 @@ const configured = async (settings: Partial<Settings> = {}) => {
     jira: { kind: "fixture" },
     models: chooser,
     settings: kept,
-    // As the desktop app has it, so the path field shows.
+    // As the desktop app has it, so the path and key fields show.
     cliPaths: true,
+    keys: { store: noKey, check: async () => "rejected" },
   });
 };
 const settingsServer = await configured();

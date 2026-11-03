@@ -109,6 +109,16 @@ function Providers(props: {
               provider={provider}
               onToggle={(on) => change({ provider: provider.id, on })}
             >
+              {provider.kind === "api" && view.apiKeys && (
+                <ApiKey
+                  set={provider.status === "ready"}
+                  typed={model.key}
+                  keying={model.keying}
+                  onType={(text) => send({ type: "keyTyped", text })}
+                  onSave={() => send({ type: "keySaved" })}
+                  onRemove={() => send({ type: "keyRemoved" })}
+                />
+              )}
               {provider.kind === "claude-code" && view.cliPaths && (
                 <CliPath
                   name={provider.name}
@@ -185,6 +195,75 @@ function CliPath(props: {
       <button type="submit" class="button" disabled={props.typed === undefined}>
         Save
       </button>
+    </form>
+  );
+}
+
+// An API key from Anthropic's console, on the desktop app: paying per
+// question instead of a plan. Saving checks it with Anthropic, then keeps it
+// in the OS secret store. The field never shows a key that's kept.
+function ApiKey(props: {
+  set: boolean;
+  typed: string;
+  keying: boolean;
+  onType(text: string): void;
+  onSave(): void;
+  onRemove(): void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (props.set && !open)
+    return (
+      <span class="provider-key-actions">
+        <button type="button" class="quiet-action" onClick={() => setOpen(true)}>
+          Use another key
+        </button>
+        <button
+          type="button"
+          class="quiet-action"
+          disabled={props.keying}
+          onClick={() => props.onRemove()}
+        >
+          {props.keying ? "Removing…" : "Remove the key"}
+        </button>
+      </span>
+    );
+  return (
+    <form
+      class="provider-path"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSave();
+        setOpen(false);
+      }}
+    >
+      <label class="provider-path-label">
+        <span>API key</span>
+        <input
+          type="password"
+          class="input"
+          value={props.typed}
+          placeholder="sk-ant-…"
+          spellcheck={false}
+          autoComplete="off"
+          onInput={(event) => props.onType(event.currentTarget.value)}
+        />
+      </label>
+      <button type="submit" class="button" disabled={props.keying || props.typed.trim() === ""}>
+        {props.keying ? "Checking…" : "Save"}
+      </button>
+      {props.set && (
+        <button type="button" class="quiet-action" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      )}
+      <span class="provider-key-note">
+        Make one on{" "}
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+          Anthropic's console
+        </a>
+        . Anthropic bills each question, and you can set a monthly limit there. Oriel keeps the key
+        in your system's secret store.
+      </span>
     </form>
   );
 }

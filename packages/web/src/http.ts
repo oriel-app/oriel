@@ -76,7 +76,8 @@ export type Tag =
   // Settings, loaded, changed, or looked for again (OA-181).
   | { kind: "settings" }
   | { kind: "settingsChanged" }
-  | { kind: "settingsLooked" };
+  | { kind: "settingsLooked" }
+  | { kind: "settingsKey" };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.

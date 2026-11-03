@@ -24,7 +24,14 @@ import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import { type App, createApp, type JiraMode, limits, type SlackMode } from "./app.ts";
+import {
+  type App,
+  type AppOptions,
+  createApp,
+  type JiraMode,
+  limits,
+  type SlackMode,
+} from "./app.ts";
 import type { ConnectionStore } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
@@ -130,6 +137,8 @@ export type TestOptions = {
   // The providers Settings picks among, in place of `agent` and `titler`.
   models?: Models;
   settings?: SettingsStore;
+  // Where the page keeps an API key, as on the desktop app.
+  keys?: AppOptions["keys"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -178,6 +187,7 @@ export async function testApp(
       ? { models: options.models }
       : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
     ...(options.settings ? { settings: options.settings } : {}),
+    ...(options.keys ? { keys: options.keys } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),

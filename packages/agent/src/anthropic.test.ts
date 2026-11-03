@@ -7,8 +7,10 @@ import {
   anthropicKey,
   anthropicProvider,
   apiVersion,
+  checkKey,
   fallbackBeta,
   messagesUrl,
+  modelsUrl,
 } from "./anthropic.ts";
 import { runTool, systemPrompt, threadMessages } from "./prompt.ts";
 import {
@@ -606,4 +608,29 @@ test("the model key is ANTHROPIC_API_KEY as a header can hold it, never trimmed 
     `ANTHROPIC_API_KEY=${key}\u0000\n`,
   ])
     assert.equal(anthropicKey(file), null, JSON.stringify(file));
+});
+
+test("a key is checked by listing one model, with the key only in its header", async () => {
+  const sent: { url: string; headers: Record<string, string>; method: string }[] = [];
+  const answering =
+    (status: number | Error): typeof fetch =>
+    async (input, init) => {
+      sent.push({
+        url: String(input),
+        headers: init?.headers as Record<string, string>,
+        method: init?.method ?? "GET",
+      });
+      if (status instanceof Error) throw status;
+      return new Response("{}", { status });
+    };
+  assert.equal(await checkKey("sk-ant-k", answering(200)), "ok");
+  assert.deepEqual(sent[0], {
+    url: `${modelsUrl}?limit=1`,
+    headers: { "x-api-key": "sk-ant-k", "anthropic-version": apiVersion },
+    method: "GET",
+  });
+  assert.equal(await checkKey("sk-ant-k", answering(401)), "rejected");
+  assert.equal(await checkKey("sk-ant-k", answering(403)), "rejected");
+  assert.equal(await checkKey("sk-ant-k", answering(529)), "unreachable");
+  assert.equal(await checkKey("sk-ant-k", answering(new Error("offline"))), "unreachable");
 });

@@ -21,6 +21,7 @@ export type ConnectionStore = {
 export type Secrets = {
   get(name: string): Promise<string | null>;
   set(name: string, secret: string): Promise<void>;
+  delete(name: string): Promise<void>;
 };
 
 const connection = object({ site: string, email: string, token: string, project: string });

@@ -23,11 +23,10 @@ export const launchCookie = "oriel-launch";
 // 32 bytes, as 64 lowercase hex characters.
 export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(line);
 
-const name = refine(
-  string,
-  (text) => /^[a-z][a-z0-9.-]{0,63}$/.test(text),
-  "a secret's name is lowercase",
-);
+// The secrets the server keeps, by name: the Jira connection and the API
+// key. The shell takes no other name.
+export const secretNames: readonly string[] = ["jira", "anthropic-key"];
+const name = refine(string, (text) => secretNames.includes(text), "a secret the server keeps");
 const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");
 const id = refine(number, (n) => Number.isSafeInteger(n) && n > 0, "a positive integer");
 

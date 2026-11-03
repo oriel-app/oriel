@@ -21,6 +21,7 @@ import {
   maxItems,
   messageText,
   maxNameChars,
+  nullable,
   number,
   object,
   type OrielReads,
@@ -500,6 +501,21 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const change = await readJson(request, smallBody, settingsChange);
         try {
           return json(200, await deps.settings.change(change));
+        } catch (error) {
+          if (error instanceof SettingsRefused) throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
+      // An API key for the desktop app's secret store, or null to remove
+      // it. The reply says only whether one is set.
+      method: "POST",
+      path: at("/settings/key"),
+      async run(_, request) {
+        const { key } = await readJson(request, smallBody, object({ key: nullable(string) }));
+        try {
+          return json(200, await deps.settings.key(key));
         } catch (error) {
           if (error instanceof SettingsRefused) throw new Refused(409, error.message);
           throw error;

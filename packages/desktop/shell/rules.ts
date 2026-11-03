@@ -17,7 +17,10 @@ export type Parsed =
   | { id: number; refused: string }
   | { id: null; refused: string };
 
-const secretName = /^[a-z][a-z0-9.-]{0,63}$/;
+// The secrets the server keeps, by the fixed names it uses: the Jira
+// connection, and the API key the agent can run on (OA-188). Any other name
+// is refused.
+export const secretNames: readonly string[] = ["jira", "anthropic-key"];
 const maxSecret = 16_384;
 
 // A line from the server after its first: a request with a positive integer
@@ -38,7 +41,7 @@ export function parseRequest(line: string): Parsed {
     return { id: null, refused: "no id" };
   const text = (key: string) => (typeof fields[key] === "string" ? fields[key] : null);
   const name = text("name");
-  const named = name !== null && secretName.test(name) ? name : null;
+  const named = name !== null && secretNames.includes(name) ? name : null;
   switch (fields.kind) {
     case "folder.pick": {
       const prompt = text("prompt");
@@ -132,6 +135,31 @@ export function opensOutside(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Why the OS can't keep a secret for Oriel now, or null when it can. Only
+// ciphertext is ever written, so with no key from the OS, or on Linux with
+// no keyring, where safeStorage would fall back to a fixed key, nothing is
+// kept at all.
+export function storageProblem(
+  platform: string,
+  available: boolean,
+  backend: string | null,
+): string | null {
+  if (!available) return "the OS secret store isn't available";
+  if (
+    platform === "linux" &&
+    (backend === null || backend === "basic_text" || backend === "unknown")
+  )
+    return "there's no keyring, so the secret store would use a fixed key";
+  return null;
+}
+
+// Whether safe storage encrypted with a fixed key after all: on Linux,
+// ciphertext starting `v10` is under Chromium's hardcoded key, which it
+// falls back to when the keyring it picked fails. Such text is never kept.
+export function fixedKey(platform: string, ciphertext: Uint8Array): boolean {
+  return platform === "linux" && Buffer.from(ciphertext.subarray(0, 3)).toString() === "v10";
 }
 
 // Splits a stream into lines, dropping any line longer than `max` bytes.

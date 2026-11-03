@@ -2,7 +2,7 @@
 // a window over the server, which runs as this process's child on the Node
 // the bundle carries, not Electron's. The shell holds no product logic. It
 // starts the server, shows its page, and does what the page can't: the folder
-// picker and notifications, and later the secret store (OA-188).
+// picker, notifications and the secret store (secrets.ts).
 //
 // - Launch. The server gets an environment built here: HOME, TMPDIR, LANG and
 //   the login shell's PATH, with the bundle's Deno first. The shell draws a
@@ -38,11 +38,13 @@ import {
   dialog,
   Menu,
   Notification,
+  safeStorage,
   session,
   shell,
   type WebContents,
 } from "electron";
 import {
+  fixedKey,
   folders,
   lang,
   Lines,
@@ -56,8 +58,10 @@ import {
   readyOrigin,
   restartUrl,
   serverPath,
+  storageProblem,
   type Request,
 } from "./rules.ts";
+import { secretStore } from "./secrets.ts";
 
 const quitGrace = 5_000;
 const loginShellTimeout = 5_000;
@@ -77,6 +81,27 @@ let path: Promise<string | null> | null = null;
 let quitting = false;
 let picking = false;
 let log = -1;
+
+// Only once Electron is ready: on Linux and Windows the OS's key isn't
+// there before.
+const secrets = secretStore(join(where.data, "Secrets"), {
+  problem: async () =>
+    storageProblem(
+      process.platform,
+      app.isReady() && (await safeStorage.isAsyncEncryptionAvailable()),
+      process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : null,
+    ),
+  encrypt: async (text) => {
+    const data = await safeStorage.encryptStringAsync(text);
+    if (fixedKey(process.platform, data))
+      throw new Error("there's no keyring, so the secret store would use a fixed key");
+    return data;
+  },
+  decrypt: async (data) => {
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(data);
+    return { text: result, stale: shouldReEncrypt };
+  },
+});
 
 for (const dir of [where.data, where.logs, where.shell])
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -378,9 +403,13 @@ async function handle(request: Request): Promise<string | null> {
     case "notify":
       return notify(request.title, request.body);
     case "secret.get":
+      return secrets.get(request.name);
     case "secret.set":
+      await secrets.set(request.name, request.secret);
+      return null;
     case "secret.delete":
-      throw new Error("the shell keeps no secrets yet; the store is OA-188's");
+      await secrets.delete(request.name);
+      return null;
   }
 }
 

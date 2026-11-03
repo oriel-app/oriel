@@ -776,7 +776,9 @@ export type ModelOptionView = ModelPick & { label: string };
 // what runs now, null when nothing can. `scripted`: the server runs the
 // scripted agent, as `--agent scripted` asked, so no provider is used.
 // `cliPaths`: a CLI's path can be set here, which only the desktop app,
-// behind its launch secret, allows.
+// behind its launch secret, allows. `apiKeys`: an API key can be set here,
+// which only the desktop app, keeping it in the OS secret store, allows; the
+// page is told only whether one is set, never the key.
 export type SettingsView = {
   providers: ProviderView[];
   models: ModelOptionView[];
@@ -784,6 +786,7 @@ export type SettingsView = {
   titleModel: ModelPick | null;
   scripted: boolean;
   cliPaths: boolean;
+  apiKeys: boolean;
   theme: string;
   themes: string[];
   textSize: TextSize;

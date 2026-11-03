@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  fixedKey,
   folders,
   lang,
   Lines,
@@ -11,6 +12,7 @@ import {
   printedPath,
   readyOrigin,
   serverPath,
+  storageProblem,
 } from "../shell/rules.ts";
 
 test("the shell answers the protocol's requests, as the server writes them", () => {
@@ -23,10 +25,10 @@ test("the shell answers the protocol's requests, as the server writes them", () 
     request: { kind: "secret.get", name: "jira" },
   });
   assert.deepEqual(
-    parseRequest('{"id":3,"kind":"secret.set","name":"slack.token","secret":"s3"}'),
+    parseRequest('{"id":3,"kind":"secret.set","name":"anthropic-key","secret":"s3"}'),
     {
       id: 3,
-      request: { kind: "secret.set", name: "slack.token", secret: "s3" },
+      request: { kind: "secret.set", name: "anthropic-key", secret: "s3" },
     },
   );
   assert.deepEqual(parseRequest('{"id":4,"kind":"secret.delete","name":"jira"}'), {
@@ -48,6 +50,10 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":6,"kind":"shell.run","command":"rm"}'), 6);
   assert.equal(refused('{"id":7,"kind":"secret.get","name":"../../login"}'), 7);
   assert.equal(refused('{"id":8,"kind":"secret.get","name":"Jira"}'), 8);
+  // Only the names the server uses, though others are well formed.
+  assert.equal(refused('{"id":12,"kind":"secret.get","name":"slack.token"}'), 12);
+  assert.equal(refused('{"id":13,"kind":"secret.set","name":"login","secret":"s"}'), 13);
+  assert.equal(refused('{"id":14,"kind":"secret.delete","name":"jira.tmp"}'), 14);
   assert.equal(refused(`{"id":9,"kind":"secret.get","name":"${"a".repeat(65)}"}`), 9);
   assert.equal(
     refused(`{"id":10,"kind":"secret.set","name":"jira","secret":"${"x".repeat(16_385)}"}`),
@@ -180,4 +186,20 @@ test("a page may write text to the clipboard from the server's origin, and nothi
     "fileSystem",
   ])
     assert.equal(mayUse(permission, "http://127.0.0.1:4320/", origin), false, permission);
+});
+
+test("a secret is kept only where the OS gives safe storage a key of its own", () => {
+  assert.equal(storageProblem("darwin", true, null), null);
+  assert.equal(storageProblem("win32", true, null), null);
+  assert.equal(storageProblem("linux", true, "gnome_libsecret"), null);
+  assert.equal(storageProblem("linux", true, "kwallet6"), null);
+  assert.match(storageProblem("darwin", false, null) ?? "", /isn't available/);
+  // On Linux with no keyring, safe storage would encrypt with a fixed key.
+  assert.match(storageProblem("linux", true, "basic_text") ?? "", /fixed key/);
+  assert.match(storageProblem("linux", true, "unknown") ?? "", /fixed key/);
+  assert.match(storageProblem("linux", true, null) ?? "", /fixed key/);
+  // A keyring that fails falls back to the fixed key, which its prefix shows.
+  assert.equal(fixedKey("linux", Buffer.from("v10abc")), true);
+  assert.equal(fixedKey("linux", Buffer.from("v11abc")), false);
+  assert.equal(fixedKey("darwin", Buffer.from("v10abc")), false);
 });

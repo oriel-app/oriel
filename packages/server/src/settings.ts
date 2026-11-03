@@ -17,6 +17,7 @@ import {
   type Validator,
 } from "@oriel/core";
 import { defaultTheme } from "@oriel/web/themes";
+import { type KeyStore, keepKey, KeyRefused } from "./api-key.ts";
 import type { Models } from "./model.ts";
 import {
   type ModelPick,
@@ -223,6 +224,8 @@ export type SettingsService = {
   change(change: SettingsChange): Promise<SettingsView>;
   // Looks for every provider again, as Check again asks.
   look(): Promise<SettingsView>;
+  // Keeps an API key, once Anthropic takes it, or removes it with null.
+  key(key: string | null): Promise<SettingsView>;
   // What the page's <html> carries, so its first paint is right.
   page(): { theme: string; textSize: TextSize };
 };
@@ -233,6 +236,9 @@ export function settingsService(deps: {
   themes: readonly string[];
   // Whether a change may set where a CLI is (decision 0041).
   cliPaths: boolean;
+  // Where the page may keep an API key: the desktop app's secret store. The
+  // check stands in for Anthropic in tests.
+  keys?: { store: KeyStore; check?: Parameters<typeof keepKey>[2] };
   // A theme was picked, for telemetry.
   picked(theme: string): void;
 }): SettingsService {
@@ -249,6 +255,7 @@ export function settingsService(deps: {
       titleModel: pick(choice?.title),
       scripted: models === null,
       cliPaths: deps.cliPaths,
+      apiKeys: deps.keys !== undefined && models !== null,
       theme: themes.includes(settings.theme) ? settings.theme : defaultTheme,
       themes: [...themes],
       textSize: settings.textSize,
@@ -279,6 +286,22 @@ export function settingsService(deps: {
     },
     async look() {
       await models?.look(store.get());
+      return view();
+    },
+    async key(key) {
+      const { keys } = deps;
+      if (!keys || !models)
+        throw new SettingsRefused(
+          "Set ANTHROPIC_API_KEY in .env. Only the desktop app keeps a key from this page.",
+        );
+      try {
+        if (key === null) await keys.store.delete();
+        else await keepKey(keys.store, key, keys.check);
+      } catch (error) {
+        if (error instanceof KeyRefused) throw new SettingsRefused(error.message);
+        throw new SettingsRefused("Oriel couldn't remove the key from the OS secret store.");
+      }
+      await models.look(store.get());
       return view();
     },
     page() {

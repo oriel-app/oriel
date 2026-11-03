@@ -28,9 +28,10 @@
 //
 // `--desktop --data <dir>` is the server as the desktop app's shell starts
 // it, and takes no other flag: see desktop/PROTOCOL.md. Jira is connected
-// from the window and kept in the OS's store for secrets, and Slack is off.
-// The agent runs on the person's own Claude Code, found on the PATH the shell
-// gives, and never on `.env`'s key, which is `pnpm dev`'s (decision 0036).
+// from the window and kept in the OS secret store, and Slack is off. The
+// agent runs on the person's own Claude Code, found on the PATH the shell
+// gives, or on an API key set in Settings and kept in the same store, and
+// never on `.env`'s key, which is `pnpm dev`'s (decision 0036).
 // Settings are kept in the data folder. Nothing but the channel to the shell goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -40,6 +41,7 @@ import { bearer } from "@oriel/slack";
 import { webFiles, serve } from "./serve.ts";
 import { isAbsolute, join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
+import { keyStore } from "./api-key.ts";
 import { fileStore } from "./connection.ts";
 import { serverEnv, slackEnv } from "./env.ts";
 import type { Log } from "@oriel/core";
@@ -117,7 +119,7 @@ if (!existsSync(join(files.dist, files.entry))) {
 }
 
 if (channelWrite && values.data) {
-  let described = "";
+  let looked: Promise<string> = Promise.resolve("");
   // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({
     data: values.data,
@@ -126,13 +128,16 @@ if (channelWrite && values.data) {
     log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
     signals: process,
     firstPort,
-    async model() {
+    async model(secrets) {
       const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
       const settings = settingsFile(join(values.data ?? "", "settings.json"), log);
-      const models = findModels({ key: null });
-      await models.look(settings.get());
-      described = models.describe(settings.get());
-      return { models, settings };
+      const store = keyStore(secrets, log);
+      const models = findModels({ key: null, kept: store });
+      // Not awaited here: the key comes from the shell, which answers once
+      // the server listens. Requests wait for it instead.
+      const first = models.look(settings.get());
+      looked = first.then(() => models.describe(settings.get()));
+      return { models, settings, keys: { store }, looked: first };
     },
   }).catch((error: unknown) => {
     if (error instanceof Stopped) process.exit(0);
@@ -142,7 +147,7 @@ if (channelWrite && values.data) {
     process.exit(2);
   });
   console.error(`Oriel is running at ${desktop.serving.url}`);
-  console.error(described);
+  console.error(await looked);
   process.exit(await desktop.exited);
 }
 

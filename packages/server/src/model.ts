@@ -1,6 +1,7 @@
 // Which model the agent and thread titles run on (decisions 0037 and 0041).
-// Oriel looks for each provider instance Settings lists: an API key in
-// `.env`, the person's own Claude Code, installed, a supported version and
+// Oriel looks for each provider instance Settings lists: an API key, in
+// `.env` or, on the desktop app, in the OS secret store, the person's own
+// Claude Code, installed, a supported version and
 // signed in, and Codex, which it can't run on yet, so it's only looked for
 // on the PATH and never run (decision 0040). Each turn and each title
 // then runs on the provider and model Settings pick, among those found and
@@ -49,6 +50,9 @@ export type Choice = { model: Running | null; title: Running | null; problem: st
 export type ModelsOptions = {
   // ANTHROPIC_API_KEY from `.env`, or null.
   key: string | null;
+  // On the desktop app, the key kept in the OS secret store, which Settings
+  // can change, in place of `.env`'s. Each look reads it again.
+  kept?: { get(): Promise<string | null> };
   // `--claude-code <path>`; a path set in Settings wins.
   claudeCodePath?: string;
   // The environment the CLIs are found in. Default `process.env`.
@@ -113,7 +117,10 @@ const ready = (found: Found): found is Extract<Found, { status: "ready" }> =>
 export function models(options: ModelsOptions): Models {
   const env = options.env ?? process.env;
   const check = options.check ?? checkClaudeCode;
-  const { key } = options;
+  const { kept } = options;
+  // Where the key comes from, for the words a row and the server's line use.
+  const where = kept ? "store" : "env";
+  let key = kept ? null : options.key;
   let found = new Map<string, Found>();
   // Agents and titlers by instance, model and CLI, built once each.
   const agents = new Map<string, Agent>();
@@ -135,7 +142,7 @@ export function models(options: ModelsOptions): Models {
         ? claudeCodeTitler({ cli: r.cli, model: r.model })
         : anthropicTitler({ apiKey: apiKey ?? "", model: r.model }));
 
-  async function lookFor(provider: ProviderSetting): Promise<Found> {
+  async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
     if (provider.kind === "codex")
       return onPath("codex", env) ? { status: "not-yet" } : { status: "missing" };
@@ -199,10 +206,12 @@ export function models(options: ModelsOptions): Models {
     async look(settings) {
       const look = ++looks;
       found = new Map(settings.providers.map((p) => [p.id, found.get(p.id) ?? checking]));
+      const keyNow = kept ? await kept.get() : key;
       const answers = await Promise.all(
-        settings.providers.map(async (p) => [p.id, await lookFor(p)] as const),
+        settings.providers.map(async (p) => [p.id, await lookFor(p, keyNow)] as const),
       );
       if (look !== looks) return;
+      key = keyNow;
       found = new Map(answers);
       agents.clear();
       titlers.clear();
@@ -259,7 +268,7 @@ export function models(options: ModelsOptions): Models {
             name: provider.name,
             on: provider.on,
             status: at.status,
-            detail: detailOf(provider, at),
+            detail: detailOf(provider, at, where),
             version: ready(at) ? (at.cli?.version ?? null) : null,
             path: provider.path ?? null,
             uses: {
@@ -276,7 +285,7 @@ export function models(options: ModelsOptions): Models {
       const how = (r: Running) =>
         r.cli
           ? `${label(r.model)} through Claude Code ${r.cli.version} at ${r.cli.path}, on its own sign-in`
-          : `${label(r.model)} with the model key from .env`;
+          : `${label(r.model)} with ${where === "store" ? "the API key in the OS secret store" : "the model key from .env"}`;
       return `Agent: ${how(model)}. Thread titles: ${title ? how(title) : "the first message, clipped"}.`;
     },
   };
@@ -284,18 +293,21 @@ export function models(options: ModelsOptions): Models {
 
 // What a row says was found, in the person's words. Never a key. The
 // CLI's own problems say to restart Oriel; Settings can check again instead.
-function detailOf(provider: ProviderSetting, found: Found): string {
+function detailOf(provider: ProviderSetting, found: Found, where: "env" | "store"): string {
   if ("problem" in found && found.problem)
     return found.problem.message
       .replace("then restart Oriel.", "then check again.")
       .replace("Restart Oriel to try again.", "Check again to try once more.");
   switch (found.status) {
     case "ready":
-      return found.cli ? `Signed in · version ${found.cli.version}` : "A key is set in .env";
+      if (found.cli) return `Signed in · version ${found.cli.version}`;
+      return where === "store" ? "A key is kept in the OS secret store" : "A key is set in .env";
     case "checking":
       return "Checking…";
     case "no-key":
-      return "No key is set. Add ANTHROPIC_API_KEY to .env, then restart Oriel.";
+      return where === "store"
+        ? "No key is set. Paste one from Anthropic's console to pay per question."
+        : "No key is set. Add ANTHROPIC_API_KEY to .env, then restart Oriel.";
     case "not-yet":
       return codexNotYet;
     default:

@@ -37,7 +37,8 @@ The server sends requests. Each has an `id`, a positive integer that the server 
 | `{"id":4,"kind":"secret.delete","name":"jira"}`             | `null`, whether or not there was one                      |
 | `{"id":5,"kind":"notify","title":"…","body":"…"}`           | `null`                                                    |
 
-- The shell keeps secrets wherever its OS keeps a person's secrets, under Oriel's own name, never in a plain file. The server names only the secret, which matches `^[a-z][a-z0-9.-]{0,63}$`. The shell refuses any other request, and any name it doesn't expect, with `"ok":false`.
+- The server names only the secret, one of a fixed list: `jira`, the Jira connection, and `anthropic-key`, the API key the agent can run on. The shell refuses any other request, and any other name, with `"ok":false`.
+- The shell keeps each secret encrypted with a key its OS keeps for Oriel, under Oriel's own name (Electron's safe storage: the Keychain on macOS), in a file of its own in the data folder's `Secrets/`, readable by its owner only. Only ciphertext is ever on disk. When the OS has no such key, or on Linux has no keyring, so that safe storage would fall back to a fixed key, the shell refuses every `secret.get` and `secret.set`; it never keeps a secret as plaintext. `secret.delete` needs no key.
 - A `secret` is at most 16 KiB of text. The shell never logs it.
 - A path is as the OS writes it.
 - The shell may ignore fields it doesn't know. The server ignores answers whose `id` it isn't waiting for, and lines it can't read, and logs them to stderr.
@@ -52,4 +53,4 @@ The server sends requests. Each has an `id`, a positive integer that the server 
 
 ## The data folder
 
-The server creates the folder if it's missing, and keeps `oriel.db` (opened with SQLite's exclusive lock, so a second server can't open it) and `port` there. The shell's own files, like its one-instance lock, can live there too, under other names.
+The server creates the folder if it's missing, and keeps `oriel.db` (opened with SQLite's exclusive lock, so a second server can't open it), `port` and `settings.json` there. The shell's own files live there too, under other names: `Shell/`, with its one-instance lock, and `Secrets/`.

@@ -305,6 +305,7 @@ test("a store for secrets keeps the connection under one name, and one it can't 
     {
       get: async (name) => kept.get(name) ?? null,
       set: async (name, value) => void kept.set(name, value),
+      delete: async (name) => void kept.delete(name),
     },
     log,
   );
@@ -321,6 +322,7 @@ test("a store for secrets keeps the connection under one name, and one it can't 
         throw new Error("the shell is gone");
       },
       set: async () => {},
+      delete: async () => {},
     },
     log,
   );

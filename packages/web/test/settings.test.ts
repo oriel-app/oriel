@@ -36,6 +36,7 @@ const view: SettingsView = {
   titleModel: { provider: "claude-code", model: "claude-haiku-5-5" },
   scripted: false,
   cliPaths: true,
+  apiKeys: false,
   theme: "graphite",
   themes: ["graphite", "broadsheet"],
   textSize: "default",
@@ -199,4 +200,30 @@ test("a reply keeps a path typed since, and a reload after a refusal keeps sayin
   );
   [model] = settingsReplied(model, replied({ kind: "settings" }, true, view));
   assert.equal(model.problem, "Give the full path.");
+});
+
+test("an API key goes to the server once, is forgotten by the page, and a refusal says why", () => {
+  let [model, effects] = updateSettings(loaded, { type: "keyTyped", text: "  sk-ant-typed  " });
+  assert.equal(model.key, "  sk-ant-typed  ");
+  assert.deepEqual(effects, []);
+  [model, effects] = updateSettings(model, { type: "keySaved" });
+  assert.deepEqual(posts(effects), [["/api/settings/key", { key: "sk-ant-typed" }]]);
+  assert.equal(model.key, "");
+  assert.equal(model.keying, true);
+  // A second Save while it's checked sends nothing.
+  assert.deepEqual(updateSettings(model, { type: "keySaved" })[1], []);
+  const [refused] = settingsReplied(
+    model,
+    replied({ kind: "settingsKey" }, false, { error: "Anthropic doesn't accept that key." }),
+  );
+  assert.equal(refused.keying, false);
+  assert.equal(refused.problem, "Anthropic doesn't accept that key.");
+  const [kept] = settingsReplied(model, replied({ kind: "settingsKey" }, true, view));
+  assert.equal(kept.keying, false);
+  assert.equal(kept.problem, null);
+  // Nothing typed, nothing sent; Remove sends null.
+  assert.deepEqual(updateSettings(kept, { type: "keySaved" })[1], []);
+  assert.deepEqual(posts(updateSettings(kept, { type: "keyRemoved" })[1]), [
+    ["/api/settings/key", { key: null }],
+  ]);
 });

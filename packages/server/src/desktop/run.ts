@@ -1,8 +1,8 @@
 // The server's desktop mode (decision 0036): the server as the desktop
 // shell's child. It reads the launch secret and talks to the shell over
 // stdin and stdout (PROTOCOL.md), keeps its database and port in the data
-// folder the shell names, keeps the Jira connection in the OS's own store
-// for secrets through the shell, and quits when the shell is gone (its
+// folder the shell names, keeps the Jira connection and the API key in the
+// OS secret store through the shell, and quits when the shell is gone (its
 // stdin ends, on every OS) or sends SIGTERM.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -31,10 +31,18 @@ export type DesktopOptions = {
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
-  // Finds the models the agent can run on, with the person's settings, which
-  // can take a while: it runs once the secret is in, and a stop meanwhile
-  // doesn't wait for it.
-  model?: () => Promise<Pick<AppOptions, "agent" | "titler" | "models" | "settings">>;
+  // Finds the models the agent can run on, with the person's settings and
+  // the shell's secret store, which holds the API key: it runs once the
+  // secret is in, and a stop meanwhile doesn't wait for it. The shell
+  // answers nothing until the server listens, so it mustn't wait on the
+  // store.
+  // `looked`, when given, holds every request until the first look ends, as
+  // it did when the look came first, so no page shows it unfinished.
+  model?: (secrets: Secrets) => Promise<
+    Pick<AppOptions, "agent" | "titler" | "models" | "settings" | "keys"> & {
+      looked?: Promise<unknown>;
+    }
+  >;
   // How Jira is reached; tests pass a site in memory.
   jiraFetch?: typeof fetch;
 };
@@ -69,7 +77,10 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
     throw new Stopped(why, Promise.resolve());
   });
   const secret = await Promise.race([lines.secret, stopped]);
-  const model = options.model ? await Promise.race([options.model(), stopped]) : {};
+  const secrets = secretsOf(lines.shell);
+  const { looked, ...model } = options.model
+    ? await Promise.race([options.model(secrets), stopped])
+    : {};
   mkdirSync(data, { recursive: true, mode: 0o700 });
   const kept = keptPort(data);
   let port: number | null = null;
@@ -83,7 +94,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
       cliPaths: true,
       jira: {
         kind: "window",
-        store: secretsStore(secretsOf(lines.shell), log),
+        store: secretsStore(secrets, log),
         ...(options.jiraFetch ? { fetch: options.jiraFetch } : {}),
       },
       log,
@@ -100,6 +111,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
       // now could use to take their tokens. So they die before any request
       // is answered.
       async beforeRequests(app) {
+        await looked;
         const left = await app.revokeReviewLinks();
         if (left > 0)
           log("desktop: revoked the review links an earlier launch left live", {
@@ -149,6 +161,9 @@ function secretsOf(shell: Shell): Secrets {
     get: (name) => shell.ask({ kind: "secret.get", name }),
     set: async (name, secret) => {
       await shell.ask({ kind: "secret.set", name, secret });
+    },
+    delete: async (name) => {
+      await shell.ask({ kind: "secret.delete", name });
     },
   };
 }
