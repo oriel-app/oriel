@@ -59,6 +59,8 @@ export const clusterRow = (over: Partial<ClusterRow> = {}): ClusterRow => ({
   origin: { kind: "source", source: "Jira" },
   anchor: null,
   count: 0,
+  // Its items and its anchor, unless a test says otherwise.
+  size: (over.count ?? 0) + (over.anchor ? 1 : 0),
   points: 0,
   estimated: 0,
   unestimated: 0,

@@ -31,6 +31,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
       origin: { kind: "source", source: "Jira" },
       anchor: "SYN-1",
       count: 13,
+      size: 14,
       points: 29,
       estimated: 10,
       unestimated: 3,
@@ -43,6 +44,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
   );
   assert.deepEqual(none.origin, { kind: "source", source: "Jira" });
   assert.equal(none.anchor, null);
+  assert.equal(none.size, none.count);
 });
 
 test("a derived row carries its rule, and its story list agrees with it", () => {

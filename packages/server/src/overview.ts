@@ -5,6 +5,7 @@
 import {
   type ChangeLogEntry,
   type Cluster,
+  clusterMembers,
   daysSince,
   type IndexRecord,
   type Instant,
@@ -264,10 +265,7 @@ function rankCandidates(
     held,
     now: input.now,
   });
-  const items = (cluster: Cluster) =>
-    [
-      ...new Set([...(cluster.anchor === null ? [] : [cluster.anchor]), ...cluster.itemIds]),
-    ].flatMap((id) => byId.get(id) ?? []);
+  const items = (cluster: Cluster) => clusterMembers(cluster).flatMap((id) => byId.get(id) ?? []);
   // A cluster as a candidate row; null when no item of it is left that no
   // workstream holds, so nothing to make a workstream of.
   const clusterRow = (

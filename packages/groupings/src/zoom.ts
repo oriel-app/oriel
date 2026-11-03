@@ -8,6 +8,7 @@
 // root passes in; a source without one shows what core knows.
 import {
   type Cluster,
+  clusterMembers,
   type IndexRecord,
   type Instant,
   type ItemId,
@@ -96,7 +97,7 @@ export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<Clu
       const anchor = cluster.anchor === null ? undefined : index.get(cluster.anchor);
       const status = { todo: 0, "in-progress": 0, done: 0 };
       for (const item of items) if (item.facets.state) status[item.facets.state] += 1;
-      const ids = cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds];
+      const ids = clusterMembers(cluster);
       const names = new Set(ids.flatMap((id) => sourceName(id, sources) ?? []));
       return {
         key: cluster.key,
@@ -107,6 +108,7 @@ export function clusterZoom(now: Instant, sources: Presentations): ZoomLevel<Clu
             : { kind: "derived", rule: cluster.origin.derived },
         anchor: anchor ? itemRow(anchor, now, sources) : null,
         count: items.length,
+        size: ids.filter((id) => index.has(id)).length,
         points: items.reduce((sum, item) => sum + (item.facets.estimate ?? 0), 0),
         estimated: items.filter((item) => typeof item.facets.estimate === "number").length,
         // Only an item whose source estimates can lack an estimate.

@@ -14,6 +14,12 @@ export type Cluster = {
   origin: "source" | { derived: string };
 };
 
+// What a workstream made of a cluster holds: its anchor, then its items, each
+// once.
+export const clusterMembers = (cluster: Cluster): ItemId[] => [
+  ...new Set(cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds]),
+];
+
 // Pure: no I/O and no clock reads; `now` is passed in.
 export interface Grouping<R extends IndexRecord = IndexRecord> {
   readonly id: string;

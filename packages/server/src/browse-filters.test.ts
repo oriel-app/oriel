@@ -106,3 +106,20 @@ test("an item search is counted by how long its query was and what it found, nev
     ],
   );
 });
+
+test("an epic a filter keeps counts among its cluster's matches", async (t) => {
+  const app = await testApp(t);
+  const view = json<WindowView>(
+    await app.get("/api/browse?grouping=epic&q=phone%20wallets%20saved%20cards"),
+  );
+  assert.deepEqual(
+    view.clusters.map(({ row, matched, anchorMatched }) => [
+      row.anchor?.key,
+      matched,
+      anchorMatched,
+    ]),
+    [["SYN-1", 0, true]],
+  );
+  const sms = json<WindowView>(await app.get("/api/browse?grouping=epic&q=sms"));
+  assert.ok(sms.clusters.every(({ anchorMatched }) => anchorMatched === undefined));
+});

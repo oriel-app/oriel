@@ -93,19 +93,24 @@ test("a cluster's pages, 50 items each, are its whole list in order", async (t) 
   );
 });
 
-test("a cluster made a workstream holds all its items, not the page shown", async (t) => {
+test("a cluster made a workstream holds as many items as its row says, not the page shown", async (t) => {
   const app = await bigger(t);
+  const make = async (grouping: string, cluster: string) => {
+    const made = await app.post("/api/workstreams", { kind: "cluster", grouping, cluster });
+    assert.equal(made.status, 201);
+    return json<WorkstreamSummary>(made).size;
+  };
   const { clusters } = json<WindowView>(await app.get("/api/browse?grouping=epic"));
   const checkout = clusters.find(({ row }) => row.key === "10001");
   assert.ok(checkout && checkout.row.count > 50);
-  const made = await app.post("/api/workstreams", {
-    kind: "cluster",
-    grouping: "epic",
-    cluster: "10001",
-  });
-  assert.equal(made.status, 201);
   // Its items, and the epic itself.
-  assert.equal(json<WorkstreamSummary>(made).size, checkout.row.count + 1);
+  assert.equal(checkout.row.size, checkout.row.count + 1);
+  assert.equal(await make("epic", "10001"), checkout.row.size);
+  // A cluster with no anchor holds its items.
+  const stuck = json<WindowView>(await app.get("/api/browse?grouping=stuck")).clusters[0];
+  assert.ok(stuck && stuck.row.anchor === null && stuck.row.count > 0);
+  assert.equal(stuck.row.size, stuck.row.count);
+  assert.equal(await make("stuck", stuck.row.key), stuck.row.size);
 });
 
 test("Browse refuses a grouping or a start it doesn't know, and a cluster it doesn't have", async (t) => {

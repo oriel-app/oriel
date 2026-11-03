@@ -20,8 +20,14 @@ export function isGroupingId(value: unknown): value is GroupingId {
 // A cluster's row, and its items so far. Browse's first reply has none:
 // they load when the cluster opens, `pageSize` at a time (decision 0027).
 // Under a filter, `matched` is how many of its items match, which are all its
-// list holds; the row still counts them all.
-export type ClusterView = { row: ClusterRow; list: ItemRow[]; matched?: number };
+// list holds, and `anchorMatched` is set when its anchor matches too; the row
+// still counts them all.
+export type ClusterView = {
+  row: ClusterRow;
+  list: ItemRow[];
+  matched?: number;
+  anchorMatched?: true;
+};
 
 // How many items a cluster's list holds once every page has loaded.
 export const listSize = (cluster: ClusterView): number => cluster.matched ?? cluster.row.count;

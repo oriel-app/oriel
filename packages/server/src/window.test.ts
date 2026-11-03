@@ -85,6 +85,7 @@ test("the cluster zoom level counts and sums the cluster's items", () => {
       origin: { kind: "source", source: "Jira" },
       anchor: "SYN-1",
       count: 3,
+      size: 4,
       points: 8,
       estimated: 2,
       unestimated: 1,

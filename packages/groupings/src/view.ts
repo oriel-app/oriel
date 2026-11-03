@@ -48,7 +48,10 @@ export type ClusterRow = {
   origin: { kind: "source"; source: string } | { kind: "derived"; rule: string };
   // The item the cluster hangs off (the epic), if any.
   anchor: ItemRow | null;
+  // How many items it lists, its anchor not among them, and how many a
+  // workstream made of it holds: those and its anchor.
   count: number;
+  size: number;
   // Story points of the estimated items, how many items have an estimate,
   // and how many could have one and don't. An item whose source doesn't
   // estimate is neither.
