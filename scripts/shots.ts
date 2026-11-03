@@ -2295,6 +2295,8 @@ scenes.push(
     name: "setup-sync-failed",
     path: "/setup",
     make: firstRun({ state: aiDone, search: "fails" }),
+    // Jira's connect answers why it stopped.
+    refused: 400,
     act: async (page) => {
       await page.getByRole("button", { name: "Choose a folder" }).click();
       await page.locator(".provider-status[data-connected]").waitFor();
