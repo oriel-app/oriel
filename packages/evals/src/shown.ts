@@ -1,10 +1,10 @@
 // A reply as the user reads it, with each chip (decision 0032) drawn as the
-// window draws it, from the case's world: a Jira item by its key and title
-// as the index holds them once the case's edits are in, a file by its
+// window draws it, from the case's world: a Jira item by its key, title and
+// status as the index holds them once the case's edits are in, a file by its
 // title, a Slack message by its author, a thread or change set as a link to
-// it in the window, a workstream by its name. Every grader reads what the
-// user reads, so a reply that names things by ID is graded as fairly as
-// one that writes names.
+// it in the window and where it stands, a workstream by its name and whether
+// it is done. Every grader reads what the user reads, so a reply that names
+// things by ID is graded as fairly as one that writes names.
 //
 // It also counts what didn't resolve: a chip nothing in the world has, which
 // the window draws as "unknown reference", and a link the agent wrote itself
@@ -12,11 +12,14 @@
 // look-alike ID). Either fails the `refs` grade.
 import { fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import type { SlackFixture } from "@oriel/slack";
+import type { Instant } from "@oriel/core";
+import { chipStateName } from "@oriel/web/chip";
 import { chipIds } from "@oriel/web/markdown";
+import type { ChipView } from "@oriel/web/view";
 import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import type { OrielWorkspace } from "./case.ts";
 import type { Grade } from "./graders.ts";
-import { evalSite, fileId } from "./world.ts";
+import { evalSite, fileId, windowWorkstreamId } from "./world.ts";
 
 export type World = {
   fixture: JiraFixture;
@@ -25,16 +28,32 @@ export type World = {
   folder: FolderFixture | null;
   slack: SlackFixture | null;
   oriel: OrielWorkspace | undefined;
+  // A window chat case's workstreams, by name, and when it asks.
+  window: { workstreams: readonly { name: string }[]; now: Instant } | null;
 };
 
 // Quotes in a title would pair with the reply's own; graders read pairs.
 const plain = (title: string) => title.replace(/["“”]/g, "");
 
+// A name, with where it stands as its chip says it.
+const standing = (name: string, chip: ChipView) => {
+  const state = chipStateName(chip);
+  return state ? `${name} (${state})` : name;
+};
+
 // What each ID the world holds reads as, drawn.
 export function resolver(world: World): (id: string) => string | null {
   const names = new Map<string, string>();
-  for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records)
-    names.set(record.id, `${record.id.slice("jira:".length)} ${plain(record.title)}`);
+  for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records) {
+    const key = record.id.slice("jira:".length);
+    const status = record.attrs["status"];
+    const name = `${key} ${plain(record.title)}`;
+    const state = typeof status === "string" ? { name: status, category: "todo" as const } : null;
+    names.set(
+      record.id,
+      standing(name, { kind: "item", source: "jira", key, name, url: null, state }),
+    );
+  }
   for (const file of world.folder?.files ?? [])
     names.set(fileId(file.path), plain(fileTitle(file.path)));
   for (const channel of world.slack?.channels ?? [])
@@ -43,14 +62,26 @@ export function resolver(world: World): (id: string) => string | null {
       const who = person?.real_name ?? message.username ?? "someone";
       names.set(`slack:${channel.id}-${message.ts}`, `${who}'s message`);
     }
+  const workstream = (name: string) => standing(name, { kind: "workstream", name, done: false });
+  const { window } = world;
+  window?.workstreams.forEach(({ name }, i) =>
+    names.set(windowWorkstreamId(window.now, i), workstream(name)),
+  );
   const threads = new Map((world.oriel?.threads ?? []).map((thread) => [thread.id, thread]));
-  for (const thread of threads.values()) {
-    names.set(thread.id, `[${thread.name}](/threads/${thread.id})`);
-    names.set(thread.workstream.id, thread.workstream.name);
+  for (const {
+    id,
+    name,
+    state,
+    workstream: { id: of, name: called },
+  } of threads.values()) {
+    names.set(id, standing(`[${name}](/threads/${id})`, { kind: "thread", name, state }));
+    names.set(of, workstream(called));
   }
   for (const set of world.oriel?.changeSets ?? []) {
     const name = threads.get(set.thread)?.name ?? "change set";
-    names.set(set.id, `[${name}](/threads/${set.thread}?changeSet=${set.id})`);
+    const link = `[${name}](/threads/${set.thread}?changeSet=${set.id})`;
+    const chip: ChipView = { kind: "change-set", thread: set.thread, name, state: set.state };
+    names.set(set.id, standing(link, chip));
   }
   return (id) => names.get(id) ?? null;
 }

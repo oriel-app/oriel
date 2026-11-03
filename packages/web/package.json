@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./chip": "./src/chip.ts",
     "./files": "./files.ts",
     "./markdown": "./src/markdown.ts",
     "./view": "./src/view.ts"

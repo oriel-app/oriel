@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chipKey, chipLabel, chipName, chipState, chipStateName } from "../src/chip.ts";
 import { chipIds, inline, parse } from "../src/markdown.ts";
-import type { ChipView } from "../src/view.ts";
+import { init, type Model, update } from "../src/root.ts";
+import type { ChipView, ThreadView } from "../src/view.ts";
+import { threadView } from "../testing.ts";
 
 const text = (text: string) => ({ kind: "text", text });
 const ulid = "01JBZ0000000000000000000T1";
@@ -31,7 +33,13 @@ test("in an answer, an item's or Oriel's ID in double brackets is a chip, inside
 });
 
 test("anything else in double brackets stays as typed, and code is never a chip", () => {
-  for (const typed of ["[[SYN-45]]", "[[a b]]", "[[01JBZ0000000000000000000T]]", "[[jira:SYN-45"])
+  for (const typed of [
+    "[[SYN-45]]",
+    "[[a b]]",
+    "[[01JBZ0000000000000000000T]]",
+    "[[jira:SYN-45",
+    `[[${"a".repeat(21)}:x]]`,
+  ])
     assert.deepEqual(inline(typed, 0, true), [text(typed)], typed);
   assert.deepEqual(chipIds("`[[jira:SYN-1]]` and\n\n```\n[[jira:SYN-2]]\n```"), []);
   assert.deepEqual(inline("\\[[jira:SYN-1]]", 0, true), [text("[[jira:SYN-1]]")]);
@@ -106,4 +114,23 @@ test("a long name is cut at a word, and never through a character", () => {
   );
   const emoji = `${"🚢".repeat(50)}`;
   assert.equal(Array.from(chipName(emoji)).at(-2), "🚢");
+});
+
+test("a thread whose chips name a thread, change set or workstream reloads when the workspace moves", () => {
+  const threadId = "01JBZ0000000000000000000T2";
+  const open = (chips: ThreadView["chips"]) =>
+    update(init({ page: "thread", id: threadId })[0], {
+      type: "replied",
+      tag: { kind: "thread", id: threadId },
+      ok: true,
+      body: threadView({ id: threadId, chips }),
+    })[0];
+  const loads = (model: Model) =>
+    update(model, { type: "streamed", event: { type: "threads" } })[1].filter(
+      (effect) => effect.type === "http" && effect.tag.kind === "thread",
+    ).length;
+  const set: ChipView = { kind: "change-set", thread: ulid, name: "Plan", state: "pending" };
+  assert.equal(loads(open({ [ulid]: set, "jira:SYN-45": item })), 1);
+  // An item's chip moves with a sync, not with the workspace's threads.
+  assert.equal(loads(open({ "jira:SYN-45": item, [ulid]: null })), 0);
 });

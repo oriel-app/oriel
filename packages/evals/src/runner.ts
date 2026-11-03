@@ -316,6 +316,9 @@ async function grade(
       folder: options.folder ?? null,
       slack: options.slack ?? null,
       oriel: loaded.case.oriel,
+      window: loaded.case.window
+        ? { workstreams: loaded.case.window.workstreams, now: loaded.case.window.at ?? options.now }
+        : null,
     }),
   );
   output = { ...output, reply: seen.text };

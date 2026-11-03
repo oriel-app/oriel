@@ -239,6 +239,12 @@ const workspaceChanged = (model: Model): Effect[] => [
   loadWorkstreams,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
   ...(model.route.page === "overview" ? [loadOverview] : []),
+  // A thread shown whose chips name a thread, a change set or a workstream,
+  // any of which may have moved (decision 0032).
+  ...(model.thread?.view &&
+  Object.values(model.thread.view.chips).some((c) => c !== null && c.kind !== "item")
+    ? [refreshThread(model.thread)]
+    : []),
 ];
 
 export function init(route: Route): [Model, Effect[]] {
