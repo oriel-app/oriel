@@ -165,6 +165,7 @@ export function scriptedProvider(steps: Step[]) {
     request: ConversationRequest;
     results: ToolResult[][];
     maxOutputTokens: number[];
+    closed: number;
   }[] = [];
   let calls = 0;
   const provider: Provider = {
@@ -173,6 +174,7 @@ export function scriptedProvider(steps: Step[]) {
         request,
         results: [] as ToolResult[][],
         maxOutputTokens: [] as number[],
+        closed: 0,
       };
       conversations.push(conversation);
       return {
@@ -207,6 +209,9 @@ export function scriptedProvider(steps: Step[]) {
             model: "scripted-model",
             usage,
           };
+        },
+        close() {
+          conversation.closed += 1;
         },
       };
     },
