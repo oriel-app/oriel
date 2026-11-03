@@ -176,6 +176,14 @@ test("an approval answered before its stream says so moves the page all the same
   assert.deepEqual(navigations(again), []);
 });
 
+test("approving the same change set again, once its apply stopped, moves the page again", () => {
+  // Back on its thread after the page went on from it once.
+  const model = onPage("next", needing);
+  const back = { ...model, approved: { ...model.approved, last: setId } };
+  const [, effects] = step(approve(back), applying);
+  assert.deepEqual(navigations(effects), [{ page: "thread", id: third }]);
+});
+
 test("with nothing else needing the user, the page stays and says so, once", () => {
   const [stayed, effects] = step(approve(onPage("next", [])), applying);
   assert.deepEqual(navigations(effects), []);

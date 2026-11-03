@@ -9,6 +9,7 @@ import {
   arriving,
   focusing,
   initApproved,
+  sending,
   updateApproved,
 } from "./approved.ts";
 import {
@@ -490,9 +491,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
   return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
 }
 
-function movedOn(before: Model, msg: Msg, next: Model, effects: Effect[]): [Model, Effect[]] {
+function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
+  const next = { ...after, approved: sending(after.approved, msg) };
   const changeSetId = accepted(before, msg);
-  if (changeSetId === null) return [next, effects];
+  if (changeSetId === null) return [next.approved === after.approved ? after : next, effects];
   const [moved, going] = approvedIn(before, next, changeSetId);
   return [moved, [...effects, ...going]];
 }

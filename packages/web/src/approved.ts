@@ -65,6 +65,13 @@ export function accepted(model: Model, msg: Msg): string | null {
   return model.approved.last === id ? null : id;
 }
 
+// A change set clicked again, as with Approve the rest once its apply
+// stopped: its next approval may move the page again.
+export function sending(model: ApprovedModel, msg: Msg): ApprovedModel {
+  if (msg.type !== "thread" || msg.msg.type !== "changeSetClicked") return model;
+  return msg.msg.changeSetId === model.last ? { ...model, last: null } : model;
+}
+
 // Once an approval is accepted on the page `before` shows, with `next` the
 // app after it: the page goes on to the next thread that needs the user,
 // or stays, saying nothing else does. Staying, as Settings may say, says
