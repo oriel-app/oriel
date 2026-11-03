@@ -3968,12 +3968,15 @@ a.replies:hover {
   transform: translateX(-50%);
 }
 
-/* "Removed OA-12 · Undo", newest at the bottom, over the page. */
+/* "Removed OA-12 · Undo", newest at the bottom, over the page, and no
+   wider than it: a long note wraps, and Undo stays on screen. */
 .undos {
   position: fixed;
   bottom: var(--space-4);
   left: calc(50% + (var(--sidebar) - var(--beside)) / 2);
   z-index: 22;
+  width: max-content;
+  max-width: calc(100% - var(--sidebar) - var(--beside) - 2 * var(--space-4));
   display: grid;
   justify-items: center;
   gap: var(--space-2);
@@ -4003,10 +4006,10 @@ a.replies:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   font-size: var(--text-md);
-  white-space: nowrap;
 }
 
 .undo-action {
+  flex: none;
   padding: 0.125rem var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
@@ -4732,7 +4735,8 @@ button.overview-title:hover {
 /* The headlines: one computed line per standing question. */
 .overview-headlines {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  /* Fit, not fill: one headline takes the whole row, not a third of it. */
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: 0 var(--space-6);
   padding: var(--space-2) var(--space-4);
   border: var(--list-frame);
@@ -4941,6 +4945,33 @@ button.overview-title:hover {
     display: none;
   }
 
+  /* The counts in a row of their own under the tabs, each count over its
+     words. */
+  .overview-counts {
+    display: grid;
+    flex-basis: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-1) var(--space-3);
+    align-items: start;
+  }
+
+  .overview-since {
+    grid-column: 1 / -1;
+    font-size: var(--text-sm);
+  }
+
+  .overview-stat {
+    display: grid;
+    justify-items: start;
+    text-align: start;
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+  }
+
+  .overview-stat strong {
+    font-size: var(--text-lg);
+  }
+
   /* Workstream names and titles wrap rather than truncate, in every
      theme (decision 0034). */
   .overview-workstream-name,
@@ -4968,8 +4999,11 @@ button.overview-title:hover {
   border-inline-start: var(--ask-mark);
 }
 
+/* No width of its own, or a narrow page's bar is as wide as the input's
+   natural size, past the screen's edge at a large text size. */
 .ask-input {
   flex: 1;
+  width: 0;
   min-width: 0;
   height: 2.375rem;
   padding: 0 var(--space-3);
