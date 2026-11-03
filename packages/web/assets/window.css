@@ -1,159 +1,170 @@
-/* Design tokens. Light by default, dark through prefers-color-scheme. */
+/* Design tokens, direction B: ink and signal. The window is ink on paper;
+   colour is spent only where the user must act. Words someone wrote are set
+   in a serif, and what Oriel draws from its own data in sans and mono.
+   Primitives first, then the names the rules use, each mapped onto a
+   primitive. Dark through prefers-color-scheme, which sets primitives only. */
 :root {
   color-scheme: light dark;
 
+  /* Colour. Eight neutrals, paper to ink; one signal; seven states. Only the
+     signal is a colour: the states are inks, told apart by their marks. */
+  --n0: #fdfcf8;
+  --n1: #f6f4ee;
+  --n2: #ece9e1;
+  --n3: #dedad0;
+  --n4: #bdb8ab;
+  --n5: #6b665b;
+  --n6: #49453d;
+  --n7: #1a1814;
+  --accent: #b23218;
+  --on-accent: #ffffff;
+  --todo: var(--n5);
+  --in-progress: #3d4a5c;
+  --done: #3f6146;
+  --needs-you: var(--accent);
+  --stalled: #875800;
+  --applied: var(--done);
+  --reverted: #6e5640;
+  --tint: 12%;
+
+  /* Type. Prose in a serif; Oriel's own data in sans; keys in mono. */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
+  --font-prose: Charter, "Bitstream Charter", "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --text-xs: 0.6875rem;
   --text-sm: 0.75rem;
   --text-md: 0.8125rem;
   --text-lg: 0.9375rem;
-  --text-xl: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-prose: 1rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 650;
+  --leading-tight: 1.25;
+  --leading: 1.45;
+  --leading-prose: 1.55;
 
+  /* Space and shape: square, ruled, flat. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --row: 2.125rem;
+  --radius-sm: 2px;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --border-thin: 1px;
+  --border-thick: 2px;
+  --elevation-1: none;
+  --elevation-2: none;
+
+  /* Motion: quick for a state, move for a place; one easing. */
+  --duration-quick: 100ms;
+  --duration-move: 160ms;
+  --ease: cubic-bezier(0.3, 0.7, 0.2, 1);
+
+  /* Density: Oriel's data compact, words comfortable. */
+  --row: 2rem;
+  --row-comfortable: 2.5rem;
+
+  /* Layout. */
   --page: 74rem;
   /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
   --rail: 15rem;
-  --chat: 44rem;
+  --chat: 40rem;
   /* Every column's first line: how far down it starts, and how tall it is,
      its contents centred, so the sidebar, the page, the rail and the panel
      share one top line. */
   --inset-top: var(--space-3);
   --head-row: 2rem;
-  /* Motion: how the panel beside the page arrives, and how motion settles. */
-  --duration-panel: 180ms;
+  --duration-panel: var(--duration-move);
   --slide-panel: 0.375rem;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --duration-quick: 120ms;
-  --duration-move: var(--duration-panel);
-  --ease: var(--ease-out);
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-strong: 600;
-  --leading-tight: 1.35;
-  --leading: 1.45;
-  --leading-prose: 1.55;
-  --border-thin: 1px;
-  --border-thick: 2px;
+  --ease-out: var(--ease);
 
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunk: #fafaf8;
-  --line: #e7e6e2;
-  --line-strong: #d5d3cd;
-  --text: #1f1f1d;
-  --text-muted: #63625d;
-  --text-faint: #8f8d86;
-  --accent: #3f5bd8;
-  --accent-text: #ffffff;
-  --accent-soft: #e9edfc;
-  --focus: #3f5bd8;
-  --danger: #b5412f;
-  --danger-soft: #fbeeeb;
-  --ins: #2b7a52;
-  --ins-soft: #e5f3ec;
-  --del: #8f8d86;
+  /* The names the rules use, mapped onto the primitives above. */
+  --bg: var(--n1);
+  --surface: var(--n0);
+  --surface-hover: var(--n2);
+  --surface-sunk: var(--n1);
+  --line: var(--n3);
+  --line-strong: var(--n4);
+  --text: var(--n7);
+  --text-muted: var(--n6);
+  --text-faint: var(--n5);
+  --accent-text: var(--on-accent);
+  --accent-soft: color-mix(in srgb, var(--accent) var(--tint), var(--n0));
+  --focus: var(--n7);
+  --danger: var(--accent);
+  --danger-soft: color-mix(in srgb, var(--accent) var(--tint), var(--n0));
+  --ins: var(--applied);
+  --ins-soft: color-mix(in srgb, var(--applied) var(--tint), var(--n0));
+  --del: var(--n5);
 
-  --todo: #b4b2ab;
-  --in-progress: #4a78e0;
-  --done: #3c9a6a;
-  --todo-text: #5f5e59;
-  --in-progress-text: #2f5bc4;
-  --done-text: #2b7a52;
-  --todo-soft: #efeeea;
-  --in-progress-soft: #e8eefc;
-  --done-soft: #e5f3ec;
-  --handed-off-text: #7a4fc4;
-  --handed-off-soft: #f1ebfb;
+  --todo-text: var(--todo);
+  --in-progress-text: var(--in-progress);
+  --done-text: var(--done);
+  --todo-soft: var(--n2);
+  --in-progress-soft: var(--n2);
+  --done-soft: var(--n2);
+  --handed-off-text: var(--done);
+  --handed-off-soft: var(--n2);
 
-  --derived: #94620b;
-  --derived-soft: #fbf3e2;
-  --derived-line: #e2c58a;
+  /* What Oriel computed or found rather than read: a rule, a search. */
+  --derived: var(--n6);
+  --derived-soft: var(--n1);
+  --derived-line: var(--n4);
 
-  --type-story: #3c9a6a;
-  --type-bug: #d4513b;
-  --type-task: #4a78e0;
-  --type-epic: #8a5cd6;
-  --type-other: #a3a19a;
+  /* A source's own marks are inks: kind is told by shape. */
+  --type-story: var(--n5);
+  --type-bug: var(--n6);
+  --type-task: var(--n4);
+  --type-epic: var(--n7);
+  --type-other: var(--n4);
 
-  --avatar: #e9e8e3;
-  --avatar-text: #55544f;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
+  --avatar: var(--n2);
+  --avatar-text: var(--n6);
+  /* No elevation: a floating surface gets an ink outline instead. */
+  --shadow: 0 0 0 1px var(--n7);
 
-  /* The chip (chip.ts): something in Oriel named inline, as a reply's link
-     to a thread or a change set. Built on the tokens above, so it follows
-     the theme; its state takes the state colours. */
-  --chip-height: 1.375rem;
-  --chip-radius: var(--radius);
+  /* The chip (decision 0032): named inline, as part of the line, no box. */
+  --chip-height: auto;
+  --chip-radius: var(--radius-sm);
   --chip-gap: 0.3125rem;
-  --chip-pad: 0 var(--space-2) 0 0.375rem;
-  --chip-font: var(--text-md);
+  --chip-pad: 0;
+  --chip-font: 0.875em;
   --chip-name-max: 22em;
-  --chip-bg: var(--surface);
-  --chip-bg-hover: var(--surface-hover);
-  --chip-line: var(--line-strong);
-  --chip-text: var(--text);
-  --chip-icon: var(--text-muted);
+  --chip-bg: transparent;
+  --chip-bg-hover: var(--n2);
+  --chip-line: transparent;
+  --chip-text: var(--n7);
+  --chip-icon: var(--n6);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413;
-    --surface: #1b1b1a;
-    --surface-hover: #232321;
-    --surface-sunk: #181817;
-    --line: #2b2b29;
-    --line-strong: #3a3a37;
-    --text: #e9e8e4;
-    --text-muted: #a3a29c;
-    --text-faint: #75746f;
-    --accent: #8ea4f5;
-    --accent-text: #141413;
-    --accent-soft: #252c45;
-    --focus: #8ea4f5;
-    --danger: #ef8d7b;
-    --danger-soft: #3a2420;
-    --ins: #7fcca3;
-    --ins-soft: #1e3128;
-    --del: #75746f;
+    --n0: #1b1a17;
+    --n1: #131210;
+    --n2: #24221f;
+    --n3: #2f2d29;
+    --n4: #48453f;
+    --n5: #9c978b;
+    --n6: #c2bdb1;
+    --n7: #efebe2;
+    --accent: #ff7a57;
+    --on-accent: #131210;
+    --in-progress: #a9b6c9;
+    --done: #9cc2a3;
+    --stalled: #e0b45c;
+    --reverted: #c4a98c;
+    --tint: 14%;
+  }
+}
 
-    --todo: #5d5c58;
-    --in-progress: #6b93ee;
-    --done: #55b584;
-    --todo-text: #b3b2ac;
-    --in-progress-text: #9cb6f5;
-    --done-text: #7fcca3;
-    --todo-soft: #2a2a28;
-    --in-progress-soft: #222b40;
-    --done-soft: #1e3128;
-    --handed-off-text: #c3a6f2;
-    --handed-off-soft: #2c2440;
-
-    --derived: #e3b45c;
-    --derived-soft: #2d2617;
-    --derived-line: #6b5426;
-
-    --type-story: #55b584;
-    --type-bug: #e9735f;
-    --type-task: #6b93ee;
-    --type-epic: #a888e6;
-    --type-other: #75746f;
-
-    --avatar: #2e2e2b;
-    --avatar-text: #c4c3bd;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.3);
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-move: 0ms;
   }
 }
 
@@ -671,7 +682,7 @@ button.nav-disclose:hover {
   font-weight: var(--weight-medium);
 }
 
-.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   color: var(--accent);
 }
 
@@ -705,7 +716,7 @@ button.nav-disclose:hover {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   background: var(--accent);
 }
 
@@ -1113,7 +1124,7 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -1134,24 +1145,31 @@ button.nav-more {
   display: inline-flex;
   max-width: calc(100% - 1ch);
   height: var(--chip-height);
-  align-items: center;
+  align-items: baseline;
   gap: var(--chip-gap);
   padding: var(--chip-pad);
-  border: var(--border-thin) solid var(--chip-line);
   border-radius: var(--chip-radius);
   background: var(--chip-bg);
   color: var(--chip-text);
+  font-family: var(--font);
   font-size: var(--chip-font);
   font-weight: var(--weight-medium);
-  line-height: 1;
-  vertical-align: -0.1875rem;
   white-space: nowrap;
   --chip-dot: var(--todo);
   --chip-state: var(--text-faint);
 }
 
+.chip-key {
+  flex: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-weight: var(--weight-regular);
+}
+
 .chip-icon {
   flex: none;
+  align-self: center;
   width: 0.875rem;
   height: 0.875rem;
   fill: none;
@@ -1188,7 +1206,7 @@ button.nav-more {
 /* Where it stands, in the state colours: working and approved are under
    way, needing the user and pending wait on them, done and applied landed,
    the rest are over. */
-.chip:is([data-state="working"], [data-state="approved"]) {
+.chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
   --chip-dot: var(--in-progress);
   --chip-state: var(--in-progress-text);
 }
@@ -1208,6 +1226,16 @@ button.nav-more {
   --chip-state: var(--handed-off-text);
 }
 
+.chip:is([data-state="reverted"], [data-state="rejected"]) {
+  --chip-dot: var(--reverted);
+  --chip-state: var(--reverted);
+}
+
+.chip[data-state="stalled"] {
+  --chip-dot: var(--stalled);
+  --chip-state: var(--stalled);
+}
+
 .chip[data-state="dropped"] .chip-state::before {
   background: none;
   box-shadow: inset 0 0 0 1px var(--todo);
@@ -1218,8 +1246,10 @@ button.nav-more {
   text-decoration: none;
 }
 
-.chip-link:hover .chip {
-  background: var(--chip-bg-hover);
+.chip-link:hover .chip-name {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 0.2em;
 }
 
 .working-dot {
@@ -4021,7 +4051,7 @@ a.replies:hover {
 }
 
 .panel-behind {
-  color: var(--derived);
+  color: var(--stalled);
   font-weight: var(--weight-strong);
 }
 
@@ -4775,11 +4805,11 @@ button.overview-title:hover {
 }
 
 .ask-question {
-  height: var(--chip-height);
+  min-height: 1.5rem;
   padding: 0 var(--space-3);
-  border: var(--border-thin) solid var(--chip-line);
+  border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius-lg);
-  background: var(--chip-bg);
+  background: var(--surface);
   color: var(--text-muted);
   font: inherit;
   font-size: var(--chip-font);
@@ -4787,7 +4817,7 @@ button.overview-title:hover {
 }
 
 .ask-question:hover:not(:disabled) {
-  background: var(--chip-bg-hover);
+  background: var(--surface-hover);
   color: var(--text);
 }
 
@@ -4888,4 +4918,224 @@ button.overview-title:hover {
   .window-chat {
     transition: none;
   }
+}
+
+/* Direction B. Words someone wrote are set in the serif: the agent's reply,
+   the user's message, an item's description and a message's text. A chip or
+   a block in them is Oriel's, so it stays in sans. */
+.reply,
+.user-message,
+.panel-plain,
+.panel-prose.reply {
+  font-family: var(--font-prose);
+  font-size: var(--text-prose);
+  line-height: var(--leading-prose);
+}
+
+.reply :is(code, pre),
+.panel-plain :is(code, pre) {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.user-message {
+  font-style: italic;
+}
+
+/* States are marks in ink: ○ to do, ◐ in progress, ● done, ■ applied,
+   □ reverted, ◆ stalled. Only what waits on the user is in the signal. */
+.state-chip,
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-muted);
+}
+
+.state-chip::before,
+.status::before,
+.chip-state::before,
+.state-dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: none;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  content: "";
+}
+
+.state-dot {
+  color: var(--todo);
+}
+
+.status[data-category="todo"],
+.status[data-category="in-progress"],
+.status[data-category="done"] {
+  background: none;
+}
+
+.status[data-category="in-progress"],
+.state-chip[data-state="working"],
+.state-dot[data-state="working"],
+.chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
+  --chip-state: var(--in-progress);
+  color: var(--in-progress);
+}
+
+.status[data-category="in-progress"]::before,
+.state-chip[data-state="working"]::before,
+.state-dot[data-state="working"],
+.chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"])
+  .chip-state::before {
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+
+.status[data-category="done"],
+.state-chip:is([data-state="done"], [data-state="handed-off"]),
+.state-dot:is([data-state="done"], [data-state="handed-off"]),
+.chip:is([data-state="done"], [data-state="applied"], [data-state="handed-off"]) {
+  --chip-state: var(--done);
+  color: var(--done);
+}
+
+.status[data-category="done"]::before,
+.state-chip:is([data-state="done"], [data-state="handed-off"])::before,
+.state-dot:is([data-state="done"], [data-state="handed-off"]),
+.chip:is([data-state="done"], [data-state="handed-off"]) .chip-state::before {
+  background: currentColor;
+}
+
+.chip[data-state="applied"] .chip-state::before {
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.chip:is([data-state="reverted"], [data-state="rejected"]) .chip-state::before {
+  border-radius: 1px;
+}
+
+.chip[data-state="stalled"] .chip-state::before {
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg) scale(0.85);
+}
+
+.state-dot[data-state="dropped"],
+.chip[data-state="dropped"] .chip-state::before {
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  opacity: 0.6;
+}
+
+.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
+.chip:is([data-state="needs-you"], [data-state="pending"]) {
+  --chip-state: var(--needs-you);
+  color: var(--needs-you);
+  background: none;
+}
+
+.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"])::before,
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
+.chip:is([data-state="needs-you"], [data-state="pending"]) .chip-state::before {
+  background: currentColor;
+}
+
+/* Progress in ink: done solid, in progress hatched, to do bare paper. */
+.status-bar {
+  border-radius: 0;
+  background: var(--n2);
+}
+
+.segment.done {
+  background: var(--n7);
+}
+
+.segment.in-progress {
+  background: repeating-linear-gradient(-45deg, var(--n6) 0 1.5px, transparent 1.5px 3.5px);
+}
+
+.segment.todo {
+  background: var(--n3);
+}
+
+/* Rules, not boxes: a list sits under its head's ink rule, its rows
+   between hairlines, on the page's own paper. */
+.overview-head,
+.rail-title {
+  padding-top: var(--space-2);
+  border-top: var(--border-thick) solid var(--n7);
+  color: var(--text);
+}
+
+.overview-rows,
+.clusters {
+  border-width: 0 0 var(--border-thin);
+  border-radius: 0;
+  background: transparent;
+}
+
+.overview-rows > :first-child {
+  border-top: 0;
+}
+
+.overview-signal {
+  color: var(--stalled);
+}
+
+/* The one thing in colour on a row: the count of what waits on the user. */
+.badge {
+  background: none;
+  color: var(--needs-you);
+}
+
+.composer {
+  box-shadow: none;
+}
+
+a:not([class]),
+.overview-more {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--n4);
+  text-underline-offset: 0.2em;
+}
+
+/* HTML the agent drew (decision 0033), in a sandboxed frame. Oriel's own UI
+   is square, ruled and flat; the frame is a hatched fence with its label
+   outside, so nothing inside, an "Approve" included, reads as Oriel's. */
+.agent-frame {
+  margin: var(--space-3) 0;
+}
+
+.agent-frame-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.agent-frame-label strong {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-frame-fence {
+  padding: 0.5rem;
+  background: repeating-linear-gradient(-45deg, var(--n4) 0 1px, var(--n1) 1px 5px);
+}
+
+.agent-frame iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
 }
