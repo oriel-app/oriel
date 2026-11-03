@@ -74,13 +74,23 @@ const fold = (text: string) =>
 const maxQueryChars = 256;
 const maxTerms = 8;
 const maxResults = 50;
-// A term that is an item ID, as its key.
-const keyOf = (term: string) => parseItemId(term)?.key ?? term;
+// The connections records are from, by their IDs' prefixes.
+export const prefixesOf = (records: readonly { id: string }[]): Set<string> =>
+  new Set(records.flatMap((record) => parseItemId(record.id)?.prefix ?? []));
 
 // A query as search() takes it: at most 256 characters and 8 distinct
-// terms, folded, with a term that is a full item ID, such as "jira:syn-12",
-// taken as its key. `whole` is the query as one key.
-export function searchTerms(query: string): { terms: string[]; whole: string } {
+// terms, folded, with the prefix of a connection in `prefixes` dropped from
+// a term, so a full item ID, such as "jira:syn-12", works as a query. Text
+// that only looks like one, such as "fix:login", stays as written. `whole`
+// is the query as one key.
+export function searchTerms(
+  query: string,
+  prefixes: ReadonlySet<string>,
+): { terms: string[]; whole: string } {
+  const keyOf = (term: string) => {
+    const at = term.indexOf(":");
+    return at > 0 && prefixes.has(term.slice(0, at)) ? term.slice(at + 1) : term;
+  };
   const bounded = fold(query.slice(0, maxQueryChars));
   const stripped = bounded.split(/\s+/).map(keyOf).filter(Boolean);
   return {
@@ -446,7 +456,7 @@ export function indexStore(db: DatabaseSync) {
     },
 
     // The escape hatch, across every source. Every term must appear in the
-    // item's key or title; a "jira:" prefix on a term is ignored, so a full
+    // item's key or title; a "jira:" prefix on a term is dropped, so a full
     // item ID works as a query. An exact key comes first, then titles starting
     // with the first term, then the most recently updated. At most 256
     // characters, 8 distinct terms and 50 results.
@@ -458,11 +468,12 @@ export function indexStore(db: DatabaseSync) {
       limit: number,
       sources?: readonly SourceKind[],
     ): IndexRecord<SourceKind, unknown>[] {
-      const { terms, whole } = searchTerms(query);
+      const all = live(workspaceId, null, unknown);
+      const { terms, whole } = searchTerms(query, prefixesOf(all));
       const first = terms[0];
       const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
       if (!first) return [];
-      return live(workspaceId, null, unknown)
+      return all
         .filter((record) => {
           const source = parseItemId(record.id)?.prefix;
           return !sources || (source !== undefined && sources.includes(source));

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type ItemId, ulid, unknown } from "@oriel/core";
-import { indexStore } from "./index-store.ts";
+import { indexStore, searchTerms } from "./index-store.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { ensureWorkspace } from "./workspaces.ts";
@@ -91,4 +91,15 @@ test("search leaves out a source it isn't given before it ranks, so that source 
     index.search(workspaceId, "SMS", 20, ["jira", "folder"]).map((r) => r.id),
     ["jira:SYN-1"],
   );
+});
+
+test("a term drops only the prefix of a connection the index holds, so text like fix:login stays as written", () => {
+  const prefixes = new Set(["jira", "jira.2"]);
+  assert.deepEqual(searchTerms("jira:SYN-12 jira.2:ACME-4", prefixes).terms, ["syn-12", "acme-4"]);
+  assert.deepEqual(searchTerms("fix:login", prefixes), {
+    terms: ["fix:login"],
+    whole: "fix:login",
+  });
+  assert.deepEqual(searchTerms("jira:", prefixes).terms, []);
+  assert.equal(searchTerms("jira:SYN-12", prefixes).whole, "syn-12");
 });

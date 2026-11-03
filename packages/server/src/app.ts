@@ -53,6 +53,7 @@ import {
   markSeen,
   migrate,
   open,
+  prefixesOf,
   runStore,
   type StoredEvent,
   telemetryStore,
@@ -1316,7 +1317,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             records(),
             asOf ?? now(),
             fixture !== null,
-            keepOf(filter, () => heldBy(openWorkstreams())),
+            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
           ),
         page: (grouping, cluster, from, filter) =>
           clusterPage(
@@ -1326,7 +1327,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             asOf ?? now(),
             cluster,
             from,
-            keepOf(filter, () => heldBy(openWorkstreams())),
+            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
           ),
       },
       overview,

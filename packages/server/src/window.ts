@@ -39,8 +39,12 @@ export const groupings: Record<GroupingId, Grouping> = {
 // title, as search() matches; the source; the status category; the assignee;
 // none an open workstream holds (`held`). Null when nothing is filtered.
 export type Keep = (record: IndexRecord) => boolean;
-export function keepOf(filter: BrowseFilter, held: () => Keep): Keep | null {
-  const { terms } = searchTerms(filter.q ?? "");
+export function keepOf(
+  filter: BrowseFilter,
+  held: () => Keep,
+  prefixes: ReadonlySet<string>,
+): Keep | null {
+  const { terms } = searchTerms(filter.q ?? "", prefixes);
   const { q, source, status, assignee, workstream } = filter;
   if (!q && !source && !status && !assignee && !workstream) return null;
   // Only a filter that asks reads what the workstreams hold.
