@@ -69,28 +69,32 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     setDrawer(false);
   }, [model.route]);
   // The overview's count of the threads waiting on the user shows them: the
-  // sidebar opens, if it's folded or a drawer, and their list takes focus,
-  // marked for a moment.
+  // sidebar opens, if it's folded or a drawer, a search in it clears, and
+  // their list takes focus, marked for a moment, once it shows.
   const needsYouAsked = useRef(false);
   const showNeedsYou = () => {
     needsYouAsked.current = true;
+    if (model.search.query !== "") dispatch({ type: "search", msg: { type: "cleared" } });
     if (matchMedia(narrow).matches) setDrawer(true);
     else if (folded) fold();
     else markNeedsYou();
   };
   const markNeedsYou = () => {
-    needsYouAsked.current = false;
     const list = document.getElementById(needsYouId);
     if (!list) return;
+    needsYouAsked.current = false;
     list.focus();
     list.removeAttribute("data-shown");
     void list.offsetWidth;
     list.setAttribute("data-shown", "");
   };
   useEffect(() => {
+    if (drawer && !needsYouAsked.current)
+      document.querySelector<HTMLElement>("#sidebar a")?.focus();
+  }, [drawer]);
+  useEffect(() => {
     if (needsYouAsked.current) markNeedsYou();
-    else if (drawer) document.querySelector<HTMLElement>("#sidebar a")?.focus();
-  }, [drawer, folded]);
+  }, [drawer, folded, model.search.query]);
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;

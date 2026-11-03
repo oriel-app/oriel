@@ -1416,11 +1416,16 @@ const scenes: Scene[] = [
   },
   {
     // The overview's count of the threads waiting on the user shows them in
-    // the sidebar (OA-185): a narrow screen opens its drawer.
+    // the sidebar (OA-185): a narrow screen opens its drawer, and a search
+    // left in the sidebar clears.
     name: "needs-you-overview",
     path: "/",
     act: async (page) => {
       await overviewShown(page);
+      if ((page.viewportSize()?.width ?? 0) > 760) {
+        await page.getByRole("combobox", { name: "Search threads" }).fill("gift");
+        await page.locator(".search-results [role=status]:not(:empty)").waitFor();
+      }
       await page.locator(".overview-stat", { hasText: "need you" }).click();
       await page.locator(".sidebar-needs[data-shown]").waitFor();
     },
