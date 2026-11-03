@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentToken, headRefusal, leaksSecret, parse, published, usage } from "./github.ts";
+import {
+  agentToken,
+  enqueue,
+  headRefusal,
+  leaksSecret,
+  nextDecision,
+  parse,
+  published,
+  usage,
+} from "./github.ts";
 
 test("only the agent token from .env is accepted", () => {
   assert.equal(agentToken("JIRA_API_TOKEN=secret\nGH_TOKEN=github_pat_abc\n"), "github_pat_abc");
@@ -157,4 +166,123 @@ test("a title is one line in SPEC §10's commit form", () => {
   ])
     assert.ok("error" in parse(["pr-edit", "11", "body", title]), JSON.stringify(title));
   assert.match(usage, /wrong way round/);
+});
+
+// Refusals GitHub gave builders' enqueues, as recorded in their sessions.
+const refused = (message: string) => ({ errors: [{ type: "UNPROCESSABLE", message }] });
+const queued = refused('Pull request Required status check "check" is queued.');
+const pr = { id: "PR_x", number: 7, headRefOid: "fa66b697774d37ce99f89348c82cc44a5d19a4c7" };
+
+// A stand-in for GitHub that answers each mutation from a script and records
+// what it was sent.
+function standIn(answers: Record<string, { data?: unknown; errors?: { message?: string }[] }>) {
+  const sent: { mutation: string; variables: Record<string, unknown> }[] = [];
+  const send = async (query: string, variables: Record<string, unknown>) => {
+    const mutation = /\b(enqueuePullRequest|enablePullRequestAutoMerge)\b/.exec(query)?.[1] ?? "";
+    sent.push({ mutation, variables });
+    const answer = answers[mutation];
+    assert.ok(answer, `unexpected ${mutation || query}`);
+    return answer;
+  };
+  return { send, sent };
+}
+
+test("an enqueue GitHub accepts is the whole of it", async () => {
+  const entry = { enqueuePullRequest: { mergeQueueEntry: { state: "QUEUED", position: 1 } } };
+  const github = standIn({ enqueuePullRequest: { data: entry } });
+  assert.deepEqual(await enqueue(github.send, pr), entry);
+  assert.deepEqual(github.sent, [
+    { mutation: "enqueuePullRequest", variables: { id: "PR_x", oid: pr.headRefOid } },
+  ]);
+});
+
+test("while CI runs, the enqueue arms auto-merge on the same commit instead", async () => {
+  for (const waiting of [
+    queued,
+    refused('Pull request Required status check "check" is in progress.'),
+    refused(
+      "Pull request mergeability check has not yet completed and Pull request not in mergeable state",
+    ),
+  ]) {
+    const github = standIn({
+      enqueuePullRequest: waiting,
+      enablePullRequestAutoMerge: { data: { enablePullRequestAutoMerge: {} } },
+    });
+    assert.match(String(await enqueue(github.send, pr)), /^auto-merge armed: PR #7 at fa66b69 /);
+    assert.deepEqual(
+      github.sent.map((s) => s.mutation),
+      ["enqueuePullRequest", "enablePullRequestAutoMerge"],
+    );
+    assert.deepEqual(github.sent[1]?.variables, { id: "PR_x", oid: pr.headRefOid });
+  }
+});
+
+test("any other refusal fails the enqueue and arms nothing", async () => {
+  for (const refusal of [
+    refused("Pull request has merge conflicts and Pull request not in mergeable state"),
+    refused('Pull request Required status check "check" is failing.'),
+    refused("Pull request not in mergeable state"),
+    // A wait alongside another reason, in one message or two.
+    refused(
+      'Pull request Required status check "check" is queued and Pull request has merge conflicts',
+    ),
+    {
+      errors: [
+        { type: "UNPROCESSABLE", message: 'Pull request Required status check "check" is queued.' },
+        { type: "UNPROCESSABLE", message: "Pull request has merge conflicts" },
+      ],
+    },
+    { errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node" }] },
+  ]) {
+    const github = standIn({ enqueuePullRequest: refusal });
+    await assert.rejects(enqueue(github.send, pr), /^Error: graphql: /);
+    assert.equal(github.sent.length, 1);
+  }
+});
+
+test("with auto-merge off, the refusal names the setting the maintainer must turn on", async () => {
+  const github = standIn({
+    enqueuePullRequest: queued,
+    enablePullRequestAutoMerge: refused(
+      "Pull request Auto merge is not allowed for this repository",
+    ),
+  });
+  await assert.rejects(enqueue(github.send, pr), (error: Error) => {
+    assert.match(
+      error.message,
+      /^not enqueued: Pull request Required status check "check" is queued/,
+    );
+    assert.match(error.message, /Needs you: tick "Allow auto-merge" under Settings → General/);
+    assert.match(error.message, /run pr-enqueue again once CI passes/);
+    return true;
+  });
+});
+
+test("a failure to arm auto-merge for another reason says both why", async () => {
+  const github = standIn({
+    enqueuePullRequest: queued,
+    enablePullRequestAutoMerge: refused("Pull request is in clean status"),
+  });
+  await assert.rejects(
+    enqueue(github.send, pr),
+    /not enqueued: .* is queued\. Arming auto-merge failed too: graphql: .*clean status/,
+  );
+});
+
+test("the next decision number follows the highest on main and in open PRs", () => {
+  assert.deepEqual(parse(["next-decision"]), { op: "next-decision" });
+  assert.ok("error" in parse(["next-decision", "x"]));
+  assert.equal(nextDecision([]), "0001");
+  assert.equal(
+    nextDecision([
+      "docs/decisions/0047-server.md",
+      "docs/decisions/0048-codex-preview.md",
+      // An open PR's files: its own draft, and paths that aren't decisions.
+      "docs/decisions/0049-sketches.md",
+      "docs/decisions/9999-draft.txt",
+      "docs/user/0100-guide.md",
+      "",
+    ]),
+    "0050",
+  );
 });

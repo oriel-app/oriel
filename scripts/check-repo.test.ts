@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   actionProblems,
   allowlist,
+  decisionClashes,
   exemptRoutes,
   lockedPackages,
   postRoutes,
@@ -454,4 +455,17 @@ test("input only the user gives must say why, as a closed door must", () => {
       "packages/core/src/actions.ts: thread.done's from is the user's without a reason (decision 0024)",
     ],
   );
+});
+
+test("two decisions with one number are caught, once per number", () => {
+  assert.deepEqual(decisionClashes(["0047-server.md", "0048-codex.md", "README.md"]), []);
+  const found = decisionClashes([
+    "0048-codex.md",
+    "0049-sheets.md",
+    "0049-sketch-sizes.md",
+    "0049-themes.md",
+  ]);
+  assert.equal(found.length, 1);
+  assert.match(found[0] ?? "", /0049-sheets\.md and 0049-sketch-sizes\.md and 0049-themes\.md/);
+  assert.match(found[0] ?? "", /next-decision/);
 });

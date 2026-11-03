@@ -20,7 +20,7 @@
 // three exempt below, which must be as the list says. What a route does
 // besides dispatching is its author's word: the check sees only whether it
 // dispatches. And window.css's themes pass decision 0034's rules
-// (check-themes.ts).
+// (check-themes.ts), and no two decisions share a number.
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
@@ -197,6 +197,21 @@ export function actionProblems(declared: Record<string, ActionDeclaration>): str
   return found;
 }
 
+// Decisions in docs/decisions/ that share a number, as two drafted at once
+// can. `pnpm -s github next-decision` gives the next free one.
+export function decisionClashes(names: readonly string[]): string[] {
+  const byNumber = Map.groupBy(
+    names.filter((name) => /^\d{4}-/.test(name)),
+    (name) => name.slice(0, 4),
+  );
+  return [...byNumber]
+    .filter(([, same]) => same.length > 1)
+    .map(
+      ([number, same]) =>
+        `docs/decisions: ${same.join(" and ")} share the number ${number}; renumber the newer one with \`pnpm -s github next-decision\``,
+    );
+}
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -312,6 +327,7 @@ if (import.meta.main) {
     ...builtTracked,
     ...actionProblems(actions),
     ...themeProblems(readFileSync("packages/web/assets/window.css", "utf8")),
+    ...decisionClashes(readdirSync("docs/decisions").filter((f) => f.endsWith(".md"))),
     ...problems({
       claudeLink: readLink("CLAUDE.md"),
       lockfile: readFileSync("pnpm-lock.yaml", "utf8"),

@@ -16,11 +16,13 @@ export const usage = `usage: pnpm -s github <operation>
   pr-edit <number> <body> [title]
   pr-enqueue <number>
   runs [branch]
+  next-decision
 A title is one line, type(scope): summary (SPEC §10), and a body never is,
-so a title and body given the wrong way round are refused.`;
+so a title and body given the wrong way round are refused. While CI runs,
+pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.`;
 
 export type Operation =
-  | { op: "pr-list" }
+  | { op: "pr-list" | "next-decision" }
   | { op: "pr-view" | "pr-enqueue"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
   | { op: "pr-edit"; number: number; body: string; title?: string }
@@ -41,7 +43,7 @@ const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") &&
 
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
-  if (op === "pr-list" && rest.length === 0) return { op };
+  if ((op === "pr-list" || op === "next-decision") && rest.length === 0) return { op };
   if ((op === "pr-view" || op === "pr-enqueue") && rest.length === 1) {
     const number = prNumber(rest[0]);
     if (number) return { op, number };
@@ -117,17 +119,96 @@ async function call(token: string, method: string, path: string, body?: unknown)
   return text ? JSON.parse(text) : null;
 }
 
+type GraphqlResult = { data?: unknown; errors?: { type?: string; message?: string }[] };
+type Graphql = (query: string, variables: Record<string, unknown>) => Promise<GraphqlResult>;
+
+const graphqlError = (errors: unknown) =>
+  new Error(`graphql: ${JSON.stringify(errors).slice(0, 300)}`);
+
 async function graphql(
   token: string,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<unknown> {
-  const result = (await call(token, "POST", "/graphql", { query, variables })) as {
-    data?: unknown;
-    errors?: unknown;
-  };
-  if (result.errors) throw new Error(`graphql: ${JSON.stringify(result.errors).slice(0, 300)}`);
+  const result = (await call(token, "POST", "/graphql", { query, variables })) as GraphqlResult;
+  if (result.errors) throw graphqlError(result.errors);
   return result.data;
+}
+
+// Why GitHub refused an enqueue, if the only answer is to wait for CI: a
+// required check still queued or running, or mergeability not yet worked
+// out. GitHub joins reasons with " and Pull request …", so every one must be
+// a wait; a conflict or a failing check alongside one is not.
+export function waitingOnChecks(errors: GraphqlResult["errors"]): string | null {
+  const messages = (errors ?? []).map(({ message = "" }) => message);
+  const waits = (reason: string) =>
+    /^(Pull request )?Required status check "[^"]*" is (queued|in progress|expected|pending|waiting)\.?$/i.test(
+      reason,
+    ) ||
+    /^(Pull request )?mergeability check has not yet completed$/i.test(reason) ||
+    /^(Pull request )?not in mergeable state$/i.test(reason);
+  const all = messages.flatMap((message) => message.split(/ and (?=Pull request )/));
+  return all.length > 0 && all.every(waits) && all.some((r) => !/not in mergeable state/i.test(r))
+    ? messages.join(" ")
+    : null;
+}
+
+const autoMergeOff = (errors: GraphqlResult["errors"]) =>
+  (errors ?? []).some(({ message = "" }) =>
+    /auto.?merge (is )?(not allowed|not enabled|disabled)/i.test(message),
+  );
+
+// Enqueue the PR, pinned to the commit just checked so a push in between
+// can't slip in. While CI runs, GitHub refuses an enqueue, so arm auto-merge
+// instead: the PR enters the queue when CI passes. That pin holds only while
+// arming; auto-merge stays armed through later pushes, so the agent pushes
+// nothing more without a fresh go-ahead. This changes when the merge happens,
+// not who decides (decision 0012).
+export async function enqueue(
+  send: Graphql,
+  pr: { id: string; number: number; headRefOid: string },
+): Promise<unknown> {
+  const variables = { id: pr.id, oid: pr.headRefOid };
+  const enqueued = await send(
+    `mutation ($id: ID!, $oid: GitObjectID!) {
+      enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
+        mergeQueueEntry { state position }
+      }
+    }`,
+    variables,
+  );
+  if (!enqueued.errors) return enqueued.data;
+  const waiting = waitingOnChecks(enqueued.errors);
+  if (!waiting) throw graphqlError(enqueued.errors);
+  const armed = await send(
+    `mutation ($id: ID!, $oid: GitObjectID!) {
+      enablePullRequestAutoMerge(
+        input: { pullRequestId: $id, expectedHeadOid: $oid, mergeMethod: SQUASH }
+      ) {
+        pullRequest { autoMergeRequest { enabledAt } }
+      }
+    }`,
+    variables,
+  );
+  if (!armed.errors)
+    return `auto-merge armed: PR #${pr.number} at ${pr.headRefOid.slice(0, 7)} enters the merge queue when CI passes. It stays armed through later pushes, so push nothing more to it without a fresh go-ahead.`;
+  if (autoMergeOff(armed.errors))
+    throw new Error(
+      `not enqueued: ${waiting} Auto-merge is off for ${repo.owner}/${repo.name}, and the agent token can't turn it on. Needs you: tick "Allow auto-merge" under Settings → General → Pull Requests. Until then, run pr-enqueue again once CI passes.`,
+    );
+  throw new Error(
+    `not enqueued: ${waiting} Arming auto-merge failed too: ${graphqlError(armed.errors).message}`,
+  );
+}
+
+// The number after the highest decision on main or in any open PR, so two
+// decisions drafted at once can't share one.
+export function nextDecision(paths: readonly string[]): string {
+  const taken = paths.flatMap((path) => {
+    const number = /^docs\/decisions\/(\d{4})-[^/]*\.md$/.exec(path)?.[1];
+    return number ? [Number(number)] : [];
+  });
+  return String(Math.max(0, ...taken) + 1).padStart(4, "0");
 }
 
 const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) {
@@ -136,6 +217,7 @@ const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) 
       id number title state headRefName headRefOid isCrossRepository
       headRepository { nameWithOwner }
       mergeable mergeStateStatus isInMergeQueue
+      autoMergeRequest { enabledAt }
       mergeCommit { oid }
       commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
     }
@@ -147,6 +229,7 @@ async function pullRequest(token: string, number: number) {
     repository: {
       pullRequest: {
         id: string;
+        number: number;
         headRefOid: string;
         isCrossRepository: boolean;
         headRepository: { nameWithOwner: string } | null;
@@ -199,21 +282,34 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       const pr = await pullRequest(token, operation.number);
       const refusal = headRefusal(pr, "enqueue");
       if (refusal) throw new Error(refusal);
-      // Pin the commit just checked, so a push in between can't slip in.
-      return graphql(
-        token,
-        `
-          mutation ($id: ID!, $oid: GitObjectID!) {
-            enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
-              mergeQueueEntry {
-                state
-                position
-              }
-            }
-          }
-        `,
-        { id: pr.id, oid: pr.headRefOid },
+      return enqueue(
+        async (query, variables) =>
+          (await call(token, "POST", "/graphql", { query, variables })) as GraphqlResult,
+        pr,
       );
+    }
+    case "next-decision": {
+      const onMain = (await call(token, "GET", `${base}/contents/docs/decisions?ref=main`)) as {
+        path: string;
+      }[];
+      const pulls = (await call(token, "GET", `${base}/pulls?state=open&per_page=100`)) as {
+        number: number;
+      }[];
+      const inPulls = await Promise.all(
+        pulls.map(async ({ number }) => {
+          const files: string[] = [];
+          for (let page = 1; ; page++) {
+            const batch = (await call(
+              token,
+              "GET",
+              `${base}/pulls/${number}/files?per_page=100&page=${page}`,
+            )) as { filename: string; previous_filename?: string }[];
+            files.push(...batch.flatMap((f) => [f.filename, f.previous_filename ?? ""]));
+            if (batch.length < 100) return files;
+          }
+        }),
+      );
+      return nextDecision([...onMain.map((f) => f.path), ...inPulls.flat()]);
     }
     case "runs": {
       const query = operation.branch ? `&branch=${encodeURIComponent(operation.branch)}` : "";
@@ -257,7 +353,8 @@ if (import.meta.main) {
     process.exit(1);
   }
   try {
-    console.log(JSON.stringify(await run(token, operation), null, 2));
+    const result = await run(token, operation);
+    console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
