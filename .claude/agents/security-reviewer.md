@@ -54,7 +54,7 @@ Who controls what:
   - replay sending anything other than the captured arguments, beyond 0003's one exception: a ref to an item an earlier create in the same change set made, sent as that item's ID;
   - a mutation target, or a read other than `search()`, outside the region, which only the host can enforce;
   - a draft applied by the agent, an outside tool or a review link, or by anything but the person in the window (decision 0051);
-  - a Sheets write that isn't `RAW`, or one over a cell that holds a formula (decision 0050).
+  - a Sheets write that isn't `RAW` or a typed, non-formula value, or one over a cell that holds a formula (decision 0050).
 - **Browser and the desktop shell:**
   - a request served without the launch secret on the desktop app, other than the review link page's own routes with their token, which are listed in decision 0036;
   - a route the harness uses to reach `run` that skips the launch secret without a per-turn capability of its own;

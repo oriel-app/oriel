@@ -67,7 +67,7 @@ The riskiest part of the seam is taking the list of kinds out of core: core, db,
 - of three kinds only: `sourceKinds` no longer exported (11 files); parameters implicitly `any` because of it; and types that leaned on the closed list, "possibly undefined" where a `Record<SourceKind, …>` had been exhaustive, and two mapped types;
 - in db (2 files), bindings (2), changeset (1), server (6), sources (1), groupings (1), evals (1) and `check-repo.ts`.
 
-The probe leaves out what 0049's numbered prefix adds (`jira.2:ACME-4`): every stored `source` column holds the prefix, and seven places that cut an ID's prefix by hand move onto `parseItemId`. They are `web/src/chip.ts`, `web/src/block.tsx`, `web/src/window-page.tsx`, the change sets' SQL in `db/src/threads.ts`, the index's prefix pattern in `db/src/index-store.ts`, `server/src/dropped.ts`, and each connector's own ID type in its `.d.ts`, such as Jira's `JiraId`.
+The probe leaves out what 0049's numbered prefix adds (`jira.2:ACME-4`). Every stored `source` column, each source's sync state and the writers are keyed by the prefix. `parseItemId`'s `source` gives way to a kind and a prefix, so the compiler lists every caller that builds an identity, such as the change-set store's stable-ID lookup, workstream members and the sync worker. The places that cut an ID's prefix by hand don't go through it and move onto it: `web/src/chip.ts`, `web/src/block.tsx`, `web/src/window-page.tsx`, the change sets' SQL in `db/src/threads.ts`, the index's prefix pattern in `db/src/index-store.ts`, `server/src/dropped.ts`, `bindings/src/fn.ts`, `server/src/scripted-agent.ts`, the eval harness's `case.ts`, `runner.ts` and `shown.ts`, and each connector's own ID type in its `.d.ts`, such as Jira's `JiraId`.
 
 It proves the move is mechanical: packages below `packages/sources` can take kinds as data, from the namespaces, item docs and op specs they are already given, and exhaustiveness comes back from the declarations list. It doesn't prove that one component can draw every connector's connect steps as well as OA-191's hand-made Jira rows; decision 0049 maps each connector's steps onto the step kinds, and the Connections story measures the first run against its budget.
 
@@ -79,10 +79,9 @@ Three ways a person might shape a connector for themselves. None is decided or p
 2. **Saved asks:** questions to ask again in one click, for a connection or a workstream.
 3. **Recipes:** named scripts over the bindings, run in the sandbox, whose writes come out as change sets.
 
-What any design has to keep: what a person writes reaches the agent only in tool results, never the system prompt or the `.d.ts` (CLAUDE.md), so it costs nothing on turns that don't read that source.
-
 Open questions:
 
+- **Where it reaches the agent:** in tool results, as source content must (CLAUDE.md), so it costs nothing on turns that don't read that source, or somewhere a recipe could be named in the module?
 - **Where a person writes and finds them:** on the connection in Settings, in the item panel, in the thread where it came up, or a page of its own?
 - **How the agent drafts one:** after it learns something in a thread ("Remember that RAG is health, not progress?"); whether it is held for the person as decision 0051's drafts are; and how the person reads the full text before keeping it.
 - **Sharing and trust:** text or a script from someone else is untrusted until the person reads and approves it, and a recipe is code most people can't read. Can a recipe shared by a teammate be trusted, and should the agent be able to call one?

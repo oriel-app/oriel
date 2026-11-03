@@ -110,6 +110,6 @@ Quotes are from Google's pages as fetched on 2026-11-03. **Unsure** marks what t
 
 - SPEC §4 adds Google Sheets, §5 its tokens and client, and §8 its fixture checklist.
 - 0036: the release environment holds Google's desktop client too. The release workflow is the maintainer's to change.
-- The security reviewer looks for a Sheets write that isn't `RAW` or overwrites a formula, and a loopback listener that takes more than its one redirect, listens beyond 127.0.0.1, or skips PKCE or `state`.
+- The security reviewer looks for a Sheets write that isn't `RAW` or a typed value, writes a formula, or overwrites one, and a loopback listener that takes more than its one redirect, listens beyond 127.0.0.1, or skips PKCE or `state`.
 - The maintainer's setup comes before the first Sheets story, which checks each **Unsure** above against Google.
 - The build stories, in order, are in the pull request.
