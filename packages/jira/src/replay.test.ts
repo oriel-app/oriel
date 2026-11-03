@@ -9,7 +9,7 @@ import { test } from "node:test";
 import type { SyncPage } from "@oriel/core";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { recordedReads, recordedSource, testData } from "../../../scripts/record-jira.ts";
-import type { JiraAttrs } from "./attrs.ts";
+import { type JiraAttrs, jiraText } from "./attrs.ts";
 import { fixtureSnapshot } from "./fixture.ts";
 import { cassette, replay } from "./cassette.ts";
 import { jiraSource } from "./source.ts";
@@ -30,42 +30,54 @@ const sync = load("sync.json");
 const read = load("read.json");
 const unrecorded = "no cassette yet: run pnpm record:jira";
 
-test("the live listing matches the fixtures", { skip: sync ? false : unrecorded }, async () => {
-  assert.ok(sync);
-  const pages: SyncPage<"jira", JiraAttrs>[] = [];
-  for await (const page of jiraSource(recordedSource(sync)).sync(null)) pages.push(page);
-  const live = new Map(pages.flatMap((page) => page.records).map((r) => [r.id, r]));
-  assert.deepEqual([...live.keys()].toSorted(), expected.records.map((r) => r.id).toSorted());
-  for (const want of expected.records) {
-    const got = live.get(want.id);
-    assert.ok(got, want.id);
-    assert.equal(got.title, want.title, want.id);
-    assert.equal(got.location, want.location, want.id);
-    assert.deepEqual(
-      { ...got.attrs, labels: got.attrs.labels.toSorted() },
-      { ...want.attrs, labels: want.attrs.labels.toSorted() },
-      want.id,
-    );
-    // The epic by handle: Jira gave it its own stable ID.
-    assert.deepEqual(
-      [
-        got.facets.state,
-        got.facets.container?.id ?? null,
-        got.facets.people,
-        got.facets.kind,
-        got.facets.estimate,
-      ],
-      [
-        want.facets.state,
-        want.facets.container?.id ?? null,
-        [],
-        want.facets.kind,
-        want.facets.estimate,
-      ],
-      want.id,
-    );
-  }
-});
+test(
+  "the live listing and its texts match the fixtures",
+  { skip: sync ? false : unrecorded },
+  async () => {
+    assert.ok(sync);
+    const pages: SyncPage<"jira", JiraAttrs>[] = [];
+    for await (const page of jiraSource(recordedSource(sync)).sync(null)) pages.push(page);
+    const live = new Map(pages.flatMap((page) => page.records).map((r) => [r.id, r]));
+    const texts = new Map(pages.flatMap((page) => Object.entries(page.texts ?? {})));
+    assert.deepEqual([...live.keys()].toSorted(), expected.records.map((r) => r.id).toSorted());
+    for (const want of expected.records) {
+      const got = live.get(want.id);
+      assert.ok(got, want.id);
+      assert.equal(got.title, want.title, want.id);
+      assert.equal(got.location, want.location, want.id);
+      assert.deepEqual(
+        { ...got.attrs, labels: got.attrs.labels.toSorted() },
+        { ...want.attrs, labels: want.attrs.labels.toSorted() },
+        want.id,
+      );
+      // The epic by handle: Jira gave it its own stable ID.
+      assert.deepEqual(
+        [
+          got.facets.state,
+          got.facets.container?.id ?? null,
+          got.facets.people,
+          got.facets.kind,
+          got.facets.estimate,
+        ],
+        [
+          want.facets.state,
+          want.facets.container?.id ?? null,
+          [],
+          want.facets.kind,
+          want.facets.estimate,
+        ],
+        want.id,
+      );
+      // Its summary and description, as Oriel's sync finds references in.
+      const content = expected.content.get(want.id);
+      assert.equal(
+        texts.get(got.stableId),
+        content && jiraText({ ...content, comments: [] }),
+        want.id,
+      );
+    }
+  },
+);
 
 test(
   "live reads of the frozen regions match the fixtures",

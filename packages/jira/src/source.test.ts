@@ -73,6 +73,7 @@ test("a listing pages by token and maps issues to index records", async () => {
       [
         jiraIssue("SYN-13", {
           status: status("Done", "done"),
+          description: doc("Same as SYN-12, for the web.", "Then ship it."),
           updated: "2026-10-02T08:30:00.000-0400",
         }),
       ],
@@ -110,6 +111,16 @@ test("a listing pages by token and maps issues to index records", async () => {
       [1, [], "2026-10-02T12:30:00.000Z"],
     ],
   );
+  // Each record's summary and description, beside it and never in it, for
+  // Oriel's sync to find references in.
+  assert.deepEqual(
+    listed.map((page) => page.texts),
+    [
+      { "10001": "Summary of SYN-1", "10012": "Retry a declined card once" },
+      { "10013": "Summary of SYN-13\n\nSame as SYN-12, for the web.\n\nThen ship it." },
+    ],
+  );
+  assert.ok(!JSON.stringify(record(listed, "jira:SYN-13")).includes("for the web"));
 
   assert.deepEqual(searches(calls)[0], {
     jql: 'project in ("SYN") ORDER BY updated ASC, key ASC',
@@ -122,6 +133,7 @@ test("a listing pages by token and maps issues to index records", async () => {
       "labels",
       "updated",
       pointsField,
+      "description",
     ],
     maxResults: 100,
   });
@@ -138,7 +150,7 @@ test("a cursor lists what changed since, an hour back, in the account's time zon
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
   // Nothing changed, so the cursor stays where it was.
   assert.deepEqual(await listAll(source, "2026-10-01T11:00:00.000Z"), [
-    { records: [], gone: [], cursor: "2026-10-01T11:00:00.000Z" },
+    { records: [], gone: [], cursor: "2026-10-01T11:00:00.000Z", texts: {} },
   ]);
   assert.equal(
     searches(calls)[0]?.jql,
@@ -263,7 +275,7 @@ test("each project's points field comes from its board, and a board without one 
   );
   const [body] = searches(calls);
   assert.equal(body?.jql, 'project in ("SYN", "OA", "TIME", "NONE") ORDER BY updated ASC, key ASC');
-  assert.deepEqual(body?.fields.slice(7), [pointsField, "customfield_10028"]);
+  assert.deepEqual(body?.fields.slice(7), [pointsField, "customfield_10028", "description"]);
   assert.deepEqual(
     lines.map((line) => line.fields?.project),
     ["TIME", "NONE"],
@@ -454,10 +466,11 @@ test("a read lists the statuses the item's workflow lets it move to, each once",
   ]);
 });
 
-test("records reads each issue by key into the record a listing would make; a missing one is null", async () => {
-  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
+test("records reads each issue by key into the record and text a listing would make; a missing one is null", async () => {
+  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
   const made = jiraIssue("SYN-900", {
     summary: "Tap to pay",
+    description: doc("Follows SYN-12."),
     parent: parent("SYN-1"),
     updated: "2026-10-30T09:00:00.000+0000",
     [pointsField]: 2,
@@ -471,18 +484,21 @@ test("records reads each issue by key into the record a listing would make; a mi
   });
   const { log } = logged();
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
-  const listed = record(await listAll(source, null), "jira:SYN-900");
+  const all = await listAll(source, null);
+  const listed = record(all, "jira:SYN-900");
   assert.ok(listed && source.records);
   assert.deepEqual(await source.records(["jira:SYN-900", "jira:SYN-27", "jira:SYN-28"]), {
     records: [listed],
     gone: ["jira:SYN-27", "jira:SYN-28"],
+    texts: all[0]?.texts,
   });
+  assert.deepEqual(all[0]?.texts, { "10900": "Tap to pay\n\nFollows SYN-12." });
   // Only GETs: reading by key goes nowhere near the search.
   assert.equal(searches(calls).length, 1);
 });
 
 test("records fails when Jira won't answer, and skips an issue it can't read, neither one gone", async () => {
-  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField}`;
+  const fields = `summary,issuetype,status,parent,assignee,labels,updated,${pointsField},description`;
   const { transport } = fakeJira({
     ...discovery(),
     [`GET /rest/api/3/issue/SYN-1?fields=${fields}`]: { status: 401, body: "Unauthorized" },
@@ -492,6 +508,6 @@ test("records fails when Jira won't answer, and skips an issue it can't read, ne
   const source = jiraSource({ transport, site, projects: ["SYN"], log });
   assert.ok(source.records);
   await assert.rejects(source.records(["jira:SYN-1"]), /401/);
-  assert.deepEqual(await source.records(["jira:SYN-2"]), { records: [], gone: [] });
+  assert.deepEqual(await source.records(["jira:SYN-2"]), { records: [], gone: [], texts: {} });
   assert.ok(lines.some((line) => line.message.includes("shape Oriel can't read")));
 });

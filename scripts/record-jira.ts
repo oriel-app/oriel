@@ -5,14 +5,19 @@
 // throwaway site. People are replaced with numbered placeholders (mentions
 // included), emails, avatars, time zones and locales are dropped, and times are
 // moved to UTC, so no real person's details are committed.
-// Usage: pnpm record:jira
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// Usage: pnpm record:jira [--env <path>]
+// --env names the .env holding JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN
+// (default: the repo root's). It is opened checked, and nothing in it is
+// printed.
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import type { ItemId } from "../packages/core/src/index.ts";
 import type { JiraFixture } from "../packages/jira/src/fixture.ts";
 import { type Exchange, recording } from "../packages/jira/src/cassette.ts";
 import { type JiraSourceOptions, jiraSource } from "../packages/jira/src/source.ts";
 import { basicAuth, type ReadTransport, readTransport } from "../packages/jira/src/transport.ts";
+import { readEnv } from "./env.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 import { jiraEnv } from "./seed-jira.ts";
 
@@ -99,9 +104,18 @@ export async function record(transport: ReadTransport, fixture: JiraFixture) {
   save("read.json", reads);
 }
 
+// The Jira account to record as, from the .env `--env` names, or else the
+// repo root's. No problem quotes a value.
+export async function recordingEnv(env: string | undefined, rootEnv: URL) {
+  const read = await readEnv(env ?? fileURLToPath(rootEnv));
+  if ("problem" in read) return { error: read.problem };
+  if (env !== undefined && read.text === null) return { error: `no file at ${env}` };
+  return jiraEnv(read.text);
+}
+
 if (import.meta.main) {
-  const envPath = fileURLToPath(new URL("../.env", import.meta.url));
-  const env = jiraEnv(existsSync(envPath) ? readFileSync(envPath, "utf8") : null);
+  const { values } = parseArgs({ options: { env: { type: "string" } } });
+  const env = await recordingEnv(values.env, new URL("../.env", import.meta.url));
   if ("error" in env) {
     console.error(env.error);
     process.exit(1);

@@ -1,11 +1,10 @@
 // `pnpm evals` runs every case live, recording its cassettes, for local
 // hillclimbing; `evals:ci` replays the cassettes and never reaches the network.
-import { existsSync, lstatSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
-import { openChecked } from "@oriel/folder";
+import { readEnv } from "../../../scripts/env.ts";
 import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { anthropicFetch, anthropicKey, type Fetch, isPriced, sameModel } from "./anthropic.ts";
@@ -170,29 +169,6 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   )
     return { command: "freeze", climb: first, cap: plan.cap, reps: plan.reps };
   return { error: usage };
-}
-
-// Reads a .env as the folder source reads a file (decision 0019): no link on
-// the way to it, no second link to it, no pipe or device. Null when nothing
-// is there; no problem quotes the file.
-async function readEnv(path: string): Promise<{ text: string | null } | { problem: string }> {
-  const absolute = resolve(path);
-  let expected: { dev: bigint; ino: bigint };
-  try {
-    expected = lstatSync(absolute, { bigint: true });
-  } catch {
-    return { text: null };
-  }
-  const opened = await openChecked(absolute, expected);
-  if (opened.status === "vanished") return { text: null };
-  if (opened.status === "forbidden") return { problem: `${path} can't be read` };
-  if (opened.status === "changed")
-    return { problem: `${path} is not a regular file with one link; it is refused` };
-  try {
-    return { text: await opened.handle.readFile("utf8") };
-  } finally {
-    await opened.handle.close();
-  }
 }
 
 // The model key for a live round, from the .env `--env` names, or else the
