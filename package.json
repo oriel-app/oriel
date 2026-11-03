@@ -14,6 +14,7 @@
     "evals": "node packages/evals/src/cli.ts",
     "test": "node scripts/run-tests.ts",
     "dev": "pnpm --filter @oriel/web build && node packages/server/src/main.ts",
+    "desktop:server": "pnpm --filter @oriel/web build && node scripts/desktop-server.ts",
     "drive": "node scripts/drive.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
     "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts"

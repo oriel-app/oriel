@@ -5,6 +5,7 @@
 // - A request naming any other Origin is refused, whatever its method.
 // - A request that can change state (anything but GET and HEAD) must carry this
 //   server's own Origin. One with no Origin isn't from our page, so it's refused.
+import { createHash, timingSafeEqual } from "node:crypto";
 
 const safeMethods = new Set(["GET", "HEAD"]);
 
@@ -29,4 +30,28 @@ export function refusal(
   if (!safeMethods.has(method) && !own)
     return "a request that changes state needs this server's Origin";
   return null;
+}
+
+// The desktop app adds a launch secret (decision 0036). Loopback is shared
+// by every account on the machine, and a page in the person's browser can
+// still send GETs. So its server answers only requests carrying the secret
+// in the cookie its shell set, compared in constant time. A Cookie header
+// may name the cookie more than once, since cookies aren't kept apart by
+// port: any one of them may match.
+export function hasLaunchSecret(
+  cookies: string | undefined,
+  name: string,
+  secret: string,
+): boolean {
+  const want = createHash("sha256").update(secret).digest();
+  let found = false;
+  for (const pair of (cookies ?? "").split(";")) {
+    const at = pair.indexOf("=");
+    if (at === -1 || pair.slice(0, at).trim() !== name) continue;
+    const got = createHash("sha256")
+      .update(pair.slice(at + 1).trim())
+      .digest();
+    if (timingSafeEqual(got, want)) found = true;
+  }
+  return found;
 }

@@ -183,6 +183,9 @@ export interface ChangeSets {
   // once the change set is decided.
   reviewLink(id: Ulid): Promise<URL>;
   revokeReviewLink(id: Ulid): Promise<void>;
+  // Revokes every live link in the workspace, and says how many there were:
+  // the desktop app's links live only while it runs (decision 0036).
+  revokeAllReviewLinks(workspaceId: Ulid): Promise<number>;
   // What the review page shows; null for a dead or unknown token. It records
   // nothing: whoever shows it says whether it was opened, with this.
   openReview(token: string): Promise<{ changeSet: ChangeSet; diff: Diff } | null>;

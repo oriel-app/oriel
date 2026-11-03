@@ -23,19 +23,28 @@
 // `--claude-code <path>`, signed in however they signed it in (decision
 // 0037). With neither, each turn says how to set one up. `--agent scripted`
 // runs the scripted agent instead, which needs no model.
+//
+// `--desktop --data <dir>` is the server as the desktop app's shell starts
+// it, and takes no other flag: see desktop/PROTOCOL.md. Jira is connected
+// from the window and kept in the OS's store for secrets, and Slack is off.
+// The agent runs on the person's own Claude Code, found on the PATH the shell
+// gives, and never on `.env`'s key, which is `pnpm dev`'s (decision 0036).
+// Nothing but the channel to the shell goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { basicAuth } from "@oriel/jira";
 import { bearer } from "@oriel/slack";
 import { webFiles, serve } from "./serve.ts";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
 import { fileStore } from "./connection.ts";
 import { serverEnv, slackEnv } from "./env.ts";
 import { chooseModel, modelOptions } from "./model.ts";
+import { firstPort } from "./desktop/port.ts";
+import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
 
-const { values } = parseArgs({
+const { values, tokens } = parseArgs({
   options: {
     port: { type: "string", default: "4310" },
     jira: { type: "string", default: "fixture" },
@@ -45,8 +54,26 @@ const { values } = parseArgs({
     fresh: { type: "string" },
     agent: { type: "string", default: "auto" },
     "claude-code": { type: "string" },
+    desktop: { type: "boolean" },
+    data: { type: "string" },
   },
+  tokens: true,
 });
+// Taken before anything can write, so the channel's first line is its own.
+const channelWrite = values.desktop ? takeStdout(process.stdout, process.stderr) : null;
+const flags = new Set(tokens.flatMap((token) => (token.kind === "option" ? [token.name] : [])));
+if (values.desktop && [...flags].some((flag) => flag !== "desktop" && flag !== "data")) {
+  console.error("--desktop takes only --data");
+  process.exit(2);
+}
+if ((values.desktop === true) !== flags.has("data")) {
+  console.error("--data names the desktop app's data folder, and only with --desktop");
+  process.exit(2);
+}
+if (values.desktop && !isAbsolute(values.data ?? "")) {
+  console.error("--data must be an absolute path");
+  process.exit(2);
+}
 const port = Number(values.port);
 if (!Number.isInteger(port) || port < 0 || port > 65_535) {
   console.error(`--port must be a port number, got ${JSON.stringify(values.port)}`);
@@ -83,6 +110,36 @@ const files = webFiles();
 if (!existsSync(join(files.dist, files.entry))) {
   console.error("The web app isn't built. Run `pnpm dev`, or `pnpm --filter @oriel/web build`.");
   process.exit(1);
+}
+
+if (channelWrite && values.data) {
+  let described = "";
+  // Logs go to stderr, which the shell keeps in a file.
+  const desktop = await runDesktop({
+    data: values.data,
+    input: process.stdin,
+    write: channelWrite,
+    log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
+    signals: process,
+    firstPort,
+    async model() {
+      const model = modelOptions(await chooseModel({ key: null }));
+      described = model.describe;
+      return {
+        ...(model.agent ? { agent: model.agent } : {}),
+        ...(model.titler ? { titler: model.titler } : {}),
+      };
+    },
+  }).catch((error: unknown) => {
+    if (error instanceof Stopped) process.exit(0);
+    console.error(
+      `Oriel's server couldn't start: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(2);
+  });
+  console.error(`Oriel is running at ${desktop.serving.url}`);
+  console.error(described);
+  process.exit(await desktop.exited);
 }
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));

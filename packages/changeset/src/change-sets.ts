@@ -1899,6 +1899,10 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       rows.revokeLinks(set.id, at().now);
     },
 
+    async revokeAllReviewLinks(workspaceId) {
+      return rows.revokeAllLinks(workspaceId, at().now);
+    },
+
     // The review route sends `Referrer-Policy: no-referrer` and
     // `Cache-Control: no-store`, and calls this only on an explicit POST,
     // never on the GET a link unfurler makes: it reads the source and records

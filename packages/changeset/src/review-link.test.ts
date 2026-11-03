@@ -119,3 +119,16 @@ test("an unknown or malformed token opens nothing", async () => {
     assert.equal(await changeSets.openReview(guess), null, guess);
   }
 });
+
+test("revoking every link kills each live one in the workspace, and counts them", async () => {
+  const { changeSets, run, set, token, byLink, workspaceId } = await linked();
+  const other = await changeSets.capture(run, [estimate("jira:SYN-117", 2)]);
+  const otherToken = tokenOf(await changeSets.reviewLink(other.id));
+  assert.equal(await changeSets.revokeAllReviewLinks(workspaceId), 2);
+  assert.equal(await changeSets.openReview(token), null);
+  assert.equal(await changeSets.openReview(otherToken), null);
+  await assert.rejects(byLink("Sam Ortiz"), { code: "refused" });
+  assert.equal(await changeSets.revokeAllReviewLinks(workspaceId), 0);
+  // A new link still works.
+  assert.notEqual(await changeSets.openReview(tokenOf(await changeSets.reviewLink(set.id))), null);
+});

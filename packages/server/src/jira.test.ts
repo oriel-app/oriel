@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { JiraView, ThreadView, WindowView } from "@oriel/web/view";
-import { fileStore, jiraSite, memoryStore } from "./connection.ts";
+import { fileStore, jiraSite, memoryStore, secretsStore } from "./connection.ts";
 import { account, json, type Script, t0, testApp } from "./testing.ts";
 
 const details = {
@@ -157,18 +157,18 @@ test("a connection made in the window is there again when the server starts", as
   assert.equal(again.app.telemetry().filter((e) => e.name === "source.connected").length, 1);
 });
 
-test("a saved connection that can't be read stops the start without quoting it", (t) => {
+test("a saved connection that can't be read stops the start without quoting it", async (t) => {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-jira-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const path = join(top, "jira.json");
   const store = fileStore(path);
-  assert.equal(store.load(), null);
-  store.save({ ...details, site: "https://oriel.atlassian.net", project: "SYN" });
-  assert.equal(store.load()?.token, account.token);
+  assert.equal(await store.load(), null);
+  await store.save({ ...details, site: "https://oriel.atlassian.net", project: "SYN" });
+  assert.equal((await store.load())?.token, account.token);
   // Half a file: JSON.parse's own message would quote it.
   const broken = join(top, "broken.json");
   writeFileSync(broken, readFileSync(path, "utf8").slice(0, -10));
-  assert.throws(
+  await assert.rejects(
     () => fileStore(broken).load(),
     (error: Error) => !error.message.includes(account.token) && /can read/.test(error.message),
   );
@@ -295,4 +295,36 @@ test("a Jira project whose issues are all done lists them, though nothing is stu
       ["unestimated", 0],
     ],
   );
+});
+
+test("a store for secrets keeps the connection under one name, and one it can't read or reach is none", async () => {
+  const kept = new Map<string, string>();
+  const logged: string[] = [];
+  const log = (message: string) => logged.push(message);
+  const store = secretsStore(
+    {
+      get: async (name) => kept.get(name) ?? null,
+      set: async (name, value) => void kept.set(name, value),
+    },
+    log,
+  );
+  assert.equal(await store.load(), null);
+  const saved = { ...details, site: "https://oriel.atlassian.net", project: "SYN" };
+  await store.save(saved);
+  assert.deepEqual([...kept.keys()], ["jira"]);
+  assert.deepEqual(await store.load(), saved);
+  kept.set("jira", (kept.get("jira") ?? "").slice(0, -10));
+  assert.equal(await store.load(), null);
+  const gone = secretsStore(
+    {
+      get: async () => {
+        throw new Error("the shell is gone");
+      },
+      set: async () => {},
+    },
+    log,
+  );
+  assert.equal(await gone.load(), null);
+  assert.equal(logged.length, 2);
+  assert.ok(logged.every((line) => !line.includes(account.token)));
 });
