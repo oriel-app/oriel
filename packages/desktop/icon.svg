@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Oriel's app icon: an oriel, a bay window on its corbel, in Graphite's
+       colours (decision 0034). pnpm desktop draws the .icns from this file
+       alone; replace it to change the icon. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#1c1b19"/>
+  <g transform="translate(0 14)">
+    <path d="M344 646V352C344 280 420 226 512 210C604 226 680 280 680 352V646Z" fill="#ecebe6"/>
+    <path d="M344 666H680L578 786H446Z" fill="#ecebe6"/>
+    <path d="M380 610V376H456V610ZM568 610V376H644V610Z" fill="#7680e6"/>
+    <path d="M472 610V376H552V610Z" fill="#9aa5f7"/>
+    <path d="M380 352C384 300 440 262 512 248C584 262 640 300 644 352Z" fill="#9aa5f7"/>
+  </g>
+</svg>

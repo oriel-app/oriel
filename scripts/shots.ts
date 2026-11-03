@@ -369,6 +369,7 @@ const configured = async (settings: Partial<Settings> = {}) => {
     cliPaths: true,
     keys: { store: noKey, check: async () => "rejected" },
     notify: async () => {},
+    working: async () => {},
     pickFolder: async () => null,
   });
 };
@@ -905,6 +906,12 @@ const scenes: Scene[] = [
     path: "/settings/asking",
     on: settingsServer,
     act: (page) => page.locator(".choices").waitFor(),
+  },
+  {
+    name: "settings-general",
+    path: "/settings/general",
+    on: settingsServer,
+    act: (page) => page.locator(".settings-switch .switch").waitFor(),
   },
   {
     name: "settings-notifications",

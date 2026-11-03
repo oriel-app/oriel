@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
 import { init as initRoot } from "../src/root.ts";
-import { parseRoute, routeUrl } from "../src/route.ts";
+import { parseRoute, routeUrl, settingsSections } from "../src/route.ts";
 import {
   initSettings,
   loadSettings,
@@ -43,6 +43,8 @@ const view: SettingsView = {
   send: "enter",
   notify: true,
   notifies: false,
+  askBeforeQuitting: true,
+  asksBeforeQuitting: false,
 };
 const loaded: SettingsModel = { ...initSettings(), view };
 const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({
@@ -66,7 +68,8 @@ test("Settings has an address per section, and nothing else under it", () => {
     page: "settings",
     section: "notifications",
   });
-  for (const section of ["providers", "appearance", "asking", "notifications"] as const) {
+  assert.deepEqual(parseRoute("/settings/general", ""), { page: "settings", section: "general" });
+  for (const section of settingsSections) {
     const route = { page: "settings" as const, section };
     const url = routeUrl(route);
     assert.deepEqual(parseRoute(url, ""), route);

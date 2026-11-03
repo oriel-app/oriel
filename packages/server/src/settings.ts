@@ -1,6 +1,7 @@
 // Settings (OA-181): the person's providers, the default model and the
 // Title model, the theme, the text size, which key sends a question, and
-// whether the desktop app notifies (OA-184).
+// whether the desktop app notifies (OA-184) and asks before quitting while
+// Oriel works (decision 0045).
 // They live in one JSON file in the data folder, `.oriel/` under `pnpm dev`,
 // and apply as soon as they change. The file holds no key or credential: a
 // provider's row says only whether one is set.
@@ -53,6 +54,9 @@ export type Settings = {
   send: SendKey;
   // A desktop notification when a thread newly needs the person.
   notify: boolean;
+  // The desktop app asks before quitting while a thread's turn runs or a
+  // change set applies.
+  askBeforeQuitting: boolean;
 };
 
 // One instance of each kind, on, in the order Settings lists them.
@@ -70,6 +74,7 @@ export const defaultSettings: Settings = {
   textSize: "default",
   send: "enter",
   notify: true,
+  askBeforeQuitting: true,
 };
 
 export type SettingsStore = { get(): Settings; set(next: Settings): void };
@@ -130,6 +135,7 @@ function read(parsed: unknown): Settings {
     textSize: field("textSize", oneOf(textSizes), "default"),
     send: field("send", oneOf(sendKeys), "enter"),
     notify: field("notify", boolean, true),
+    askBeforeQuitting: field("askBeforeQuitting", boolean, true),
   };
 }
 
@@ -181,6 +187,7 @@ export const settingsChange: Validator<SettingsChange> = union(
   object({ textSize: oneOf(textSizes) }),
   object({ send: oneOf(sendKeys) }),
   object({ notify: boolean }),
+  object({ askBeforeQuitting: boolean }),
   object({ model: pickValue }),
   object({ titleModel: pickValue }),
   object({ provider: idValue, on: boolean }),
@@ -204,6 +211,8 @@ export function changed(
   if ("textSize" in change) return { ...settings, textSize: change.textSize };
   if ("send" in change) return { ...settings, send: change.send };
   if ("notify" in change) return { ...settings, notify: change.notify };
+  if ("askBeforeQuitting" in change)
+    return { ...settings, askBeforeQuitting: change.askBeforeQuitting };
   if ("model" in change) return { ...settings, model: change.model };
   if ("titleModel" in change) return { ...settings, titleModel: change.titleModel };
   const provider = settings.providers.find((p) => p.id === change.provider);
@@ -248,8 +257,12 @@ export function settingsService(deps: {
   keys?: { store: KeyStore; check?: Parameters<typeof keepKey>[2] };
   // Whether this server can notify: only the desktop app's shell shows them.
   notifies?: boolean;
+  // Whether this server's app asks before quitting: only the desktop app's.
+  asksBeforeQuitting?: boolean;
   // A theme was picked, for telemetry.
   picked(theme: string): void;
+  // A change was kept.
+  saved?(): void;
 }): SettingsService {
   const { store, models, themes } = deps;
   const view = (): SettingsView => {
@@ -271,6 +284,8 @@ export function settingsService(deps: {
       send: settings.send,
       notify: settings.notify,
       notifies: deps.notifies ?? false,
+      askBeforeQuitting: settings.askBeforeQuitting,
+      asksBeforeQuitting: deps.asksBeforeQuitting ?? false,
     };
   };
   return {
@@ -290,6 +305,7 @@ export function settingsService(deps: {
       )
         throw new SettingsRefused("That model's provider isn't connected and on.");
       store.set(next);
+      deps.saved?.();
       if ("theme" in change && change.theme !== before.theme) deps.picked(change.theme);
       // A new path is a new CLI to check.
       if ("path" in change && models) await models.look(next);

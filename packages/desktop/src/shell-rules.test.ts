@@ -11,6 +11,7 @@ import {
   opensOutside,
   parseRequest,
   printedPath,
+  quitQuestion,
   readyOrigin,
   serverPath,
   storageProblem,
@@ -45,6 +46,25 @@ test("the shell answers the protocol's requests, as the server writes them", () 
     id: 6,
     request: { kind: "window.focus" },
   });
+  // How many threads Oriel is working on, for asking before quitting.
+  assert.deepEqual(parseRequest('{"id":7,"kind":"working","threads":2}'), {
+    id: 7,
+    request: { kind: "working", threads: 2 },
+  });
+  assert.deepEqual(parseRequest('{"id":8,"kind":"working","threads":0}'), {
+    id: 8,
+    request: { kind: "working", threads: 0 },
+  });
+});
+
+test("before quitting while Oriel works, the shell asks, with Quit first and Cancel on Escape", () => {
+  assert.deepEqual(quitQuestion(2), {
+    message: "Oriel is still working on 2 threads. Quit anyway?",
+    buttons: ["Quit", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  assert.equal(quitQuestion(1).message, "Oriel is still working on 1 thread. Quit anyway?");
 });
 
 test("anything else is refused, with an answer when it has an id", () => {
@@ -68,6 +88,8 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":11,"kind":"secret.set","name":"jira"}'), 11);
   assert.equal(refused('{"id":12,"kind":"folder.pick"}'), 12);
   assert.equal(refused('{"id":13,"kind":"notify","title":"x"}'), 13);
+  for (const threads of [-1, 1.5, "2", null])
+    assert.equal(refused(JSON.stringify({ id: 16, kind: "working", threads })), 16);
   // A click opens only a path on the server's own origin.
   for (const open of ["https://evil.example/", "//evil.example/", "/\\\\evil", "threads/1", "/a b"])
     assert.equal(

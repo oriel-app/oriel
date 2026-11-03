@@ -4,6 +4,7 @@
 //
 // The shell is Electron, from its pinned release zip, never npm: the zip is
 // checked against the hash in electron.ts, renamed to Oriel, its fuses set,
+// given Oriel's icon, drawn from `icon.svg` by sips and packed by iconutil,
 // and given the shell's code, compiled from `shell/`. Beside it go the Node
 // and Deno that mise.toml pins, copied from mise's installs, which the server
 // runs on; the server's source, laid out as in the repo, with the packages it
@@ -142,9 +143,34 @@ function plist(file: string, values: Record<string, string>, remove: string[] = 
   for (const key of remove) execFileSync("plutil", ["-remove", key, file]);
 }
 
+// The images a macOS .iconset holds, by the names iconutil reads: each size
+// at 1x and 2x, 16 to 1024 pixels.
+export function iconset(): { name: string; pixels: number }[] {
+  return [16, 32, 128, 256, 512].flatMap((size) => [
+    { name: `icon_${size}x${size}.png`, pixels: size },
+    { name: `icon_${size}x${size}@2x.png`, pixels: size * 2 },
+  ]);
+}
+
+// Oriel's icon, as `Oriel.icns` in place of Electron's, from the one SVG the
+// maintainer can replace. Only macOS's own tools: sips draws, iconutil packs.
+function macIcon(svg: string, resources: string, scratch: string) {
+  const set = join(scratch, "Oriel.iconset");
+  mkdirSync(set, { recursive: true });
+  const drawn = join(scratch, "icon.png");
+  execFileSync("sips", ["-s", "format", "png", svg, "--out", drawn], { stdio: "ignore" });
+  for (const { name, pixels } of iconset())
+    execFileSync("sips", ["-z", String(pixels), String(pixels), drawn, "--out", join(set, name)], {
+      stdio: "ignore",
+    });
+  execFileSync("iconutil", ["-c", "icns", set, "-o", join(resources, "Oriel.icns")]);
+  rmSync(join(resources, "electron.icns"));
+  rmSync(scratch, { recursive: true });
+}
+
 // Electron.app from the zip, as Oriel.app: renamed, its default app gone,
-// its fuses set.
-function macShell(zip: string, build: string): string {
+// its icon Oriel's, its fuses set.
+function macShell(zip: string, build: string, icon: string): string {
   const unpacked = join(build, "unpacked");
   rmSync(unpacked, { recursive: true, force: true });
   execFileSync("ditto", ["-x", "-k", zip, unpacked]);
@@ -156,6 +182,7 @@ function macShell(zip: string, build: string): string {
     renameSync(join(unpacked, license), join(resources, `electron-${license}`));
   rmSync(unpacked, { recursive: true });
   rmSync(join(resources, "default_app.asar"));
+  macIcon(icon, resources, join(build, "icon"));
 
   renameSync(join(contents, "MacOS/Electron"), join(contents, "MacOS/Oriel"));
   plist(
@@ -165,6 +192,7 @@ function macShell(zip: string, build: string): string {
       CFBundleName: "Oriel",
       CFBundleDisplayName: "Oriel",
       CFBundleExecutable: "Oriel",
+      CFBundleIconFile: "Oriel.icns",
       CFBundleShortVersionString: "0.0.0",
       CFBundleVersion: "0",
     },
@@ -290,7 +318,7 @@ if (import.meta.main) {
   const zip = await electronZip(join(desktop, "build/cache"), on);
   rmSync(build, { recursive: true, force: true });
   mkdirSync(build, { recursive: true });
-  const app = macShell(zip, build);
+  const app = macShell(zip, build, join(desktop, "icon.svg"));
   const resources = join(app, "Contents/Resources");
 
   console.log("Compiling the shell…");

@@ -93,6 +93,8 @@ function applied(view: SettingsView, change: SettingsChange): SettingsView {
   if ("textSize" in change) return { ...view, textSize: change.textSize };
   if ("send" in change) return { ...view, send: change.send };
   if ("notify" in change) return { ...view, notify: change.notify };
+  if ("askBeforeQuitting" in change)
+    return { ...view, askBeforeQuitting: change.askBeforeQuitting };
   if ("model" in change) return { ...view, model: change.model };
   if ("titleModel" in change) return { ...view, titleModel: change.titleModel };
   if ("on" in change)

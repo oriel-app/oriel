@@ -798,6 +798,10 @@ export type SettingsView = {
   // and whether this server can at all.
   notify: boolean;
   notifies: boolean;
+  // Whether the desktop app asks before quitting while Oriel works on a
+  // thread, and whether this server's app can.
+  askBeforeQuitting: boolean;
+  asksBeforeQuitting: boolean;
 };
 
 // One change from the settings page, applied at once.
@@ -806,6 +810,7 @@ export type SettingsChange =
   | { textSize: TextSize }
   | { send: SendKey }
   | { notify: boolean }
+  | { askBeforeQuitting: boolean }
   | { model: ModelPick }
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }
