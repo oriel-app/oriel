@@ -1,0 +1,713 @@
+/* The specimen's own layout, and the components built from the
+   direction's primitives in window.css. Only tokens; no raw values but the
+   page's grid. */
+body {
+  container: none;
+}
+
+.sp {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  display: grid;
+  gap: var(--space-8);
+}
+
+.sp h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-tight);
+}
+
+.sp-idea {
+  margin: var(--space-2) 0 0;
+  max-width: 44rem;
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+}
+
+.sp section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sp h2 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sp h3 {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.sp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.sp-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* Swatches: the colour, its token, its value and, for text colours, the
+   ratio against the page. */
+.sp-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.sp-states {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.sp-swatch {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+}
+
+.sp-swatch i {
+  display: block;
+  height: 2.5rem;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-1);
+}
+
+.sp-swatch b {
+  font-weight: var(--weight-medium);
+}
+
+.sp-swatch code,
+.sp-mono {
+  color: var(--text-faint);
+  font: var(--text-xs) var(--font-mono);
+}
+
+.sp-on-soft {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-1);
+  font-weight: var(--weight-medium);
+}
+
+/* Type, space, shape. */
+.sp-type {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+}
+
+.sp-space {
+  display: flex;
+  align-items: end;
+  gap: var(--space-4);
+}
+
+.sp-space i {
+  display: block;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 var(--border) var(--accent);
+}
+
+.sp-shape {
+  display: grid;
+  place-items: center;
+  width: 6rem;
+  height: 4rem;
+  border: var(--border) solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Icons: a 16 grid, one stroke, round joins, the text's colour. */
+.sp-icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.1875rem;
+}
+
+.sp-icon.small {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.sp-icons {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.sp-icons > span {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-1);
+  background: var(--surface);
+}
+
+.sp-icons > span > span {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--text);
+}
+
+/* The chip (decision 0032): in the line, no box. Icon, key, name, state. */
+.sp-prose {
+  max-width: 40rem;
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+}
+
+.sp-chip {
+  --mark: var(--text-faint);
+  --mark-bg: none;
+  --mark-halo: transparent;
+  --mark-radius: 50%;
+  --mark-turn: none;
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+
+.sp-chip .sp-icon {
+  margin-right: 0.125rem;
+  color: var(--text-faint);
+}
+
+.sp-chip .key {
+  margin-right: 0.25rem;
+}
+
+.sp-chip-name {
+  text-decoration: underline var(--line-strong) 1px;
+  text-underline-offset: 0.2em;
+}
+
+.sp-chip-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  margin-left: 0.3125rem;
+  color: var(--mark);
+  font-size: var(--text-xs);
+  vertical-align: 0.0625rem;
+}
+
+/* The state mark, and its states, as the window draws them. */
+.sp-mark,
+.sp-chip-state::before {
+  display: inline-block;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--mark-radius);
+  background: var(--mark-bg);
+  box-shadow:
+    inset 0 0 0 1.5px var(--mark),
+    0 0 0 2px var(--mark-halo);
+  transform: var(--mark-turn);
+  content: "";
+}
+
+.sp-state {
+  --mark: var(--text-faint);
+  --mark-bg: none;
+  --mark-halo: transparent;
+  --mark-radius: 50%;
+  --mark-turn: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--mark);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+[data-s="todo"] {
+  --mark: var(--state-todo);
+}
+
+[data-s="progress"] {
+  --mark: var(--state-progress);
+  --mark-bg: linear-gradient(to right, var(--mark) 50%, transparent 50%);
+}
+
+[data-s="needs"] {
+  --mark: var(--state-needs);
+  --mark-bg: var(--mark);
+  --mark-halo: var(--state-needs-soft);
+}
+
+[data-s="stalled"] {
+  --mark: var(--state-stalled);
+  --mark-bg: var(--mark);
+  --mark-radius: 1px;
+  --mark-turn: rotate(45deg) scale(0.85);
+}
+
+[data-s="done"],
+[data-s="applied"] {
+  --mark: var(--state-done);
+  --mark-bg: var(--mark);
+}
+
+[data-s="reverted"] {
+  --mark: var(--state-reverted);
+  --mark-bg: linear-gradient(135deg, transparent 43%, var(--mark) 43% 57%, transparent 57%);
+}
+
+/* Buttons. */
+.sp-button {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  border: var(--border) solid var(--line-strong);
+  border-radius: var(--radius-1);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.sp-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.sp-button.quiet {
+  border-color: transparent;
+  background: none;
+  color: var(--text-muted);
+}
+
+.sp-button.danger {
+  border-color: var(--state-stalled);
+  background: var(--surface);
+  color: var(--state-stalled);
+}
+
+.sp-button.hover {
+  background: var(--surface-hover);
+}
+
+.sp-button.primary.hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--text));
+}
+
+.sp-button.focus {
+  outline: var(--border-strong) solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The ask bar, and a plain input. */
+.sp-ask {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: var(--border) solid var(--line-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  box-shadow: var(--elevation-1);
+}
+
+.sp-ask.focus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.sp-ask span {
+  flex: 1;
+  color: var(--text-faint);
+  font-size: var(--text-lg);
+}
+
+.sp-ask span.typed {
+  color: var(--text);
+}
+
+.sp-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sp-question {
+  padding: 0.125rem var(--space-3);
+  border: var(--border) solid var(--line-strong);
+  border-radius: var(--radius-round);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.sp-input {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.sp-input > span:last-child {
+  padding: 0.3125rem var(--space-2);
+  border: var(--border) solid var(--line-strong);
+  border-radius: var(--radius-1);
+  background: var(--surface);
+  color: var(--text-faint);
+  font-size: var(--text-md);
+}
+
+/* The workstream card and the list row. */
+.sp-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+.sp-card-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.sp-card-name {
+  flex: 1;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+}
+
+.sp-meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.sp-progress {
+  display: flex;
+  gap: 2px;
+  height: 0.25rem;
+}
+
+.sp-progress i {
+  border-radius: var(--radius-round);
+}
+
+.sp-signal {
+  color: var(--state-stalled);
+  font-size: var(--text-sm);
+}
+
+.sp-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+.sp-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row);
+  padding: 0 var(--space-3);
+  border-top: var(--border) solid var(--line);
+  font-size: var(--text-md);
+}
+
+.sp-list li:first-child {
+  border-top: 0;
+}
+
+.sp-list li.hover {
+  background: var(--surface-hover);
+}
+
+.sp-list.comfortable li {
+  min-height: var(--row-comfortable);
+  font-size: var(--text-lg);
+}
+
+.sp-grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--avatar);
+  color: var(--avatar-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+/* Blocks (decision 0030). */
+.sp-block {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+.sp-block figcaption {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.sp-bars {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 2rem;
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.sp-bars i {
+  display: block;
+  height: 0.625rem;
+  border-radius: var(--radius-1);
+  background: var(--accent);
+}
+
+.sp-bars .num,
+.sp-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.sp-table th {
+  color: var(--text-faint);
+  font-weight: var(--weight-medium);
+  text-align: left;
+}
+
+.sp-table th,
+.sp-table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border) solid var(--line);
+}
+
+.sp-rows .sp-chip {
+  white-space: normal;
+}
+
+.sp-rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-md);
+}
+
+/* Notes: Undo's, at the foot of the window, and Oriel's, in a thread. */
+.sp-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--n-7);
+  color: var(--n-0);
+  box-shadow: var(--elevation-2);
+  font-size: var(--text-sm);
+}
+
+.sp-undo button {
+  padding: 0.125rem var(--space-2);
+  border: 0;
+  border-radius: var(--radius-1);
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-strong);
+  text-decoration: underline;
+}
+
+.sp-note {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  border-left: var(--border-strong) solid var(--line-strong);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.sp-note b {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* The panel beside the page. */
+.sp-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  box-shadow: var(--elevation-2);
+}
+
+.sp-panel h4 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-tight);
+}
+
+.sp-panel p {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+}
+
+.sp-facets {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.sp-facets dt {
+  color: var(--text-faint);
+}
+
+.sp-facets dd {
+  margin: 0;
+}
+
+/* A change set's lines. */
+.sp-diff {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-md);
+}
+
+.sp-diff div {
+  display: flex;
+  gap: var(--space-2);
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-1);
+}
+
+.sp-diff .del {
+  background: var(--state-stalled-soft);
+}
+
+.sp-diff .ins {
+  background: var(--state-applied-soft);
+}
+
+.sp-diff .del::before {
+  color: var(--state-stalled);
+  content: "−";
+}
+
+.sp-diff .ins::before {
+  color: var(--state-applied);
+  content: "+";
+}
+
+.sp-diff del {
+  background: color-mix(in srgb, var(--state-stalled) 18%, transparent);
+  text-decoration-color: var(--state-stalled);
+}
+
+.sp-diff ins {
+  background: color-mix(in srgb, var(--state-applied) 20%, transparent);
+  text-decoration: none;
+}
+
+/* The agent's HTML (decision 0033): Oriel's frame and label around what the
+   agent drew, in a look Oriel uses nowhere else, so nothing inside it reads
+   as Oriel's own. */
+.sp-frame {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.sp-frame-label {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--text-muted);
+  font: var(--text-xs) / var(--leading) var(--font-mono);
+}
+
+.sp-frame-body {
+  display: block;
+  width: 100%;
+  height: 9.5rem;
+  border: 0;
+}
+
+.sp-after {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+}
+
+/* Density, side by side. */
+.sp-density p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
