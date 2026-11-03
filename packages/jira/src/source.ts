@@ -36,7 +36,6 @@ import {
   fieldsOf,
   indexFieldNames,
   indexFieldShape,
-  indexFields,
   issue,
   issueKey,
   movesOf,
@@ -74,6 +73,10 @@ const overlapMs = 60 * 60 * 1000;
 const unknownZoneOverlapMs = 14 * 60 * 60 * 1000;
 const readConcurrency = 4;
 
+// An issue's fields as the source asks for them: the index's, and the
+// description, which a read returns and a listing hands to Oriel's sync as
+// text to find references in.
+const listedFields = object({ ...indexFieldShape, description: optional(unknown) });
 const searchPage = object({
   issues: array(unknown),
   nextPageToken: optional(nullable(string)),
@@ -83,7 +86,7 @@ const myself = object({ timeZone: optional(string) });
 const readIssue = object({
   id: numericId,
   key: issueKey,
-  fields: object({ ...indexFieldShape, description: optional(unknown) }),
+  fields: listedFields,
   transitions: transitionsShape,
 });
 const commentPage = object({
@@ -117,27 +120,34 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     const own = await boards.field(project);
     return own === undefined ? points : new Map([...points, [project, own]]);
   };
+  // The fields every request asks for, the description last.
   const fieldList = (points: ReadonlyMap<string, string>) => [
-    ...new Set([...indexFieldNames, ...points.values()]),
+    ...new Set([...indexFieldNames, ...points.values(), "description"]),
   ];
 
+  // An index record, and its summary and description as one text for Oriel's
+  // sync to find references in. The text never reaches the record.
   const toRecord = (
     raw: unknown,
     points: ReadonlyMap<string, string>,
-  ): Result<IndexRecord<"jira", JiraAttrs>> => {
-    const parsed = issue(indexFields)(raw);
+  ): Result<{ record: IndexRecord<"jira", JiraAttrs>; text: string }> => {
+    const parsed = issue(listedFields)(raw);
     if (!parsed.ok) return parsed;
     const { id, key, fields } = parsed.value;
+    const summary = fields.summary;
     return {
       ok: true,
       value: {
-        id: itemId("jira", key),
-        stableId: id,
-        title: fields.summary,
-        location: `${site}/browse/${key}`,
-        updatedAt: fields.updated,
-        facets: facetsOf(fields, raw, points.get(projectOf(key))),
-        attrs: attrsOf(fields),
+        record: {
+          id: itemId("jira", key),
+          stableId: id,
+          title: summary,
+          location: `${site}/browse/${key}`,
+          updatedAt: fields.updated,
+          facets: facetsOf(fields, raw, points.get(projectOf(key))),
+          attrs: attrsOf(fields),
+        },
+        text: jiraText({ summary, description: adfToText(fields.description), comments: [] }),
       },
     };
   };
@@ -161,7 +171,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     const points = await withOwn(parsed.key, listed);
     const request = {
       method: "GET" as const,
-      path: `${api}/issue/${parsed.key}?fields=${[...fieldList(points), "description"].join(",")}&expand=transitions`,
+      path: `${api}/issue/${parsed.key}?fields=${fieldList(points).join(",")}&expand=transitions`,
     };
     const response = await transport(request);
     // Jira answers 404 both for a deleted issue and for one this account can't see.
@@ -204,7 +214,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
   const recordOf = async (
     id: ItemId<"jira">,
     listed: ReadonlyMap<string, string>,
-  ): Promise<IndexRecord<"jira", JiraAttrs> | "gone" | null> => {
+  ): Promise<{ record: IndexRecord<"jira", JiraAttrs>; text: string } | "gone" | null> => {
     const parsed = parseItemId(id);
     if (parsed?.source !== "jira") return "gone";
     const points = await withOwn(parsed.key, listed);
@@ -273,20 +283,23 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
           searchPage,
         );
         const records: IndexRecord<"jira", JiraAttrs>[] = [];
+        const texts: Record<string, string> = {};
         for (const raw of page.issues) {
-          const record = toRecord(raw, points);
-          if (!record.ok) {
+          const listed = toRecord(raw, points);
+          if (!listed.ok) {
             log("jira: skipped an issue in a shape Oriel can't read", {
-              issues: record.issues.slice(0, 5),
+              issues: listed.issues.slice(0, 5),
             });
             continue;
           }
-          records.push(record.value);
-          if (latest === null || record.value.updatedAt > latest) latest = record.value.updatedAt;
+          const { record, text } = listed.value;
+          records.push(record);
+          texts[record.stableId] = text;
+          if (latest === null || record.updatedAt > latest) latest = record.updatedAt;
         }
         // With nothing seen yet there is no cursor to report.
         if (latest !== null)
-          yield { records, gone: [], cursor: latest } satisfies SyncPage<"jira", JiraAttrs>;
+          yield { records, gone: [], cursor: latest, texts } satisfies SyncPage<"jira", JiraAttrs>;
         token = page.nextPageToken ?? null;
         if (!token || page.isLast === true) return;
         if (tokens.has(token)) throw new Error("jira: the search repeated a page token");
@@ -304,9 +317,11 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     async records(ids) {
       const points = await boards.fields();
       const read = await mapLimit(ids, readConcurrency, (id) => recordOf(id, points));
+      const found = read.filter((one) => one !== null && one !== "gone");
       return {
-        records: read.filter((record) => record !== null && record !== "gone"),
+        records: found.map((one) => one.record),
         gone: ids.filter((_, i) => read[i] === "gone"),
+        texts: Object.fromEntries(found.map((one) => [one.record.stableId, one.text])),
       };
     },
   };

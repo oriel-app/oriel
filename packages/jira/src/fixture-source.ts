@@ -1,9 +1,10 @@
 // SYN as a source, from the frozen fixtures, for unit tests and evals. It
 // behaves like the Jira source where tests can tell: pages ordered by update,
 // an `updated` cursor, no gone IDs from a listing (Jira's search can't list
-// deletions, so the sync worker's full sweep must find them), and a deleted
-// issue read as gone.
+// deletions, so the sync worker's full sweep must find them), each record's
+// summary and description as its text, and a deleted issue read as gone.
 import type { FieldValues, ItemId } from "@oriel/core";
+import { jiraText } from "./attrs.ts";
 import { type FixtureSnapshot, fixtureSnapshot, type JiraFixture } from "./fixture.ts";
 import { jiraOps } from "./ops.ts";
 import type { JiraSource } from "./source.ts";
@@ -70,8 +71,16 @@ export function fixtureSource(fixture: JiraFixture, options: FixtureSourceOption
       let latest = cursor;
       for (let at = 0; at < listed.length; at += pageSize) {
         const records = listed.slice(at, at + pageSize).map((record) => structuredClone(record));
+        const texts = Object.fromEntries(
+          records.flatMap((record) => {
+            const content = snapshot.content.get(record.id);
+            return content
+              ? [[record.stableId, jiraText({ ...content, comments: [] })] as const]
+              : [];
+          }),
+        );
         latest = records.at(-1)?.updatedAt ?? latest;
-        if (latest !== null) yield { records, gone: [], cursor: latest };
+        if (latest !== null) yield { records, gone: [], cursor: latest, texts };
       }
     },
 

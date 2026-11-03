@@ -32,6 +32,25 @@ test("a listing is the snapshot's records, oldest update first, in pages", async
   assert.ok(pages.every((page) => page.gone.length === 0));
 });
 
+test("each page hands every record's summary and description as its text, as Jira's does", async () => {
+  const pages = await list(null, allEdits, 50);
+  const { content } = fixtureSnapshot(fixture, site, allEdits);
+  for (const page of pages) {
+    assert.deepEqual(
+      Object.keys(page.texts ?? {}).toSorted(),
+      page.records.map((r) => r.stableId).toSorted(),
+    );
+    for (const record of page.records) {
+      const { summary, description } = content.get(record.id) ?? {};
+      assert.equal(
+        page.texts?.[record.stableId],
+        [summary, description].filter((part) => part?.trim()).join("\n\n"),
+        record.id,
+      );
+    }
+  }
+});
+
 test("a cursor lists what changed at or after it, and never a deletion", async () => {
   const base = await list(null, 0);
   const cursor = base.at(-1)?.cursor ?? null;

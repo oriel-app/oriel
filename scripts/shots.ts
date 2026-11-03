@@ -16,6 +16,7 @@
 // team: one change set moves it in Jira and posts in Slack's channel,
 // proposed on one, approved on the next, and reverted on the last (OA-28).
 // One more has 120 more stories in SYN's checkout epic, so Browse pages them.
+// One more has two stories whose descriptions name a third (OA-162).
 //
 // The overview opens at `/`, with the counts strip, Needs you, the
 // headlines and the workstreams, and who has work in progress beside them.
@@ -217,6 +218,29 @@ const paged = await (async () => {
   });
 })();
 offline.site.outage("offline");
+// SYN where two stories' descriptions name the phone wallet story, so Jira
+// items reference each other (OA-162), in Browse's Linked grouping and on
+// the overview.
+const naming = await (async () => {
+  const syn = loadJiraFixture();
+  const named: Record<string, string> = {
+    "SYN-99": "Shares the payment step with SYN-23: offer to save the card after a wallet payment.",
+    "SYN-61": "Same opt-in as SYN-23 asks for, before the first message.",
+  };
+  const issues = syn.issues.map((issue) =>
+    Object.hasOwn(named, issue.key) ? { ...issue, description: named[issue.key] ?? "" } : issue,
+  );
+  return start(0, {
+    db: ":memory:",
+    jira: {
+      kind: "live",
+      site: memorySiteOrigin,
+      credential: { headers: async () => ({}) },
+      project: "SYN",
+      fetch: memorySite({ ...syn, issues }, instant(new Date())).fetch,
+    },
+  });
+})();
 // A teammate wrote SYN-23's description in Jira's editor, as rich text, and
 // two comments on it: one plain, one with a list, code and a link.
 const described = await live();
@@ -942,6 +966,17 @@ const scenes: Scene[] = [
       await openFirstCluster(page);
     },
   },
+  // Jira stories whose descriptions name another story (OA-162).
+  {
+    name: "linked-jira",
+    path: "/?grouping=linked",
+    on: naming,
+    act: async (page) => {
+      await shown(page, "linked");
+      await openFirstCluster(page);
+    },
+  },
+  { name: "overview-linked-jira", path: "/", on: naming, act: overviewShown },
   {
     name: "no-estimates-epic",
     path: "/?grouping=epic",

@@ -76,3 +76,33 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
   assert.equal(JSON.parse(String(origin?.["origin"])).anchor, null);
   handle.close();
 });
+
+test("a Jira item whose description names another shows under Linked, and so does a Slack link in it", async (t) => {
+  const standupLink = "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788684000000100";
+  const app = await testApp(t, {
+    live: true,
+    slack: { kind: "fixture" },
+    issues: (syn) =>
+      syn.map((issue) =>
+        issue.key === "SYN-61"
+          ? {
+              ...issue,
+              description: `Waits on SYN-23's wallet button, as raised at ${standupLink}.`,
+            }
+          : issue,
+      ),
+  });
+  const linked = json<WindowView>(await app.get("/api/window?grouping=linked"));
+  const headed = (id: string) => linked.clusters.find((c) => c.list[0]?.id === id);
+  const wallet = headed("jira:SYN-23");
+  assert.ok(wallet, "SYN-23 heads a cluster");
+  assert.deepEqual(
+    wallet.list.map((row) => row.id),
+    ["jira:SYN-23", "jira:SYN-61"],
+  );
+  assert.ok(headed(standup)?.list.some((row) => row.id === "jira:SYN-61"));
+  // Slack's messages name SYN-61 too, so its own cluster holds them and
+  // what its description names.
+  const sms = headed("jira:SYN-61")?.list.map((row) => row.id) ?? [];
+  assert.ok(sms.includes("jira:SYN-23") && sms.includes(standup));
+});
