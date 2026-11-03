@@ -1,6 +1,6 @@
 # 0037 The agent runs on the person's own Claude Code
 
-Accepted 2026-11-03 (OA-187). Amends 0020. Changes SPEC §7. Builds the harness 0036's Model use asks for.
+Accepted 2026-11-03 (OA-187). Amends 0020 and 0036. Changes SPEC §7. Builds the harness 0036's Model use asks for.
 
 Adds: none
 

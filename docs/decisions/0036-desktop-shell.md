@@ -1,6 +1,6 @@
 # 0036 The desktop app: a thin native shell per OS over the same server
 
-Accepted 2026-11-02. Settles what 0029 left open. Amends 0001, 0020, 0022 and 0029. Changes SPEC §1, §3, §4, §5, §6, §7 and §14, and the security reviewer's threat model.
+Accepted 2026-11-02. Settles what 0029 left open. Amends 0001, 0020, 0022 and 0029. Changes SPEC §1, §3, §4, §5, §6, §7 and §14, and the security reviewer's threat model. Amended by 0037: the harness reaches `run` over the command-line agent's own stdin and stdout, a narrower per-turn capability than a socket or a token file, and passes it an allowlisted environment, stricter than one minus vendor keys.
 
 Adds: none
 
