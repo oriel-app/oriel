@@ -1,19 +1,23 @@
 // The sidebar, on every page but a review link: the window, the threads
 // waiting on the user, the user's workstreams with their threads under them, the
-// latest done threads, and the sources: Jira and the connected folder.
+// latest done threads, and the sources. It stays quiet unless something is
+// happening: what waits on the user is at the top, the rest fold.
 // On a wide screen it folds to a strip of icons, where the fold button counts
 // the threads waiting on the user; on a narrow one it's a drawer the menu
 // opens.
-import { useLayoutEffect, useState } from "preact/hooks";
+import type { ComponentChildren } from "preact";
+import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { WorkstreamMenu } from "./end-workstream.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
-import type { JiraModel } from "./jira.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, SearchIcon, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
+import type { Route } from "./route.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
+import { ago, type SourcesModel, type SourcesMsg, sourcesLine } from "./sources.ts";
+import { windowRoute } from "./update.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -81,18 +85,17 @@ export function Sidebar(props: {
       {/* While a search shows its results, they take the lists' place. */}
       {!searching(model.search) && (
         <>
-          {/* The overview lists them itself, first. */}
-          {page !== "overview" && (
-            <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
-          )}
+          <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
           <Workstreams where={where} dispatch={dispatch} />
           <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
         </>
       )}
-      <div class="sources">
-        <Jira jira={model.jira} dispatch={dispatch} />
-        <Folder folder={model.folder} dispatch={dispatch} />
-      </div>
+      <Sources
+        sources={model.sources}
+        folder={model.folder}
+        browse={windowRoute(model.window)}
+        dispatch={dispatch}
+      />
     </aside>
   );
 }
@@ -229,19 +232,18 @@ const searching = (search: SearchModel) => search.query.trim() !== "";
 
 const modKey = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
-// What needs the user, in sight on every page: each thread waiting on a
-// review or a reply, with what it waits on and its workstream. The workstreams below
-// say which page this is.
-// Past a few, the rest show here when asked for.
+// What needs the user, in sight on every page, at the top and never folded:
+// each thread waiting on a review or a reply, with what it waits on and its
+// workstream, which says why it's here, so it has no heading. When nothing
+// waits, nothing shows. Past a few, the rest show here when asked for. The
+// overview's count of them points here (`needsYouId`).
 function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
   const [all, setAll] = useState(false);
-  if (!props.loaded) return null;
+  if (!props.loaded || where.waiting.length === 0) return null;
   const shown = all ? where.waiting : where.waiting.slice(0, shownWaiting);
   return (
-    <nav class="sidebar-needs" aria-label="Needs you">
-      <h2 class="rail-title">Needs you</h2>
-      {where.waiting.length === 0 && <p class="rail-empty">Nothing is waiting on you.</p>}
+    <nav id={needsYouId} class="sidebar-needs" aria-label="Needs you" tabIndex={-1}>
       <ul class="nav-waiting">
         {shown.map((thread) => (
           <li key={thread.id}>
@@ -277,7 +279,12 @@ function NeedsYou(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   );
 }
 
+export const needsYouId = "needs-you";
+
+// The user's workstreams, under a heading that folds them, which this
+// browser remembers; open until the user folds them.
 function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
+  const [shown, toggleShown] = useFold("oriel.sidebar.workstreams", true);
   // Workstreams the user opened or closed by hand. Any other is open while it's
   // the current one, and arriving at a workstream opens it whatever was set.
   const [set, setSet] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -299,22 +306,26 @@ function Workstreams({ where, dispatch }: { where: Nav; dispatch: Dispatch }) {
     );
   return (
     <nav class="sidebar-workstreams" aria-label="Workstreams">
-      <h2 class="rail-title">Workstreams</h2>
-      {where.workstreams !== null && where.workstreams.length === 0 && (
+      <FoldHead open={shown} onToggle={toggleShown} controls="nav-workstreams">
+        Workstreams
+      </FoldHead>
+      {shown && where.workstreams !== null && where.workstreams.length === 0 && (
         <p class="rail-empty">Pick items in the window, or make a workstream from a cluster.</p>
       )}
-      <ul class="nav-workstreams">
-        {where.workstreams?.map((entry) => (
-          <WorkstreamEntry
-            key={entry.workstream.id}
-            entry={entry}
-            open={isOpen(entry)}
-            thread={where.thread}
-            onToggle={() => toggle(entry)}
-            dispatch={dispatch}
-          />
-        ))}
-      </ul>
+      {shown && (
+        <ul id="nav-workstreams" class="nav-workstreams">
+          {where.workstreams?.map((entry) => (
+            <WorkstreamEntry
+              key={entry.workstream.id}
+              entry={entry}
+              open={isOpen(entry)}
+              thread={where.thread}
+              onToggle={() => toggle(entry)}
+              dispatch={dispatch}
+            />
+          ))}
+        </ul>
+      )}
     </nav>
   );
 }
@@ -418,28 +429,15 @@ function WorkstreamEntry(props: {
 // ones on its Dropped tab, which a line under them leads to.
 function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   const { where, dispatch } = props;
-  const [open, setOpen] = useState(readDoneOpen);
+  const [open, toggle] = useFold("oriel.sidebar.done", false);
   if (!props.loaded) return null;
   const { done, dropped } = doneTabs(where.finished);
-  const toggle = () => {
-    writeDoneOpen(!open);
-    setOpen(!open);
-  };
   return (
     <nav class="sidebar-done" aria-label="Done">
-      <h2 class="rail-title">
-        <button
-          type="button"
-          class="done-toggle"
-          aria-expanded={open}
-          aria-controls="nav-done"
-          onClick={toggle}
-        >
-          <Chevron />
-          Done
-          {done.length > 0 && <span class="nav-count">{done.length}</span>}
-        </button>
-      </h2>
+      <FoldHead open={open} onToggle={toggle} controls="nav-done">
+        Done
+        {done.length > 0 && <span class="nav-count">{done.length}</span>}
+      </FoldHead>
       {open && (
         <ul id="nav-done" class="nav-threads nav-done">
           {done.length === 0 && <li class="rail-empty">No thread is done yet.</li>}
@@ -493,86 +491,196 @@ function Done(props: { where: Nav; loaded: boolean; dispatch: Dispatch }) {
   );
 }
 
-// Whether the Done section was left open, kept in this browser only.
-const doneOpenKey = "oriel.sidebar.done";
-
-function readDoneOpen(): boolean {
-  try {
-    return localStorage.getItem(doneOpenKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeDoneOpen(open: boolean) {
-  try {
-    if (open) localStorage.setItem(doneOpenKey, "1");
-    else localStorage.removeItem(doneOpenKey);
-  } catch {
-    // Storage may be off; the section just opens folded next time.
-  }
-}
-
-// Jira, at the foot: its project as one quiet line, and Sync, which looks
-// for what was made or deleted there since. While Jira can't be reached the
-// window keeps what it had, and the line says so.
-function Jira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
-  const connected = jira.view?.connected;
-  if (!connected) return null;
+// A heading that folds the section under it.
+function FoldHead(props: {
+  open: boolean;
+  onToggle(): void;
+  controls: string;
+  children: ComponentChildren;
+  // Beside the heading, at its end: what it says folded, or its actions.
+  after?: ComponentChildren;
+}) {
   return (
-    <section class="jira" aria-label="Jira">
-      <p class="source-line" title={`${connected.project} on ${new URL(connected.site).host}`}>
-        <TrackerIcon />
-        <span class="source-name">{connected.project}</span>
-        <span class="nav-count">{plural(connected.items, "item")}</span>
+    <div class="fold-head">
+      <h2 class="rail-title">
         <button
           type="button"
-          class="quiet-action"
-          disabled={jira.syncing}
-          onClick={() => dispatch({ type: "jira", msg: { type: "syncClicked" } })}
+          class="fold-toggle"
+          aria-expanded={props.open}
+          aria-controls={props.controls}
+          onClick={props.onToggle}
         >
-          {jira.syncing ? "Syncing…" : "Sync"}
+          <Chevron />
+          {props.children}
         </button>
-      </p>
-      {jira.problem && (
-        <p class="source-problem" role="alert">
-          {jira.problem}
-        </p>
+      </h2>
+      {props.after}
+    </div>
+  );
+}
+
+// Whether a section of the sidebar is open, kept in this browser only, by
+// `key`; `opened` until the user folds or opens it. `show` opens it for now
+// without keeping that, as a source's problem does.
+function useFold(key: string, opened: boolean) {
+  const [open, setOpen] = useState(() => readOpen(key, opened));
+  const toggle = () => {
+    writeOpen(key, !open);
+    setOpen(!open);
+  };
+  return [open, toggle, () => setOpen(true)] as const;
+}
+
+function readOpen(key: string, opened: boolean): boolean {
+  try {
+    const kept = localStorage.getItem(key);
+    return kept === null ? opened : kept === "1";
+  } catch {
+    return opened;
+  }
+}
+
+function writeOpen(key: string, open: boolean) {
+  try {
+    localStorage.setItem(key, open ? "1" : "0");
+  } catch {
+    // Storage may be off; the section just opens as it starts next time.
+  }
+}
+
+// Every connected source, at the foot, folded until the user opens it: one
+// line of how many, when the longest ago of them last synced, and a warning
+// mark while any has a problem. It draws the eye only while a sync runs or a
+// source has a problem, and a problem opens it. Open, each source is one row
+// drawn the same way, whatever the source: its name, its items, which open
+// Browse filtered to it, and when it last synced, with Sync on hover or
+// focus; Sync all heads them. Adding a source is the last entry: the folder,
+// typed by its path, the one the sidebar can add.
+function Sources(props: {
+  sources: SourcesModel;
+  folder: FolderModel;
+  // Browse as the user last left it, which a row opens filtered to its source.
+  browse: Extract<Route, { page: "window" }>;
+  dispatch: Dispatch;
+}) {
+  const { sources, folder, dispatch } = props;
+  const [open, toggle, show] = useFold("oriel.sidebar.sources", false);
+  const line = sourcesLine(sources);
+  const problems = Object.keys(sources.problems).length + (folder.problem ? 1 : 0);
+  useEffect(() => {
+    if (problems > 0) show();
+  }, [problems]);
+  const send = (msg: SourcesMsg) => dispatch({ type: "sources", msg });
+  const now = Date.now();
+  if (sources.view === null) return null;
+  return (
+    <section
+      class="sidebar-sources"
+      aria-label="Sources"
+      data-syncing={line.syncing || undefined}
+      data-problem={line.problem || undefined}
+    >
+      <FoldHead
+        open={open}
+        onToggle={toggle}
+        controls="nav-sources"
+        after={
+          open ? (
+            line.count > 1 && (
+              <button
+                type="button"
+                class="quiet-action"
+                disabled={sources.syncing.length === line.count}
+                onClick={() => send({ type: "syncAllClicked" })}
+              >
+                Sync all
+              </button>
+            )
+          ) : (
+            <span class="sources-line">
+              {line.problem && <WarningIcon label="A source has a problem" />}
+              {line.syncing
+                ? "Syncing…"
+                : line.count === 0
+                  ? "None yet"
+                  : `${plural(line.count, "source")} · ${line.syncedAt === null ? "not synced" : ago(line.syncedAt, now)}`}
+            </span>
+          )
+        }
+      >
+        Sources
+      </FoldHead>
+      {open && (
+        <ul id="nav-sources" class="nav-sources">
+          {sources.view.map((source) => {
+            const syncing = sources.syncing.includes(source.kind);
+            const problem = sources.problems[source.kind];
+            return (
+              <li key={source.kind} class="source-row" data-syncing={syncing || undefined}>
+                <Link
+                  route={{
+                    page: "window",
+                    grouping: props.browse.grouping,
+                    addTo: null,
+                    source: source.kind,
+                  }}
+                  dispatch={dispatch}
+                  class="nav-link nav-source"
+                  title={source.about}
+                >
+                  {problem && <WarningIcon label="Its last sync didn't work" />}
+                  <span class="nav-name">{source.name}</span>
+                  <span class="nav-count" title={plural(source.items, "item")}>
+                    {source.items}
+                  </span>
+                  <span class="source-synced">
+                    {syncing
+                      ? "Syncing…"
+                      : source.syncedAt === null
+                        ? "not synced"
+                        : ago(source.syncedAt, now)}
+                  </span>
+                </Link>
+                <button
+                  type="button"
+                  class="quiet-action source-sync"
+                  disabled={syncing}
+                  aria-label={`Sync ${source.name}`}
+                  onClick={() => send({ type: "syncClicked", source: source.kind })}
+                >
+                  Sync
+                </button>
+                {problem && (
+                  <p class="source-problem" role="alert">
+                    {problem}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+          <li>
+            <AddSource folder={folder} dispatch={dispatch} />
+          </li>
+        </ul>
       )}
     </section>
   );
 }
 
-// The folder, at the foot: one quiet line, and a path to type only when the
-// user asks to add one.
-function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
+// Adding a source: a folder of markdown files, by the path the user types,
+// which takes the place of the one connected, if any.
+function AddSource({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
   const send = (msg: FolderMsg) => dispatch({ type: "folder", msg });
-  const { view } = folder;
-  const name = view?.path.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+  const name = folder.view?.path.split(/[\\/]/).filter(Boolean).at(-1);
   return (
-    <section class="folder" aria-label="Folder">
-      {view && !folder.open && (
-        <p class="source-line" title={view.path}>
-          <FolderIcon />
-          <span class="source-name">{name}</span>
-          <span class="nav-count">{plural(view.items, "file")}</span>
-          <button
-            type="button"
-            class="quiet-action"
-            disabled={folder.pending}
-            onClick={() => send({ type: "syncClicked" })}
-          >
-            {folder.pending ? "Syncing…" : "Sync"}
-          </button>
-        </p>
-      )}
+    <>
       {!folder.open ? (
         <button
           type="button"
-          class="quiet-action add-folder"
+          class="nav-link nav-more add-source"
           onClick={() => send({ type: "opened" })}
         >
-          {view ? "Use another folder" : "Add a folder"}
+          Add a source
         </button>
       ) : (
         <form
@@ -604,7 +712,10 @@ function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch 
               Cancel
             </button>
           </span>
-          <span class="folder-note">Oriel reads its .md files and never changes them.</span>
+          <span class="folder-note">
+            Oriel reads its .md files and never changes them.
+            {name && ` It takes the place of ${name}.`}
+          </span>
         </form>
       )}
       {folder.problem && (
@@ -612,7 +723,7 @@ function Folder({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch 
           {folder.problem}
         </p>
       )}
-    </section>
+    </>
   );
 }
 
@@ -650,19 +761,10 @@ function PlusIcon() {
   );
 }
 
-function TrackerIcon() {
+function WarningIcon({ label }: { label: string }) {
   return (
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
-      <path d="M5 6l1 1 2-2M5 10.5h6M9.5 6.5H11" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" />
+    <svg class="icon warning-mark" viewBox="0 0 16 16" role="img" aria-label={label}>
+      <path d="M8 2.5l6 10.5H2zM8 6.5v3M8 11.25v.25" />
     </svg>
   );
 }

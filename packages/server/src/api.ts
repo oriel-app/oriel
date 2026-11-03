@@ -44,6 +44,7 @@ import {
   type BrowseFilter,
   type ClusterPageView,
   type FolderView,
+  type SourceView,
   type GroupingId,
   type Undoable,
   type WorkstreamSummary,
@@ -113,10 +114,11 @@ export type ApiDeps = {
   // The overview, as the page and the window chat's `window.overview()`
   // read it (decision 0027).
   overview(): Promise<OverviewView>;
-  // The connected folder and Jira as they stand; connecting and syncing
-  // either is an action.
+  // The connected folder and Jira as they stand, and every connected source
+  // as the sidebar lists them; connecting and syncing any is an action.
   folder(): FolderView | null;
   jira(): JiraView;
+  sources(): SourceView[];
   log: Log;
 };
 
@@ -507,6 +509,22 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         await readJson(request, smallBody, emptyBody);
         const synced = await deps.dispatch("source.sync", { source: "folder" }, user);
         if ("problem" in synced) throw new Refused(409, synced.problem);
+        return json(200, synced);
+      },
+    },
+    {
+      method: "GET",
+      path: at("/sources"),
+      run: async () => json(200, { sources: deps.sources() }),
+    },
+    {
+      // A full sweep of Slack's picked channels. Slack failing it is a 502.
+      method: "POST",
+      path: at("/slack/sync"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        const synced = await deps.dispatch("source.sync", { source: "slack" }, user);
+        if ("problem" in synced) throw new Refused(502, synced.problem);
         return json(200, synced);
       },
     },

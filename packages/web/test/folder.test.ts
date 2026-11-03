@@ -44,27 +44,13 @@ test("a folder is added by its typed path, once", () => {
   );
 });
 
-test("a connected folder syncs again on demand", () => {
-  const shown = folderReplied(initFolder(), ok({ kind: "folder" }, { folder: notes })).model;
-  assert.deepEqual(updateFolder(initFolder(), { type: "syncClicked" })[1], []);
-  assert.deepEqual(updateFolder(shown, { type: "syncClicked" })[1], [
-    {
-      type: "http",
-      method: "POST",
-      url: "/api/folder/sync",
-      body: {},
-      tag: { kind: "folderSynced" },
-    },
-  ]);
-});
-
-test("the window shows the folder, and loads again once it synced", () => {
+test("the window shows the folder, and loads again once one is added", () => {
   const [model, effects] = initRoot({ page: "window", grouping: "epic", addTo: null });
   assert.ok(effects.includes(loadFolder));
   const [synced, after] = updateRoot(model, ok({ kind: "folderConnected" }, { folder: notes }));
   assert.equal(synced.folder.view?.items, 2);
   assert.deepEqual(
-    after.map((e) => e.type),
-    ["loadWindow"],
+    after.map((e) => (e.type === "http" ? e.url : e.type)),
+    ["loadWindow", "/api/sources"],
   );
 });

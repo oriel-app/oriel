@@ -18,8 +18,9 @@
 // One more has 120 more stories in SYN's checkout epic, so Browse pages them.
 // One more has two stories whose descriptions name a third (OA-162).
 //
-// The overview opens at `/`, with the counts strip, Needs you, the
-// headlines and the workstreams, and who has work in progress beside them.
+// The overview opens at `/`, with the counts strip, the headlines and the
+// workstreams, and who has work in progress beside them; Needs you is in the
+// sidebar, on every page.
 //
 // `pnpm shots --width 1440 panel-` takes only the scenes whose names
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
@@ -766,6 +767,14 @@ async function openAll(page: Page): Promise<void> {
   await itemsShown(page);
 }
 
+// Opens the sidebar's sources, which this browser may have left open.
+async function openSources(page: Page): Promise<void> {
+  await openSidebar(page);
+  const toggle = page.locator(".sidebar-sources .fold-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  await page.locator("#nav-sources").waitFor();
+}
+
 // Once the overview has loaded.
 async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
@@ -1406,6 +1415,17 @@ const scenes: Scene[] = [
     },
   },
   {
+    // The overview's count of the threads waiting on the user shows them in
+    // the sidebar (OA-185): a narrow screen opens its drawer.
+    name: "needs-you-overview",
+    path: "/",
+    act: async (page) => {
+      await overviewShown(page);
+      await page.locator(".overview-stat", { hasText: "need you" }).click();
+      await page.locator(".sidebar-needs[data-shown]").waitFor();
+    },
+  },
+  {
     // A thread's menu, from a right-click on it in the sidebar.
     name: "thread-menu",
     path: `/workstreams/${mixed.id}`,
@@ -1455,47 +1475,71 @@ const scenes: Scene[] = [
     },
   },
   {
+    // The sidebar's sources opened (OA-146): one row each, drawn the same
+    // way, with Sync on the row under the pointer, and Sync all.
+    name: "sources-open",
+    path: "/?grouping=epic",
+    act: async (page) => {
+      await shown(page, "epic");
+      await openSources(page);
+      if ((page.viewportSize()?.width ?? 0) > 760)
+        await page.locator(".source-row").first().hover();
+    },
+  },
+  {
+    // Adding a source: a folder, by its path, in the place of the one there.
     name: "folder-add",
     path: "/?grouping=epic",
     act: async (page) => {
       await shown(page, "epic");
-      // On a narrow screen the folder is in the sidebar's drawer.
-      if ((page.viewportSize()?.width ?? 0) <= 760) {
-        await page.getByRole("button", { name: "Open the sidebar" }).click();
-        await page.locator(".shell[data-drawer] .sidebar").waitFor();
-      }
-      await page.getByRole("button", { name: "Use another folder" }).click();
+      await openSources(page);
+      await page.getByRole("button", { name: "Add a source" }).click();
       await page.locator(".folder-form input").fill("~/notes/launch");
     },
   },
   {
-    // Jira syncing: the request is held until the screenshot is taken.
+    // Jira syncing: the request is held until the screenshot is taken. The
+    // sources fold to one line that says so.
     name: "jira-syncing",
     path: "/?grouping=epic",
     act: async (page) => {
       await shown(page, "epic");
       await page.route("**/api/jira/sync", () => {});
-      await openSidebar(page);
+      await openSources(page);
+      await page.getByRole("button", { name: "Sync Jira" }).click();
       await page
-        .getByRole("region", { name: "Jira" })
-        .getByRole("button", { name: "Sync" })
-        .click();
-      await page.getByRole("button", { name: "Syncing…" }).waitFor();
+        .locator(".source-row[data-syncing] .source-synced", { hasText: "Syncing…" })
+        .waitFor();
+      await page.locator(".sidebar-sources .fold-toggle").click();
+      await page.locator(".sources-line", { hasText: "Syncing…" }).waitFor();
     },
   },
   {
+    // A sync that fails says why on its row, with a warning mark.
     name: "jira-sync-failed",
     path: "/?grouping=epic",
     on: offline.serving,
     refused: 502,
     act: async (page) => {
       await shown(page, "epic");
-      await openSidebar(page);
-      await page
-        .getByRole("region", { name: "Jira" })
-        .getByRole("button", { name: "Sync" })
-        .click();
-      await page.locator(".jira .source-problem").waitFor();
+      await openSources(page);
+      await page.getByRole("button", { name: "Sync Jira" }).click();
+      await page.locator(".source-row .source-problem").waitFor();
+    },
+  },
+  {
+    // Folded again, the one line keeps the warning mark.
+    name: "jira-sync-failed-folded",
+    path: "/?grouping=epic",
+    on: offline.serving,
+    refused: 502,
+    act: async (page) => {
+      await shown(page, "epic");
+      await openSources(page);
+      await page.getByRole("button", { name: "Sync Jira" }).click();
+      await page.locator(".source-row .source-problem").waitFor();
+      await page.locator(".sidebar-sources .fold-toggle").click();
+      await page.locator(".sidebar-sources[data-problem] .sources-line").waitFor();
     },
   },
   {

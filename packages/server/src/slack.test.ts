@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fixtureApi, type ReadMethod, SlackError } from "@oriel/slack";
-import type { WorkstreamView, ThreadView, WindowView } from "@oriel/web/view";
+import type {
+  SlackView,
+  SourceView,
+  ThreadView,
+  WindowView,
+  WorkstreamView,
+} from "@oriel/web/view";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
@@ -190,4 +196,66 @@ test("started without Slack, the window and search leave out what an earlier sta
   const hits = JSON.parse(finished.run.returned ?? "[]") as { id: string }[];
   assert.ok(hits.length > 0);
   assert.ok(hits.every((hit) => !hit.id.startsWith("slack:")));
+});
+
+test("the sidebar lists every connected source the same way, Slack among them", async (t) => {
+  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const { sources } = json<{ sources: SourceView[] }>(await app.get("/api/sources"));
+  assert.deepEqual(
+    sources.map(({ kind, name, about, items }) => ({ kind, name, about, items })),
+    [
+      { kind: "jira", name: "Jira", about: "SYN on oriel.atlassian.net", items: 120 },
+      { kind: "slack", name: "Slack", about: "ferrowick-example.slack.com", items: 19 },
+    ],
+  );
+  assert.ok(sources.every((source) => source.syncedAt !== null));
+  // Started without Slack, it isn't listed.
+  const alone = await testApp(t);
+  assert.deepEqual(
+    json<{ sources: SourceView[] }>(await alone.get("/api/sources")).sources.map((s) => s.kind),
+    ["jira"],
+  );
+});
+
+test("Slack syncs on demand, says so when it can't, and isn't there to sync unconnected", async (t) => {
+  const workspace = fixtureApi(fixture);
+  let down = false;
+  const app = await testApp(t, {
+    slack: {
+      kind: "fixture",
+      workspace: {
+        ...workspace,
+        api: (method, params) =>
+          down
+            ? Promise.reject(new SlackError(method, "fatal_error"))
+            : workspace.api(method, params),
+      },
+    },
+  });
+  const synced = await app.post("/api/slack/sync");
+  assert.equal(synced.status, 200);
+  assert.deepEqual(
+    (({ workspace: at, items }) => ({ at, items }))(json<{ slack: SlackView }>(synced).slack),
+    { at: "ferrowick-example.slack.com", items: 19 },
+  );
+  down = true;
+  const failed = await app.post("/api/slack/sync");
+  assert.equal(failed.status, 502);
+  assert.deepEqual(json(failed), {
+    error: "Slack didn't answer, so Oriel couldn't look for new messages.",
+  });
+  // What it had stays.
+  assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .filter((e) => e.name === "source.synced")
+      .map((e) => e.data),
+    [
+      { source: "slack", ok: true },
+      { source: "slack", ok: false },
+    ],
+  );
+  const alone = await testApp(t);
+  assert.equal((await alone.post("/api/slack/sync")).status, 409);
 });

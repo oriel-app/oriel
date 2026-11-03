@@ -55,7 +55,7 @@ test("Jira connects once every field is filled, with one request", () => {
   );
 });
 
-test("once connected, nothing typed is kept and the window loads again", () => {
+test("once connected, nothing typed is kept and the window and the sources load again", () => {
   const [model, effects] = initRoot({ page: "window", grouping: "epic", addTo: null });
   assert.ok(effects.includes(loadJira));
   const [shown] = updateRoot(model, replied("jira", true, { jira: connectable }));
@@ -68,8 +68,8 @@ test("once connected, nothing typed is kept and the window loads again", () => {
   assert.deepEqual(after.jira.view, connected);
   assert.equal(after.jira.typed.token, "");
   assert.deepEqual(
-    loads.map((e) => e.type),
-    ["loadWindow"],
+    loads.map((e) => (e.type === "http" ? e.url : e.type)),
+    ["loadWindow", "/api/sources"],
   );
 });
 

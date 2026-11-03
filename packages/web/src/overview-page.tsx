@@ -1,7 +1,9 @@
 // The overview (decision 0027), laid out as the window-explore spike's round
-// 14 found best: the counts strip, then the ask bar's place, then Needs you,
-// the headlines and the workstreams; beside them, what no workstream holds
-// yet and who has work in progress. Every number and line is the server's,
+// 14 found best: the counts strip, then the ask bar's place, then the review
+// links nobody has opened, the headlines and the workstreams; beside them,
+// what no workstream holds yet and who has work in progress. The threads
+// waiting on the user are in the sidebar, on every page, which the strip's
+// count of them points to (OA-185). Every number and line is the server's,
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
 import type { OverviewSection } from "@oriel/core/overview";
@@ -11,15 +13,8 @@ import type { JiraModel } from "./jira.ts";
 import type { OverviewModel, OverviewMsg } from "./overview.ts";
 import type { Route } from "./route.ts";
 import { shown } from "./overview.ts";
-import {
-  type Dispatch,
-  ItemLink,
-  ItemListContext,
-  keyLabel,
-  Link,
-  plural,
-  StateChip,
-} from "./parts.tsx";
+import { needsYouId } from "./sidebar.tsx";
+import { type Dispatch, ItemLink, ItemListContext, keyLabel, Link, plural } from "./parts.tsx";
 import type { UndoNote, Undos } from "./undos.ts";
 import type {
   CandidateView,
@@ -46,6 +41,8 @@ export function OverviewPage(props: {
   chat: WindowChatModel;
   // Whether the window chat has a conversation.
   ongoing: boolean;
+  // Shows the sidebar's list of the threads waiting on the user.
+  onNeedsYou(): void;
   dispatch: Dispatch;
 }) {
   const { model, ending, added, jira, browse, dispatch } = props;
@@ -55,7 +52,9 @@ export function OverviewPage(props: {
     <main class="overview" aria-busy={view === null && model.problem === null}>
       <div class="overview-top">
         <ViewTabs current="overview" browse={browse} dispatch={dispatch} />
-        {view && <Counts view={view} model={model} dispatch={dispatch} />}
+        {view && (
+          <Counts view={view} model={model} onNeedsYou={props.onNeedsYou} dispatch={dispatch} />
+        )}
       </div>
       {view && model.opened.includes("changed") && <Changed view={view} dispatch={dispatch} />}
       <AskBar chat={props.chat} view={view} ongoing={props.ongoing} dispatch={dispatch} />
@@ -78,7 +77,7 @@ export function OverviewPage(props: {
       ) : (
         <div class="overview-columns">
           <div class="overview-main">
-            <NeedsYou view={view} model={model} dispatch={dispatch} />
+            <Unopened view={view} dispatch={dispatch} />
             <Headlines view={view} dispatch={dispatch} />
             <PinnedSlot />
             <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
@@ -156,8 +155,14 @@ const day = (instant: string) =>
   });
 
 // What changed since the user last looked, in four counts. The first opens
-// what changed, by workstream.
-function Counts(props: { view: OverviewView; model: OverviewModel; dispatch: Dispatch }) {
+// what changed, by workstream; the third shows the threads waiting on the
+// user, in the sidebar.
+function Counts(props: {
+  view: OverviewView;
+  model: OverviewModel;
+  onNeedsYou(): void;
+  dispatch: Dispatch;
+}) {
   const { view, model, dispatch } = props;
   const { counts } = view;
   const open = model.opened.includes("changed");
@@ -186,9 +191,15 @@ function Counts(props: { view: OverviewView; model: OverviewModel; dispatch: Dis
         <strong>{counts.workstreamsMoved}</strong>{" "}
         {counts.workstreamsMoved === 1 ? "workstream" : "workstreams"} moved
       </span>
-      <span class="overview-stat">
+      <button
+        type="button"
+        class="overview-stat"
+        aria-controls={needsYouId}
+        disabled={counts.needsYou === 0}
+        onClick={props.onNeedsYou}
+      >
         <strong>{counts.needsYou}</strong> {counts.needsYou === 1 ? "needs" : "need"} you
-      </span>
+      </button>
       <span class="overview-stat">
         <strong>{counts.notInWorkstream}</strong> not in a workstream
       </span>
@@ -270,52 +281,12 @@ function More(props: { section: OverviewSection; hidden: number; dispatch: Dispa
   );
 }
 
-// How long a thread has waited, in the reader's clock: "just now", or
-// "waiting 5m", "3h", "9d".
-function waited(instant: string): string {
-  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(instant)) / 60_000));
-  if (minutes < 1) return "just now";
-  return `waiting ${ago(minutes)}`;
-}
-
-function ago(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
-  return `${Math.floor(minutes / (60 * 24))}d`;
-}
-
-// The threads waiting on the user, longest waiting first, and the review
-// links nobody has opened.
-function NeedsYou(props: { view: OverviewView; model: OverviewModel; dispatch: Dispatch }) {
-  const { view, model, dispatch } = props;
-  const { threads, unopened } = view.needsYou;
-  const all = model.opened.includes("needs-you");
-  const rows = all ? threads : threads.slice(0, shown.needsYou);
+// The review links sent that nobody has opened yet, oldest first: the
+// threads they are from wait on others, so they aren't in Needs you.
+function Unopened({ view, dispatch }: { view: OverviewView; dispatch: Dispatch }) {
+  const { unopened } = view.needsYou;
   return (
-    <Section id="needs-you" title="Needs you" count={threads.length}>
-      {threads.length === 0 ? (
-        <p class="overview-quiet">No thread is waiting on you.</p>
-      ) : (
-        <ul class="overview-rows">
-          {rows.map((thread) => (
-            <li key={thread.id} class="overview-row overview-thread">
-              <Link
-                route={{ page: "thread", id: thread.id }}
-                dispatch={dispatch}
-                class="overview-title"
-              >
-                {thread.title ?? "Untitled thread"}
-              </Link>
-              <StateChip state={thread.state} waitingOn={thread.waitingOn} />
-              <span class="overview-sub">{thread.workstream.name}</span>
-              <span class="overview-age" title={`Waiting since ${day(thread.activityAt)}`}>
-                {waited(thread.activityAt)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <More section="needs-you" hidden={threads.length - rows.length} dispatch={dispatch} />
+    <>
       {unopened.length > 0 && (
         <p class="overview-note">
           {plural(unopened.length, "review link")} sent and not opened yet:{" "}
@@ -334,7 +305,7 @@ function NeedsYou(props: { view: OverviewView; model: OverviewModel; dispatch: D
           {unopened.length > 3 && "…"}
         </p>
       )}
-    </Section>
+    </>
   );
 }
 
