@@ -208,7 +208,7 @@ export async function firstRunServer(
             { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
             { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
           ],
-          account: { plan: "ChatGPT Plus", email: "sam@example.com" },
+          account: { plan: "ChatGPT Plus", email: "sam@example.com", personal: true },
         }
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };

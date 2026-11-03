@@ -29,7 +29,7 @@ const codexReady = async () => ({
   ok: true as const,
   cli: codexCli,
   models: codexModels,
-  account: { plan: "ChatGPT Plus", email: null },
+  account: { plan: "ChatGPT Plus", email: null, personal: true },
 });
 const codexSignedOut = async () => ({
   ok: false as const,

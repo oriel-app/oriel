@@ -121,6 +121,14 @@ export function harnessEnv(
     CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
     CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
     DISABLE_AUTOUPDATER: "1",
+    // Nothing of the run goes to Anthropic beyond the model's own requests:
+    // no `/feedback` (or `/bug`, `/share`), no session survey, which can send
+    // a transcript, no telemetry, no error reports. Not
+    // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, which turns off more.
+    DISABLE_FEEDBACK_COMMAND: "1",
+    CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+    DISABLE_TELEMETRY: "1",
+    DISABLE_ERROR_REPORTING: "1",
     // `run`'s description holds the region's module whole, and a run may take
     // its wall time and more before Oriel answers the call.
     CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH: String(maxResultChars),

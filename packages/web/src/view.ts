@@ -904,8 +904,9 @@ export type CliView = {
   state: CliState;
   version: string | null;
   // Once signed in, as `claude auth status` or Codex's `account/read` says:
-  // shown, never stored.
-  account: { plan: string | null; email: string | null } | null;
+  // shown, never stored. `personal`: on a personal plan, whose vendor may
+  // train on the person's chats; never for an API key.
+  account: { plan: string | null; email: string | null; personal: boolean } | null;
   // While a command runs: what it's doing and how long it has run.
   running: { command: CliCommand; phase: CliPhase; ms: number } | null;
   // How a version too old updates: Oriel runs Claude Code's own update, or

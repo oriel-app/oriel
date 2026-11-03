@@ -239,8 +239,13 @@ export async function update(options: RunOptions & { cli: string }): Promise<End
 }
 
 // The plan and the account's email, as `claude auth status --json` says
-// them, read only to show in the row. Null when it doesn't say.
-export type Account = { plan: string | null; email: string | null };
+// them, read only to show in the row. Null when it doesn't say. `personal`:
+// signed in with a subscription that isn't a Team or Enterprise plan, which
+// Anthropic may train on if the person allowed it; never for an API key.
+export type Account = { plan: string | null; email: string | null; personal: boolean };
+
+// Plans under Anthropic's commercial terms, which it doesn't train on.
+const commercialPlans = ["team", "enterprise"];
 
 export function accountOf(output: string): Account | null {
   let parsed: unknown;
@@ -255,7 +260,11 @@ export function accountOf(output: string): Account | null {
   const text = (key: string) =>
     typeof fields[key] === "string" && fields[key] !== "" ? (fields[key] as string) : null;
   const plan = text("subscriptionType");
-  return { plan: plan && planName(plan), email: text("email") };
+  // A subscription whose plan it doesn't name may still be a personal one.
+  const personal = plan
+    ? !commercialPlans.includes(plan)
+    : fields.authMethod === "claude.ai" || fields.authMethod === "oauth_token";
+  return { plan: plan && planName(plan), email: text("email"), personal };
 }
 
 // "max" → "Claude Max".

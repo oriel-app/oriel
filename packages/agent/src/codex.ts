@@ -59,8 +59,14 @@ export type Codex = { path: string; version: string };
 export type CodexModel = { id: string; label: string; isDefault: boolean };
 
 // The plan and the account's email, as Codex's `account/read` says them:
-// shown in the row, never stored.
-export type CodexAccount = { plan: string | null; email: string | null };
+// shown in the row, never stored. `personal`: signed in with a ChatGPT plan
+// that isn't a Business, Enterprise or Edu one, which OpenAI may train on if
+// the person allowed it; never for an API key.
+export type CodexAccount = { plan: string | null; email: string | null; personal: boolean };
+
+// ChatGPT plans OpenAI doesn't train on by default. Team is Business's old
+// name.
+const commercialPlans = ["team", "business", "enterprise", "edu"];
 
 const spawnCli: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
@@ -885,9 +891,14 @@ const planName = (plan: string) =>
 export function accountOf(answer: unknown): CodexAccount | null {
   const account = isObject(answer) && isObject(answer.account) ? answer.account : null;
   if (!account) return null;
-  if (account.type !== "chatgpt") return { plan: null, email: null };
+  if (account.type !== "chatgpt") return { plan: null, email: null, personal: false };
   const email = text(account.email);
-  return { plan: planName(text(account.planType)), email: email || null };
+  const plan = text(account.planType);
+  return {
+    plan: planName(plan),
+    email: email || null,
+    personal: !commercialPlans.includes(plan),
+  };
 }
 
 // The models Codex lists, the ones it hides left out.

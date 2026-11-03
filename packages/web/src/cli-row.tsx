@@ -8,6 +8,7 @@
 import type { ComponentChildren } from "preact";
 import { useStamp } from "./parts.tsx";
 import { ProviderRow } from "./provider-row.tsx";
+import { trainingNotice } from "./training.ts";
 import type { DetailsOf, SetupModel, SetupMsg } from "./setup.ts";
 import type { CliView, ProviderView } from "./view.ts";
 
@@ -24,6 +25,20 @@ export const elapsed = (ms: number) =>
   `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
 const plans = "https://claude.com/pricing";
+
+// One line under a ready row signed in with a personal plan.
+function TrainingLine(props: { kind: "claude-code" | "codex"; cli: CliView }) {
+  const notice = trainingNotice(props.kind, props.cli);
+  if (!notice) return null;
+  return (
+    <p class="cli-training">
+      Your plan may let {notice.vendor} train on your chats.{" "}
+      <a href={notice.page} target="_blank" rel="noreferrer">
+        Check your setting
+      </a>
+    </p>
+  );
+}
 
 export function ClaudeCodeRow(props: {
   provider: ProviderView;
@@ -245,6 +260,7 @@ export function ClaudeCodeRow(props: {
       {...(props.picked !== undefined ? { picked: props.picked } : {})}
       {...(props.onToggle ? { onToggle: props.onToggle } : {})}
     >
+      <TrainingLine kind="claude-code" cli={cli} />
       {below}
       {cli.failed && !running && (
         <Failed
@@ -388,6 +404,7 @@ export function CodexRow(props: {
       {...(props.picked !== undefined ? { picked: props.picked } : {})}
       {...(props.onToggle ? { onToggle: props.onToggle } : {})}
     >
+      <TrainingLine kind="codex" cli={cli} />
       {below}
       {cli.failed && !running && (
         <Failed failed={cli.failed} model={model} send={send} onKey={props.onKey} codex />

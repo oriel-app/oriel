@@ -292,6 +292,10 @@ test("the command line turns off every feature that gives a tool, and the person
     'developer_instructions=""',
     'history.persistence="none"',
     'shell_environment_policy.inherit="none"',
+    // Nothing of the run goes to OpenAI beyond the model's own requests: no
+    // analytics, and no `/feedback` submissions.
+    "analytics.enabled=false",
+    "feedback.enabled=false",
   ])
     assert.ok(args.includes(setting), setting);
 });
@@ -639,7 +643,11 @@ test("the startup check: found, a supported version, then signed in, with its mo
   });
   assert.ok(ok.ok);
   assert.deepEqual(ok.models, [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true }]);
-  assert.deepEqual(ok.account, { plan: "ChatGPT Plus", email: "maya@example.com" });
+  assert.deepEqual(ok.account, {
+    plan: "ChatGPT Plus",
+    email: "maya@example.com",
+    personal: true,
+  });
   // No thread, so no model request.
   assert.equal(fake.spawned[0]?.requests.has("thread/start"), false);
 
@@ -670,12 +678,25 @@ test("the startup check: found, a supported version, then signed in, with its mo
   assert.ok(!none.ok && none.problem.kind === "missing");
 });
 
+test("a ChatGPT plan is personal unless it's a Business, Enterprise or Edu one", () => {
+  const personal = (planType: string) =>
+    accountOf({ account: { type: "chatgpt", email: "a@b.co", planType } })?.personal;
+  for (const plan of ["free", "go", "plus", "pro", "unknown", ""])
+    assert.equal(personal(plan), true);
+  for (const plan of ["team", "business", "enterprise", "edu"]) assert.equal(personal(plan), false);
+});
+
 test("the account, the models and the plan's windows, as numbers and names only", async () => {
   assert.deepEqual(accountOf({ account: { type: "chatgpt", email: "a@b.co", planType: "pro" } }), {
     plan: "ChatGPT Pro",
     email: "a@b.co",
+    personal: true,
   });
-  assert.deepEqual(accountOf({ account: { type: "apiKey" } }), { plan: null, email: null });
+  assert.deepEqual(accountOf({ account: { type: "apiKey" } }), {
+    plan: null,
+    email: null,
+    personal: false,
+  });
   assert.equal(accountOf({ account: null }), null);
   assert.deepEqual(modelsOf({ data: [{ model: "m", displayName: "", hidden: false }] }), [
     { id: "m", label: "m", isDefault: false },
