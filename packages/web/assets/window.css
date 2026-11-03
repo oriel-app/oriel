@@ -4313,6 +4313,7 @@ button.overview-stat:not(:disabled):hover {
 
 .overview-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4542,6 +4543,75 @@ button.overview-title:hover {
 
 .view-tabs {
   flex: none;
+}
+
+/* Not in a workstream yet: a line each, under the rule that found it. */
+.overview-candidates {
+  display: block;
+  padding: var(--space-1) 0;
+  overflow: hidden;
+}
+
+.overview-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-rule {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  overflow: hidden;
+  color: var(--derived);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.overview-candidate {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0.1875rem var(--space-3);
+  font-size: var(--text-md);
+}
+
+.overview-candidate .overview-title {
+  flex: 0 1 auto;
+  max-width: 60%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.overview-candidate .overview-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Make a workstream shows on the row the pointer or focus is on, and
+   always where nothing hovers. */
+.overview-make {
+  display: none;
+  flex: none;
+  margin-left: auto;
+  font-size: var(--text-sm);
+}
+
+.overview-candidate:hover .overview-make,
+.overview-candidate:focus-within .overview-make,
+.overview-make:disabled {
+  display: inline-block;
+}
+
+@media (hover: none) {
+  .overview-make {
+    display: inline-block;
+  }
 }
 
 @media (max-width: 760px) {

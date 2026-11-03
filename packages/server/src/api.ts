@@ -45,6 +45,7 @@ import {
   type FolderView,
   type GroupingId,
   type Undoable,
+  type WorkstreamSummary,
   type WorkstreamDeletedView,
   type WorkstreamEndedView,
   isGroupingId,
@@ -236,6 +237,12 @@ const windowEvent = union(
     rank: count,
   }),
   object({ name: literal("overview.opened") }),
+  // Make a workstream on a cluster the overview suggested.
+  object({
+    name: literal("overview.suggestion-made"),
+    workstreamId: refine(string, isUlid, "expected a workstream ID"),
+    grouping: refine(string, isGroupingId, "expected epic, assignee, stuck or linked"),
+  }),
   object({
     name: literal("overview.more-opened"),
     section: refine(string, isOverviewSection, "expected one of the overview's sections"),
@@ -579,7 +586,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // What only the window knows happened. Nine events, fixed fields.
+      // What only the window knows happened. Ten events, fixed fields.
       method: "POST",
       path: at("/telemetry"),
       async run(_, request) {
@@ -683,12 +690,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/workstreams"),
       async run(_, request) {
         const body = await readJson(request, listBody, windowWorkstream);
-        const { workstream } = await deps.dispatch(
+        const { workstream, undo } = await deps.dispatch(
           "workstream.create",
           checked("workstream.create", body as Fields<"workstream.create">),
           user,
         );
-        return json(201, views.workstreamSummary(workstream));
+        const made: Undoable<WorkstreamSummary> = { ...views.workstreamSummary(workstream), undo };
+        return json(201, made);
       },
     },
     {

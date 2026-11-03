@@ -66,6 +66,7 @@ import {
   loadOverview,
   type OverviewModel,
   type OverviewMsg,
+  madeReplied,
   overviewReplied,
   updateOverview,
 } from "./overview.ts";
@@ -597,6 +598,14 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "overview":
       if (model.overview === null) return [model, []];
       return [{ ...model, overview: overviewReplied(model.overview, msg) }, []];
+    // A workstream made from the overview, or that undone: the sidebar's
+    // list shows it, or no longer does.
+    case "overviewMade":
+    case "overviewUnmade": {
+      if (model.overview === null) return [model, msg.ok ? [loadWorkstreams] : []];
+      const [overview, effects] = madeReplied(model.overview, msg);
+      return [{ ...model, overview }, msg.ok ? [...effects, loadWorkstreams] : effects];
+    }
     case "search": {
       const [search, effects] = searchReplied(model.search, msg);
       return [{ ...model, search }, effects];

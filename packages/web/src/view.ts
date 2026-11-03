@@ -30,15 +30,19 @@ export const statusCategories = ["todo", "in-progress", "done"] as const;
 
 // Browse's filters (decision 0027), as its address and its requests carry
 // them: item search, matched as search() matches, and a source, a status
-// category and an assignee, by the person's ID. Each is absent when unset.
+// category, an assignee, by the person's ID, and whether a workstream holds
+// it. Each is absent when unset.
 export type BrowseFilter = {
   q?: string;
   source?: string;
   status?: StatusCategory;
   assignee?: string;
+  // "none": only items no open workstream holds, all that the overview's
+  // Not in a workstream yet ranks its candidates from.
+  workstream?: "none";
 };
 
-export const filterKeys = ["q", "source", "status", "assignee"] as const;
+export const filterKeys = ["q", "source", "status", "assignee", "workstream"] as const;
 
 // The filters an address or a request names. A blank one is unset, and so is
 // a status that isn't a category; the server checks the rest.
@@ -50,6 +54,8 @@ export function browseFilter(params: URLSearchParams): BrowseFilter {
     if (key === "status") {
       const status = statusCategories.find((category) => category === value);
       if (status) filter.status = status;
+    } else if (key === "workstream") {
+      if (value === "none") filter.workstream = value;
     } else filter[key] = value;
   }
   return filter;
@@ -626,9 +632,10 @@ export type CandidateView = {
         grouping: GroupingId;
         key: string;
         label: string;
-        // The item it hangs off, if any, and how many items Make a
-        // workstream would hold, that one included.
-        anchor: ItemRef | null;
+        // The item it is about: the one it hangs off, such as an epic, or
+        // for a cluster with none, the item the others name. `size`: how
+        // many items Make a workstream would hold, that one included.
+        lead: ItemRef | null;
         size: number;
       };
   rule: string;

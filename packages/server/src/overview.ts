@@ -9,9 +9,11 @@ import {
   type IndexRecord,
   type Instant,
   parseItemId,
+  sourceKinds,
   stalled,
   stuckDays,
   thisWeek,
+  weights,
   type WorkstreamMember,
 } from "@oriel/core";
 import { assigneeOf } from "@oriel/groupings";
@@ -71,15 +73,31 @@ export const itemRef = (record: IndexRecord): ItemRef => ({
 const latest = (instants: readonly string[], fallback: string): string =>
   instants.reduce((a, b) => (b > a ? b : a), fallback);
 
+// Which open workstream holds each item, the first one listed, by identity.
+function holders(
+  workstreams: OverviewInput["workstreams"],
+): Map<string, { id: string; name: string }> {
+  const holder = new Map<string, { id: string; name: string }>();
+  for (const workstream of workstreams)
+    for (const member of workstream.members)
+      if (!holder.has(identityOf(member))) holder.set(identityOf(member), workstream);
+  return holder;
+}
+
+// Whether an open workstream holds a record: what Not in a workstream yet
+// leaves out, and Browse's "not in a workstream" filter too.
+export function heldBy(
+  workstreams: OverviewInput["workstreams"],
+): (record: IndexRecord) => boolean {
+  const holder = holders(workstreams);
+  return (record) => holder.has(identityOf(record));
+}
+
 export function overviewView(input: OverviewInput): OverviewView {
   const { records, now } = input;
   const byIdentity = new Map(records.map((record) => [identityOf(record), record]));
   const byId = new Map(records.map((record) => [record.id as string, record]));
-  // Which open workstream holds each item, the first one listed.
-  const holder = new Map<string, { id: string; name: string }>();
-  for (const workstream of input.workstreams)
-    for (const member of workstream.members)
-      if (!holder.has(identityOf(member))) holder.set(identityOf(member), workstream);
+  const holder = holders(input.workstreams);
   const held = (record: IndexRecord) => holder.has(identityOf(record));
 
   const seq = input.changes.at(-1)?.seq ?? input.seen?.seq ?? 0;
@@ -224,10 +242,17 @@ export function overviewView(input: OverviewInput): OverviewView {
   };
 }
 
-// Every source's candidates, ranked together by weight, then by how
-// recently their items changed. A cluster's items are its grouping's now,
-// as Make a workstream copies them, and a candidate whose items an open
-// workstream all holds is none.
+// How many of the Linked grouping's clusters are candidates, the most
+// linked first, and how many items no workstream holds one needs: the item
+// named and at least two that name it, or that it names.
+const linkedCandidates = 3;
+const linkedAtLeast = 3;
+
+// Every source's candidates, and the Linked clusters most worth curating,
+// ranked together by weight, then by how recently their items changed
+// (decision 0027). A cluster's items are its grouping's now, as Make a
+// workstream copies them, and a candidate whose items an open workstream
+// all holds is none.
 function rankCandidates(
   input: OverviewInput,
   held: (record: IndexRecord) => boolean,
@@ -239,60 +264,84 @@ function rankCandidates(
     held,
     now: input.now,
   });
-  return found
-    .flatMap((candidate): CandidateView[] => {
-      const base = {
-        rule: candidate.rule,
-        source: sources[candidate.source].name,
-        weight: candidate.weight,
-        detail: candidate.detail ?? null,
-      };
-      if (candidate.subject.kind === "item") {
-        const record = byId.get(candidate.subject.id);
-        if (!record || held(record)) return [];
-        return [
-          {
-            ...base,
-            subject: { kind: "item", item: itemRef(record) },
-            changedAt: record.updatedAt,
-          },
-        ];
-      }
-      const { grouping, key } = candidate.subject;
-      if (!isGroupingId(grouping)) return [];
-      const cluster = input.clusters(grouping).find((each) => each.key === key);
-      if (!cluster) return [];
-      const items = [
-        ...new Set([...(cluster.anchor === null ? [] : [cluster.anchor]), ...cluster.itemIds]),
-      ].flatMap((id) => byId.get(id) ?? []);
-      // None left that no workstream holds: nothing to make a workstream of.
-      if (!items.some((record) => !held(record))) return [];
-      const anchor = cluster.anchor === null ? null : byId.get(cluster.anchor);
+  const items = (cluster: Cluster) =>
+    [
+      ...new Set([...(cluster.anchor === null ? [] : [cluster.anchor]), ...cluster.itemIds]),
+    ].flatMap((id) => byId.get(id) ?? []);
+  // A cluster as a candidate row; null when no item of it is left that no
+  // workstream holds, so nothing to make a workstream of.
+  const clusterRow = (
+    grouping: GroupingId,
+    cluster: Cluster,
+    base: Pick<CandidateView, "rule" | "source" | "weight" | "detail">,
+  ): CandidateView | null => {
+    const members = items(cluster);
+    if (!members.some((record) => !held(record))) return null;
+    const lead = byId.get(cluster.anchor ?? cluster.itemIds[0] ?? "");
+    return {
+      ...base,
+      subject: {
+        kind: "cluster",
+        grouping,
+        key: cluster.key,
+        label: cluster.label,
+        lead: lead ? itemRef(lead) : null,
+        size: members.length,
+      },
+      changedAt: latest(
+        members.map((record) => record.updatedAt),
+        "",
+      ),
+    };
+  };
+  const fromSources = found.flatMap((candidate): CandidateView[] => {
+    const base = {
+      rule: candidate.rule,
+      source: sources[candidate.source].name,
+      weight: candidate.weight,
+      detail: candidate.detail ?? null,
+    };
+    if (candidate.subject.kind === "item") {
+      const record = byId.get(candidate.subject.id);
+      if (!record || held(record)) return [];
       return [
-        {
-          ...base,
-          subject: {
-            kind: "cluster",
-            grouping,
-            key,
-            label: cluster.label,
-            anchor: anchor ? itemRef(anchor) : null,
-            size: items.length,
-          },
-          changedAt: latest(
-            items.map((record) => record.updatedAt),
-            "",
-          ),
-        },
+        { ...base, subject: { kind: "item", item: itemRef(record) }, changedAt: record.updatedAt },
       ];
+    }
+    const { grouping, key } = candidate.subject;
+    if (!isGroupingId(grouping)) return [];
+    const cluster = input.clusters(grouping).find((each) => each.key === key);
+    const row = cluster && clusterRow(grouping, cluster, base);
+    return row ? [row] : [];
+  });
+  // Weighed as the items in it no workstream holds, each an item to look at.
+  const linked = input
+    .clusters("linked")
+    .flatMap((cluster) => {
+      const members = items(cluster);
+      const free = members.filter((record) => !held(record)).length;
+      if (free < linkedAtLeast) return [];
+      const kinds = new Set(members.map((record) => parseItemId(record.id)?.source));
+      const row = clusterRow("linked", cluster, {
+        rule: "An item and the items it names or that name it",
+        source: sourceKinds
+          .filter((kind) => kinds.has(kind))
+          .map((kind) => sources[kind].name)
+          .join(" · "),
+        weight: free * weights.glance,
+        detail: free < members.length ? `${free} in no workstream` : null,
+      });
+      return row ? [row] : [];
     })
-    .toSorted(
-      (a, b) =>
-        b.weight - a.weight ||
-        b.changedAt.localeCompare(a.changedAt) ||
-        candidateId(a).localeCompare(candidateId(b)),
-    );
+    .toSorted(byRank)
+    .slice(0, linkedCandidates);
+  return [...fromSources, ...linked].toSorted(byRank);
 }
+
+const byRank = (a: CandidateView, b: CandidateView) =>
+  b.weight - a.weight ||
+  b.changedAt.localeCompare(a.changedAt) ||
+  candidateId(a).localeCompare(candidateId(b));
 
 const candidateId = (candidate: CandidateView) =>
   candidate.subject.kind === "item"
@@ -386,8 +435,7 @@ function headlines(
     });
   }
   const top = candidates[0];
-  const topItem =
-    top && (top.subject.kind === "item" ? top.subject.item : (top.subject.anchor ?? null));
+  const topItem = top && (top.subject.kind === "item" ? top.subject.item : top.subject.lead);
   if (top && topItem)
     lines.push({
       id: "top",
