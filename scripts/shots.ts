@@ -1066,9 +1066,12 @@ const scenes: Scene[] = [
     act: async (page) => {
       await overviewShown(page);
       await post("/api/window-chat/new", {}, quoted);
+      // The last shot's chat, until the page hears it's a new one.
+      await page.locator(".window-chat .quote-from").first().waitFor({ state: "detached" });
       await page.locator(".ask-input").fill("What does SYN-45 say about itself?");
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page.locator('.window-chat .quote-from[data-found="false"]').waitFor();
+      await page.locator(".window-chat .working").waitFor({ state: "detached" });
     },
   },
   {
