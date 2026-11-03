@@ -1,0 +1,142 @@
+[
+  {
+    "name": "01-assistant-checking",
+    "title": "Looking for an assistant"
+  },
+  {
+    "name": "02-assistant-ready",
+    "title": "Already installed and signed in"
+  },
+  {
+    "name": "03-assistant-both",
+    "title": "Both are ready"
+  },
+  {
+    "name": "04-assistant-missing",
+    "title": "Neither is installed"
+  },
+  {
+    "name": "05-claude-installing",
+    "title": "Installing Claude Code"
+  },
+  {
+    "name": "06-claude-sign-in",
+    "title": "Claude Code installed; sign in"
+  },
+  {
+    "name": "07-claude-signing-in",
+    "title": "Signing in to Claude"
+  },
+  {
+    "name": "08-claude-ready",
+    "title": "Claude Code is ready"
+  },
+  {
+    "name": "09-codex-installing",
+    "title": "Installing Codex"
+  },
+  {
+    "name": "10-codex-sign-in",
+    "title": "Codex installed; sign in"
+  },
+  {
+    "name": "11-codex-signing-in",
+    "title": "Signing in to ChatGPT"
+  },
+  {
+    "name": "12-codex-ready",
+    "title": "Codex is ready"
+  },
+  {
+    "name": "13-wrong-plan",
+    "title": "Signed in on a plan without Claude Code"
+  },
+  {
+    "name": "14-other-account",
+    "title": "Use another account"
+  },
+  {
+    "name": "15-install-failed",
+    "title": "The install stopped"
+  },
+  {
+    "name": "16-install-details",
+    "title": "The install's details"
+  },
+  {
+    "name": "17-sign-in-unfinished",
+    "title": "Sign-in didn't finish"
+  },
+  {
+    "name": "18-another-way",
+    "title": "Sign in another way"
+  },
+  {
+    "name": "19-needs-update",
+    "title": "Installed, but too old"
+  },
+  {
+    "name": "20-api-key",
+    "title": "Use an API key"
+  },
+  {
+    "name": "21-work",
+    "title": "Connect your work"
+  },
+  {
+    "name": "22-jira",
+    "title": "Connect Jira"
+  },
+  {
+    "name": "23-jira-refused",
+    "title": "Jira refused"
+  },
+  {
+    "name": "24-jira-project",
+    "title": "Pick a Jira project"
+  },
+  {
+    "name": "25-folder-picker",
+    "title": "Choose a folder"
+  },
+  {
+    "name": "26-slack-channels",
+    "title": "Pick Slack channels"
+  },
+  {
+    "name": "27-work-connected",
+    "title": "Work connected"
+  },
+  {
+    "name": "28-reading",
+    "title": "Reading your work"
+  },
+  {
+    "name": "29-overview",
+    "title": "Your window"
+  },
+  {
+    "name": "30-first-answer",
+    "title": "The first answer"
+  },
+  {
+    "name": "31-change",
+    "title": "A change to approve"
+  },
+  {
+    "name": "32-approved",
+    "title": "Approved"
+  },
+  {
+    "name": "33-welcome-back",
+    "title": "Quit halfway, then reopened"
+  },
+  {
+    "name": "34-skipped-ai",
+    "title": "The window with no AI set up"
+  },
+  {
+    "name": "35-settings",
+    "title": "Settings: the same rows"
+  }
+]
