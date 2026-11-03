@@ -113,7 +113,7 @@ if (!existsSync(join(files.dist, files.entry))) {
 }
 
 if (channelWrite && values.data) {
-  const model = modelOptions(await chooseModel({ key: null }));
+  let described = "";
   // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({
     data: values.data,
@@ -122,9 +122,13 @@ if (channelWrite && values.data) {
     log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
     signals: process,
     firstPort,
-    app: {
-      ...(model.agent ? { agent: model.agent } : {}),
-      ...(model.titler ? { titler: model.titler } : {}),
+    async model() {
+      const model = modelOptions(await chooseModel({ key: null }));
+      described = model.describe;
+      return {
+        ...(model.agent ? { agent: model.agent } : {}),
+        ...(model.titler ? { titler: model.titler } : {}),
+      };
     },
   }).catch((error: unknown) => {
     if (error instanceof Stopped) process.exit(0);
@@ -134,7 +138,7 @@ if (channelWrite && values.data) {
     process.exit(2);
   });
   console.error(`Oriel is running at ${desktop.serving.url}`);
-  console.error(model.describe);
+  console.error(described);
   process.exit(await desktop.exited);
 }
 

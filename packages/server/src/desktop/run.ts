@@ -31,6 +31,9 @@ export type DesktopOptions = {
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
+  // Finds the model the agent runs on, which can take a while: it runs once
+  // the secret is in, and a stop meanwhile doesn't wait for it.
+  model?: () => Promise<Pick<AppOptions, "agent" | "titler">>;
   // How Jira is reached; tests pass a site in memory.
   jiraFetch?: typeof fetch;
 };
@@ -61,12 +64,11 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
   for (const signal of ["SIGTERM", "SIGINT"] as const)
     options.signals.once(signal, () => stop.resolve(signal));
 
-  const secret = await Promise.race([
-    lines.secret,
-    stop.promise.then((why) => {
-      throw new Stopped(why, Promise.resolve());
-    }),
-  ]);
+  const stopped = stop.promise.then((why): never => {
+    throw new Stopped(why, Promise.resolve());
+  });
+  const secret = await Promise.race([lines.secret, stopped]);
+  const model = options.model ? await Promise.race([options.model(), stopped]) : {};
   mkdirSync(data, { recursive: true, mode: 0o700 });
   const kept = keptPort(data);
   let port: number | null = null;
@@ -74,6 +76,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
     portsFrom(kept ?? options.firstPort),
     {
       ...options.app,
+      ...model,
       db: join(data, "oriel.db"),
       exclusive: true,
       jira: {

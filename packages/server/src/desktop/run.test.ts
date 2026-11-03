@@ -253,3 +253,25 @@ test("asked to stop before the launch secret, it stops at once", async (t) => {
   signals.emit("SIGTERM");
   await assert.rejects(running, Stopped);
 });
+
+test("asked to stop while it looks for a model, it stops at once", async (t) => {
+  const input = new PassThrough();
+  const signals = new EventEmitter();
+  const looking = Promise.withResolvers<void>();
+  input.write(`${secret}\n`);
+  const running = runDesktop({
+    data: folder(t),
+    input,
+    write: () => assert.fail("nothing goes out"),
+    log: () => {},
+    signals,
+    firstPort: 0,
+    model: () => {
+      looking.resolve();
+      return new Promise(() => {});
+    },
+  });
+  await looking.promise;
+  input.end();
+  await assert.rejects(running, Stopped);
+});
