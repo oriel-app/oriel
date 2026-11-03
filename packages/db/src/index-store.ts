@@ -109,6 +109,13 @@ export function matchesSearch(record: IndexRecord<SourceKind, unknown>, terms: r
   return terms.every((term) => haystack.includes(term));
 }
 
+// A record and everything in it, frozen.
+function frozen<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
+  for (const inner of Object.values(value)) frozen(inner);
+  return Object.freeze(value);
+}
+
 export type IndexStore = ReturnType<typeof indexStore>;
 
 // The index the sync worker writes and the window, `search()` and the stale
@@ -146,7 +153,7 @@ export function indexStore(db: DatabaseSync) {
   const pruneChanges = db.prepare("delete from change_log where workspace_id = ? and at < ?");
   const selectChanges = db.prepare(`
     select seq, source, stable_id, version, at, facets, gone from change_log
-    where workspace_id = ? and seq > ? order by seq`);
+    where workspace_id = ? order by seq`);
   const forgetReferences = db.prepare(
     "delete from item_references where workspace_id = ? and source = ? and stable_id = ?",
   );
@@ -241,14 +248,53 @@ export function indexStore(db: DatabaseSync) {
     return by;
   };
 
-  const live = <A>(workspaceId: Ulid, source: SourceKind | null, attrs: Validator<A>) => {
+  // The live records, read from the table and checked once after each write
+  // to the index rather than on every request: the overview, Browse and
+  // the Jira view each read them all. Frozen, since every reader shares
+  // them; each gets its own array.
+  const read = new Map<string, WeakMap<Validator<unknown>, readonly IndexRecord[]>>();
+  const logged = new Map<string, readonly ChangeLogEntry[]>();
+  const written = () => {
+    read.clear();
+    logged.clear();
+  };
+  const live = <A>(
+    workspaceId: Ulid,
+    source: SourceKind | null,
+    attrs: Validator<A>,
+  ): IndexRecord<SourceKind, A>[] => {
+    const key = `${workspaceId}\u0000${source ?? ""}`;
+    const kept = read.get(key)?.get(attrs);
+    if (kept) return [...(kept as readonly IndexRecord<SourceKind, A>[])];
     const references = referencesOf(workspaceId);
-    return selectLive.all(workspaceId, source, source).map((raw) => {
+    const records = selectLive.all(workspaceId, source, source).map((raw) => {
       const record = recordOf(raw, attrs);
       const named = references.get(`${parseItemId(record.id)?.source}\u0000${record.stableId}`);
-      return named ? { ...record, facets: { ...record.facets, references: named } } : record;
+      return frozen(
+        named ? { ...record, facets: { ...record.facets, references: named } } : record,
+      );
     });
+    read.set(key, (read.get(key) ?? new WeakMap()).set(attrs, records));
+    return [...records];
   };
+
+  const readChanges = (workspaceId: Ulid): readonly ChangeLogEntry[] =>
+    selectChanges.all(workspaceId).map((raw) => {
+      const row = changeRow(raw);
+      if (!row.ok) throw new Error(`corrupt change log row: ${JSON.stringify(row.issues)}`);
+      const changed = facetChangesShape(JSON.parse(row.value.facets), "$.facets");
+      if (!changed.ok)
+        throw new Error(`corrupt change log facets: ${JSON.stringify(changed.issues)}`);
+      return frozen({
+        seq: row.value.seq,
+        source: row.value.source,
+        stableId: row.value.stable_id,
+        version: row.value.version,
+        at: row.value.at,
+        facets: changed.value,
+        gone: row.value.gone === 1,
+      });
+    });
 
   // A record as a read would return it: its facets in their checked shape.
   const readBack = (r: IndexRecord): IndexRecord => {
@@ -311,6 +357,7 @@ export function indexStore(db: DatabaseSync) {
         version,
         apply(page: IndexPage): void {
           check(source, attrs, page);
+          written();
           transaction(db, () => {
             for (const r of page.records) {
               const holder = selectHolder.get(workspaceId, r.id, r.stableId);
@@ -380,6 +427,7 @@ export function indexStore(db: DatabaseSync) {
           });
         },
         finish(cursor: string | null, finishedAt: Instant): number {
+          written();
           return transaction(db, () => {
             saveSource.run(workspaceId, source, cursor, finishedAt);
             pruneChanges.run(workspaceId, keptSince(finishedAt));
@@ -395,24 +443,12 @@ export function indexStore(db: DatabaseSync) {
 
     // The change log in the order it committed: everything kept, or only
     // what committed after the entry `after`, such as the last one the user
-    // had seen (`lastSeen`).
+    // had seen (`lastSeen`). Read once after each write to the index, as the
+    // records are.
     changes(workspaceId: Ulid, after = 0): ChangeLogEntry[] {
-      return selectChanges.all(workspaceId, after).map((raw) => {
-        const row = changeRow(raw);
-        if (!row.ok) throw new Error(`corrupt change log row: ${JSON.stringify(row.issues)}`);
-        const changed = facetChangesShape(JSON.parse(row.value.facets), "$.facets");
-        if (!changed.ok)
-          throw new Error(`corrupt change log facets: ${JSON.stringify(changed.issues)}`);
-        return {
-          seq: row.value.seq,
-          source: row.value.source,
-          stableId: row.value.stable_id,
-          version: row.value.version,
-          at: row.value.at,
-          facets: changed.value,
-          gone: row.value.gone === 1,
-        };
-      });
+      const kept = logged.get(workspaceId) ?? readChanges(workspaceId);
+      logged.set(workspaceId, kept);
+      return kept.filter((entry) => entry.seq > after);
     },
 
     // The escape hatch, across every source. Every term must appear in the
