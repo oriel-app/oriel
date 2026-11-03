@@ -20,6 +20,7 @@ import {
   type WorkstreamMember,
   type WorkstreamOrigin,
   type IndexRecord,
+  clusterMembers,
   type Instant,
   type ItemId,
   maxReasonChars,
@@ -294,9 +295,8 @@ async function newWorkstream(
     throw new ActionError("invalid", "$.grouping: expected epic, assignee, stuck or linked");
   const cluster = deps.clusters(input.grouping).find((c) => c.key === input.cluster);
   if (!cluster) throw new ActionError("not-found", "no such cluster in that grouping");
-  const ids = cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds];
   const byId = new Map(deps.records().map((r) => [r.id, r]));
-  const list = [...new Set(ids)].flatMap((item) => {
+  const list = clusterMembers(cluster).flatMap((item) => {
     const record = byId.get(item);
     return record ? [{ id: record.id, stableId: record.stableId }] : [];
   });

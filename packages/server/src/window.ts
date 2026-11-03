@@ -153,9 +153,15 @@ export function browseView(
   };
   const shown = clusters.flatMap((cluster, at) => {
     const matched = cluster.itemIds.filter(kept);
+    const anchorMatched = cluster.anchor !== null && kept(cluster.anchor);
     const view = all.clusters[at];
-    if (!view || (matched.length === 0 && !(cluster.anchor && kept(cluster.anchor)))) return [];
-    return [{ cluster, view: { ...view, matched: matched.length } }];
+    if (!view || (matched.length === 0 && !anchorMatched)) return [];
+    return [
+      {
+        cluster,
+        view: { ...view, matched: matched.length, ...(anchorMatched && { anchorMatched }) },
+      },
+    ];
   });
   const anchors = new Set<string>(shown.flatMap(({ cluster }) => cluster.anchor ?? []));
   return {

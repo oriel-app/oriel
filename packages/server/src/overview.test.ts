@@ -68,7 +68,8 @@ test("the fixture window's overview ranks every source's candidates, computed wi
     new Set(named.flatMap((source) => source.split(" · "))),
     new Set(["Jira", "Slack"]),
   );
-  // An epic's row counts what Make a workstream would hold: the epic too.
+  // An epic's row counts what Make a workstream would hold, the epic too, as
+  // its Browse row does.
   const epic = view.candidates.rows.find(
     (row) => row.subject.kind === "cluster" && row.subject.grouping === "epic",
   );
@@ -77,7 +78,7 @@ test("the fixture window's overview ranks every source's candidates, computed wi
   const browsed = json<WindowView>(await app.get("/api/browse?grouping=epic")).clusters.find(
     (cluster) => cluster.row.key === key,
   );
-  assert.equal(size, (browsed?.row.count ?? 0) + 1);
+  assert.equal(size, browsed?.row.size);
   assert.equal(
     view.headlines.find((line) => line.id === "top")?.rule,
     view.candidates.rows[0]?.rule,

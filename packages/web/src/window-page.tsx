@@ -428,8 +428,8 @@ function Cluster(props: {
             <span class="cluster-meta">
               <span class="count">
                 {view.matched === undefined
-                  ? plural(row.count, "item")
-                  : `${view.matched} of ${plural(row.count, "item")}`}
+                  ? plural(row.size, "item")
+                  : `${view.matched + (view.anchorMatched ? 1 : 0)} of ${plural(row.size, "item")}`}
               </span>
               <ClusterPoints row={row} />
               <StatusBar status={row.status} />
@@ -440,11 +440,7 @@ function Cluster(props: {
           type="button"
           class="quiet-action make-workstream"
           disabled={props.pending}
-          title={
-            view.matched === undefined
-              ? `Make a workstream of ${row.label}'s items as they are now`
-              : `Make a workstream of all ${plural(row.count, "item")} in ${row.label} as they are now, not only those that match`
-          }
+          title={`Make a workstream of all ${plural(row.size, "item")} in ${row.label} as they are now${view.matched === undefined ? "" : ", not only those that match"}`}
           onClick={() =>
             dispatch({ type: "window", msg: { type: "clusterToWorkstream", key: row.key } })
           }
@@ -539,7 +535,11 @@ function Items(props: {
   if (size === 0) {
     return (
       <p class="no-items" id={props.id}>
-        {props.matching ? "None of its items match." : "No items."}
+        {props.matching
+          ? "None of its items match."
+          : cluster.anchor
+            ? `No items but ${cluster.anchor.key} itself.`
+            : "No items."}
       </p>
     );
   }
