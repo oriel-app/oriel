@@ -1,14 +1,13 @@
 // The one endpoint evals reach: the Anthropic Messages API, over plain fetch.
 // Only the live transport holds the API key, so everything above it (the
 // cassettes, the system under test and the judge) sees requests without it.
+import { apiVersion, messagesUrl } from "@oriel/agent";
 import { array, literal, nullable, object, optional, string } from "@oriel/core";
 
 export type Fetch = typeof fetch;
 
-export const messagesUrl = "https://api.anthropic.com/v1/messages";
-// The current API version. On it, a Messages request that sends
-// `temperature`, `top_p` or `top_k` is refused with a 400.
-export const apiVersion = "2026-10-21";
+// The server's endpoint and API version, so evals test what it sends.
+export { apiVersion, messagesUrl };
 
 export function isMessagesRequest(request: Request): boolean {
   return request.method === "POST" && request.url === messagesUrl;

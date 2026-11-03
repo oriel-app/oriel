@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { anthropicProvider } from "@oriel/agent";
 import {
   anthropicFetch,
   anthropicKey,
@@ -11,7 +12,7 @@ import {
   sameModel,
 } from "./anthropic.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
-import { message, tempDir, textOf } from "./testing.ts";
+import { message, streamed, tempDir, textOf } from "./testing.ts";
 
 const body = {
   model: "claude-opus-5-5",
@@ -98,6 +99,28 @@ test("a cassette stores the request body and no headers, so no API key lands in 
   assert.deepEqual(Object.keys(stored), ["request", "response"]);
   assert.deepEqual(stored.request, { method: "POST", url: messagesUrl, body });
   assert.deepEqual(Object.keys(stored.response), ["status", "body"]);
+});
+
+test("evals send the API version the server sends", async () => {
+  const net = network(() => streamed({ text: "Hi." }));
+  const live = anthropicFetch("sk-ant-api03-LIVEKEY", net.fetch);
+  let server: string | null = null;
+  const conversation = anthropicProvider({
+    apiKey: "not-a-key",
+    fetch: (input, init) => {
+      server = new Request(input, init).headers.get("anthropic-version");
+      return live(input, init);
+    },
+  }).converse({
+    system: "",
+    tools: [],
+    messages: [{ role: "user", text: "Hi" }],
+    signal: new AbortController().signal,
+    log: () => {},
+  });
+  for await (const _ of conversation.next([], { maxOutputTokens: 64 }));
+  assert.ok(server);
+  assert.equal(net.seen[0]?.headers.get("anthropic-version"), server);
 });
 
 test("recordings land only on commit, replacing the case's old cassettes", async (t) => {
