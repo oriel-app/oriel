@@ -27,12 +27,16 @@
 // no model.
 //
 // `--desktop --data <dir>` is the server as the desktop app's shell starts
-// it, and takes no other flag: see desktop/PROTOCOL.md. Jira is connected
-// from the window and kept in the OS secret store, and Slack is off. The
-// agent runs on the person's own Claude Code, found on the PATH the shell
-// gives, or on an API key set in Settings and kept in the same store, and
-// never on `.env`'s key, which is `pnpm dev`'s (decision 0036).
-// Settings are kept in the data folder. Nothing but the channel to the shell goes to stdout.
+// it, and takes no other flag: see desktop/PROTOCOL.md. In the app it runs
+// on the shell's own Node, as Electron's utility process, and the channel
+// is messages on its parent port (decision 0047); elsewhere, stdin and
+// stdout. Jira is connected from the window and kept in the OS secret
+// store, and Slack is off. The agent runs on the person's own Claude Code,
+// found on the PATH the shell gives, or on an API key set in Settings and
+// kept in the same store, and never on `.env`'s key, which is `pnpm dev`'s
+// (decision 0036).
+// Settings are kept in the data folder. Nothing but the channel to the shell
+// goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -50,6 +54,7 @@ import { settingsFile } from "./settings.ts";
 import { usageFile } from "./usage.ts";
 import { firstPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
+import { killDescendants, parentPort, portPipes } from "./desktop/utility.ts";
 import { anthropicSigned, installerTrust, withLocalBin } from "./setup/signature.ts";
 import { setupFile } from "./setup/state.ts";
 import { homedir } from "node:os";
@@ -70,7 +75,12 @@ const { values, tokens } = parseArgs({
   tokens: true,
 });
 // Taken before anything can write, so the channel's first line is its own.
-const channelWrite = values.desktop ? takeStdout(process.stdout, process.stderr) : null;
+const parent = parentPort();
+const pipes = !values.desktop
+  ? null
+  : parent
+    ? portPipes(parent)
+    : { input: process.stdin, write: takeStdout(process.stdout, process.stderr) };
 const flags = new Set(tokens.flatMap((token) => (token.kind === "option" ? [token.name] : [])));
 if (values.desktop && [...flags].some((flag) => flag !== "desktop" && flag !== "data")) {
   console.error("--desktop takes only --data");
@@ -122,13 +132,16 @@ if (!existsSync(join(files.dist, files.entry))) {
   process.exit(1);
 }
 
-if (channelWrite && values.data) {
+if (pipes && values.data) {
+  // On the shell's Node, nothing the server starts is in a group the shell
+  // can kill, so the server ends it all itself.
+  if (parent) process.on("exit", killDescendants);
   let looked: Promise<string> = Promise.resolve("");
   // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({
     data: values.data,
-    input: process.stdin,
-    write: channelWrite,
+    input: pipes.input,
+    write: pipes.write,
     log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
     signals: process,
     firstPort,

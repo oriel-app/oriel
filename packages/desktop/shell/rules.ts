@@ -286,3 +286,66 @@ export function folders(
   const logs = given ? join(given, "Logs") : join(home, "Library/Logs/Oriel");
   return { data, logs, shell: join(data, "Shell") };
 }
+
+// Every process descended from `root` in `ps -A -o pid=,ppid=`'s table,
+// parents before their children: what the server started, for when it
+// won't quit. The server's own sweep, as it exits, reads the table the same
+// way (packages/server/src/desktop/utility.ts), and a test keeps the two
+// alike.
+export function descendants(table: string, root: number): number[] {
+  const children = new Map<number, number[]>();
+  for (const row of table.split("\n")) {
+    const [pid, ppid] = row.trim().split(/\s+/).map(Number);
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid) || pid === ppid) continue;
+    children.set(ppid!, [...(children.get(ppid!) ?? []), pid!]);
+  }
+  const found: number[] = [];
+  const seen = new Set([root]);
+  for (let at = [root]; at.length > 0;) {
+    const next = at.flatMap((pid) => children.get(pid) ?? []).filter((pid) => !seen.has(pid));
+    for (const pid of next) seen.add(pid);
+    found.push(...next);
+    at = next;
+  }
+  return found;
+}
+
+// What a server that died without its own sweep left running, from a
+// `ps -A -o pid=,ppid=,pgid=` table: launchd (pid 1) has taken them, and
+// they're still in the shell's process group, as everything the server
+// starts is but a CLI's own group. Only when the shell leads that group, as
+// when it's launched from Finder, the Dock or `open`: from a terminal, the
+// group is the terminal's, which may hold others' orphans. Each one's own
+// children go too.
+export function orphans(table: string, shell: number): number[] {
+  const rows = table
+    .split("\n")
+    .map((row) => row.trim().split(/\s+/).map(Number))
+    .filter((row) => row.length === 3 && row.every(Number.isInteger));
+  if (!rows.some(([pid, , pgid]) => pid === shell && pgid === shell)) return [];
+  const left = rows.flatMap(([pid, ppid, pgid]) =>
+    pgid === shell && ppid === 1 && pid !== shell ? [pid!] : [],
+  );
+  const pairs = rows.map(([pid, ppid]) => `${pid} ${ppid}`).join("\n");
+  return left.flatMap((pid) => [pid, ...descendants(pairs, pid)]);
+}
+
+// Why the shell would bring its window forward: at launch, a second launch,
+// the server asking for it, a folder pick, the question before quitting, or
+// the person's own click on the Dock icon or a notification. With
+// `--background`, for development, only the person's click does, so a
+// launch from a script never covers what they're doing. "dock" is macOS's
+// activate, which opening the app again in front also sends; `open -g`
+// doesn't.
+export type Raise =
+  | "launch"
+  | "second-launch"
+  | "focus-request"
+  | "folder-pick"
+  | "quit-question"
+  | "dock"
+  | "notification";
+
+export function raises(why: Raise, background: boolean): boolean {
+  return !background || why === "dock" || why === "notification";
+}

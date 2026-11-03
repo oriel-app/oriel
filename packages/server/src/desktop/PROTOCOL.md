@@ -1,10 +1,12 @@
 # The desktop shell and its server
 
-How the desktop app's shell and its server talk (decision 0036). It's the same on every OS. The shell starts the server as its child on the Node the app ships, with pipes for stdin and stdout, and stderr to its log file:
+How the desktop app's shell and its server talk (decision 0036). It's the same on every OS. The shell starts the server as its child, with its stdout and stderr going to the shell's log file:
 
 ```
 node packages/server/src/main.ts --desktop --data <folder>
 ```
+
+In the app the server runs on Electron's own Node, as the shell's utility process, which has no stdin (decision 0047). There the channel's text travels as messages on the process's parent port, which only the shell holds: each string the shell sends is text it would have written to stdin, `null` is stdin's end, and each line the server writes comes back as one string. Anywhere else, as under `pnpm desktop:server` and in tests, it's stdin and stdout. Everything below is the same either way; "stdin" and "stdout" name the channel's two directions.
 
 `--data` is the folder the server keeps its files in, as an absolute path. The shell picks it: its OS's usual per-person folder for app data. The server builds no path of its own and takes no other flag in desktop mode. `protocol.ts` beside this file holds the same shapes as validators; when the two disagree, it wins.
 
@@ -50,11 +52,11 @@ The server sends requests. Each has an `id`, a positive integer that the server 
 
 ## Quitting
 
-- To quit, the shell closes the server's stdin. The server revokes the live review links, stops its streams, closes its database and exits 0. If it hasn't exited after 5 s, the shell kills it.
+- To quit, the shell closes the server's stdin. The server revokes the live review links, stops its streams, closes its database and exits 0. As it exits, in the app, it kills whatever it started that's still running: a utility process leads no process group the shell could kill. If it hasn't exited after 5 s, the shell kills it and everything it started, found by the process table.
 - Where the OS has signals, SIGTERM and SIGINT quit the same way.
 - Asked to quit while it's still starting, before or just after the ready line, the server exits 0 at once. Links it left live are revoked at the next start.
-- When the shell dies, its end of stdin closes, so the server quits too.
-- If the server exits on its own, the shell can show that and offer to start it again.
+- When the shell dies, its end of stdin closes, so the server quits too. In the app, Electron ends its utility process at once instead, without the quitting above: what the server started is left running (decision 0047).
+- If the server exits on its own, the shell can show that and offer to start it again. In the app, it first kills whatever the server left running (decision 0047).
 
 ## The data folder
 

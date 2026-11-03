@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  descendants,
   fixedKey,
   folders,
   lang,
@@ -9,13 +10,17 @@ import {
   mayUse,
   notificationText,
   opensOutside,
+  orphans,
   parseRequest,
   printedPath,
   quitQuestion,
+  type Raise,
+  raises,
   readyOrigin,
   serverPath,
   storageProblem,
 } from "../shell/rules.ts";
+import { descendants as serverDescendants } from "@oriel/server/desktop/utility";
 
 test("the shell answers the protocol's requests, as the server writes them", () => {
   assert.deepEqual(parseRequest('{"id":1,"kind":"folder.pick","prompt":"Connect a folder"}'), {
@@ -249,4 +254,66 @@ test("a secret is kept only where the OS gives safe storage a key of its own", (
   assert.equal(fixedKey("linux", Buffer.from("v10abc")), true);
   assert.equal(fixedKey("linux", Buffer.from("v11abc")), false);
   assert.equal(fixedKey("darwin", Buffer.from("v10abc")), false);
+});
+
+test("a server that won't quit is killed with all it started, found by the process table", () => {
+  const table = [
+    "    1     0",
+    "  500     1",
+    // The server, a Deno and a tsc under it, the first run's CLI and its child.
+    "  600   500",
+    "  601   600",
+    "  602   600",
+    "  700   600",
+    "  701   700",
+    // Another app's, and one that names itself its parent.
+    "  800     1",
+    "  801   800",
+    "  900   900",
+    "",
+    "junk",
+  ].join("\n");
+  assert.deepEqual(descendants(table, 600), [601, 602, 700, 701]);
+  assert.deepEqual(descendants(table, 701), []);
+  assert.deepEqual(descendants(table, 4242), []);
+  // The server's own sweep reads the table the same way.
+  for (const root of [1, 500, 600, 700, 701, 800, 900, 4242])
+    assert.deepEqual(serverDescendants(table, root), descendants(table, root), String(root));
+});
+
+test("what a server that died left in the shell's group is swept, only if the shell leads it", () => {
+  const table = (shellGroup: number) =>
+    [
+      // The shell, its helpers, and what the dead server started: a Deno
+      // and a tsc, now launchd's, and a child of the Deno.
+      `  400     1 ${shellGroup}`,
+      `  401   400 ${shellGroup}`,
+      `  402   400 ${shellGroup}`,
+      `  610     1 ${shellGroup}`,
+      `  611     1 ${shellGroup}`,
+      `  612   610 ${shellGroup}`,
+      // A CLI's own group, and another app's orphan.
+      "  700     1   700",
+      "  800     1   800",
+      "",
+      "junk",
+    ].join("\n");
+  assert.deepEqual(orphans(table(400), 400), [610, 612, 611]);
+  // From a terminal, the group is the terminal's: nothing is swept.
+  assert.deepEqual(orphans(table(399), 400), []);
+  assert.deepEqual(orphans("", 400), []);
+});
+
+test("in the background only the person's own click brings the window forward", () => {
+  const own: Raise[] = ["dock", "notification"];
+  const unasked: Raise[] = [
+    "launch",
+    "second-launch",
+    "focus-request",
+    "folder-pick",
+    "quit-question",
+  ];
+  for (const why of [...own, ...unasked]) assert.equal(raises(why, false), true, why);
+  for (const why of own) assert.equal(raises(why, true), true, why);
+  for (const why of unasked) assert.equal(raises(why, true), false, why);
 });

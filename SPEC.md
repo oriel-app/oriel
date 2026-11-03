@@ -88,7 +88,7 @@ Concretely:
 - **Evals:** an in-house runner (JSON cases, run, grade, report). No eval framework dependency.
 - **Storage:** Node's built-in SQLite (decision 0011), with numbered SQL migrations applied by an in-house runner. A Postgres driver stays allowed if multi-tenant hosting ever needs it.
 - **Model access:** the Anthropic SDK is allowed (maintained by the vendor); raw HTTP is also acceptable.
-- **Desktop shell:** Electron, one shell for every OS, taken from its official release zip at a pinned version and SHA-256, never from npm, so it adds no package; its types are the release's own, vendored and hash-checked (decision 0039). The server runs on the Node `mise.toml` pins, which the app bundles beside Deno.
+- **Desktop shell:** Electron, one shell for every OS, taken from its official release zip at a pinned version and SHA-256, never from npm, so it adds no package; its types are the release's own, vendored and hash-checked (decision 0039). The server runs on Electron's own Node, as its utility process, so the app carries one Node, beside Deno; `mise.toml` pins that same Node, so CI tests what the app runs (decision 0047).
 
 Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains a package without a matching ADR in `docs/decisions/`. No unmaintained packages, ever; we go Rust for a component before pulling in a dead one.
 

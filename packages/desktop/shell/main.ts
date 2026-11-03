@@ -1,27 +1,37 @@
-// The desktop app's shell (decisions 0036 and 0039): Electron's main process,
-// a window over the server, which runs as this process's child on the Node
-// the bundle carries, not Electron's. The shell holds no product logic. It
+// The desktop app's shell (decisions 0036, 0039 and 0047): Electron's main
+// process, a window over the server, which runs on Electron's own Node as
+// this process's utility process. The shell holds no product logic. It
 // starts the server, shows its page, and does what the page can't: the folder
 // picker, notifications and the secret store (secrets.ts).
 //
 // - Launch. The server gets an environment built here: HOME, TMPDIR, LANG and
 //   the login shell's PATH, with the bundle's Deno first. The shell draws a
-//   32-byte launch secret and writes it, as hex, as stdin's first line, then
-//   sets it as the session cookie before the window's first load. The
-//   server's first stdout line names its URL.
-// - The channel. Then stdin and stdout carry JSON lines: the server asks and
-//   the shell answers only what rules.ts parses; anything else is refused.
+//   32-byte launch secret and writes it, as hex, as the channel's first
+//   line, then sets it as the session cookie before the window's first load.
+//   The server's first line names its URL.
+// - The channel. A utility process has no stdin, so the channel's text goes
+//   both ways as messages on its parent port, which only this process holds;
+//   `null` stands for stdin's end. After the secret it carries JSON lines:
+//   the server asks and the shell answers only what rules.ts parses;
+//   anything else is refused.
 // - The page has no preload and no bridge to the shell. Renderers are
 //   sandboxed and isolated, every permission is denied, the window stays on
 //   the server's origin, and other http(s) links open in the default browser.
 // - One instance per data folder: Electron's lock lives in the shell's folder
 //   inside it. A second launch brings the first one's window forward.
-// - Quitting closes the server's stdin, and kills its process group after
-//   5 s. While the server says Oriel is working on a thread, Quit in the
-//   menu (Cmd+Q) and closing the window ask the person first (decision
-//   0045). The server's stderr goes to the logs folder. If the server dies on
-//   its own, the window says so and offers Restart.
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+// - Quitting closes the server's stdin, and the server ends what it started
+//   as it exits. After 5 s the shell kills the server and all it started, by
+//   the process table, since a utility process leads no process group. While
+//   the server says Oriel is working on a thread, Quit in the menu (Cmd+Q)
+//   and closing the window ask the person first (decision 0045). The
+//   server's stdout and stderr go to the logs folder. If the server dies on
+//   its own, the shell kills whatever it left running, and the window says
+//   so and offers Restart.
+// - `--background`, for development: the window starts hidden and nothing
+//   brings it forward on its own (rules.ts, raises), so a launch from a
+//   script never covers what the person is doing. Clicking the Dock icon
+//   shows it.
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -43,9 +53,12 @@ import {
   safeStorage,
   session,
   shell,
+  utilityProcess,
+  type UtilityProcess,
   type WebContents,
 } from "electron";
 import {
+  descendants,
   fixedKey,
   folders,
   lang,
@@ -54,11 +67,14 @@ import {
   mayUse,
   notificationText,
   opensOutside,
+  orphans,
   parseRequest,
   pathEnd,
   pathStart,
   printedPath,
   quitQuestion,
+  type Raise,
+  raises,
   readyOrigin,
   restartUrl,
   serverPath,
@@ -73,13 +89,13 @@ const maxLine = 1 << 20;
 
 const home = homedir();
 const where = folders(process.argv, home);
+const background = process.argv.includes("--background");
 const resources = process.resourcesPath;
-const node = join(resources, "node/bin/node");
 const deno = join(resources, "deno");
 const main = join(resources, "server/packages/server/src/main.ts");
 
 let window: BrowserWindow | null = null;
-let server: ChildProcessWithoutNullStreams | null = null;
+let server: UtilityProcess | null = null;
 let origin: string | null = null;
 let path: Promise<string | null> | null = null;
 let quitting = false;
@@ -121,7 +137,8 @@ app.enableSandbox();
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", show);
+  app.on("second-instance", () => show("second-launch"));
+  app.on("activate", () => show("dock"));
   app.on("web-contents-created", (_, contents) => guard(contents));
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
@@ -183,6 +200,7 @@ function ready() {
       navigateOnDragDrop: false,
       devTools: false,
     },
+    show: raises("launch", background),
   });
   // Closing the window quits, so it asks first too.
   window.on("close", (event) => {
@@ -203,11 +221,14 @@ function quit() {
   else ask();
 }
 
-// Whether to quit while Oriel works. Quit quits, without asking again.
+// Whether to quit while Oriel works. Quit quits, without asking again. In
+// the background nothing comes forward to ask, so it doesn't quit.
 function ask() {
   if (asking || !window) return;
+  if (!raises("quit-question", background))
+    return note(`not quitting while working on ${working}: in the background, nothing asks`);
   asking = true;
-  show();
+  show("quit-question");
   note(`asked before quitting, while working on ${working}`);
   void dialog
     .showMessageBox(window, { type: "warning", noLink: true, ...quitQuestion(working) })
@@ -218,8 +239,8 @@ function ask() {
     });
 }
 
-function show() {
-  if (!window) return;
+function show(why: Raise) {
+  if (!window || !raises(why, background)) return;
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -328,20 +349,29 @@ function start() {
   void serverEnvironment().then((env) => {
     if (quitting || server) return;
     const secret = randomBytes(32).toString("hex");
-    const child = spawn(node, [main, "--desktop", "--data", where.data], {
+    const child = utilityProcess.fork(main, ["--desktop", "--data", where.data], {
       cwd: where.data,
       env,
-      detached: true,
-      stdio: ["pipe", "pipe", log >= 0 ? log : "ignore"],
-    }) as unknown as ChildProcessWithoutNullStreams;
+      stdio: ["ignore", "pipe", "pipe"],
+      serviceName: "Oriel Server",
+    });
     server = child;
-    child.stdin.on("error", () => {});
-    child.stdin.write(`${secret}\n`);
-    note(`started the server, pid ${child.pid}`);
+    for (const stream of [child.stdout, child.stderr])
+      stream?.on("data", (chunk: Buffer) => {
+        if (log < 0) return;
+        try {
+          writeSync(log, chunk);
+        } catch {
+          // A log that can't be written isn't worth stopping for.
+        }
+      });
+    child.postMessage(`${secret}\n`);
     let first = true;
     const lines = new Lines(maxLine, () => note(`dropped a line over ${maxLine} bytes`));
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-      for (const line of lines.push(chunk)) {
+    child.on("spawn", () => note(`started the server, pid ${child.pid}`));
+    child.on("message", (text: unknown) => {
+      if (typeof text !== "string") return note("dropped a message that isn't text");
+      for (const line of lines.push(text)) {
         if (server !== child) return;
         if (first) {
           first = false;
@@ -349,23 +379,20 @@ function start() {
         } else answer(child, line);
       }
     });
-    child.on("error", (error) => {
-      note(`couldn't start the server: ${error.message}`);
-      exited(child);
-    });
-    child.on("exit", (code, signal) => {
-      note(`the server exited, ${signal ?? `status ${code}`}`);
+    child.on("error", (type, location) => note(`the server failed: ${type} at ${location}`));
+    child.on("exit", (code) => {
+      note(`the server exited, status ${code}`);
       exited(child);
     });
   });
 }
 
 // The first line: set the cookie, then load the page.
-async function open(child: ChildProcessWithoutNullStreams, line: string, secret: string) {
+async function open(child: UtilityProcess, line: string, secret: string) {
   const found = readyOrigin(line);
   if (!found) {
     note("the server's first line wasn't its URL");
-    child.stdin.end();
+    child.postMessage(null);
     return;
   }
   origin = found;
@@ -383,28 +410,62 @@ async function open(child: ChildProcessWithoutNullStreams, line: string, secret:
 
 let deadline: NodeJS.Timeout | undefined;
 
-// Closing stdin asks the server to quit; after 5 s its group is killed.
+// Closing stdin asks the server to quit, and it ends what it started as it
+// exits; after 5 s the shell kills them all.
 function stop() {
   quitting = true;
   const child = server;
   if (!child) return void app.quit();
-  child.stdin.end();
+  child.postMessage(null);
   deadline = setTimeout(() => {
     note(`the server didn't stop in ${quitGrace / 1000} s; killing it`);
-    if (child.pid) killGroup(child.pid);
+    if (child.pid) killTree(child.pid);
   }, quitGrace);
 }
 
-function exited(child: ChildProcessWithoutNullStreams) {
+function exited(child: UtilityProcess) {
   if (server !== child) return;
   server = null;
   origin = null;
   working = 0;
   clearTimeout(deadline);
-  // Anything the server left in its group, such as a Deno or tsc.
-  if (child.pid) killGroup(child.pid);
+  sweep();
   if (quitting) return void app.quit();
   stopped();
+}
+
+// The server and everything it started, by the process table, parents first.
+function killTree(pid: number) {
+  execFile("/bin/ps", ["-A", "-o", "pid=,ppid="], { env: {} }, (error, table) => {
+    kill([pid, ...(error ? [] : descendants(table, pid))]);
+  });
+}
+
+// Whatever a server that died without its own sweep left running, such as
+// a Deno whose wall time only the server kept (rules.ts, orphans). At once,
+// since the app may be about to quit.
+function sweep() {
+  let table: string;
+  try {
+    table = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,pgid="], {
+      encoding: "utf8",
+      env: {},
+    });
+  } catch {
+    return;
+  }
+  const left = orphans(table, process.pid);
+  if (left.length > 0) note(`killed ${left.length} processes the server left running`);
+  kill(left);
+}
+
+function kill(pids: number[]) {
+  for (const pid of pids)
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
 }
 
 function killGroup(pid: number) {
@@ -435,10 +496,10 @@ function stopped() {
 
 // MARK: Answering the channel
 
-function answer(child: ChildProcessWithoutNullStreams, line: string) {
+function answer(child: UtilityProcess, line: string) {
   const parsed = parseRequest(line);
   const reply = (body: { ok: true; value: string | null } | { ok: false; error: string }) => {
-    if (server === child) child.stdin.write(`${JSON.stringify({ id: parsed.id, ...body })}\n`);
+    if (server === child) child.postMessage(`${JSON.stringify({ id: parsed.id, ...body })}\n`);
   };
   if ("refused" in parsed) {
     note(`refused a request: ${parsed.refused}`);
@@ -468,7 +529,8 @@ async function handle(request: Request): Promise<string | null> {
       return null;
     case "window.focus":
       // Over the browser the person signed in with, which has the focus.
-      show();
+      if (!raises("focus-request", background)) return null;
+      show("focus-request");
       if (process.platform === "darwin") app.focus({ steal: true });
       return null;
     case "working":
@@ -482,7 +544,7 @@ async function pickFolder(prompt: string): Promise<string | null> {
   if (picking) throw new Error("a folder picker is already open");
   picking = true;
   try {
-    show();
+    show("folder-pick");
     const picked = await dialog.showOpenDialog(window, {
       title: "Choose a folder",
       message: prompt,
@@ -511,7 +573,7 @@ async function notify(title: string, body: string, open: string): Promise<null> 
   notice.once("close", () => shown.delete(notice));
   notice.once("click", () => {
     shown.delete(notice);
-    show();
+    show("notification");
     if (!origin) return;
     const url = new URL(open, origin).href;
     if (mayShow(url, origin, true) && window?.webContents.getURL() !== url)
@@ -544,6 +606,8 @@ function measure(contents: WebContents) {
   const capture = (to: string) =>
     void contents.capturePage().then((image) => writeFileSync(to, image.toPNG()));
   contents.on("did-finish-load", function poll() {
+    // Gone when the app quits before the overview renders, as on the first run.
+    if (contents.isDestroyed()) return;
     if (contents.getURL().startsWith("data:")) return capture(`${file}-stopped.png`);
     void contents
       .executeJavaScript("document.querySelector('.overview-columns') !== null")
