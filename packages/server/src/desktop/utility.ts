@@ -15,9 +15,10 @@
 //   process it starts, and the watcher kills what's left once the server is
 //   gone (watcher.ts).
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { subscribe, unsubscribe } from "node:diagnostics_channel";
 import { fileURLToPath } from "node:url";
 import { PassThrough, type Readable } from "node:stream";
+import { BroadcastChannel } from "node:worker_threads";
+import { type ChildNews, childrenChannel, isChildNews, onChildren } from "@oriel/sandbox";
 import { descendants } from "./processes.ts";
 
 export { descendants };
@@ -96,7 +97,7 @@ export function watcherCommand(deno: string): {
 
 // Starts the watcher, in a session of its own so nothing aimed at the shell's
 // group reaches it, and tells it each process this one starts from now on,
-// through Node's own channel for them, and each that ends. Its stderr is
+// in any thread, and each that ends (@oriel/sandbox, onChildren). Its stderr is
 // this process's, so what it says reaches the log. `stop` is for tests: it
 // stops telling, and ends the watcher's stdin as this process's death would.
 export function watchChildren(
@@ -111,24 +112,22 @@ export function watchChildren(
   // Neither keeps this process running.
   watcher.unref();
   (watcher.stdin as { unref?: () => void }).unref?.();
-  const tell = (line: string) => {
-    if (watcher.stdin!.writable) watcher.stdin!.write(`${line}\n`);
+  const tell = ({ what, pid }: ChildNews) => {
+    if (watcher.stdin!.writable) watcher.stdin!.write(`${what} ${pid}\n`);
   };
-  const started = (message: unknown) => {
-    const child = (message as { process?: ChildProcess }).process;
-    if (!child || child === watcher) return;
-    child.once("spawn", () => {
-      const pid = child.pid;
-      if (pid === undefined) return;
-      tell(`started ${pid}`);
-      child.once("exit", () => tell(`ended ${pid}`));
-    });
+  // This thread's, and the compiler worker's, relayed.
+  const stopHearing = onChildren(tell);
+  const relayed = new BroadcastChannel(childrenChannel);
+  relayed.unref();
+  relayed.onmessage = (event) => {
+    const data = (event as { data?: unknown }).data;
+    if (isChildNews(data)) tell(data);
   };
-  subscribe("child_process", started);
   return {
     watcher,
     stop() {
-      unsubscribe("child_process", started);
+      stopHearing();
+      relayed.close();
       watcher.stdin!.end();
     },
   };
