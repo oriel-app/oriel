@@ -135,16 +135,22 @@ async function graphql(
   return result.data;
 }
 
-// Why GitHub refused an enqueue, if the answer is to wait for CI: a required
-// check still queued or running, or mergeability not yet worked out.
+// Why GitHub refused an enqueue, if the only answer is to wait for CI: a
+// required check still queued or running, or mergeability not yet worked
+// out. GitHub joins reasons with " and Pull request …", so every one must be
+// a wait; a conflict or a failing check alongside one is not.
 export function waitingOnChecks(errors: GraphqlResult["errors"]): string | null {
-  for (const { message = "" } of errors ?? [])
-    if (
-      /required status check .* is (queued|in progress|expected|pending|waiting)/i.test(message) ||
-      /mergeability check has not yet completed/i.test(message)
-    )
-      return message;
-  return null;
+  const messages = (errors ?? []).map(({ message = "" }) => message);
+  const waits = (reason: string) =>
+    /^(Pull request )?Required status check "[^"]*" is (queued|in progress|expected|pending|waiting)\.?$/i.test(
+      reason,
+    ) ||
+    /^(Pull request )?mergeability check has not yet completed$/i.test(reason) ||
+    /^(Pull request )?not in mergeable state$/i.test(reason);
+  const all = messages.flatMap((message) => message.split(/ and (?=Pull request )/));
+  return all.length > 0 && all.every(waits) && all.some((r) => !/not in mergeable state/i.test(r))
+    ? messages.join(" ")
+    : null;
 }
 
 const autoMergeOff = (errors: GraphqlResult["errors"]) =>
@@ -154,8 +160,10 @@ const autoMergeOff = (errors: GraphqlResult["errors"]) =>
 
 // Enqueue the PR, pinned to the commit just checked so a push in between
 // can't slip in. While CI runs, GitHub refuses an enqueue, so arm auto-merge
-// instead, pinned the same way: the PR enters the queue when CI passes. This
-// changes when the merge happens, not who decides (decision 0012).
+// instead: the PR enters the queue when CI passes. That pin holds only while
+// arming; auto-merge stays armed through later pushes, so the agent pushes
+// nothing more without a fresh go-ahead. This changes when the merge happens,
+// not who decides (decision 0012).
 export async function enqueue(
   send: Graphql,
   pr: { id: string; number: number; headRefOid: string },
@@ -183,7 +191,7 @@ export async function enqueue(
     variables,
   );
   if (!armed.errors)
-    return `auto-merge armed: PR #${pr.number} at ${pr.headRefOid.slice(0, 7)} enters the merge queue when CI passes. A later push to its branch keeps it armed.`;
+    return `auto-merge armed: PR #${pr.number} at ${pr.headRefOid.slice(0, 7)} enters the merge queue when CI passes. It stays armed through later pushes, so push nothing more to it without a fresh go-ahead.`;
   if (autoMergeOff(armed.errors))
     throw new Error(
       `not enqueued: ${waiting} Auto-merge is off for ${repo.owner}/${repo.name}, and the agent token can't turn it on. Needs you: tick "Allow auto-merge" under Settings → General → Pull Requests. Until then, run pr-enqueue again once CI passes.`,

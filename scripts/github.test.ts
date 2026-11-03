@@ -221,6 +221,17 @@ test("any other refusal fails the enqueue and arms nothing", async () => {
   for (const refusal of [
     refused("Pull request has merge conflicts and Pull request not in mergeable state"),
     refused('Pull request Required status check "check" is failing.'),
+    refused("Pull request not in mergeable state"),
+    // A wait alongside another reason, in one message or two.
+    refused(
+      'Pull request Required status check "check" is queued and Pull request has merge conflicts',
+    ),
+    {
+      errors: [
+        { type: "UNPROCESSABLE", message: 'Pull request Required status check "check" is queued.' },
+        { type: "UNPROCESSABLE", message: "Pull request has merge conflicts" },
+      ],
+    },
     { errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node" }] },
   ]) {
     const github = standIn({ enqueuePullRequest: refusal });
