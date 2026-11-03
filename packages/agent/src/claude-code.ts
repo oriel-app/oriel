@@ -103,6 +103,9 @@ export function harnessEnv(
     // self-update.
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+    // An `@path` in the user's text would otherwise attach that file.
+    CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
+    CLAUDE_CODE_DISABLE_FILE_MENTIONS: "1",
     ENABLE_CLAUDEAI_MCP_SERVERS: "false",
     CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
     CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: "1",
@@ -379,6 +382,9 @@ function startSession(options: SessionOptions): Session {
   let wake: (() => void) | null = null;
   let ended: unknown = null;
   let closed = false;
+  // Set once the CLI's report of what it loaded has passed the check. Nothing
+  // the model says is taken before it.
+  let ready = false;
   const notify = () => {
     const w = wake;
     wake = null;
@@ -428,6 +434,7 @@ function startSession(options: SessionOptions): Session {
 
   const stop = (why: string) => {
     log("harness.stopped", { reason: why });
+    queue.length = 0;
     end(new ProviderError(`Oriel stopped Claude Code: ${why}.`));
     close();
   };
@@ -446,6 +453,7 @@ function startSession(options: SessionOptions): Session {
     if (plugins.some((p) => p.path !== "builtin")) return stop("it loaded the person's plugins");
     for (const key of ["skills", "slash_commands"] as const)
       if (Array.isArray(init[key]) && init[key].length) return stop(`it loaded ${key}`);
+    ready = true;
     log("harness.ready", { version: text(init.claude_code_version), model: text(init.model) });
   };
 
@@ -481,6 +489,7 @@ function startSession(options: SessionOptions): Session {
       });
     if (method !== "tools/call")
       return reply({ error: { code: -32601, message: `Oriel doesn't serve ${method}.` } });
+    if (!ready) return stop("it asked to run a call before reporting what it loaded");
     const params = isObject(message.params) ? message.params : {};
     const meta = isObject(params._meta) ? params._meta : {};
     const callId = text(meta["claudecode/toolUseId"]);
@@ -528,7 +537,8 @@ function startSession(options: SessionOptions): Session {
     } catch {
       return; // Not a protocol line.
     }
-    if (!isObject(message)) return;
+    // Once it has been stopped, nothing more it says is read.
+    if (!isObject(message) || ended) return;
     if (message.type === "control_request") return control(message);
     if (message.type === "control_response") {
       const response = isObject(message.response) ? message.response : {};
@@ -539,6 +549,9 @@ function startSession(options: SessionOptions): Session {
       return;
     }
     if (message.type === "system" && message.subtype === "init") checkInit(message);
+    else if (!ready && message.type !== "system")
+      return stop("it answered before reporting what it loaded");
+    if (ended) return;
     queue.push(message);
     notify();
   });
@@ -587,9 +600,9 @@ function startSession(options: SessionOptions): Session {
     initialized: settleInit.promise,
     async take() {
       for (;;) {
+        if (ended) throw ended;
         const next = queue.shift();
         if (next) return next;
-        if (ended) throw ended;
         await new Promise<void>((resolve) => (wake = resolve));
       }
     },

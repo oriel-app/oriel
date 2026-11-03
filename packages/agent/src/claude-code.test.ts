@@ -117,7 +117,8 @@ type Spawned = {
 
 type FakeOptions = {
   responses?: Response[];
-  init?: Message;
+  // null: the CLI never reports what it loaded.
+  init?: Message | null;
   account?: Message;
   // Writes a `result` instead of any response.
   result?: Message;
@@ -168,7 +169,7 @@ function fakeClaude(options: FakeOptions = {}) {
         emit({ type: "control_request", request_id: id, request: body });
       });
     const play = async () => {
-      emit(options.init ?? goodInit);
+      if (options.init !== null) emit(options.init ?? goodInit);
       for (const tool of options.ask ?? [])
         run.permissions.push(
           await request({ subtype: "can_use_tool", tool_name: tool, input: { command: "ls" } }),
@@ -575,6 +576,30 @@ test("a CLI that loaded more than run, other servers, or another mode is stopped
       assert.match(error.message, why);
       return true;
     });
+    await closed(fake.spawned[0]);
+  }
+});
+
+test("nothing the CLI said is taken once the check fails, or before it reports at all", async () => {
+  const respond: Response[] = [{ blocks: [{ call: "toolu_1", script: "return 1" }] }];
+  for (const [init, why] of [
+    // The report fails, and a whole response with a call follows at once.
+    [{ ...goodInit, tools: [harnessRunTool, "Bash"] }, /tools other than run/],
+    // No report at all.
+    [null, /before reporting what it loaded/],
+  ] as const) {
+    const fake = fakeClaude({ init, responses: respond });
+    const conversation = claudeCodeProvider({ cli, spawn: fake.spawn }).converse(request().req);
+    const seen: ModelEvent[] = [];
+    await assert.rejects(
+      (async () => {
+        for await (const event of conversation.next([], { maxOutputTokens: 20_000 }))
+          seen.push(event);
+      })(),
+      why,
+    );
+    assert.deepEqual(seen, []);
+    assert.equal(fake.spawned[0]?.answered.size, 0);
     await closed(fake.spawned[0]);
   }
 });
