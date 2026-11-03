@@ -1203,7 +1203,7 @@ button.nav-more {
 /* Where it stands, in the state colours: working and approved are under
    way, needing the user and pending wait on them, done and applied landed,
    the rest are over. */
-.chip:is([data-state="working"], [data-state="approved"]) {
+.chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
   --chip-dot: var(--in-progress);
   --chip-state: var(--in-progress-text);
 }
@@ -1221,6 +1221,16 @@ button.nav-more {
 .chip[data-state="handed-off"] {
   --chip-dot: var(--handed-off-text);
   --chip-state: var(--handed-off-text);
+}
+
+.chip:is([data-state="reverted"], [data-state="rejected"]) {
+  --chip-dot: var(--reverted);
+  --chip-state: var(--reverted);
+}
+
+.chip[data-state="stalled"] {
+  --chip-dot: var(--stalled);
+  --chip-state: var(--stalled);
 }
 
 .chip[data-state="dropped"] .chip-state::before {
