@@ -1184,13 +1184,20 @@ button.nav-more {
   color: var(--todo-text);
 }
 
+/* In a list, where many may wait on the user, the highlighter fills only
+   the mark; beside a thread's own title the whole word is highlighted. */
 .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]) {
+  color: var(--text);
+}
+
+.thread-title-row .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]) {
   padding-left: 0.25rem;
   background: var(--highlight);
   color: var(--on-highlight);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"])::before {
+.thread-title-row
+  .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"])::before {
   display: none;
 }
 
