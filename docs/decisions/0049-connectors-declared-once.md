@@ -11,7 +11,7 @@ Adds: none
   - `kind`: its name in item IDs and in the agent's module, such as `sheets`. It is a short lowercase word, never one of Oriel's own spaces.
   - `key`: its items' key shape, as strict as core's `keyShapes` has them now, with no text a person wrote.
   - **How it shows:** its name, its name in a sentence ("the folder"), an icon from a fixed set (a ticket, a page, a message, a row), and what its keys read as ("File", "Message", "Row"). The server sends these to the page, so the page keeps no list of sources.
-  - `connect`: the steps of making a connection. Each is one of a few kinds, which the window draws the same way everywhere:
+  - `connect`: the steps of making a connection, and whether the first run offers it, in what order. Each step is one of a few kinds, which the window draws the same way everywhere:
     - `fields`: what the person types, each with its label, whether it is secret, and its help lines and link, such as Jira's address, email and API token, with OA-191's words;
     - `browser`: a sign-in in the person's browser, which the server completes with OAuth's PKCE on a loopback port, and the source's own picker where it has one (decision 0050);
     - `folder`: the system's folder picker through the shell, or a typed path under `pnpm dev`;

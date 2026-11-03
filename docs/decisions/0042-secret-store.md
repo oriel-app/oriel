@@ -1,6 +1,6 @@
 # 0042 The desktop app's secret store, and an API key from Settings
 
-Accepted 2026-11-03 (OA-188). Amends 0022, 0039 and 0041. Changes SPEC §3, §5 and §7. Amended by 0049: the fixed names are `anthropic-key` and the shape `connection.<ULID>`, and `jira` moves to its connection's name.
+Accepted 2026-11-03 (OA-188). Amends 0022, 0039 and 0041. Changes SPEC §3, §5 and §7. Amended by 0049: the fixed names are `anthropic-key` and the shape `connection.<ULID>`, and `jira` moves to its connection's name, staying one release so the move can read it.
 
 Adds: none
 

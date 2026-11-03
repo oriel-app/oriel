@@ -1,6 +1,6 @@
 # 0051 Oriel helps connect a source: the agent drafts a connection's options, and the person applies them
 
-Accepted 2026-11-03. Amends 0024, 0027, 0038 and 0041. Follows 0049 and 0050. Changes SPEC §1, §2, §7 and §8.
+Accepted 2026-11-03. Amends 0024, 0027, 0030, 0038 and 0041. Follows 0049 and 0050. Changes SPEC §1, §2, §7 and §8.
 
 Adds: none
 
@@ -16,11 +16,11 @@ Adds: none
   - **Not a change set.** A change set is a write to a source that a person approves, in the thread or through a review link (0003). A connection's options are Oriel's own, and a review link would hand them to whoever holds it. 0024 already rejected Oriel's own data as a change set, for the special cases it would add to `packages/changeset`.
 - **What the agent reads to draft.** A connector may declare a preview: what the agent sees to draft its options, read live from the source. Google Sheets' is each picked tab's header and first 30 rows. Slack's would be its channels' names and how lately each was active, and Jira's its projects.
   - A connection **waits for its options** when it is new and has none, or when its sync stopped because its options no longer fit its source, such as a mapped column gone. Only then does the window chat's module offer one read of the preview, with the draft's function.
-  - The read reaches past the region, the third way beside `search()` and `window.overview()` (SPEC §1.6), so it shows in the transcript as theirs do, and counts for scope discipline (SPEC §8). Its rows aren't items yet, so it has a block form of its own: the cells as text under their column letters, the headers as the first row, and at most 30 rows a tab. Nothing in it can be cited or added to a workstream. Its result comes back as tool results, never in a prompt.
+  - The read reaches past the region, the third way beside `search()` and `window.overview()` (SPEC §1.6), so it shows in the transcript as theirs do, and counts for scope discipline (SPEC §8). Its rows aren't items yet, so it is a fourth block form, beside 0030's bars, table and rows, from the same builder: the cells as text under their column letters, the headers as the first row, and at most 30 rows a tab. Nothing in it can be cited or added to a workstream. Its result comes back as tool results, never in a prompt.
 - **Onboarding a connection.** After the person picks spreadsheets (0050), the window chat runs one turn, from Oriel's fixed words. They name no title, since a title is synced text (0038): "Draft how Oriel should read the spreadsheets just picked."
   - The turn is the person's, started by their pick, as a question to start from is the person's when they click it (0030). This amends 0027, whose window chat starts only from a question or a cite.
   - The agent reads the preview, then drafts the mapping. For example: the title from B (Feature), the status from D (RAG), the owner from F (DRI), the key from A (ID), and the table ending at its first blank row, so the notes block below it is skipped.
-  - The person applies it or edits it, and the first sync reads with it.
+  - The person applies it or edits it, and the first sync reads with it. Applying turns the draft's column letters into the headers above them, so the mapping keeps naming the same columns when one is inserted or moved (0050).
   - **With no AI set up,** Oriel's own guess fills the same card: the first row as the header, the first column whose values are all present and unique as the key, and the first text column as the title. It says it's a guess, and calls no model.
 - **The same pattern for any connector with a preview,** whenever one of its connections waits for its options. At first connect, the agent may draft which Slack channels to read, or which Jira project; when a sheet's columns change under its mapping ("Status is now called Stage"), a new mapping. Each is a draft of `source.configure`.
 - **The first run (0038).** Google Sheets' row in the source step goes: Connect; the consent line (0050); Google's page, signed in and picked in one tab; back in Oriel, "Reading the headers"; the draft, drawn in the row as 0049's review step; Apply; the first sync; the overview. 0038 sets up the AI first, so the agent is there to draft.
@@ -44,6 +44,7 @@ Adds: none
 
 - 0024: an action closed to the agent may be draftable, and the agent's door gains a draft for it. Drafts take a place in the turn's proposal. The repo check fails on a draftable action that is open to the agent or holds credentials.
 - 0027: a window chat may also start from a connection's pick.
+- 0030: a waiting connection's preview is a fourth block form.
 - 0038: Google Sheets' row in the first run gains the review step.
 - 0041: the agent may read a connection's options in tool results, and draft them. Settings stays out of its reach.
 - SPEC §1.6 and §8 name the preview read beside `search()` and `window.overview()`; §2 gains draft; §7 gains the events.
