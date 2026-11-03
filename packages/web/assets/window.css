@@ -4944,6 +4944,7 @@ button.overview-title:hover {
   gap: var(--space-1) var(--space-2);
   padding: var(--space-1) var(--space-2);
   border-bottom: var(--border-thin) dashed var(--n5);
+  background: var(--n2);
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
@@ -4954,12 +4955,8 @@ button.overview-title:hover {
 }
 
 .agent-frame-fence {
-  padding: var(--space-2);
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--n2) 0 2px,
-    transparent 2px 7px
-  );
+  padding: var(--space-3);
+  background: repeating-linear-gradient(-45deg, var(--n4) 0 1px, var(--n1) 1px 6px);
 }
 
 .agent-frame iframe {
