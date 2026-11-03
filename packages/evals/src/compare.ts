@@ -1,4 +1,4 @@
-// The hillclimb's bookkeeping (SPEC §8, decision 0030), as the hill-climb
+// The hillclimb's bookkeeping (SPEC §8, decision 0031), as the hill-climb
 // skill describes it: each case runs several times in each arm, a fix must be
 // better beyond noise, a trim no worse within a stated margin, and no group of
 // cases may get worse.
