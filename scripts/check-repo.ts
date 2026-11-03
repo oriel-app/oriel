@@ -20,7 +20,8 @@
 // three exempt below, which must be as the list says. What a route does
 // besides dispatching is its author's word: the check sees only whether it
 // dispatches. And window.css's themes pass decision 0034's rules
-// (check-themes.ts), and no two decisions share a number.
+// (check-themes.ts), and no two decisions share a number. And every Chrome
+// a script launches is the installed, auto-updated one, with its sandbox on.
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
@@ -212,6 +213,36 @@ export function decisionClashes(names: readonly string[]): string[] {
     );
 }
 
+// Chrome launches without the installed Chrome or its sandbox. Playwright
+// passes `--no-sandbox` unless told `chromiumSandbox: true`, and its bundled
+// Chromium isn't kept up to date; a script renders agent-written HTML and
+// synced content in it. A call's options are read to its closing paren.
+export function chromeLaunchProblems(path: string, text: string): string[] {
+  const found: string[] = [];
+  const why = "it renders agent-written HTML and synced content";
+  for (const call of text.matchAll(/\bchromium\.launch\w*\(/g)) {
+    let depth = 0;
+    let end = call.index + call[0].length - 1;
+    do {
+      const c = text[end++];
+      if (c === "(") depth++;
+      if (c === ")") depth--;
+    } while (depth > 0 && end < text.length);
+    const options = text.slice(call.index, end);
+    if (!/\bchannel: "chrome"/.test(options))
+      found.push(
+        `${path}: launches Chrome without channel: "chrome"; ${why}, so it runs in the installed, updated Chrome`,
+      );
+    if (!/\bchromiumSandbox: true\b/.test(options))
+      found.push(
+        `${path}: launches Chrome without chromiumSandbox: true; ${why}, so it keeps Chrome's sandbox`,
+      );
+  }
+  if (text.includes("--no-sandbox"))
+    found.push(`${path}: passes --no-sandbox; ${why}, so it keeps Chrome's sandbox`);
+  return found;
+}
+
 export function matches(name: string, entry: string): boolean {
   if (entry.endsWith("*")) return name.startsWith(entry.slice(0, -1));
   return name === entry;
@@ -239,6 +270,7 @@ export function problems(repo: {
             `${path}: POST ${route.path} changes state without calling the dispatcher (decision 0024)`,
           );
       }
+    for (const problem of chromeLaunchProblems(path, text)) found.add(problem);
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = ownWriterFile.test(path);

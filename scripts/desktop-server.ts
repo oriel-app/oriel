@@ -70,7 +70,7 @@ async function opened(url: string): Promise<void> {
   );
   if (values["no-browser"]) return;
   try {
-    browser = await chromium.launch({ channel: "chrome", headless: false });
+    browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true, headless: false });
     const context = await browser.newContext({ viewport: null });
     await context.addCookies([
       {
