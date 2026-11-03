@@ -21,6 +21,7 @@ import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
 import { addUndos } from "./panel-adds.ts";
+import { approvedUndos } from "./approved.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
@@ -117,8 +118,10 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         <SetupPage model={model} dispatch={dispatch} />
       </TimeFormatContext.Provider>
     );
-  // The panel's adds, as notes in whichever stack of Undos is on screen.
-  const added = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
+  // The panel's adds, and where an approval took the page, as notes in
+  // whichever stack of Undos is on screen.
+  const adds = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
+  const added = { ...adds, notes: [...adds.notes, ...approvedUndos(model.approved).notes] };
   return (
     <SendKeyContext.Provider value={sendKey(model.settings)}>
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>

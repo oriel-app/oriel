@@ -3960,6 +3960,7 @@ a.replies:hover {
   color: var(--accent);
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
+  text-decoration: none;
   cursor: pointer;
 }
 

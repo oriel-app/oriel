@@ -2,6 +2,17 @@
 // model. Pages update themselves; this routes messages and replies to them,
 // and keeps the workstreams and threads lists the chrome shows.
 import {
+  accepted,
+  approvedIn,
+  type ApprovedModel,
+  type ApprovedMsg,
+  arriving,
+  focusing,
+  initApproved,
+  sending,
+  updateApproved,
+} from "./approved.ts";
+import {
   type ClosingModel,
   type ClosingMsg,
   closingReplied,
@@ -204,6 +215,9 @@ export type Model = {
   // The desktop app's first run, and the Claude Code and Codex rows
   // Settings shares with it (decisions 0038 and 0048).
   setup: SetupModel;
+  // Where an approval in a thread took the page, as a note in the stack of
+  // Undo notes.
+  approved: ApprovedModel;
 };
 
 export type Msg =
@@ -221,6 +235,7 @@ export type Msg =
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
   | { type: "panelAdd"; msg: PanelAddMsg }
+  | { type: "approved"; msg: ApprovedMsg }
   // The pointer or keyboard came onto the stack of Undo notes, or left it,
   // which holds every note in it, of every kind.
   | { type: "undoHeld"; by: Hold; held: boolean }
@@ -329,6 +344,7 @@ export function init(route: Route): [Model, Effect[]] {
     search: initSearch(),
     settings: initSettings(),
     setup: initSetup(),
+    approved: initApproved(),
   };
   const [model, effects] = enter(empty, route);
   // A review link's page isn't the person's, so it keeps the default look.
@@ -394,6 +410,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
     panelAdds: samePage(model.route, route) ? model.panelAdds : addsLeft(model.panelAdds),
     panelList: samePage(model.route, route) ? model.panelList : null,
+    approved: arriving(model.approved, route),
   };
   switch (route.page) {
     case "overview": {
@@ -459,15 +476,32 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 // When the window or the lists load again, something may have moved in the
 // index, so an open panel asks whether its item changed since its read.
 // However a thread's page changed, it scrolls the same way. However the user
-// asked for a page, one already open stays as it is.
+// asked for a page, one already open stays as it is. An approval accepted
+// may take the page on to the next thread that needs the user, whose
+// heading takes focus once it loads.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
-  const [next, effects] = readingDone(...staying(...standing(msg, ...updated(model, msg))));
+  const [next, effects] = focused(
+    ...readingDone(...staying(...standing(msg, ...movedOn(model, msg, ...updated(model, msg))))),
+  );
   const moved = effects.some(
     (effect) =>
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
   return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
+}
+
+function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
+  const next = { ...after, approved: sending(after.approved, msg) };
+  const changeSetId = accepted(before, msg);
+  if (changeSetId === null) return [next.approved === after.approved ? after : next, effects];
+  const [moved, going] = approvedIn(before, next, changeSetId);
+  return [moved, [...effects, ...going]];
+}
+
+function focused(model: Model, effects: Effect[]): [Model, Effect[]] {
+  const [next, focusingIt] = focusing(model);
+  return [next, [...effects, ...focusingIt]];
 }
 
 // The first run's last screen opens the overview as soon as one source is
@@ -645,10 +679,15 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         ? updateOverview(model.overview, { type: "undoHeld", by, held })
         : [null, []];
       const [panelAdds, added] = holdAdds(model.panelAdds, by, held);
+      const [approved, noted] = updateApproved(model.approved, { type: "undoHeld", by, held });
       return [
-        { ...model, workstream, ending, overview, panelAdds },
-        [...removals, ...ended, ...made, ...added],
+        { ...model, workstream, ending, overview, panelAdds, approved },
+        [...removals, ...ended, ...made, ...added, ...noted],
       ];
+    }
+    case "approved": {
+      const [approved, effects] = updateApproved(model.approved, msg.msg);
+      return [{ ...model, approved }, effects];
     }
     case "search": {
       const [search, effects] = updateSearch(model.search, msg.msg);

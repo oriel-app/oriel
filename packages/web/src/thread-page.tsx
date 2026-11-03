@@ -139,7 +139,9 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
               {view.workstream.name}
             </Link>
             <div class="thread-title-row">
-              <h1 class="thread-title">{view.title ?? "New thread"}</h1>
+              <h1 class="thread-title" tabIndex={-1}>
+                {view.title ?? "New thread"}
+              </h1>
               <StateChip
                 state={view.state}
                 waitingOn={waitingOn({

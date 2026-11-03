@@ -103,6 +103,13 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
     case "focusComposer":
       document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
       return;
+    case "focusHeading":
+      // The page renders in a microtask, as `rendered` says. Where it's
+      // scrolled stays.
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLElement>(".thread-title")?.focus({ preventScroll: true }),
+      );
+      return;
     case "subscribe": {
       events?.close();
       // The browser reconnects by itself and sends the last entry's ID, so

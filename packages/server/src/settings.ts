@@ -1,7 +1,8 @@
 // Settings (OA-181): the person's providers, the default model and the
 // Title model, the theme, the text size, which key sends a question, and
 // whether the desktop app notifies (OA-184) and asks before quitting while
-// Oriel works (decision 0045).
+// Oriel works (decision 0045), and where a thread's page goes after an
+// approval.
 // They live in one JSON file in the data folder, `.oriel/` under `pnpm dev`,
 // and apply as soon as they change. The file holds no key or credential: a
 // provider's row says only whether one is set.
@@ -22,6 +23,8 @@ import { defaultTheme } from "@oriel/web/themes";
 import { type KeyStore, keepKey, KeyRefused } from "./api-key.ts";
 import type { Models } from "./model.ts";
 import {
+  type AfterApprove,
+  afterApproves,
   type ModelPick,
   type ProviderKind,
   providerKinds,
@@ -62,6 +65,9 @@ export type Settings = {
   askBeforeQuitting: boolean;
   // How the window writes a time, everywhere but a review link's page.
   timeFormat: TimeFormat;
+  // Whether a thread's page stays after an approval there, or goes on to
+  // the next thread that needs the person.
+  afterApprove: AfterApprove;
 };
 
 // One instance of each kind, on, in the order Settings lists them.
@@ -81,6 +87,7 @@ export const defaultSettings: Settings = {
   notify: true,
   askBeforeQuitting: true,
   timeFormat: "relative",
+  afterApprove: "stay",
 };
 
 export type SettingsStore = { get(): Settings; set(next: Settings): void };
@@ -144,6 +151,7 @@ function read(parsed: unknown): Settings {
     notify: field("notify", boolean, true),
     askBeforeQuitting: field("askBeforeQuitting", boolean, true),
     timeFormat: field("timeFormat", oneOf(timeFormats), "relative"),
+    afterApprove: field("afterApprove", oneOf(afterApproves), "stay"),
   };
 }
 
@@ -197,6 +205,7 @@ export const settingsChange: Validator<SettingsChange> = union(
   object({ notify: boolean }),
   object({ askBeforeQuitting: boolean }),
   object({ timeFormat: oneOf(timeFormats) }),
+  object({ afterApprove: oneOf(afterApproves) }),
   object({ model: pickValue }),
   object({ titleModel: pickValue }),
   object({ provider: idValue, on: boolean }),
@@ -223,6 +232,7 @@ export function changed(
   if ("askBeforeQuitting" in change)
     return { ...settings, askBeforeQuitting: change.askBeforeQuitting };
   if ("timeFormat" in change) return { ...settings, timeFormat: change.timeFormat };
+  if ("afterApprove" in change) return { ...settings, afterApprove: change.afterApprove };
   if ("model" in change) return { ...settings, model: change.model };
   if ("titleModel" in change) return { ...settings, titleModel: change.titleModel };
   const provider = settings.providers.find((p) => p.id === change.provider);
@@ -302,6 +312,7 @@ export function settingsService(deps: {
       askBeforeQuitting: settings.askBeforeQuitting,
       asksBeforeQuitting: deps.asksBeforeQuitting ?? false,
       timeFormat: settings.timeFormat,
+      afterApprove: settings.afterApprove,
     };
   };
   return {

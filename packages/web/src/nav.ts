@@ -114,6 +114,19 @@ export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
 // it.
 const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thread.waitingOn);
 
+// Where "Go to the next thing that needs you" goes once an approval in the
+// thread `left` is accepted: from Needs you (`waiting`), in its order, the
+// first other thread with a change set to review, or else the first other
+// thread waiting on the user for anything. Null when none is, so the page
+// stays.
+export function nextNeedingYou(
+  waiting: readonly ThreadSummaryView[],
+  left: string,
+): ThreadSummaryView | null {
+  const others = waiting.filter((thread) => thread.id !== left);
+  return others.find((thread) => thread.waitingOn === "review") ?? others[0] ?? null;
+}
+
 // A decision sent from the thread's page shows in every list at once: while
 // the list still has the thread needing a review, it waits on what the
 // decision will leave it waiting on. So Approve and apply takes it out of

@@ -480,6 +480,7 @@ const configured = async (settings: Partial<Settings> = {}) => {
 };
 const settingsServer = await configured();
 const settingsLarge = await configured({ textSize: "large" });
+const settingsNext = await configured({ afterApprove: "next" });
 rmSync(codexBin, { recursive: true, force: true });
 
 // A request as the window sends it.
@@ -989,6 +990,24 @@ async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
 
+// After you approve, set to go on to the next thing that needs you: a
+// server of each shot's own, with a change set to review on the checkout
+// epic, and with `others`, a plan proposed before it, which is next in
+// Needs you. The shot approves the latest (`approvingIn`).
+let approvingIn = "";
+const goingOn = (others: boolean) => async () => {
+  const { serving } = await writing();
+  await post("/api/settings", { afterApprove: "next" }, serving);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  if (others) await ask("Plan gift cards", serving, workstreamId);
+  approvingIn = await ask("Estimate what's missing", serving, workstreamId);
+  return serving;
+};
+const approveIt = async (page: Page) => {
+  await page.goto(new URL(`/threads/${approvingIn}`, page.url()).href);
+  await page.getByRole("button", { name: "Approve and apply" }).click();
+};
+
 // A server of its own for Make a workstream on the overview: each pass of
 // the scenes deletes what the last one made first.
 const suggesting = (await writing({ kind: "fixture" })).serving;
@@ -1033,6 +1052,35 @@ const scenes: Scene[] = [
     path: "/settings/general",
     on: settingsServer,
     act: (page) => page.locator(".settings-switch .switch").waitFor(),
+  },
+  {
+    name: "settings-general-next",
+    path: "/settings/general",
+    on: settingsNext,
+    act: (page) =>
+      page.getByRole("radio", { name: "Go to the next thing that needs you" }).waitFor(),
+  },
+  // Approving, with After you approve set to go on: the page is on the next
+  // thread in Needs you, its heading focused, with a note that links back.
+  {
+    name: "approved-next",
+    path: "/",
+    make: goingOn(true),
+    act: async (page) => {
+      await approveIt(page);
+      await page.locator(".undo", { hasText: "Applying…" }).waitFor();
+      await page.locator(".thread-title:focus").waitFor();
+    },
+  },
+  // With nothing else needing the person, the page stays and says so.
+  {
+    name: "approved-nothing-else",
+    path: "/",
+    make: goingOn(false),
+    act: async (page) => {
+      await approveIt(page);
+      await page.getByText("All caught up.").waitFor();
+    },
   },
   {
     name: "settings-notifications",

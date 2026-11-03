@@ -120,6 +120,9 @@ export type Effect =
   // Puts the cursor in a thread's message box, as after Reject, so what
   // was wrong is the user's next message.
   | { type: "focusComposer" }
+  // Puts focus on a thread's heading, once the page shows it, as after the
+  // page moved on from an approval, so a screen reader starts there.
+  | { type: "focusHeading" }
   // Watches a thread's events after `after`; one thread at a time.
   | { type: "subscribe"; threadId: string; after: number }
   | { type: "unsubscribe" }

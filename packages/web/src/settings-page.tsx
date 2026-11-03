@@ -2,8 +2,9 @@
 // room for more. Providers first: one row per provider instance, what Oriel
 // found for it and a switch, then the default model and the Title model,
 // picked from those connected and on, and how much of the plan Oriel has
-// used. General: how a time is written, and whether the desktop app asks
-// before quitting while Oriel works. Appearance: the theme and the text
+// used. General: how a time is written, where a thread's page goes after
+// an approval, and whether the desktop app asks before quitting while Oriel
+// works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
@@ -13,6 +14,7 @@ import type { SettingsSection } from "./route.ts";
 import type { SettingsModel, SettingsMsg } from "./settings.ts";
 import type { SetupModel, SetupMsg } from "./setup.ts";
 import type {
+  AfterApprove,
   ModelPick,
   SendKey,
   SettingsChange,
@@ -432,9 +434,14 @@ const timeFormatNames: Record<TimeFormat, string> = {
   absolute: "Date and time, such as Nov 3, 09:41",
 };
 
-// How a time is written, and whether the desktop app asks before it quits
-// while a thread's turn runs or a change set applies. Only the desktop app
-// quits.
+const afterApproveNames: Record<AfterApprove, string> = {
+  stay: "Stay on this thread",
+  next: "Go to the next thing that needs you",
+};
+
+// How a time is written, where a thread's page goes once an approval there
+// is accepted, and whether the desktop app asks before it quits while a
+// thread's turn runs or a change set applies. Only the desktop app quits.
 function General(props: { view: SettingsView; change(change: SettingsChange): void }) {
   const { view, change } = props;
   return (
@@ -448,6 +455,13 @@ function General(props: { view: SettingsView; change(change: SettingsChange): vo
         options={Object.entries(timeFormatNames).map(([value, label]) => ({ value, label }))}
         value={view.timeFormat}
         onPick={(timeFormat) => change({ timeFormat: timeFormat as TimeFormat })}
+      />
+      <Choices
+        name="After you approve"
+        about="When you approve a change set in a thread. If nothing else needs you, you stay."
+        options={Object.entries(afterApproveNames).map(([value, label]) => ({ value, label }))}
+        value={view.afterApprove}
+        onPick={(afterApprove) => change({ afterApprove: afterApprove as AfterApprove })}
       />
       {view.asksBeforeQuitting ? (
         <div class="settings-field settings-switch">
