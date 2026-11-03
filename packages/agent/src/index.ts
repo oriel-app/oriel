@@ -15,6 +15,17 @@ export {
   messagesUrl,
 } from "./anthropic.ts";
 export {
+  checkClaudeCode,
+  type CheckOptions,
+  type ClaudeCode,
+  claudeCodeMinVersion,
+  claudeCodeProvider,
+  type ClaudeCodeOptions,
+  claudeCodeTitler,
+  type HarnessProblem,
+  type Spawn,
+} from "./claude-code.ts";
+export {
   anthropicTitler,
   maxTitleChars,
   titleFrom,

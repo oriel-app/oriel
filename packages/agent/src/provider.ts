@@ -75,6 +75,9 @@ export interface Conversation {
     results: readonly ToolResult[],
     options: { maxOutputTokens: number },
   ): AsyncIterable<ModelEvent>;
+  // Ends the conversation once the turn is over, however it ended: a
+  // provider that holds a process stops it here. The loop calls it once.
+  close?(): void;
 }
 
 export interface Provider {

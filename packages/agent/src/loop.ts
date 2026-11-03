@@ -18,6 +18,7 @@ import { turnBlocks } from "./blocks.ts";
 import { proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
+  type Conversation,
   type ModelEvent,
   noUsage,
   ProviderError,
@@ -180,8 +181,9 @@ async function* turn(
     };
   }
 
+  let conversation: Conversation | null = null;
   try {
-    const conversation = deps.provider.converse({
+    conversation = deps.provider.converse({
       system: systemPrompt,
       tools: [runTool(deps.bindingsFor(region, thread.id).dts)],
       messages: threadMessages(input.history, input.text),
@@ -261,6 +263,8 @@ async function* turn(
       return;
     }
     yield failed(errorText(error));
+  } finally {
+    conversation?.close?.();
   }
 
   yield* shownBlocks.settle();

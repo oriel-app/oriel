@@ -17,10 +17,15 @@
 // or ID, as the first person in `.env`'s SLACK_USER_TOKENS. Change sets a
 // person approves post as that person, only in those channels: in memory for
 // the fixture, and in Slack for live, which needs the chat:write scope.
+//
+// The agent runs on the model key in `.env` when there is one. Without one, it
+// runs on the person's own Claude Code, found on the PATH or at
+// `--claude-code <path>`, signed in however they signed it in (decision
+// 0037). With neither, each turn says how to set one up. `--agent scripted`
+// runs the scripted agent instead, which needs no model.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { agent, anthropicProvider, anthropicTitler, defaultModel, titleModel } from "@oriel/agent";
 import { basicAuth } from "@oriel/jira";
 import { bearer } from "@oriel/slack";
 import { webFiles, serve } from "./serve.ts";
@@ -28,6 +33,7 @@ import { join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
 import { fileStore } from "./connection.ts";
 import { serverEnv, slackEnv } from "./env.ts";
+import { chooseModel, modelOptions } from "./model.ts";
 
 const { values } = parseArgs({
   options: {
@@ -37,6 +43,8 @@ const { values } = parseArgs({
     slack: { type: "string" },
     channels: { type: "string" },
     fresh: { type: "string" },
+    agent: { type: "string", default: "auto" },
+    "claude-code": { type: "string" },
   },
 });
 const port = Number(values.port);
@@ -63,6 +71,11 @@ const channels = (values.channels ?? "")
   .filter(Boolean);
 if ((values.slack === "live") !== channels.length > 0) {
   console.error("--channels names the channels --slack live reads, and only then");
+  process.exit(2);
+}
+
+if (values.agent !== "auto" && values.agent !== "scripted") {
+  console.error("--agent must be auto or scripted");
   process.exit(2);
 }
 
@@ -101,21 +114,26 @@ if (values.slack === "live") {
   slack = { kind: "live", credential: bearer(found.token), channels };
 }
 
-// The model-backed agent when `.env` has a model key, which only its
-// provider holds; the scripted agent otherwise.
-const { modelKey } = env;
+// The scripted agent when asked for; otherwise the model `.env`'s key or the
+// person's Claude Code gives, or none.
+const claudeCodePath = values["claude-code"];
+const model =
+  values.agent === "scripted"
+    ? null
+    : modelOptions(
+        await chooseModel({
+          key: env.modelKey,
+          ...(claudeCodePath ? { claudeCode: { path: claudeCodePath } } : {}),
+        }),
+      );
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));
 mkdirSync(dir, { recursive: true });
 const serving = await serve(port, {
   db: join(dir, `${jira.kind}.db`),
   jira,
   ...(slack ? { slack } : {}),
-  ...(modelKey
-    ? {
-        agent: (deps) => agent({ ...deps, provider: anthropicProvider({ apiKey: modelKey }) }),
-        titler: anthropicTitler({ apiKey: modelKey }),
-      }
-    : {}),
+  ...(model?.agent ? { agent: model.agent } : {}),
+  ...(model?.titler ? { titler: model.titler } : {}),
   log: (message, fields) => console.log(JSON.stringify({ message, ...fields })),
 });
 console.log(`Oriel is running at ${serving.url}`);
@@ -134,11 +152,7 @@ console.log(
       ? "Slack: the synthetic channel. Change sets you approve post there, in memory."
       : `Slack: ${channels.map((name) => `#${name.replace(/^#/, "")}`).join(", ")}. Change sets you approve post there as the person Oriel reads Slack as.`,
 );
-console.log(
-  modelKey
-    ? `Agent: the model-backed agent (${defaultModel}), with the model key from .env. Thread titles: ${titleModel}.`
-    : "Agent: the scripted agent for local development. Set ANTHROPIC_API_KEY in .env, printable characters and no spaces, for the model-backed one.",
-);
+console.log(model?.describe ?? "Agent: the scripted agent, as --agent scripted asked.");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {

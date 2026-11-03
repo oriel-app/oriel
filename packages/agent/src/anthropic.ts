@@ -59,7 +59,7 @@ type ApiMessage = { role: "user" | "assistant"; content: Block[] };
 
 // One response, read to its end: what goes back on the next request, the tool
 // calls it made, and why it stopped.
-type Reply = {
+export type Reply = {
   content: Block[];
   calls: ToolCall[];
   stop: Stop;
@@ -183,8 +183,9 @@ const parseInput = (json: string): { ok: true; value: unknown } | { ok: false } 
 // Reads one streamed response, yielding its text as it arrives. Each block is
 // rebuilt exactly as it came, so a thinking block goes back with its signature
 // unchanged. After a fallback, only text from before the last fallback block
-// goes back, and only calls after it run.
-async function* readResponse(
+// goes back, and only calls after it run. The local harness reads the same
+// events, relayed by the command-line agent.
+export async function* readResponse(
   events: AsyncIterable<unknown>,
   requested: string,
 ): AsyncGenerator<ModelEvent, Reply> {

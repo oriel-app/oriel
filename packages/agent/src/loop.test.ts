@@ -500,6 +500,34 @@ test("an abort during a run stops the sandbox and records the run as aborted", a
   );
 });
 
+test("the conversation is closed once when the turn ends, whether it answered, failed or stopped", async () => {
+  const answered = harness([{ scripts: ["return 1"] }, { text: ["One."] }]);
+  await answered.turn({ region: weather });
+  const failed = harness([{ fail: "The model provider stopped its response: Overloaded." }]);
+  await failed.turn({ region: weather });
+  // Out of budget after a response that asked for a run: the call is never
+  // answered, and the provider must still let go of it.
+  const capped = harness([{ scripts: ["return 1"], usage: { inputTokens: 9_000 } }], {
+    limits: { maxTokensPerThread: 14_000 },
+  });
+  const events = await capped.turn({ region: weather });
+  assert.ok(kinds(events).includes("limit"));
+  const aborted = harness([{ scripts: [`await jira.listStories();\nfor (;;) {}`] }]);
+  await aborted.turn(
+    { region: weather },
+    {
+      onLog: (line, controller) => {
+        if (line.message === "sandbox.read") controller.abort(new Error("stopped"));
+      },
+    },
+  );
+  for (const { model } of [answered, failed, capped, aborted])
+    assert.deepEqual(
+      model.conversations.map((c) => c.closed),
+      [1],
+    );
+});
+
 // Source content is data (SPEC §5, eval #3).
 
 const injection = /ignore all previous instructions/i;
