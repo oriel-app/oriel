@@ -125,6 +125,7 @@ test("the log a person copies holds no password, key, code, email or link query"
     ["{'token': 'abc'}", "{'token': [hidden]}"],
     [String.raw`{"password":"a\"private-tail"}`, '{"password":[hidden]}'],
     [String.raw`secret="never \"closed`, "secret=[hidden]"],
+    [String.raw`{"password":"https://example.com/?x=\"private-tail"}`, '{"password":[hidden]}'],
     ["Authorization: Bearer abcdefgh12345678", "Authorization: Bearer [hidden]"],
     ["session 7f3a9c1e5b2d4f6a8c0e1a3b5d7f9a1c", "session [hidden]"],
     ["Installed to /Users/maya/.local/bin/claude", "Installed to ~/.local/bin/claude"],
