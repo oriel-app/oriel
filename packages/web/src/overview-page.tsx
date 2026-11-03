@@ -5,7 +5,7 @@
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
 import type { OverviewSection } from "@oriel/core/overview";
-import { endingNotes, holdEnding } from "./end-workstream.tsx";
+import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
 import type { JiraModel } from "./jira.ts";
 import type { OverviewModel, OverviewMsg } from "./overview.ts";
@@ -20,7 +20,7 @@ import {
   plural,
   StateChip,
 } from "./parts.tsx";
-import { type UndoNote, UndoStack } from "./undo-stack.tsx";
+import type { UndoNote, Undos } from "./undos.ts";
 import type {
   CandidateView,
   HeadlineView,
@@ -36,15 +36,16 @@ export function OverviewPage(props: {
   // A workstream marked done, reopened or deleted, from the sidebar: its
   // Undo shares this page's one stack.
   ending: EndingModel;
+  // The panel's adds, whose Undos share it too.
+  added: Undos;
   jira: JiraModel;
   // Browse as the user last left it.
   browse: Route;
   dispatch: Dispatch;
 }) {
-  const { model, ending, jira, browse, dispatch } = props;
+  const { model, ending, added, jira, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
-  const ended = endingNotes(ending, dispatch);
   return (
     <main class="overview" aria-busy={view === null && model.problem === null}>
       <div class="overview-top">
@@ -83,27 +84,27 @@ export function OverviewPage(props: {
           </div>
         </div>
       )}
-      {/* One stack: a workstream ended from the sidebar, and those made here. */}
-      <UndoStack
-        notes={[
-          ...ended.notes,
-          ...model.made.map((made): UndoNote => ({
-            key: made.key,
-            said: `Made the workstream ${made.workstream.name}, of ${plural(made.workstream.size, "item")}.`,
-            label: `Undo making ${made.workstream.name}`,
-            onUndo: made.workstream.undo && (() => send({ type: "undoClicked", key: made.key })),
-            disabled: made.undoing,
-          })),
-        ]}
-        problem={
-          model.failed === null
-            ? ended.problem
-            : { said: model.failed, onDismiss: () => send({ type: "failedDismissed" }) }
-        }
-        onHold={(by, held) => {
-          send({ type: "undoHeld", by, held });
-          holdEnding(dispatch)(by, held);
+      {/* One stack: a workstream ended from the sidebar, the panel's adds,
+          and the workstreams made here. */}
+      <WindowUndos
+        ending={ending}
+        more={{
+          notes: [
+            ...added.notes,
+            ...model.made.map((made): UndoNote => ({
+              key: made.key,
+              said: `Made the workstream ${made.workstream.name}, of ${plural(made.workstream.size, "item")}.`,
+              label: `Undo making ${made.workstream.name}`,
+              onUndo: made.workstream.undo && (() => send({ type: "undoClicked", key: made.key })),
+              disabled: made.undoing,
+            })),
+          ],
+          problem:
+            model.failed === null
+              ? added.problem
+              : { said: model.failed, onDismiss: () => send({ type: "failedDismissed" }) },
         }}
+        dispatch={dispatch}
       />
     </main>
   );

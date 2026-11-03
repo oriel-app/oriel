@@ -6,14 +6,8 @@
 import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
-import {
-  behind,
-  type CurrentWorkstream,
-  daysOf,
-  type PanelModel,
-  type PanelMsg,
-  paragraphsOf,
-} from "./panel.ts";
+import { behind, type CurrentWorkstream, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
+import { addedText, addOf, type PanelAddMsg, type PanelAdds, undoable } from "./panel-adds.ts";
 import {
   type Dispatch,
   initials,
@@ -26,6 +20,7 @@ import {
   when,
 } from "./parts.tsx";
 import { safeHref } from "./route.ts";
+import { UndoButton } from "./undo-stack.tsx";
 import type { ItemPanelView, PanelBlock, PanelInline, PanelMessage } from "./view.ts";
 
 export function ItemPanel(props: {
@@ -33,6 +28,8 @@ export function ItemPanel(props: {
   // Where the item is in the list it was opened from, if it was.
   place: { index: number; count: number } | null;
   workstream: CurrentWorkstream | null;
+  // The window's adds, among them any of this item.
+  adds: PanelAdds;
   dispatch: Dispatch;
 }) {
   const { model, place, dispatch } = props;
@@ -140,7 +137,12 @@ export function ItemPanel(props: {
                 </a>
               )}
               {props.workstream && (
-                <AddTo model={model} workstream={props.workstream} dispatch={dispatch} />
+                <AddTo
+                  view={shown}
+                  adds={props.adds}
+                  workstream={props.workstream}
+                  dispatch={dispatch}
+                />
               )}
             </div>
           )}
@@ -174,20 +176,20 @@ export function ItemPanel(props: {
 }
 
 // Adding the item to the workstream the page is about, and then what came of
-// it, with its Undo; or that it's in the workstream already.
-function AddTo(props: { model: PanelModel; workstream: CurrentWorkstream; dispatch: Dispatch }) {
-  const { model, workstream, dispatch } = props;
-  const send = (msg: PanelMsg) => dispatch({ type: "panel", msg });
-  const added = model.add?.added ?? null;
-  const adding = model.add?.adding ?? false;
+// it, with its Undo, which is also a note in the window's stack; or that it's
+// in the workstream already.
+function AddTo(props: {
+  view: ItemPanelView;
+  adds: PanelAdds;
+  workstream: CurrentWorkstream;
+  dispatch: Dispatch;
+}) {
+  const { view, workstream, dispatch } = props;
+  const send = (msg: PanelAddMsg) => dispatch({ type: "panelAdd", msg });
+  const add = addOf(props.adds, { item: view.id, workstreamId: workstream.id });
   const said =
-    added?.workstreamId === workstream.id
-      ? added.undo
-        ? `Added to “${added.name}”.`
-        : `Already in “${added.name}”.`
-      : workstream.members?.has(model.id)
-        ? `In “${workstream.name}”.`
-        : null;
+    (add && addedText(add)) ??
+    (workstream.members?.has(view.id) ? `In “${workstream.name}”.` : null);
   return (
     <>
       {said === null ? (
@@ -195,35 +197,47 @@ function AddTo(props: { model: PanelModel; workstream: CurrentWorkstream; dispat
           type="button"
           class="button panel-add"
           title={`Add to “${workstream.name}”`}
-          disabled={adding}
-          onClick={() => send({ type: "addClicked", workstream })}
+          disabled={add?.pending != null}
+          onClick={() =>
+            send({
+              type: "addClicked",
+              item: { id: view.id, key: itemName(view) },
+              workstream: { id: workstream.id, name: workstream.name },
+            })
+          }
         >
           Add to workstream
         </button>
       ) : (
         <p class="panel-added" role="status">
           <span>{said}</span>
-          {added?.workstreamId === workstream.id && added.undo && (
-            <button
-              type="button"
-              class="undo-action"
-              disabled={adding}
-              aria-label={`Undo: ${said}`}
-              onClick={() => send({ type: "addUndoClicked" })}
-            >
-              Undo
-            </button>
+          {add && undoable(add) && (
+            <UndoButton
+              label={`Undo: ${said}`}
+              disabled={add.pending !== null}
+              onClick={() =>
+                send({ type: "undoClicked", item: add.item, workstreamId: add.workstreamId })
+              }
+            />
           )}
         </p>
       )}
-      {model.add?.problem && (
-        <p class="panel-problem" role="alert">
-          {model.add.problem}
+      {/* A failed Undo is read out from the stack, which says it too. */}
+      {add?.problem && (
+        <p class="panel-problem" role={add.done ? undefined : "alert"}>
+          {add.problem}
         </p>
       )}
     </>
   );
 }
+
+// An item as the stack's note names it: by its key where it has one that
+// means something, or else by its title.
+const itemName = (view: ItemPanelView): string => {
+  const key = keyLabel(view);
+  return key === view.key || view.title === null ? key : `“${view.title}”`;
+};
 
 // Whether a key goes to something the user is typing in, a menu or a dialog.
 const typing = (target: EventTarget | null): boolean =>

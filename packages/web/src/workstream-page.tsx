@@ -1,8 +1,8 @@
 // A workstream: ask about it, see its threads, and curate its items.
 import { useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
-import { EndButtons, endingNotes, holdEnding } from "./end-workstream.tsx";
-import { around, deleted, type EndingModel } from "./ending.ts";
+import { EndButtons, WindowUndos } from "./end-workstream.tsx";
+import { deleted, type EndingModel } from "./ending.ts";
 import {
   askPrompt,
   type WorkstreamModel,
@@ -20,8 +20,7 @@ import {
   when,
 } from "./parts.tsx";
 import { Member } from "./thread-page.tsx";
-import { type UndoNote, UndoStack } from "./undo-stack.tsx";
-import type { Hold } from "./undos.ts";
+import type { UndoNote, Undos } from "./undos.ts";
 import type {
   WorkstreamChangeView,
   WorkstreamSummary,
@@ -31,12 +30,14 @@ import type {
 } from "./view.ts";
 
 // `threads`: the workstream's, from the list the sidebar keeps, so they move as
-// it does. `ending`: what was last done to any workstream, or failed, which
-// this page shows among its own Undos, in the one stack.
+// it does. `ending`: what was last done to any workstream, or failed, and
+// `added`, the panel's adds, which this page shows among its own Undos, in
+// the one stack.
 export function WorkstreamPage(props: {
   model: WorkstreamModel;
   threads: ThreadSummaryView[];
   ending: EndingModel;
+  added: Undos;
   dispatch: Dispatch;
 }) {
   const { model, threads, ending, dispatch } = props;
@@ -69,20 +70,11 @@ export function WorkstreamPage(props: {
     }
     send({ type: "memberRemoved", id });
   };
-  // The pointer or keyboard on the stack holds every note in it.
-  const hold = (by: Hold, held: boolean) => {
-    send({ type: "undoHeld", by, held });
-    holdEnding(dispatch)(by, held);
-  };
-  const ended = endingNotes(ending, dispatch);
-  // One stack, newest at the bottom: removals made before what was last
-  // done above it, and any since below.
-  const [before, since] = around(ending, model.removals);
   const stack = (
-    <UndoStack
-      notes={[...removed(before, undo), ...ended.notes, ...removed(since, undo)]}
-      problem={ended.problem}
-      onHold={hold}
+    <WindowUndos
+      ending={ending}
+      more={{ ...props.added, notes: [...removed(model.removals, undo), ...props.added.notes] }}
+      dispatch={dispatch}
     />
   );
   // Deleted, or being deleted, the page holds only what went, and its Undo.
@@ -96,7 +88,7 @@ export function WorkstreamPage(props: {
             ? "Deleted. Nothing lists it or its threads now, and its items stay in their sources."
             : "Deleting…"}
         </p>
-        <UndoStack {...ended} onHold={hold} />
+        <WindowUndos ending={ending} more={props.added} dispatch={dispatch} />
       </main>
     );
   }

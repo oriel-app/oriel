@@ -124,3 +124,11 @@ test("Make a workstream on a suggested cluster: the overview and the sidebar loa
   assert.deepEqual(gone.overview?.made, []);
   assert.ok(gets(reloads).includes("/api/overview"));
 });
+
+test("a hold on the overview's stack holds the workstreams made there, with every other note", () => {
+  const [entered] = init({ page: "overview" });
+  const [held] = run(entered, { type: "undoHeld", by: "pointer", held: true });
+  assert.deepEqual(held.overview?.held, { pointer: true, focus: false });
+  assert.deepEqual(held.ending.held, { pointer: true, focus: false });
+  assert.deepEqual(held.panelAdds.held, { pointer: true, focus: false });
+});

@@ -6,7 +6,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  around,
   deleted,
   type EndingModel,
   type EndingMsg,
@@ -17,9 +16,8 @@ import {
 } from "../src/ending.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { init, update } from "../src/root.ts";
-import { latestNote, undoMs } from "../src/undos.ts";
-import type { Removal } from "../src/workstream.ts";
-import { memberView, workstreamView } from "../testing.ts";
+import { inShowingOrder, latestNote, undoMs } from "../src/undos.ts";
+import { workstreamView } from "../testing.ts";
 
 const workstreamId = "01JBZ0000000000000000000G1";
 const restore = { action: "workstream.restore", input: { workstream: workstreamId } };
@@ -45,7 +43,6 @@ test("what was done runs out after as long as a removal's Undo, by the same time
   const [marked, effects] = endingAnswered(
     initEnding(),
     answer("done", { ...workstreamView(), carried: 0, undo: reopen }),
-    [],
   );
   assert.equal(marked.shown, true);
   assert.deepEqual(expiries(effects), [
@@ -70,7 +67,6 @@ test("held by the pointer or keyboard, it stays; let go, it gets its full time a
   const [marked] = endingAnswered(
     initEnding(),
     answer("done", { ...workstreamView(), carried: 0, undo: reopen }),
-    [],
   );
   let model = step(marked, { type: "undoHeld", by: "pointer", held: true });
   model = step(model, { type: "undoHeld", by: "focus", held: true });
@@ -95,7 +91,6 @@ test("its Undo lets go of the keyboard's hold, as a removal's does", () => {
   const [marked] = endingAnswered(
     initEnding(),
     answer("done", { ...workstreamView(), carried: 0, undo: reopen }),
-    [],
   );
   const held = step(marked, { type: "undoHeld", by: "focus", held: true });
   const [undoing] = updateEnding(held, { type: "undoClicked" });
@@ -103,7 +98,7 @@ test("its Undo lets go of the keyboard's hold, as a removal's does", () => {
 });
 
 test("once a deleted workstream's Undo runs out, its page still says it went", () => {
-  const [gone] = endingAnswered(initEnding(), answer("deleted", { threads: 2, undo: restore }), []);
+  const [gone] = endingAnswered(initEnding(), answer("deleted", { threads: 2, undo: restore }));
   const after = step(gone, expired(gone.countdown));
   assert.equal(after.shown, false);
   assert.equal(deleted(after, workstreamId), true);
@@ -113,41 +108,41 @@ test("leaving the page lets go of what held it, so the next one runs out", () =>
   const [marked] = endingAnswered(
     initEnding(),
     answer("done", { ...workstreamView(), carried: 0, undo: reopen }),
-    [],
   );
   const left = leftPage(step(marked, { type: "undoHeld", by: "pointer", held: true }));
   assert.deepEqual([left.shown, left.held], [false, { pointer: false, focus: false }]);
-  const [again] = endingAnswered(left, answer("deleted", { threads: 0, undo: restore }), []);
+  const [again] = endingAnswered(left, answer("deleted", { threads: 0, undo: restore }));
   assert.ok(again.countdown > marked.countdown, "a new countdown, not the old one's");
   assert.equal(step(again, expired(again.countdown)).shown, false);
 });
 
-test("in the page's stack, removals made before it sit above what was done, and later ones below, where ⌘Z reaches them first", () => {
-  const removal = (version: number): Removal => ({
-    member: memberView(),
-    version,
-    countdown: 0,
-    undo: { action: "workstream.add", input: {} },
-  });
-  const [onPage] = init({ page: "workstream", id: workstreamId });
-  const removed = onPage.workstream && { ...onPage.workstream, removals: [removal(4)] };
-  assert.ok(removed);
-  const [marked] = update(
-    { ...onPage, workstream: removed },
-    answer("done", { ...workstreamView(), carried: 0, undo: reopen }),
+test("the stack keeps its notes in the order they showed, whatever part of the window each is from, and ⌘Z reaches the newest", () => {
+  const note = (key: string) => ({ key, onUndo: reopen });
+  // A removal, then what was done to the workstream: the page lists its own
+  // notes first, but the stack keeps them as they came.
+  let shown: readonly string[] = [];
+  const show = (...keys: string[]) => {
+    const notes = inShowingOrder(shown, keys.map(note));
+    shown = notes.map((each) => each.key);
+    return shown;
+  };
+  assert.deepEqual(show("removed-4"), ["removed-4"]);
+  assert.deepEqual(show("removed-4", "done-G1"), ["removed-4", "done-G1"]);
+  // A later removal and a panel's add go below it.
+  assert.deepEqual(show("removed-4", "removed-5", "done-G1", "added-SYN-2"), [
+    "removed-4",
+    "done-G1",
+    "removed-5",
+    "added-SYN-2",
+  ]);
+  assert.equal(
+    latestNote(inShowingOrder(shown, [note("removed-5"), note("done-G1")]))?.key,
+    "removed-5",
   );
-  assert.deepEqual(marked.ending.above, [4]);
-  const [before, since] = around(marked.ending, [removal(4), removal(5)]);
-  const notes = [
-    ...before.map((each) => ({ key: `${each.version}`, onUndo: each.undo })),
-    { key: "ended", onUndo: reopen },
-    ...since.map((each) => ({ key: `${each.version}`, onUndo: each.undo })),
-  ];
-  assert.deepEqual(
-    notes.map((note) => note.key),
-    ["4", "ended", "5"],
-  );
-  assert.equal(latestNote(notes)?.key, "5");
-  // With none since, ⌘Z undoes what was done.
-  assert.equal(latestNote(notes.slice(0, 2))?.key, "ended");
+  // One that goes leaves the rest in place.
+  assert.deepEqual(show("removed-4", "removed-5", "added-SYN-2"), [
+    "removed-4",
+    "removed-5",
+    "added-SYN-2",
+  ]);
 });

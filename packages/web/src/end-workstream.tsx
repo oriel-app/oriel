@@ -13,8 +13,8 @@ import {
 import { ContextMenu, type MenuItem } from "./menu.tsx";
 import type { Dispatch } from "./parts.tsx";
 import { Swipeable } from "./swipe.tsx";
-import { type UndoNote, UndoStack } from "./undo-stack.tsx";
-import type { Hold } from "./undos.ts";
+import { holdUndos, UndoStack } from "./undo-stack.tsx";
+import type { Undos } from "./undos.ts";
 
 const sender = (dispatch: Dispatch) => (msg: EndingMsg) => dispatch({ type: "ending", msg });
 
@@ -87,10 +87,7 @@ export function EndButtons(props: {
 
 // What was last done, with its Undo, and what last failed, as notes in the
 // one stack of Undos: the page's, where it has one, or else the app's.
-export function endingNotes(
-  model: EndingModel,
-  dispatch: Dispatch,
-): { notes: UndoNote[]; problem: { said: string; onDismiss(): void } | null } {
+export function endingNotes(model: EndingModel, dispatch: Dispatch): Undos {
   const send = sender(dispatch);
   const { ended } = model;
   const said = ended && model.shown ? endedText(ended) : null;
@@ -114,13 +111,29 @@ export function endingNotes(
   };
 }
 
-// The pointer or keyboard on the stack holds what was done there.
-export const holdEnding = (dispatch: Dispatch) => (by: Hold, held: boolean) =>
-  sender(dispatch)({ type: "undoHeld", by, held });
+// The window's stack of Undo notes: what was last done to a workstream, or
+// failed, with the page's own notes and the panel's adds (`more`), each
+// where its order of showing puts it.
+export function WindowUndos(props: { ending: EndingModel; more: Undos; dispatch: Dispatch }) {
+  const ended = endingNotes(props.ending, props.dispatch);
+  return (
+    <UndoStack
+      notes={[...ended.notes, ...props.more.notes]}
+      problem={ended.problem ?? props.more.problem}
+      onHold={holdUndos(props.dispatch)}
+    />
+  );
+}
 
-// Once for the app: deleting's question; and what was done, or failed,
-// unless the page on screen shows that among its own Undos (`shownByPage`).
-export function Endings(props: { model: EndingModel; shownByPage: boolean; dispatch: Dispatch }) {
+// Once for the app: deleting's question; and the window's Undo notes, what
+// was done, or failed, and the panel's adds (`added`), unless the page on
+// screen shows those among its own Undos (`shownByPage`).
+export function Endings(props: {
+  model: EndingModel;
+  added: Undos;
+  shownByPage: boolean;
+  dispatch: Dispatch;
+}) {
   const { model, dispatch } = props;
   const send = sender(dispatch);
   const { asking } = model;
@@ -137,9 +150,7 @@ export function Endings(props: { model: EndingModel; shownByPage: boolean; dispa
         onConfirm={() => send({ type: "deleteConfirmed" })}
         onCancel={() => send({ type: "deleteCancelled" })}
       />
-      {!props.shownByPage && (
-        <UndoStack {...endingNotes(model, dispatch)} onHold={holdEnding(dispatch)} />
-      )}
+      {!props.shownByPage && <WindowUndos ending={model} more={props.added} dispatch={dispatch} />}
     </>
   );
 }
