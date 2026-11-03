@@ -1,6 +1,6 @@
 # 0032 An answer names things by ID, and Oriel draws them
 
-Accepted 2026-11-02 (the reply-elements spike, which replaces OA-150). Amends 0025 and 0030. Changes SPEC §2. Amended by 0033: never HTML in an answer's text, a block or a chip; HTML only in a sketch, a sandboxed frame under the answer.
+Accepted 2026-11-02 (the reply-elements spike, which replaces OA-150). Amends 0025 and 0030. Changes SPEC §2. Amended by 0033: never HTML in an answer's text, a block or a chip; HTML only in a sketch, a sandboxed frame under the answer. Amended by #130 (OA-178): a quote not found word for word is captioned just "Quoted from …", told apart from "Word for word from …" by those words and its border, so a misquote weighs no more than a quote; and the index keeps no item's text (SPEC §7), so the check reads the item as `items.read()` does, for items in the index only.
 
 Adds: none
 
