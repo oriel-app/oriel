@@ -41,7 +41,9 @@ try {
       .join("")}</body>`,
   );
   await tab.waitForFunction("[...document.images].every((i) => i.complete)");
-  await tab.screenshot({ path: `${out}/specimen.png`, fullPage: true });
+  const height = await tab.evaluate("Math.max(...[...document.images].map((i) => i.height))");
+  await tab.setViewportSize({ width: 2360, height });
+  await tab.screenshot({ path: `${out}/specimen.png` });
   writeFileSync(`${out}/contrast.json`, JSON.stringify(contrast, null, 1));
   const failing = Object.entries(contrast).flatMap(([t, rows]) =>
     rows.filter(([, , r]) => r < 4.5).map((r) => `${t}: ${r.join(" ")}`),
