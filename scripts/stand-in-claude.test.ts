@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { signedIn } from "../packages/agent/src/claude-code.ts";
+import { readResponse } from "../packages/agent/src/anthropic.ts";
+import { harnessRunTool, harnessServer, signedIn } from "../packages/agent/src/claude-code.ts";
 import { accountOf } from "../packages/server/src/setup/cli.ts";
-import { command, session, type StandIn } from "./stand-in-claude.ts";
+import { command, endlessScript, session, type StandIn } from "./stand-in-claude.ts";
 
 const out: StandIn = { version: "2.1.314", updatesTo: "2.1.314", signedIn: false, signIn: "works" };
 
@@ -49,4 +50,34 @@ test("a session says whether there's an account, and answers a turn with no tool
     ["init", [], "dontAsk", "claude-haiku-5-5"],
   );
   assert.deepEqual([result?.type, result?.subtype, result?.is_error], ["result", "success", false]);
+});
+
+test("a thread's turn runs a script that never ends, and ends once Oriel answers it", async () => {
+  const ready = { ...out, signedIn: true };
+  const [init, ...rest] = session(ready, "m", { type: "user", message: {} }, true);
+  assert.deepEqual(
+    [init?.tools, init?.mcp_servers],
+    [[harnessRunTool], [{ name: harnessServer, status: "connected" }]],
+  );
+  const asks = rest.at(-1)!;
+  const events = rest.slice(0, -1).map((line) => line.event);
+  // As the harness reads the CLI's relay of the model's stream.
+  const reader = readResponse(
+    (async function* () {
+      yield* events;
+    })(),
+    "m",
+  );
+  let step = await reader.next();
+  while (!step.done) step = await reader.next();
+  assert.deepEqual(step.value.calls, [
+    { id: "toolu_stand_in_run", name: harnessRunTool, input: { script: endlessScript } },
+  ]);
+  const request = asks.request as { subtype: string; message: { params: { arguments: unknown } } };
+  assert.equal(request.subtype, "mcp_message");
+  assert.deepEqual(request.message.params.arguments, { script: endlessScript });
+  const answered = { type: "control_response", response: { request_id: asks.request_id } };
+  const ending = session(ready, "m", answered, true).map((line) => line.event as { type: string });
+  assert.equal(ending.at(-1)?.type, "message_stop");
+  assert.deepEqual(session(ready, "m", { type: "control_response", response: {} }, true), []);
 });
