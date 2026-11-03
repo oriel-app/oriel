@@ -4,7 +4,7 @@
 // ones; an MCP-backed implementation could answer the same requests without
 // touching either. Only `@oriel/jira/writer` exports `restTransport`.
 import { setTimeout as wait } from "node:timers/promises";
-import { type Credential, SourceRefused } from "@oriel/core";
+import { type Credential, requestMs, retryMs, SourceRefused, type WriteLimit } from "@oriel/core";
 
 export type JiraRequest = {
   method: "GET" | "POST" | "PUT" | "DELETE";
@@ -13,7 +13,8 @@ export type JiraRequest = {
   body?: unknown;
 };
 export type JiraResponse = { status: number; body: unknown };
-export type Transport = (request: JiraRequest) => Promise<JiraResponse>;
+// A writer's requests keep within its write's limit.
+export type Transport = (request: JiraRequest, limit?: WriteLimit) => Promise<JiraResponse>;
 
 // What the read side sends: GETs, and the search Jira only takes as a POST.
 export const searchPath = "/rest/api/3/search/jql";
@@ -33,8 +34,10 @@ export type RestOptions = {
   site: string;
   credential: Credential;
   fetch?: typeof fetch;
-  // How a retry waits; tests pass one that resolves at once.
+  // How a retry waits, and how a request gives up after `ms`; tests pass
+  // ones they control.
   wait?: (ms: number) => Promise<unknown>;
+  timeout?: (ms: number) => AbortSignal;
   timeoutMs?: number;
 };
 
@@ -54,13 +57,15 @@ export function restTransport(options: RestOptions): Transport {
   const site = new URL(siteOrigin(options.site));
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
+  const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  return async (request) => {
+  return async (request, limit) => {
     // "/rest/" keeps a path from naming another host ("//host") or escaping the API.
     if (!request.path.startsWith("/rest/")) throw new RangeError("Jira paths start with /rest/");
     const url = new URL(request.path, site);
     const hasBody = request.body !== undefined;
     for (let attempt = 1; ; attempt++) {
+      const ms = requestMs(timeoutMs, limit, "Jira");
       // Without its credentials the request never goes out. The credential's
       // own message stays out of it, in case it names a secret.
       const credentials = await options.credential.headers().catch((error: unknown) => {
@@ -77,7 +82,7 @@ export function restTransport(options: RestOptions): Transport {
           ...(hasBody ? { "Content-Type": "application/json" } : {}),
         },
         ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeout(ms),
       });
       // A 429 was not processed, so any request may retry it; a 503 might
       // have been, so only reads do.
@@ -85,8 +90,7 @@ export function restTransport(options: RestOptions): Transport {
         response.status === 429 || (response.status === 503 && request.method === "GET");
       if (retry && attempt < maxAttempts) {
         await response.body?.cancel();
-        const seconds = Number(response.headers.get("Retry-After")) || 5;
-        await pause(Math.min(seconds, 60) * 1000);
+        await pause(retryMs(response.headers.get("Retry-After"), limit, "Jira"));
         continue;
       }
       return { status: response.status, body: parse(await response.text()) };

@@ -7,6 +7,7 @@
 // (plain text), "points", "assignee" (an account ID), "epic" (an item ID),
 // "status" (its name in the item's workflow), and "link:<linkId>" ({ url, title }, or null when there is no such link). A
 // create has no before values and a delete no after values.
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   array,
   boolean,
@@ -23,7 +24,9 @@ import {
   string,
   unknown,
   type Validator,
+  type WriteLimit,
   type WriteResult,
+  WriteStalled,
 } from "@oriel/core";
 import { isJiraOp, issueFields, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 import { adfToText, textToAdf } from "./adf.ts";
@@ -106,8 +109,13 @@ const valid = <T>(validate: Validator<T>, args: unknown, op: string): T => {
   throw new Error(`${op}: bad arguments (${where})`);
 };
 
+// The limit of the write `apply` is making, for every request made for it,
+// however deep in the writer.
+const limits = new AsyncLocalStorage<WriteLimit | undefined>();
+
 export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
-  const { transport, log } = options;
+  const { log } = options;
+  const transport: Transport = (request) => options.transport(request, limits.getStore());
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
 
   // Each write is one request, its `send`. A 4xx to it is Jira refusing it,
@@ -119,7 +127,12 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const state = { sent: false };
     const send: Send = async (request) => {
       state.sent = true;
-      const response = await transport(request);
+      const response = await transport(request).catch((error: unknown) => {
+        // Never sent, or turned away unprocessed: none of it landed.
+        if (error instanceof WriteStalled)
+          throw new SourceRefused(error.message, { sent: false, cause: error });
+        throw error;
+      });
       if (response.status >= 400 && response.status <= 499)
         throw new SourceRefused(failure(request, response).message, { sent: true });
       if (response.status < 200 || response.status > 299) throw failure(request, response);
@@ -427,23 +440,24 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     kind: "jira",
     // A target must come with the stable ID it is expected to have, and a
     // create with none. A failure before the write went out sent nothing.
-    apply: async ({ op, target, expectedStableId, args }) => {
-      const { send, state } = sender();
-      try {
-        if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
-        if (target === null) {
-          if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
-          return await write(send, op, null, args);
+    apply: ({ op, target, expectedStableId, args }, limit) =>
+      limits.run(limit, async () => {
+        const { send, state } = sender();
+        try {
+          if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
+          if (target === null) {
+            if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
+            return await write(send, op, null, args);
+          }
+          if (expectedStableId === null)
+            throw new Error(`${op}: no stable ID to check ${target} against`);
+          return await write(send, op, { id: target, stableId: expectedStableId }, args);
+        } catch (error) {
+          if (state.sent || error instanceof SourceRefused) throw error;
+          const said = error instanceof Error ? error.message : String(error);
+          throw new SourceRefused(said, { sent: false, cause: error });
         }
-        if (expectedStableId === null)
-          throw new Error(`${op}: no stable ID to check ${target} against`);
-        return await write(send, op, { id: target, stableId: expectedStableId }, args);
-      } catch (error) {
-        if (state.sent || error instanceof SourceRefused) throw error;
-        const said = error instanceof Error ? error.message : String(error);
-        throw new SourceRefused(said, { sent: false, cause: error });
-      }
-    },
+      }),
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;

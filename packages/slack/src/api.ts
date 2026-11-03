@@ -5,7 +5,16 @@
 // can't send a write (decision 0021); only `@oriel/slack/writer` hands out one
 // that posts.
 import { setTimeout as wait } from "node:timers/promises";
-import { boolean, type Credential, object, optional, string } from "@oriel/core";
+import {
+  boolean,
+  type Credential,
+  object,
+  optional,
+  requestMs,
+  retryMs,
+  string,
+  type WriteLimit,
+} from "@oriel/core";
 
 export const readMethods = [
   "auth.test",
@@ -19,10 +28,11 @@ export type ReadMethod = (typeof readMethods)[number];
 
 // One call: its method and its arguments as form fields. Resolves to the
 // reply's body when Slack says `ok`, and throws a `SlackError` when it
-// doesn't.
+// doesn't. A writer's calls keep within its write's limit.
 export type SlackApi<M extends string = ReadMethod> = (
   method: M,
   params: Record<string, string>,
+  limit?: WriteLimit,
 ) => Promise<unknown>;
 
 // What Slack said instead of `ok`, by its error code, such as
@@ -45,8 +55,10 @@ export function bearer(token: string): Credential {
 export type WebApiOptions = {
   credential: Credential;
   fetch?: typeof fetch;
-  // How a retry waits; tests pass one that resolves at once.
+  // How a retry waits, and how a call gives up after `ms`; tests pass ones
+  // they control.
   wait?: (ms: number) => Promise<unknown>;
+  timeout?: (ms: number) => AbortSignal;
   timeoutMs?: number;
 };
 
@@ -66,11 +78,13 @@ export function methodsApi<M extends string>(
 ): SlackApi<M> {
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
+  const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  return async (method, params) => {
+  return async (method, params, limit) => {
     if (!methods.includes(method))
       throw new Error(`refusing a method ${side} doesn't use: ${method}`);
     for (let attempt = 1; ; attempt++) {
+      const ms = requestMs(timeoutMs, limit, "Slack");
       // The credential's own message stays out of the error, in case it names
       // a secret.
       const credentials = await options.credential.headers().catch((error: unknown) => {
@@ -80,12 +94,11 @@ export function methodsApi<M extends string>(
         method: "POST",
         headers: { ...credentials, Accept: "application/json" },
         body: new URLSearchParams(params),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeout(ms),
       });
       if (response.status === 429 && attempt < maxAttempts) {
         await response.body?.cancel();
-        const seconds = Number(response.headers.get("Retry-After")) || 5;
-        await pause(Math.min(seconds, 60) * 1000);
+        await pause(retryMs(response.headers.get("Retry-After"), limit, "Slack"));
         continue;
       }
       const text = await response.text();

@@ -6,7 +6,9 @@ import {
   SourceRefused,
   type SourceWriter,
   ulid,
+  type WriteLimit,
   type WriteRequest,
+  WriteStalled,
 } from "@oriel/core";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { textToAdf } from "./adf.ts";
@@ -492,6 +494,28 @@ test("anything that fails before the write goes out sent nothing", async () => {
     writer(jira.transport).apply(request("setSummary", "jira:SYN-12", { summary: "x" }, null)),
     unsent(/no stable ID to check/),
   );
+  assert.deepEqual(jira.writes(), []);
+});
+
+test("every request of a write keeps within its limit, and a stalled write itself sent nothing", async () => {
+  const jira = fakeSite();
+  const given: (WriteLimit | undefined)[] = [];
+  const stalling: Transport = async (req, limit) => {
+    given.push(limit);
+    if (req.method === "PUT") throw new WriteStalled("Jira asked Oriel to wait 600 seconds");
+    return jira.transport(req);
+  };
+  const limit = { left: () => 60_000 };
+  const w = writer(stalling);
+  await assert.rejects(
+    w.apply(request("setSummary", "jira:SYN-12", { summary: "x" }), limit),
+    unsent(/wait 600 seconds/),
+  );
+  assert.ok(given.length > 1 && given.every((each) => each === limit));
+  // A read for no write has none.
+  given.length = 0;
+  await w.current("jira:SYN-12", ["summary"]);
+  assert.deepEqual(given, [undefined]);
   assert.deepEqual(jira.writes(), []);
 });
 

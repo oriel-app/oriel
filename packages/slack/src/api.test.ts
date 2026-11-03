@@ -1,6 +1,7 @@
 // The Web API transport, against a fetch that answers from memory.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { WriteStalled } from "@oriel/core";
 import { bearer, type ReadMethod, SlackError, webApi } from "./api.ts";
 
 type Sent = { url: string; headers: Record<string, string>; body: string };
@@ -61,6 +62,41 @@ test("a 429 waits as long as Retry-After says, then tries again", async () => {
   });
   assert.deepEqual(waits, [3000]);
   assert.equal(sent.length, 2);
+});
+
+test("a write's call gets only what is left of it, and a Retry-After past that stalls it", async () => {
+  // A fake clock: the write has 120 s, and each wait moves the clock on.
+  const time = { now: 0 };
+  const limit = { left: () => 120_000 - time.now };
+  const waits: number[] = [];
+  const timeouts: number[] = [];
+  const options = {
+    credential: bearer("xoxp-test"),
+    wait: async (ms: number) => {
+      waits.push(ms);
+      time.now += ms;
+    },
+    timeout: (ms: number) => {
+      timeouts.push(ms);
+      return new AbortController().signal;
+    },
+  };
+  const first = fakeFetch([
+    new Response("", { status: 429, headers: { "Retry-After": "100" } }),
+    json({ ok: true, messages: [] }),
+  ]);
+  const api = webApi({ ...options, fetch: first.send });
+  await api("conversations.history", { channel: "C0A" }, limit);
+  // It waited 60 s, Slack's 100 capped, and went again with 60 s left.
+  assert.deepEqual([waits, timeouts], [[60_000], [30_000, 30_000]]);
+  time.now = 110_000;
+  const second = fakeFetch([new Response("", { status: 429, headers: { "Retry-After": "30" } })]);
+  const later = webApi({ ...options, fetch: second.send });
+  await assert.rejects(
+    later("conversations.history", { channel: "C0A" }, limit),
+    (error) => error instanceof WriteStalled && /wait 30 seconds/.test(error.message),
+  );
+  assert.deepEqual([timeouts.at(-1), waits.length, second.sent.length], [10_000, 1, 1]);
 });
 
 test("a reply that isn't Slack's fails without echoing it", async () => {

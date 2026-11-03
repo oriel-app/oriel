@@ -6,7 +6,9 @@ import {
   SourceRefused,
   type SourceWriter,
   ulid,
+  type WriteLimit,
   type WriteRequest,
+  WriteStalled,
 } from "@oriel/core";
 import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
 import { fixtureApi } from "./fixture.ts";
@@ -197,6 +199,31 @@ test("Slack refusing a write made no change, and says why in words", async () =>
     writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara })),
     refused(true, /needs the chat:write scope/),
   );
+});
+
+test("every call of a write keeps within its limit, and a stalled post itself sent nothing", async () => {
+  const workspace = fixtureApi(fixture);
+  const given: (WriteLimit | undefined)[] = [];
+  const api = writeApi({ credential: { headers: async () => ({}) }, fetch: workspace.fetch });
+  const writer = slackWriter({
+    api: (method, params, limit) => {
+      given.push(limit);
+      if (method === "chat.postMessage")
+        throw new WriteStalled("Slack asked Oriel to wait 600 seconds");
+      return api(method, params);
+    },
+    channels: [weather],
+    log: () => {},
+  });
+  const limit = { left: () => 60_000 };
+  await assert.rejects(
+    writer.apply(
+      request("postMessage", null, { channel: weather, text: "Hi", author: amara }),
+      limit,
+    ),
+    refused(false, /wait 600 seconds/),
+  );
+  assert.ok(given.length > 1 && given.every((each) => each === limit));
 });
 
 test("a conversation reads as the source reads it: mentions named, as the window titles it", async () => {

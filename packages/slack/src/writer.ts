@@ -15,6 +15,7 @@
 // reply) and "updated" (the latest of its message, its replies and their
 // edits, so a reply or an edit since moves it). A post has no before values
 // and a deleted message no after values.
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   type FieldValues,
   type ItemId,
@@ -25,7 +26,9 @@ import {
   SourceRefused,
   type SourceWriter,
   string,
+  type WriteLimit,
   type WriteResult,
+  WriteStalled,
 } from "@oriel/core";
 import { methodsApi, readMethods, type SlackApi, SlackError, type WebApiOptions } from "./api.ts";
 import { slackTitle } from "./attrs.ts";
@@ -82,8 +85,13 @@ const refusals: Record<string, string> = {
 
 const reply = (ts: string) => `reply:${ts}`;
 
+// The limit of the write `apply` is making, for every call made for it,
+// however deep in the writer.
+const limits = new AsyncLocalStorage<WriteLimit | undefined>();
+
 export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> {
-  const { api, log } = options;
+  const { log } = options;
+  const api: WriterApi = (method, params) => options.api(method, params, limits.getStore());
   const allowed = new Set(options.channels);
 
   // Who the token is for, asked once it answers.
@@ -295,48 +303,52 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     kind: "slack",
     // A target must come with the stable ID it is expected to have, and a
     // post with none. A failure before the write went out sent nothing.
-    apply: async ({ op, target, expectedStableId, args }) => {
-      const state = { sent: false };
-      // The one request that writes. Slack refusing it made no change.
-      const send: Send = async (method, params) => {
-        state.sent = true;
-        let body: unknown;
+    apply: ({ op, target, expectedStableId, args }, limit) =>
+      limits.run(limit, async () => {
+        const state = { sent: false };
+        // The one request that writes. Slack refusing it made no change.
+        const send: Send = async (method, params) => {
+          state.sent = true;
+          let body: unknown;
+          try {
+            body = await api(method, params);
+          } catch (error) {
+            // Never sent, or turned away unprocessed: none of it landed.
+            if (error instanceof WriteStalled)
+              throw new SourceRefused(error.message, { sent: false, cause: error });
+            if (error instanceof SlackError)
+              throw new SourceRefused(refusals[error.code] ?? `Slack refused it (${error.code})`, {
+                sent: true,
+                cause: error,
+              });
+            throw error;
+          }
+          if (method === "chat.delete") return "";
+          const made = sent(body);
+          if (!made.ok || !isTs(made.value.ts))
+            throw new Error("chat.postMessage: Slack's answer had no ts");
+          return made.value.ts;
+        };
         try {
-          body = await api(method, params);
-        } catch (error) {
-          if (error instanceof SlackError)
-            throw new SourceRefused(refusals[error.code] ?? `Slack refused it (${error.code})`, {
-              sent: true,
-              cause: error,
-            });
-          throw error;
-        }
-        if (method === "chat.delete") return "";
-        const made = sent(body);
-        if (!made.ok || !isTs(made.value.ts))
-          throw new Error("chat.postMessage: Slack's answer had no ts");
-        return made.value.ts;
-      };
-      try {
-        if (!isSlackOp(op)) throw new Error(`not a Slack operation: ${op}`);
-        if ((target === null) !== (expectedStableId === null))
-          throw new Error(
-            `${op}: a target needs the stable ID to check it against, and only one does`,
+          if (!isSlackOp(op)) throw new Error(`not a Slack operation: ${op}`);
+          if ((target === null) !== (expectedStableId === null))
+            throw new Error(
+              `${op}: a target needs the stable ID to check it against, and only one does`,
+            );
+          return await write(
+            send,
+            op,
+            target === null || expectedStableId === null
+              ? null
+              : { id: target, stableId: expectedStableId },
+            args,
           );
-        return await write(
-          send,
-          op,
-          target === null || expectedStableId === null
-            ? null
-            : { id: target, stableId: expectedStableId },
-          args,
-        );
-      } catch (error) {
-        if (state.sent || error instanceof SourceRefused) throw error;
-        const said = error instanceof Error ? error.message : String(error);
-        throw new SourceRefused(said, { sent: false, cause: error });
-      }
-    },
+        } catch (error) {
+          if (state.sent || error instanceof SourceRefused) throw error;
+          const said = error instanceof Error ? error.message : String(error);
+          throw new SourceRefused(said, { sent: false, cause: error });
+        }
+      }),
     current: async (id, fields) => {
       const found = await values(id, fields);
       return found === "gone" ? "gone" : found.values;
