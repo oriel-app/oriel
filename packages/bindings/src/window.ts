@@ -47,7 +47,7 @@ export const windowTypes = [
   "  needsYou: { threads: { id: string; title: string | null; workstream: { id: string; name: string }; waitingOn: string | null }[] };",
   '  headlines: { id: "moved" | "quiet" | "talked" | "top"; label: string; rule: string; detail: string; subject: { kind: "workstream"; id: string; name: string } | { kind: "item"; item: OverviewItem } }[];',
   "  workstreams: { id: string; name: string; size: number; moved: number; movedDone: number; movedItems: OverviewItem[]; idleDays: number; signals: { text: string; rule: string }[] }[];",
-  '  candidates: { rows: { subject: { kind: "item"; item: OverviewItem } | { kind: "cluster"; label: string; lead: OverviewItem | null; size: number }; rule: string; source: string }[]; total: number };',
+  '  candidates: { rows: { subject: { kind: "item"; item: OverviewItem } | { kind: "cluster"; label: string; lead: OverviewItem | null; size: number; items: string[] }; rule: string; source: string }[]; total: number };',
   "  people: { rows: { name: string; inProgress: number }[]; total: number };",
   "};",
 ];

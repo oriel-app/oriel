@@ -1,9 +1,10 @@
-// One provider instance as a row: its name, what Oriel found (installed,
-// signed in, its version, or a key set, never the key), the models it runs
-// now, and a switch to turn it on or off. Settings lists these, and the
-// first-run setup shows the same rows.
+// One provider instance as a row: its name, whose plans it's for and who
+// makes it, what Oriel found (installed, signed in, its version, or a key
+// set, never the key), the models it runs now, and a switch to turn it on or
+// off. Settings lists these, and the first run shows the same rows, with
+// what it can do for the person's Claude Code beneath (decision 0038).
 import type { ComponentChildren } from "preact";
-import type { ProviderStatus, ProviderView } from "./view.ts";
+import type { ProviderKind, ProviderStatus, ProviderView } from "./view.ts";
 
 // How each status reads at a glance, beside the row's own words.
 const statusNames: Record<ProviderStatus, string> = {
@@ -13,13 +14,30 @@ const statusNames: Record<ProviderStatus, string> = {
   "signed-out": "Not signed in",
   "no-key": "No key",
   "not-yet": "Not supported yet",
+  untrusted: "Not run",
   checking: "Checking",
 };
+
+// Whose plan each kind runs on, plans first, then who makes it.
+export const providerAbout: Record<ProviderKind, string> = {
+  "claude-code": "For Claude Pro and Max · Anthropic's assistant for your Mac",
+  codex: "For ChatGPT plans · OpenAI's assistant for your Mac",
+  api: "Anthropic bills each question",
+};
+
+const marks: Record<ProviderKind, string> = { "claude-code": "C", codex: "O", api: "A" };
 
 export function ProviderRow(props: {
   provider: ProviderView;
   // Turns it on or off; absent where it can't be, as Codex's row.
   onToggle?(on: boolean): void;
+  // The row's own line of state, in place of its status and detail, as the
+  // first run's Claude Code row has.
+  status?: ComponentChildren;
+  // What sits at the row's right: a pick, or the one action it offers.
+  side?: ComponentChildren;
+  // Picked, as the AI the first run continues with.
+  picked?: boolean;
   children?: ComponentChildren;
 }) {
   const { provider, onToggle } = props;
@@ -37,17 +55,30 @@ export function ProviderRow(props: {
             ? "Not in use"
             : null;
   return (
-    <li class="provider-row" data-status={provider.status} data-off={!provider.on || undefined}>
+    <li
+      id={`provider-${provider.kind}`}
+      class="provider-row"
+      data-status={provider.status}
+      data-off={!provider.on || undefined}
+      data-picked={props.picked || undefined}
+    >
+      <span class="provider-icon" aria-hidden="true">
+        {marks[provider.kind]}
+      </span>
       <div class="provider-main">
         <span class="provider-name">{provider.name}</span>
-        <span class="provider-status">
-          <span class="provider-mark" aria-hidden="true" />
-          <span class="provider-state">{statusNames[provider.status]}</span>
-          <span class="provider-detail">{provider.detail}</span>
-        </span>
-        {uses && <span class="provider-uses">{uses}</span>}
+        <span class="provider-about">{providerAbout[provider.kind]}</span>
+        {props.status ?? (
+          <span class="provider-status">
+            <span class="provider-mark" aria-hidden="true" />
+            <span class="provider-state">{statusNames[provider.status]}</span>
+            <span class="provider-detail">{provider.detail}</span>
+          </span>
+        )}
+        {onToggle && uses && <span class="provider-uses">{uses}</span>}
         {props.children}
       </div>
+      {props.side && <div class="provider-side">{props.side}</div>}
       {onToggle && provider.kind !== "codex" && (
         <Switch on={provider.on} label={`Use ${provider.name}`} onChange={(on) => onToggle(on)} />
       )}

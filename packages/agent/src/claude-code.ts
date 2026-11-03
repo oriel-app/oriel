@@ -88,17 +88,26 @@ const passed = [
   "LOCALAPPDATA",
 ] as const;
 
-export function harnessEnv(
+// The person's own variables from the allowlist above, and nothing else. The
+// first run's commands (decision 0038) start the CLI and its installer with
+// these, never with Oriel's whole environment.
+export function passedEnv(
   parent: Readonly<Record<string, string | undefined>>,
-  maxOutputTokens: number,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const name of passed) {
     const value = parent[name];
     if (value !== undefined) env[name] = value;
   }
+  return env;
+}
+
+export function harnessEnv(
+  parent: Readonly<Record<string, string | undefined>>,
+  maxOutputTokens: number,
+): Record<string, string> {
   return {
-    ...env,
+    ...passedEnv(parent),
     // No memory, no instructions files, no claude.ai connectors, no IDE, no
     // self-update.
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -171,7 +180,12 @@ export function harnessArgs(options: HarnessArgs): string[] {
 }
 
 // Why Oriel can't use the CLI it found, said so a person can act on it.
-export type HarnessProblem = { kind: "missing" | "unsupported" | "signed-out"; message: string };
+// `version`: the one found, when that is the problem.
+export type HarnessProblem = {
+  kind: "missing" | "unsupported" | "signed-out";
+  message: string;
+  version?: string;
+};
 
 const installHint = "Install Claude Code and sign in to it, then restart Oriel.";
 
@@ -181,9 +195,14 @@ export function parseVersion(output: string): [number, number, number] | null {
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
+// A major version past the ones verified, which Oriel's next update may
+// support; an older one, Claude Code's own update fixes.
+export const tooNew = (version: [number, number, number]): boolean =>
+  version[0] > claudeCodeMaxMajor;
+
 export function supportedVersion(version: [number, number, number]): boolean {
   const min = parseVersion(claudeCodeMinVersion) ?? [0, 0, 0];
-  if (version[0] > claudeCodeMaxMajor) return false;
+  if (tooNew(version)) return false;
   for (let i = 0; i < 3; i++) {
     const [have, need] = [version[i] ?? 0, min[i] ?? 0];
     if (have !== need) return have > need;
@@ -264,6 +283,7 @@ export async function checkClaudeCode(
       problem: {
         kind: "unsupported",
         message: `Oriel needs Claude Code ${claudeCodeMinVersion} or a later 2.x${version ? `; this one is ${version.join(".")}` : ""}. Update it, then restart Oriel.`,
+        ...(version ? { version: version.join(".") } : {}),
       },
     };
   const cli = { path, version: version.join(".") };

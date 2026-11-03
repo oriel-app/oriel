@@ -102,6 +102,15 @@ import {
 } from "./review.ts";
 import { type Route, routeUrl } from "./route.ts";
 import {
+  initSetup,
+  loadSetup,
+  openSetup,
+  type SetupModel,
+  type SetupMsg,
+  setupReplied,
+  updateSetup,
+} from "./setup.ts";
+import {
   initSettings,
   loadSettings,
   type SettingsModel,
@@ -191,6 +200,9 @@ export type Model = {
   // The person's settings: Settings' page, and which key sends a question
   // on every page.
   settings: SettingsModel;
+  // The desktop app's first run, and the Claude Code row Settings shares
+  // with it (decision 0038).
+  setup: SetupModel;
 };
 
 export type Msg =
@@ -213,6 +225,7 @@ export type Msg =
   | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "search"; msg: SearchMsg }
   | { type: "settings"; msg: SettingsMsg }
+  | { type: "setup"; msg: SetupMsg }
   // A plain click on a link to an item: it opens in the panel. `list`: the
   // list on the page that holds the link, by item ID.
   | { type: "itemOpened"; id: string; list?: readonly string[] }
@@ -278,6 +291,8 @@ const workspaceChanged = (model: Model): Effect[] => [
   loadWorkstreams,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
   ...(model.route.page === "overview" ? [loadOverview] : []),
+  // The first run's overview ends with the first workstream made.
+  ...(model.setup.view?.firstRun?.firstRun ? [loadSetup] : []),
   // A thread shown whose chips name a thread, a change set or a workstream,
   // any of which may have moved, or come back with an Undo (decision 0032).
   ...(model.thread?.view && Object.entries(model.thread.view.chips).some(oriels)
@@ -312,11 +327,14 @@ export function init(route: Route): [Model, Effect[]] {
     panelAdds: noAdds,
     search: initSearch(),
     settings: initSettings(),
+    setup: initSetup(),
   };
   const [model, effects] = enter(empty, route);
   // A review link's page isn't the person's, so it keeps the default look.
   const settings = route.page === "review" || route.page === "settings" ? [] : [loadSettings];
-  return withPanel(model, [...effects, ...settings]);
+  // The first run, which the overview and Settings show parts of too.
+  const setup = route.page === "review" || route.page === "setup" ? [] : [loadSetup];
+  return withPanel(model, [...effects, ...settings, ...setup]);
 }
 
 // The panel follows the route: it opens, reading the item, when the route
@@ -425,7 +443,11 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     // Settings load again on each visit, so the providers show what Oriel
     // found last.
     case "settings":
-      return [base, [...leaving, loadSettings, ...lists, ...watching]];
+      return [base, [...leaving, loadSettings, loadSetup, ...lists, ...watching]];
+    // The first run stands alone: what Oriel has found so far, then Claude
+    // Code looked for again, and the sources.
+    case "setup":
+      return [base, [...leaving, loadSetup, openSetup, loadSettings, loadFolder, loadJira]];
     case "review": {
       const [review, effects] = initReview(route.token);
       return [{ ...base, review }, [...leaving, ...effects]];
@@ -438,13 +460,28 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
 // However a thread's page changed, it scrolls the same way. However the user
 // asked for a page, one already open stays as it is.
 export function update(model: Model, msg: Msg): [Model, Effect[]] {
-  const [next, effects] = staying(...standing(msg, ...updated(model, msg)));
+  const [next, effects] = readingDone(...staying(...standing(msg, ...updated(model, msg))));
   const moved = effects.some(
     (effect) =>
       effect.type === "loadWindow" || (effect.type === "http" && effect.tag.kind === "threads"),
   );
   const latest = next.thread ? keptAtLatest(model.thread, next.thread) : [];
   return [next, [...effects, ...(moved && next.panel ? checkPanel(next.panel) : []), ...latest]];
+}
+
+// The first run's last screen opens the overview as soon as one source is
+// read, unless one failed, which waits for the person (decision 0038).
+function readingDone(model: Model, effects: Effect[]): [Model, Effect[]] {
+  const { setup, jira, folder } = model;
+  if (model.route.page !== "setup" || setup.screen !== "reading" || setup.finishing)
+    return [model, effects];
+  const read = jira.view?.connected != null || folder.view !== null;
+  const failed =
+    (jira.pending === null && jira.connecting !== null && jira.problem !== null) ||
+    folder.problem !== null;
+  if (!read || failed) return [model, effects];
+  const [finished, finishing] = updateSetup(setup, { type: "finished" });
+  return [{ ...model, setup: finished }, [...effects, ...finishing]];
 }
 
 // Replies whose body is a workstream's whole view: its version and its
@@ -565,7 +602,16 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     }
     case "jira": {
       const [jira, effects] = updateJira(model.jira, msg.msg);
-      return [{ ...model, jira }, effects];
+      // The first run shows Jira's first sync as it reads, back among the
+      // sources, where another can be connected meanwhile.
+      if (msg.msg.type !== "connectClicked" || jira.pending !== "connecting")
+        return [{ ...model, jira }, effects];
+      const [setup, watching] = updateSetup(model.setup, { type: "watched", on: true });
+      const [back, shown] =
+        model.route.page === "setup" && setup.screen === "projects"
+          ? updateSetup(setup, { type: "screenShown", screen: "work" })
+          : [setup, []];
+      return [{ ...model, jira, setup: back }, [...effects, ...watching, ...shown]];
     }
     case "sources": {
       const [sources, effects] = updateSources(model.sources, msg.msg);
@@ -610,6 +656,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
     case "settings": {
       const [settings, effects] = updateSettings(model.settings, msg.msg);
       return [{ ...model, settings }, effects];
+    }
+    case "setup": {
+      const [setup, effects] = updateSetup(model.setup, msg.msg);
+      return [{ ...model, setup }, effects];
     }
     // Opening the panel adds to history, so Back closes it; another item
     // takes its place.
@@ -740,6 +790,18 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [settings, effects] = settingsReplied(model.settings, msg);
       return [{ ...model, settings }, effects];
     }
+    case "setup":
+    case "setupCli":
+    case "setupAi":
+    case "setupProgress":
+    case "setupKey": {
+      const [setup, effects] = setupReplied(model.setup, msg);
+      // What Claude Code or the AI chosen changed shows in Settings too, and
+      // in the ask bar: once asked, and once a command has finished.
+      const finished = model.setup.view?.cli?.running != null && setup.view?.cli?.running == null;
+      const moved = msg.tag.kind === "setupCli" || msg.tag.kind === "setupAi" || finished;
+      return [{ ...model, setup }, moved && msg.ok ? [...effects, loadSettings] : effects];
+    }
     case "item":
     case "itemStamp": {
       if (model.panel === null) return [model, []];
@@ -778,9 +840,22 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return synced ? sourceSynced({ ...model, folder }, []) : [{ ...model, folder }, []];
     }
     case "jira":
+    case "jiraProjects":
     case "jiraConnected": {
       const { model: jira, synced } = jiraReplied(model.jira, msg);
-      return synced ? sourceSynced({ ...model, jira }, []) : [{ ...model, jira }, []];
+      // The first run stops watching Jira's first sync once it has answered.
+      const [setup, watching] =
+        msg.tag.kind === "jiraConnected"
+          ? updateSetup(model.setup, { type: "watched", on: false })
+          : [model.setup, []];
+      // A project listed goes to the first run's next screen.
+      const [listed, shown] =
+        msg.tag.kind === "jiraProjects" && msg.ok && model.route.page === "setup"
+          ? updateSetup(setup, { type: "screenShown", screen: "projects" })
+          : [setup, []];
+      const next = { ...model, jira, setup: listed };
+      const effects = [...watching, ...shown];
+      return synced ? sourceSynced(next, effects) : [next, effects];
     }
     case "sources":
     case "sourceSynced": {

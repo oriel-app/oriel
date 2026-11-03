@@ -4,10 +4,12 @@
 // picked from those connected and on. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
+import { ClaudeCodeRow } from "./cli-row.tsx";
 import { type Dispatch, Link } from "./parts.tsx";
 import { ProviderRow, Switch } from "./provider-row.tsx";
 import type { SettingsSection } from "./route.ts";
 import type { SettingsModel, SettingsMsg } from "./settings.ts";
+import type { SetupModel, SetupMsg } from "./setup.ts";
 import type { ModelPick, SendKey, SettingsChange, SettingsView, TextSize } from "./view.ts";
 
 const sections: { id: SettingsSection; name: string }[] = [
@@ -19,11 +21,14 @@ const sections: { id: SettingsSection; name: string }[] = [
 
 export function SettingsPage(props: {
   model: SettingsModel;
+  // On the desktop app, the Claude Code row the first run shares.
+  setup: SetupModel;
   section: SettingsSection;
   dispatch: Dispatch;
 }) {
   const { model, section, dispatch } = props;
   const send = (msg: SettingsMsg) => dispatch({ type: "settings", msg });
+  const sendSetup = (msg: SetupMsg) => dispatch({ type: "setup", msg });
   const change = (change: SettingsChange) => send({ type: "changed", change });
   const { view } = model;
   return (
@@ -52,7 +57,14 @@ export function SettingsPage(props: {
           {view === null ? (
             <p class="loading">Loading…</p>
           ) : section === "providers" ? (
-            <Providers model={model} view={view} send={send} change={change} />
+            <Providers
+              model={model}
+              view={view}
+              send={send}
+              change={change}
+              setup={props.setup}
+              sendSetup={sendSetup}
+            />
           ) : section === "appearance" ? (
             <Appearance view={view} change={change} />
           ) : section === "asking" ? (
@@ -71,8 +83,11 @@ function Providers(props: {
   view: SettingsView;
   send(msg: SettingsMsg): void;
   change(change: SettingsChange): void;
+  setup: SetupModel;
+  sendSetup(msg: SetupMsg): void;
 }) {
-  const { model, view, send, change } = props;
+  const { model, view, send, change, setup } = props;
+  const cli = setup.view?.cli ?? null;
   if (view.scripted)
     return (
       <section class="settings-section" aria-labelledby="settings-providers">
@@ -106,33 +121,56 @@ function Providers(props: {
           in however you signed it in; Oriel never sees how.
         </p>
         <ul class="provider-rows">
-          {view.providers.map((provider) => (
-            <ProviderRow
-              key={provider.id}
-              provider={provider}
-              onToggle={(on) => change({ provider: provider.id, on })}
-            >
-              {provider.kind === "api" && view.apiKeys && (
-                <ApiKey
-                  set={provider.status === "ready"}
-                  typed={model.key}
-                  keying={model.keying}
-                  onType={(text) => send({ type: "keyTyped", text })}
-                  onSave={() => send({ type: "keySaved" })}
-                  onRemove={() => send({ type: "keyRemoved" })}
-                />
-              )}
-              {provider.kind === "claude-code" && view.cliPaths && (
-                <CliPath
-                  name={provider.name}
-                  saved={provider.path}
-                  typed={model.paths[provider.id]}
-                  onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
-                  onSave={() => send({ type: "pathSaved", provider: provider.id })}
-                />
-              )}
-            </ProviderRow>
-          ))}
+          {view.providers.map((provider) =>
+            provider.kind === "claude-code" && cli ? (
+              // The first run's own row, with what Oriel can do for it.
+              <ClaudeCodeRow
+                key={provider.id}
+                provider={provider}
+                cli={cli}
+                model={setup}
+                send={props.sendSetup}
+                onToggle={(on) => change({ provider: provider.id, on })}
+                onKey={() => document.getElementById("provider-api")?.scrollIntoView()}
+              >
+                {view.cliPaths && (
+                  <CliPath
+                    name={provider.name}
+                    saved={provider.path}
+                    typed={model.paths[provider.id]}
+                    onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
+                    onSave={() => send({ type: "pathSaved", provider: provider.id })}
+                  />
+                )}
+              </ClaudeCodeRow>
+            ) : (
+              <ProviderRow
+                key={provider.id}
+                provider={provider}
+                onToggle={(on) => change({ provider: provider.id, on })}
+              >
+                {provider.kind === "api" && view.apiKeys && (
+                  <ApiKey
+                    set={provider.status === "ready"}
+                    typed={model.key}
+                    keying={model.keying}
+                    onType={(text) => send({ type: "keyTyped", text })}
+                    onSave={() => send({ type: "keySaved" })}
+                    onRemove={() => send({ type: "keyRemoved" })}
+                  />
+                )}
+                {provider.kind === "claude-code" && view.cliPaths && (
+                  <CliPath
+                    name={provider.name}
+                    saved={provider.path}
+                    typed={model.paths[provider.id]}
+                    onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
+                    onSave={() => send({ type: "pathSaved", provider: provider.id })}
+                  />
+                )}
+              </ProviderRow>
+            ),
+          )}
         </ul>
       </section>
       <section class="settings-section" aria-labelledby="settings-models">

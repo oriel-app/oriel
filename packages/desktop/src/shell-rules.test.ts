@@ -40,6 +40,11 @@ test("the shell answers the protocol's requests, as the server writes them", () 
     parseRequest('{"id":5,"kind":"notify","title":"Done","body":"","open":"/threads/01J"}'),
     { id: 5, request: { kind: "notify", title: "Done", body: "", open: "/threads/01J" } },
   );
+  // The first run brings the window to the front once a sign-in ends.
+  assert.deepEqual(parseRequest('{"id":6,"kind":"window.focus"}'), {
+    id: 6,
+    request: { kind: "window.focus" },
+  });
 });
 
 test("anything else is refused, with an answer when it has an id", () => {

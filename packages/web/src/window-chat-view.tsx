@@ -15,11 +15,36 @@ export function AskBar(props: {
   view: OverviewView | null;
   // Whether there is a conversation to go back to, behind a closed chat.
   ongoing: boolean;
+  // The first run's overview, whose top question is an instruction.
+  firstRun?: boolean;
+  // No AI is set up, so the bar says so and opens Settings (decision 0038).
+  noAi?: boolean;
   dispatch: Dispatch;
 }) {
   const { chat, view, ongoing, dispatch } = props;
   const send = (msg: WindowChatMsg) => dispatch({ type: "chat", msg });
-  const questions = view ? questionsFrom(view) : [];
+  if (props.noAi)
+    return (
+      <section class="ask" aria-label="Ask about your window">
+        <div class="ask-bar" data-off>
+          <input
+            type="text"
+            class="ask-input"
+            disabled
+            placeholder="Set up Claude to ask about your window"
+            aria-label="Set up Claude to ask about your window"
+          />
+          <Link
+            route={{ page: "settings", section: "providers" }}
+            dispatch={dispatch}
+            class="button primary"
+          >
+            Set up
+          </Link>
+        </div>
+      </section>
+    );
+  const questions = view ? questionsFrom(view, props.firstRun === true) : [];
   return (
     <section class="ask" aria-label="Ask about your window">
       <form

@@ -8,7 +8,8 @@
 // `estimates: false`, its board counts issues instead, so it has no points
 // field, as a team-managed board without one doesn't; `estimation` changes
 // that later. `statuses` adds to the workflow statuses SYN doesn't use, such
-// as a column for stories ready to pick up.
+// as a column for stories ready to pick up. `projects` lists more projects
+// beside SYN, which hold nothing this site serves.
 // Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
@@ -48,6 +49,7 @@ export function memorySite(
     account?: { email: string; token: string };
     estimates?: false;
     statuses?: { name: string; category: "todo" | "in-progress" | "done" }[];
+    projects?: { key: string; name: string; issues: number; updated: Instant }[];
   } = {},
 ) {
   const { issues: start } = applySourceEdits(fixture, fixture.edits.length);
@@ -162,9 +164,36 @@ export function memorySite(
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
     if (method === "GET" && path === "/rest/api/3/myself") return json(200, { timeZone: "UTC" });
+    // SYN with how many issues it holds and when one last changed, then the
+    // others listed, as Jira's project search pages them.
+    const own = () => ({
+      id: "10000",
+      key: project,
+      name: fixture.project.product,
+      insight: {
+        totalIssueCount: issues.size,
+        lastIssueUpdateTime: [...issues.values()]
+          .map((i) => i.updated)
+          .toSorted()
+          .at(-1),
+      },
+    });
+    if (method === "GET" && path === "/rest/api/3/project/search") {
+      const query = (url.searchParams.get("query") ?? "").toLowerCase();
+      const values = [
+        own(),
+        ...(options.projects ?? []).map((other, i) => ({
+          id: String(10001 + i),
+          key: other.key,
+          name: other.name,
+          insight: { totalIssueCount: other.issues, lastIssueUpdateTime: other.updated },
+        })),
+      ].filter((p) => `${p.key} ${p.name}`.toLowerCase().includes(query));
+      return json(200, { startAt: 0, maxResults: 100, total: values.length, isLast: true, values });
+    }
     if (method === "GET" && path.startsWith("/rest/api/3/project/"))
       return path === `/rest/api/3/project/${project}`
-        ? json(200, { id: "10000", key: project, name: fixture.project.product })
+        ? json(200, own())
         : json(404, { errorMessages: ["No project could be found with that key."] });
     // Every issue, oldest update first, whatever the JQL's window: listing
     // more than was asked for changes nothing in an index.

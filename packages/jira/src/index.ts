@@ -22,7 +22,13 @@ export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 export { type Estimates, jiraNamespace } from "./namespace.ts";
 export { jiraSpecs } from "./specs.ts";
 export { cassette, type Exchange, exchange, recording, replay } from "./cassette.ts";
-export { checkConnection, type ConnectionCheck } from "./connect.ts";
+export {
+  checkConnection,
+  type ConnectionCheck,
+  issueCount,
+  type JiraProject,
+  listProjects,
+} from "./connect.ts";
 export { fixtureFields, fixtureSource, type FixtureSourceOptions } from "./fixture-source.ts";
 export { type JiraSource, type JiraSourceOptions, jiraSource, jqlDate } from "./source.ts";
 export {

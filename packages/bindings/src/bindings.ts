@@ -49,7 +49,10 @@ export function bindingsFor(
     show?: (spec: unknown) => string;
     // The window chat's overview, with the items it shows as the index has
     // them; its thread's module gets `window` only with it (decision 0027).
-    overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
+    // `reachable`: the IDs of the items each cluster it names holds, which
+    // an action in the run may take, as Make a workstream does, though the
+    // read shows none of them, so none can be read (decision 0044).
+    overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
@@ -65,6 +68,10 @@ export function bindingsFor(
   // nothing else outside the region: the host refuses before any adapter
   // code sees the ID, whatever the adapter checks itself.
   const found = new Set<string>();
+  // IDs an action in this run may take though no read showed them: the items
+  // of the clusters the overview named, as Make a workstream copies them.
+  // Never read through: reading one still takes a search() that shows it.
+  const joinable = new Set<string>();
   const host: Host = {
     ids: scope.ids,
     has: (id: string): id is ItemId => members.has(id),
@@ -116,8 +123,9 @@ export function bindingsFor(
         },
         overview: async () => {
           if (!options.overview) return host.overview();
-          const { view, items } = await options.overview();
+          const { view, items, reachable = [] } = await options.overview();
           for (const item of items) found.add(item.id);
+          for (const id of reachable) joinable.add(id);
           reached.push(...items);
           return view;
         },
@@ -163,7 +171,7 @@ export function bindingsFor(
         return intended(entry, args, {
           workstream: region.workstreamId,
           thread: options.thread ?? null,
-          reaches: (id) => members.has(id) || found.has(id),
+          reaches: (id) => members.has(id) || found.has(id) || joinable.has(id),
         });
       } catch (error) {
         throw named(fn, error);

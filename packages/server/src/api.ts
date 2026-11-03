@@ -52,6 +52,7 @@ import {
   type WorkstreamDeletedView,
   type WorkstreamEndedView,
   isGroupingId,
+  type JiraProjectView,
   type JiraView,
   type OverviewView,
   type SearchView,
@@ -70,6 +71,7 @@ import {
 import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
 import { type SettingsService, SettingsRefused, settingsChange } from "./settings.ts";
+import { type Setup, SetupRefused } from "./setup/setup.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
@@ -122,8 +124,20 @@ export type ApiDeps = {
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   jira(): JiraView;
+  // The projects the Jira details typed can see, before any is connected.
+  jiraProjects(typed: {
+    site: string;
+    email: string;
+    token: string;
+    query: string;
+  }): Promise<
+    | { projects: JiraProjectView[]; more: boolean }
+    | { problem: string; fields: ("site" | "email" | "token")[] }
+  >;
   sources(): SourceView[];
   settings: SettingsService;
+  // The desktop app's first run and its commands for the person's CLI.
+  setup: Setup;
   log: Log;
 };
 
@@ -209,6 +223,36 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
+const setupCommand = object({
+  command: union(
+    literal("check"),
+    literal("install"),
+    literal("sign-in"),
+    literal("update"),
+    literal("cancel"),
+  ),
+});
+const setupAi = object({
+  ai: union(literal("claude-code"), literal("api")),
+  anyway: optional(literal(true)),
+});
+const setupProgress = object({
+  did: union(
+    literal("opened"),
+    literal("skipped-ai"),
+    literal("work"),
+    literal("skipped-work"),
+    literal("finished"),
+    literal("dismissed"),
+  ),
+});
+const typedText = (max: number) => refine(string, (text) => text.length <= max, `at most ${max}`);
+const jiraDetails = object({
+  site: typedText(300),
+  email: typedText(300),
+  token: typedText(4096),
+  query: optional(typedText(100)),
+});
 // The window makes a workstream from a cluster or from picked items; a workstream from
 // nothing comes only with its thread.
 const windowWorkstream = refine(
@@ -258,6 +302,17 @@ const windowEvent = union(
   object({
     name: literal("window-chat.question-used"),
     question: union(...startQuestions.map((question) => literal(question))),
+  }),
+  // The first run's Show details, copied for someone helping the person.
+  object({
+    name: literal("first-run.details-copied"),
+    what: union(
+      literal("install"),
+      literal("sign-in"),
+      literal("update"),
+      literal("test"),
+      literal("jira"),
+    ),
   }),
 );
 
@@ -534,6 +589,59 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // The desktop app's setup, and the Claude Code row it shares with
+      // Settings (decision 0038). Under `pnpm dev`, all null.
+      method: "GET",
+      path: at("/setup"),
+      run: async () => json(200, await deps.setup.view()),
+    },
+    {
+      // A command for the person's Claude Code, from a fixed list. One that
+      // runs on, as an install does, answers at once; the page asks again.
+      method: "POST",
+      path: at("/setup/cli"),
+      async run(_, request) {
+        const { command } = await readJson(request, smallBody, setupCommand);
+        try {
+          return json(200, await deps.setup.command(command));
+        } catch (error) {
+          if (error instanceof SetupRefused) throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
+      // The AI the first run continues with: Claude Code once its test turn
+      // answers, or the API key Settings kept.
+      method: "POST",
+      path: at("/setup/ai"),
+      async run(_, request) {
+        const { ai, anyway } = await readJson(request, smallBody, setupAi);
+        try {
+          return json(200, await deps.setup.choose(ai, anyway === true));
+        } catch (error) {
+          if (error instanceof SetupRefused || error instanceof SettingsRefused)
+            throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
+      // The first run's own steps, each done or skipped, its end, and the
+      // overview's one-time line dismissed.
+      method: "POST",
+      path: at("/setup/progress"),
+      async run(_, request) {
+        const { did } = await readJson(request, smallBody, setupProgress);
+        try {
+          return json(200, await deps.setup.progress(did));
+        } catch (error) {
+          if (error instanceof SetupRefused) throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
       method: "GET",
       path: at("/folder"),
       run: async () => json(200, { folder: deps.folder(), picker: deps.pickFolder !== undefined }),
@@ -628,6 +736,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "GET",
       path: at("/jira"),
       run: async () => json(200, { jira: deps.jira() }),
+    },
+    {
+      // The projects the details typed can see, so the person picks one from
+      // Jira's own list. A read: nothing is kept, and the token is never sent
+      // back. A refusal names the fields it's about.
+      method: "POST",
+      path: at("/jira/projects"),
+      async run(_, request) {
+        const typed = await readJson(request, smallBody, jiraDetails);
+        const listed = await deps.jiraProjects({ ...typed, query: typed.query ?? "" });
+        return "problem" in listed
+          ? json(400, { error: listed.problem, fields: listed.fields })
+          : json(200, listed);
+      },
     },
     {
       // Connects Jira with the details the user typed. They're checked

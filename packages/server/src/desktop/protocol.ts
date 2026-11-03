@@ -44,6 +44,9 @@ export const request = union(
   object({ kind: literal("secret.set"), name, secret }),
   object({ kind: literal("secret.delete"), name }),
   object({ kind: literal("notify"), title: string, body: string, open }),
+  // The first run brings Oriel back to the front once the CLI's sign-in in
+  // the browser ends (decision 0038).
+  object({ kind: literal("window.focus") }),
 );
 export type ShellRequest = Infer<typeof request>;
 export type RequestKind = ShellRequest["kind"];
@@ -55,6 +58,7 @@ export const answers = {
   "secret.set": literal(null),
   "secret.delete": literal(null),
   notify: literal(null),
+  "window.focus": literal(null),
 } satisfies Record<RequestKind, Validator<unknown>>;
 export type Answer<K extends RequestKind> = Infer<(typeof answers)[K]>;
 

@@ -16,14 +16,17 @@ const typed = {
   site: "oriel.atlassian.net",
   email: "pm@example.com",
   token: "pasted",
-  project: "OA",
 };
 const connectable: JiraView = { connected: null, connectable: true };
 const connected: JiraView = {
   connected: { site: "https://oriel.atlassian.net", project: "OA", items: 42, syncedAt: null },
   connectable: false,
 };
-const replied = (kind: "jira" | "jiraConnected", ok: boolean, body: unknown): Replied => ({
+const replied = (
+  kind: "jira" | "jiraConnected" | "jiraProjects",
+  ok: boolean,
+  body: unknown,
+): Replied => ({
   type: "replied",
   tag: { kind },
   ok,
@@ -41,18 +44,55 @@ function filled(): JiraModel {
   return model;
 }
 
-test("Jira connects once every field is filled, with one request", () => {
-  assert.deepEqual(updateJira(initJira(), { type: "connectClicked" })[1], []);
-  const [pending, effects] = updateJira(filled(), { type: "connectClicked" });
+test("Jira lists its projects once every detail is filled, and connects the one picked", () => {
+  assert.deepEqual(updateJira(initJira(), { type: "listClicked" })[1], []);
+  const [listing, effects] = updateJira(filled(), { type: "listClicked" });
   assert.deepEqual(effects, [
-    { type: "http", method: "POST", url: "/api/jira", body: typed, tag: { kind: "jiraConnected" } },
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/jira/projects",
+      body: { ...typed, query: "" },
+      tag: { kind: "jiraProjects" },
+    },
   ]);
-  assert.deepEqual(updateJira(pending, { type: "connectClicked" })[1], []);
-  const refused = jiraReplied(pending, replied("jiraConnected", false, { error: "No." }));
-  assert.deepEqual(
-    [refused.model.problem, refused.model.pending, refused.model.typed, refused.synced],
-    ["No.", false, typed, false],
+  assert.deepEqual(updateJira(listing, { type: "listClicked" })[1], []);
+  // A refusal names its fields, and the details stay as typed.
+  const refused = jiraReplied(
+    listing,
+    replied("jiraProjects", false, { error: "No.", fields: ["email", "token"] }),
   );
+  assert.deepEqual(
+    [refused.model.problem, refused.model.fields, refused.model.pending, refused.model.typed],
+    ["No.", ["email", "token"], null, typed],
+  );
+  // The list picks the likeliest, which Jira's list puts first.
+  const projects = [
+    { key: "OA", name: "Oriel", issues: 42, updatedAt: "2026-11-01T09:00:00.000Z" },
+    { key: "SYN", name: "Synthetic", issues: 130, updatedAt: "2026-10-01T09:00:00.000Z" },
+  ];
+  const listed = jiraReplied(listing, replied("jiraProjects", true, { projects, more: false }));
+  assert.equal(listed.model.picked, "OA");
+  const [picked] = updateJira(listed.model, { type: "projectPicked", key: "SYN" });
+  const [connecting, connects] = updateJira(picked, { type: "connectClicked" });
+  assert.deepEqual(connects, [
+    {
+      type: "http",
+      method: "POST",
+      url: "/api/jira",
+      body: { ...typed, project: "SYN" },
+      tag: { kind: "jiraConnected" },
+    },
+  ]);
+  assert.equal(connecting.pending, "connecting");
+  const failed = jiraReplied(connecting, replied("jiraConnected", false, { error: "Not now." }));
+  assert.deepEqual(
+    [failed.model.problem, failed.model.pending, failed.model.connecting, failed.synced],
+    ["Not now.", null, "SYN", false],
+  );
+  // Change goes back to the details, as typed.
+  const [changed] = updateJira(failed.model, { type: "changeClicked" });
+  assert.deepEqual([changed.projects, changed.typed], [null, typed]);
 });
 
 test("once connected, nothing typed is kept and the window and the sources load again", () => {

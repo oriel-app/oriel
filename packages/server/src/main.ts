@@ -49,6 +49,9 @@ import { models as findModels } from "./model.ts";
 import { settingsFile } from "./settings.ts";
 import { firstPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
+import { anthropicSigned, installerTrust, withLocalBin } from "./setup/signature.ts";
+import { setupFile } from "./setup/state.ts";
+import { homedir } from "node:os";
 
 const { values, tokens } = parseArgs({
   options: {
@@ -130,14 +133,32 @@ if (channelWrite && values.data) {
     firstPort,
     async model(secrets) {
       const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
-      const settings = settingsFile(join(values.data ?? "", "settings.json"), log);
+      const data = values.data ?? "";
+      const settings = settingsFile(join(data, "settings.json"), log);
       const store = keyStore(secrets, log);
-      const models = findModels({ key: null, kept: store });
+      // The CLI is found on the PATH the shell gave, and where Anthropic's
+      // installer puts it (decision 0038). A Claude Code from that installer
+      // runs only once Anthropic's signature on it checks out.
+      const home = process.env.HOME ?? homedir();
+      const env = { ...process.env, PATH: withLocalBin(process.env.PATH ?? "", home) };
+      const trust =
+        process.platform === "darwin"
+          ? installerTrust({ home, verify: (path) => anthropicSigned(path) })
+          : async () => null;
+      const models = findModels({ key: null, kept: store, env, trust, desktop: true });
+      const state = setupFile(join(data, "setup.json"));
+      const fresh = !state.existed && !existsSync(join(data, "oriel.db"));
       // Not awaited here: the key comes from the shell, which answers once
       // the server listens. Requests wait for it instead.
       const first = models.look(settings.get());
       looked = first.then(() => models.describe(settings.get()));
-      return { models, settings, keys: { store }, looked: first };
+      return {
+        models,
+        settings,
+        keys: { store },
+        looked: first,
+        setup: { state, fresh, home, env, trust },
+      };
     },
   }).catch((error: unknown) => {
     if (error instanceof Stopped) process.exit(0);

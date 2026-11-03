@@ -131,6 +131,7 @@ export async function serve(
       port: address.port,
       window: app.window,
       look: app.settings.page,
+      firstRun: () => app.setup.firstRun(),
       api: app.api,
       ...(serving.launch ? { launch: serving.launch } : {}),
     }),

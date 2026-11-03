@@ -411,6 +411,11 @@ async function handle(request: Request): Promise<string | null> {
     case "secret.delete":
       await secrets.delete(request.name);
       return null;
+    case "window.focus":
+      // Over the browser the person signed in with, which has the focus.
+      show();
+      if (process.platform === "darwin") app.focus({ steal: true });
+      return null;
   }
 }
 

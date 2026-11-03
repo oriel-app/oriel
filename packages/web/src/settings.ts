@@ -49,6 +49,19 @@ export function initSettings(): SettingsModel {
   };
 }
 
+// No AI is set up: nothing found ready and on, once Oriel has looked, and
+// not the scripted agent. Until settings load, or while Oriel looks, it
+// isn't said.
+export const noAi = (model: SettingsModel): boolean => {
+  const { view } = model;
+  return (
+    view !== null &&
+    !view.scripted &&
+    view.models.length === 0 &&
+    !view.providers.some((p) => p.status === "checking")
+  );
+};
+
 // Which key sends a question, before the settings load too.
 export const sendKey = (model: SettingsModel): SendKey => model.view?.send ?? "enter";
 

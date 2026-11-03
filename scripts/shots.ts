@@ -47,12 +47,25 @@ import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
+import {
+  fillJira as fillFirstRun,
+  type FirstRunOptions,
+  firstRunServer,
+  jiraAccount,
+  keepUntilDone,
+  releaseAll,
+  removeHomes,
+  timedPath,
+} from "./shots-first-run.ts";
 
 type Grouping = "epic" | "assignee" | "stuck" | "linked";
 type Scene = {
   name: string;
   path: string;
   on?: Serving;
+  // A server of the scene's own, made afresh for each theme and width, as
+  // the first run's are, whose state each shot moves.
+  make?: () => Promise<Serving>;
   act?(page: Page): Promise<void>;
   // A refusal the scene asks for, which the browser logs as an error.
   refused?: number;
@@ -120,8 +133,45 @@ await show({ read: "window.overview", from: "workstreams", form: "table", column
   ],
 ];
 
+// The first run's question to start from (decision 0038): the top candidate
+// made a workstream, found in the overview by the row's ID the message names.
+const makeScript = (id: string) =>
+  [
+    "const view = await window.overview();",
+    `const row = view.candidates.rows.find((r) => (r.subject.kind === "cluster" ? r.subject.lead?.id : r.subject.item.id) === ${JSON.stringify(id)});`,
+    "if (!row) return null;",
+    'const items = row.subject.kind === "cluster" ? row.subject.items : [row.subject.item.id];',
+    'const name = row.subject.kind === "cluster" ? row.subject.label : (row.subject.item.title ?? row.subject.item.key);',
+    'workstream.create({ kind: "picked", name, items });',
+    "return items.length;",
+  ].join("\n");
+// A PM's change: acceptance criteria drafted for a few of the region's stories.
+const criteriaScript = [
+  'const stories = (await jira.listItems()).filter((item) => !item.gone && item.issueType === "Story").slice(0, 3);',
+  'for (const story of stories) jira.setDescription(story.id, "Acceptance criteria: a person can do it end to end, and a failure says why in plain words.");',
+  "return stories.map((story) => story.id);",
+].join("\n");
+
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  const made =
+    /^Make a workstream of the top candidate in Not in a workstream yet, ([a-z]+:\S+), with all its items\.$/.exec(
+      input.text,
+    )?.[1];
+  if (made)
+    return [
+      { run: makeScript(made) },
+      {
+        text: "Done: it's a workstream in Oriel now, with its items, and nothing changed in Jira. To plan its stories, open it in the sidebar.",
+      },
+    ];
+  if (/\bacceptance criteria\b/i.test(input.text))
+    return [
+      { run: criteriaScript },
+      {
+        text: "Here are drafts, from what each story already says. Nothing changes in Jira until you approve.",
+      },
+    ];
   const answer = windowAnswers.find(([asked]) => asked.test(input.text));
   if (answer) return [{ run: answer[1] }, { text: answer[2] }];
   if (/\bplan\b/i.test(input.text))
@@ -283,7 +333,6 @@ const empty = await unconnected({ ...loadJiraFixture(), issues: [], edits: [] })
 const fillJira = async (page: Page, token: string) => {
   await page.locator(".connect-jira").waitFor();
   await page.locator('input[name="site"]').fill("oriel.atlassian.net");
-  await page.locator('input[name="project"]').fill("SYN");
   await page.locator('input[name="email"]').fill(account.email);
   await page.locator('input[name="token"]').fill(token);
 };
@@ -928,14 +977,25 @@ const scenes: Scene[] = [
     act: (page) => fillJira(page, account.token),
   },
   {
+    // Jira lists the projects the details can see, so nobody types a key.
+    name: "jira-projects",
+    path: "/?grouping=epic",
+    on: connecting,
+    act: async (page) => {
+      await fillJira(page, account.token);
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.locator(".jira-projects").waitFor();
+    },
+  },
+  {
     name: "jira-refused",
     path: "/?grouping=epic",
     on: connecting,
     refused: 400,
     act: async (page) => {
       await fillJira(page, "not-the-one");
-      await page.getByRole("button", { name: "Connect" }).click();
-      await page.locator(".connect-problem").waitFor();
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.locator(".jira-problem").waitFor();
     },
   },
   {
@@ -2002,6 +2062,295 @@ const scenes: Scene[] = [
     },
   },
 ];
+
+// The desktop app's first run (decision 0038): each screen on a server of
+// its own, made afresh for each theme and width, since each shot moves it:
+// its stub Claude Code installed, signed in, or neither; Codex found or not;
+// SYN in memory as any Jira Cloud site; and the notes folder to pick.
+const firstRun =
+  (options: FirstRunOptions = {}) =>
+  () =>
+    firstRunServer(
+      start,
+      (deps) => scriptedAgent(deps, planning),
+      async () => notes,
+      options,
+    );
+const setupFinished = {
+  openedAt: instant(new Date()),
+  finishedAt: instant(new Date()),
+  steps: { ai: "done" as const, work: "done" as const },
+};
+const aiDone = { steps: { ai: "done" as const } };
+const toJira = async (page: Page, token = jiraAccount.token) => {
+  await page
+    .locator(".provider-row", { hasText: "Jira" })
+    .getByRole("button", { name: "Connect" })
+    .click();
+  await fillFirstRun(page, token);
+};
+const toProjects = async (page: Page) => {
+  await toJira(page);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("heading", { name: "Which Jira project?" }).waitFor();
+};
+const useProject = async (page: Page) => {
+  await toProjects(page);
+  await page.getByRole("button", { name: /^Use / }).click();
+};
+const continueWithClaude = (page: Page) =>
+  page.getByRole("button", { name: "Continue with Claude Code" }).click();
+scenes.push(
+  {
+    name: "setup-checking",
+    path: "/setup",
+    make: firstRun({ stillLooking: true }),
+    act: (page) => page.getByText("Looking for it on this Mac").waitFor(),
+  },
+  {
+    name: "setup-ready",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: (page) => page.locator(".provider-row[data-picked]").waitFor(),
+  },
+  {
+    name: "setup-codex-too",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, codex: true }),
+    act: (page) => page.locator(".provider-row[data-picked]").waitFor(),
+  },
+  {
+    name: "setup-missing",
+    path: "/setup",
+    make: firstRun(),
+    act: (page) => page.getByRole("button", { name: "Install", exact: true }).waitFor(),
+  },
+  {
+    name: "setup-installing",
+    path: "/setup",
+    make: firstRun({ install: "waits" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Install", exact: true }).click();
+      await page.getByText("Downloading from Anthropic").waitFor();
+    },
+  },
+  {
+    name: "setup-sign-in",
+    path: "/setup",
+    make: firstRun({ cli: {} }),
+    act: (page) => page.getByRole("button", { name: "Sign in", exact: true }).waitFor(),
+  },
+  {
+    name: "setup-signing-in",
+    path: "/setup",
+    make: firstRun({ cli: {}, login: "waits" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.getByText("A tab opened on claude.ai").waitFor();
+    },
+  },
+  {
+    name: "setup-codex-only",
+    path: "/setup",
+    make: firstRun({ codex: true }),
+    act: (page) => page.getByRole("button", { name: "Use an API key" }).waitFor(),
+  },
+  {
+    name: "setup-api-key",
+    path: "/setup",
+    make: firstRun({ codex: true }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Use an API key" }).click();
+      await page.getByRole("heading", { name: "Pay Anthropic per question" }).waitFor();
+    },
+  },
+  {
+    name: "setup-no-plan",
+    path: "/setup",
+    make: firstRun({
+      cli: { signedIn: true },
+      refuses: "Claude Code stopped: Your current subscription does not include Claude Code.",
+    }),
+    act: async (page) => {
+      await continueWithClaude(page);
+      await page.getByText("doesn't include Claude Code").waitFor();
+    },
+  },
+  {
+    name: "setup-other-account",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Not this account?" }).click();
+      await page.getByText("Sign Claude Code in with another account?").waitFor();
+    },
+  },
+  {
+    name: "setup-install-failed",
+    path: "/setup",
+    make: firstRun({ install: "fails" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Install", exact: true }).click();
+      await page.getByRole("button", { name: "Show details" }).click();
+      await page.locator(".cli-log").waitFor();
+    },
+  },
+  {
+    name: "setup-sign-in-failed",
+    path: "/setup",
+    make: firstRun({ cli: {}, login: "fails" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.getByText("Sign-in didn't finish").waitFor();
+    },
+  },
+  {
+    name: "setup-other-ways",
+    path: "/setup",
+    make: firstRun({ cli: {}, login: "fails" }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.getByRole("button", { name: "Other ways to sign in" }).click();
+      await page.getByRole("heading", { name: "Sign in to Claude Code yourself" }).waitFor();
+    },
+  },
+  {
+    name: "setup-needs-update",
+    path: "/setup",
+    make: firstRun({ cli: { version: "2.0.4", signedIn: true } }),
+    act: (page) => page.getByRole("button", { name: "Update" }).waitFor(),
+  },
+  {
+    name: "setup-too-new",
+    path: "/setup",
+    make: firstRun({ cli: { version: "3.0.1", signedIn: true } }),
+    act: (page) => page.getByText("newer than Oriel works with").waitFor(),
+  },
+  {
+    name: "setup-usage-limit",
+    path: "/setup",
+    make: firstRun({
+      cli: { signedIn: true },
+      refuses: "Claude Code stopped: Claude AI usage limit reached|1762189200",
+    }),
+    act: async (page) => {
+      await continueWithClaude(page);
+      await page.getByRole("button", { name: "Continue anyway" }).waitFor();
+    },
+  },
+  {
+    name: "setup-work",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: async (page) => {
+      await continueWithClaude(page);
+      await page.getByRole("heading", { name: "Connect where your work lives" }).waitFor();
+    },
+  },
+  {
+    name: "setup-jira",
+    path: "/setup",
+    make: firstRun({ state: aiDone }),
+    act: (page) => toJira(page),
+  },
+  {
+    name: "setup-jira-refused",
+    path: "/setup",
+    make: firstRun({ state: aiDone }),
+    refused: 400,
+    act: async (page) => {
+      await toJira(page, "not-the-one");
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await page.locator(".jira-problem").waitFor();
+    },
+  },
+  {
+    name: "setup-jira-project",
+    path: "/setup",
+    make: firstRun({ state: aiDone }),
+    act: (page) => toProjects(page),
+  },
+  {
+    name: "setup-work-connected",
+    path: "/setup",
+    make: firstRun({ state: aiDone }),
+    act: async (page) => {
+      await useProject(page);
+      await page.getByRole("button", { name: "Choose a folder" }).click();
+      await page.locator(".provider-status[data-connected]").nth(1).waitFor();
+    },
+  },
+  {
+    name: "setup-reading",
+    path: "/setup",
+    make: firstRun({ state: aiDone, search: "held" }),
+    act: async (page) => {
+      await useProject(page);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByRole("heading", { name: "Reading your work" }).waitFor();
+      await page.locator(".setup-progress").waitFor();
+    },
+  },
+  {
+    name: "setup-sync-failed",
+    path: "/setup",
+    make: firstRun({ state: aiDone, search: "fails" }),
+    // Jira's connect answers why it stopped.
+    refused: 400,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Choose a folder" }).click();
+      await page.locator(".provider-status[data-connected]").waitFor();
+      await useProject(page);
+      await page.getByRole("button", { name: "Try again" }).waitFor();
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByRole("button", { name: "Open with what's ready" }).waitFor();
+    },
+  },
+  {
+    name: "setup-welcome-back",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, state: aiDone }),
+    act: (page) => page.getByRole("heading", { name: "Welcome back" }).waitFor(),
+  },
+  // After it: the overview's one-time line and its first question, the
+  // answer to it, a folder alone, no AI, and Settings with the same rows.
+  {
+    name: "first-run-overview",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    act: (page) => page.locator(".ask-question", { hasText: /^Make / }).waitFor(),
+  },
+  {
+    name: "first-run-answer",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    window: true,
+    act: async (page) => {
+      await page.locator(".ask-question", { hasText: /^Make / }).click();
+      await page.locator(".window-chat .actions-block").waitFor();
+    },
+  },
+  {
+    name: "first-run-folder-only",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
+    act: (page) => page.locator(".connect-jira").waitFor(),
+  },
+  {
+    name: "first-run-no-ai",
+    path: "/",
+    make: firstRun({ jira: true, state: setupFinished }),
+    act: (page) => page.getByRole("link", { name: "Set up", exact: true }).waitFor(),
+  },
+  {
+    name: "first-run-settings",
+    path: "/settings",
+    make: firstRun({ cli: { signedIn: true }, codex: true, jira: true, state: setupFinished }),
+    act: (page) =>
+      page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+  },
+);
+
 const asked = parseArgs({
   options: { width: { type: "string", multiple: true } },
   allowPositionals: true,
@@ -2010,7 +2359,9 @@ const widths = asked.values.width?.map(Number) ?? [1280, 390];
 const picked = asked.positionals;
 for (const width of widths)
   if (!Number.isInteger(width) || width < 320) throw new Error(`Not a width in pixels: ${width}`);
-for (const start of picked)
+// `onboarding` alone runs the onboarding's timed runs and nothing else.
+const onlyOnboarding = picked.length === 1 && picked[0] === "onboarding";
+for (const start of onlyOnboarding ? [] : picked)
   if (!scenes.some((scene) => scene.name.startsWith(start)))
     throw new Error(`No scene's name starts with ${start}`);
 const themes = ["light", "dark"] as const;
@@ -2036,10 +2387,11 @@ try {
         }
       });
       page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
-      for (scene of scenes) {
+      for (scene of onlyOnboarding ? [] : scenes) {
         const { name } = scene;
         if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
-        await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
+        const on = scene.make ? await scene.make() : (scene.on ?? server);
+        await page.goto(new URL(scene.path, on.url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: !scene.window, animations: "disabled" });
@@ -2052,12 +2404,14 @@ try {
       await context.close();
     }
   }
-  if (picked.length === 0) await onboarding();
+  if (picked.length === 0 || onlyOnboarding) await onboarding();
 } finally {
+  releaseAll();
   await browser.close();
   inFlight.release();
   await inFlight.approving;
   for (const serving of started) await serving.close();
+  removeHomes();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 
@@ -2084,7 +2438,10 @@ async function onboarding(): Promise<void> {
     await page.goto(on.url);
     await fillJira(page, account.token);
     await count("connect");
-    await page.getByRole("button", { name: "Connect" }).click();
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.locator(".jira-projects").waitFor();
+    await count("project");
+    await page.getByRole("button", { name: /^Use / }).click();
     await page.locator(".connect-jira").waitFor({ state: "detached" });
     const connected = performance.now();
     await page
@@ -2117,6 +2474,55 @@ async function onboarding(): Promise<void> {
       problems.push(`onboarding: "token" appears ${total} times, over the budget of 1`);
   } finally {
     await context.close();
+  }
+  await firstRunPaths();
+}
+
+// The desktop app's onboarding budget (decision 0038): from the first run's
+// first screen on a fresh data folder to an approved change set, through
+// Jira, on each path a person may start on. Claude Code ready, under five
+// minutes; signed out, plus one; missing, with Anthropic's installer, plus
+// three. "Token" shows at most once on each path.
+async function firstRunPaths(): Promise<void> {
+  const budgets = { ready: 5, "signed-out": 6, missing: 8 } as const;
+  for (const path of ["ready", "signed-out", "missing"] as const) {
+    const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
+    const serving = await firstRunServer(
+      start,
+      (deps) => scriptedAgent(deps, planning),
+      async () => notes,
+      { ...(path === "missing" ? {} : { cli: { signedIn: path === "ready" } }), data },
+    );
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    try {
+      const { ms, tokens } = await timedPath(page, serving.url, path);
+      const minutes = (ms / 60_000).toFixed(2);
+      console.log(
+        `first run, ${path}: ${minutes} min from the first screen to an approved change set, of ${budgets[path]}`,
+      );
+      console.log(
+        `first run, ${path}: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
+      );
+      if (ms > budgets[path] * 60_000)
+        problems.push(`first run, ${path}: ${minutes} min, over the budget of ${budgets[path]}`);
+      const total = tokens.reduce((sum, [, n]) => sum + n, 0);
+      if (total > 1)
+        problems.push(`first run, ${path}: "token" appears ${total} times, over the budget of 1`);
+      // The setup has finished, and doesn't come back.
+      await page.goto(new URL("/setup", serving.url).href);
+      if (new URL(page.url()).pathname !== "/")
+        problems.push(`first run, ${path}: the setup showed again once it had finished`);
+    } catch (error) {
+      problems.push(
+        `first run, ${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
+      );
+      await page.screenshot({ path: fileURLToPath(new URL(`first-run-${path}-stopped.png`, out)) });
+    } finally {
+      await context.close();
+      // The server closes with the rest; its folder goes with the homes.
+      keepUntilDone(data);
+    }
   }
 }
 

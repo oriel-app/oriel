@@ -78,7 +78,17 @@ export type Tag =
   | { kind: "settings" }
   | { kind: "settingsChanged" }
   | { kind: "settingsLooked" }
-  | { kind: "settingsKey" };
+  | { kind: "settingsKey" }
+  // The desktop app's first run and its commands for the person's CLI
+  // (decision 0038): loaded, a command, the AI chosen, a step, and the key
+  // the first run keeps through Settings' route.
+  | { kind: "setup" }
+  | { kind: "setupCli" }
+  | { kind: "setupAi" }
+  | { kind: "setupProgress"; did: string }
+  | { kind: "setupKey" }
+  // The Jira projects the details typed can see.
+  | { kind: "jiraProjects" };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.
@@ -165,7 +175,11 @@ export type Report =
   | { name: "overview.opened" }
   | { name: "overview.more-opened"; section: OverviewSection }
   | { name: "overview.suggestion-made"; workstreamId: string; grouping: GroupingId }
-  | { name: "window-chat.question-used"; question: StartQuestion };
+  | { name: "window-chat.question-used"; question: StartQuestion }
+  | {
+      name: "first-run.details-copied";
+      what: "install" | "sign-in" | "update" | "test" | "jira";
+    };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>

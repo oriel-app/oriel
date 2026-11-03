@@ -10,6 +10,7 @@
 import type { Models } from "./model.ts";
 import type { SettingsStore } from "./settings.ts";
 import type { Notify } from "./notify.ts";
+import type { SetupOptions } from "./setup/setup.ts";
 import {
   type Bindings,
   type CapturedMutation,
@@ -143,6 +144,10 @@ export type TestOptions = {
   // The desktop app's notifications and folder picker, through its shell.
   notify?: Notify;
   pickFolder?: (prompt: string) => Promise<string | null>;
+  // The desktop app's first run, with stand-ins for what runs.
+  setup?: SetupOptions;
+  // Any Jira Cloud site may be connected, as on the desktop app.
+  anySite?: boolean;
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -172,7 +177,12 @@ export async function testApp(
     fetch: site.fetch,
   };
   const jira: JiraMode = options.connect
-    ? { kind: "window", store: options.connect.store, ...(site ? { fetch: site.fetch } : {}) }
+    ? {
+        kind: "window",
+        store: options.connect.store,
+        ...(options.anySite ? { anySite: true } : {}),
+        ...(site ? { fetch: site.fetch } : {}),
+      }
     : writeTo
       ? options.live
         ? { kind: "live", ...writeTo }
@@ -194,6 +204,7 @@ export async function testApp(
     ...(options.keys ? { keys: options.keys } : {}),
     ...(options.notify ? { notify: options.notify } : {}),
     ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
+    ...(options.setup ? { setup: options.setup } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
@@ -207,6 +218,7 @@ export async function testApp(
     vendor: new Map(),
     window: app.window,
     api: app.api,
+    firstRun: app.setup.firstRun,
   });
   const body = (text: string) => async (limit: number) =>
     Buffer.byteLength(text) > limit ? null : text;

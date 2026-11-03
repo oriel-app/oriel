@@ -1,7 +1,7 @@
 // The window: clusters under a grouping, and items to pick into a workstream.
 // Controls stay out of the way until something is picked or hovered.
-import type { AccessibleInputHTMLAttributes, ComponentChildren } from "preact";
-import { emptyJira, type JiraField, type JiraModel, type JiraMsg, jiraReady } from "./jira.ts";
+import { emptyJira, type JiraModel, type JiraMsg } from "./jira.ts";
+import { JiraDetails, JiraProjects } from "./jira-connect.tsx";
 import {
   Assignee,
   Chevron,
@@ -88,77 +88,44 @@ export function WindowPage(props: {
 
 // Until Jira is connected, the window asks for it first: the one place the
 // onboarding names the token, in its field's label.
-export function ConnectJira({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
+export function ConnectJira(props: {
+  jira: JiraModel;
+  // Only a folder is connected, which Oriel only reads (decision 0038).
+  folderOnly?: boolean;
+  dispatch: Dispatch;
+}) {
+  const { jira, dispatch } = props;
   const send = (msg: JiraMsg) => dispatch({ type: "jira", msg });
-  const field = (
-    name: JiraField,
-    label: string,
-    input: AccessibleInputHTMLAttributes<HTMLInputElement>,
-    hint?: ComponentChildren,
-  ) => (
-    <label class="jira-field">
-      <span>{label}</span>
-      <input
-        name={name}
-        value={jira.typed[name]}
-        spellcheck={false}
-        autoCapitalize="off"
-        {...input}
-        onInput={(event) =>
-          send({ type: "fieldChanged", field: name, value: event.currentTarget.value })
-        }
-      />
-      {hint && <span class="jira-hint">{hint}</span>}
-    </label>
-  );
   return (
-    <form
-      class="connect-jira"
-      aria-labelledby="connect-jira-title"
-      onSubmit={(event) => {
-        event.preventDefault();
-        send({ type: "connectClicked" });
-      }}
-    >
-      <h2 id="connect-jira-title">Connect Jira</h2>
+    <section class="connect-jira" aria-labelledby="connect-jira-title">
+      <h2 id="connect-jira-title">
+        {jira.projects === null ? "Connect Jira" : "Which Jira project?"}
+      </h2>
       <p class="connect-note">
-        Your epics and stories show here. Oriel changes them only when you approve a change.
+        {jira.projects !== null
+          ? "Jira accepted your details. Pick the project you work in."
+          : props.folderOnly
+            ? "Oriel only reads folders. Ask about your notes now; to have Oriel draft changes for you to approve, connect Jira."
+            : "Your epics and stories show here. Oriel changes them only when you approve a change."}
       </p>
-      <div class="jira-fields">
-        {field("site", "Site", {
-          type: "text",
-          placeholder: "yourteam.atlassian.net",
-          autoComplete: "url",
-        })}
-        {field("project", "Project key", { type: "text", placeholder: "OA", autoComplete: "off" })}
-        {field("email", "Your Atlassian email", { type: "email", autoComplete: "email" })}
-        {field(
-          "token",
-          "API token",
-          { type: "password", autoComplete: "off" },
-          <>
-            <a
-              href="https://id.atlassian.com/manage-profile/security/api-tokens"
-              target="_blank"
-              rel="noreferrer"
+      {jira.projects === null ? (
+        <JiraDetails jira={jira} send={send} />
+      ) : (
+        <JiraProjects
+          jira={jira}
+          send={send}
+          actions={
+            <button
+              type="button"
+              class="quiet-action"
+              onClick={() => send({ type: "changeClicked" })}
             >
-              Make one in your Atlassian account
-            </a>
-            , then paste it here.
-          </>,
-        )}
-      </div>
-      <div class="connect-actions">
-        <button type="submit" class="button primary" disabled={jira.pending || !jiraReady(jira)}>
-          {jira.pending ? "Connecting…" : "Connect"}
-        </button>
-        {jira.problem && (
-          <p class="connect-problem" role="alert">
-            {jira.problem}
-          </p>
-        )}
-      </div>
-    </form>
+              Back
+            </button>
+          }
+        />
+      )}
+    </section>
   );
 }
 
