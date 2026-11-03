@@ -20,6 +20,8 @@ import {
   secretsInMemory,
   serverPath,
   storageProblem,
+  refusedArguments,
+  switchName,
 } from "../shell/rules.ts";
 import { descendants as serverDescendants } from "@oriel/server/desktop/utility";
 
@@ -325,4 +327,33 @@ test("in the background, or with a launch file, secrets stay in memory, away fro
   assert.equal(secretsInMemory(["Oriel", "--launch-file", "--data", "/tmp/o"]), true);
   assert.equal(secretsInMemory(["Oriel", "--data", "/tmp/o"]), false);
   assert.equal(secretsInMemory(["Oriel"]), false);
+});
+
+test("a launch takes only the shell's own switches, each value where one belongs", () => {
+  assert.deepEqual(refusedArguments([]), []);
+  assert.deepEqual(
+    refusedArguments(["--background", "--data", "/tmp/d", "--launch-file", "--measure", "/tmp/m"]),
+    [],
+  );
+  for (const args of [
+    ["--remote-debugging-port=9222"],
+    ["-remote-debugging-port=9222"],
+    ["--remote-debugging-pipe"],
+    ["--inspect"],
+    ["--log-net-log=/tmp/n", "--net-log-capture-mode=IncludeSensitive"],
+    ["--proxy-server=127.0.0.1:1", "--proxy-bypass-list=<-loopback>"],
+    ["--data=/tmp/d"],
+    ["--", "--remote-debugging-port=9222"],
+    ["stray"],
+  ])
+    assert.deepEqual(refusedArguments(["--background", ...args]), args);
+  // A value that is missing, or is another switch, isn't a value.
+  assert.deepEqual(refusedArguments(["--data"]), ["--data"]);
+  assert.deepEqual(refusedArguments(["--data", "--inspect"]), ["--data", "--inspect"]);
+});
+
+test("a refused switch's name is Chromium's, either prefix, without its value", () => {
+  assert.equal(switchName("--remote-debugging-port=9222"), "remote-debugging-port");
+  assert.equal(switchName("-remote-debugging-pipe"), "remote-debugging-pipe");
+  assert.equal(switchName("stray"), null);
 });

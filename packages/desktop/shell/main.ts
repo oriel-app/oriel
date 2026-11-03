@@ -17,6 +17,9 @@
 // - The page has no preload and no bridge to the shell. Renderers are
 //   sandboxed and isolated, every permission is denied, the window stays on
 //   the server's origin, and other http(s) links open in the default browser.
+// - No debugger: a launch with any switch but the shell's own is refused,
+//   and the fuses (bundle.ts) ignore Node's environment and run-as-Node.
+//   `pnpm desktop:debug-flags` measures it.
 // - One instance per data folder: Electron's lock lives in the shell's folder
 //   inside it. A second launch brings the first one's window forward.
 // - Quitting closes the server's stdin, and the server ends what it started
@@ -71,7 +74,6 @@ import {
   lang,
   Lines,
   mayShow,
-  mayUse,
   notificationText,
   opensOutside,
   orphans,
@@ -83,13 +85,31 @@ import {
   type Raise,
   raises,
   readyOrigin,
+  refusedArguments,
   restartUrl,
   secretsInMemory,
   serverPath,
   storageProblem,
+  switchName,
   type Request,
 } from "./rules.ts";
 import { shellSecrets } from "./secrets.ts";
+import { lockSession, webPreferences } from "./window.ts";
+
+// Nothing but the shell's own switches (rules.ts, refusedArguments), before
+// anything else, a second launch's handing its arguments to the first
+// included. Each refused switch is stripped from Chromium's own command
+// line too, which is what opens a debugger's port, so it opens nothing
+// however the exit unwinds; `app.exit` ends the process at once.
+const refused = refusedArguments(process.argv.slice(1));
+if (refused.length > 0) {
+  for (const arg of refused) {
+    const name = switchName(arg);
+    if (name) app.commandLine.removeSwitch(name);
+  }
+  process.stderr.write(`Oriel takes none of these: ${refused.join(" ")}\n`);
+  app.exit(1);
+}
 
 const quitGrace = 5_000;
 const loginShellTimeout = 5_000;
@@ -163,15 +183,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function ready() {
   openLog();
-  const own = session.defaultSession;
-  own.setPermissionRequestHandler((_contents, permission, decide, details) =>
-    decide(mayUse(permission, details.requestingUrl, origin)),
-  );
-  own.setPermissionCheckHandler((_contents, permission, requesting) =>
-    mayUse(permission, requesting, origin),
-  );
-  own.setDevicePermissionHandler(() => false);
-  own.on("will-download", (event) => event.preventDefault());
+  lockSession(session.defaultSession, () => origin);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -198,17 +210,7 @@ function ready() {
     minWidth: 640,
     minHeight: 480,
     title: "Oriel",
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      webviewTag: false,
-      navigateOnDragDrop: false,
-      devTools: false,
-    },
+    webPreferences,
     show: raises("launch", background),
   });
   // Closing the window quits, so it asks first too.

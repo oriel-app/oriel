@@ -18,19 +18,33 @@
 // is markup. A control the spike saw fire that no longer fires fails the
 // run too, since then the harness proves nothing for it.
 //
-// Re-run it whenever Chrome's major version changes, and on the desktop
-// shell's engine before it ships (decision 0033). It reads the clock, so it
-// is a script, not a test. Over any leak, it exits 1.
+// Re-run it whenever Chrome's major version changes. `--desktop` runs it
+// in the desktop app's own engine instead, which must pass before the app
+// ships (decision 0033, packages/desktop/README.md): a copy of the built
+// app whose Electron, fuses and all, is untouched, with the probe build's
+// main process (packages/desktop/probe/) in place of the shell's. It sets
+// up the window's engine with the shell's own code, and lets the harness
+// drive it through the DevTools port the shell refuses. It reads the clock,
+// so it is a script, not a test. Over any leak, it exits 1.
+import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import dgram from "node:dgram";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, type Browser } from "playwright-core";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { chromium, type Page } from "playwright-core";
 import { checkSketch } from "../packages/core/src/sketch.ts";
+import { readFuses } from "../packages/desktop/src/fuses.ts";
 import type { ThreadView } from "../packages/web/src/view.ts";
 import { scriptedAgent } from "../packages/server/src/scripted-agent.ts";
 import { serve } from "../packages/server/src/serve.ts";
+import { build } from "./desktop-try.ts";
+
+const { values } = parseArgs({ options: { desktop: { type: "boolean", default: false } } });
 
 const listen = (server: http.Server) =>
   new Promise<number>((resolve) =>
@@ -181,6 +195,8 @@ const silent = new Set([
   "img-data-svg",
   "button-formaction",
   "click-button-formaction",
+  // Electron never fetches a page's icon: it only tells the app its URL.
+  ...(values.desktop ? ["link-icon"] : []),
 ]);
 
 // Oriel's real server, whose agent sends each thread's message, a probe's
@@ -226,28 +242,168 @@ const controls = http.createServer((req, res) => {
 const controlHtml = new Map<string, string>();
 const controlPort = await listen(controls);
 
-const out = mkdtempSync(join(tmpdir(), "oriel-sketch-frames-"));
+const out = realpathSync(mkdtempSync(join(tmpdir(), "oriel-sketch-frames-")));
 const netlog = join(out, "netlog.json");
-const browser: Browser = await chromium.launch({
-  channel: "chrome",
-  chromiumSandbox: true,
-  args: [
-    `--host-resolver-rules=MAP *.exfil.test 127.0.0.1, EXCLUDE localhost`,
-    `--log-net-log=${netlog}`,
-  ],
-});
+const engineArgs = [
+  `--host-resolver-rules=MAP *.exfil.test 127.0.0.1, EXCLUDE localhost`,
+  `--log-net-log=${netlog}`,
+];
+
+// A page in its own window, and the popups it asked for.
+type Opened = { page: Page; popups: string[]; close: () => Promise<void> };
+type Engine = {
+  name: string;
+  open(url: string, theme?: "light" | "dark"): Promise<Opened>;
+  close(): Promise<void>;
+};
+
+// The installed Chrome: each page in a context of its own.
+async function chrome(): Promise<Engine> {
+  const browser = await chromium.launch({
+    channel: "chrome",
+    chromiumSandbox: true,
+    args: engineArgs,
+  });
+  return {
+    name: `Chrome ${browser.version()}`,
+    async open(url, colorScheme = "light") {
+      const context = await browser.newContext({ colorScheme });
+      const page = await context.newPage();
+      const popups: string[] = [];
+      context.on("page", (opened) => popups.push(opened.url()));
+      await page.goto(url);
+      return { page, popups, close: () => context.close() };
+    },
+    close: () => browser.close(),
+  };
+}
+
+const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+const framework = "Contents/Frameworks/Electron Framework.framework/Electron Framework";
+
+// The desktop app's engine: the probe build, which opens each page in a
+// hidden window of its own when asked on its stdin (packages/desktop/probe/).
+async function desktop(): Promise<Engine> {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const built = build(false);
+  const app = join(out, "Oriel.app");
+  execFileSync("ditto", [built, app]);
+  const code = join(app, "Contents/Resources/app");
+  rmSync(code, { recursive: true });
+  execFileSync(
+    "pnpm",
+    ["exec", "tsc", "-p", "packages/desktop/probe", "--noEmit", "false", "--outDir", code],
+    { cwd: root, stdio: "inherit" },
+  );
+  writeFileSync(
+    join(code, "package.json"),
+    JSON.stringify({ name: "oriel-probe", private: true, type: "module", main: "probe/main.js" }),
+  );
+  // The app alone, signed again over its new code; Electron's own binaries
+  // keep the build's signatures, byte for byte.
+  execFileSync("codesign", ["--force", "--sign", "-", app]);
+  if (sha256(join(app, framework)) !== sha256(join(built, framework)))
+    throw new Error("the probe build's Electron isn't the app's");
+  const fuses = readFuses(readFileSync(join(app, framework)));
+
+  const data = join(out, "probe-data");
+  mkdirSync(data);
+  const child = spawn(
+    join(app, "Contents/MacOS/Oriel"),
+    [
+      "--remote-debugging-port=0",
+      ...engineArgs,
+      "--probe-data",
+      data,
+      "--origin",
+      new URL(serving.url).origin,
+    ],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const exited = new Promise<void>((resolve) => child.on("exit", () => resolve()));
+  const endpoint = await new Promise<string>((resolve, reject) => {
+    createInterface({ input: child.stderr }).on("line", (line) => {
+      const found = /DevTools listening on (ws:\/\/\S+)/.exec(line)?.[1];
+      if (found) resolve(found);
+    });
+    void exited.then(() => reject(new Error("the probe build quit before it listened")));
+  });
+  const popups = new Map<number, string[]>();
+  let opening: ((id: number) => void) | null = null;
+  let ready: (versions: { electron: string; chrome: string }) => void;
+  const versions = new Promise<{ electron: string; chrome: string }>(
+    (resolve) => (ready = resolve),
+  );
+  createInterface({ input: child.stdout }).on("line", (line) => {
+    const message = JSON.parse(line) as {
+      ready?: boolean;
+      electron?: string;
+      chrome?: string;
+      opened?: number;
+      popup?: string;
+      from?: number;
+    };
+    if (message.ready) ready({ electron: message.electron ?? "", chrome: message.chrome ?? "" });
+    if (message.opened !== undefined) opening?.(message.opened);
+    // A page's script may ask before it has loaded, so before `opened`.
+    if (message.popup !== undefined && message.from !== undefined) {
+      const asked = popups.get(message.from) ?? [];
+      popups.set(message.from, asked);
+      asked.push(message.popup);
+    }
+  });
+  const browser = await chromium.connectOverCDP(endpoint);
+  const context = browser.contexts()[0]!;
+  const send = (message: unknown) => child.stdin.write(`${JSON.stringify(message)}\n`);
+  const { electron, chrome: engine } = await versions;
+  return {
+    name: `Electron ${electron} (Chromium ${engine}), the app's own framework (SHA-256 ${sha256(join(app, framework)).slice(0, 12)}…), fuses ${Object.entries(
+      fuses,
+    )
+      .map(([name, on]) => `${name} ${on ? "on" : "off"}`)
+      .join(", ")}`,
+    async open(url, theme = "light") {
+      const page = context.waitForEvent("page");
+      const id = await new Promise<number>((resolve) => {
+        opening = resolve;
+        send({ open: url, theme });
+      });
+      opening = null;
+      const asked = popups.get(id) ?? [];
+      popups.set(id, asked);
+      const opened = await page;
+      // Playwright pins a page it attaches to a light scheme; cleared, the
+      // page follows the app's, as in the shell.
+      await opened.emulateMedia({ colorScheme: null });
+      return {
+        page: opened,
+        popups: asked,
+        close: async () => {
+          popups.delete(id);
+          send({ close: id });
+        },
+      };
+    },
+    async close() {
+      child.stdin.end();
+      const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+      await exited;
+      clearTimeout(timer);
+      await browser.close().catch(() => {});
+    },
+  };
+}
+
+const engine = values.desktop ? await desktop() : await chrome();
+console.log(`engine: ${engine.name}`);
 
 type Seen = { leaks: string[]; note?: string };
 const settleMs = 1200;
 
 // Opens `url` and, for a click probe, clicks #go in `frames` nested frames.
 async function watch(tag: string, url: string, frames: number, click: boolean): Promise<Seen> {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const popups: string[] = [];
-  context.on("page", (opened) => popups.push(opened.url()));
   const before = { hits: hits.length, datagrams, connections };
-  await page.goto(url);
+  const { page, popups, close } = await engine.open(url);
   await page.waitForTimeout(400);
   let note: string | undefined;
   if (click) {
@@ -262,7 +418,7 @@ async function watch(tag: string, url: string, frames: number, click: boolean): 
   }
   await page.waitForTimeout(settleMs);
   const moved = page.url() !== url;
-  await context.close();
+  await close();
   const requests = hits.slice(before.hits).filter((hit) => hit.host.startsWith(`${tag}.`));
   const tcp = connections - before.connections;
   const leaks = [
@@ -325,9 +481,10 @@ const { id: themed } = await api<{ id: string }>(`/api/workstreams/${workstream}
 await serving.app.settled();
 const looks: Record<string, unknown> = {};
 for (const colorScheme of ["light", "dark"] as const) {
-  const context = await browser.newContext({ colorScheme });
-  const page = await context.newPage();
-  await page.goto(new URL(`threads/${themed}`, serving.url).href);
+  const { page, close } = await engine.open(
+    new URL(`threads/${themed}`, serving.url).href,
+    colorScheme,
+  );
   await page.frameLocator("iframe").first().frameLocator("iframe").locator("p").waitFor();
   const inner = page.frames().find((frame) => frame.url() === "about:srcdoc");
   looks[colorScheme] = await inner?.evaluate(`({
@@ -339,9 +496,9 @@ for (const colorScheme of ["light", "dark"] as const) {
   looks[`${colorScheme} sandbox`] = await page.evaluate(
     `document.querySelector(".answer-sketch iframe").getAttribute("sandbox")`,
   );
-  await context.close();
+  await close();
 }
-await browser.close();
+await engine.close();
 await serving.close();
 sink.close();
 controls.close();
