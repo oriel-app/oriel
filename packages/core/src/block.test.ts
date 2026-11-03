@@ -183,3 +183,39 @@ test("a row lacking a declared field, as an item gone from its source, is a blan
   assert.ok(bars.ok && bars.block.form === "bars");
   assert.deepEqual(bars.block.bars, [{ label: "A-1", value: 3 }]);
 });
+
+test("bars sum the rows that share a label, through a nested field, and say so", () => {
+  const listed: ResultFields = {
+    source: "this workstream's stories, read live",
+    lists: { "": { id: "Item", "assignee.name": "Assignee", points: "Story points" } },
+  };
+  const rows = [
+    { id: "jira:SYN-26", assignee: { name: "Amara" }, points: 5 },
+    { id: "jira:SYN-47", assignee: { name: "Amara" }, points: 3 },
+    { id: "jira:SYN-84", assignee: { name: "Dara" }, points: 5 },
+    // No estimate adds nothing; no one assigned is a blank, as in a table.
+    { id: "jira:SYN-85", assignee: { name: "Amara" }, points: null },
+    { id: "jira:SYN-61", assignee: null, points: 3 },
+    { id: "jira:SYN-9", gone: true },
+  ];
+  const built = buildBlock(
+    spec({ read: "jira.listStories", form: "bars", label: "assignee.name", value: "points" }),
+    answered(rows, listed),
+  );
+  assert.ok(built.ok && built.block.form === "bars");
+  assert.deepEqual(built.block.bars, [
+    { label: "Amara", value: 8 },
+    { label: "Dara", value: 5 },
+    { label: "—", value: 3 },
+  ]);
+  assert.equal(
+    built.block.caption,
+    "Computed by Oriel from this workstream's stories, read live: Story points by Assignee, summed, highest first",
+  );
+  const table = buildBlock(
+    spec({ read: "jira.listStories", form: "table", columns: ["id", "assignee.name"] }),
+    answered(rows.slice(4, 5), listed),
+  );
+  assert.ok(table.ok && table.block.form === "table");
+  assert.deepEqual(table.block.rows, [["jira:SYN-61", null]]);
+});

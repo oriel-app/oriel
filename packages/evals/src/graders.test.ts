@@ -7,6 +7,7 @@ import {
   gradeExactDiff,
   gradeJudge,
   gradeSurfaced,
+  gradeNoSketch,
   gradeZeroMutations,
   judgeSystem,
 } from "./graders.ts";
@@ -351,4 +352,43 @@ test("blocks: each block shown must be the one its read builds, and one of the e
   // So does a block whose read never answered, and a turn with no such block.
   assert.equal(gradeBlocks(expected, [{ block: built.block, answered: null }]).pass, false);
   assert.match(gradeBlocks(expected, []).detail, /no bars block from window\.overview was shown/);
+});
+
+test("no sketch: any sketch() call fails, shown or refused", () => {
+  assert.deepEqual(gradeNoSketch(0), {
+    grader: "no-sketch",
+    pass: true,
+    detail: "no sketch() call",
+  });
+  assert.deepEqual(gradeNoSketch(2), {
+    grader: "no-sketch",
+    pass: false,
+    detail: "2 sketch() calls",
+  });
+});
+
+test("blocks: the expected read may be one of several", () => {
+  const block = buildBlock(
+    { read: "workstream.list", args: undefined, from: undefined, form: "rows" },
+    {
+      value: [{ id: "jira:SYN-3" }],
+      outside: false,
+      fields: { source: "s", lists: { "": { id: "Item" } } },
+    },
+  );
+  assert.ok(block.ok);
+  const answered = {
+    value: [{ id: "jira:SYN-3" }],
+    outside: false,
+    fields: { source: "s", lists: { "": { id: "Item" } } },
+  };
+  const shown = [{ block: block.block, answered }];
+  assert.equal(
+    gradeBlocks({ form: "rows", read: ["thread.list", "workstream.list"] }, shown).pass,
+    true,
+  );
+  assert.match(
+    gradeBlocks({ form: "rows", read: ["thread.list", "search"] }, shown).detail,
+    /no rows block from thread\.list or search was shown/,
+  );
 });

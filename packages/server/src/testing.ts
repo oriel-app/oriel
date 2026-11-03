@@ -41,6 +41,9 @@ import { handler, type Reply, type Request } from "./site.ts";
 export const port = 4310;
 export const host = `127.0.0.1:${port}`;
 export const origin = `http://${host}`;
+// The sketch origin's own port (decision 0033).
+export const sketchPort = 4311;
+export const sketchOrigin = `http://127.0.0.1:${sketchPort}`;
 export const t0 = "2026-10-29T09:00:00.000Z";
 
 // What a named script does: reads through the bindings, and writes captured.
@@ -194,6 +197,7 @@ export async function testApp(
     jira,
     ...(options.slack ? { slack: options.slack } : {}),
     reviewBase: new URL(`${origin}/review/`),
+    sketchBase: new URL(`${sketchOrigin}/sketches/`),
     limits: { ...limits, ...options.limits },
     now,
     sandbox: options.sandbox ?? fakeSandbox(options.scripts ?? {}),

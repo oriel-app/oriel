@@ -3,7 +3,7 @@
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect } from "preact/hooks";
-import { BlockFigure } from "./block.tsx";
+import { BlockFigure, SketchFigure } from "./block.tsx";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -262,6 +262,12 @@ export function ChatEntryItem(props: {
       return (
         <li class="block-entry">
           <BlockFigure block={entry.block} />
+        </li>
+      );
+    case "sketch":
+      return (
+        <li class="sketch-entry">
+          <SketchFigure sketch={entry.sketch} />
         </li>
       );
     case "change-set": {

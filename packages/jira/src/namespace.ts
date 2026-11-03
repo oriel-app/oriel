@@ -19,6 +19,7 @@ import {
   param,
   parseItemId,
   read,
+  type ResultFields,
   string,
   type Validator,
   write,
@@ -124,11 +125,28 @@ const getItem = read({
   },
 });
 
+// What a list of Jira items holds that a block can show (decision 0030):
+// each item's fields a person reads it by, its assignee's name and its
+// estimate among them.
+const listed = (source: string): ResultFields => ({
+  source,
+  lists: {
+    "": {
+      id: "Item",
+      summary: "Summary",
+      "status.name": "Status",
+      "assignee.name": "Assignee",
+      points: "Story points",
+    },
+  },
+});
+
 const listItems = (scope: JiraScope) =>
   read({
     name: "listItems",
     doc: "Every Jira item in this region, read live, in RegionId order.",
     params: [],
+    fields: listed("this workstream's Jira items, read live"),
     returns: "readonly (JiraItem | Gone)[]",
     run: (_, host) => host.read(scope.ids, itemView),
   });
@@ -150,6 +168,7 @@ const listStories = (scope: JiraScope, epic: ItemId<"jira">) =>
     name: "listStories",
     doc: "This region's stories, read live: the epic's children when the region was made. One may since have moved epic or been deleted.",
     params: [],
+    fields: listed("this workstream's stories, read live"),
     returns: "readonly (JiraItem | Gone)[]",
     run: (_, host) =>
       host.read(

@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto";
 import { type Log, object, type Run, type RunLimits, type RunResult, string } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
-import { turnBlocks } from "./blocks.ts";
+import { turnShown } from "./blocks.ts";
 import { proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
@@ -111,7 +111,7 @@ async function* turn(
   }
 
   const proposed = proposal();
-  const shownBlocks = turnBlocks();
+  const turnShows = turnShown(deps.newId);
 
   // One `run` call: refused without a run if it isn't one, else a run in the
   // sandbox, recorded whatever its outcome. `charge` is the usage of the
@@ -130,8 +130,9 @@ async function* turn(
     const { script } = parsed.value;
     signal.throwIfAborted();
     const runId = deps.newId();
-    // Its bindings, with show(), each read they answer noted for blocks.
-    const shown = shownBlocks.run(runId, (show) => deps.bindingsFor(region, thread.id, show));
+    // Its bindings, with show() and sketch(), each read they answer noted
+    // for blocks.
+    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
     const { bindings } = shown;
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
@@ -267,7 +268,7 @@ async function* turn(
     conversation?.close?.();
   }
 
-  yield* shownBlocks.settle();
+  yield* turnShows.settle();
   yield* proposed.settle(deps, thread, signal, log);
   yield done();
 }

@@ -599,6 +599,22 @@ test("a problem the server reports alongside a decision shows on the change set"
   assert.equal(shown.problems[setId], "busy");
 });
 
+test("a sketch shows under the reply where its turn put it, between blocks", () => {
+  const sketch = { src: "http://127.0.0.1:4311/sketches/T/S", height: 240 as const };
+  const block = { caption: "c", more: 0, outside: false, form: "bars" as const, bars: [] };
+  const out = entriesOf([
+    { seq: 1, at, kind: "text", text: "Drawn." },
+    { seq: 2, at, kind: "sketch", sketch },
+    { seq: 3, at, kind: "block", block },
+    { seq: 4, at, kind: "done" },
+  ]);
+  assert.deepEqual(out, [
+    { kind: "reply", seq: 1, text: "Drawn." },
+    { kind: "sketch", seq: 2, sketch },
+    { kind: "block", seq: 3, block },
+  ]);
+});
+
 test("a run its turn never finished shows as stopped once the turn ends", () => {
   const started = { seq: 1, at, kind: "run.started" as const, runId: "r1", script: "x" };
   const [running] = entriesOf([started]);

@@ -39,8 +39,9 @@ export const maxBlocksPerTurn = 4;
 
 // What a read a block can use declares of its result: what it is, in a
 // person's words, for the caption, and each list in it a block can show, by
-// its dotted path ("" for the result itself), with each field's label. A
-// list rows can show has its items' IDs in `id`.
+// its dotted path ("" for the result itself), with each field's label, by
+// its name, dotted for a nested one. A list rows can show has its items' IDs
+// in `id`.
 export type ResultFields = {
   source: string;
   lists: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -80,7 +81,28 @@ export const searchFields: ResultFields = {
 // What a refused spec is told: what every block names, and what each form
 // takes besides.
 export const blockSpecHelp =
-  "a block names `read`, a read this turn ran, with its `args` if it took any, and `form`. `from` names the list in the read's result the block shows, when the result isn't that list itself. Bars take `label` and `value`, the fields holding each row's label and its number. A table takes `columns`, 1 to 5 of each row's fields. Rows take nothing more: each row's item is in `id`. Only the lists and fields the read declares can be shown; a refusal names them.";
+  "a block names `read`, a read this turn ran, with its `args` if it took any, and `form`. `from` names the list in the read's result the block shows, when the result isn't that list itself. Bars take `label` and `value`, the fields holding each row's label and its number; Oriel sums the rows that share a label. A table takes `columns`, 1 to 5 of each row's fields. Rows take nothing more: each row's item is in `id`. Only the lists and fields the read declares can be shown; a refusal names them.";
+
+// What a turn shows under the reply, as a run asks: `show` builds a block
+// from a read the turn ran, and `sketch` shows the agent's HTML in a
+// sandboxed frame (decision 0033). Each says what it did, or why not, in
+// words for the agent.
+export type Shown = {
+  show(spec: unknown): string;
+  sketch(html: unknown, height: unknown): string;
+};
+
+// What a read declares a block can show, for a refusal: each list and its
+// fields, by name.
+export function declaredFields(read: string, fields: ResultFields): string {
+  const lists = Object.entries(fields.lists).map(
+    ([path, labels]) =>
+      `${path === "" ? "its result" : `its field ${JSON.stringify(path)}`}: ${Object.keys(labels)
+        .map((name) => JSON.stringify(name))
+        .join(", ")}`,
+  );
+  return `${read} declares ${lists.join("; ")}`;
+}
 
 export type Cell = string | number | boolean | null;
 
@@ -143,6 +165,19 @@ const at = (value: unknown, path: string): unknown =>
     return isRecord(inner) && Object.hasOwn(inner, key) ? inner[key] : undefined;
   }, value);
 
+// A row's field by its name, dotted for a nested one: undefined where the
+// row lacks it, and null where a field on the way is null, as an unassigned
+// story's assignee is.
+const fieldOf = (row: Record<string, unknown>, name: string): unknown => {
+  let value: unknown = row;
+  for (const key of name.split(".")) {
+    if (value === null) return null;
+    if (!isRecord(value) || !Object.hasOwn(value, key)) return undefined;
+    value = value[key];
+  }
+  return value;
+};
+
 const isCell = (value: unknown): value is Cell =>
   value === null ||
   typeof value === "string" ||
@@ -187,25 +222,35 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
     `Computed by Oriel from ${fields.source}${what ? `: ${what}` : ""}`;
   const base = { spec, outside: read.outside };
   const values = (row: unknown, names: readonly string[]) =>
-    isRecord(row) ? names.map((name) => (Object.hasOwn(row, name) ? row[name] : undefined)) : null;
+    isRecord(row) ? names.map((name) => fieldOf(row, name)) : null;
 
   if (spec.form === "bars") {
-    const bars: { label: string; value: number }[] = [];
+    // Rows that share a label are one bar, their values summed, as stories
+    // are by their assignee.
+    const sums = new Map<string, number>();
+    let summed = false;
     for (const [i, row] of rows.entries()) {
       const [name, count] = values(row, [spec.label, spec.value]) ?? [];
       // A row without the field at all, as an item gone from its source, has
-      // no bar; one with something else there is the wrong shape.
-      if (name === undefined || count === undefined) continue;
-      if (typeof name !== "string" && typeof name !== "number")
+      // no bar, nor adds to one; nor does one with no number, as a story
+      // with no estimate. One with something else there is the wrong shape.
+      if (name === undefined || count === undefined || count === null) continue;
+      if (name !== null && typeof name !== "string" && typeof name !== "number")
         return refuse(
           `row ${i} of ${where} has no text or number in ${JSON.stringify(spec.label)}`,
         );
       if (typeof count !== "number" || !Number.isFinite(count))
         return refuse(`row ${i} of ${where} has no number in ${JSON.stringify(spec.value)}`);
-      bars.push({ label: String(name), value: count });
+      // No label, as a story no one is assigned, is a blank, as in a table.
+      const key = name === null ? "—" : String(name);
+      summed ||= sums.has(key);
+      sums.set(key, (sums.get(key) ?? 0) + count);
     }
-    if (!bars.length) return refuse(`${where} is empty`);
-    const ranked = bars.toSorted((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    if (!sums.size) return refuse(`${where} is empty`);
+    const ranked = [...sums]
+      .map(([name, value]) => ({ label: name, value }))
+      .toSorted((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    const by = `${label(spec.value)} by ${label(spec.label)}`;
     return {
       ok: true,
       block: {
@@ -213,7 +258,7 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
         form: "bars",
         bars: ranked.slice(0, maxBars),
         more: Math.max(ranked.length - maxBars, 0),
-        caption: caption(`${label(spec.value)} by ${label(spec.label)}, highest first`),
+        caption: caption(`${by}${summed ? ", summed" : ""}, highest first`),
       },
     };
   }

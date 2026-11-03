@@ -19,6 +19,7 @@ import {
   type Run,
   type RunLimits,
   type Sandbox,
+  type Shown,
   type Thread,
   type Ulid,
   ulid,
@@ -104,14 +105,14 @@ export function fixtureRegion(name: string): Region {
 export const regionBindings = (
   region: Region,
   threadId?: Ulid,
-  show?: (spec: unknown) => string,
+  shown?: Shown,
   oriel?: OrielReads,
 ) =>
   bindingsFor(region, {
     reader,
     namespaces,
     ...(threadId ? { thread: threadId } : {}),
-    ...(show ? { show } : {}),
+    ...(shown ? { shown } : {}),
     ...(oriel ? { oriel } : {}),
   });
 

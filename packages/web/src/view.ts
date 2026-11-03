@@ -396,6 +396,11 @@ export type BlockView = { caption: string; more: number; outside: boolean } & (
   | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
 );
 
+// A sketch under the agent's reply (decision 0033): the agent's HTML, which
+// the page frames from `src` on the sketch origin, in a sandboxed frame
+// `height` pixels high. Oriel draws its border and caption.
+export type SketchView = { src: string; height: 240 | 400 | 640 };
+
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
   // `ownAgent`: this thread's agent made every change it covers.
@@ -416,6 +421,7 @@ export type ChatEntry = { seq: number; at: string } & (
   // A table, bars or rows of items Oriel built from a read the agent ran,
   // or what a run found outside the workstream (the escape hatch).
   | { kind: "block"; block: BlockView }
+  | { kind: "sketch"; sketch: SketchView }
   | { kind: "change-set"; changeSetId: string }
   // What Oriel did with the actions the agent asked for, under its reply.
   | { kind: "actions"; lines: ActionLineView[] }

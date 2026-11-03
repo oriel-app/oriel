@@ -8,6 +8,7 @@ import { assets, dist, entry, vendor } from "@oriel/web/files";
 import { themeNames } from "@oriel/web/themes";
 import { type App, type AppOptions, createApp } from "./app.ts";
 import { handler, type Reply, type Request, type Site } from "./site.ts";
+import { sketchHandler, sketchStyle } from "./sketch-site.ts";
 
 export type Serving = { url: string; port: number; app: App; close(): Promise<void> };
 
@@ -77,23 +78,12 @@ export type ServeOptions = {
   beforeRequests?: (app: App) => Promise<void>;
 };
 
-// Listens on 127.0.0.1 only, on the first of `ports` that's free. Port 0
-// picks a free one. The app is built once the port is known, since review
-// links name it.
-export async function serve(
-  ports: number | readonly number[],
-  options: Omit<AppOptions, "reviewBase"> = { db: ":memory:", jira: { kind: "fixture" } },
-  serving: ServeOptions = {},
-): Promise<Serving> {
-  const server = createServer();
-  const address = await listen(server, typeof ports === "number" ? [ports] : ports);
-  const url = `http://127.0.0.1:${address.port}/`;
-  const built = Promise.withResolvers<(request: Request) => Promise<Reply>>();
-  // Nobody may be waiting on it when it fails.
-  built.promise.catch(() => {});
+// Answers each request on `server` with the handler `built` resolves to;
+// requests that come before it wait for it.
+function answer(server: Server, built: Promise<(request: Request) => Promise<Reply>>): void {
   server.on("request", (req, res) => {
     const method = req.method ?? "GET";
-    built.promise
+    built
       .then((handle) =>
         handle({ method, url: req.url ?? "/", headers: req.headers, body: bodyReader(req) }),
       )
@@ -108,46 +98,103 @@ export async function serve(
         res.end("internal error\n");
       });
   });
+}
+
+const closing = (server: Server) => {
+  const closed = new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  // Event streams never end on their own.
+  server.closeAllConnections();
+  return closed;
+};
+
+// Listens on 127.0.0.1 only, on the first of `ports` that's free. Port 0
+// picks a free one. The app is built once the port is known, since review
+// links name it. Sketches are served by a second listener, the sketch
+// origin, on a free port of its own, behind the same launch secret, in the
+// person's theme (decisions 0033 and 0034).
+export async function serve(
+  ports: number | readonly number[],
+  options: Omit<AppOptions, "reviewBase" | "sketchBase"> = {
+    db: ":memory:",
+    jira: { kind: "fixture" },
+  },
+  serving: ServeOptions = {},
+): Promise<Serving> {
+  const server = createServer();
+  const sketches = createServer();
+  const address = await listen(server, typeof ports === "number" ? [ports] : ports);
+  const url = `http://127.0.0.1:${address.port}/`;
+  const built = Promise.withResolvers<(request: Request) => Promise<Reply>>();
+  const sketchBuilt = Promise.withResolvers<(request: Request) => Promise<Reply>>();
+  // Nobody may be waiting on them when they fail.
+  built.promise.catch(() => {});
+  sketchBuilt.promise.catch(() => {});
+  answer(server, built.promise);
+  answer(sketches, sketchBuilt.promise);
   serving.listening?.(url);
   const files = webFiles();
   let app: App | null = null;
   try {
+    // Read once: window.css is the web app's build, which doesn't change
+    // while the server runs.
+    const css = readFileSync(join(files.assets, "window.css"), "utf8");
+    const sketchPort = (await listen(sketches, [0])).port;
+    const sketchOrigin = `http://127.0.0.1:${sketchPort}`;
     app = await createApp({
-      themes: themeNames(readFileSync(join(files.assets, "window.css"), "utf8")),
+      themes: themeNames(css),
       ...options,
       reviewBase: new URL("review/", url),
+      sketchBase: new URL("/sketches/", sketchOrigin),
     });
     await serving.beforeRequests?.(app);
+    const launch = serving.launch ? { launch: serving.launch } : {};
+    const { setup } = app;
+    built.resolve(
+      handler({
+        ...files,
+        port: address.port,
+        window: app.window,
+        look: app.settings.page,
+        firstRun: () => setup.firstRun(),
+        api: app.api,
+        sketches: sketchOrigin,
+        ...launch,
+      }),
+    );
+    // Each theme's sheet, built the first time a frame asks for it.
+    const sheets = new Map<string, string>();
+    const { settings } = app;
+    sketchBuilt.resolve(
+      sketchHandler({
+        port: sketchPort,
+        framedBy: address.port,
+        sketch: app.sketch,
+        sheet: () => {
+          const { theme } = settings.page();
+          const sheet = sheets.get(theme) ?? sketchStyle(css, theme);
+          sheets.set(theme, sheet);
+          return sheet;
+        },
+        ...launch,
+      }),
+    );
   } catch (error) {
     built.reject(error);
-    server.closeAllConnections();
-    server.close();
+    sketchBuilt.reject(error);
+    await Promise.all([closing(server), sketches.listening ? closing(sketches) : null]);
     await app?.close();
     throw error;
   }
-  built.resolve(
-    handler({
-      ...files,
-      port: address.port,
-      window: app.window,
-      look: app.settings.page,
-      firstRun: () => app.setup.firstRun(),
-      api: app.api,
-      ...(serving.launch ? { launch: serving.launch } : {}),
-    }),
-  );
+  const started = app;
   return {
     url,
     port: address.port,
-    app,
+    app: started,
     close: async () => {
-      const closed = new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-      // Event streams never end on their own.
-      server.closeAllConnections();
-      await closed;
-      await app.close();
+      await Promise.all([closing(server), closing(sketches)]);
+      await started.close();
     },
   };
 }

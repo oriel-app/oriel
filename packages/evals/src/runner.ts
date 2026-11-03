@@ -56,6 +56,7 @@ import {
   gradeAvoids,
   gradeMentions,
   gradeSurfaced,
+  gradeNoSketch,
   gradeZeroMutations,
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
@@ -91,14 +92,17 @@ export const systemOutput = object({
   intents: optional(array(object({ action: string, input: record(unknown) }))),
   // Each block the turn showed, with what its read answered.
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
+  // How many times the turn called sketch(), shown or refused.
+  sketches: optional(number),
   reply: string,
   transcript: array(unknown),
 });
-// A system may leave its intents and blocks out, as one that never asks for
-// either.
-export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks"> & {
+// A system may leave its intents, blocks and sketches out, as one that
+// never asks for any.
+export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks" | "sketches"> & {
   intents?: Infer<typeof systemOutput>["intents"];
   blocks?: Infer<typeof systemOutput>["blocks"];
+  sketches?: number;
 };
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
@@ -347,6 +351,7 @@ async function grade(
       grades.push(gradeSurfaced(named, expectation.text, output.reply));
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
+    if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));
