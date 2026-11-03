@@ -1,7 +1,31 @@
-/* Design tokens. Light by default, dark through prefers-color-scheme. */
+/* Design tokens, direction A: calm, dense, warm grey. Primitives first,
+   then the names the rules use, each mapped onto a primitive. Light by
+   default, dark through prefers-color-scheme, which sets primitives only. */
 :root {
   color-scheme: light dark;
 
+  /* Colour. Eight neutrals, surface to ink; one accent; seven states. A
+     state's colour is its text and its mark; its tint is mixed from it. */
+  --n0: #ffffff;
+  --n1: #f6f5f2;
+  --n2: #edece8;
+  --n3: #e0ded8;
+  --n4: #c6c3bb;
+  --n5: #6c6a63;
+  --n6: #54524c;
+  --n7: #1c1b19;
+  --accent: #3d47c4;
+  --on-accent: #ffffff;
+  --todo: #64625b;
+  --in-progress: #0d6b8f;
+  --done: #276f44;
+  --needs-you: var(--accent);
+  --stalled: #b03a22;
+  --applied: var(--done);
+  --reverted: #8a5212;
+  --tint: 13%;
+
+  /* Type. One sans for everything, a mono for keys and IDs. */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --text-xs: 0.6875rem;
@@ -9,7 +33,14 @@
   --text-md: 0.8125rem;
   --text-lg: 0.9375rem;
   --text-xl: 1.125rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --leading-tight: 1.25;
+  --leading: 1.45;
+  --leading-prose: 1.6;
 
+  /* Space and shape. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -19,8 +50,21 @@
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 8px;
-  --radius-xl: 12px;
-  --row: 2.125rem;
+  --border-thin: 1px;
+  --border-thick: 2px;
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.05);
+  --elevation-2: 0 2px 4px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.1);
+
+  /* Motion: quick for a state, move for a place; one easing. */
+  --duration-quick: 120ms;
+  --duration-move: 180ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Density: a list of records is compact, one record's words comfortable. */
+  --row: 2rem;
+  --row-comfortable: 2.5rem;
+
+  /* Layout. */
   --page: 74rem;
   /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
@@ -31,129 +75,94 @@
      share one top line. */
   --inset-top: var(--space-3);
   --head-row: 2rem;
-  /* Motion: how the panel beside the page arrives, and how motion settles. */
-  --duration-panel: 180ms;
+  --duration-panel: var(--duration-move);
   --slide-panel: 0.375rem;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --duration-quick: 120ms;
-  --duration-move: var(--duration-panel);
-  --ease: var(--ease-out);
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-strong: 600;
-  --leading-tight: 1.35;
-  --leading: 1.45;
-  --leading-prose: 1.55;
-  --border-thin: 1px;
-  --border-thick: 2px;
+  --ease-out: var(--ease);
 
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunk: #fafaf8;
-  --line: #e7e6e2;
-  --line-strong: #d5d3cd;
-  --text: #1f1f1d;
-  --text-muted: #63625d;
-  --text-faint: #8f8d86;
-  --accent: #3f5bd8;
-  --accent-text: #ffffff;
-  --accent-soft: #e9edfc;
-  --focus: #3f5bd8;
-  --danger: #b5412f;
-  --danger-soft: #fbeeeb;
-  --ins: #2b7a52;
-  --ins-soft: #e5f3ec;
-  --del: #8f8d86;
+  /* The names the rules use, mapped onto the primitives above. */
+  --bg: var(--n1);
+  --surface: var(--n0);
+  --surface-hover: var(--n2);
+  --surface-sunk: color-mix(in srgb, var(--n1) 50%, var(--n0));
+  --line: var(--n3);
+  --line-strong: var(--n4);
+  --text: var(--n7);
+  --text-muted: var(--n6);
+  --text-faint: var(--n5);
+  --accent-text: var(--on-accent);
+  --accent-soft: color-mix(in srgb, var(--accent) var(--tint), var(--n0));
+  --focus: var(--accent);
+  --danger: var(--stalled);
+  --danger-soft: color-mix(in srgb, var(--stalled) var(--tint), var(--n0));
+  --ins: var(--applied);
+  --ins-soft: color-mix(in srgb, var(--applied) var(--tint), var(--n0));
+  --del: var(--n5);
 
-  --todo: #b4b2ab;
-  --in-progress: #4a78e0;
-  --done: #3c9a6a;
-  --todo-text: #5f5e59;
-  --in-progress-text: #2f5bc4;
-  --done-text: #2b7a52;
-  --todo-soft: #efeeea;
-  --in-progress-soft: #e8eefc;
-  --done-soft: #e5f3ec;
-  --handed-off-text: #7a4fc4;
-  --handed-off-soft: #f1ebfb;
+  --todo-text: var(--todo);
+  --in-progress-text: var(--in-progress);
+  --done-text: var(--done);
+  --todo-soft: var(--n2);
+  --in-progress-soft: color-mix(in srgb, var(--in-progress) var(--tint), var(--n0));
+  --done-soft: color-mix(in srgb, var(--done) var(--tint), var(--n0));
+  --handed-off-text: var(--applied);
+  --handed-off-soft: color-mix(in srgb, var(--applied) var(--tint), var(--n0));
 
-  --derived: #94620b;
-  --derived-soft: #fbf3e2;
-  --derived-line: #e2c58a;
+  /* What Oriel computed rather than read: a rule's finding, a stale index. */
+  --derived: var(--stalled);
+  --derived-soft: color-mix(in srgb, var(--stalled) 7%, var(--n0));
+  --derived-line: color-mix(in srgb, var(--stalled) 30%, var(--n0));
 
-  --type-story: #3c9a6a;
-  --type-bug: #d4513b;
-  --type-task: #4a78e0;
-  --type-epic: #8a5cd6;
-  --type-other: #a3a19a;
+  /* A source's own marks stay muted: kind is told by shape and name. */
+  --type-story: color-mix(in srgb, var(--done) 55%, var(--n4));
+  --type-bug: color-mix(in srgb, var(--stalled) 55%, var(--n4));
+  --type-task: color-mix(in srgb, var(--in-progress) 55%, var(--n4));
+  --type-epic: color-mix(in srgb, var(--accent) 45%, var(--n4));
+  --type-other: var(--n4);
 
-  --avatar: #e9e8e3;
-  --avatar-text: #55544f;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
+  --avatar: var(--n2);
+  --avatar-text: var(--n6);
+  --shadow: var(--elevation-2);
 
-  /* The chip (chip.ts): something in Oriel named inline, as a reply's link
-     to a thread or a change set. Built on the tokens above, so it follows
-     the theme; its state takes the state colours. */
-  --chip-height: 1.375rem;
-  --chip-radius: var(--radius);
+  /* The chip (decision 0032): named inline, as part of the line, no box. */
+  --chip-height: auto;
+  --chip-radius: var(--radius-sm);
   --chip-gap: 0.3125rem;
-  --chip-pad: 0 var(--space-2) 0 0.375rem;
-  --chip-font: var(--text-md);
+  --chip-pad: 0;
+  --chip-font: inherit;
   --chip-name-max: 22em;
-  --chip-bg: var(--surface);
-  --chip-bg-hover: var(--surface-hover);
-  --chip-line: var(--line-strong);
-  --chip-text: var(--text);
-  --chip-icon: var(--text-muted);
+  --chip-bg: transparent;
+  --chip-bg-hover: var(--n2);
+  --chip-line: transparent;
+  --chip-text: var(--n7);
+  --chip-icon: var(--n5);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413;
-    --surface: #1b1b1a;
-    --surface-hover: #232321;
-    --surface-sunk: #181817;
-    --line: #2b2b29;
-    --line-strong: #3a3a37;
-    --text: #e9e8e4;
-    --text-muted: #a3a29c;
-    --text-faint: #75746f;
-    --accent: #8ea4f5;
-    --accent-text: #141413;
-    --accent-soft: #252c45;
-    --focus: #8ea4f5;
-    --danger: #ef8d7b;
-    --danger-soft: #3a2420;
-    --ins: #7fcca3;
-    --ins-soft: #1e3128;
-    --del: #75746f;
+    --n0: #1c1c1a;
+    --n1: #151514;
+    --n2: #252523;
+    --n3: #2f2f2c;
+    --n4: #45443f;
+    --n5: #9a9890;
+    --n6: #b5b3ac;
+    --n7: #ecebe6;
+    --accent: #9aa5f7;
+    --on-accent: #151514;
+    --todo: #a3a19a;
+    --in-progress: #6fb4e0;
+    --done: #72c493;
+    --stalled: #f08a72;
+    --reverted: #d9a35a;
+    --tint: 16%;
+    --elevation-1: 0 1px 2px rgb(0 0 0 / 0.3);
+    --elevation-2: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+  }
+}
 
-    --todo: #5d5c58;
-    --in-progress: #6b93ee;
-    --done: #55b584;
-    --todo-text: #b3b2ac;
-    --in-progress-text: #9cb6f5;
-    --done-text: #7fcca3;
-    --todo-soft: #2a2a28;
-    --in-progress-soft: #222b40;
-    --done-soft: #1e3128;
-    --handed-off-text: #c3a6f2;
-    --handed-off-soft: #2c2440;
-
-    --derived: #e3b45c;
-    --derived-soft: #2d2617;
-    --derived-line: #6b5426;
-
-    --type-story: #55b584;
-    --type-bug: #e9735f;
-    --type-task: #6b93ee;
-    --type-epic: #a888e6;
-    --type-other: #75746f;
-
-    --avatar: #2e2e2b;
-    --avatar-text: #c4c3bd;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.3);
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-move: 0ms;
   }
 }
 
@@ -1099,7 +1108,7 @@ button.nav-more {
 .state-chip {
   flex: none;
   padding: 0 var(--space-2);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   background: var(--todo-soft);
   color: var(--todo-text);
   font-size: var(--text-xs);
@@ -1134,24 +1143,30 @@ button.nav-more {
   display: inline-flex;
   max-width: calc(100% - 1ch);
   height: var(--chip-height);
-  align-items: center;
+  align-items: baseline;
   gap: var(--chip-gap);
   padding: var(--chip-pad);
-  border: var(--border-thin) solid var(--chip-line);
   border-radius: var(--chip-radius);
   background: var(--chip-bg);
   color: var(--chip-text);
   font-size: var(--chip-font);
   font-weight: var(--weight-medium);
-  line-height: 1;
-  vertical-align: -0.1875rem;
   white-space: nowrap;
   --chip-dot: var(--todo);
   --chip-state: var(--text-faint);
 }
 
+.chip-key {
+  flex: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-weight: var(--weight-regular);
+}
+
 .chip-icon {
   flex: none;
+  align-self: center;
   width: 0.875rem;
   height: 0.875rem;
   fill: none;
@@ -1218,8 +1233,10 @@ button.nav-more {
   text-decoration: none;
 }
 
-.chip-link:hover .chip {
-  background: var(--chip-bg-hover);
+.chip-link:hover .chip-name {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 0.2em;
 }
 
 .working-dot {
@@ -4888,4 +4905,45 @@ button.overview-title:hover {
   .window-chat {
     transition: none;
   }
+}
+
+/* HTML the agent drew (decision 0033), in a sandboxed frame. Oriel's own UI
+   never uses a dashed edge or a hatched fence, so nothing inside, an
+   "Approve" included, reads as Oriel's; the label sits outside the frame. */
+.agent-frame {
+  margin: var(--space-3) 0;
+  border: var(--border-thin) dashed var(--n5);
+  border-radius: var(--radius-sm);
+}
+
+.agent-frame-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-thin) dashed var(--n5);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.agent-frame-label strong {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.agent-frame-fence {
+  padding: var(--space-2);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--n2) 0 2px,
+    transparent 2px 7px
+  );
+}
+
+.agent-frame iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: var(--n0);
 }
