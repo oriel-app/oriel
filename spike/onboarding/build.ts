@@ -83,9 +83,17 @@ const quiet = (label: string) => `<button class="quiet-action" type="button">${l
 const link = (label: string) => `<span class="link">${label}</span>`;
 
 const assistantLead =
-  "Oriel answers your questions and drafts changes through Claude or ChatGPT, on the plan you already pay for. Nothing changes in Jira, Slack or your files until you approve it.";
-const why = `<p class="setup-note">Oriel can't use claude.ai or ChatGPT in your browser, so it works through their makers' free assistant for your Mac, which uses the same plan. Oriel installs it for you: no admin password, and nothing outside your own folder.</p>`;
-const apiKeyLink = `<span class="faint">No Claude or ChatGPT plan? ${link("Pay Anthropic per question instead")}</span>`;
+  "Oriel answers your questions and drafts changes through Claude, on the Claude plan you already pay for. Nothing changes in Jira, Slack or your files until you approve it.";
+const why = `<p class="setup-note">Oriel can't use claude.ai in your browser, so it works through Claude Code, Anthropic's free assistant for your Mac, which uses the same plan. Oriel installs it for you: no admin password, and nothing outside your own folder.</p>`;
+const chatgptLine = `<p class="setup-note"><span>Only have ChatGPT? Oriel can't run on it yet. The shortest way in is to ${link("pay Anthropic per question")}: nothing to install.</span></p>`;
+// Codex found on the Mac: shown, never a choice, in decision 0040's words.
+const codexFound = row(
+  "codex",
+  `Found on this Mac. Not supported yet.`,
+  "",
+  `<div class="faint small">Oriel can't run on Codex yet, because Codex can't be limited to Oriel's one tool. Install Claude Code and sign in to it, or add an API key.</div>`,
+);
+const apiKeyLink = `<span class="faint">No Claude plan? ${link("Pay Anthropic per question instead")}</span>`;
 const later = link("Set up later");
 const assistantFoot = (primary: string, enabled = true) =>
   `<footer class="setup-foot"><div class="left">${apiKeyLink}${later}</div>${button(primary, "primary big", enabled ? "" : "disabled")}</footer>`;
@@ -147,7 +155,6 @@ add(
   aiStep(
     card(
       row("claude", `<span class="spinner"></span> Looking for it on this Mac…`),
-      row("codex", `<span class="spinner"></span> Looking for it on this Mac…`),
     ) + why,
     "Continue",
     false,
@@ -156,14 +163,14 @@ add(
 add(
   "02-assistant-ready",
   "Already installed and signed in",
-  aiStep(card(ready("claude", true), missing("codex")), "Continue with Claude Code", true),
+  aiStep(card(ready("claude", true)), "Continue with Claude Code", true),
 );
 add(
   "03-assistant-both",
   "Both are ready",
   aiStep(
-    card(ready("claude", true), ready("codex", false)) +
-      `<p class="setup-note">You have both. Pick one; you can switch in Settings any time.</p>`,
+    card(ready("claude", true), codexFound) +
+      `<p class="setup-note">Oriel uses Claude Code. Codex is on this Mac too, but Oriel can't run on it yet.</p>`,
     "Continue with Claude Code",
     true,
   ),
@@ -172,9 +179,7 @@ add(
   "04-assistant-missing",
   "Neither is installed",
   aiStep(
-    card(missing("claude"), missing("codex")) +
-      `<p class="setup-note">Install the one whose plan you pay for, then sign in with your usual account.</p>` +
-      why,
+    card(missing("claude")) + why + chatgptLine,
     "Continue",
     false,
   ),
@@ -185,7 +190,7 @@ add(
   "05-claude-installing",
   "Installing Claude Code",
   aiStep(
-    card(installing("claude", "Downloading from Anthropic…", "0:41"), missing("codex")),
+    card(installing("claude", "Downloading from Anthropic…", "0:41")),
     "Continue",
     false,
   ),
@@ -193,45 +198,35 @@ add(
 add(
   "06-claude-sign-in",
   "Installed, not signed in",
-  aiStep(card(signIn("claude"), missing("codex")), "Continue", false),
+  aiStep(card(signIn("claude")), "Continue", false),
 );
 add(
   "07-claude-signing-in",
   "Signing in to Claude",
-  aiStep(card(signingIn("claude"), missing("codex")), "Continue", false),
+  aiStep(card(signingIn("claude")), "Continue", false),
 );
 add(
   "08-claude-ready",
   "Claude Code is ready",
-  aiStep(card(ready("claude", true), missing("codex")), "Continue with Claude Code", true),
+  aiStep(card(ready("claude", true)), "Continue with Claude Code", true),
 );
 
-// The Codex path.
+// A ChatGPT subscriber with no Claude plan, Codex found (decision 0040).
 add(
-  "09-codex-installing",
-  "Installing Codex",
-  aiStep(card(missing("claude"), installing("codex", "Setting up…", "0:52")), "Continue", false),
-);
-add(
-  "10-codex-sign-in",
-  "Codex installed; sign in",
-  aiStep(card(missing("claude"), signIn("codex")), "Continue", false),
-);
-add(
-  "11-codex-signing-in",
-  "Signing in to ChatGPT",
-  aiStep(card(missing("claude"), signingIn("codex")), "Continue", false),
-);
-add(
-  "12-codex-ready",
-  "Codex is ready",
-  aiStep(card(missing("claude"), ready("codex", true)), "Continue with Codex", true),
+  "09-chatgpt-only",
+  "Codex found, not supported yet",
+  aiStep(
+    card(missing("claude"), codexFound) +
+      `<div class="box" style="margin-top:var(--space-4)"><p><strong>You have ChatGPT, which Oriel can't run on yet.</strong> The shortest way in is an Anthropic API key: nothing to install, about five minutes on Anthropic's site, and Anthropic bills each question.</p><div class="actions">${button("Use an API key", "primary")}</div><p class="small">Or, with a Claude Pro or Max plan, install Claude Code above.</p></div>`,
+    "Continue",
+    false,
+  ),
 );
 
 // What goes wrong.
 const accountHint = `<p class="small">In the tab that opens, check the account at the top. If it's still the old one, sign out of claude.ai there first.</p>`;
 add(
-  "13-wrong-plan",
+  "11-wrong-plan",
   "Signed in on a plan without Claude Code",
   aiStep(
     card(
@@ -239,7 +234,7 @@ add(
         "claude",
         `Signed in as maya@example.com`,
         "",
-        `<div class="box warn"><p><strong>This account is on Claude's free plan, which doesn't include Claude Code.</strong> Claude Pro or Max does.</p><div class="actions">${button("See Claude plans")}${button("Use another account")}</div>${accountHint}</div>`,
+        `<div class="box warn"><p><strong>This account is on Claude's free plan, which doesn't include Claude Code.</strong> Claude Pro or Max does.</p><div class="actions">${button("See Claude plans")}${button("Use another account")}${link("Pay Anthropic per question instead")}</div>${accountHint}</div>`,
       ),
       missing("codex"),
     ),
@@ -248,7 +243,7 @@ add(
   ),
 );
 add(
-  "14-other-account",
+  "12-other-account",
   "Use another account",
   aiStep(
     card(
@@ -278,25 +273,25 @@ const failedInstall = (details: boolean) =>
       : ""
   }</div>`;
 add(
-  "15-install-failed",
+  "13-install-failed",
   "The install stopped",
   aiStep(
-    card(row("claude", `Not on this Mac yet.`, "", failedInstall(false)), missing("codex")),
+    card(row("claude", `Not on this Mac yet.`, "", failedInstall(false))),
     "Continue",
     false,
   ),
 );
 add(
-  "16-install-details",
+  "14-install-details",
   "The install's details",
   aiStep(
-    card(row("claude", `Not on this Mac yet.`, "", failedInstall(true)), missing("codex")),
+    card(row("claude", `Not on this Mac yet.`, "", failedInstall(true))),
     "Continue",
     false,
   ),
 );
 add(
-  "17-sign-in-unfinished",
+  "15-sign-in-unfinished",
   "Sign-in didn't finish",
   aiStep(
     card(
@@ -313,7 +308,7 @@ add(
   ),
 );
 add(
-  "18-another-way",
+  "16-another-way",
   "Sign in another way",
   setup({
     step: 1,
@@ -331,7 +326,7 @@ add(
   }),
 );
 add(
-  "19-needs-update",
+  "17-needs-update",
   "Installed, but too old",
   aiStep(
     card(
@@ -348,12 +343,12 @@ add(
   ),
 );
 add(
-  "20-api-key",
+  "10-api-key",
   "Use an API key",
   setup({
     step: 1,
     title: "Pay Anthropic per question",
-    lead: "Without a Claude or ChatGPT plan, Oriel can use a key from Anthropic. Anthropic bills you for each question Oriel asks, and you can set a monthly limit there.",
+    lead: "Without a Claude plan, Oriel can use a key from Anthropic. Anthropic bills you for each question Oriel asks, and you can set a monthly limit there.",
     body: `<div class="setup-card form">
 <label class="sfield"><span>API key</span><input type="password" placeholder="Paste it here" data-focus><span class="hint">${link("Get a key from Anthropic")}: make an account there (it's separate from claude.ai), add a card, click <strong>Create Key</strong>, and copy it.</span></label>
 <p class="faint small" style="margin:0">Oriel keeps the key in your Mac's keychain, with your other passwords, and sends it only to Anthropic.</p>
@@ -392,7 +387,7 @@ const jiraHelp = (refused: boolean) =>
   `<div class="box">${refused ? "" : "<p>Atlassian lets you make these for apps like Oriel. One has your Jira access and no more, Oriel changes Jira only when you approve, and you can delete it on Atlassian's page any time.</p>"}<ol><li>${link("Open Atlassian's page for them")} (it opens in your browser).</li><li>Click <strong>Create</strong>, name it <strong>Oriel</strong>, pick when it expires (a year is fine), and click <strong>Create</strong>.</li><li>Click <strong>Copy</strong>, then paste it above. Atlassian shows it only once.</li></ol></div>`;
 
 add(
-  "21-work",
+  "20-work",
   "Connect your work",
   setup({
     step: 2,
@@ -404,7 +399,7 @@ add(
   }),
 );
 add(
-  "22-jira",
+  "21-jira",
   "Connect Jira",
   setup({
     step: 2,
@@ -421,7 +416,7 @@ ${jiraHelp(false)}
   }),
 );
 add(
-  "23-jira-refused",
+  "22-jira-refused",
   "Jira refused",
   setup({
     step: 2,
@@ -438,7 +433,7 @@ ${jiraHelp(true)}
   }),
 );
 add(
-  "24-jira-project",
+  "23-jira-project",
   "Pick a Jira project",
   setup({
     step: 2,
@@ -454,7 +449,7 @@ add(
   }),
 );
 add(
-  "25-folder-picker",
+  "24-folder-picker",
   "Choose a folder",
   setup({
     step: 2,
@@ -468,7 +463,7 @@ add(
   }),
 );
 add(
-  "26-slack-channels",
+  "25-slack-channels",
   "Pick Slack channels",
   setup({
     step: 2,
@@ -485,7 +480,7 @@ add(
   }),
 );
 add(
-  "27-work-connected",
+  "26-work-connected",
   "Work connected",
   setup({
     step: 2,
@@ -497,7 +492,7 @@ add(
   }),
 );
 add(
-  "28-reading",
+  "27-reading",
   "Reading your work",
   `${top}<main class="setup"><h1>Reading your work</h1><p class="setup-lead">Usually under a minute. Oriel shows your work when it's done.</p>${card(
     source(
@@ -611,7 +606,7 @@ add("32-approved", "Approved", thread(true, true), "");
 // new, and a folder alone.
 
 add(
-  "36-test-turn-limit",
+  "19-test-turn-limit",
   "The test turn hit a usage limit",
   aiStep(
     card(
@@ -619,7 +614,7 @@ add(
         "claude",
         `<span class="ready">Signed in</span> · Claude Pro · maya@example.com`,
         "",
-        `<div class="box warn"><p><strong>Claude Code is signed in, but your Claude plan has reached its usage limit until 3:40 pm.</strong> You can finish setting up now; questions to Oriel wait until then.</p><div class="actions">${button("Continue anyway", "primary")}${button("Use Codex")}${link("Pay Anthropic per question instead")}</div></div>`,
+        `<div class="box warn"><p><strong>Claude Code is signed in, but your Claude plan has reached its usage limit until 3:40 pm.</strong> You can finish setting up now; questions to Oriel wait until then.</p><div class="actions">${button("Continue anyway", "primary")}${link("Pay Anthropic per question instead")}</div></div>`,
         true,
       ),
       missing("codex"),
@@ -629,7 +624,7 @@ add(
   ),
 );
 add(
-  "37-sync-failed",
+  "28-sync-failed",
   "A source failed to read",
   `${top}<main class="setup"><h1>Reading your work</h1><p class="setup-lead">Usually under a minute. Oriel shows your work when it's done.</p>${card(
     source(
@@ -643,7 +638,7 @@ add(
   )}<footer class="setup-foot"><div class="left"><span class="faint">Your notes are ready. Jira can catch up later.</span></div>${button("Open with what's ready", "primary big")}</footer></main>`,
 );
 add(
-  "38-too-new",
+  "18-too-new",
   "Installed, but newer than Oriel works with",
   aiStep(
     card(
@@ -651,7 +646,7 @@ add(
         "claude",
         `This Claude Code (3.0.1) is newer than Oriel works with yet.`,
         "",
-        `<div class="box"><p>Oriel's next update will work with it. Until then:</p><div class="actions">${button("Use Codex")}${link("Pay Anthropic per question instead")}${link("Set up later")}</div></div>`,
+        `<div class="box"><p>Oriel's next update will work with it. Until then:</p><div class="actions">${button("Pay Anthropic per question instead")}${link("Set up later")}</div></div>`,
       ),
       missing("codex"),
     ),
@@ -660,7 +655,7 @@ add(
   ),
 );
 add(
-  "39-folder-only",
+  "33-folder-only",
   "The window with only a folder",
   `<div class="win"><aside class="win-side">
 <div class="win-brand"><img src="../../../packages/web/assets/icon.svg" alt=""> Oriel</div>
@@ -684,7 +679,7 @@ add(
 // Coming back, skipping, and Settings.
 
 add(
-  "33-welcome-back",
+  "34-welcome-back",
   "Quit halfway, then reopened",
   setup({
     step: 2,
@@ -696,20 +691,20 @@ add(
   }),
 );
 add(
-  "34-skipped-ai",
+  "35-skipped-ai",
   "The window with no AI set up",
   overview({
-    ask: `<div class="ask"><div class="input">Set up Claude or ChatGPT to ask about your window</div>${button("Set up", "primary")}</div><div class="starts"></div>`,
+    ask: `<div class="ask"><div class="input">Set up Claude to ask about your window</div>${button("Set up", "primary")}</div><div class="starts"></div>`,
   }),
   "",
 );
 add(
-  "35-settings",
+  "36-settings",
   "Settings: the same rows",
   `<div class="win">${side(oneWorkstream)}<main class="win-main" style="max-width:44rem">
 <h1 style="font-size:1.5rem;margin:var(--space-2) 0 var(--space-4)">Settings</h1>
 <div class="sec">Your AI</div>
-${card(ready("claude", true), missing("codex"))}
+${card(ready("claude", true), codexFound)}
 <p class="setup-note">${link("Pay Anthropic per question instead")}</p>
 <div class="sec">Your work</div>
 ${card(jiraRow(jiraConnected, quiet("Sync")), slackRow(), folderRow(folderConnected, quiet("Sync")))}
@@ -719,6 +714,7 @@ ${card(jiraRow(jiraConnected, quiet("Sync")), slackRow(), folderRow(folderConnec
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
+screens.sort((a, b) => a.name.localeCompare(b.name));
 for (const screen of screens)
   writeFileSync(
     join(out, `${screen.name}.html`),

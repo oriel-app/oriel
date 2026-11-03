@@ -4,13 +4,13 @@ Static screens of the desktop app's first run, for decision 0038. Not product co
 
 ## Flow order
 
-The AI: `01` checking → `02` already installed and signed in (one click) · `03` both ready · `04` neither installed → Claude: `05` installing → `06` installed, not signed in → `07` signing in → `08` ready · Codex: `09`–`12` the same → when it goes wrong: `13` a plan without Claude Code · `14` another account · `15`–`16` the install stopped, with details · `17` sign-in didn't finish · `18` the last resort, Terminal · `19` too old · `20` an API key.
+The AI: `01` checking → `02` Claude Code already installed and signed in (one click) · `03` Claude Code ready and Codex found, which Oriel can't run on yet · `04` nothing installed → `05` installing → `06` installed, not signed in → `07` signing in → `08` ready · `09` a ChatGPT subscriber with no Claude plan, Codex found: the shortest way in → `10` an API key → when it goes wrong: `11` a plan without Claude Code · `12` another account · `13`–`14` the install stopped, with details · `15` sign-in didn't finish · `16` the last resort, Terminal · `17` too old · `18` too new · `19` the test turn meets a usage limit.
 
-Your work: `21` the sources → `22` Jira → `23` Jira refused → `24` the project → `25` the folder picker → `26` Slack's channels → `27` connected → `28` reading.
+Your work: `20` the sources → `21` Jira → `22` Jira refused → `23` the project → `24` the folder picker → `25` Slack's channels → `26` connected → `27` reading · `28` a source fails to read.
 
-After: `29` the overview, first run → `30` the first answer → `31` a change to approve → `32` approved. Also: `33` reopened halfway, `34` the AI skipped, `35` Settings with the same rows.
+After: `29` the overview, first run → `30` the first answer → `31` a change to approve → `32` approved · `33` the window with only a folder · `34` reopened halfway · `35` the AI skipped · `36` Settings with the same rows.
 
-Added after the design critique: `36` the test turn meets a usage limit · `37` a source fails to read · `38` a version newer than Oriel works with · `39` the window with only a folder, which Oriel only reads.
+Round 3 follows decision 0040: Oriel can't run on Codex yet, so Codex is never installed, signed in or offered. Found, it shows with 0040's reason (`03`, `09`, `36`), and a ChatGPT subscriber is shown the shortest way in, an Anthropic API key (`09`, `10`). Screen numbers in the tables below are round 2's.
 
 ## Walkthroughs
 

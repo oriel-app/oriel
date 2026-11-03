@@ -32,84 +32,84 @@
     "title": "Claude Code is ready"
   },
   {
-    "name": "09-codex-installing",
-    "title": "Installing Codex"
+    "name": "09-chatgpt-only",
+    "title": "Codex found, not supported yet"
   },
   {
-    "name": "10-codex-sign-in",
-    "title": "Codex installed; sign in"
-  },
-  {
-    "name": "11-codex-signing-in",
-    "title": "Signing in to ChatGPT"
-  },
-  {
-    "name": "12-codex-ready",
-    "title": "Codex is ready"
-  },
-  {
-    "name": "13-wrong-plan",
-    "title": "Signed in on a plan without Claude Code"
-  },
-  {
-    "name": "14-other-account",
-    "title": "Use another account"
-  },
-  {
-    "name": "15-install-failed",
-    "title": "The install stopped"
-  },
-  {
-    "name": "16-install-details",
-    "title": "The install's details"
-  },
-  {
-    "name": "17-sign-in-unfinished",
-    "title": "Sign-in didn't finish"
-  },
-  {
-    "name": "18-another-way",
-    "title": "Sign in another way"
-  },
-  {
-    "name": "19-needs-update",
-    "title": "Installed, but too old"
-  },
-  {
-    "name": "20-api-key",
+    "name": "10-api-key",
     "title": "Use an API key"
   },
   {
-    "name": "21-work",
+    "name": "11-wrong-plan",
+    "title": "Signed in on a plan without Claude Code"
+  },
+  {
+    "name": "12-other-account",
+    "title": "Use another account"
+  },
+  {
+    "name": "13-install-failed",
+    "title": "The install stopped"
+  },
+  {
+    "name": "14-install-details",
+    "title": "The install's details"
+  },
+  {
+    "name": "15-sign-in-unfinished",
+    "title": "Sign-in didn't finish"
+  },
+  {
+    "name": "16-another-way",
+    "title": "Sign in another way"
+  },
+  {
+    "name": "17-needs-update",
+    "title": "Installed, but too old"
+  },
+  {
+    "name": "18-too-new",
+    "title": "Installed, but newer than Oriel works with"
+  },
+  {
+    "name": "19-test-turn-limit",
+    "title": "The test turn hit a usage limit"
+  },
+  {
+    "name": "20-work",
     "title": "Connect your work"
   },
   {
-    "name": "22-jira",
+    "name": "21-jira",
     "title": "Connect Jira"
   },
   {
-    "name": "23-jira-refused",
+    "name": "22-jira-refused",
     "title": "Jira refused"
   },
   {
-    "name": "24-jira-project",
+    "name": "23-jira-project",
     "title": "Pick a Jira project"
   },
   {
-    "name": "25-folder-picker",
+    "name": "24-folder-picker",
     "title": "Choose a folder"
   },
   {
-    "name": "26-slack-channels",
+    "name": "25-slack-channels",
     "title": "Pick Slack channels"
   },
   {
-    "name": "27-work-connected",
+    "name": "26-work-connected",
     "title": "Work connected"
   },
   {
-    "name": "28-reading",
+    "name": "27-reading",
     "title": "Reading your work"
+  },
+  {
+    "name": "28-sync-failed",
+    "title": "A source failed to read"
   },
   {
     "name": "29-overview",
@@ -128,31 +128,19 @@
     "title": "Approved"
   },
   {
-    "name": "36-test-turn-limit",
-    "title": "The test turn hit a usage limit"
-  },
-  {
-    "name": "37-sync-failed",
-    "title": "A source failed to read"
-  },
-  {
-    "name": "38-too-new",
-    "title": "Installed, but newer than Oriel works with"
-  },
-  {
-    "name": "39-folder-only",
+    "name": "33-folder-only",
     "title": "The window with only a folder"
   },
   {
-    "name": "33-welcome-back",
+    "name": "34-welcome-back",
     "title": "Quit halfway, then reopened"
   },
   {
-    "name": "34-skipped-ai",
+    "name": "35-skipped-ai",
     "title": "The window with no AI set up"
   },
   {
-    "name": "35-settings",
+    "name": "36-settings",
     "title": "Settings: the same rows"
   }
 ]
