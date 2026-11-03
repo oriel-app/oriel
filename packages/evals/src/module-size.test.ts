@@ -43,16 +43,21 @@ const dts = (kinds: readonly SourceKind[], namespaces: Namespaces, items: ItemDo
 const shape = (text: string) => text.replace(/^ {2}\| ".*$\n?/gm, "").length;
 
 const budgets = {
-  // Rose by 250 to steer the agent to Oriel's own threads (OA-108).
-  systemPrompt: 3_050,
+  // Rose by 250 to steer the agent to Oriel's own threads (OA-108). Fell
+  // from 3,037 bytes to 2,257 in climb oa-144 (OA-144), which moved the rules
+  // on a run's writes and Revert to where the agent meets them; about 200
+  // bytes of room are left for OA-89 and OA-121.
+  systemPrompt: 2_450,
   // The run tool's own text, and the module of a region with no namespace or
   // item doc. The base rose for Oriel's own namespaces in every region
   // (decision 0024): by about 1,600 bytes for their reads (OA-108), then by
   // 950 for their actions, five functions with the registry's docs (OA-69),
   // then by 290 for marking a workstream done and reopening it, whether one
-  // is done, and where the user deletes one (decision 0028).
+  // is done, and where the user deletes one (decision 0028). Climb oa-144
+  // cut 295 bytes of repeats and moved Revert's 157 here from the system
+  // prompt, for 4,594, with about 200 bytes of room for OA-89 and OA-121.
   tool: 600,
-  base: 4_740,
+  base: 4_800,
   // What each source adds: its item doc, its namespace if it has one.
   jira: 3_200,
   folder: 250,

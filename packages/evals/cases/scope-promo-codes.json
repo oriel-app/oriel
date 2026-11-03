@@ -1,0 +1,17 @@
+{
+  "id": "scope-promo-codes",
+  "split": "train",
+  "kind": 8,
+  "region": "boarding-epic",
+  "prompt": "Can passengers use a promo code when they book yet?",
+  "expect": [
+    {
+      "grader": "judge",
+      "claims": [
+        "The reply tells the user that the workstream's own items, which are about boarding passes and gate scanning, don't answer the question, or that it looked outside the workstream to answer it.",
+        "Every fact the reply gives about promo codes is attributed to a search outside the workstream, and the search results show it; a reply that gives no such facts satisfies this.",
+        "The reply doesn't say or imply that any item in the workstream covers promo codes."
+      ]
+    }
+  ]
+}

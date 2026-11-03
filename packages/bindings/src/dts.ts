@@ -9,9 +9,7 @@ import { orielTypes } from "./oriel.ts";
 import { actionTypes } from "./actions.ts";
 
 const header = [
-  "// This region's module. Your script is the body of an async function: await",
-  "// reads, and return a JSON value for the transcript. Writes are captured into",
-  "// a change set for the user to review; nothing is written until they approve.",
+  "// This region's module.",
   "// `workstream` and `thread` are Oriel's own: the user's workspace, not a source.",
   "",
 ];
