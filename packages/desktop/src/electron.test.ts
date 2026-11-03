@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { electronTypes, electronVersion, electronZips, target, zipUrl } from "./electron.ts";
+import {
+  electronNode,
+  electronTypes,
+  electronVersion,
+  electronZips,
+  target,
+  zipUrl,
+} from "./electron.ts";
 
 test("the vendored Electron types are the pinned release's own", () => {
   const types = readFileSync(new URL("../vendor/electron.d.ts", import.meta.url));
@@ -21,4 +28,14 @@ test("every pinned zip is a SHA-256 from the release, and a target names one", (
     zipUrl("darwin-arm64"),
     `https://github.com/electron/electron/releases/download/v${electronVersion}/electron-v${electronVersion}-darwin-arm64.zip`,
   );
+});
+
+test("the repo pins the Node inside the pinned Electron, and its types are that Node's", () => {
+  const mise = readFileSync(new URL("../../../mise.toml", import.meta.url), "utf8");
+  assert.match(mise, new RegExp(`^node = "${electronNode.replaceAll(".", "\\.")}"$`, "m"));
+  const root = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
+  const types = (root as { devDependencies: Record<string, string> }).devDependencies[
+    "@types/node"
+  ];
+  assert.equal(types?.split(".")[0], electronNode.split(".")[0]);
 });

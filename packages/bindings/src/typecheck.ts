@@ -81,7 +81,9 @@ let command: Promise<TscCommand> | undefined;
 // compiler, so a kill of that pid stops it. If that package can't be found,
 // fall back to the launcher run by this Node. On Node 22.15 and later it
 // execs the compiler in place, keeping the pid; before that, it spawns the
-// compiler as a child the pid kill would miss.
+// compiler as a child the pid kill would miss. In the desktop app this Node
+// is Electron's, whose binary doesn't run as Node (decision 0047), so the
+// app always carries the native package.
 function tscCommand(): Promise<TscCommand> {
   command ??= (async () => {
     const manifest = fileURLToPath(import.meta.resolve("typescript/package.json"));

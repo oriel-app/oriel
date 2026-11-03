@@ -1,6 +1,6 @@
 # 0009 Toolchain
 
-Accepted 2026-10-28.
+Accepted 2026-10-28. Amended by 0047: `mise.toml` pins the Node inside the pinned Electron, 24.22.0 for Electron 45, not Node 26.
 
 Adds: `typescript` `@typescript/*` `@types/node` `undici-types` `oxlint` `@oxlint/*` `oxfmt` `@oxfmt/*` `tinypool`
 

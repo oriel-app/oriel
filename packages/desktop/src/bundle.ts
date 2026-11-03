@@ -1,16 +1,24 @@
 // `pnpm desktop`: builds the desktop app, unsigned, under the gitignored
-// `packages/desktop/build/` (decisions 0036 and 0039). Only macOS's
+// `packages/desktop/build/` (decisions 0036, 0039 and 0047). Only macOS's
 // `Oriel.app` so far; the target is a parameter so Windows and Linux can follow.
 //
 // The shell is Electron, from its pinned release zip, never npm: the zip is
 // checked against the hash in electron.ts, renamed to Oriel, its fuses set,
 // given Oriel's icon, drawn from `icon.svg` by sips and packed by iconutil,
-// and given the shell's code, compiled from `shell/`. Beside it go the Node
-// and Deno that mise.toml pins, copied from mise's installs, which the server
-// runs on; the server's source, laid out as in the repo, with the packages it
-// reaches, the fixtures it imports and the built web app; and the third-party
-// packages those declare, the native TypeScript compiler among them. On macOS
-// the whole app then gets an ad-hoc signature, which Apple silicon requires.
+// and given the shell's code, compiled from `shell/`. The server runs on
+// Electron's own Node, so the app carries no other. Beside the shell go the
+// Deno that mise.toml pins, copied from mise's install; the server's source,
+// laid out as in the repo, with the packages it reaches, the fixtures it
+// imports and the built web app; and the third-party packages those declare,
+// the native TypeScript compiler among them. On macOS the whole app is then
+// signed: ad hoc, which Apple silicon requires, or, with
+// `ORIEL_SIGN_IDENTITY`, as that code-signing identity in the keychain. To
+// the Keychain, each ad-hoc build is a new app, which asks again before it
+// reads "Oriel Safe Storage", Always Allow or not: an item lists the apps
+// that may read it by their team ID or, with none, by the build's own hash.
+// Only an Apple-issued certificate, such as the Apple Development one any
+// Apple ID gets, carries a team ID, so only builds signed as one read the
+// item without asking (decision 0047).
 // A new build replaces the old one; the zip stays cached beside it.
 //
 // `--measure` marks the build so that `--measure <file>` at launch writes when
@@ -33,7 +41,7 @@ import {
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { electronZips, type Target, target, zipName, zipUrl } from "./electron.ts";
+import { electronNode, electronZips, type Target, target, zipName, zipUrl } from "./electron.ts";
 import { readFuses, setFuses } from "./fuses.ts";
 
 export type Manifest = {
@@ -221,14 +229,10 @@ function macShell(zip: string, build: string, icon: string): string {
   return app;
 }
 
-// The server and what it runs on, under `resources`.
+// The server and the Deno it runs, under `resources`.
 function addServer(root: string, resources: string) {
-  // The runtimes mise.toml pins, as mise installed them.
-  const node = mise(root, "node");
+  // The Deno mise.toml pins, as mise installed it.
   const deno = mise(root, "deno");
-  mkdirSync(join(resources, "node/bin"), { recursive: true });
-  cpSync(join(node, "bin/node"), join(resources, "node/bin/node"));
-  cpSync(join(node, "LICENSE"), join(resources, "node/LICENSE"));
   mkdirSync(join(resources, "deno"), { recursive: true });
   cpSync(join(deno, "bin/deno"), join(resources, "deno/deno"));
 
@@ -285,10 +289,11 @@ function addServer(root: string, resources: string) {
       pending.push({ dep, from: found, optional: true });
   }
 
-  // Every module the server loads resolves inside the app.
+  // Every module the server loads resolves inside the app, on this Node,
+  // which is Electron's version.
   const serve = pathToFileURL(join(server, "packages/server/src/serve.ts")).href;
   execFileSync(
-    join(resources, "node/bin/node"),
+    process.execPath,
     ["--input-type=module", "-e", `await import(${JSON.stringify(serve)})`],
     { env: {}, stdio: "inherit" },
   );
@@ -305,6 +310,12 @@ if (import.meta.main) {
   const on = target(...(values.target.split("-") as [string, string]));
   if (!on.startsWith("darwin-") || process.platform !== "darwin") {
     console.error(`Only the macOS app is built so far, on macOS; not ${on}.`);
+    process.exit(1);
+  }
+  if (process.versions.node !== electronNode) {
+    console.error(
+      `The server runs on Electron's Node, ${electronNode}, which mise.toml pins; this is ${process.versions.node}.`,
+    );
     process.exit(1);
   }
   const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -348,8 +359,9 @@ if (import.meta.main) {
   console.log("Adding the server…");
   const thirdParty = addServer(root, resources);
 
-  console.log("Signing, ad hoc…");
-  execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
+  const identity = process.env.ORIEL_SIGN_IDENTITY || "-";
+  console.log(identity === "-" ? "Signing, ad hoc…" : `Signing as ${identity}…`);
+  execFileSync("codesign", ["--force", "--deep", "--sign", identity, app], { stdio: "inherit" });
   execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" });
 
   const fuses = readFuses(
@@ -360,7 +372,7 @@ if (import.meta.main) {
     `Built ${relative(root, app)} in ${((performance.now() - started) / 1000).toFixed(1)} s.`,
   );
   console.log(
-    `  ${mb(size(app))}: Electron ${mb(size(join(app, "Contents/Frameworks")))}, Node ${mb(size(join(resources, "node")))}, Deno ${mb(size(join(resources, "deno")))}, server ${mb(size(join(resources, "server")))} (third-party ${thirdParty.join(", ")})`,
+    `  ${mb(size(app))}: Electron ${mb(size(join(app, "Contents/Frameworks")))} with Node ${electronNode}, Deno ${mb(size(join(resources, "deno")))}, server ${mb(size(join(resources, "server")))} (third-party ${thirdParty.join(", ")})`,
   );
   console.log(
     `  fuses: ${Object.entries(fuses)

@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "check": "tsc -p . && tsc -p shell && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
+  },
+  "devDependencies": {
+    "@oriel/server": "workspace:*"
   }
 }

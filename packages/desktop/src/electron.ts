@@ -5,6 +5,11 @@
 // types are `vendor/electron.d.ts`, the release's own, under the same rule.
 export const electronVersion = "45.0.0";
 
+// The Node inside that release, which the server runs on (decision 0047).
+// mise.toml pins the same version, so CI and `pnpm dev` test what the app
+// runs; a bump of Electron moves both.
+export const electronNode = "24.22.0";
+
 export const electronZips = {
   "darwin-arm64": "896c3a50b148e89a158dca08a6996a022ddf39b23aac871e107f5b4087f8caa9",
   "darwin-x64": "7877c282e74a52f8d87949536a25735cf9982de1265b544c9cd258dd14eff4de",

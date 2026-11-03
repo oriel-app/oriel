@@ -21,7 +21,7 @@
     "desktop": "node packages/desktop/src/bundle.ts"
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
+    "@types/node": "24.19.2",
     "oxfmt": "0.74.0",
     "oxlint": "1.89.0",
     "playwright-core": "1.64.1",
