@@ -99,7 +99,8 @@ export type ModelsOptions = {
 };
 
 export type Models = {
-  // Looks for every instance again, the CLIs' checks included.
+  // Looks for every instance again, the CLIs' checks included. Ends once
+  // the latest look's answers stand, even when a later look started.
   look(settings: Settings): Promise<void>;
   // What was found for an instance; "checking" until the first look ends.
   found(id: string): Found;
@@ -156,8 +157,9 @@ export function models(options: ModelsOptions): Models {
   const agents = new Map<string, Agent>();
   const titlers = new Map<string, Titler>();
   const cacheKey = (r: Running) => JSON.stringify([r.provider.id, r.model, r.cli]);
-  // Only the latest look's answers stand.
+  // Only the latest look's answers stand, and every look ends when it does.
   let looks = 0;
+  let latest: Promise<void> = Promise.resolve();
 
   // Only the turns and tokens of the person's Claude Code count toward
   // their plan: an API key bills per question.
@@ -289,18 +291,22 @@ export function models(options: ModelsOptions): Models {
     modelsOf(provider).find((m) => m.id === model)?.label ?? model;
 
   return {
-    async look(settings) {
+    look(settings) {
       const look = ++looks;
       found = new Map(settings.providers.map((p) => [p.id, found.get(p.id) ?? checking]));
-      const keyNow = kept ? await kept.get() : key;
-      const answers = await Promise.all(
-        settings.providers.map(async (p) => [p.id, await lookFor(p, keyNow)] as const),
-      );
-      if (look !== looks) return;
-      key = keyNow;
-      found = new Map(answers);
-      agents.clear();
-      titlers.clear();
+      latest = (async () => {
+        const keyNow = kept ? await kept.get() : key;
+        const answers = await Promise.all(
+          settings.providers.map(async (p) => [p.id, await lookFor(p, keyNow)] as const),
+        );
+        // A later look started meanwhile: wait for its answers, not these.
+        if (look !== looks) return latest;
+        key = keyNow;
+        found = new Map(answers);
+        agents.clear();
+        titlers.clear();
+      })();
+      return latest;
     },
     found: foundOf,
     choose,

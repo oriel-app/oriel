@@ -129,6 +129,8 @@ async function firstRun(
     start?: Start;
     // A stub Codex on the PATH, signed in or not, and how its sign-in ends.
     codex?: { signedIn?: boolean; login?: "signs-in" | "fails" };
+    // Its update brings it up to date, and each check after it waits here.
+    updates?: { held: (release: () => void) => void };
   } = {},
 ) {
   const home = mkdtempSync(join(tmpdir(), "oriel-first-run-"));
@@ -169,7 +171,9 @@ async function firstRun(
     const cli = locateClaudeCode(given ?? {}, path);
     if (!cli)
       return { ok: false as const, problem: { kind: "missing" as const, message: "Not found." } };
-    const version = /\b2\.0\./.test(readFileSync(cli, "utf8")) ? "2.0.4" : "2.1.317";
+    const updated = options.updates && existsSync(join(home, ".updated"));
+    if (updated) await new Promise<void>((release) => options.updates?.held(release));
+    const version = !updated && /\b2\.0\./.test(readFileSync(cli, "utf8")) ? "2.0.4" : "2.1.317";
     if (version === "2.0.4")
       return {
         ok: false as const,
@@ -383,6 +387,38 @@ test("a version too old updates itself; a Homebrew one is the person's command",
     by: "person",
     command: "brew upgrade --cask claude-code",
   });
+});
+
+test("an update that worked says so, even when another look starts during the step's (OA-208)", async (t) => {
+  // Each check after the update waits until the test lets it answer.
+  const held: (() => void)[] = [];
+  let waiting = Promise.withResolvers<void>();
+  const run = await firstRun(t, {
+    installed: { version: "2.0.4" },
+    signedIn: true,
+    updates: {
+      held: (release) => {
+        held.push(release);
+        waiting.resolve();
+      },
+    },
+  });
+  await run.send("/api/setup/cli", { command: "update" });
+  await waiting.promise;
+  // The step's look is checking; the page opening starts a second.
+  waiting = Promise.withResolvers<void>();
+  const opened = run.send("/api/setup/progress", { did: "opened" });
+  await waiting.promise;
+  // The step's look answers first, and the page's after it.
+  held[0]?.();
+  await new Promise((resolve) => setImmediate(resolve));
+  held[1]?.();
+  await opened;
+  await run.app.settled();
+  const { cli } = await run.view();
+  assert.equal(cli?.failed, null);
+  assert.equal(cli?.state, "ready");
+  assert.equal(held.length, 2);
 });
 
 test("Cancel stops the whole command, and the row is as it was", async (t) => {
