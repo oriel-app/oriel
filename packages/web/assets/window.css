@@ -4976,9 +4976,8 @@ button.overview-title:hover {
   color: var(--todo);
 }
 
-.status[data-category="todo"],
-.status[data-category="in-progress"],
-.status[data-category="done"] {
+.status[data-category],
+.state-chip[data-state] {
   background: none;
 }
 
