@@ -15,6 +15,7 @@ import type { Dispatch } from "./parts.tsx";
 import { Swipeable } from "./swipe.tsx";
 import { holdUndos, UndoStack } from "./undo-stack.tsx";
 import type { Undos } from "./undos.ts";
+import { Tooltip } from "./tooltip.tsx";
 
 const sender = (dispatch: Dispatch) => (msg: EndingMsg) => dispatch({ type: "ending", msg });
 
@@ -57,29 +58,31 @@ export function EndButtons(props: {
   return (
     <div class="workstream-actions">
       {first && (
-        <button
-          type="button"
-          class="head-action"
-          title={first.label}
-          aria-label={`${first.label}: ${workstream.name}`}
-          disabled={props.busy}
-          onClick={first.onSelect}
-        >
-          {props.done ? <ReopenIcon /> : <DoneIcon />}
-        </button>
+        <Tooltip text={first.label}>
+          <button
+            type="button"
+            class="head-action"
+            aria-label={`${first.label}: ${workstream.name}`}
+            disabled={props.busy}
+            onClick={first.onSelect}
+          >
+            {props.done ? <ReopenIcon /> : <DoneIcon />}
+          </button>
+        </Tooltip>
       )}
       {remove && (
-        <button
-          type="button"
-          class="head-action"
-          data-danger
-          title="Delete…"
-          aria-label={`Delete ${workstream.name}…`}
-          disabled={props.busy}
-          onClick={remove.onSelect}
-        >
-          <TrashIcon />
-        </button>
+        <Tooltip text="Delete…">
+          <button
+            type="button"
+            class="head-action"
+            data-danger
+            aria-label={`Delete ${workstream.name}…`}
+            disabled={props.busy}
+            onClick={remove.onSelect}
+          >
+            <TrashIcon />
+          </button>
+        </Tooltip>
       )}
     </div>
   );

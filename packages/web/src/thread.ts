@@ -26,6 +26,8 @@ export type ThreadModel = {
   status: "loading" | "ready" | "failed";
   draft: string;
   sending: boolean;
+  // Sync now was asked for and not yet answered.
+  syncing: boolean;
   diffs: Readonly<Record<string, DiffView>>;
   // A change set with a request in flight.
   busy: readonly string[];
@@ -73,6 +75,8 @@ export type ThreadMsg =
   | { type: "sendClicked" }
   | { type: "stopClicked" }
   | { type: "doneClicked" }
+  // Sync now: the thread catches up with its workstream without a message.
+  | { type: "syncClicked" }
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
   // A rejected change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
@@ -106,6 +110,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       status: "loading",
       draft: "",
       sending: false,
+      syncing: false,
       diffs: {},
       busy: [],
       deciding: {},
@@ -207,6 +212,23 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       return [
         model,
         [post(`/api/threads/${model.id}/done`, {}, { kind: "threadAction", threadId: model.id })],
+      ];
+    // Not while a turn runs: it works in the version it started in.
+    case "syncClicked":
+      if (model.syncing || model.view?.running !== false) return [model, []];
+      return [
+        { ...model, syncing: true, notice: null },
+        [
+          post(
+            `/api/threads/${model.id}/sync`,
+            {},
+            {
+              kind: "synced",
+              threadId: model.id,
+              statuses: model.statuses,
+            },
+          ),
+        ],
       ];
     case "changeSetClicked": {
       const { changeSetId, step } = msg;
@@ -442,6 +464,14 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         { ...model, notice: dropNotice(reply) },
         reply.added.length > 0 ? [refresh(model)] : [],
       ];
+    }
+    // The reply is the thread at its new version.
+    case "synced": {
+      if (tag.threadId !== model.id) return [model, []];
+      const settled = { ...model, syncing: false };
+      if (!msg.ok) return [{ ...settled, notice: errorOf(msg.body) }, []];
+      const { statuses } = tag;
+      return threadReplied(settled, { ...msg, tag: { kind: "thread", id: model.id, statuses } });
     }
     case "threadAction":
       if (tag.threadId !== model.id) return [model, []];

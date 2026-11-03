@@ -75,6 +75,10 @@ const words: { [N in ActionName]: Words } = {
   "thread.open": (_, place) => [`Opened a thread on ${place}`, `open a thread on ${place}`],
   "thread.say": (_, place) => [`Said something in ${place}`, `say something in ${place}`],
   "thread.stop": (_, place) => [`Stopped the turn in ${place}`, `stop the turn in ${place}`],
+  "thread.sync": (_, place) => [
+    `Moved ${place} to its workstream's latest version`,
+    `move ${place} to its workstream's latest version`,
+  ],
   "thread.delete": (_, place) => [`Deleted ${place}`, `delete ${place}`],
   "held.send": (_, place) => [`Sent a held message in ${place}`, `send a held message in ${place}`],
   "held.discard": (_, place) => [

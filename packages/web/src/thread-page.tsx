@@ -26,6 +26,7 @@ import {
 import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { sends } from "./settings.ts";
+import { Tooltip } from "./tooltip.tsx";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Entry,
@@ -188,7 +189,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
             onStop={() => send({ type: "stopClicked" })}
           />
         </main>
-        <Region view={view} />
+        <Region view={view} syncing={model.syncing} onSync={() => send({ type: "syncClicked" })} />
       </DropZone>
     </ItemLinksContext.Provider>
   );
@@ -980,16 +981,17 @@ export function Diff(props: {
             </p>
           )}
           {!line.error && offered(line.mutationId) && (
-            <button
-              type="button"
-              class="remove-line"
-              disabled={props.busy}
-              title="Leave this change out"
-              aria-label="Leave this change out"
-              onClick={() => props.onRemove?.(line.mutationId)}
-            >
-              ×
-            </button>
+            <Tooltip text="Leave this change out">
+              <button
+                type="button"
+                class="remove-line"
+                disabled={props.busy}
+                aria-label="Leave this change out"
+                onClick={() => props.onRemove?.(line.mutationId)}
+              >
+                ×
+              </button>
+            </Tooltip>
           )}
         </li>
       ))}
@@ -1051,9 +1053,13 @@ export function Composer(props: {
   );
 }
 
-// The region the thread works in: its workstream at one version.
-function Region({ view }: { view: ThreadView }) {
+// The region the thread works in: its workstream at one version. Behind
+// it, the thread catches up with the next message, or with Sync now, which
+// waits while a turn runs: the turn works in the version it started in.
+function Region(props: { view: ThreadView; syncing: boolean; onSync(): void }) {
+  const { view } = props;
   const behind = view.regionVersion < view.workstream.version;
+  const waits = view.running || props.syncing;
   return (
     <aside class="rail" aria-label="This thread's items">
       <h2 class="rail-title">
@@ -1061,7 +1067,32 @@ function Region({ view }: { view: ThreadView }) {
       </h2>
       {behind && (
         <p class="rail-note">
-          This workstream has changed since; this thread catches up when you write again.
+          Workstream will update on next{" "}
+          <span class="rail-note-end">
+            send
+            <Tooltip
+              text={
+                props.syncing
+                  ? "Syncing…"
+                  : view.running
+                    ? "Syncs once the agent has answered"
+                    : "Sync this thread with its workstream"
+              }
+            >
+              <button
+                type="button"
+                class="sync-now"
+                aria-label="Sync this thread with its workstream"
+                aria-disabled={waits || undefined}
+                aria-busy={props.syncing || undefined}
+                onClick={() => {
+                  if (!waits) props.onSync();
+                }}
+              >
+                <SyncIcon />
+              </button>
+            </Tooltip>
+          </span>
         </p>
       )}
       {view.members.length === 0 && !behind && (
@@ -1075,5 +1106,15 @@ function Region({ view }: { view: ThreadView }) {
         </ul>
       </ItemListContext.Provider>
     </aside>
+  );
+}
+
+// Two arrows chasing round a circle.
+function SyncIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.75 8a5.25 5.25 0 0 1 9.5-3.1l1.25 1.6M13.25 8a5.25 5.25 0 0 1-9.5 3.1L2.5 9.5" />
+      <path d="M13.5 2.5v4h-4M2.5 13.5v-4h4" />
+    </svg>
   );
 }

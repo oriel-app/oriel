@@ -132,7 +132,13 @@ test("a review link's holder may decide or dismiss a change set and nothing else
   ] as const)
     assert.match(refusal(action, agent) ?? "", /is the user's/);
   // Direct, but closed to the agent, each saying why.
-  for (const action of ["thread.open", "thread.say", "thread.stop", "source.sync"] as const)
+  for (const action of [
+    "thread.open",
+    "thread.say",
+    "thread.stop",
+    "thread.sync",
+    "source.sync",
+  ] as const)
     assert.match(refusal(action, agent) ?? "", /is closed to agents: \S/);
   // A sync renames a workstream after its anchor, as a change set may.
   assert.equal(refusal("workstream.rename", { kind: "sync", source: "jira" }), null);

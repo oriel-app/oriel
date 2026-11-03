@@ -1178,6 +1178,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // Sync now: the thread as it is at its workstream's latest version.
+      method: "POST",
+      path: at("/threads/:id/sync"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        await deps.dispatch("thread.sync", checked("thread.sync", { thread: id }), user);
+        return json(200, await threadView(id as Ulid));
+      },
+    },
+    {
       // What deleting the thread would lose, for the person to confirm.
       method: "GET",
       path: at("/threads/:id/deletion"),

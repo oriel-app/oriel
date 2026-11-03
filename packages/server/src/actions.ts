@@ -29,7 +29,7 @@ import {
   type Ulid,
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
-import type { WorkstreamStore, ThreadStore } from "@oriel/db";
+import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
 import {
   type FolderView,
   type GroupingId,
@@ -61,13 +61,14 @@ export class ActionError extends Error {
 // What a call changed, for the window's streams: a workstream, and whether its
 // members changed, which moves its working threads, or that it went with its
 // threads; a thread, and whether an
-// entry already in its chat changed, as a held message settles, or whether
-// it is gone; or a change set of a thread, and whether it is applying now.
+// entry already in its chat changed, as a held message settles, or it moved
+// to its workstream's latest version, or whether it is gone; or a change set
+// of a thread, and whether it is applying now.
 export type Changed =
   | { workstream: Ulid; members: boolean }
   // Deleted, with the threads that went with it.
   | { workstream: Ulid; deleted: readonly Ulid[] }
-  | { thread: Ulid; chat?: true }
+  | { thread: Ulid; chat?: true; moved?: Move }
   | { thread: Ulid; deleted: true }
   | { thread: Ulid; changeSet: Ulid; applying: boolean };
 
@@ -700,6 +701,20 @@ const handlers = {
       output: { stopped: deps.turns.stop(thread.id) },
       undo: null,
       changed: null,
+      events: [],
+    };
+  },
+
+  // Not while its agent answers: its turn works in the version it started in.
+  // A thread already at the latest version stays where it is.
+  "thread.sync": async ({ thread: id }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    if (deps.running(thread.id)) throw new ThreadBusy();
+    const moved = deps.threads.catchUp(thread.id, deps.now(), deps.newId());
+    return {
+      output: { moved: moved !== null },
+      undo: null,
+      changed: moved && { thread: thread.id, moved },
       events: [],
     };
   },

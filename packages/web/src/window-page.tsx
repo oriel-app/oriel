@@ -42,6 +42,7 @@ import {
   pageSize,
   type WindowView,
 } from "./view.ts";
+import { Tooltip } from "./tooltip.tsx";
 
 const groupingNames: Record<GroupingId, string> = {
   epic: "Epic",
@@ -408,17 +409,20 @@ function Cluster(props: {
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          class="quiet-action make-workstream"
-          disabled={props.pending}
-          title={`Make a workstream of all ${plural(row.size, "item")} in ${row.label} as they are now${view.matched === undefined ? "" : ", not only those that match"}`}
-          onClick={() =>
-            dispatch({ type: "window", msg: { type: "clusterToWorkstream", key: row.key } })
-          }
+        <Tooltip
+          text={`Make a workstream of all ${plural(row.size, "item")} in ${row.label} as they are now${view.matched === undefined ? "" : ", not only those that match"}`}
         >
-          Make workstream
-        </button>
+          <button
+            type="button"
+            class="quiet-action make-workstream"
+            disabled={props.pending}
+            onClick={() =>
+              dispatch({ type: "window", msg: { type: "clusterToWorkstream", key: row.key } })
+            }
+          >
+            Make workstream
+          </button>
+        </Tooltip>
       </h2>
       {open && (
         <Items

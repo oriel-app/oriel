@@ -27,6 +27,7 @@ import type { Route } from "./route.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
 import { type SourcesModel, type SourcesMsg, sourcesLine } from "./sources.ts";
 import { windowRoute } from "./update.ts";
+import { Tooltip } from "./tooltip.tsx";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -51,27 +52,28 @@ export function Sidebar(props: {
           <Mark />
           <span class="sidebar-label">Oriel</span>
         </Link>
-        <button
-          type="button"
-          class="sidebar-fold"
-          aria-controls="sidebar"
-          aria-expanded={!props.folded}
-          title={`${props.folded ? "Show" : "Hide"} the sidebar (${modKey}\\)`}
-          onClick={props.onFold}
-        >
-          <PanelIcon />
-          <span class="visually-hidden">
-            {props.folded ? "Show sidebar" : "Hide sidebar"}
-            {props.folded &&
-              where.needsYou > 0 &&
-              `, ${plural(where.needsYou, "thread")} waiting on you`}
-          </span>
-          {props.folded && where.needsYou > 0 && (
-            <span class="bar-count" aria-hidden="true">
-              {where.needsYou}
+        <Tooltip text={`${props.folded ? "Show" : "Hide"} the sidebar (${modKey}\\)`}>
+          <button
+            type="button"
+            class="sidebar-fold"
+            aria-controls="sidebar"
+            aria-expanded={!props.folded}
+            onClick={props.onFold}
+          >
+            <PanelIcon />
+            <span class="visually-hidden">
+              {props.folded ? "Show sidebar" : "Hide sidebar"}
+              {props.folded &&
+                where.needsYou > 0 &&
+                `, ${plural(where.needsYou, "thread")} waiting on you`}
             </span>
-          )}
-        </button>
+            {props.folded && where.needsYou > 0 && (
+              <span class="bar-count" aria-hidden="true">
+                {where.needsYou}
+              </span>
+            )}
+          </button>
+        </Tooltip>
       </div>
       <ThreadSearch
         search={model.search}
@@ -156,18 +158,19 @@ function ThreadSearch(props: {
   return (
     <div class="sidebar-search">
       <div class="sidebar-search-row" role="search">
-        <button
-          type="button"
-          class="sidebar-search-open nav-link"
-          title="Search threads"
-          onClick={() => {
-            props.onFold();
-            requestAnimationFrame(() => document.getElementById(fieldId)?.focus());
-          }}
-        >
-          <SearchIcon />
-          <span class="sidebar-label">Search threads</span>
-        </button>
+        <Tooltip text="Search threads">
+          <button
+            type="button"
+            class="sidebar-search-open nav-link"
+            onClick={() => {
+              props.onFold();
+              requestAnimationFrame(() => document.getElementById(fieldId)?.focus());
+            }}
+          >
+            <SearchIcon />
+            <span class="sidebar-label">Search threads</span>
+          </button>
+        </Tooltip>
         <label class="sidebar-search-field">
           <SearchIcon />
           <span class="visually-hidden">Search threads</span>
@@ -187,16 +190,17 @@ function ThreadSearch(props: {
             onKeyDown={keyed}
           />
         </label>
-        <Link
-          route={{ page: "new-thread" }}
-          dispatch={dispatch}
-          class="sidebar-new nav-link"
-          title="New thread: start from nothing, such as a plan for a new epic"
-          aria-label="New thread"
-          aria-current={props.newThread ? "page" : undefined}
-        >
-          <PlusIcon />
-        </Link>
+        <Tooltip text="New thread: start from nothing, such as a plan for a new epic">
+          <Link
+            route={{ page: "new-thread" }}
+            dispatch={dispatch}
+            class="sidebar-new nav-link"
+            aria-label="New thread"
+            aria-current={props.newThread ? "page" : undefined}
+          >
+            <PlusIcon />
+          </Link>
+        </Tooltip>
       </div>
       {searching(search) && (
         <div class="search-results">

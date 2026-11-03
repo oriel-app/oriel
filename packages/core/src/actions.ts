@@ -265,6 +265,22 @@ export const actions = {
         "An intent applies as its turn ends, when its own turn is over, and another thread's turn answers that thread's user.",
     },
   },
+  // Sync now, in a thread's right rail: the thread catches up with its
+  // workstream as the user's next message would make it, with its marker,
+  // without one (decision 0018).
+  "thread.sync": {
+    doc: "Moves a thread to its workstream's latest version, with a marker in its chat.",
+    input: object({ thread: threadId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "A thread works in its workstream's latest version from then on; its marker says where it moved.",
+    },
+    closed: {
+      agent:
+        "A turn works in the version it started in, and another thread's version is its user's to move.",
+    },
+  },
   "thread.delete": {
     doc: "Deletes a thread, and its workstream if that was made for it and is empty.",
     input: object({ thread: threadId, via: closeVia }),
