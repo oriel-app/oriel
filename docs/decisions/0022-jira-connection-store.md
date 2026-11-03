@@ -1,6 +1,6 @@
 # 0022 Where a Jira connection made in the window is kept
 
-Accepted 2026-10-31, as an interim decision. It will be superseded when Oriel becomes a desktop app, where an OS keychain can hold the connection instead. Amended by 0036: on the desktop app a connection lives in the OS keychain, reached through the shell; this file store stays for `pnpm dev`. Amended by 0038: on the desktop app, any Jira Cloud site can be connected, and the project is picked from a list. Amended by 0042: on the desktop app the connection is kept by the shell, encrypted with the key the OS keeps for Oriel.
+Accepted 2026-10-31, as an interim decision. It will be superseded when Oriel becomes a desktop app, where an OS keychain can hold the connection instead. Amended by 0036: on the desktop app a connection lives in the OS keychain, reached through the shell; this file store stays for `pnpm dev`. Amended by 0038: on the desktop app, any Jira Cloud site can be connected, and the project is picked from a list. Amended by 0042: on the desktop app the connection is kept by the shell, encrypted with the key the OS keeps for Oriel. Amended by 0049: a connection made in the window is kept per connection, its options in the database and, under `pnpm dev`, its secret in a file of its own under `secrets/`, and the window can connect more than one and disconnect them.
 
 Adds: none
 

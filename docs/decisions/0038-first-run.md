@@ -1,6 +1,6 @@
 # 0038 The first run sets up the person's AI and their first source, with no terminal
 
-Accepted 2026-11-03 (OA-190, OA-191). Amends 0020, 0022, 0036 and 0037, and follows 0040. Changes SPEC §4, §5 and §7, and the security reviewer's checklist. Amended by 0044: which Claude Code the check guards, and how; a cluster the window chat can make a workstream of; when the first run's overview ends; Jira's project list in the window too.
+Accepted 2026-11-03 (OA-190, OA-191). Amends 0020, 0022, 0036 and 0037, and follows 0040. Changes SPEC §4, §5 and §7, and the security reviewer's checklist. Amended by 0044: which Claude Code the check guards, and how; a cluster the window chat can make a workstream of; when the first run's overview ends; Jira's project list in the window too. Amended by 0049: the source step's rows are drawn from each connector's declaration. Amended by 0051: Google Sheets' row adds the mapping the agent drafts.
 
 Adds: none
 

@@ -34,6 +34,7 @@ What an attacker wants:
 Who controls what:
 
 - Anyone who can edit a Jira issue controls its titles, descriptions and comments. Synced content is attacker-controlled: prompt injection.
+- Anyone who can edit a spreadsheet the person picked controls its cells, headers, notes, comments, tab names and title (decision 0050).
 - The model, steered by that content, controls the script it writes and every word it says. Treat everything the sandbox guest prints and everything the model outputs as untrusted.
 - Any website open in the user's browser can send requests to the local server, which has no login. That includes a link inside attacker-edited Jira content. Under `pnpm dev`, only Host and Origin checks stop it; on the desktop app, the launch secret does too.
 - Every other user account on the machine shares loopback, and so can reach the server's port.
@@ -51,11 +52,14 @@ Who controls what:
   - a way around `Approved` or an adapter's `./writer`;
   - a review-link approval without a live token and a typed name, or one reachable by GET;
   - replay sending anything other than the captured arguments, beyond 0003's one exception: a ref to an item an earlier create in the same change set made, sent as that item's ID;
-  - a mutation target, or a read other than `search()`, outside the region, which only the host can enforce.
+  - a mutation target, or a read other than `search()`, outside the region, which only the host can enforce;
+  - a draft applied by the agent, an outside tool or a review link, or by anything but the person in the window (decision 0051);
+  - a Sheets write that isn't `RAW` or a typed, non-formula value, or one over a cell that holds a formula (decision 0050).
 - **Browser and the desktop shell:**
   - a request served without the launch secret on the desktop app, other than the review link page's own routes with their token, which are listed in decision 0036;
   - a route the harness uses to reach `run` that skips the launch secret without a per-turn capability of its own;
-  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a secret outside the fixed names the shell takes (decision 0042), or one written as plaintext;
+  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a secret outside the names and shapes the shell takes (decisions 0042 and 0049), a connection's ID taken from the page rather than the server's own, or a secret written as plaintext;
+  - an OAuth loopback listener that listens beyond 127.0.0.1, takes more than its one redirect, or takes a code without its PKCE verifier and `state` (decision 0050);
   - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
   - the webview navigating away from the server's origin, or any bridge from the page to the shell;
   - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); or an Electron zip or types file whose hash isn't the pinned one;
