@@ -18,6 +18,7 @@ import {
   type ActionInput,
   type ChangeSet,
   type Cluster,
+  clusterMembers,
   type Credential,
   type IndexRecord,
   type Instant,
@@ -25,6 +26,7 @@ import {
   isItemId,
   type ItemId,
   type Log,
+  maxItems,
   parseItemId,
   type Reader,
   type ReadResult,
@@ -60,11 +62,14 @@ import {
   checkConnection,
   fixtureFields,
   fixtureSource,
+  issueCount,
   jiraAttrs,
   type JiraBoards,
   jiraBoards,
   JiraFailed,
+  type JiraProject,
   jiraSource,
+  listProjects,
   readTransport,
 } from "@oriel/jira";
 import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
@@ -116,6 +121,7 @@ import {
   type SettingsStore,
 } from "./settings.ts";
 import { type Notify, notifier } from "./notify.ts";
+import { type Setup, type SetupOptions, setupService } from "./setup/setup.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
@@ -137,11 +143,13 @@ export type JiraWrites = {
 // items. Live is a site, read through the API and written to through
 // approved change sets. From the window is live too, once the user connects
 // it there; the connection is kept in `store`, so it's there again the next
-// time the server starts. `fetch` is for tests, as above.
+// time the server starts. `anySite`: any Jira Cloud site may be connected,
+// as on the desktop app (decision 0038); otherwise only the throwaway one.
+// `fetch` is for tests, as above.
 export type JiraMode =
   | { kind: "fixture"; writeTo?: JiraWrites }
   | ({ kind: "live" } & JiraWrites)
-  | { kind: "window"; store: ConnectionStore; fetch?: typeof fetch };
+  | { kind: "window"; store: ConnectionStore; anySite?: boolean; fetch?: typeof fetch };
 
 // Where Slack comes from (decision 0021). The fixture is the synthetic
 // workspace in `fixtures/slack/`, with the channel picked there, which change
@@ -186,6 +194,9 @@ export type AppOptions = {
   // The system's folder picker, through the desktop app's shell: the
   // folder picked, or null if the person cancelled.
   pickFolder?: (prompt: string) => Promise<string | null>;
+  // The desktop app's first run and its commands for the person's CLI
+  // (decision 0038). None under `pnpm dev`.
+  setup?: SetupOptions;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -199,6 +210,8 @@ export type AppOptions = {
 
 export type App = {
   window(grouping: GroupingId): WindowView;
+  // The first run, which the desktop app opens on until it has finished.
+  setup: Setup;
   // Jira as the window shows it: what's connected, and whether it can be.
   jira(): JiraView;
   api(request: Request, url: URL): Promise<Reply | null>;
@@ -226,16 +239,21 @@ const disconnected: FieldReader<"jira"> = {
   name: async () => null,
 };
 
+// Jira refused the email and API token typed: the help to make a new one
+// stays on screen (OA-125, decision 0038).
+const refusedCredentials =
+  "Jira didn't accept these two together. Check the email is the one you sign in to Jira with. If it is, make a new one (step 2) and paste it here.";
+
 // Why a connection the user typed wasn't kept, in their words.
 const refusals: Record<
   "refused" | "no-project" | "unexpected" | "unreachable",
   (project: string) => string
 > = {
-  refused: () => "Jira didn't accept that email with what you pasted. Check both and try again.",
+  refused: () => refusedCredentials,
   "no-project": (project) =>
     `There's no project ${project} on that site that this account can see.`,
   unexpected: () => "Jira gave an answer Oriel didn't expect. Try again in a minute.",
-  unreachable: () => "Oriel couldn't reach that site. Is it right?",
+  unreachable: () => "Oriel couldn't reach that address. Is it right?",
 };
 
 export const limits: AgentLimits = {
@@ -309,6 +327,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     ...(send ? { fetch: send } : {}),
   });
   const saved = mode.kind === "window" ? await mode.store.load() : null;
+  // A site the window may connect: any Jira Cloud site on the desktop app,
+  // else only the throwaway one.
+  const siteAllowed = (at: string | null): at is string =>
+    at !== null && (mode.kind === "window" && mode.anySite === true ? true : at === throwawaySite);
   let writes: JiraWrites | null =
     mode.kind === "live"
       ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
@@ -319,12 +341,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // or to a site Oriel doesn't connect to, is dropped, so the window asks for
   // Jira again. One that can't be reached now is kept.
   if (mode.kind === "window" && writes) {
-    const check =
-      jiraSite(writes.site) !== throwawaySite
-        ? ("refused" as const)
-        : await checkConnection(transportTo(writes), writes.project).catch(
-            () => "unreachable" as const,
-          );
+    const check = !siteAllowed(jiraSite(writes.site))
+      ? ("refused" as const)
+      : await checkConnection(transportTo(writes), writes.project).catch(
+          () => "unreachable" as const,
+        );
     if (check === "refused" || check === "no-project") {
       log("jira: the saved connection was refused", { check });
       writes = null;
@@ -710,7 +731,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       : scriptedAgent(agentDeps, devPlan);
   const settings = settingsService({
     store,
-    models: options.agent ? null : (models ?? null),
+    models: models ?? null,
     themes: options.themes ?? [defaultTheme],
     cliPaths: options.cliPaths ?? false,
     ...(options.keys ? { keys: options.keys } : {}),
@@ -975,6 +996,21 @@ export async function createApp(options: AppOptions): Promise<App> {
   // a credential and the store, and nowhere else: not a log line, an event,
   // a reply or a message.
   let joining = false;
+  // Jira's first sync while it reads, and after it stopped, until the next
+  // connect or one that worked.
+  let jiraReading: {
+    project: string;
+    read: number;
+    total: number | null;
+    stopped: boolean;
+  } | null = null;
+  const notASite = "Type your Jira address, like yourteam.atlassian.net.";
+  const siteProblem = (at: string | null): string | null =>
+    at === null
+      ? notASite
+      : siteAllowed(at)
+        ? null
+        : `For now, Oriel connects only to ${new URL(throwawaySite).host}.`;
   const connectJira = async (
     typed: Extract<ActionInput<"source.connect">, { kind: "jira" }>,
   ): Promise<{ jira: JiraView } | { problem: string }> => {
@@ -982,9 +1018,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       return { problem: "Jira is already connected to this window." };
     if (joining) return { problem: "Oriel is connecting Jira already." };
     const at = jiraSite(typed.site);
-    if (!at) return { problem: "Type your Jira site, like yourteam.atlassian.net." };
-    if (at !== throwawaySite)
-      return { problem: `For now, Oriel connects only to ${new URL(throwawaySite).host}.` };
+    const refusedSite = siteProblem(at);
+    if (refusedSite || !at) return { problem: refusedSite ?? notASite };
     const email = typed.email.trim();
     const project = typed.project.trim().toUpperCase();
     const chosen = writesTo({ site: at, email, token: typed.token.trim(), project }, mode.fetch);
@@ -1001,9 +1036,28 @@ export async function createApp(options: AppOptions): Promise<App> {
       const nextBoards = boardsOf(chosen);
       const next = liveSource(chosen, nextBoards);
       const first = index.source(workspaceId, "jira") === null;
+      // The first sync counts what it reads, of the total Jira reports, for
+      // the first run's progress (decision 0038).
+      const reading = {
+        project,
+        read: 0,
+        total: await issueCount(transportTo(chosen), project).catch(() => null),
+        stopped: false,
+      };
+      jiraReading = reading;
+      const counting: typeof next = {
+        ...next,
+        async *sync(cursor) {
+          for await (const page of next.sync(cursor)) {
+            reading.read += page.records.length;
+            yield page;
+          }
+        },
+      };
       try {
-        await syncInto(next, jiraAttrs, true);
+        await syncInto(counting, jiraAttrs, true);
       } catch (error) {
+        reading.stopped = true;
         log("jira connect failed", { site: at, project, error: String(error) });
         return {
           problem: "Jira answered, but Oriel couldn't read the project just now. Try again.",
@@ -1018,6 +1072,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       source = next;
       writes = chosen;
       boards = nextBoards;
+      jiraReading = null;
       Object.assign(sets, buildSets());
       if (first) jiraConnected();
       log("jira connected", { site: at, project });
@@ -1025,6 +1080,42 @@ export async function createApp(options: AppOptions): Promise<App> {
     } finally {
       joining = false;
     }
+  };
+
+  // The projects the details typed can see, before any is connected, so the
+  // person picks one from Jira's own list (decision 0038). Nothing is kept,
+  // and the token goes only into the credential for these requests.
+  const jiraProjects = async (typed: {
+    site: string;
+    email: string;
+    token: string;
+    query: string;
+  }): Promise<
+    | { projects: JiraProject[]; more: boolean }
+    | { problem: string; fields: ("site" | "email" | "token")[] }
+  > => {
+    if (mode.kind !== "window" || source)
+      return { problem: "Jira is already connected to this window.", fields: [] };
+    const at = jiraSite(typed.site);
+    const refusedSite = siteProblem(at);
+    if (refusedSite || !at) return { problem: refusedSite ?? notASite, fields: ["site"] };
+    const transport = transportTo(
+      writesTo(
+        { site: at, email: typed.email.trim(), token: typed.token.trim(), project: "" },
+        mode.fetch,
+      ),
+    );
+    const listed = await listProjects(transport, typed.query).catch((error: unknown) => {
+      log("jira projects failed", { site: at, error: String(error) });
+      return { kind: "unreachable" as const };
+    });
+    if (listed.kind === "ok") return { projects: listed.projects, more: listed.more };
+    log("jira projects refused", { site: at, why: listed.kind });
+    if (listed.kind === "refused")
+      return { problem: refusedCredentials, fields: ["email", "token"] };
+    if (listed.kind === "unreachable")
+      return { problem: refusals.unreachable(""), fields: ["site"] };
+    return { problem: refusals.unexpected(""), fields: [] };
   };
 
   // The overview, computed now from the index, the change log, workstreams,
@@ -1067,7 +1158,24 @@ export async function createApp(options: AppOptions): Promise<App> {
   // 0027).
   const windowOverview = async () => {
     const view = await overview();
-    const byId = new Map(records().map((record) => [record.id as string, record]));
+    const all = records();
+    const byId = new Map(all.map((record) => [record.id as string, record]));
+    // Each cluster candidate's items, by ID, so the agent can make a
+    // workstream of it, as Make a workstream does on the page (decision
+    // 0038). The page itself never needs them.
+    const at = asOf ?? now();
+    const membersOf = (grouping: GroupingId, key: string) => {
+      const cluster = groupings[grouping].group(all, at).find((each) => each.key === key);
+      return cluster ? clusterMembers(cluster).slice(0, maxItems) : [];
+    };
+    const rows = view.candidates.rows.map((row) =>
+      row.subject.kind === "cluster"
+        ? {
+            ...row,
+            subject: { ...row.subject, items: membersOf(row.subject.grouping, row.subject.key) },
+          }
+        : row,
+    );
     const items = overviewItems(view).flatMap((id) => {
       const record = byId.get(id);
       return record
@@ -1081,15 +1189,35 @@ export async function createApp(options: AppOptions): Promise<App> {
           ]
         : [];
     });
-    return { view, items };
+    return {
+      view: { ...view, candidates: { ...view.candidates, rows } },
+      items,
+      reachable: rows.flatMap((row) => ("items" in row.subject ? row.subject.items : [])),
+    };
   };
 
   const window = (grouping: GroupingId) =>
     windowView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null);
 
+  // The desktop app's first run, and the commands for the person's CLI that
+  // Settings shares with it (decision 0038).
+  const setup = setupService({
+    options: options.setup ?? null,
+    models: models ?? null,
+    settings,
+    store,
+    made: () => openWorkstreams().length > 0,
+    reading: () => jiraReading && { ...jiraReading },
+    workspaceId,
+    emit,
+    now,
+    log,
+  });
+
   return {
     workspaceId,
     window,
+    setup,
     jira: jiraView,
     settings,
     api: api({
@@ -1147,14 +1275,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       overview,
       jira: jiraView,
+      jiraProjects,
       folder: folderView,
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       sources: sourcesView,
+      setup,
       log,
     }),
     settled: async () => {
       await conversation.settled();
       await notifying?.idle();
+      await setup.idle();
     },
     telemetry: () => telemetry.list(workspaceId),
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
@@ -1167,6 +1298,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       await conversation.settled();
       unwatchNotifying();
       await notifying?.stop();
+      setup.close();
+      await setup.idle();
       await waiting;
       await syncing.catch(() => {});
       if (db.isOpen) db.close();

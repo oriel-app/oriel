@@ -41,6 +41,12 @@ export function OverviewPage(props: {
   chat: WindowChatModel;
   // Whether the window chat has a conversation.
   ongoing: boolean;
+  // The first run's overview (decision 0038): its one-time line, and its
+  // top question an instruction; and whether any AI is set up.
+  firstRun: { line: boolean; questions: boolean };
+  noAi: boolean;
+  // Only a folder is connected, which Oriel only reads.
+  folderOnly: boolean;
   // Shows the sidebar's list of the threads waiting on the user.
   onNeedsYou(): void;
   dispatch: Dispatch;
@@ -57,8 +63,25 @@ export function OverviewPage(props: {
         )}
       </div>
       {view && model.opened.includes("changed") && <Changed view={view} dispatch={dispatch} />}
-      <AskBar chat={props.chat} view={view} ongoing={props.ongoing} dispatch={dispatch} />
-      {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
+      {props.firstRun.line && (
+        <FirstRunLine
+          jira={jira.view?.connected != null}
+          folder={props.folderOnly || jira.view?.connected == null}
+          ask={!props.noAi}
+          dispatch={dispatch}
+        />
+      )}
+      <AskBar
+        chat={props.chat}
+        view={view}
+        ongoing={props.ongoing}
+        firstRun={props.firstRun.questions}
+        noAi={props.noAi}
+        dispatch={dispatch}
+      />
+      {jira.view?.connectable && (
+        <ConnectJira jira={jira} folderOnly={props.folderOnly} dispatch={dispatch} />
+      )}
       {view === null ? (
         model.problem === null ? (
           <p class="overview-loading">Loading the overview…</p>
@@ -111,6 +134,34 @@ export function OverviewPage(props: {
         dispatch={dispatch}
       />
     </main>
+  );
+}
+
+// The first run's one-time line (decision 0038): what the window and a
+// workstream are, until it's dismissed or the first workstream is made.
+function FirstRunLine(props: { jira: boolean; folder: boolean; ask: boolean; dispatch: Dispatch }) {
+  const what =
+    props.jira && props.folder
+      ? "your Jira and your notes"
+      : props.jira
+        ? "your Jira"
+        : "your notes";
+  return (
+    <aside class="first-run-line" aria-label="About the window">
+      <p>
+        <strong>This is your window:</strong> {what} in one place. To follow{" "}
+        {props.jira ? "an epic" : "something"}, make it a <strong>workstream</strong>: Oriel keeps
+        its items, your questions and its changes together.
+        {props.ask && " Start with the first question below."}
+      </p>
+      <button
+        type="button"
+        class="quiet-action"
+        onClick={() => props.dispatch({ type: "setup", msg: { type: "lineDismissed" } })}
+      >
+        Dismiss
+      </button>
+    </aside>
   );
 }
 

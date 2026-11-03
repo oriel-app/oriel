@@ -742,6 +742,8 @@ export type ModelPick = { provider: string; model: string };
 //   Oriel can't drive, or has no account;
 // - no-key: no API key is set;
 // - not-yet: installed, but Oriel can't run on it yet;
+// - untrusted: from the vendor's installer, but its code signature isn't the
+//   vendor's, so Oriel won't run it (decision 0038);
 // - checking: Oriel is looking now.
 export type ProviderStatus =
   | "ready"
@@ -750,6 +752,7 @@ export type ProviderStatus =
   | "signed-out"
   | "no-key"
   | "not-yet"
+  | "untrusted"
   | "checking";
 
 // One provider instance's row. `detail` says what was found, in the person's
@@ -807,3 +810,94 @@ export type SettingsChange =
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }
   | { provider: string; path: string | null };
+
+// The person's Claude Code as the first run and Settings show it, on the
+// desktop app (decision 0038): what Oriel found, what it's running for them,
+// and what went wrong.
+// - checking, missing, signed-out, untrusted, ready: as its provider row;
+// - unsupported: a version too old, which an update fixes; too-new: one
+//   past what Oriel drives, which Oriel's next update will;
+// - installing, signing-in, updating: a command is running;
+// - no-plan: signed in on a plan that doesn't include Claude Code.
+export type CliState =
+  | "checking"
+  | "missing"
+  | "installing"
+  | "unsupported"
+  | "too-new"
+  | "updating"
+  | "signed-out"
+  | "signing-in"
+  | "no-plan"
+  | "untrusted"
+  | "ready";
+export type CliCommand = "install" | "sign-in" | "update";
+export type CliPhase = "downloading" | "setting-up" | "checking" | "waiting" | "updating";
+
+// Why a command or the test turn didn't work, which picks the row's words
+// and its way on.
+export type CliFailure =
+  | "download"
+  | "setting-up"
+  | "untrusted"
+  | "sign-in"
+  | "update"
+  | "usage-limit"
+  | "no-connection"
+  | "no-plan"
+  | "refused"
+  | "other";
+
+export type CliView = {
+  state: CliState;
+  version: string | null;
+  // Once signed in, as `claude auth status` says: shown, never stored.
+  account: { plan: string | null; email: string | null } | null;
+  // While a command runs: what it's doing and how long it has run.
+  running: { command: CliCommand; phase: CliPhase; ms: number } | null;
+  // How a version too old updates: Oriel runs Claude Code's own update, or
+  // names the command of the package manager it came from, which Oriel
+  // doesn't run.
+  update: { by: "oriel" } | { by: "person"; command: string } | null;
+  // The last command or test turn that didn't work: the row's sentence, its
+  // log for Show details (redacted: no password, key, code, email or link
+  // query), and, for a usage limit, when it resets.
+  failed: {
+    what: CliCommand | "test";
+    why: CliFailure;
+    sentence: string;
+    log: string[];
+    resets: string | null;
+  } | null;
+};
+
+// The first run's own progress (decision 0038). `step`: the first step
+// neither done nor skipped, where it opens. `firstRun`: the setup finished
+// and no workstream is made yet, while the overview's question to start from
+// is the instruction "Make … a workstream". `line`: the overview's one-time
+// line shows. `reading`: Jira's first sync, the issues read of the total
+// Jira reports, while it reads, or where it stopped.
+export type FirstRunView = {
+  step: "ai" | "work" | "finished";
+  steps: { ai: "done" | "skipped" | null; work: "done" | "skipped" | null };
+  firstRun: boolean;
+  line: boolean;
+  reading: { project: string; read: number; total: number | null; stopped: boolean } | null;
+};
+
+// What the desktop app's setup and Settings show: the CLI rows as Settings
+// has them (Claude Code, and Codex once found), the Claude Code row's own
+// state, and the first run. Each null under `pnpm dev`, which has neither.
+export type SetupView = {
+  providers: ProviderView[];
+  cli: CliView | null;
+  firstRun: FirstRunView | null;
+};
+
+// A Jira project the details typed can see, for the first run's pick.
+export type JiraProjectView = {
+  key: string;
+  name: string;
+  issues: number | null;
+  updatedAt: string | null;
+};

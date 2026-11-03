@@ -1,6 +1,6 @@
 # 0030 The window chat opens from an ask bar; answers carry blocks, and a block can be pinned
 
-Accepted 2026-11-02 (OA-136, OA-137). Amends 0024 and 0027. Changes SPEC §1, §2, §4, §7 and §10, and AGENTS.md's checklist. Amended by 0032: an answer names items, threads, change sets and workstreams as chips, `[[id]]` drawn by Oriel, and quotes synced text under the item it is from, checked word for word; a rows block draws its items as chips. Amended by 0033: never HTML in an answer's text, a block or a chip; HTML only in a sketch, a sandboxed frame under the answer.
+Accepted 2026-11-02 (OA-136, OA-137). Amends 0024 and 0027. Changes SPEC §1, §2, §4, §7 and §10, and AGENTS.md's checklist. Amended by 0032: an answer names items, threads, change sets and workstreams as chips, `[[id]]` drawn by Oriel, and quotes synced text under the item it is from, checked word for word; a rows block draws its items as chips. Amended by 0033: never HTML in an answer's text, a block or a chip; HTML only in a sketch, a sandboxed frame under the answer. Amended by 0044: the window chat's overview read gives a cluster candidate its items' IDs, which an action in that run may take and nothing may read.
 
 Adds: none
 

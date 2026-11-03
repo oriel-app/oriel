@@ -145,6 +145,11 @@ export const exemptRoutes: Record<string, string> = {
   "/settings": "the person's own settings, which no agent may change",
   "/settings/look": "the person's own settings, which no agent may change",
   "/settings/key": "the person's own API key, which no agent may set or see",
+  // Decision 0038: what runs on the person's machine, and their sign-in.
+  "/setup/cli": "the person's own CLI, which no agent may install or sign in",
+  "/setup/ai": "the person's own choice of AI, which no agent may make",
+  "/setup/progress": "the person's own first run, which no agent may move",
+  "/jira/projects": "a read of Jira's projects for the details typed, which keeps nothing",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

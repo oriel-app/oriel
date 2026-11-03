@@ -6,8 +6,9 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type { JiraView, ThreadView, WindowView } from "@oriel/web/view";
+import type { JiraView, SetupView, ThreadView, WindowView } from "@oriel/web/view";
 import { fileStore, jiraSite, memoryStore, secretsStore } from "./connection.ts";
+import { memorySetup } from "./setup/state.ts";
 import { account, json, type Script, t0, testApp } from "./testing.ts";
 
 const details = {
@@ -107,11 +108,18 @@ test("details Jira won't take are refused in plain words, and nothing is kept", 
     assert.equal(reply.status, 400);
     return json<{ error: string }>(reply).error;
   };
-  assert.match(await refused({ ...details, token: "not-the-one" }), /didn't accept that email/);
+  // The help to make a new one stays on screen, so the refusal points to it.
+  assert.match(
+    await refused({ ...details, token: "not-the-one" }),
+    /didn't accept these two together\. .* make a new one \(step 2\)/,
+  );
   assert.match(await refused({ ...details, email: "other@example.com" }), /didn't accept/);
   assert.match(await refused({ ...details, project: "NOPE" }), /no project NOPE/);
   assert.match(await refused({ ...details, site: "acme.atlassian.net" }), /only to oriel/);
-  assert.match(await refused({ ...details, site: "http://localhost:8080" }), /Type your Jira site/);
+  assert.match(
+    await refused({ ...details, site: "http://localhost:8080" }),
+    /Type your Jira address/,
+  );
   assert.equal((await app.post("/api/jira", { ...details, token: "" })).status, 400);
   // A detail the window's check refuses is named alone, not beside the folder's.
   assert.equal(
@@ -329,4 +337,75 @@ test("a store for secrets keeps the connection under one name, and one it can't 
   assert.equal(await gone.load(), null);
   assert.equal(logged.length, 2);
   assert.ok(logged.every((line) => !line.includes(account.token)));
+});
+
+test("the details typed list the projects they can see, and keep nothing (decision 0038)", async (t) => {
+  const app = await unconnected(t);
+  const { project: _, ...typed } = details;
+  const reply = await app.post("/api/jira/projects", typed);
+  assert.equal(reply.status, 200);
+  const listed = json<{ projects: { key: string; issues: number | null }[]; more: boolean }>(reply);
+  assert.deepEqual(
+    listed.projects.map((p) => p.key),
+    ["SYN"],
+  );
+  assert.ok((listed.projects[0]?.issues ?? 0) > 100);
+  assert.equal(listed.more, false);
+  assert.ok(!String(reply.body).includes(account.token));
+  assert.equal(app.store.saved(), null);
+  assert.equal(json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected, null);
+
+  // A refusal names its fields, so the page marks them and keeps the help.
+  const refused = await app.post("/api/jira/projects", { ...typed, token: "not-the-one" });
+  assert.equal(refused.status, 400);
+  assert.deepEqual(json<{ fields: string[] }>(refused).fields, ["email", "token"]);
+  assert.match(json<{ error: string }>(refused).error, /didn't accept these two together/);
+  const site = await app.post("/api/jira/projects", { ...typed, site: "localhost:8080" });
+  assert.deepEqual(json<{ fields: string[] }>(site).fields, ["site"]);
+});
+
+test("on the desktop app any Jira Cloud site is tried; otherwise only the throwaway one", async (t) => {
+  const { project: _, ...typed } = details;
+  const elsewhere = { ...typed, site: "acme.atlassian.net" };
+  const local = await unconnected(t);
+  const refused = await local.post("/api/jira/projects", elsewhere);
+  assert.match(json<{ error: string }>(refused).error, /only to oriel\.atlassian\.net/);
+  const desktop = await unconnected(t, { anySite: true });
+  // Tried: SYN in memory answers only for its own site, so this one is out of reach.
+  const tried = await desktop.post("/api/jira/projects", elsewhere);
+  assert.match(json<{ error: string }>(tried).error, /couldn't reach that address/);
+  assert.deepEqual(json<{ fields: string[] }>(tried).fields, ["site"]);
+  // Still only a Jira Cloud address, checked before credentials go anywhere.
+  const http = await desktop.post("/api/jira/projects", {
+    ...typed,
+    site: "http://acme.atlassian.net",
+  });
+  assert.match(json<{ error: string }>(http).error, /Type your Jira address/);
+});
+
+test("Jira's first sync says what it has read, of the total Jira reports", async (t) => {
+  const setup = {
+    state: memorySetup(),
+    fresh: true,
+    home: tmpdir(),
+    env: {},
+    trust: async () => null,
+  };
+  const app = await unconnected(t, { anySite: true, setup });
+  const reading = async () =>
+    json<SetupView>(await app.get("/api/setup")).firstRun?.reading ?? null;
+  assert.equal(await reading(), null);
+  const searches = app.site?.hold("search");
+  assert.ok(searches);
+  const connecting = app.post("/api/jira", details);
+  await searches.reached;
+  const during = await reading();
+  assert.equal(during?.project, "SYN");
+  assert.equal(during?.read, 0);
+  assert.ok((during?.total ?? 0) > 100);
+  assert.equal(during?.stopped, false);
+  searches.release();
+  assert.equal((await connecting).status, 200);
+  // Read whole: there's nothing more to show.
+  assert.equal(await reading(), null);
 });

@@ -10,7 +10,8 @@ export type Request =
   | { kind: "secret.get"; name: string }
   | { kind: "secret.set"; name: string; secret: string }
   | { kind: "secret.delete"; name: string }
-  | { kind: "notify"; title: string; body: string; open: string };
+  | { kind: "notify"; title: string; body: string; open: string }
+  | { kind: "window.focus" };
 
 export type Parsed =
   | { id: number; request: Request }
@@ -74,6 +75,8 @@ export function parseRequest(line: string): Parsed {
         request: { kind: "notify", title: title.slice(0, 256), body: body.slice(0, 1024), open },
       };
     }
+    case "window.focus":
+      return { id, request: { kind: "window.focus" } };
     default:
       return { id, refused: "not a request the shell answers" };
   }

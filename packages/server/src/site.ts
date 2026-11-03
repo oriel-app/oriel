@@ -27,6 +27,10 @@ export type Site = {
   // In the desktop app, the launch secret every request but a review link's
   // must carry in this cookie (decision 0036). `pnpm dev` has none.
   launch?: { cookie: string; secret: string };
+  // Where the first run is (decision 0038): until it has finished, every
+  // page opens it; once finished, it never shows again. Absent under
+  // `pnpm dev`, which has no first run.
+  firstRun?: () => "pending" | "finished";
 };
 
 export type Request = {
@@ -101,6 +105,7 @@ const pagePaths = [
   /^\/browse$/,
   /^\/done$/,
   /^\/settings(?:\/(?:appearance|asking|notifications))?$/,
+  /^\/setup$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
   // A thread not started yet: a draft in the browser until its first message.
@@ -212,8 +217,15 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
       return reply(301, "text/plain; charset=utf-8", "moved\n", {
         location: `/workstreams/${moved}${url.search}`,
       });
-    if (pagePaths.some((pattern) => pattern.test(path)))
+    if (pagePaths.some((pattern) => pattern.test(path))) {
+      const first = site.firstRun?.() ?? "finished";
+      const setup = path === "/setup";
+      if ((first === "pending") !== setup)
+        return reply(302, "text/plain; charset=utf-8", "the first run\n", {
+          location: setup ? "/" : "/setup",
+        });
       return reply(200, "text/html; charset=utf-8", page(site.look?.() ?? defaultLook));
+    }
     // A review link's reader isn't the person who picked a look.
     if (reviewPath.test(path))
       return reply(200, "text/html; charset=utf-8", page(defaultLook), {

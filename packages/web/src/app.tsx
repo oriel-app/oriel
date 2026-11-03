@@ -17,8 +17,9 @@ import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
 import { OverviewPage } from "./overview-page.tsx";
-import { sendKey } from "./settings.ts";
+import { noAi, sendKey } from "./settings.ts";
 import { SettingsPage } from "./settings-page.tsx";
+import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
 import { WindowChat } from "./window-chat-view.tsx";
@@ -100,6 +101,8 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
+  // So does the first run, until it has finished (decision 0038).
+  if (model.route.page === "setup") return <SetupPage model={model} dispatch={dispatch} />;
   // The panel's adds, as notes in whichever stack of Undos is on screen.
   const added = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   return (
@@ -195,6 +198,12 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             browse={windowRoute(model.window)}
             chat={model.chat}
             ongoing={model.thread !== null}
+            firstRun={{
+              line: model.setup.view?.firstRun?.line === true,
+              questions: model.setup.view?.firstRun?.firstRun === true,
+            }}
+            noAi={noAi(model.settings)}
+            folderOnly={model.folder.view !== null && !model.jira.view?.connected}
             onNeedsYou={props.onNeedsYou}
             dispatch={dispatch}
           />
@@ -241,9 +250,15 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
     }
     case "settings":
       return (
-        <SettingsPage model={model.settings} section={model.route.section} dispatch={dispatch} />
+        <SettingsPage
+          model={model.settings}
+          setup={model.setup}
+          section={model.route.section}
+          dispatch={dispatch}
+        />
       );
     case "review":
+    case "setup":
       return null;
   }
 }

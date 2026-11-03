@@ -26,7 +26,12 @@ export {
   type ClaudeCodeOptions,
   claudeCodeTitler,
   type HarnessProblem,
+  locateClaudeCode,
+  parseVersion,
+  passedEnv,
   type Spawn,
+  supportedVersion,
+  tooNew,
 } from "./claude-code.ts";
 export {
   anthropicTitler,

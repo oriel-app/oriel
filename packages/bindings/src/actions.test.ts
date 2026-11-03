@@ -133,3 +133,37 @@ return "asked";`;
   assert.deepEqual(run.mutations, []);
   assert.deepEqual(run.rejected, []);
 });
+
+test("the items of a cluster the overview names may join a workstream, but not be read (0044)", async () => {
+  const chat = () =>
+    bindingsFor(region, {
+      reader,
+      namespaces,
+      thread: threadId,
+      overview: async () => ({ view: {}, items: [], reachable: ["jira:SYN-80", "jira:SYN-81"] }),
+    });
+  const bindings = chat();
+  // Before the read, they're out of reach.
+  assert.throws(
+    () =>
+      bindings.intend("workstream.create", [{ kind: "picked", name: "X", items: ["jira:SYN-80"] }]),
+    /isn't in this region/,
+  );
+  await bindings.read("window.overview", []);
+  assert.deepEqual(
+    bindings.intend("workstream.create", [
+      { kind: "picked", name: "X", items: ["jira:SYN-80", "jira:SYN-81"] },
+    ]),
+    {
+      action: "workstream.create",
+      input: { kind: "picked", name: "X", items: ["jira:SYN-80", "jira:SYN-81"] },
+    },
+  );
+  // Reading one still takes a search() that shows it.
+  await assert.rejects(bindings.read("items.read", ["jira:SYN-80"]), /SYN-80/);
+  // In this run only.
+  assert.throws(
+    () => chat().intend("workstream.add", [{ items: ["jira:SYN-80"] }]),
+    /isn't in this region/,
+  );
+});

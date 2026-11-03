@@ -10,8 +10,12 @@ import type { ZoomId } from "./zoom.ts";
 // Pilot telemetry, stored locally. Only raw events are stored; these are
 // derived from them, never stored:
 // - first question asked: the earliest `question.asked`
-// - first change set approved, and the time since connect (the onboarding
-//   budget): the earliest approving `changeset.decided` minus `source.connected`
+// - first change set approved, and the time since the first run opened (the
+//   onboarding budget, decision 0038): the earliest approving
+//   `changeset.decided` minus `first-run.opened`, or on localhost, where
+//   there is no first run, minus `source.connected`
+// - each phase of the first run: the time between its events, Atlassian's
+//   page included, as the gap before `source.connected`
 // - time to done: from `thread.opened` to the thread's first
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a
@@ -160,6 +164,37 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "overview.suggestion-made"; workstreamId: Ulid; grouping: string }
   // The person picked a theme in Settings, by its name (decision 0034).
   | { name: "theme.picked"; theme: string }
+  // The desktop app's first run (decision 0038). Its first screen opened,
+  // which starts the onboarding budget's clock; `fresh`: on a data folder
+  // with nothing in it yet.
+  | { name: "first-run.opened"; fresh: boolean }
+  // What the first run found of each command-line agent, by its state.
+  | { name: "first-run.cli-found"; cli: "claude-code" | "codex"; state: string }
+  // An install, sign-in or update of the person's CLI started, from the
+  // first run or Settings, and how it ended, after how long.
+  | { name: "cli.started"; command: "install" | "sign-in" | "update" }
+  | {
+      name: "cli.ended";
+      command: "install" | "sign-in" | "update";
+      outcome: "done" | "failed" | "cancelled";
+      ms: number;
+    }
+  // The test turn that proves the plan answers: how long, its tokens, and
+  // why it failed if it did.
+  | {
+      name: "first-run.test-turn";
+      ms: number;
+      inputTokens: number;
+      outputTokens: number;
+      failed?: string;
+    }
+  | { name: "first-run.ai-chosen"; ai: "claude-code" | "api" }
+  | { name: "first-run.step-skipped"; step: "ai" | "work" }
+  // Show details' log was copied, for someone helping the person.
+  | { name: "first-run.details-copied"; what: string }
+  // The first run ended: how long from its opening, and whether it installed
+  // or signed in the person's CLI.
+  | { name: "first-run.finished"; ms: number; installed: boolean; signedIn: boolean }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );

@@ -52,8 +52,11 @@ export const loadWindowChat: Effect = get("/api/window-chat", { kind: "windowCha
 // The questions to start from: the overview's own superlatives (the
 // workstream that moved most since the user last looked, the one stalled
 // longest, the top candidate), never generated. Questions about a cited row
-// are Cite's (OA-137).
-export function questionsFrom(view: OverviewView): Question[] {
+// are Cite's (OA-137). On the first run, the top candidate's is first, and
+// an instruction, "Make … a workstream", so what the agent does matches
+// what was asked (decision 0038). Its name shows only on the button: the
+// message is fixed wording and the row's ID, never its title.
+export function questionsFrom(view: OverviewView, firstRun = false): Question[] {
   const headline = (id: string) => view.headlines.find((line) => line.id === id)?.subject;
   const moved = headline("moved");
   const quiet = headline("quiet");
@@ -86,7 +89,7 @@ export function questionsFrom(view: OverviewView): Question[] {
           text: "Why has the workstream that's been quiet longest stalled?",
         }
       : null,
-    topName
+    topName && !firstRun
       ? {
           kind: "candidates",
           label: `Should ${topName} become a workstream?`,
@@ -94,7 +97,15 @@ export function questionsFrom(view: OverviewView): Question[] {
         }
       : null,
   ];
-  return asked.filter((question) => question !== null);
+  const make: Question | null =
+    firstRun && topName && top?.kind === "item"
+      ? {
+          kind: "make-candidate",
+          label: `Make ${topName} a workstream`,
+          text: `Make a workstream of the top candidate in Not in a workstream yet, ${top.item.id}, with all its items.`,
+        }
+      : null;
+  return [make, ...asked].filter((question) => question !== null);
 }
 
 // The root's slice the window chat changes: its own model and the thread.

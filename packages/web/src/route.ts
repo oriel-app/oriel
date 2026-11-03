@@ -28,6 +28,9 @@ export type Page =
   | { page: "done"; tab?: "dropped"; number?: number }
   // Settings, at one of its sections (OA-181).
   | { page: "settings"; section: SettingsSection }
+  // The desktop app's first run (decision 0038), which every page opens on
+  // until it has finished.
+  | { page: "setup" }
   | { page: "review"; token: string };
 
 export const settingsSections = ["providers", "appearance", "asking", "notifications"] as const;
@@ -62,6 +65,7 @@ function parsePage(pathname: string, search: string): Page {
   const token = reviewPath.exec(pathname)?.[1];
   if (token) return { page: "review", token };
   if (pathname === "/threads/new") return { page: "new-thread" };
+  if (pathname === "/setup") return { page: "setup" };
   if (pathname === "/settings") return { page: "settings", section: "providers" };
   const section = /^\/settings\/(appearance|asking|notifications)$/.exec(pathname)?.[1];
   if (section === "appearance" || section === "asking" || section === "notifications")
@@ -122,6 +126,8 @@ function pageUrl(route: Page): string {
     }
     case "settings":
       return route.section === "providers" ? "/settings" : `/settings/${route.section}`;
+    case "setup":
+      return "/setup";
     case "review":
       return `/review/${route.token}`;
   }

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import type { Log } from "@oriel/core";
 import type { AppOptions } from "../app.ts";
+import type { SetupOptions } from "../setup/setup.ts";
 import { type Secrets, secretsStore } from "../connection.ts";
 import { type Serving, serve } from "../serve.ts";
 import { channel, type Shell } from "./channel.ts";
@@ -38,9 +39,12 @@ export type DesktopOptions = {
   // store.
   // `looked`, when given, holds every request until the first look ends, as
   // it did when the look came first, so no page shows it unfinished.
+  // `setup`: the first run and its commands for the person's CLI (decision
+  // 0038), which bring the window to the front through the shell.
   model?: (secrets: Secrets) => Promise<
     Pick<AppOptions, "agent" | "titler" | "models" | "settings" | "keys"> & {
       looked?: Promise<unknown>;
+      setup?: Omit<SetupOptions, "front">;
     }
   >;
   // How Jira is reached; tests pass a site in memory.
@@ -78,7 +82,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
   });
   const secret = await Promise.race([lines.secret, stopped]);
   const secrets = secretsOf(lines.shell);
-  const { looked, ...model } = options.model
+  const { looked, setup, ...model } = options.model
     ? await Promise.race([options.model(secrets), stopped])
     : {};
   mkdirSync(data, { recursive: true, mode: 0o700 });
@@ -96,9 +100,21 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
         await lines.shell.ask({ kind: "notify", ...notice });
       },
       pickFolder: (prompt) => lines.shell.ask({ kind: "folder.pick", prompt }),
+      ...(setup
+        ? {
+            setup: {
+              ...setup,
+              front: async () => {
+                await lines.shell.ask({ kind: "window.focus" });
+              },
+            },
+          }
+        : {}),
       jira: {
         kind: "window",
         store: secretsStore(secrets, log),
+        // Any Jira Cloud site the person connects (decision 0038).
+        anySite: true,
         ...(options.jiraFetch ? { fetch: options.jiraFetch } : {}),
       },
       log,

@@ -21,6 +21,7 @@ import {
   claudeCodeTitler,
   defaultModel,
   type HarnessProblem,
+  locateClaudeCode,
   type Provider,
   type Titler,
   titleModel,
@@ -36,10 +37,14 @@ export const claudeModels: readonly { id: string; label: string }[] = [
   { id: titleModel, label: "Haiku 5.5" },
 ];
 
-// What Oriel found for one instance when it last looked.
+// What Oriel found for one instance when it last looked. An untrusted CLI's
+// problem is the trust check's sentence.
 export type Found =
   | { status: "ready"; cli: ClaudeCode | null }
-  | { status: Exclude<ProviderStatus, "ready">; problem?: HarnessProblem };
+  | {
+      status: Exclude<ProviderStatus, "ready">;
+      problem?: HarnessProblem | { kind: "untrusted"; message: string };
+    };
 
 // What runs a turn or a title: an instance found ready and turned on, and
 // one of its models.
@@ -55,6 +60,15 @@ export type ModelsOptions = {
   kept?: { get(): Promise<string | null> };
   // `--claude-code <path>`; a path set in Settings wins.
   claudeCodePath?: string;
+  // Whether Oriel may run the CLI at `path`, asked before each look runs it
+  // and before each turn and title on it: on the desktop app, that a Claude
+  // Code from its vendor's installer is signed by its vendor (decision
+  // 0038). Null when it may; else the sentence its row says.
+  trust?: (path: string) => Promise<string | null>;
+  // The desktop app, whose first run and Settings install and sign in the
+  // person's Claude Code: a turn with no model points there, never to a
+  // terminal (decision 0038).
+  desktop?: true;
   // The environment the CLIs are found in. Default `process.env`.
   env?: Readonly<Record<string, string | undefined>>;
   // Stand in for the CLI check and the providers in tests.
@@ -146,7 +160,13 @@ export function models(options: ModelsOptions): Models {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
     if (provider.kind === "codex")
       return onPath("codex", env) ? { status: "not-yet" } : { status: "missing" };
-    const path = provider.path ?? options.claudeCodePath;
+    const given = provider.path ?? options.claudeCodePath;
+    // With a trust check, the CLI is found first, so the check sees the file
+    // the look then runs.
+    const located = options.trust ? locateClaudeCode(env, given) : null;
+    const refused = located && (await options.trust?.(located));
+    if (refused) return { status: "untrusted", problem: { kind: "untrusted", message: refused } };
+    const path = located ?? given;
     const result = await check({ env, ...(path ? { path } : {}) });
     return result.ok
       ? { status: "ready", cli: result.cli }
@@ -196,6 +216,8 @@ export function models(options: ModelsOptions): Models {
       settings.providers.some((p) => foundOf(p.id).status === "not-yet")
     )
       return codexNotYet;
+    if (options.desktop && claudeFound.status !== "untrusted")
+      return "Oriel has no AI set up yet. Set up Claude Code in Settings, or add an API key there.";
     if ("problem" in claudeFound && claudeFound.problem) return claudeFound.problem.message;
     return "Oriel has no model to run on. Open Settings to set one up.";
   }
@@ -229,20 +251,31 @@ export function models(options: ModelsOptions): Models {
             built = agent({ ...deps, provider: providerOf(model, key) });
             agents.set(id, built);
           }
-          return built.turn(input, turnOptions);
+          const { cli } = model;
+          const { trust } = options;
+          if (!cli || !trust) return built.turn(input, turnOptions);
+          // The file may have changed since the look, as when the CLI
+          // updated itself: it runs only once the check passes again.
+          const running = built;
+          return (async function* () {
+            const refused = await trust(cli.path);
+            yield* (refused ? setupAgent(refused) : running).turn(input, turnOptions);
+          })();
         },
       };
     },
     titler(settings) {
-      return (text, titleOptions) => {
+      return async (text, titleOptions) => {
         const { title } = choose(settings());
-        if (!title) return Promise.reject(new Error("No model is on to write titles."));
+        if (!title) throw new Error("No model is on to write titles.");
         const id = cacheKey(title);
         let built = titlers.get(id);
         if (!built) {
           built = titlerOf(title, key);
           titlers.set(id, built);
         }
+        const refused = title.cli && (await options.trust?.(title.cli.path));
+        if (refused) throw new Error(refused);
         return built(text, titleOptions);
       };
     },

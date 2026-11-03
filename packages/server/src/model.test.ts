@@ -195,3 +195,59 @@ test("a path set in Settings is the one checked, over --claude-code", async () =
   // The CLI's own words, with Check again in place of a restart.
   assert.match(chooser.providers(set)[0]?.detail ?? "", /then check again\.$/);
 });
+
+test("a CLI the trust check refuses is never run: not by a look, a turn or a title (0038)", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "oriel-trust-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "claude"), "", { mode: 0o755 });
+  const checked: string[] = [];
+  let refuse = true;
+  const chooser = models({
+    key: null,
+    env: { PATH: dir },
+    check: async (options) => {
+      checked.push(options.path ?? "");
+      return { ok: true, cli: { path: options.path ?? "", version: "2.1.314" } };
+    },
+    trust: async () => (refuse ? "It isn't signed by Anthropic, so Oriel won't run it." : null),
+    provider: () => {
+      throw new Error("no provider in this test");
+    },
+    titler: () => async () => "a title",
+  });
+  await chooser.look(defaultSettings);
+  assert.equal(chooser.found("claude-code").status, "untrusted");
+  assert.deepEqual(checked, []);
+  const row = chooser.providers(defaultSettings).find((p) => p.kind === "claude-code");
+  assert.equal(row?.detail, "It isn't signed by Anthropic, so Oriel won't run it.");
+  // Trusted at the look, then changed before a title: it isn't run.
+  refuse = false;
+  await chooser.look(defaultSettings);
+  assert.deepEqual(checked, [join(dir, "claude")]);
+  refuse = true;
+  const titler = chooser.titler(() => defaultSettings);
+  await assert.rejects(titler("Plan it", { signal, log: quiet }), /isn't signed by Anthropic/);
+});
+
+test("on the desktop app a turn with no AI points to Settings, never to a terminal", async () => {
+  const signedOut = async () => ({
+    ok: false as const,
+    problem: {
+      kind: "signed-out" as const,
+      message:
+        "Claude Code is installed but not signed in. Open it in a terminal and sign in, then restart Oriel.",
+    },
+  });
+  const desktop = models({ key: null, env, check: signedOut, desktop: true });
+  await desktop.look(defaultSettings);
+  const { problem: said } = desktop.choose(defaultSettings);
+  assert.equal(
+    said,
+    "Oriel has no AI set up yet. Set up Claude Code in Settings, or add an API key there.",
+  );
+  assert.doesNotMatch(said, /terminal/i);
+  // Under pnpm dev, the harness's own words stand.
+  const dev = models({ key: null, env, check: signedOut });
+  await dev.look(defaultSettings);
+  assert.match(dev.choose(defaultSettings).problem, /terminal/);
+});
