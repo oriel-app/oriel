@@ -4977,3 +4977,11 @@ h1,
 h2 {
   line-height: 1.2;
 }
+
+/* Bound the ledger's single column when a narrow heading wraps. */
+.overview {
+  grid-template-columns: minmax(0, 1fr);
+}
+.overview-head {
+  flex-wrap: wrap;
+}
