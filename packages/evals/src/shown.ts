@@ -68,14 +68,13 @@ export function resolver(world: World): (id: string) => string | null {
     names.set(windowWorkstreamId(window.now, i), workstream(name)),
   );
   const threads = new Map((world.oriel?.threads ?? []).map((thread) => [thread.id, thread]));
-  for (const {
-    id,
-    name,
-    state,
-    workstream: { id: of, name: called },
-  } of threads.values()) {
+  for (const thread of threads.values()) {
+    const { id, name, workstream: of } = thread;
+    // No turn runs in a case's workspace, so a working thread waits on the
+    // user, and its chip says so.
+    const state = thread.state === "working" ? "needs-you" : thread.state;
     names.set(id, standing(`[${name}](/threads/${id})`, { kind: "thread", name, state }));
-    names.set(of, workstream(called));
+    names.set(of.id, workstream(of.name));
   }
   for (const set of world.oriel?.changeSets ?? []) {
     const name = threads.get(set.thread)?.name ?? "change set";

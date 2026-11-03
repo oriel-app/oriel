@@ -131,6 +131,8 @@ test("a thread whose chips name a thread, change set or workstream reloads when 
     ).length;
   const set: ChipView = { kind: "change-set", thread: ulid, name: "Plan", state: "pending" };
   assert.equal(loads(open({ [ulid]: set, "jira:SYN-45": item })), 1);
+  // One unknown may be back, as a deleted workstream is after its Undo.
+  assert.equal(loads(open({ "jira:SYN-45": item, [ulid]: null })), 1);
   // An item's chip moves with a sync, not with the workspace's threads.
-  assert.equal(loads(open({ "jira:SYN-45": item, [ulid]: null })), 0);
+  assert.equal(loads(open({ "jira:SYN-45": item, "jira:SYN-9999": null })), 0);
 });

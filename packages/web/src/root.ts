@@ -124,6 +124,7 @@ import {
   windowRoute,
 } from "./update.ts";
 import type {
+  ChipView,
   WorkstreamsView,
   WorkstreamSummary,
   ThreadsView,
@@ -240,12 +241,15 @@ const workspaceChanged = (model: Model): Effect[] => [
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
   ...(model.route.page === "overview" ? [loadOverview] : []),
   // A thread shown whose chips name a thread, a change set or a workstream,
-  // any of which may have moved (decision 0032).
-  ...(model.thread?.view &&
-  Object.values(model.thread.view.chips).some((c) => c !== null && c.kind !== "item")
+  // any of which may have moved, or come back with an Undo (decision 0032).
+  ...(model.thread?.view && Object.entries(model.thread.view.chips).some(oriels)
     ? [refreshThread(model.thread)]
     : []),
 ];
+
+// A chip of Oriel's own, by ID: an item's ID names its source.
+const oriels = ([id, chip]: [string, ChipView | null]) =>
+  chip === null ? !id.includes(":") : chip.kind !== "item";
 
 export function init(route: Route): [Model, Effect[]] {
   const empty: Model = {

@@ -40,7 +40,7 @@ test("each chip reads as the window draws it, with where it stands", () => {
   assert.equal(
     seen.text,
     "SYN-23 Pay with a phone wallet on the website (In Progress) is in Boarding (Open); " +
-      `[Estimate the weather stories](/threads/${thread}) (Working) is on it. Not \`[[jira:SYN-9]]\`.`,
+      `[Estimate the weather stories](/threads/${thread}) (Needs you) is on it. Not \`[[jira:SYN-9]]\`.`,
   );
   assert.deepEqual(gradeRefs(seen), {
     grader: "refs",
