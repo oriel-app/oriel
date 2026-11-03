@@ -138,6 +138,16 @@ export function resolveDropped(
       ids.add(only.id);
       continue;
     }
+    // With no folder items, there is no connected folder to look in, or none
+    // with a file in it to add.
+    if (!kinds.has("folder")) {
+      refused.push({
+        what: file.name,
+        why: "No folder of markdown files is connected, so no file can be added. Add one at the foot of the sidebar.",
+        syncMightHelp: false,
+      });
+      continue;
+    }
     refused.push({
       what: file.name,
       why:

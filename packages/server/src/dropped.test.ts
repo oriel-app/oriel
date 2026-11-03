@@ -104,6 +104,24 @@ test("what names nothing, another file by a folder file's name, or two like it, 
   );
 });
 
+test("a file is refused as not in the connected folder, or as having no folder to be in", () => {
+  const why = (from: readonly IndexRecord[]) =>
+    resolveDropped(from, { links: [], files: [{ name: "elsewhere.md", modified: at }] }, sources)
+      .refused[0];
+  assert.deepEqual(why(records), {
+    what: "elsewhere.md",
+    why: "Only files in the connected folder can be added, and it has no file by this name.",
+    syncMightHelp: true,
+  });
+  const jira = records.filter((r) => r.id.startsWith("jira:"));
+  for (const from of [jira, []])
+    assert.deepEqual(why(from), {
+      what: "elsewhere.md",
+      why: "No folder of markdown files is connected, so no file can be added. Add one at the foot of the sidebar.",
+      syncMightHelp: false,
+    });
+});
+
 test("a link to a site Oriel doesn't index is refused by naming each source it has items from", () => {
   const why = (from: readonly IndexRecord[]) =>
     resolveDropped(from, { links: ["https://example.com/doc"], files: [] }, sources).refused[0]
