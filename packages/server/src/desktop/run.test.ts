@@ -340,3 +340,33 @@ test("the API key is kept in the shell's store from Settings, and the next launc
   second.input.end();
   assert.equal(await two.exited, 0);
 });
+
+test("the folder picker and notifications go to the shell", async (t) => {
+  const shell = start(folder(t));
+  t.after(() => void shell.input.end());
+  const { serving, exited } = await shell.running;
+  // This fake shell answers every pick as cancelled.
+  const picked = await send(serving.url, "/api/folder/pick", {});
+  assert.deepEqual(await picked.json(), { folder: null, picked: false });
+  assert.ok(shell.out.some((line) => "id" in line && line.kind === "folder.pick"));
+
+  const workstream = (await (
+    await send(serving.url, "/api/workstreams", {
+      kind: "cluster",
+      grouping: "epic",
+      cluster: "10001",
+    })
+  ).json()) as { id: string };
+  const thread = (await (
+    await send(serving.url, `/api/workstreams/${workstream.id}/threads`, { text: "Estimate it" })
+  ).json()) as { id: string };
+  await serving.app.settled();
+  const told = shell.out.filter((line) => "id" in line && line.kind === "notify");
+  assert.deepEqual(
+    told.map((line) => ("open" in line ? [line.title, line.body, line.open] : [])),
+    // The scripted agent's estimate proposes a change set.
+    [["A change set waits for your review", "Estimate it", `/threads/${thread.id}`]],
+  );
+  shell.input.end();
+  assert.equal(await exited, 0);
+});

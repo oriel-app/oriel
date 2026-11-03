@@ -41,6 +41,8 @@ const view: SettingsView = {
   themes: ["graphite", "broadsheet"],
   textSize: "default",
   send: "enter",
+  notify: true,
+  notifies: false,
 };
 const loaded: SettingsModel = { ...initSettings(), view };
 const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({
@@ -60,7 +62,11 @@ test("Settings has an address per section, and nothing else under it", () => {
   });
   assert.deepEqual(parseRoute("/settings/asking", ""), { page: "settings", section: "asking" });
   assert.equal(parseRoute("/settings/providers", "").page, "overview");
-  for (const section of ["providers", "appearance", "asking"] as const) {
+  assert.deepEqual(parseRoute("/settings/notifications", ""), {
+    page: "settings",
+    section: "notifications",
+  });
+  for (const section of ["providers", "appearance", "asking", "notifications"] as const) {
     const route = { page: "settings" as const, section };
     const url = routeUrl(route);
     assert.deepEqual(parseRoute(url, ""), route);
@@ -226,4 +232,10 @@ test("an API key goes to the server once, is forgotten by the page, and a refusa
   assert.deepEqual(posts(updateSettings(kept, { type: "keyRemoved" })[1]), [
     ["/api/settings/key", { key: null }],
   ]);
+});
+
+test("the notifications switch shows at once and goes to the server", () => {
+  const [model, effects] = updateSettings(loaded, { type: "changed", change: { notify: false } });
+  assert.equal(model.view?.notify, false);
+  assert.deepEqual(posts(effects), [["/api/settings", { notify: false }]]);
 });

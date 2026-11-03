@@ -79,6 +79,7 @@ function applied(view: SettingsView, change: SettingsChange): SettingsView {
   if ("theme" in change) return { ...view, theme: change.theme };
   if ("textSize" in change) return { ...view, textSize: change.textSize };
   if ("send" in change) return { ...view, send: change.send };
+  if ("notify" in change) return { ...view, notify: change.notify };
   if ("model" in change) return { ...view, model: change.model };
   if ("titleModel" in change) return { ...view, titleModel: change.titleModel };
   if ("on" in change)

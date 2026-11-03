@@ -92,6 +92,10 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
       db: join(data, "oriel.db"),
       exclusive: true,
       cliPaths: true,
+      notify: async (notice) => {
+        await lines.shell.ask({ kind: "notify", ...notice });
+      },
+      pickFolder: (prompt) => lines.shell.ask({ kind: "folder.pick", prompt }),
       jira: {
         kind: "window",
         store: secretsStore(secrets, log),

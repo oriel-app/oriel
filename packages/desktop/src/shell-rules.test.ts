@@ -7,6 +7,7 @@ import {
   Lines,
   mayShow,
   mayUse,
+  notificationText,
   opensOutside,
   parseRequest,
   printedPath,
@@ -35,10 +36,10 @@ test("the shell answers the protocol's requests, as the server writes them", () 
     id: 4,
     request: { kind: "secret.delete", name: "jira" },
   });
-  assert.deepEqual(parseRequest('{"id":5,"kind":"notify","title":"Done","body":""}'), {
-    id: 5,
-    request: { kind: "notify", title: "Done", body: "" },
-  });
+  assert.deepEqual(
+    parseRequest('{"id":5,"kind":"notify","title":"Done","body":"","open":"/threads/01J"}'),
+    { id: 5, request: { kind: "notify", title: "Done", body: "", open: "/threads/01J" } },
+  );
 });
 
 test("anything else is refused, with an answer when it has an id", () => {
@@ -62,6 +63,13 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":11,"kind":"secret.set","name":"jira"}'), 11);
   assert.equal(refused('{"id":12,"kind":"folder.pick"}'), 12);
   assert.equal(refused('{"id":13,"kind":"notify","title":"x"}'), 13);
+  // A click opens only a path on the server's own origin.
+  for (const open of ["https://evil.example/", "//evil.example/", "/\\\\evil", "threads/1", "/a b"])
+    assert.equal(
+      refused(JSON.stringify({ id: 15, kind: "notify", title: "x", body: "", open })),
+      15,
+      open,
+    );
   assert.equal(refused('{"id":14,"kind":"toString"}'), 14);
   for (const line of [
     '{"kind":"notify","title":"","body":""}',
@@ -78,11 +86,23 @@ test("anything else is refused, with an answer when it has an id", () => {
 
 test("a long title or body is cut, not refused", () => {
   const parsed = parseRequest(
-    JSON.stringify({ id: 1, kind: "notify", title: "t".repeat(300), body: "b".repeat(2000) }),
+    JSON.stringify({
+      id: 1,
+      kind: "notify",
+      title: "t".repeat(300),
+      body: "b".repeat(2000),
+      open: "/",
+    }),
   );
   assert.ok("request" in parsed && parsed.request.kind === "notify");
   assert.equal(parsed.request.title.length, 256);
   assert.equal(parsed.request.body.length, 1024);
+});
+
+test("a notification's text is one plain line, and markup on Linux is only text", () => {
+  const title = 'Fix <b>login</b> & "SSO"\n\u0007now';
+  assert.equal(notificationText("darwin", title), 'Fix <b>login</b> & "SSO" now');
+  assert.equal(notificationText("linux", title), 'Fix &lt;b&gt;login&lt;/b&gt; &amp; "SSO" now');
 });
 
 test("the first line is the server's loopback URL, and nothing else", () => {

@@ -10,7 +10,7 @@ export type Request =
   | { kind: "secret.get"; name: string }
   | { kind: "secret.set"; name: string; secret: string }
   | { kind: "secret.delete"; name: string }
-  | { kind: "notify"; title: string; body: string };
+  | { kind: "notify"; title: string; body: string; open: string };
 
 export type Parsed =
   | { id: number; request: Request }
@@ -64,12 +64,15 @@ export function parseRequest(line: string): Parsed {
     case "notify": {
       const title = text("title");
       const body = text("body");
-      return title === null || body === null
-        ? { id, refused: "a notification needs a title and a body" }
-        : {
-            id,
-            request: { kind: "notify", title: title.slice(0, 256), body: body.slice(0, 1024) },
-          };
+      const open = text("open");
+      if (title === null || body === null)
+        return { id, refused: "a notification needs a title and a body" };
+      if (open === null || open.length > 200 || !/^\/(?![/\\])[!-~]*$/.test(open))
+        return { id, refused: "a notification opens a path on the server's origin" };
+      return {
+        id,
+        request: { kind: "notify", title: title.slice(0, 256), body: body.slice(0, 1024), open },
+      };
     }
     default:
       return { id, refused: "not a request the shell answers" };
@@ -160,6 +163,17 @@ export function storageProblem(
 // falls back to when the keyring it picked fails. Such text is never kept.
 export function fixedKey(platform: string, ciphertext: Uint8Array): boolean {
   return platform === "linux" && Buffer.from(ciphertext.subarray(0, 3)).toString() === "v10";
+}
+
+// A notification's text as the OS shows it: plain text on one line. A
+// thread's title is synced data, so on Linux, whose notification servers
+// read a body's tags, `&`, `<` and `>` are escaped.
+export function notificationText(platform: string, text: string): string {
+  // oxlint-disable-next-line no-control-regex
+  const line = text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+  return platform === "linux"
+    ? line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c)
+    : line;
 }
 
 // Splits a stream into lines, dropping any line longer than `max` bytes.

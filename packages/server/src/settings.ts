@@ -1,5 +1,6 @@
 // Settings (OA-181): the person's providers, the default model and the
-// Title model, the theme, the text size, and which key sends a question.
+// Title model, the theme, the text size, which key sends a question, and
+// whether the desktop app notifies (OA-184).
 // They live in one JSON file in the data folder, `.oriel/` under `pnpm dev`,
 // and apply as soon as they change. The file holds no key or credential: a
 // provider's row says only whether one is set.
@@ -50,6 +51,8 @@ export type Settings = {
   theme: string;
   textSize: TextSize;
   send: SendKey;
+  // A desktop notification when a thread newly needs the person.
+  notify: boolean;
 };
 
 // One instance of each kind, on, in the order Settings lists them.
@@ -66,6 +69,7 @@ export const defaultSettings: Settings = {
   theme: defaultTheme,
   textSize: "default",
   send: "enter",
+  notify: true,
 };
 
 export type SettingsStore = { get(): Settings; set(next: Settings): void };
@@ -125,6 +129,7 @@ function read(parsed: unknown): Settings {
     ),
     textSize: field("textSize", oneOf(textSizes), "default"),
     send: field("send", oneOf(sendKeys), "enter"),
+    notify: field("notify", boolean, true),
   };
 }
 
@@ -175,6 +180,7 @@ export const settingsChange: Validator<SettingsChange> = union(
   object({ theme: string }),
   object({ textSize: oneOf(textSizes) }),
   object({ send: oneOf(sendKeys) }),
+  object({ notify: boolean }),
   object({ model: pickValue }),
   object({ titleModel: pickValue }),
   object({ provider: idValue, on: boolean }),
@@ -197,6 +203,7 @@ export function changed(
   }
   if ("textSize" in change) return { ...settings, textSize: change.textSize };
   if ("send" in change) return { ...settings, send: change.send };
+  if ("notify" in change) return { ...settings, notify: change.notify };
   if ("model" in change) return { ...settings, model: change.model };
   if ("titleModel" in change) return { ...settings, titleModel: change.titleModel };
   const provider = settings.providers.find((p) => p.id === change.provider);
@@ -239,6 +246,8 @@ export function settingsService(deps: {
   // Where the page may keep an API key: the desktop app's secret store. The
   // check stands in for Anthropic in tests.
   keys?: { store: KeyStore; check?: Parameters<typeof keepKey>[2] };
+  // Whether this server can notify: only the desktop app's shell shows them.
+  notifies?: boolean;
   // A theme was picked, for telemetry.
   picked(theme: string): void;
 }): SettingsService {
@@ -260,6 +269,8 @@ export function settingsService(deps: {
       themes: [...themes],
       textSize: settings.textSize,
       send: settings.send,
+      notify: settings.notify,
+      notifies: deps.notifies ?? false,
     };
   };
   return {

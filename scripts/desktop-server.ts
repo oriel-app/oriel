@@ -108,7 +108,7 @@ for await (const line of createInterface({ input: server.stdout, crlfDelay: Infi
       answer(sent.id, null);
       break;
     case "notify":
-      console.log(`Notification: ${sent.title}: ${sent.body}`);
+      console.log(`Notification: ${sent.title}: ${sent.body} (opens ${sent.open})`);
       answer(sent.id, null);
       break;
     case "folder.pick":

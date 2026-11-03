@@ -791,6 +791,10 @@ export type SettingsView = {
   themes: string[];
   textSize: TextSize;
   send: SendKey;
+  // Whether the desktop app notifies when a thread newly needs the person,
+  // and whether this server can at all.
+  notify: boolean;
+  notifies: boolean;
 };
 
 // One change from the settings page, applied at once.
@@ -798,6 +802,7 @@ export type SettingsChange =
   | { theme: string }
   | { textSize: TextSize }
   | { send: SendKey }
+  | { notify: boolean }
   | { model: ModelPick }
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }

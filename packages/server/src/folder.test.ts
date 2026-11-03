@@ -56,7 +56,7 @@ async function connected(t: TestContext, options: Parameters<typeof testApp>[1] 
 test("connecting a folder by its path syncs its markdown files into the window", async (t) => {
   const app = await connected(t);
   assert.deepEqual([app.folder.path, app.folder.items], [app.dir.root, 2]);
-  assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder });
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder, picker: false });
   // The sidebar lists it after Jira, as it lists every source.
   const { sources } = json<{ sources: SourceView[] }>(await app.get("/api/sources"));
   assert.deepEqual(
@@ -110,7 +110,7 @@ test("only a folder can be connected, by a full path, from this window", async (
     ).status,
     405,
   );
-  assert.deepEqual(json(await app.get("/api/folder")), { folder: null });
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: null, picker: false });
 });
 
 const fileIds = (view: WindowView) =>
@@ -155,7 +155,7 @@ test("a folder that can't be listed isn't kept; the one before stays as it was",
   chmodSync(locked, 0o700);
   assert.equal(refused.status, 400);
   assert.match(json<{ error: string }>(refused).error, /couldn't read the folder/);
-  assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder });
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder, picker: false });
   const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
   assert.deepEqual(after, before);
 });
@@ -324,4 +324,43 @@ test("an epic picked beside a plan lets the agent create stories in it, and show
       "Create a story “Pay with a gift card” in the epic “Checkout v2: phone wallets and saved cards” (SYN-1).",
     ],
   );
+});
+
+test("on the desktop app, a folder comes from the system's picker; cancelling changes nothing", async (t) => {
+  const { root } = folder(t, { "plan.md": "# Plan\n\nShip it.\n" });
+  const asked: string[] = [];
+  let answer: string | null | Error = null;
+  const app = await testApp(t, {
+    pickFolder: async (prompt) => {
+      asked.push(prompt);
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  });
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: null, picker: true });
+
+  const cancelled = await app.post("/api/folder/pick", {});
+  assert.equal(cancelled.status, 200);
+  assert.deepEqual(json(cancelled), { folder: null, picked: false });
+
+  answer = root;
+  const picked = json<{ folder: FolderView; picked: boolean }>(
+    await app.post("/api/folder/pick", {}),
+  );
+  assert.equal(picked.picked, true);
+  assert.equal(picked.folder.path, root);
+  assert.equal(picked.folder.items, 1);
+  assert.match(asked[0] ?? "", /folder of markdown files/);
+
+  // A picker that couldn't open says so, and the folder stays.
+  answer = new Error("a folder picker is already open");
+  const failed = await app.post("/api/folder/pick", {});
+  assert.equal(failed.status, 409);
+  assert.equal(json<{ folder: FolderView }>(await app.get("/api/folder")).folder.path, root);
+});
+
+test("under pnpm dev there's no picker: a folder is typed", async (t) => {
+  const app = await testApp(t);
+  assert.deepEqual(json(await app.get("/api/folder")), { folder: null, picker: false });
+  assert.equal((await app.post("/api/folder/pick", {})).status, 409);
 });

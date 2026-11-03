@@ -28,6 +28,13 @@ export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(l
 export const secretNames: readonly string[] = ["jira", "anthropic-key"];
 const name = refine(string, (text) => secretNames.includes(text), "a secret the server keeps");
 const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");
+// Where a click on a notification takes the window: a path on the server's
+// own origin, such as `/threads/<id>`.
+const open = refine(
+  string,
+  (path) => path.length <= 200 && /^\/(?![/\\])[!-~]*$/.test(path),
+  "a path on the server's origin",
+);
 const id = refine(number, (n) => Number.isSafeInteger(n) && n > 0, "a positive integer");
 
 // What the server asks the shell for, without its id.
@@ -36,7 +43,7 @@ export const request = union(
   object({ kind: literal("secret.get"), name }),
   object({ kind: literal("secret.set"), name, secret }),
   object({ kind: literal("secret.delete"), name }),
-  object({ kind: literal("notify"), title: string, body: string }),
+  object({ kind: literal("notify"), title: string, body: string, open }),
 );
 export type ShellRequest = Infer<typeof request>;
 export type RequestKind = ShellRequest["kind"];

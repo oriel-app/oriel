@@ -9,6 +9,7 @@
 // memory, which answers only `account`.
 import type { Models } from "./model.ts";
 import type { SettingsStore } from "./settings.ts";
+import type { Notify } from "./notify.ts";
 import {
   type Bindings,
   type CapturedMutation,
@@ -139,6 +140,9 @@ export type TestOptions = {
   settings?: SettingsStore;
   // Where the page keeps an API key, as on the desktop app.
   keys?: AppOptions["keys"];
+  // The desktop app's notifications and folder picker, through its shell.
+  notify?: Notify;
+  pickFolder?: (prompt: string) => Promise<string | null>;
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -188,6 +192,8 @@ export async function testApp(
       : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
     ...(options.settings ? { settings: options.settings } : {}),
     ...(options.keys ? { keys: options.keys } : {}),
+    ...(options.notify ? { notify: options.notify } : {}),
+    ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),

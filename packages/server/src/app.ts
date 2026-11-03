@@ -115,6 +115,7 @@ import {
   settingsService,
   type SettingsStore,
 } from "./settings.ts";
+import { type Notify, notifier } from "./notify.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
@@ -180,6 +181,11 @@ export type AppOptions = {
   cliPaths?: boolean;
   // Where the page may keep an API key: the desktop app's OS secret store.
   keys?: { store: KeyStore; check?: (key: string) => Promise<KeyCheck> };
+  // The desktop app's notifications, through its shell (OA-184).
+  notify?: Notify;
+  // The system's folder picker, through the desktop app's shell: the
+  // folder picked, or null if the person cancelled.
+  pickFolder?: (prompt: string) => Promise<string | null>;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -198,7 +204,8 @@ export type App = {
   api(request: Request, url: URL): Promise<Reply | null>;
   settings: SettingsService;
   workspaceId: Ulid;
-  // Resolves once no turn is running and no title is being written.
+  // Resolves once no turn is running, no title is being written and no
+  // notification is being looked for.
   settled(): Promise<void>;
   // The pilot telemetry stored so far, oldest first.
   telemetry(): StoredEvent[];
@@ -707,6 +714,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     themes: options.themes ?? [defaultTheme],
     cliPaths: options.cliPaths ?? false,
     ...(options.keys ? { keys: options.keys } : {}),
+    notifies: options.notify !== undefined,
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
   });
   const conversation = turns({
@@ -736,6 +744,16 @@ export async function createApp(options: AppOptions): Promise<App> {
       return writes !== null || slack !== null;
     },
   });
+  // The desktop app notifies when a thread newly needs the person.
+  const notifying = options.notify
+    ? await notifier({
+        threads: () => viewer.threads(workspaceId),
+        on: () => store.get().notify,
+        notify: options.notify,
+        log,
+      })
+    : null;
+  const unwatchNotifying = notifying ? conversation.watchAny(() => notifying.changed()) : () => {};
 
   // The items a change set names, as targets or, by each op's catalogue,
   // among its arguments; never a new item's ref.
@@ -1130,10 +1148,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       overview,
       jira: jiraView,
       folder: folderView,
+      ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       sources: sourcesView,
       log,
     }),
-    settled: () => conversation.settled(),
+    settled: async () => {
+      await conversation.settled();
+      await notifying?.idle();
+    },
     telemetry: () => telemetry.list(workspaceId),
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
     // Stops every turn, waits for the last sync, and closes the database.
@@ -1143,6 +1165,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       for (const summary of threads.list(workspaceId, now())) conversation.stop(summary.thread.id);
       conversation.stopTitles();
       await conversation.settled();
+      unwatchNotifying();
+      await notifying?.stop();
       await waiting;
       await syncing.catch(() => {});
       if (db.isOpen) db.close();

@@ -30,7 +30,7 @@ export type Page =
   | { page: "settings"; section: SettingsSection }
   | { page: "review"; token: string };
 
-export const settingsSections = ["providers", "appearance", "asking"] as const;
+export const settingsSections = ["providers", "appearance", "asking", "notifications"] as const;
 export type SettingsSection = (typeof settingsSections)[number];
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
@@ -63,8 +63,9 @@ function parsePage(pathname: string, search: string): Page {
   if (token) return { page: "review", token };
   if (pathname === "/threads/new") return { page: "new-thread" };
   if (pathname === "/settings") return { page: "settings", section: "providers" };
-  const section = /^\/settings\/(appearance|asking)$/.exec(pathname)?.[1];
-  if (section === "appearance" || section === "asking") return { page: "settings", section };
+  const section = /^\/settings\/(appearance|asking|notifications)$/.exec(pathname)?.[1];
+  if (section === "appearance" || section === "asking" || section === "notifications")
+    return { page: "settings", section };
   if (pathname === "/done") {
     const number = Number(query.get("page"));
     return {

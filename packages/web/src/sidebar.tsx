@@ -678,8 +678,9 @@ function Sources(props: {
   );
 }
 
-// Adding a source: a folder of markdown files, by the path the user types,
-// which takes the place of the one connected, if any.
+// Adding a source: a folder of markdown files, from the system's folder
+// picker on the desktop app, or by the path the user types, which takes the
+// place of the one connected, if any.
 function AddSource({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
   const send = (msg: FolderMsg) => dispatch({ type: "folder", msg });
   const name = folder.view?.path.split(/[\\/]/).filter(Boolean).at(-1);
@@ -693,6 +694,26 @@ function AddSource({ folder, dispatch }: { folder: FolderModel; dispatch: Dispat
         >
           Add a source
         </button>
+      ) : folder.picker ? (
+        <div class="folder-form">
+          <span class="folder-actions">
+            <button
+              type="button"
+              class="button primary"
+              disabled={folder.pending}
+              onClick={() => send({ type: "pickClicked" })}
+            >
+              {folder.pending ? "Choosing…" : "Choose a folder…"}
+            </button>
+            <button type="button" class="quiet-action" onClick={() => send({ type: "closed" })}>
+              Cancel
+            </button>
+          </span>
+          <span class="folder-note">
+            A folder of markdown files. Oriel reads its .md files and never changes them.
+            {name && ` It takes the place of ${name}.`}
+          </span>
+        </div>
       ) : (
         <form
           class="folder-form"
