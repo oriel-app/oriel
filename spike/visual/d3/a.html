@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>
+    Oriel D3 specimen</title
+  ><link rel="stylesheet" href="../../../packages/web/assets/window.css" /><style>
+    main {
+      max-width: 1080px;
+      margin: auto;
+      padding: 32px;
+    }
+    section {
+      margin: 24px 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+    }
+    h1 {
+      font-size: var(--text-xl);
+    }
+    h2 {
+      font-size: var(--text-lg);
+    }
+    p {
+      line-height: 1.6;
+    }
+    .samples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+    .swatch {
+      padding: 12px;
+      background: var(--surface-hover);
+      color: var(--text-muted);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    td,
+    th {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    .spec-row {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    input {
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+    }
+    .spec-panel {
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    code {
+      font-family: var(--font-mono);
+    }
+  </style>
+  <main id="specimen">
+    <h1>Oriel / D3 A / Field</h1>
+    <p>A quiet field: stable green-gray surfaces let work and decisions take priority.</p>
+    <section>
+      <h2>1. Colour</h2>
+      <div class="samples">
+        <span
+          class="swatch"
+          style="border-top: 16px solid var(--n0); background: var(--n1); color: var(--n7)"
+          >N0 #ffffff</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n1); background: var(--n1); color: var(--n7)"
+          >N1 #f4f7f5</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n2); background: var(--n1); color: var(--n7)"
+          >N2 #e7eeea</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n3); background: var(--n1); color: var(--n7)"
+          >N3 #cddad2</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n4); background: var(--n1); color: var(--n7)"
+          >N4 #9db2a4</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n5); background: var(--n1); color: var(--n7)"
+          >N5 #50665a</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n6); background: var(--n1); color: var(--n7)"
+          >N6 #334d3e</span
+        ><span
+          class="swatch"
+          style="border-top: 16px solid var(--n7); background: var(--n1); color: var(--n7)"
+          >N7 #193326</span
+        >
+      </div>
+      <p>
+        Theme follows the system. All text uses N5–N7 on N0–N2; N3/N4 are borders only. Source marks
+        use muted ink.
+      </p>
+      <div class="samples">
+        <span style="color: var(--text-muted)">● todo</span
+        ><span style="color: var(--accent)">● in progress</span
+        ><span style="color: var(--done)">● done</span
+        ><span style="color: var(--needs-you)">● needs you</span
+        ><span style="color: var(--stalled)">● stalled / error</span
+        ><span style="color: var(--applied)">● applied</span
+        ><span style="color: var(--reverted)">● reverted</span>
+      </div>
+    </section>
+    <section>
+      <h2>2. Type</h2>
+      <p style="font-size: var(--text-xs)">
+        xs — The work is ready for review · 400 / <b style="font-weight: 500">500</b> /
+        <b style="font-weight: 600">600</b>
+      </p>
+      <p style="font-size: var(--text-sm)">
+        sm — The work is ready for review · 400 / <b style="font-weight: 500">500</b> /
+        <b style="font-weight: 600">600</b>
+      </p>
+      <p style="font-size: var(--text-md)">
+        md — The work is ready for review · 400 / <b style="font-weight: 500">500</b> /
+        <b style="font-weight: 600">600</b>
+      </p>
+      <p style="font-size: var(--text-lg)">
+        lg — The work is ready for review · 400 / <b style="font-weight: 500">500</b> /
+        <b style="font-weight: 600">600</b>
+      </p>
+      <p style="font-size: var(--text-xl)">
+        xl — The work is ready for review · 400 / <b style="font-weight: 500">500</b> /
+        <b style="font-weight: 600">600</b>
+      </p>
+      <code>jira:SYN-23 · region 4</code>
+      <p>UI line height 1.45; reading 1.6; headings 1.2. System stacks only.</p>
+    </section>
+    <section>
+      <h2>3–6. Space, shape, motion, icons, density</h2>
+      <p>
+        Space: 4 / 8 / 12 / 16 / 24 / 32 px. Radii: 3 / 6 / 9 px. Borders: 1 / 2 px. No elevation.
+        Motion: 120 / 180 ms; cubic-bezier(.2,.8,.2,1); reduced motion disables transitions and
+        animation.
+      </p>
+      <div class="samples">
+        <svg class="icon" viewBox="0 0 20 20" aria-label="item">
+          <path d="M5 3h10v14H5z M8 7h4 M8 10h4" /></svg
+        >item<svg class="icon" viewBox="0 0 20 20" aria-label="thread">
+          <path d="M3 4h14v9H8l-4 4v-4H3z" /></svg
+        >thread<svg class="icon" viewBox="0 0 20 20" aria-label="change set">
+          <path d="M4 6h12 M13 3l3 3-3 3 M16 14H4 M7 11l-3 3 3 3" /></svg
+        >change set<svg class="icon" viewBox="0 0 20 20" aria-label="workstream">
+          <path d="M3 5h6l2 3h6v9H3z" /></svg
+        >workstream<svg class="icon" viewBox="0 0 20 20" aria-label="file">
+          <path d="M5 2h7l4 4v12H5z M12 2v5h4" /></svg
+        >file<svg class="icon" viewBox="0 0 20 20" aria-label="Slack message">
+          <path d="M3 4h14v9H8l-4 4v-4H3z M6 8h1 M10 8h1 M14 8h1" /></svg
+        >Slack message
+      </div>
+      <p>
+        Icons: 16 px, 1.5 stroke, including inline kinds. Compact data rows: minimum 36 px and 8 px
+        padding. Comfortable reading, input and approval: 16–24 px padding, 1.6 line height. Narrow
+        screens retain the rule and wrap.
+      </p>
+    </section>
+    <section>
+      <h2>7. Components</h2>
+      <p>
+        Start with
+        <a class="chip" href="#specimen" data-state="working"
+          ><svg class="icon" viewBox="0 0 20 20" aria-label="item">
+            <path d="M5 3h10v14H5z M8 7h4 M8 10h4" /></svg
+          ><code>SYN-23</code> <span class="chip-name">Phone wallets</span
+          ><span class="chip-state">in progress</span></a
+        >, then review the change set.
+      </p>
+      <div class="samples">
+        <span style="color: var(--needs-you)">● Needs you</span
+        ><button class="button primary">Approve and apply</button
+        ><button class="button">Secondary</button><button class="quiet-action">Quiet</button
+        ><button class="button danger">Reject</button>
+      </div>
+      <p>
+        <label>Ask about your window <input placeholder="What needs me today?" /></label>
+        <button class="button primary">Ask</button>
+      </p>
+      <article class="spec-panel">
+        <h2>Checkout readiness</h2>
+        <p>Workstream · 12 items · 2 threads</p>
+        <div class="status-bar"><span style="width: 65%; background: var(--done)"></span></div>
+        <p style="color: var(--needs-you)">● 1 thread needs you · rule: waiting for approval</p>
+      </article>
+      <div class="spec-row">
+        <svg class="icon" viewBox="0 0 20 20" aria-label="item">
+          <path d="M5 3h10v14H5z M8 7h4 M8 10h4" />
+        </svg>
+        <code>SYN-23</code> Phone wallets
+        <span style="color: var(--in-progress)">● In progress</span> · Dana
+      </div>
+      <h2>Block · bars, table, rows</h2>
+      <ul class="block-bars">
+        <li>
+          <span>Checkout</span>
+          <div class="block-bar-track"><div class="block-bar" style="width: 70%"></div></div>
+          <span>12</span>
+        </li>
+      </ul>
+      <table class="block-table">
+        <tr>
+          <th>Workstream</th>
+          <th>Items</th>
+        </tr>
+        <tr>
+          <td>Checkout</td>
+          <td>12</td>
+        </tr>
+        <tr>
+          <td>Boarding</td>
+          <td>8</td>
+        </tr>
+      </table>
+      <div class="spec-row">
+        <a class="chip" href="#specimen" data-state="working"
+          ><svg class="icon" viewBox="0 0 20 20" aria-label="item">
+            <path d="M5 3h10v14H5z M8 7h4 M8 10h4" /></svg
+          ><code>SYN-23</code> <span class="chip-name">Phone wallets</span
+          ><span class="chip-state">in progress</span></a
+        >
+      </div>
+      <p>Rule: number of items in each workstream. Read from the index.</p>
+      <aside class="spec-panel">
+        Note · Item added to workstream. <button class="quiet-action">Undo</button>
+        <p>Oriel note · Region changed to version 4.</p>
+      </aside>
+      <h2>Panel</h2>
+      <aside class="spec-panel">
+        <code>jira:SYN-23</code>
+        <h2>Phone wallets</h2>
+        <p>Show the card form otherwise.</p>
+      </aside>
+      <h2>Change set · diff line</h2>
+      <p style="background: var(--surface-hover); padding: 12px">
+        <del style="color: var(--danger)">− Estimate: none</del><br /><ins style="color: var(--ins)"
+          >+ Estimate: 3</ins
+        >
+      </p>
+      <figure class="agent-frame">
+        <figcaption>
+          Agent-drawn HTML · preview only · controls cannot approve a change set
+        </figcaption>
+        <iframe
+          sandbox
+          title="Agent-drawn preview"
+          srcdoc="&lt;body style='font:16px Georgia;background:#fff;color:#222;padding:20px'&gt;&lt;h3&gt;Proposed rollout&lt;/h3&gt;&lt;p&gt;An illustration of the agent’s idea.&lt;/p&gt;&lt;button disabled style='color:#222;background:#eee;opacity:1'&gt;Approve (illustration only)&lt;/button&gt;"
+        ></iframe>
+      </figure>
+      <button class="button primary">Approve and apply</button>
+      <p>Only this Oriel control outside the preview applies a change set.</p>
+    </section>
+    <section>
+      <h2>Contrast audit · all supported text pairs</h2>
+      <table>
+        <tr>
+          <th>Theme</th>
+          <th>Ink</th>
+          <th>Foreground / background</th>
+          <th>Ratio</th>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>text</td>
+          <td>#193326 / #ffffff</td>
+          <td>13.61:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>text</td>
+          <td>#193326 / #f4f7f5</td>
+          <td>12.62:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>text</td>
+          <td>#193326 / #e7eeea</td>
+          <td>11.55:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>secondary</td>
+          <td>#334d3e / #ffffff</td>
+          <td>9.24:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>secondary</td>
+          <td>#334d3e / #f4f7f5</td>
+          <td>8.57:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>secondary</td>
+          <td>#334d3e / #e7eeea</td>
+          <td>7.84:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>muted</td>
+          <td>#50665a / #ffffff</td>
+          <td>6.2:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>muted</td>
+          <td>#50665a / #f4f7f5</td>
+          <td>5.74:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>muted</td>
+          <td>#50665a / #e7eeea</td>
+          <td>5.26:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>accent / in progress</td>
+          <td>#245c46 / #ffffff</td>
+          <td>7.79:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>accent / in progress</td>
+          <td>#245c46 / #f4f7f5</td>
+          <td>7.23:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>accent / in progress</td>
+          <td>#245c46 / #e7eeea</td>
+          <td>6.61:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>stalled / error</td>
+          <td>#9b302f / #ffffff</td>
+          <td>7.35:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>stalled / error</td>
+          <td>#9b302f / #f4f7f5</td>
+          <td>6.81:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>stalled / error</td>
+          <td>#9b302f / #e7eeea</td>
+          <td>6.23:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>done / applied</td>
+          <td>#276348 / #ffffff</td>
+          <td>7.08:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>done / applied</td>
+          <td>#276348 / #f4f7f5</td>
+          <td>6.57:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>done / applied</td>
+          <td>#276348 / #e7eeea</td>
+          <td>6.01:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>needs you</td>
+          <td>#795014 / #ffffff</td>
+          <td>7.07:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>needs you</td>
+          <td>#795014 / #f4f7f5</td>
+          <td>6.55:1</td>
+        </tr>
+        <tr>
+          <td>light</td>
+          <td>needs you</td>
+          <td>#795014 / #e7eeea</td>
+          <td>6.0:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>text</td>
+          <td>#f0f6f1 / #111c17</td>
+          <td>15.93:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>text</td>
+          <td>#f0f6f1 / #19271f</td>
+          <td>14.18:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>text</td>
+          <td>#f0f6f1 / #26392e</td>
+          <td>11.22:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>secondary</td>
+          <td>#d3dfd5 / #111c17</td>
+          <td>12.71:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>secondary</td>
+          <td>#d3dfd5 / #19271f</td>
+          <td>11.31:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>secondary</td>
+          <td>#d3dfd5 / #26392e</td>
+          <td>8.95:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>muted</td>
+          <td>#adbfaf / #111c17</td>
+          <td>9.02:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>muted</td>
+          <td>#adbfaf / #19271f</td>
+          <td>8.03:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>muted</td>
+          <td>#adbfaf / #26392e</td>
+          <td>6.35:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>accent / in progress</td>
+          <td>#a5d9bd / #111c17</td>
+          <td>11.03:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>accent / in progress</td>
+          <td>#a5d9bd / #19271f</td>
+          <td>9.81:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>accent / in progress</td>
+          <td>#a5d9bd / #26392e</td>
+          <td>7.77:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>stalled / error</td>
+          <td>#ffaba6 / #111c17</td>
+          <td>9.67:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>stalled / error</td>
+          <td>#ffaba6 / #19271f</td>
+          <td>8.6:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>stalled / error</td>
+          <td>#ffaba6 / #26392e</td>
+          <td>6.81:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>done / applied</td>
+          <td>#9bd6b5 / #111c17</td>
+          <td>10.55:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>done / applied</td>
+          <td>#9bd6b5 / #19271f</td>
+          <td>9.38:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>done / applied</td>
+          <td>#9bd6b5 / #26392e</td>
+          <td>7.43:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>needs you</td>
+          <td>#e8c17d / #111c17</td>
+          <td>10.28:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>needs you</td>
+          <td>#e8c17d / #19271f</td>
+          <td>9.14:1</td>
+        </tr>
+        <tr>
+          <td>dark</td>
+          <td>needs you</td>
+          <td>#e8c17d / #26392e</td>
+          <td>7.24:1</td>
+        </tr>
+      </table>
+    </section>
+  </main>
+</html>

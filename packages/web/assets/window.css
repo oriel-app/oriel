@@ -1,151 +1,119 @@
-/* Design tokens. Light by default, dark through prefers-color-scheme. */
+/* D3 A: Field. Semantic aliases cover every existing theme role. */
 :root {
-  color-scheme: light dark;
-
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --text-xs: 0.6875rem;
-  --text-sm: 0.75rem;
-  --text-md: 0.8125rem;
-  --text-lg: 0.9375rem;
-  --text-xl: 1.125rem;
-
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --radius-sm: 4px;
+  --n0: #ffffff;
+  --n1: #f4f7f5;
+  --n2: #e7eeea;
+  --n3: #cddad2;
+  --n4: #9db2a4;
+  --n5: #50665a;
+  --n6: #334d3e;
+  --n7: #193326;
+  --brand: #245c46;
+  --error: #9b302f;
+  --success: #276348;
+  --attention: #795014;
+  --bg: var(--n1);
+  --surface: var(--n0);
+  --surface-hover: var(--n2);
+  --surface-sunk: var(--n1);
+  --line: var(--n3);
+  --line-strong: var(--n4);
+  --text: var(--n7);
+  --text-muted: var(--n5);
+  --text-faint: var(--n5);
+  --accent: var(--brand);
+  --accent-text: var(--n0);
+  --accent-soft: var(--n2);
+  --focus: var(--brand);
+  --danger: var(--error);
+  --danger-soft: var(--n2);
+  --ins: var(--success);
+  --ins-soft: var(--n2);
+  --del: var(--error);
+  --todo: var(--n5);
+  --in-progress: var(--brand);
+  --done: var(--success);
+  --todo-text: var(--n5);
+  --in-progress-text: var(--brand);
+  --done-text: var(--success);
+  --todo-soft: var(--n2);
+  --in-progress-soft: var(--n2);
+  --done-soft: var(--n2);
+  --handed-off-text: var(--n5);
+  --handed-off-soft: var(--n2);
+  --derived: var(--attention);
+  --derived-soft: var(--n2);
+  --derived-line: var(--attention);
+  --type-story: var(--n5);
+  --type-bug: var(--n5);
+  --type-task: var(--n5);
+  --type-epic: var(--n5);
+  --type-other: var(--n5);
+  --avatar: var(--n2);
+  --avatar-text: var(--n6);
+  --needs-you: var(--attention);
+  --stalled: var(--error);
+  --applied: var(--success);
+  --reverted: var(--text-muted);
+  --duration-fast: 120ms;
+  --duration-panel: 180ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font);
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 3px;
   --radius: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --row: 2.125rem;
+  --radius-lg: 9px;
+  --radius-xl: 9px;
+  --shadow: none;
+  --row: 2.25rem;
   --page: 74rem;
-  /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
   --rail: 15rem;
   --chat: 44rem;
-  /* Every column's first line: how far down it starts, and how tall it is,
-     its contents centred, so the sidebar, the page, the rail and the panel
-     share one top line. */
   --inset-top: var(--space-3);
   --head-row: 2rem;
-  /* Motion: how the panel beside the page arrives, and how motion settles. */
-  --duration-panel: 180ms;
   --slide-panel: 0.375rem;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunk: #fafaf8;
-  --line: #e7e6e2;
-  --line-strong: #d5d3cd;
-  --text: #1f1f1d;
-  --text-muted: #63625d;
-  --text-faint: #8f8d86;
-  --accent: #3f5bd8;
-  --accent-text: #ffffff;
-  --accent-soft: #e9edfc;
-  --focus: #3f5bd8;
-  --danger: #b5412f;
-  --danger-soft: #fbeeeb;
-  --ins: #2b7a52;
-  --ins-soft: #e5f3ec;
-  --del: #8f8d86;
-
-  --todo: #b4b2ab;
-  --in-progress: #4a78e0;
-  --done: #3c9a6a;
-  --todo-text: #5f5e59;
-  --in-progress-text: #2f5bc4;
-  --done-text: #2b7a52;
-  --todo-soft: #efeeea;
-  --in-progress-soft: #e8eefc;
-  --done-soft: #e5f3ec;
-  --handed-off-text: #7a4fc4;
-  --handed-off-soft: #f1ebfb;
-
-  --derived: #94620b;
-  --derived-soft: #fbf3e2;
-  --derived-line: #e2c58a;
-
-  --type-story: #3c9a6a;
-  --type-bug: #d4513b;
-  --type-task: #4a78e0;
-  --type-epic: #8a5cd6;
-  --type-other: #a3a19a;
-
-  --avatar: #e9e8e3;
-  --avatar-text: #55544f;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
-
-  /* The chip (chip.ts): something in Oriel named inline, as a reply's link
-     to a thread or a change set. Built on the tokens above, so it follows
-     the theme; its state takes the state colours. */
   --chip-height: 1.375rem;
-  --chip-radius: var(--radius);
-  --chip-gap: 0.3125rem;
-  --chip-pad: 0 var(--space-2) 0 0.375rem;
+  --chip-radius: 0px;
+  --chip-gap: var(--space-1);
+  --chip-pad: 0;
   --chip-font: var(--text-md);
   --chip-name-max: 22em;
-  --chip-bg: var(--surface);
-  --chip-bg-hover: var(--surface-hover);
-  --chip-line: var(--line-strong);
+  --chip-bg: transparent;
+  --chip-bg-hover: transparent;
+  --chip-line: transparent;
   --chip-text: var(--text);
   --chip-icon: var(--text-muted);
 }
-
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413;
-    --surface: #1b1b1a;
-    --surface-hover: #232321;
-    --surface-sunk: #181817;
-    --line: #2b2b29;
-    --line-strong: #3a3a37;
-    --text: #e9e8e4;
-    --text-muted: #a3a29c;
-    --text-faint: #75746f;
-    --accent: #8ea4f5;
-    --accent-text: #141413;
-    --accent-soft: #252c45;
-    --focus: #8ea4f5;
-    --danger: #ef8d7b;
-    --danger-soft: #3a2420;
-    --ins: #7fcca3;
-    --ins-soft: #1e3128;
-    --del: #75746f;
-
-    --todo: #5d5c58;
-    --in-progress: #6b93ee;
-    --done: #55b584;
-    --todo-text: #b3b2ac;
-    --in-progress-text: #9cb6f5;
-    --done-text: #7fcca3;
-    --todo-soft: #2a2a28;
-    --in-progress-soft: #222b40;
-    --done-soft: #1e3128;
-    --handed-off-text: #c3a6f2;
-    --handed-off-soft: #2c2440;
-
-    --derived: #e3b45c;
-    --derived-soft: #2d2617;
-    --derived-line: #6b5426;
-
-    --type-story: #55b584;
-    --type-bug: #e9735f;
-    --type-task: #6b93ee;
-    --type-epic: #a888e6;
-    --type-other: #75746f;
-
-    --avatar: #2e2e2b;
-    --avatar-text: #c4c3bd;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.3);
+    --n0: #111c17;
+    --n1: #19271f;
+    --n2: #26392e;
+    --n3: #3c5245;
+    --n4: #698674;
+    --n5: #adbfaf;
+    --n6: #d3dfd5;
+    --n7: #f0f6f1;
+    --brand: #a5d9bd;
+    --error: #ffaba6;
+    --success: #9bd6b5;
+    --attention: #e8c17d;
+    --accent-text: var(--n0);
   }
 }
-
 *,
 *::before,
 *::after {
@@ -215,7 +183,7 @@ a {
 }
 
 .button:disabled {
-  opacity: 0.5;
+  opacity: 1;
   cursor: default;
 }
 
@@ -237,7 +205,7 @@ a {
 }
 
 .quiet-action:disabled {
-  opacity: 0.5;
+  opacity: 1;
   cursor: default;
 }
 
@@ -257,7 +225,7 @@ a {
     var(--line) calc(var(--sidebar) - 1px) var(--sidebar),
     transparent var(--sidebar)
   );
-  transition: grid-template-columns 180ms ease;
+  transition: grid-template-columns var(--duration-panel) var(--ease-out);
 }
 
 .shell[data-folded] {
@@ -276,7 +244,7 @@ a {
   height: 1rem;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.4;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -576,7 +544,7 @@ button.nav-disclose:hover {
 .nav-disclose .chevron {
   width: 0.75rem;
   height: 0.75rem;
-  transition: transform 120ms ease;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .nav-disclose[aria-expanded="true"] .chevron {
@@ -713,7 +681,7 @@ button.nav-disclose:hover {
 
 @keyframes pulse {
   50% {
-    opacity: 0.35;
+    opacity: 1;
   }
 }
 
@@ -751,7 +719,7 @@ button.nav-disclose:hover {
 .done-toggle .chevron {
   width: 0.75rem;
   height: 0.75rem;
-  transition: transform 120ms ease;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .done-toggle[aria-expanded="true"] .chevron {
@@ -936,14 +904,14 @@ button.nav-more {
     transform: translateX(-100%);
     visibility: hidden;
     transition:
-      transform 200ms ease,
-      visibility 0s 200ms;
+      transform var(--duration-panel) var(--ease-out),
+      visibility 0s var(--duration-panel);
   }
 
   .shell[data-drawer] .sidebar {
     transform: none;
     visibility: visible;
-    transition: transform 200ms ease;
+    transition: transform var(--duration-panel) var(--ease-out);
   }
 
   .sidebar-fold {
@@ -960,7 +928,7 @@ button.nav-more {
     background: rgb(0 0 0 / 0.32);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 200ms ease;
+    transition: opacity var(--duration-panel) var(--ease-out);
   }
 
   .shell[data-drawer] .drawer-backdrop {
@@ -1126,7 +1094,7 @@ button.nav-more {
   align-items: center;
   gap: var(--chip-gap);
   padding: var(--chip-pad);
-  border: 1px solid var(--chip-line);
+  border: 0;
   border-radius: var(--chip-radius);
   background: var(--chip-bg);
   color: var(--chip-text);
@@ -1141,11 +1109,11 @@ button.nav-more {
 
 .chip-icon {
   flex: none;
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 1rem;
+  height: 1rem;
   fill: none;
   stroke: var(--chip-icon);
-  stroke-width: 1.4;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1549,11 +1517,11 @@ button.nav-more {
   border-radius: var(--radius-lg);
   background: var(--surface);
   overflow: clip;
-  transition: opacity 120ms;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .clusters.stale {
-  opacity: 0.55;
+  opacity: 1;
 }
 
 /* A cluster at the "cluster" zoom level is its header row; at "list" its items follow. */
@@ -1598,7 +1566,7 @@ button.nav-more {
   right: var(--space-3);
   transform: translateY(-50%);
   opacity: 0;
-  transition: opacity 120ms;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .cluster-head:hover .make-workstream,
@@ -1648,7 +1616,7 @@ button.nav-more {
   stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 120ms;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 [aria-expanded="true"] > .chevron {
@@ -1712,7 +1680,7 @@ button.nav-more {
 }
 
 .origin .derived-tag {
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
 }
 
 /* The count, with the status bar under it, sits centered over the items'
@@ -1859,7 +1827,7 @@ button.nav-more {
 
 @media (hover: none) {
   .pick {
-    opacity: 0.7;
+    opacity: 1;
   }
 }
 
@@ -1977,7 +1945,7 @@ a.replies:hover {
   border-radius: 50%;
   background: var(--avatar);
   color: var(--avatar-text);
-  font-size: 0.5625rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -2121,7 +2089,7 @@ a.replies:hover {
 }
 
 .head-action:disabled {
-  opacity: 0.5;
+  opacity: 1;
   cursor: default;
 }
 
@@ -2183,7 +2151,7 @@ a.replies:hover {
 @media (hover: none) {
   .remove-member,
   .remove-line {
-    opacity: 0.6;
+    opacity: 1;
   }
 }
 
@@ -2474,7 +2442,7 @@ a.replies:hover {
   border-radius: var(--radius-sm);
   background: var(--surface-sunk);
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: var(--text-xs);
 }
 
 .reply pre {
@@ -2557,12 +2525,12 @@ a.replies:hover {
 }
 
 .working .working-dot {
-  animation: pulse 1.2s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes pulse {
   50% {
-    opacity: 0.3;
+    opacity: 1;
   }
 }
 
@@ -2823,7 +2791,7 @@ a.replies:hover {
 }
 
 .change-set[aria-busy="true"] {
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .change-set-head {
@@ -3763,7 +3731,7 @@ a.replies:hover {
 }
 
 .swipe-row {
-  transition: transform 180ms ease;
+  transition: transform var(--duration-panel) var(--ease-out);
 }
 
 .swipe-actions {
@@ -3773,7 +3741,7 @@ a.replies:hover {
   display: flex;
   flex-direction: row-reverse;
   overflow: hidden;
-  transition: width 180ms ease;
+  transition: width var(--duration-panel) var(--ease-out);
 }
 
 /* While a finger or the trackpad holds it, the row follows at once. */
@@ -3997,7 +3965,7 @@ a.replies:hover {
 }
 
 .panel-step:disabled {
-  opacity: 0.35;
+  opacity: 1;
   cursor: default;
 }
 
@@ -4115,7 +4083,7 @@ a.replies:hover {
   width: 1.75rem;
   height: 1.75rem;
   margin-top: 0.125rem;
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
 }
 
 .panel-message .panel-said,
@@ -4564,7 +4532,7 @@ button.overview-title:hover {
 .overview-spark polyline {
   fill: none;
   stroke: var(--in-progress);
-  stroke-width: 1.4;
+  stroke-width: 1.5;
 }
 
 .overview-spark[data-quiet] polyline {
@@ -4766,7 +4734,7 @@ button.overview-title:hover {
 .ask-question {
   height: var(--chip-height);
   padding: 0 var(--space-3);
-  border: 1px solid var(--chip-line);
+  border: 0;
   border-radius: 999px;
   background: var(--chip-bg);
   color: var(--text-muted);
@@ -4877,4 +4845,87 @@ button.overview-title:hover {
   .window-chat {
     transition: none;
   }
+}
+
+/* D3 component rules. Dense data; comfortable reading and approval. */
+h1,
+h2,
+.overview-head {
+  font-family: var(--font-heading);
+}
+.rich-text,
+.transcript {
+  line-height: 1.6;
+}
+.chip:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.chip:is([data-state="needs-you"], [data-state="pending"]) {
+  --chip-dot: var(--needs-you);
+  --chip-state: var(--needs-you);
+}
+.button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.agent-frame {
+  margin: var(--space-4) 0;
+  border: 2px dashed var(--text-muted);
+  padding: var(--space-3);
+  background: var(--surface-sunk);
+}
+.agent-frame > figcaption {
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+  font: 500 var(--text-sm)/1.5 var(--font-mono);
+}
+.agent-frame iframe {
+  display: block;
+  width: 100%;
+  height: 160px;
+  border: 1px solid var(--text-muted);
+  background: var(--surface);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.button:disabled,
+.quiet-action:disabled {
+  opacity: 1;
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+.state-chip:is([data-waiting="review"], [data-waiting="held"]) {
+  color: var(--needs-you);
+  background: var(--surface-hover);
+}
+
+.button.danger {
+  background: var(--surface);
+  color: var(--danger);
+}
+.button.danger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.side ins,
+.side del {
+  background: var(--surface-hover);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+h1,
+h2 {
+  line-height: 1.2;
 }
