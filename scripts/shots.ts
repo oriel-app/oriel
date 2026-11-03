@@ -1079,7 +1079,7 @@ const scenes: Scene[] = [
     make: goingOn(false),
     act: async (page) => {
       await approveIt(page);
-      await page.getByText("Nothing else needs you.").waitFor();
+      await page.getByText("All caught up.").waitFor();
     },
   },
   {

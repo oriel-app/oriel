@@ -145,7 +145,7 @@ const named = (title: string | null) => `“${title ?? "New thread"}”`;
 // chip names it, and a link back; or that nothing else needs the user. A
 // screen reader hears where the page went, too.
 export function approvedText(note: ApprovedNote): { said: string; heard: string | null } {
-  if (note.to === null) return { said: "Nothing else needs you.", heard: null };
+  if (note.to === null) return { said: "All caught up.", heard: null };
   return {
     said: `You approved ${named(note.left.title)}. Applying…`,
     heard: `Now on ${named(note.to.title)}, the next thread that needs you.`,

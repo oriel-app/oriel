@@ -187,7 +187,7 @@ test("approving the same change set again, once its apply stopped, moves the pag
 test("with nothing else needing the user, the page stays and says so, once", () => {
   const [stayed, effects] = step(approve(onPage("next", [])), applying);
   assert.deepEqual(navigations(effects), []);
-  assert.deepEqual(said(stayed), ["Nothing else needs you."]);
+  assert.deepEqual(said(stayed), ["All caught up."]);
   assert.equal(approvedUndos(stayed.approved).notes[0]?.link, undefined);
   // Once it runs out, the approval's answer doesn't say it again.
   const expired = after(stayed, {
