@@ -1842,10 +1842,13 @@ const asked = parseArgs({
 });
 const widths = asked.values.width?.map(Number) ?? [1280, 390];
 const picked = asked.positionals;
+// A name ending in `$` takes that scene alone, not every scene it starts.
+const takes = (name: string, start: string) =>
+  start.endsWith("$") ? name === start.slice(0, -1) : name.startsWith(start);
 for (const width of widths)
   if (!Number.isInteger(width) || width < 320) throw new Error(`Not a width in pixels: ${width}`);
 for (const start of picked)
-  if (!scenes.some((scene) => scene.name.startsWith(start)))
+  if (!scenes.some((scene) => takes(scene.name, start)))
     throw new Error(`No scene's name starts with ${start}`);
 const themes = ["light", "dark"] as const;
 
@@ -1872,7 +1875,7 @@ try {
       page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
       for (scene of scenes) {
         const { name } = scene;
-        if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
+        if (picked.length > 0 && !picked.some((start) => takes(name, start))) continue;
         await page.goto(new URL(scene.path, (scene.on ?? server).url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
