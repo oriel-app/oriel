@@ -6,6 +6,7 @@
     "./chip": "./src/chip.ts",
     "./files": "./files.ts",
     "./markdown": "./src/markdown.ts",
+    "./themes": "./themes.ts",
     "./view": "./src/view.ts"
   },
   "scripts": {

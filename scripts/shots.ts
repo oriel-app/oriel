@@ -2009,7 +2009,10 @@ async function onboarding(): Promise<void> {
     await page.getByRole("button", { name: "Connect" }).click();
     await page.locator(".connect-jira").waitFor({ state: "detached" });
     const connected = performance.now();
-    await page.getByRole("link", { name: "Browse", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Window" })
+      .getByRole("link", { name: "Browse", exact: true })
+      .click();
     await shown(page, "epic");
     await count("epics");
     const checkoutEpic = page.locator(".cluster", { hasText: "Checkout" }).first();
