@@ -76,6 +76,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/desktop: {}
+
   packages/evals:
     dependencies:
       '@oriel/agent':

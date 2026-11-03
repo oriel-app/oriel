@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts",
-    "typecheck": "tsc -b && tsc -p packages/web --noEmit",
+    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell",
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
     "github": "node scripts/github.ts",
@@ -17,7 +17,8 @@
     "desktop:server": "pnpm --filter @oriel/web build && node scripts/desktop-server.ts",
     "drive": "node scripts/drive.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
-    "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts"
+    "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts",
+    "desktop": "node packages/desktop/src/bundle.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.5",

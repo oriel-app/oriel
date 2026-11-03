@@ -6,5 +6,5 @@
     "typescript/no-explicit-any": "error",
     "no-else-return": "error"
   },
-  "ignorePatterns": ["fixtures/**"]
+  "ignorePatterns": ["fixtures/**", "packages/desktop/vendor/**"]
 }

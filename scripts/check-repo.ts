@@ -21,6 +21,7 @@
 // besides dispatching is its author's word: the check sees only whether it
 // dispatches. And window.css's themes pass decision 0034's rules
 // (check-themes.ts).
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
@@ -289,7 +290,16 @@ function readLink(path: string): string {
 }
 
 if (import.meta.main) {
+  // The scan below skips the desktop app's build, which is gitignored; a
+  // file committed there anyway would escape it.
+  const builtTracked = execFileSync("git", ["ls-files", "packages/desktop/build"], {
+    encoding: "utf8",
+  })
+    .split("\n")
+    .filter(Boolean)
+    .map((path) => `${path}: is under packages/desktop/build/, the desktop app's gitignored build`);
   const found = [
+    ...builtTracked,
     ...actionProblems(actions),
     ...themeProblems(readFileSync("packages/web/assets/window.css", "utf8")),
     ...problems({
@@ -305,6 +315,8 @@ if (import.meta.main) {
           readdirSync(dir, { recursive: true, encoding: "utf8" }).map((f) => `${dir}/${f}`),
         )
         .filter((f) => /\.tsx?$/.test(f) && !f.split("/").includes("node_modules"))
+        // The desktop app's gitignored build, which holds a copy of the server.
+        .filter((f) => !f.startsWith("packages/desktop/build/"))
         .filter((f) => !/^scripts\/check-repo(\.test)?\.ts$/.test(f))
         .map((path) => ({ path, text: readFileSync(path, "utf8") })),
     }),

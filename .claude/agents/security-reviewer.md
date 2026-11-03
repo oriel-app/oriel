@@ -16,7 +16,7 @@ Read first:
 
 ## Threat model
 
-Oriel runs on the user's own machine: on localhost with `pnpm dev` and, for pilots, as the desktop app (decision 0036). That is a native shell with the server as its child on 127.0.0.1, behind a per-launch secret cookie. There is no hosted instance. The review relay, once built, is the one hosted piece. Its store should only ever see ciphertext, but the page that decrypts a review holds the link's key, so whoever controls that page's host reads every link opened while they do.
+Oriel runs on the user's own machine: on localhost with `pnpm dev` and, for pilots, as the desktop app (decisions 0036, 0039). That is an Electron shell with the server as its child on 127.0.0.1, behind a per-launch secret cookie. There is no hosted instance. The review relay, once built, is the one hosted piece. Its store should only ever see ciphertext, but the page that decrypts a review holds the link's key, so whoever controls that page's host reads every link opened while they do.
 
 What an attacker wants:
 
@@ -58,6 +58,7 @@ Who controls what:
   - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a keychain entry outside Oriel's own;
   - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
   - the webview navigating away from the server's origin, or any bridge from the page to the shell;
+  - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); or an Electron zip or types file whose hash isn't the pinned one;
   - a state-changing request without an Origin or Host check;
   - a GET that changes state;
   - responses readable cross-origin, or through DNS rebinding.

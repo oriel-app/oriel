@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "../build/app", "noEmit": true },
+  "include": [".", "../vendor/electron.d.ts"]
+}
