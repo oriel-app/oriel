@@ -757,7 +757,11 @@ button.nav-disclose:hover {
   --mark-bg: linear-gradient(to top right, var(--mark) 50%, transparent 50%);
 }
 
-:is(.state-dot, .state-chip):is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]),
+:is(.state-dot, .state-chip):is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="reply"]
+),
 .chip:is([data-state="needs-you"], [data-state="pending"]) {
   --mark: var(--text);
   --mark-bg: var(--highlight);
@@ -1180,7 +1184,12 @@ button.nav-more {
   white-space: nowrap;
 }
 
-.state-chip:not([data-state="working"], [data-state="done"], [data-state="handed-off"], [data-waiting]) {
+.state-chip:not(
+  [data-state="working"],
+  [data-state="done"],
+  [data-state="handed-off"],
+  [data-waiting]
+) {
   color: var(--todo-text);
 }
 
@@ -1190,7 +1199,8 @@ button.nav-more {
   color: var(--text);
 }
 
-.thread-title-row .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]) {
+.thread-title-row
+  .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]) {
   padding-left: 0.25rem;
   background: var(--highlight);
   color: var(--on-highlight);
@@ -4950,16 +4960,16 @@ button.overview-title:hover {
    box of rows is a section under an ink rule, its rows parted by
    hairlines; what floats over the page has a hard shadow. */
 :is(
-    .clusters,
-    .members,
-    .overview-rows,
-    .overview-headlines,
-    .answer-block,
-    .change-set,
-    .review-card,
-    .actions-block,
-    .held-message
-  ) {
+  .clusters,
+  .members,
+  .overview-rows,
+  .overview-headlines,
+  .answer-block,
+  .change-set,
+  .review-card,
+  .actions-block,
+  .held-message
+) {
   border-width: var(--border-strong) 0 var(--border);
   border-style: solid;
   border-color: var(--n-7) transparent var(--line);
@@ -4973,13 +4983,7 @@ button.overview-title:hover {
 }
 
 /* Every label is set as a form's: small capitals of the monospace. */
-:is(
-    .rail-title,
-    .overview-head,
-    .overview-headline-label,
-    .derived-tag,
-    .search-label
-  ) {
+:is(.rail-title, .overview-head, .overview-headline-label, .derived-tag, .search-label) {
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--text-xs);

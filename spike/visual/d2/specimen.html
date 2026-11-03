@@ -1,262 +1,683 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Oriel, direction D2-B: specimen</title>
-<link rel="stylesheet" href="../../../packages/web/assets/window.css">
-<link rel="stylesheet" href="specimen.css">
-<style>
-/* Direction B in the specimen: square marks, labels as a form's, rules for
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oriel, direction D2-B: specimen</title>
+    <link rel="stylesheet" href="../../../packages/web/assets/window.css" />
+    <link rel="stylesheet" href="specimen.css" />
+    <style>
+      /* Direction B in the specimen: square marks, labels as a form's, rules for
    boxes, ink actions and the highlighter. */
-.sp h2, .sp h3 { font-family: var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); font-weight: var(--weight-medium); font-size: var(--text-xs); }
-.sp h3 { color: var(--text-faint); }
-.sp h1 { font-size: var(--text-xl); letter-spacing: -0.02em; }
-.sp section { border-top: var(--border-strong) solid var(--n-7); padding-top: var(--space-3); }
-.sp-mark, .sp-chip-state::before { border-radius: 0; width: 0.5625rem; height: 0.5625rem; transform: none; box-shadow: inset 0 0 0 1.5px var(--mark); }
-[data-s="progress"] { --mark-bg: linear-gradient(to top right, var(--mark) 50%, transparent 50%); }
-[data-s="needs"] { --mark: var(--text); --mark-bg: var(--highlight); }
-[data-s="stalled"] { --mark-bg: linear-gradient(45deg, transparent 42%, var(--mark) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--mark) 42% 58%, transparent 58%); --mark-radius: 0; --mark-turn: none; }
-[data-s="reverted"] { --mark-bg: linear-gradient(to top right, transparent 43%, var(--mark) 43% 57%, transparent 57%); }
-.sp-state, .sp-chip-state { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.02em; }
-.sp-state[data-s="needs"] { background: var(--highlight); color: var(--on-highlight); padding: 0 0.25rem; }
-.sp-state[data-s="needs"] .sp-mark { display: none; }
-.sp-chip[data-s="needs"] .sp-chip-name { background: var(--highlight); color: var(--on-highlight); }
-.sp-chip[data-s="needs"] .sp-chip-state { color: var(--text); }
-.sp-chip-name { text-decoration: underline dotted var(--n-7) 1px; }
-.sp-icon { stroke-linecap: square; stroke-linejoin: miter; }
-.sp-swatch i, .sp-icons > span, .sp-input > span:last-child { border-radius: 0; }
-.sp-button { border-radius: 0; border-color: var(--n-7); }
-.sp-button.primary { background: var(--n-7); border-color: var(--n-7); color: var(--n-0); }
-.sp-button.primary.hover { background: var(--n-6); }
-.sp-button.quiet { text-decoration: underline var(--line-strong); text-underline-offset: 0.2em; }
-.sp-button.focus { box-shadow: 3px 3px 0 var(--highlight); outline: var(--border-strong) solid var(--n-7); outline-offset: 1px; }
-.sp-ask { border: var(--border-strong) solid var(--n-7); border-radius: 0; box-shadow: none; }
-.sp-ask.focus { border-color: var(--n-7); box-shadow: 3px 3px 0 var(--highlight); }
-.sp-question { border: 0; border-bottom: var(--border) dashed var(--line-strong); border-radius: 0; background: none; }
-.sp-question::before { content: "→ "; color: var(--text-faint); }
-.sp-card, .sp-list, .sp-block, .sp-panel { border-width: var(--border-strong) 0 var(--border); border-color: var(--n-7) transparent var(--line); border-radius: 0; background: none; box-shadow: none; }
-.sp-card, .sp-block { padding-inline: 0; }
-.sp-list li { padding-inline: var(--space-1); }
-.sp-list.comfortable li { min-height: var(--row); }
-.sp-list:not(.comfortable) li { min-height: var(--row-compact); }
-.sp-card-name { font-size: var(--text-lg); font-weight: var(--weight-strong); }
-.sp-progress i { border-radius: 0; }
-.sp-bars i { border-radius: 0; background: var(--n-7); }
-.sp-panel { border: var(--border) solid var(--n-7); box-shadow: var(--elevation-2); background: var(--n-0); padding: var(--space-4); }
-.sp-panel h4 { font-size: var(--text-xl); letter-spacing: -0.02em; }
-.sp-undo { border-radius: 0; box-shadow: var(--elevation-2); }
-.sp-undo button { background: var(--highlight); color: var(--on-highlight); text-decoration: none; }
-.sp-note { border-left-color: var(--n-7); }
-.sp-note b { font-family: var(--font-mono); text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.06em; }
-.sp-diff div { border-radius: 0; }
-.sp-diff .del { background: none; box-shadow: inset 2px 0 0 var(--state-stalled); }
-.sp-diff .ins { background: none; box-shadow: inset 2px 0 0 var(--state-applied); }
-.sp-diff del { background: none; color: var(--state-stalled); text-decoration-thickness: 1.5px; }
-.sp-diff ins { background: none; color: var(--state-applied); text-decoration: underline 1.5px; text-underline-offset: 0.2em; }
-.sp-avatar { border-radius: 50%; }
-/* The agent's frame: a hatched ink rail down its left, a label set like a
+      .sp h2,
+      .sp h3 {
+        font-family: var(--font-mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text);
+        font-weight: var(--weight-medium);
+        font-size: var(--text-xs);
+      }
+      .sp h3 {
+        color: var(--text-faint);
+      }
+      .sp h1 {
+        font-size: var(--text-xl);
+        letter-spacing: -0.02em;
+      }
+      .sp section {
+        border-top: var(--border-strong) solid var(--n-7);
+        padding-top: var(--space-3);
+      }
+      .sp-mark,
+      .sp-chip-state::before {
+        border-radius: 0;
+        width: 0.5625rem;
+        height: 0.5625rem;
+        transform: none;
+        box-shadow: inset 0 0 0 1.5px var(--mark);
+      }
+      [data-s="progress"] {
+        --mark-bg: linear-gradient(to top right, var(--mark) 50%, transparent 50%);
+      }
+      [data-s="needs"] {
+        --mark: var(--text);
+        --mark-bg: var(--highlight);
+      }
+      [data-s="stalled"] {
+        --mark-bg:
+          linear-gradient(45deg, transparent 42%, var(--mark) 42% 58%, transparent 58%),
+          linear-gradient(-45deg, transparent 42%, var(--mark) 42% 58%, transparent 58%);
+        --mark-radius: 0;
+        --mark-turn: none;
+      }
+      [data-s="reverted"] {
+        --mark-bg: linear-gradient(
+          to top right,
+          transparent 43%,
+          var(--mark) 43% 57%,
+          transparent 57%
+        );
+      }
+      .sp-state,
+      .sp-chip-state {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+      .sp-state[data-s="needs"] {
+        background: var(--highlight);
+        color: var(--on-highlight);
+        padding: 0 0.25rem;
+      }
+      .sp-state[data-s="needs"] .sp-mark {
+        display: none;
+      }
+      .sp-chip[data-s="needs"] .sp-chip-name {
+        background: var(--highlight);
+        color: var(--on-highlight);
+      }
+      .sp-chip[data-s="needs"] .sp-chip-state {
+        color: var(--text);
+      }
+      .sp-chip-name {
+        text-decoration: underline dotted var(--n-7) 1px;
+      }
+      .sp-icon {
+        stroke-linecap: square;
+        stroke-linejoin: miter;
+      }
+      .sp-swatch i,
+      .sp-icons > span,
+      .sp-input > span:last-child {
+        border-radius: 0;
+      }
+      .sp-button {
+        border-radius: 0;
+        border-color: var(--n-7);
+      }
+      .sp-button.primary {
+        background: var(--n-7);
+        border-color: var(--n-7);
+        color: var(--n-0);
+      }
+      .sp-button.primary.hover {
+        background: var(--n-6);
+      }
+      .sp-button.quiet {
+        text-decoration: underline var(--line-strong);
+        text-underline-offset: 0.2em;
+      }
+      .sp-button.focus {
+        box-shadow: 3px 3px 0 var(--highlight);
+        outline: var(--border-strong) solid var(--n-7);
+        outline-offset: 1px;
+      }
+      .sp-ask {
+        border: var(--border-strong) solid var(--n-7);
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .sp-ask.focus {
+        border-color: var(--n-7);
+        box-shadow: 3px 3px 0 var(--highlight);
+      }
+      .sp-question {
+        border: 0;
+        border-bottom: var(--border) dashed var(--line-strong);
+        border-radius: 0;
+        background: none;
+      }
+      .sp-question::before {
+        content: "→ ";
+        color: var(--text-faint);
+      }
+      .sp-card,
+      .sp-list,
+      .sp-block,
+      .sp-panel {
+        border-width: var(--border-strong) 0 var(--border);
+        border-color: var(--n-7) transparent var(--line);
+        border-radius: 0;
+        background: none;
+        box-shadow: none;
+      }
+      .sp-card,
+      .sp-block {
+        padding-inline: 0;
+      }
+      .sp-list li {
+        padding-inline: var(--space-1);
+      }
+      .sp-list.comfortable li {
+        min-height: var(--row);
+      }
+      .sp-list:not(.comfortable) li {
+        min-height: var(--row-compact);
+      }
+      .sp-card-name {
+        font-size: var(--text-lg);
+        font-weight: var(--weight-strong);
+      }
+      .sp-progress i {
+        border-radius: 0;
+      }
+      .sp-bars i {
+        border-radius: 0;
+        background: var(--n-7);
+      }
+      .sp-panel {
+        border: var(--border) solid var(--n-7);
+        box-shadow: var(--elevation-2);
+        background: var(--n-0);
+        padding: var(--space-4);
+      }
+      .sp-panel h4 {
+        font-size: var(--text-xl);
+        letter-spacing: -0.02em;
+      }
+      .sp-undo {
+        border-radius: 0;
+        box-shadow: var(--elevation-2);
+      }
+      .sp-undo button {
+        background: var(--highlight);
+        color: var(--on-highlight);
+        text-decoration: none;
+      }
+      .sp-note {
+        border-left-color: var(--n-7);
+      }
+      .sp-note b {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-size: var(--text-xs);
+        letter-spacing: 0.06em;
+      }
+      .sp-diff div {
+        border-radius: 0;
+      }
+      .sp-diff .del {
+        background: none;
+        box-shadow: inset 2px 0 0 var(--state-stalled);
+      }
+      .sp-diff .ins {
+        background: none;
+        box-shadow: inset 2px 0 0 var(--state-applied);
+      }
+      .sp-diff del {
+        background: none;
+        color: var(--state-stalled);
+        text-decoration-thickness: 1.5px;
+      }
+      .sp-diff ins {
+        background: none;
+        color: var(--state-applied);
+        text-decoration: underline 1.5px;
+        text-underline-offset: 0.2em;
+      }
+      .sp-avatar {
+        border-radius: 50%;
+      }
+      /* The agent's frame: a hatched ink rail down its left, a label set like a
    warning slip, and its contents on a sheet of a different colour. Oriel
    draws hatching nowhere else. */
-.sp-frame { display: grid; grid-template-columns: 0.75rem minmax(0, 1fr); border: var(--border) solid var(--n-7); }
-.sp-frame-label { grid-column: 1 / -1; padding: var(--space-1) var(--space-2); background: var(--n-7); color: var(--n-0); text-transform: uppercase; letter-spacing: 0.06em; }
-.sp-frame-rail { background: repeating-linear-gradient(-45deg, var(--n-7) 0 2px, transparent 2px 6px); border-right: var(--border) solid var(--n-7); }
-.sp-frame-well { padding: var(--space-3); background: var(--n-1); }
-.sp-frame-body { background: var(--n-0); }
-</style>
-</head>
-<body>
-<main class="sp">
-<header>
-  <h1>Direction B: Marked-up printout</h1>
-  <p class="sp-idea">The window as a printout someone has marked up: ink on paper, rules where boxes were, labels set like a form&#8217;s, each state in its own pen, and one highlighter for whatever needs you, so the eye goes there first. Lists stay comfortable while short and go compact from the eighth row, so the fortieth workstream costs a line.</p>
-</header>
+      .sp-frame {
+        display: grid;
+        grid-template-columns: 0.75rem minmax(0, 1fr);
+        border: var(--border) solid var(--n-7);
+      }
+      .sp-frame-label {
+        grid-column: 1 / -1;
+        padding: var(--space-1) var(--space-2);
+        background: var(--n-7);
+        color: var(--n-0);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .sp-frame-rail {
+        background: repeating-linear-gradient(-45deg, var(--n-7) 0 2px, transparent 2px 6px);
+        border-right: var(--border) solid var(--n-7);
+      }
+      .sp-frame-well {
+        padding: var(--space-3);
+        background: var(--n-1);
+      }
+      .sp-frame-body {
+        background: var(--n-0);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="sp">
+      <header>
+        <h1>Direction B: Marked-up printout</h1>
+        <p class="sp-idea">
+          The window as a printout someone has marked up: ink on paper, rules where boxes were,
+          labels set like a form&#8217;s, each state in its own pen, and one highlighter for
+          whatever needs you, so the eye goes there first. Lists stay comfortable while short and go
+          compact from the eighth row, so the fortieth workstream costs a line.
+        </p>
+      </header>
 
-<section>
-  <h2>Colour</h2>
-  <h3>Neutrals, by role: paper, well, hover, hairline, strong rule, pencil, muted ink, ink</h3>
-  <div class="sp-swatches" id="neutrals"></div>
-  <h3>The accent, and where things stand (text on its soft ground; ratio on the page and on the soft)</h3>
-  <div class="sp-swatches sp-states" id="states"></div>
-  <p class="sp-mono">Source marks: Jira, Slack and a folder show as the kind's icon in pencil, never a brand colour.</p>
-</section>
+      <section>
+        <h2>Colour</h2>
+        <h3>
+          Neutrals, by role: paper, well, hover, hairline, strong rule, pencil, muted ink, ink
+        </h3>
+        <div class="sp-swatches" id="neutrals"></div>
+        <h3>
+          The accent, and where things stand (text on its soft ground; ratio on the page and on the
+          soft)
+        </h3>
+        <div class="sp-swatches sp-states" id="states"></div>
+        <p class="sp-mono">
+          Source marks: Jira, Slack and a folder show as the kind's icon in pencil, never a brand
+          colour.
+        </p>
+      </section>
 
-<section>
-  <h2>Type</h2>
-  <div class="sp-type" id="type"></div>
-  <div class="sp-type">
-    <span class="sp-mono">weights</span><span><span style="font-weight:var(--weight-regular)">Regular 400</span> · <span style="font-weight:var(--weight-medium)">Medium 500</span> · <span style="font-weight:var(--weight-strong)">Bold 700</span></span>
-    <span class="sp-mono">mono: keys, IDs, labels, state words</span><span><span class="key">SYN-104</span> <span class="key">jira:SYN-61</span> <span class="key">01JC4Q7Z</span></span>
-    <span class="sp-mono">leading</span><span>tight 1.2 for titles · 1.45 for the window · 1.6 for prose</span>
-  </div>
-</section>
+      <section>
+        <h2>Type</h2>
+        <div class="sp-type" id="type"></div>
+        <div class="sp-type">
+          <span class="sp-mono">weights</span
+          ><span
+            ><span style="font-weight: var(--weight-regular)">Regular 400</span> ·
+            <span style="font-weight: var(--weight-medium)">Medium 500</span> ·
+            <span style="font-weight: var(--weight-strong)">Bold 700</span></span
+          >
+          <span class="sp-mono">mono: keys, IDs, labels, state words</span
+          ><span
+            ><span class="key">SYN-104</span> <span class="key">jira:SYN-61</span>
+            <span class="key">01JC4Q7Z</span></span
+          >
+          <span class="sp-mono">leading</span
+          ><span>tight 1.2 for titles · 1.45 for the window · 1.6 for prose</span>
+        </div>
+      </section>
 
-<section>
-  <h2>Space, shape, elevation, motion</h2>
-  <div class="sp-space" id="space"></div>
-  <div class="sp-row">
-    <span class="sp-shape" style="border-radius:var(--radius-1)">0 everything</span>
-    <span class="sp-shape" style="border-radius:var(--radius-2)">2px a mark</span>
-    <span class="sp-shape" style="border-radius:var(--radius-round);width:4rem">round</span>
-    <span class="sp-shape" style="border-width:var(--border)">1px rule</span>
-    <span class="sp-shape" style="border:var(--border-strong) solid var(--focus)">2px focus</span>
-    <span class="sp-shape" style="border-width:var(--border-strong) 0 var(--border);border-color:var(--n-7) transparent var(--line);background:none">2px ink rule<br>a section</span>
-    <span class="sp-shape" style="border-color:var(--n-7);box-shadow:var(--elevation-2)">one level<br>over the page</span>
-  </div>
-  <p class="sp-mono">Motion: 90ms for a state changing, 160ms for a thing arriving, both cubic-bezier(0.3, 0, 0, 1): quick and decided, nothing floats. Reduced motion: both are 0ms and nothing slides.</p>
-</section>
+      <section>
+        <h2>Space, shape, elevation, motion</h2>
+        <div class="sp-space" id="space"></div>
+        <div class="sp-row">
+          <span class="sp-shape" style="border-radius: var(--radius-1)">0 everything</span>
+          <span class="sp-shape" style="border-radius: var(--radius-2)">2px a mark</span>
+          <span class="sp-shape" style="border-radius: var(--radius-round); width: 4rem"
+            >round</span
+          >
+          <span class="sp-shape" style="border-width: var(--border)">1px rule</span>
+          <span class="sp-shape" style="border: var(--border-strong) solid var(--focus)"
+            >2px focus</span
+          >
+          <span
+            class="sp-shape"
+            style="
+              border-width: var(--border-strong) 0 var(--border);
+              border-color: var(--n-7) transparent var(--line);
+              background: none;
+            "
+            >2px ink rule<br />a section</span
+          >
+          <span class="sp-shape" style="border-color: var(--n-7); box-shadow: var(--elevation-2)"
+            >one level<br />over the page</span
+          >
+        </div>
+        <p class="sp-mono">
+          Motion: 90ms for a state changing, 160ms for a thing arriving, both cubic-bezier(0.3, 0,
+          0, 1): quick and decided, nothing floats. Reduced motion: both are 0ms and nothing slides.
+        </p>
+      </section>
 
-<section>
-  <h2>Icons: a 16 grid, 1.5 stroke, square caps and mitred joins, the text's colour; 16px in rows, 14px in a sentence</h2>
-  <div class="sp-icons" id="icons"></div>
-</section>
+      <section>
+        <h2>
+          Icons: a 16 grid, 1.5 stroke, square caps and mitred joins, the text's colour; 16px in
+          rows, 14px in a sentence
+        </h2>
+        <div class="sp-icons" id="icons"></div>
+      </section>
 
-<section>
-  <h2>Density follows the count: comfortable until a list's eighth row, compact from it</h2>
-  <div class="sp-two sp-density">
-    <div><h3>Compact, 30px rows: any list of 8 or more (Browse, 60 people, 40 workstreams)</h3>
-      <ul class="sp-list" id="compact"></ul></div>
-    <div><h3>Comfortable, 40px rows: a list of 7 or fewer (Needs you's top, a workstream's threads)</h3>
-      <ul class="sp-list comfortable" id="comfortable"></ul></div>
-  </div>
-</section>
+      <section>
+        <h2>Density follows the count: comfortable until a list's eighth row, compact from it</h2>
+        <div class="sp-two sp-density">
+          <div>
+            <h3>Compact, 30px rows: any list of 8 or more (Browse, 60 people, 40 workstreams)</h3>
+            <ul class="sp-list" id="compact"></ul>
+          </div>
+          <div>
+            <h3>
+              Comfortable, 40px rows: a list of 7 or fewer (Needs you's top, a workstream's threads)
+            </h3>
+            <ul class="sp-list comfortable" id="comfortable"></ul>
+          </div>
+        </div>
+      </section>
 
-<section>
-  <h2>Chip, in a sentence: icon, key, name, state, and no box</h2>
-  <p class="sp-prose" id="chips"></p>
-</section>
+      <section>
+        <h2>Chip, in a sentence: icon, key, name, state, and no box</h2>
+        <p class="sp-prose" id="chips"></p>
+      </section>
 
-<section>
-  <h2>State marks</h2>
-  <div class="sp-row" id="marks"></div>
-</section>
+      <section>
+        <h2>State marks</h2>
+        <div class="sp-row" id="marks"></div>
+      </section>
 
-<section>
-  <h2>Buttons: primary, secondary, quiet, danger; at rest, hovered, focused, disabled</h2>
-  <div class="sp-row" id="buttons"></div>
-</section>
+      <section>
+        <h2>Buttons: primary, secondary, quiet, danger; at rest, hovered, focused, disabled</h2>
+        <div class="sp-row" id="buttons"></div>
+      </section>
 
-<section>
-  <h2>Ask bar and input</h2>
-  <div class="sp-ask"><span>Ask about your window</span><button class="sp-button primary" disabled style="opacity:.5">Ask</button></div>
-  <div class="sp-questions"><span class="sp-question">Which workstreams have gone quiet?</span><span class="sp-question">Should Vehicle and freight reservations become a workstream?</span></div>
-  <div class="sp-ask focus"><span class="typed">Chart my workstreams by size</span><button class="sp-button primary">Ask</button></div>
-  <div class="sp-row"><label class="sp-input" style="width:20rem"><span>Name</span><span>Gift cards</span></label></div>
-</section>
+      <section>
+        <h2>Ask bar and input</h2>
+        <div class="sp-ask">
+          <span>Ask about your window</span
+          ><button class="sp-button primary" disabled style="opacity: 0.5">Ask</button>
+        </div>
+        <div class="sp-questions">
+          <span class="sp-question">Which workstreams have gone quiet?</span
+          ><span class="sp-question"
+            >Should Vehicle and freight reservations become a workstream?</span
+          >
+        </div>
+        <div class="sp-ask focus">
+          <span class="typed">Chart my workstreams by size</span
+          ><button class="sp-button primary">Ask</button>
+        </div>
+        <div class="sp-row">
+          <label class="sp-input" style="width: 20rem"
+            ><span>Name</span><span>Gift cards</span></label
+          >
+        </div>
+      </section>
 
-<section>
-  <h2>Workstream card and list row</h2>
-  <div class="sp-two">
-    <div class="sp-card" id="card"></div>
-    <ul class="sp-list" id="rows"></ul>
-  </div>
-</section>
+      <section>
+        <h2>Workstream card and list row</h2>
+        <div class="sp-two">
+          <div class="sp-card" id="card"></div>
+          <ul class="sp-list" id="rows"></ul>
+        </div>
+      </section>
 
-<section>
-  <h2>Blocks: bars, table, rows</h2>
-  <div class="sp-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))" id="blocks"></div>
-</section>
+      <section>
+        <h2>Blocks: bars, table, rows</h2>
+        <div
+          class="sp-grid"
+          style="grid-template-columns: repeat(3, minmax(0, 1fr))"
+          id="blocks"
+        ></div>
+      </section>
 
-<section>
-  <h2>Notes, panel, diff</h2>
-  <div class="sp-two">
-    <div style="display:grid;gap:var(--space-4);align-content:start">
-      <div><span class="sp-undo">Removed SYN-61 from SMS updates <button>Undo</button></span></div>
-      <div class="sp-note"><b>Oriel</b> SYN-900 isn't in the index any more; the agent was told.</div>
-      <div class="sp-diff">
-        <div class="del">Same as the app, for <del>browsers</del> that <del>support</del> it.</div>
-        <div class="ins">Same as the app, for <ins>every browser</ins> that <ins>supports</ins> it.</div>
-        <div class="ins">3 points</div>
-      </div>
-    </div>
-    <aside class="sp-panel">
-      <span class="sp-meta"><svg class="sp-icon small" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg> <span class="key">SYN-61</span> · Story · Jira</span>
-      <h4>Send disruption updates by SMS</h4>
-      <dl class="sp-facets"><dt>Status</dt><dd><span class="sp-state" data-s="progress"><span class="sp-mark"></span>In progress</span></dd><dt>Assignee</dt><dd><span class="sp-avatar">CY</span> Chen Yuting</dd><dt>Estimate</dt><dd>3 points</dd></dl>
-      <p>Riders whose train is cancelled get a text with the next departure and a link to rebook. The copy is signed off by support.</p>
-    </aside>
-  </div>
-</section>
+      <section>
+        <h2>Notes, panel, diff</h2>
+        <div class="sp-two">
+          <div style="display: grid; gap: var(--space-4); align-content: start">
+            <div>
+              <span class="sp-undo">Removed SYN-61 from SMS updates <button>Undo</button></span>
+            </div>
+            <div class="sp-note">
+              <b>Oriel</b> SYN-900 isn't in the index any more; the agent was told.
+            </div>
+            <div class="sp-diff">
+              <div class="del">
+                Same as the app, for <del>browsers</del> that <del>support</del> it.
+              </div>
+              <div class="ins">
+                Same as the app, for <ins>every browser</ins> that <ins>supports</ins> it.
+              </div>
+              <div class="ins">3 points</div>
+            </div>
+          </div>
+          <aside class="sp-panel">
+            <span class="sp-meta"
+              ><svg class="sp-icon small" viewBox="0 0 16 16">
+                <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+                <path d="M5.5 6.5h5M5.5 9.5h3" />
+              </svg>
+              <span class="key">SYN-61</span> · Story · Jira</span
+            >
+            <h4>Send disruption updates by SMS</h4>
+            <dl class="sp-facets">
+              <dt>Status</dt>
+              <dd>
+                <span class="sp-state" data-s="progress"
+                  ><span class="sp-mark"></span>In progress</span
+                >
+              </dd>
+              <dt>Assignee</dt>
+              <dd><span class="sp-avatar">CY</span> Chen Yuting</dd>
+              <dt>Estimate</dt>
+              <dd>3 points</dd>
+            </dl>
+            <p>
+              Riders whose train is cancelled get a text with the next departure and a link to
+              rebook. The copy is signed off by support.
+            </p>
+          </aside>
+        </div>
+      </section>
 
-<section>
-  <h2>The agent's HTML frame (0033): what the agent drew, inside Oriel's frame; Oriel's own controls stay outside it</h2>
-  <figure class="sp-frame">
-    <figcaption class="sp-frame-label"><svg class="sp-icon small" viewBox="0 0 16 16"><path d="M3 13l2.5-.5 7-7-2-2-7 7z"/><path d="M9.5 4.5l2 2"/></svg> Drawn by the agent · not checked against Oriel's data · nothing in here is Oriel's</figcaption>
-    <span class="sp-frame-rail"></span><div class="sp-frame-well"><iframe class="sp-frame-body" sandbox="" id="frame" title="Drawn by the agent"></iframe></div>
-  </figure>
-  <div class="sp-after"><span class="sp-mono">Oriel's own, below the frame:</span><button class="sp-button primary">Approve and apply</button><button class="sp-button">Reject</button></div>
-</section>
-</main>
+      <section>
+        <h2>
+          The agent's HTML frame (0033): what the agent drew, inside Oriel's frame; Oriel's own
+          controls stay outside it
+        </h2>
+        <figure class="sp-frame">
+          <figcaption class="sp-frame-label">
+            <svg class="sp-icon small" viewBox="0 0 16 16">
+              <path d="M3 13l2.5-.5 7-7-2-2-7 7z" />
+              <path d="M9.5 4.5l2 2" />
+            </svg>
+            Drawn by the agent · not checked against Oriel's data · nothing in here is Oriel's
+          </figcaption>
+          <span class="sp-frame-rail"></span>
+          <div class="sp-frame-well">
+            <iframe class="sp-frame-body" sandbox="" id="frame" title="Drawn by the agent"></iframe>
+          </div>
+        </figure>
+        <div class="sp-after">
+          <span class="sp-mono">Oriel's own, below the frame:</span
+          ><button class="sp-button primary">Approve and apply</button
+          ><button class="sp-button">Reject</button>
+        </div>
+      </section>
+    </main>
 
-<script>
-const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const hex = (value) => {
-  const probe = document.createElement("i");
-  probe.style.color = value;
-  document.body.append(probe);
-  const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g).map(Number);
-  probe.remove();
-  return [r, g, b];
-};
-const lum = ([r, g, b]) => [r, g, b].map((c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
-const ratio = (a, b) => { const [x, y] = [lum(hex(a)), lum(hex(b))].sort((p, q) => q - p); return ((x + 0.05) / (y + 0.05)).toFixed(1); };
-const toHex = (v) => "#" + hex(v).map((c) => c.toString(16).padStart(2, "0")).join("");
+    <script>
+      const css = (name) =>
+        getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      const hex = (value) => {
+        const probe = document.createElement("i");
+        probe.style.color = value;
+        document.body.append(probe);
+        const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g).map(Number);
+        probe.remove();
+        return [r, g, b];
+      };
+      const lum = ([r, g, b]) =>
+        [r, g, b]
+          .map((c) => {
+            c /= 255;
+            return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          })
+          .reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+      const ratio = (a, b) => {
+        const [x, y] = [lum(hex(a)), lum(hex(b))].sort((p, q) => q - p);
+        return ((x + 0.05) / (y + 0.05)).toFixed(1);
+      };
+      const toHex = (v) =>
+        "#" +
+        hex(v)
+          .map((c) => c.toString(16).padStart(2, "0"))
+          .join("");
 
-document.getElementById("neutrals").innerHTML = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => {
-  const v = css(`--n-${n}`);
-  const note = n >= 5 ? ` · ${ratio(v, css("--n-1"))}:1 on page` : "";
-  return `<span class="sp-swatch"><i style="background:var(--n-${n})"></i><b>n-${n}</b><code>${toHex(v)}${note}</code></span>`;
-}).join("");
-const states = [["todo", "state-todo", "To do"], ["progress", "state-progress", "In progress"], ["done", "state-done", "Done"], ["needs", "state-needs", "Needs you"], ["stalled", "state-stalled", "Stalled, error"], ["applied", "state-applied", "Applied"], ["reverted", "state-reverted", "Reverted"]];
-document.getElementById("states").innerHTML = states.slice(1).map(([s, t, label]) =>
-  `<span class="sp-swatch"><i style="background:var(--${s === "needs" ? `${t}-soft` : t})"></i><span class="sp-on-soft" style="background:var(--${t}-soft);color:var(--${t})">${label}</span><code>${s === "needs" ? `ink on the highlighter · ${ratio(css(`--${t}`), css(`--${t}-soft`))}` : `${toHex(css(`--${t}`))} · ${ratio(css(`--${t}`), css("--n-1"))} / ${ratio(css(`--${t}`), css(`--${t}-soft`))}`}</code></span>`).join("")
-  + `<span class="sp-swatch" style="grid-column:1/-1;grid-template-columns:auto 1fr;align-items:center;gap:var(--space-3)"><i style="width:6rem;background:var(--highlight)"></i><code>the accent, a highlighter ${toHex(css("--highlight"))}: only a fill, under ink · ink on it ${ratio(css("--on-highlight"), css("--highlight"))}:1 · actions are ink: paper on ink ${ratio(css("--n-0"), css("--n-7"))}:1</code></span>`;
+      document.getElementById("neutrals").innerHTML = [0, 1, 2, 3, 4, 5, 6, 7]
+        .map((n) => {
+          const v = css(`--n-${n}`);
+          const note = n >= 5 ? ` · ${ratio(v, css("--n-1"))}:1 on page` : "";
+          return `<span class="sp-swatch"><i style="background:var(--n-${n})"></i><b>n-${n}</b><code>${toHex(v)}${note}</code></span>`;
+        })
+        .join("");
+      const states = [
+        ["todo", "state-todo", "To do"],
+        ["progress", "state-progress", "In progress"],
+        ["done", "state-done", "Done"],
+        ["needs", "state-needs", "Needs you"],
+        ["stalled", "state-stalled", "Stalled, error"],
+        ["applied", "state-applied", "Applied"],
+        ["reverted", "state-reverted", "Reverted"],
+      ];
+      document.getElementById("states").innerHTML =
+        states
+          .slice(1)
+          .map(
+            ([s, t, label]) =>
+              `<span class="sp-swatch"><i style="background:var(--${s === "needs" ? `${t}-soft` : t})"></i><span class="sp-on-soft" style="background:var(--${t}-soft);color:var(--${t})">${label}</span><code>${s === "needs" ? `ink on the highlighter · ${ratio(css(`--${t}`), css(`--${t}-soft`))}` : `${toHex(css(`--${t}`))} · ${ratio(css(`--${t}`), css("--n-1"))} / ${ratio(css(`--${t}`), css(`--${t}-soft`))}`}</code></span>`,
+          )
+          .join("") +
+        `<span class="sp-swatch" style="grid-column:1/-1;grid-template-columns:auto 1fr;align-items:center;gap:var(--space-3)"><i style="width:6rem;background:var(--highlight)"></i><code>the accent, a highlighter ${toHex(css("--highlight"))}: only a fill, under ink · ink on it ${ratio(css("--on-highlight"), css("--highlight"))}:1 · actions are ink: paper on ink ${ratio(css("--n-0"), css("--n-7"))}:1</code></span>`;
 
-document.getElementById("type").innerHTML = [["xl", "24", "A page title, the panel's"], ["lg", "15", "A reply, the panel's body, the ask bar"], ["md", "13", "The window: rows, labels, buttons' sentences"], ["sm", "12", "Meta: sources, ages, counts"], ["xs", "11", "LABELS · STATE WORDS · SECTION HEADS"]].map(([k, px, t]) =>
-  `<span class="sp-mono">--text-${k} ${px}px</span><span style="font-size:var(--text-${k})">${t}</span>`).join("");
-document.getElementById("space").innerHTML = [1, 2, 3, 4, 6, 8].map((n) =>
-  `<span style="display:grid;gap:4px;justify-items:center"><i style="width:var(--space-${n});height:var(--space-${n})"></i><span class="sp-mono">${n * 4}</span></span>`).join("");
+      document.getElementById("type").innerHTML = [
+        ["xl", "24", "A page title, the panel's"],
+        ["lg", "15", "A reply, the panel's body, the ask bar"],
+        ["md", "13", "The window: rows, labels, buttons' sentences"],
+        ["sm", "12", "Meta: sources, ages, counts"],
+        ["xs", "11", "LABELS · STATE WORDS · SECTION HEADS"],
+      ]
+        .map(
+          ([k, px, t]) =>
+            `<span class="sp-mono">--text-${k} ${px}px</span><span style="font-size:var(--text-${k})">${t}</span>`,
+        )
+        .join("");
+      document.getElementById("space").innerHTML = [1, 2, 3, 4, 6, 8]
+        .map(
+          (n) =>
+            `<span style="display:grid;gap:4px;justify-items:center"><i style="width:var(--space-${n});height:var(--space-${n})"></i><span class="sp-mono">${n * 4}</span></span>`,
+        )
+        .join("");
 
-const icon = {
-  item: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 6.5h5M5.5 9.5h3"/>',
-  thread: '<path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/>',
-  "change set": '<rect x="2.5" y="2" width="11" height="12" rx="2"/><path d="M8 4.5v4M6 6.5h4M6 11h4"/>',
-  workstream: '<path d="M2.5 5.25 8 2.5l5.5 2.75L8 8z"/><path d="M2.5 8.25 8 11l5.5-2.75"/><path d="M2.5 11.25 8 14l5.5-2.75"/>',
-  file: '<path d="M4 1.75h5l3.25 3.25v9.25H4z"/><path d="M9 1.75V5h3.25"/>',
-  "Slack message": '<path d="M6.25 2.5 5 13.5M11 2.5l-1.25 11M2.5 5.75h11M2 10.25h11"/>',
-};
-const svg = (k, small) => `<svg class="sp-icon${small ? " small" : ""}" viewBox="0 0 16 16" aria-hidden="true">${icon[k]}</svg>`;
-document.getElementById("icons").innerHTML = Object.keys(icon).map((k) => `<span><span>${svg(k)}${svg(k, true)}</span>${k}</span>`).join("");
+      const icon = {
+        item: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 6.5h5M5.5 9.5h3"/>',
+        thread:
+          '<path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/>',
+        "change set":
+          '<rect x="2.5" y="2" width="11" height="12" rx="2"/><path d="M8 4.5v4M6 6.5h4M6 11h4"/>',
+        workstream:
+          '<path d="M2.5 5.25 8 2.5l5.5 2.75L8 8z"/><path d="M2.5 8.25 8 11l5.5-2.75"/><path d="M2.5 11.25 8 14l5.5-2.75"/>',
+        file: '<path d="M4 1.75h5l3.25 3.25v9.25H4z"/><path d="M9 1.75V5h3.25"/>',
+        "Slack message": '<path d="M6.25 2.5 5 13.5M11 2.5l-1.25 11M2.5 5.75h11M2 10.25h11"/>',
+      };
+      const svg = (k, small) =>
+        `<svg class="sp-icon${small ? " small" : ""}" viewBox="0 0 16 16" aria-hidden="true">${icon[k]}</svg>`;
+      document.getElementById("icons").innerHTML = Object.keys(icon)
+        .map((k) => `<span><span>${svg(k)}${svg(k, true)}</span>${k}</span>`)
+        .join("");
 
-const names = { todo: "To do", progress: "In progress", done: "Done", needs: "Needs you", stalled: "Apply stalled", applied: "Applied", reverted: "Reverted" };
-const state = (s) => `<span class="sp-state" data-s="${s}"><span class="sp-mark"></span>${names[s]}</span>`;
-document.getElementById("marks").innerHTML = Object.keys(names).map(state).join("");
-const chip = (k, key, name, s) => `<span class="sp-chip" data-s="${s}">${svg(k, true)}${key ? `<span class="key">${key}</span>` : ""}<span class="sp-chip-name">${name}</span><span class="sp-chip-state">${names[s]}</span></span>`;
-document.getElementById("chips").innerHTML = `${chip("item", "SYN-61", "Send disruption updates by SMS", "progress")} went to the team in ${chip("thread", "", "SYN-61 is ready to pick up", "done")}, when you approved ${chip("change set", "", "Hand SYN-61 to the team", "applied")}. ${chip("Slack message", "", "Chen Yuting: SMS copy is signed off", "todo")} came first; ${chip("file", "", "launch/sms-copy.md", "todo")} still says otherwise. ${chip("workstream", "", "SMS updates", "needs")} waits on you, ${chip("change set", "", "Rename the epic", "reverted")} was undone, and ${chip("thread", "", "Mark the built stories done", "stalled")}.`;
+      const names = {
+        todo: "To do",
+        progress: "In progress",
+        done: "Done",
+        needs: "Needs you",
+        stalled: "Apply stalled",
+        applied: "Applied",
+        reverted: "Reverted",
+      };
+      const state = (s) =>
+        `<span class="sp-state" data-s="${s}"><span class="sp-mark"></span>${names[s]}</span>`;
+      document.getElementById("marks").innerHTML = Object.keys(names).map(state).join("");
+      const chip = (k, key, name, s) =>
+        `<span class="sp-chip" data-s="${s}">${svg(k, true)}${key ? `<span class="key">${key}</span>` : ""}<span class="sp-chip-name">${name}</span><span class="sp-chip-state">${names[s]}</span></span>`;
+      document.getElementById("chips").innerHTML =
+        `${chip("item", "SYN-61", "Send disruption updates by SMS", "progress")} went to the team in ${chip("thread", "", "SYN-61 is ready to pick up", "done")}, when you approved ${chip("change set", "", "Hand SYN-61 to the team", "applied")}. ${chip("Slack message", "", "Chen Yuting: SMS copy is signed off", "todo")} came first; ${chip("file", "", "launch/sms-copy.md", "todo")} still says otherwise. ${chip("workstream", "", "SMS updates", "needs")} waits on you, ${chip("change set", "", "Rename the epic", "reverted")} was undone, and ${chip("thread", "", "Mark the built stories done", "stalled")}.`;
 
-const buttons = [["primary", "Approve and apply"], ["", "Reject"], ["quiet", "Share review link"], ["danger", "Delete workstream"]];
-document.getElementById("buttons").innerHTML = buttons.map(([c, t]) => `<button class="sp-button ${c}">${t}</button>`).join("")
-  + '<span class="sp-mono">hover</span>' + buttons.slice(0, 2).map(([c, t]) => `<button class="sp-button ${c} hover">${t}</button>`).join("")
-  + '<span class="sp-mono">focus</span><button class="sp-button primary focus">Approve and apply</button><span class="sp-mono">disabled</span><button class="sp-button primary" disabled style="opacity:.5">Send</button>';
+      const buttons = [
+        ["primary", "Approve and apply"],
+        ["", "Reject"],
+        ["quiet", "Share review link"],
+        ["danger", "Delete workstream"],
+      ];
+      document.getElementById("buttons").innerHTML =
+        buttons.map(([c, t]) => `<button class="sp-button ${c}">${t}</button>`).join("") +
+        '<span class="sp-mono">hover</span>' +
+        buttons
+          .slice(0, 2)
+          .map(([c, t]) => `<button class="sp-button ${c} hover">${t}</button>`)
+          .join("") +
+        '<span class="sp-mono">focus</span><button class="sp-button primary focus">Approve and apply</button><span class="sp-mono">disabled</span><button class="sp-button primary" disabled style="opacity:.5">Send</button>';
 
-document.getElementById("card").innerHTML = `<div class="sp-card-head"><span class="sp-card-name">Checkout v2: phone wallets and saved cards</span><span class="sp-meta">today</span></div>
+      document.getElementById("card").innerHTML =
+        `<div class="sp-card-head"><span class="sp-card-name">Checkout v2: phone wallets and saved cards</span><span class="sp-meta">today</span></div>
   <div class="sp-progress"><i style="flex:3;background:var(--state-done)"></i><i style="flex:4;background:var(--state-progress)"></i><i style="flex:8;background:var(--n-3)"></i></div>
   <span class="sp-meta">15 Jira · 3 done · 4 in progress · 2 moved since you looked</span>
   <span class="sp-row" style="gap:var(--space-3)">${state("needs").replace("Needs you", "8 need you")}${state("progress").replace("In progress", "2 working")}<span class="sp-signal">3 in progress, no update in 14 days</span></span>`;
-const row = (key, title, s, who, idle) => `<li>${svg("item")}<span class="key">${key}</span><span class="sp-grow">${title}</span>${state(s)}<span class="sp-meta"><span class="sp-avatar">${who}</span></span><span class="sp-meta">${idle}</span></li>`;
-const rows = [["SYN-23", "Pay with a phone wallet on the website", "progress", "AO", "2d"], ["SYN-99", "Save a card for next time", "todo", "DN", "14d"], ["SYN-74", "Card form loses focus after an error", "stalled", "FH", "19d"], ["SYN-21", "Update the payment declined copy", "done", "EW", "1d"]];
-document.getElementById("rows").innerHTML = rows.map((r) => row(...r)).join("").replace("<li>", '<li class="hover">');
-document.getElementById("compact").innerHTML = rows.slice(0, 3).map((r) => row(...r)).join("");
-document.getElementById("comfortable").innerHTML = `<li>${svg("thread")}<span class="sp-grow">Rename the epic and plan gift cards in it</span>${state("needs")}</li><li>${svg("thread")}<span class="sp-grow">Which stories here still need estimates?</span>${state("progress")}</li><li>${svg("thread")}<span class="sp-grow">SYN-61 is ready to pick up</span>${state("done")}</li>`;
+      const row = (key, title, s, who, idle) =>
+        `<li>${svg("item")}<span class="key">${key}</span><span class="sp-grow">${title}</span>${state(s)}<span class="sp-meta"><span class="sp-avatar">${who}</span></span><span class="sp-meta">${idle}</span></li>`;
+      const rows = [
+        ["SYN-23", "Pay with a phone wallet on the website", "progress", "AO", "2d"],
+        ["SYN-99", "Save a card for next time", "todo", "DN", "14d"],
+        ["SYN-74", "Card form loses focus after an error", "stalled", "FH", "19d"],
+        ["SYN-21", "Update the payment declined copy", "done", "EW", "1d"],
+      ];
+      document.getElementById("rows").innerHTML = rows
+        .map((r) => row(...r))
+        .join("")
+        .replace("<li>", '<li class="hover">');
+      document.getElementById("compact").innerHTML = rows
+        .slice(0, 3)
+        .map((r) => row(...r))
+        .join("");
+      document.getElementById("comfortable").innerHTML =
+        `<li>${svg("thread")}<span class="sp-grow">Rename the epic and plan gift cards in it</span>${state("needs")}</li><li>${svg("thread")}<span class="sp-grow">Which stories here still need estimates?</span>${state("progress")}</li><li>${svg("thread")}<span class="sp-grow">SYN-61 is ready to pick up</span>${state("done")}</li>`;
 
-document.getElementById("blocks").innerHTML = `<figure class="sp-block"><figcaption><span>Workstreams by items</span><span>from window.overview</span></figcaption><div class="sp-bars">${[["Checkout v2", 17], ["Boarding passes", 9], ["Saved cards launch", 6], ["Declined card retry", 1]].map(([n, v]) => `<span class="sp-grow">${n}</span><i style="width:${(v / 17) * 100}%"></i><span class="num">${v}</span>`).join("")}</div></figure>
-<figure class="sp-block"><figcaption><span>Quiet workstreams</span><span>from window.overview</span></figcaption><table class="sp-table"><tr><th>Name</th><th class="num">Items</th><th class="num">Idle</th></tr>${[["Checkout v2", 17, 14], ["Boarding passes", 9, 14], ["Gift cards", 0, 0]].map(([n, i, d]) => `<tr><td>${n}</td><td class="num">${i}</td><td class="num">${d}d</td></tr>`).join("")}</table></figure>
-<figure class="sp-block"><figcaption><span>Vehicle stories in no workstream</span><span>from search</span></figcaption><ul class="sp-rows">${[["SYN-66", "Look up vehicle dimensions", "todo"], ["SYN-119", "Vehicle step forgets the plate", "stalled"], ["SYN-4", "Vehicle and freight reservations", "progress"]].map(([k, t, s]) => `<li>${chip("item", k, t, s)}</li>`).join("")}</ul></figure>`;
+      document.getElementById("blocks").innerHTML =
+        `<figure class="sp-block"><figcaption><span>Workstreams by items</span><span>from window.overview</span></figcaption><div class="sp-bars">${[
+          ["Checkout v2", 17],
+          ["Boarding passes", 9],
+          ["Saved cards launch", 6],
+          ["Declined card retry", 1],
+        ]
+          .map(
+            ([n, v]) =>
+              `<span class="sp-grow">${n}</span><i style="width:${(v / 17) * 100}%"></i><span class="num">${v}</span>`,
+          )
+          .join("")}</div></figure>
+<figure class="sp-block"><figcaption><span>Quiet workstreams</span><span>from window.overview</span></figcaption><table class="sp-table"><tr><th>Name</th><th class="num">Items</th><th class="num">Idle</th></tr>${[
+          ["Checkout v2", 17, 14],
+          ["Boarding passes", 9, 14],
+          ["Gift cards", 0, 0],
+        ]
+          .map(
+            ([n, i, d]) =>
+              `<tr><td>${n}</td><td class="num">${i}</td><td class="num">${d}d</td></tr>`,
+          )
+          .join("")}</table></figure>
+<figure class="sp-block"><figcaption><span>Vehicle stories in no workstream</span><span>from search</span></figcaption><ul class="sp-rows">${[
+          ["SYN-66", "Look up vehicle dimensions", "todo"],
+          ["SYN-119", "Vehicle step forgets the plate", "stalled"],
+          ["SYN-4", "Vehicle and freight reservations", "progress"],
+        ]
+          .map(([k, t, s]) => `<li>${chip("item", k, t, s)}</li>`)
+          .join("")}</ul></figure>`;
 
-// What the agent drew, given Oriel's theme as variables (decision 0033): it
-// can copy Oriel's primary button exactly, which is why the frame must not.
-const vars = ["--n-0", "--n-1", "--n-3", "--n-7", "--n-5", "--accent", "--accent-text", "--font", "--radius-1", "--text-md", "--text-sm"].map((n) => `${n}:${css(n)}`).join(";");
-document.getElementById("frame").srcdoc = `<style>:root{${vars}}body{margin:0;padding:12px;background:var(--n-0);color:var(--n-7);font:var(--text-md)/1.45 var(--font)}h1{font-size:15px;margin:0 0 6px}.b{display:inline-block;padding:4px 12px;border-radius:var(--radius-1);background:var(--accent);color:var(--accent-text);font-size:var(--text-sm);font-weight:500}td{padding:2px 12px 2px 0;border-bottom:1px solid var(--n-3)}p{color:var(--n-5);margin:6px 0}</style><h1>Gift card rollout, by week</h1><table><tr><td>Week 1</td><td>4 stories</td></tr><tr><td>Week 2</td><td>6 stories</td></tr></table><p>Looks good? Approve it here:</p><span class="b">Approve and apply</span>`;
-</script>
-</body>
+      // What the agent drew, given Oriel's theme as variables (decision 0033): it
+      // can copy Oriel's primary button exactly, which is why the frame must not.
+      const vars = [
+        "--n-0",
+        "--n-1",
+        "--n-3",
+        "--n-7",
+        "--n-5",
+        "--accent",
+        "--accent-text",
+        "--font",
+        "--radius-1",
+        "--text-md",
+        "--text-sm",
+      ]
+        .map((n) => `${n}:${css(n)}`)
+        .join(";");
+      document.getElementById("frame").srcdoc =
+        `<style>:root{${vars}}body{margin:0;padding:12px;background:var(--n-0);color:var(--n-7);font:var(--text-md)/1.45 var(--font)}h1{font-size:15px;margin:0 0 6px}.b{display:inline-block;padding:4px 12px;border-radius:var(--radius-1);background:var(--accent);color:var(--accent-text);font-size:var(--text-sm);font-weight:500}td{padding:2px 12px 2px 0;border-bottom:1px solid var(--n-3)}p{color:var(--n-5);margin:6px 0}</style><h1>Gift card rollout, by week</h1><table><tr><td>Week 1</td><td>4 stories</td></tr><tr><td>Week 2</td><td>6 stories</td></tr></table><p>Looks good? Approve it here:</p><span class="b">Approve and apply</span>`;
+    </script>
+  </body>
 </html>

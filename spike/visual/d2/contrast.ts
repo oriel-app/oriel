@@ -3,7 +3,10 @@
 // `node spike/visual/d2/contrast.ts`.
 import { readFileSync } from "node:fs";
 
-const css = readFileSync(new URL("../../../packages/web/assets/window.css", import.meta.url), "utf8");
+const css = readFileSync(
+  new URL("../../../packages/web/assets/window.css", import.meta.url),
+  "utf8",
+);
 const block = (from: number) => {
   const start = css.indexOf("{", from) + 1;
   let depth = 1;
@@ -18,7 +21,10 @@ const block = (from: number) => {
 const tokens = (text: string) =>
   new Map([...text.matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]));
 const light = tokens(block(css.indexOf(":root")));
-const dark = new Map([...light, ...tokens(block(css.indexOf(":root", css.indexOf("prefers-color-scheme: dark"))))]);
+const dark = new Map([
+  ...light,
+  ...tokens(block(css.indexOf(":root", css.indexOf("prefers-color-scheme: dark")))),
+]);
 
 const resolve = (theme: Map<string, string>, name: string): string => {
   let value = theme.get(name) ?? "";
@@ -40,7 +46,9 @@ const ratio = (a: string, b: string) => {
 };
 
 const pairs: [string, string][] = JSON.parse(process.argv[2] ?? "null") ?? [
-  ...["n-7", "n-6", "n-5"].flatMap((text) => ["n-0", "n-1", "n-2"].map((bg) => [text, bg] as [string, string])),
+  ...["n-7", "n-6", "n-5"].flatMap((text) =>
+    ["n-0", "n-1", "n-2"].map((bg) => [text, bg] as [string, string]),
+  ),
   ["on-accent", "accent"],
   ["accent", "n-0"],
   ["accent", "n-1"],

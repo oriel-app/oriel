@@ -20,14 +20,18 @@ try {
   if (command === "crop") {
     const [src, x, y, w, h, out] = args as [string, string, string, string, string, string];
     const page = await browser.newPage({ viewport: { width: +w, height: +h } });
-    await show(page, 
+    await show(
+      page,
       `<body style="margin:0;overflow:hidden"><img src="${url(src)}" style="display:block;margin:-${y}px 0 0 -${x}px"></body>`,
     );
     writeFileSync(out, await page.screenshot());
   } else {
     const [out, columns, tile, ...files] = args as [string, string, string, ...string[]];
-    const page = await browser.newPage({ viewport: { width: +columns * (+tile + 16) + 16, height: 600 } });
-    await show(page, 
+    const page = await browser.newPage({
+      viewport: { width: +columns * (+tile + 16) + 16, height: 600 },
+    });
+    await show(
+      page,
       `<body style="margin:0;padding:16px;background:#d8d8d4;font:13px system-ui;display:grid;grid-template-columns:repeat(${columns},${tile}px);gap:16px;align-items:start">` +
         files
           .map(
