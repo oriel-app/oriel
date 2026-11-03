@@ -1,6 +1,6 @@
 # Desktop shell spike (OA-155)
 
-Throwaway code behind decision 0035. Not built by CI, not part of the app.
+Throwaway code behind decision 0036. Not built by CI, not part of the app.
 
 - `macos/main.swift`: a native shell. AppKit window, WKWebView, the server as a
   child process on the Node pinned in `mise.toml`. Nothing to install.
