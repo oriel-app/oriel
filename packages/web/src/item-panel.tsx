@@ -17,9 +17,10 @@ import {
   Markdown,
   plural,
   ProseBlocks,
-  when,
+  Stamp,
 } from "./parts.tsx";
 import { safeHref } from "./route.ts";
+import { when } from "./time.ts";
 import { UndoButton } from "./undo-stack.tsx";
 import type { ItemPanelView, PanelBlock, PanelInline, PanelMessage } from "./view.ts";
 
@@ -157,7 +158,13 @@ export function ItemPanel(props: {
         )}
         {shown && (
           <p class="panel-read" role="status">
-            {model.status === "loading" ? "Reading again…" : `Read ${when(shown.readAt)}`}
+            {model.status === "loading" ? (
+              "Reading again…"
+            ) : (
+              <>
+                Read <Stamp at={shown.readAt} />
+              </>
+            )}
             {behind(model) && model.status !== "loading" && (
               <>
                 {" · "}
@@ -379,9 +386,7 @@ function Messages({ messages, before }: { messages: PanelMessage[]; before: stri
                 </span>
                 <p class="panel-said">
                   <span class="panel-author">{message.author}</span>
-                  <time dateTime={message.at} title={when(message.at)}>
-                    {clock(message.at)}
-                  </time>
+                  <Stamp at={message.at} absolute={clock} />
                   {message.labels?.map((label) => (
                     <span key={label} class="panel-label">
                       {label}

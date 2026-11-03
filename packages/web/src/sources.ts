@@ -84,13 +84,3 @@ export function sourcesLine(model: SourcesModel): {
     problem: view.some((source) => model.problems[source.kind] !== undefined),
   };
 }
-
-// How long ago `instant` was, at `now`: "just now", "5m ago", "3h ago",
-// "9d ago".
-export function ago(instant: string, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - Date.parse(instant)) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h ago`;
-  return `${Math.floor(minutes / (60 * 24))}d ago`;
-}

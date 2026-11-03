@@ -31,6 +31,9 @@ import {
   type SettingsView,
   type TextSize,
   textSizes,
+  type TimeFormat,
+  timeFormats,
+  type UsageView,
 } from "@oriel/web/view";
 
 // One provider instance. A second account of a kind is another instance,
@@ -57,6 +60,8 @@ export type Settings = {
   // The desktop app asks before quitting while a thread's turn runs or a
   // change set applies.
   askBeforeQuitting: boolean;
+  // How the window writes a time, everywhere but a review link's page.
+  timeFormat: TimeFormat;
 };
 
 // One instance of each kind, on, in the order Settings lists them.
@@ -75,6 +80,7 @@ export const defaultSettings: Settings = {
   send: "enter",
   notify: true,
   askBeforeQuitting: true,
+  timeFormat: "relative",
 };
 
 export type SettingsStore = { get(): Settings; set(next: Settings): void };
@@ -136,6 +142,7 @@ function read(parsed: unknown): Settings {
     send: field("send", oneOf(sendKeys), "enter"),
     notify: field("notify", boolean, true),
     askBeforeQuitting: field("askBeforeQuitting", boolean, true),
+    timeFormat: field("timeFormat", oneOf(timeFormats), "relative"),
   };
 }
 
@@ -188,6 +195,7 @@ export const settingsChange: Validator<SettingsChange> = union(
   object({ send: oneOf(sendKeys) }),
   object({ notify: boolean }),
   object({ askBeforeQuitting: boolean }),
+  object({ timeFormat: oneOf(timeFormats) }),
   object({ model: pickValue }),
   object({ titleModel: pickValue }),
   object({ provider: idValue, on: boolean }),
@@ -213,6 +221,7 @@ export function changed(
   if ("notify" in change) return { ...settings, notify: change.notify };
   if ("askBeforeQuitting" in change)
     return { ...settings, askBeforeQuitting: change.askBeforeQuitting };
+  if ("timeFormat" in change) return { ...settings, timeFormat: change.timeFormat };
   if ("model" in change) return { ...settings, model: change.model };
   if ("titleModel" in change) return { ...settings, titleModel: change.titleModel };
   const provider = settings.providers.find((p) => p.id === change.provider);
@@ -244,6 +253,9 @@ export type SettingsService = {
   key(key: string | null): Promise<SettingsView>;
   // What the page's <html> carries, so its first paint is right.
   page(): { theme: string; textSize: TextSize };
+  // How much of each Claude Code instance's plan Oriel has used (decision
+  // 0046).
+  usage(): Promise<UsageView[]>;
 };
 
 export function settingsService(deps: {
@@ -286,6 +298,7 @@ export function settingsService(deps: {
       notifies: deps.notifies ?? false,
       askBeforeQuitting: settings.askBeforeQuitting,
       asksBeforeQuitting: deps.asksBeforeQuitting ?? false,
+      timeFormat: settings.timeFormat,
     };
   };
   return {
@@ -331,6 +344,7 @@ export function settingsService(deps: {
       await models.look(store.get());
       return view();
     },
+    usage: async () => (await models?.usage(store.get())) ?? [],
     page() {
       const { theme, textSize } = store.get();
       return { theme: themes.includes(theme) ? theme : defaultTheme, textSize };

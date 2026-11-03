@@ -3,7 +3,15 @@ import { WorkstreamPage } from "./workstream-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
 import { doneTab, workstreamThreads, nav } from "./nav.ts";
-import { type Dispatch, ItemLinksContext, Link, Mark, plural, SendKeyContext } from "./parts.tsx";
+import {
+  type Dispatch,
+  ItemLinksContext,
+  Link,
+  Mark,
+  plural,
+  SendKeyContext,
+  TimeFormatContext,
+} from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, needsYouId, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
@@ -17,7 +25,7 @@ import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
 import { OverviewPage } from "./overview-page.tsx";
-import { noAi, sendKey } from "./settings.ts";
+import { noAi, sendKey, timeFormat } from "./settings.ts";
 import { SettingsPage } from "./settings-page.tsx";
 import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
@@ -101,58 +109,66 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
-  // So does the first run, until it has finished (decision 0038).
-  if (model.route.page === "setup") return <SetupPage model={model} dispatch={dispatch} />;
+  // So does the first run, until it has finished (decision 0038), in the
+  // person's time format, as every page but a review link's.
+  if (model.route.page === "setup")
+    return (
+      <TimeFormatContext.Provider value={timeFormat(model.settings)}>
+        <SetupPage model={model} dispatch={dispatch} />
+      </TimeFormatContext.Provider>
+    );
   // The panel's adds, as notes in whichever stack of Undos is on screen.
   const added = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   return (
     <SendKeyContext.Provider value={sendKey(model.settings)}>
-      <div
-        class="shell"
-        data-folded={folded || undefined}
-        data-drawer={drawer || undefined}
-        data-panel={model.panel ? "" : undefined}
-        data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
-      >
-        <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
-        <button
-          type="button"
-          class="drawer-backdrop"
-          tabIndex={-1}
-          aria-hidden="true"
-          onClick={closeDrawer}
-        />
-        <div class="shell-main">
-          <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
-          <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-            <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
-          </ItemLinksContext.Provider>
+      <TimeFormatContext.Provider value={timeFormat(model.settings)}>
+        <div
+          class="shell"
+          data-folded={folded || undefined}
+          data-drawer={drawer || undefined}
+          data-panel={model.panel ? "" : undefined}
+          data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
+        >
+          <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
+          <button
+            type="button"
+            class="drawer-backdrop"
+            tabIndex={-1}
+            aria-hidden="true"
+            onClick={closeDrawer}
+          />
+          <div class="shell-main">
+            <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
+            <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+              <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
+            </ItemLinksContext.Provider>
+          </div>
+          {model.route.page === "overview" && model.chat.open && !model.panel && (
+            <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
+          )}
+          {model.panel && (
+            <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+              <ItemPanel
+                model={model.panel}
+                place={placeIn(model.panelList, model.panel.id)}
+                workstream={currentWorkstream(model)}
+                adds={model.panelAdds}
+                dispatch={dispatch}
+              />
+            </ItemLinksContext.Provider>
+          )}
+          <Closing model={model.closing} dispatch={dispatch} />
+          <Endings
+            model={model.ending}
+            added={added}
+            shownByPage={
+              model.route.page === "workstream" ||
+              (model.route.page === "overview" && model.overview !== null)
+            }
+            dispatch={dispatch}
+          />
         </div>
-        {model.route.page === "overview" && model.chat.open && !model.panel && (
-          <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
-        )}
-        {model.panel && (
-          <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-            <ItemPanel
-              model={model.panel}
-              place={placeIn(model.panelList, model.panel.id)}
-              workstream={currentWorkstream(model)}
-              adds={model.panelAdds}
-              dispatch={dispatch}
-            />
-          </ItemLinksContext.Provider>
-        )}
-        <Closing model={model.closing} dispatch={dispatch} />
-        <Endings
-          model={model.ending}
-          added={added}
-          shownByPage={
-            model.route.page === "workstream" ||
-            (model.route.page === "overview" && model.overview !== null)
-          }
-          dispatch={dispatch}
-        />
-      </div>
+      </TimeFormatContext.Provider>
     </SendKeyContext.Provider>
   );
 }

@@ -7,7 +7,7 @@
 import type { ComponentChildren } from "preact";
 import type { JiraField, JiraModel, JiraMsg } from "./jira.ts";
 import { jiraReady } from "./jira.ts";
-import { plural } from "./parts.tsx";
+import { plural, useStamp } from "./parts.tsx";
 
 const atlassianPage = "https://id.atlassian.com/manage-profile/security/api-tokens";
 
@@ -107,10 +107,8 @@ export function JiraDetails(props: {
   );
 }
 
-const changed = (at: string | null) =>
-  at
-    ? ` · changed ${new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-    : "";
+const shortDay = (instant: string) =>
+  new Date(instant).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 export function JiraProjects(props: {
   jira: JiraModel;
@@ -118,6 +116,7 @@ export function JiraProjects(props: {
   actions?: ComponentChildren;
 }) {
   const { jira, send } = props;
+  const stamp = useStamp();
   const projects = jira.projects ?? [];
   const picked = projects.find((p) => p.key === jira.picked);
   return (
@@ -162,7 +161,7 @@ export function JiraProjects(props: {
                   <span class="choice-detail">
                     {project.key}
                     {project.issues !== null && ` · ${plural(project.issues, "issue")}`}
-                    {changed(project.updatedAt)}
+                    {project.updatedAt && ` · changed ${stamp(project.updatedAt, shortDay)}`}
                   </span>
                 </span>
               </label>

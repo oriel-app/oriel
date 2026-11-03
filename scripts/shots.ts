@@ -46,6 +46,7 @@ import { devPlan, scriptedAgent, type Step } from "../packages/server/src/script
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
+import { memoryUsage } from "../packages/server/src/usage.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 import {
   fillJira as fillFirstRun,
@@ -346,6 +347,24 @@ const answering = (await writing()).serving;
 // text, which the server writes into the page.
 const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
 writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
+// Today's turns and tokens on Claude Code, as Oriel counted them.
+const counts = memoryUsage(() => "today");
+counts.count(
+  "claude-code",
+  {
+    inputTokens: 1_220_000,
+    outputTokens: 9_400,
+    cacheReadTokens: 1_160_000,
+    cacheWriteTokens: 42_000,
+  },
+  true,
+);
+for (let turn = 0; turn < 11; turn++)
+  counts.count(
+    "claude-code",
+    { inputTokens: 30_900, outputTokens: 700, cacheReadTokens: 30_000, cacheWriteTokens: 0 },
+    true,
+  );
 // The desktop app's secret store, with no key in it yet.
 const noKey = { get: async () => null, set: async () => {}, delete: async () => {} };
 const configured = async (settings: Partial<Settings> = {}) => {
@@ -356,6 +375,22 @@ const configured = async (settings: Partial<Settings> = {}) => {
     check: async () => ({
       ok: true,
       cli: { path: "/opt/homebrew/bin/claude", version: "2.1.314" },
+    }),
+    counts,
+    // The plan as a Claude Code on Max reports it (decision 0046).
+    plan: async () => ({
+      windows: [
+        {
+          kind: "session",
+          usedPercent: 34,
+          resetsAt: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
+        },
+        {
+          kind: "week",
+          usedPercent: 78,
+          resetsAt: new Date(Date.now() + 4.2 * 86_400_000).toISOString(),
+        },
+      ],
     }),
   });
   const kept = memorySettings(settings);
@@ -878,7 +913,7 @@ const scenes: Scene[] = [
     name: "settings-providers",
     path: "/settings",
     on: settingsServer,
-    act: (page) => page.locator(".provider-row").first().waitFor(),
+    act: (page) => page.locator(".plan-window").first().waitFor(),
   },
   {
     name: "settings-path",

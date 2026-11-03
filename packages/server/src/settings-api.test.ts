@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { KeyCheck, ModelEvent, Provider } from "@oriel/agent";
-import type { SettingsView, ThreadView } from "@oriel/web/view";
+import type { SettingsView, ThreadView, UsageView } from "@oriel/web/view";
 import { keyStore } from "./api-key.ts";
 import { models } from "./model.ts";
 import { memorySettings } from "./settings.ts";
@@ -39,6 +39,9 @@ async function settingsApp(t: TestContext) {
     check: async () => ({ ok: true, cli }),
     provider: (r) => naming(`${r.provider.id} ${r.model}`),
     titler: (r) => async () => `Titled by ${r.provider.id} ${r.model}`,
+    plan: async () => ({
+      windows: [{ kind: "week", usedPercent: 56, resetsAt: "2026-11-08T01:00:00.000Z" }],
+    }),
   });
   const settings = memorySettings();
   await chooser.look(settings.get());
@@ -162,6 +165,9 @@ async function desktopApp(t: TestContext, check: (key: string) => Promise<KeyChe
     check: async () => ({ ok: false, problem: { kind: "missing", message: "No Claude Code." } }),
     provider: (r) => naming(`${r.provider.id} ${r.model}`),
     titler: (r) => async () => `Titled by ${r.provider.id} ${r.model}`,
+    plan: async () => ({
+      windows: [{ kind: "week", usedPercent: 56, resetsAt: "2026-11-08T01:00:00.000Z" }],
+    }),
   });
   const settings = memorySettings();
   await chooser.look(settings.get());
@@ -225,4 +231,21 @@ test("under pnpm dev, the page can't set a key: it's .env's", async (t) => {
   assert.equal(refused.status, 409);
   assert.match(json<{ error: string }>(refused).error, /ANTHROPIC_API_KEY in \.env/);
   assert.equal((await app.post("/api/settings/key", { key: 12 })).status, 400);
+});
+
+test("Claude Code's usage is its plan's windows and today's counts, and nothing more", async (t) => {
+  const app = await settingsApp(t);
+  // A POST, so another site can't start the CLI.
+  assert.notEqual((await app.get("/api/settings/usage")).status, 200);
+  const reply = await app.post("/api/settings/usage");
+  assert.equal(reply.status, 200);
+  assert.deepEqual(json<{ usage: UsageView[] }>(reply).usage, [
+    {
+      provider: "claude-code",
+      today: { turns: 0, inputTokens: 0, outputTokens: 0 },
+      plan: {
+        windows: [{ kind: "week", usedPercent: 56, resetsAt: "2026-11-08T01:00:00.000Z" }],
+      },
+    },
+  ]);
 });

@@ -12,11 +12,20 @@ import { WorkstreamMenu } from "./end-workstream.tsx";
 import type { FolderModel, FolderMsg } from "./folder.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
-import { Chevron, type Dispatch, Link, Mark, plural, SearchIcon, waitingNames } from "./parts.tsx";
+import {
+  Chevron,
+  type Dispatch,
+  Link,
+  Mark,
+  plural,
+  SearchIcon,
+  useStamp,
+  waitingNames,
+} from "./parts.tsx";
 import type { Model } from "./root.ts";
 import type { Route } from "./route.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
-import { ago, type SourcesModel, type SourcesMsg, sourcesLine } from "./sources.ts";
+import { type SourcesModel, type SourcesMsg, sourcesLine } from "./sources.ts";
 import { windowRoute } from "./update.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
@@ -582,7 +591,7 @@ function Sources(props: {
     if (problems > 0) show();
   }, [problems]);
   const send = (msg: SourcesMsg) => dispatch({ type: "sources", msg });
-  const now = Date.now();
+  const synced = useStamp();
   if (sources.view === null) return null;
   return (
     <section
@@ -614,7 +623,7 @@ function Sources(props: {
                 ? "Syncing…"
                 : line.count === 0
                   ? "None yet"
-                  : `${plural(line.count, "source")} · ${line.syncedAt === null ? "not synced" : ago(line.syncedAt, now)}`}
+                  : `${plural(line.count, "source")} · ${line.syncedAt === null ? "not synced" : synced(line.syncedAt)}`}
             </span>
           )
         }
@@ -649,7 +658,7 @@ function Sources(props: {
                       ? "Syncing…"
                       : source.syncedAt === null
                         ? "not synced"
-                        : ago(source.syncedAt, now)}
+                        : synced(source.syncedAt)}
                   </span>
                 </Link>
                 <button

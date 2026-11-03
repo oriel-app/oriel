@@ -802,7 +802,33 @@ export type SettingsView = {
   // thread, and whether this server's app can.
   askBeforeQuitting: boolean;
   asksBeforeQuitting: boolean;
+  timeFormat: TimeFormat;
 };
+
+// Today's use of one provider instance, counted by Oriel: thread turns, and
+// the tokens its responses read and wrote, titles included (decision 0046).
+export type UsageCountsView = { turns: number; inputTokens: number; outputTokens: number };
+
+// One window of the person's plan as their Claude Code reports it: the
+// five-hour session or the week, how much is used, and when it resets.
+export type PlanWindowView = {
+  kind: "session" | "week";
+  usedPercent: number;
+  resetsAt: string | null;
+};
+
+// A Claude Code instance's usage, under its row in Settings: Oriel's own
+// counts for today, and the plan's windows, or why there are none: no plan
+// limits apply (an API key), the CLI didn't answer, or it isn't ready.
+export type UsageView = {
+  provider: string;
+  today: UsageCountsView;
+  plan: { windows: PlanWindowView[] } | { none: "no-plan" | "no-answer" | "not-ready" };
+};
+
+// How the window writes a time: "3 min ago", or as a date and time.
+export const timeFormats = ["relative", "absolute"] as const;
+export type TimeFormat = (typeof timeFormats)[number];
 
 // One change from the settings page, applied at once.
 export type SettingsChange =
@@ -811,6 +837,7 @@ export type SettingsChange =
   | { send: SendKey }
   | { notify: boolean }
   | { askBeforeQuitting: boolean }
+  | { timeFormat: TimeFormat }
   | { model: ModelPick }
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }

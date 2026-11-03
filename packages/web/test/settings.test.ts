@@ -5,15 +5,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
-import { init as initRoot } from "../src/root.ts";
+import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import { parseRoute, routeUrl, settingsSections } from "../src/route.ts";
 import {
   initSettings,
   loadSettings,
+  loadUsage,
   type SettingsModel,
   settingsReplied,
   sendKey,
   sends,
+  timeFormat,
   updateSettings,
 } from "../src/settings.ts";
 import type { ProviderView, SettingsView } from "../src/view.ts";
@@ -45,6 +47,7 @@ const view: SettingsView = {
   notifies: false,
   askBeforeQuitting: true,
   asksBeforeQuitting: false,
+  timeFormat: "relative",
 };
 const loaded: SettingsModel = { ...initSettings(), view };
 const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({
@@ -241,4 +244,40 @@ test("the notifications switch shows at once and goes to the server", () => {
   const [model, effects] = updateSettings(loaded, { type: "changed", change: { notify: false } });
   assert.equal(model.view?.notify, false);
   assert.deepEqual(posts(effects), [["/api/settings", { notify: false }]]);
+});
+
+test("the time format shows at once, and goes to the server", () => {
+  assert.equal(timeFormat(initSettings()), "relative");
+  const [model, effects] = updateSettings(loaded, {
+    type: "changed",
+    change: { timeFormat: "absolute" },
+  });
+  assert.equal(timeFormat(model), "absolute");
+  assert.deepEqual(posts(effects), [["/api/settings", { timeFormat: "absolute" }]]);
+});
+
+test("the plan's usage loads with Settings and after Check again, and a failed load changes nothing", () => {
+  const [, effects] = updateRoot(initRoot({ page: "overview" })[0], {
+    type: "routed",
+    route: { page: "settings", section: "providers" },
+  });
+  assert.ok(effects.includes(loadUsage));
+  const usage = [
+    {
+      provider: "claude-code",
+      today: { turns: 2, inputTokens: 1200, outputTokens: 40 },
+      plan: { none: "no-plan" as const },
+    },
+  ];
+  const [shown] = settingsReplied(loaded, replied({ kind: "settingsUsage" }, true, { usage }));
+  assert.deepEqual(shown.usage, usage);
+  assert.equal(
+    settingsReplied(shown, replied({ kind: "settingsUsage" }, false, {}))[0].usage,
+    usage,
+  );
+  const [, again] = settingsReplied(
+    { ...loaded, looking: true },
+    replied({ kind: "settingsLooked" }, true, view),
+  );
+  assert.ok(again.includes(loadUsage));
 });
