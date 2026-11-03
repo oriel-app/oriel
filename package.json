@@ -11,6 +11,7 @@
     "seed:jira": "node scripts/seed-jira.ts",
     "record:jira": "node scripts/record-jira.ts",
     "seed:slack": "node scripts/seed-slack.ts",
+    "sheets:live": "node scripts/sheets-live.ts",
     "evals": "node packages/evals/src/cli.ts",
     "test": "node scripts/run-tests.ts",
     "dev": "pnpm --filter @oriel/web build && node packages/server/src/main.ts",

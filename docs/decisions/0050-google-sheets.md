@@ -113,3 +113,14 @@ Quotes are from Google's pages as fetched on 2026-11-03. **Unsure** marks what t
 - The security reviewer looks for a Sheets write that isn't `RAW` or a typed value, writes a formula, or overwrites one, and a loopback listener that takes more than its one redirect, listens beyond 127.0.0.1, or skips PKCE or `state`.
 - The maintainer's setup comes before the first Sheets story, which checks each **Unsure** above against Google.
 - The build stories, in order, are in the pull request.
+
+**Amended by OA-219, 2026-11-03.** Pending the live run. `packages/sheets` signs in as Signing in says, and `pnpm sheets:live` runs it once against Google, as the maintainer's desktop client: it signs in, takes the picked spreadsheets back from the redirect, reads each one's Drive `version`, asks the reads below, refreshes, revokes the grant, and refreshes again. Each **Unsure**:
+
+- **The desktop Picker with PKCE and a loopback redirect:** pending.
+- **Whether `drive.file` may read `about`** (Which account): pending.
+- **Whether `drive.file` may list a picked spreadsheet's comments** (Comments): pending.
+- **Formulas under `RAW`** (Writes): not settled by this story, which writes nothing. The first story that writes proves it live, as Writes says.
+- **Whether a released app built from the open repo embeds the client** (The client's secret): the maintainer's to confirm, as before; no run settles it.
+- **Whether the index is a cached copy** (Terms): a question of Google's terms, which no run settles. The privacy policy says what the index keeps.
+
+The run also checks what 0050 assumed without marking it: that the Sheets API reads a picked spreadsheet under `drive.file`, and that a refresh after the grant is revoked is refused (`invalid_grant`), which Oriel reads as signed out.
