@@ -233,7 +233,7 @@ export function store(db: DatabaseSync) {
 
   // The stable ID of the item a handle names in the index, or null.
   const stableIdOf = (workspaceId: Ulid, handle: string): string | null => {
-    const source = parseItemId(handle)?.source;
+    const source = parseItemId(handle)?.prefix;
     if (!source) return null;
     const raw = selectStableId.get(workspaceId, source, handle);
     return raw ? parse(stableIdRow, raw, "items").stable_id : null;
@@ -344,7 +344,7 @@ export function store(db: DatabaseSync) {
         ? (workstreams.region(at.workstream_id, at.region_version)?.items ?? [])
         : [];
       const rows = items.map((item) => ({
-        source: parseItemId(item.id)?.source ?? "",
+        source: parseItemId(item.id)?.prefix ?? "",
         stable_id: item.stableId,
         item_id: item.id,
       }));
@@ -355,7 +355,7 @@ export function store(db: DatabaseSync) {
       return {
         stableId,
         has(handle: string): boolean {
-          const source = parseItemId(handle)?.source;
+          const source = parseItemId(handle)?.prefix;
           const id = stableId(handle);
           return source !== undefined && id !== null && members.has(`${source}\u0000${id}`);
         },

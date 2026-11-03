@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type IndexRecord, instant, type ItemId } from "@oriel/core";
+import { type IndexRecord, instant, type ItemId, itemOrder } from "@oriel/core";
 import { linkedGrouping } from "./groupings.ts";
+
+// Item IDs in declared kind order, as the composition root gives it.
+const order = itemOrder(["jira", "folder", "slack"]);
 
 const at = instant(new Date(Date.UTC(2026, 9, 29)));
 const item = (id: ItemId, references: ItemId[] = []): IndexRecord => ({
@@ -24,7 +27,7 @@ test("each item another names anchors a cluster of what names it and what it nam
     item("slack:C0FW1WEATHR-1788444000.000100", ["jira:SYN-54"]),
     item("slack:C0FW1WEATHR-1788344100.000100", ["jira:SYN-54", "jira:SYN-77"]),
   ];
-  const clusters = linkedGrouping.group(records, at);
+  const clusters = linkedGrouping.group(records, at, order);
   assert.deepEqual(clusters, [
     {
       key: "jira:s-jira:SYN-54",
@@ -52,5 +55,5 @@ test("each item another names anchors a cluster of what names it and what it nam
 });
 
 test("nothing linked, no clusters; a reference to an item not in the index anchors none", () => {
-  assert.deepEqual(linkedGrouping.group([item("jira:SYN-1", ["jira:SYN-2"])], at), []);
+  assert.deepEqual(linkedGrouping.group([item("jira:SYN-1", ["jira:SYN-2"])], at, order), []);
 });

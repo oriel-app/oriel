@@ -15,7 +15,7 @@
 // look-alike ID). Either fails the `refs` grade.
 import { fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import type { SlackFixture } from "@oriel/slack";
-import type { Instant } from "@oriel/core";
+import { type Instant, parseItemId } from "@oriel/core";
 import { chipStateName } from "@oriel/web/chip";
 import { chipIds } from "@oriel/web/markdown";
 import type { ChipView } from "@oriel/web/view";
@@ -50,7 +50,7 @@ const standing = (name: string, chip: ChipView) => {
 export function resolver(world: World): (id: string) => string | null {
   const names = new Map<string, string>();
   for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records)
-    names.set(record.id, `${record.id.slice("jira:".length)} ${plain(record.title)}`);
+    names.set(record.id, `${parseItemId(record.id)?.key ?? record.id} ${plain(record.title)}`);
   for (const file of world.folder?.files ?? [])
     names.set(fileId(file.path), plain(fileTitle(file.path)));
   for (const channel of world.slack?.channels ?? [])
@@ -80,8 +80,10 @@ export function resolver(world: World): (id: string) => string | null {
     names.set(set.id, standing(link, chip));
   }
   for (const id of world.held)
-    if (!names.has(id))
-      names.set(id, `${id.startsWith("jira:") ? `${id.slice(5)} ` : ""}Not in the index`);
+    if (!names.has(id)) {
+      const parsed = parseItemId(id);
+      names.set(id, `${parsed?.kind === "jira" ? `${parsed.key} ` : ""}Not in the index`);
+    }
   return (id) => names.get(id) ?? null;
 }
 

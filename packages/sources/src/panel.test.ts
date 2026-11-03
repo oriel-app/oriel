@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sourceKinds } from "@oriel/core";
-import { sources } from "./index.ts";
+import { sourceKinds, sources } from "./index.ts";
 
 test("every source has its own view of an item, and none of content it can't read", () => {
   for (const kind of sourceKinds) {

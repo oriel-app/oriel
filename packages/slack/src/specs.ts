@@ -46,7 +46,7 @@ async function conversation(context: LineContext): Promise<{ named: string; chan
   const subject: Subject = context.subject;
   const id = subject?.kind === "item" ? subject.id : null;
   const parsed = id === null ? null : parseItemId(id);
-  const parts = parsed?.source === "slack" ? keyParts(parsed.key) : null;
+  const parts = parsed?.kind === "slack" ? keyParts(parsed.key) : null;
   const channel = parts ? await channelOf(context, parts.channel) : "its channel";
   const title = subject?.title ?? null;
   return {

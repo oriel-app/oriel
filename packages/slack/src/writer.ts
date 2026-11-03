@@ -114,7 +114,7 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
 
   const where = (id: ItemId<"slack">) => {
     const parsed = parseItemId(id);
-    const parts = parsed?.source === "slack" ? keyParts(parsed.key) : null;
+    const parts = parsed?.prefix === "slack" ? keyParts(parsed.key) : null;
     if (!parts) throw new RangeError(`not a Slack item: ${id}`);
     return parts;
   };

@@ -4,6 +4,7 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
+import { kindOfItem } from "./item-id.ts";
 import { Chip, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, SketchView } from "./view.ts";
 
@@ -114,7 +115,7 @@ function BlockBody({ block }: { block: BlockView }) {
 // (decision 0032); one the index no longer has says so.
 const rowChip = ({ ref, row }: MemberView): ChipView => ({
   kind: "item",
-  source: ref.id.slice(0, ref.id.indexOf(":")),
+  source: kindOfItem(ref.id) ?? "",
   key: ref.key,
   name: row?.title ?? ref.title ?? "Not in the index",
   url: ref.url,

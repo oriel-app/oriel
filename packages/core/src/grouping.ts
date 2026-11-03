@@ -1,4 +1,4 @@
-import type { Instant, ItemId } from "./ids.ts";
+import type { Instant, ItemId, ItemOrder } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
 
 // A cluster either mirrors structure the source has (an epic) or is derived
@@ -20,9 +20,10 @@ export const clusterMembers = (cluster: Cluster): ItemId[] => [
   ...new Set(cluster.anchor === null ? cluster.itemIds : [cluster.anchor, ...cluster.itemIds]),
 ];
 
-// Pure: no I/O and no clock reads; `now` is passed in.
+// Pure: no I/O and no clock reads; `now` is passed in, and so is the order
+// of item IDs, which follows the declared kinds.
 export interface Grouping<R extends IndexRecord = IndexRecord> {
   readonly id: string;
   readonly label: string;
-  group(records: readonly R[], now: Instant): Cluster[];
+  group(records: readonly R[], now: Instant, order: ItemOrder): Cluster[];
 }

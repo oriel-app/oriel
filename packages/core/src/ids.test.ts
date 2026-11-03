@@ -1,48 +1,100 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { instant, isInstant, isItemId, isUlid, itemId, parseItemId, ulid } from "./ids.ts";
+import {
+  instant,
+  isInstant,
+  isItemId,
+  isPrefix,
+  isUlid,
+  itemId,
+  itemOrder,
+  kindOf,
+  parseItemId,
+  ulid,
+} from "./ids.ts";
 
-test("source-qualified IDs round-trip", () => {
+test("item IDs round-trip, as a kind's first connection and a later one", () => {
   assert.equal(itemId("jira", "SYN-12"), "jira:SYN-12");
-  assert.deepEqual(parseItemId("jira:SYN-12"), { source: "jira", key: "SYN-12" });
+  assert.deepEqual(parseItemId("jira:SYN-12"), { kind: "jira", prefix: "jira", key: "SYN-12" });
+  assert.equal(itemId("jira.2", "ACME-4"), "jira.2:ACME-4");
+  assert.deepEqual(parseItemId("jira.2:ACME-4"), { kind: "jira", prefix: "jira.2", key: "ACME-4" });
+  assert.deepEqual(parseItemId("sheets.10:1aB_c-9.x"), {
+    kind: "sheets",
+    prefix: "sheets.10",
+    key: "1aB_c-9.x",
+  });
+  assert.equal(kindOf("jira.2"), "jira");
+  assert.equal(kindOf("jira"), "jira");
+  assert.ok(isPrefix("jira") && isPrefix("jira.2"));
+  assert.ok(!isPrefix("jira.1") && !isPrefix("Jira") && !isPrefix("jira:"));
 });
 
-test("only well-formed keys of known sources are item IDs", () => {
+// Decision 0049's one-way door: every ID that exists now keeps its meaning,
+// as its kind's first connection's.
+test("today's IDs parse as they did, each its kind's first connection", () => {
+  const today = [
+    ["jira:SYN-12", "jira", "SYN-12"],
+    ["jira:ORL_2-1009", "jira", "ORL_2-1009"],
+    ["folder:3f9a00c1d2e4b5a6", "folder", "3f9a00c1d2e4b5a6"],
+    ["slack:C0A1B2C3D-1759309200.000100", "slack", "C0A1B2C3D-1759309200.000100"],
+    ["slack:G0FW1WEATHR-1788444000.000100", "slack", "G0FW1WEATHR-1788444000.000100"],
+  ] as const;
+  for (const [id, kind, key] of today) {
+    assert.deepEqual(parseItemId(id), { kind, prefix: kind, key }, id);
+    assert.equal(itemId(kind, key), id);
+  }
+});
+
+test("only IDs safe in generated code are item IDs, whatever their kind", () => {
   const bad = [
-    "slack:C1",
     "jira:",
     ":SYN-1",
     "SYN-1",
-    "jira:syn-1",
-    "jira:SYN-0",
+    "j:SYN-1",
+    "Jira:SYN-1",
+    "jira2:SYN-1",
+    "averyveryverylongkind:SYN-1",
+    "jira.1:SYN-1",
+    "jira.0:SYN-1",
+    "jira.02:SYN-1",
+    "jira.:SYN-1",
+    "jira.2.3:SYN-1",
     "jira:SYN-1 ",
     'jira:SYN-1"; fetch("x")',
     "jira:SYN-1*/",
     "jira:SYN:1",
+    "jira:../../etc/passwd",
+    "folder:Q3 plan.md",
+    `jira:${"A".repeat(129)}`,
   ];
   for (const id of bad) assert.equal(isItemId(id), false, id);
   assert.throws(() => itemId("jira", "SYN-1\n"), RangeError);
+  assert.throws(() => itemId("folder", "Q3 plan.md"), RangeError);
+  assert.throws(() => itemId("jira.1", "SYN-1"), RangeError);
 });
 
-test("a folder key is a 16-digit lowercase hex hash, never a file name", () => {
-  assert.equal(itemId("folder", "3f9a00c1d2e4b5a6"), "folder:3f9a00c1d2e4b5a6");
-  assert.deepEqual(parseItemId("folder:0123456789abcdef"), {
-    source: "folder",
-    key: "0123456789abcdef",
-  });
-  const bad = [
-    "folder:",
-    "folder:plan.md",
-    "folder:notes/plan",
-    "folder:0123456789ABCDEF",
-    "folder:0123456789abcde",
-    "folder:0123456789abcdef0",
-    "folder:0123456789abcdeg",
-    'folder:0123456789abcdef"',
-    "folder:../../etc/passwd",
+test("item IDs order by declared kind, then connection, then key, numbers as numbers", () => {
+  const order = itemOrder(["jira", "folder", "slack"]);
+  const ids = [
+    "slack:C0A1B2C3D-1759309200.000100",
+    "sheets:b",
+    "jira.2:ACME-1",
+    "jira:SYN-10",
+    "folder:3f9a00c1d2e4b5a6",
+    "jira:SYN-9",
+    "notes:a",
+    "jira.10:ACME-1",
   ];
-  for (const id of bad) assert.equal(isItemId(id), false, id);
-  assert.throws(() => itemId("folder", "Q3 plan.md"), RangeError);
+  assert.deepEqual(ids.toSorted(order), [
+    "jira:SYN-9",
+    "jira:SYN-10",
+    "jira.2:ACME-1",
+    "jira.10:ACME-1",
+    "folder:3f9a00c1d2e4b5a6",
+    "slack:C0A1B2C3D-1759309200.000100",
+    "notes:a",
+    "sheets:b",
+  ]);
 });
 
 test("instants are canonical UTC with milliseconds", () => {

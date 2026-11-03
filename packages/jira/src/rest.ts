@@ -22,7 +22,14 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import { type JiraAttrs, type JiraContent, jiraFacets, jiraKind } from "./attrs.ts";
+import {
+  isJiraId,
+  type JiraAttrs,
+  type JiraContent,
+  jiraFacets,
+  jiraKeyShape,
+  jiraKind,
+} from "./attrs.ts";
 import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";
@@ -46,18 +53,14 @@ export const time: Validator<Instant> = (input, path = "$") => {
     : { ok: false, issues: [{ path, message: "expected a Jira timestamp" }] };
 };
 
-export const issueKey = refine(
-  string,
-  (key) => parseItemId(`jira:${key}`)?.source === "jira",
-  "expected an issue key",
-);
+export const issueKey = refine(string, (key) => jiraKeyShape.test(key), "expected an issue key");
 export const numericId = refine(string, (id) => /^[1-9][0-9]*$/.test(id), "expected a numeric ID");
 
 export const projectOf = (key: string) => key.slice(0, key.lastIndexOf("-"));
 
 export const keyOf = (id: ItemId<"jira">): string => {
   const parsed = parseItemId(id);
-  if (parsed?.source !== "jira") throw new RangeError(`not a Jira item ID: ${JSON.stringify(id)}`);
+  if (!parsed || !isJiraId(id)) throw new RangeError(`not a Jira item ID: ${JSON.stringify(id)}`);
   return parsed.key;
 };
 

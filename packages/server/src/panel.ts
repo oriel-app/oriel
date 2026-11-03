@@ -33,7 +33,8 @@ export function itemPanels(deps: PanelDeps): ItemPanels {
     async read(id) {
       const parsed = parseItemId(id);
       if (!parsed) throw new Error(`not an item ID: ${id}`);
-      const source = deps.sources[parsed.source];
+      const source = deps.sources[parsed.kind];
+      if (!source) throw new Error(`no source declares ${parsed.kind}`);
       const [result] = await deps.reader.read([id]);
       const readAt = deps.now();
       const record = recordOf(id);

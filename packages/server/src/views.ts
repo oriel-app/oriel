@@ -2,7 +2,6 @@
 // the shapes @oriel/web/view declares; the window renders it as it is.
 import {
   type Block,
-  byItemId,
   escapeHatchBlock,
   type ChangeSet,
   type ChangeSets,
@@ -22,6 +21,7 @@ import {
 import { plainError } from "@oriel/changeset";
 import type { WorkstreamStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
 import { itemRow } from "@oriel/groupings";
+import { byItemId, parseDeclared } from "@oriel/sources";
 import type {
   BlockView,
   ChangeSetStatus,
@@ -103,7 +103,7 @@ export function webUrl(location: string): string | null {
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
 
 export const identity = (item: { id: string; stableId: string }) =>
-  `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
+  `${parseItemId(item.id)?.prefix ?? ""}\u0000${item.stableId}`;
 
 // The member of a workstream a handle names. Through the index, by identity, so
 // an item that moved is found under its current handle; failing that, by the
@@ -132,7 +132,8 @@ function display(
   if (value === null || value === undefined) return null;
   if (typeof value === "string" && value.trim() === "") return null;
   if (typeof value === "string" && field === "assignee") return person(value) ?? value;
-  if (typeof value === "string") return parseItemId(value) ? keyOf(value) : value;
+  // Only a declared kind's: text such as "fix:login" is shown as written.
+  if (typeof value === "string") return parseDeclared(value) ? keyOf(value) : value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (typeof value === "object" && "title" in value && typeof value.title === "string")
     return value.title;
@@ -235,13 +236,11 @@ export function views(deps: ViewDeps) {
   const lookup = () => {
     const records = deps.records();
     const byId = new Map(records.map((r) => [r.id, r]));
-    const byIdentity = new Map(
-      records.map((r) => [`${parseItemId(r.id)?.source}\u0000${r.stableId}`, r]),
-    );
+    const byIdentity = new Map(records.map((r) => [identity(r), r]));
     // By identity only: a handle another item has taken since names that
     // other item, not this one.
     const find = (member: WorkstreamMember): IndexRecord | undefined =>
-      byIdentity.get(`${parseItemId(member.id)?.source}\u0000${member.stableId}`);
+      byIdentity.get(identity(member));
     return { byId, find };
   };
 
@@ -532,7 +531,7 @@ export function views(deps: ViewDeps) {
           const name = "Not in the index";
           return {
             kind: "item",
-            source: parsed.source,
+            source: parsed.kind,
             key: parsed.key,
             name,
             url: null,
@@ -543,7 +542,7 @@ export function views(deps: ViewDeps) {
         const row = itemRow(record, asOf, deps.presentations);
         const { key, title: name, status: state } = row;
         const url = webUrl(record.location);
-        return { kind: "item", source: parsed.source, key, name, url, state };
+        return { kind: "item", source: parsed.kind, key, name, url, state };
       }
       if (!isUlid(id)) return null;
       const thread = threads.get(id, now);

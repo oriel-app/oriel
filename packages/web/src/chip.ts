@@ -4,6 +4,7 @@
 // (`ChipView`), never from the agent's words. A rows block draws its items
 // the same way, so an item looks the same in a sentence and in a block.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
+import { kindOfItem } from "./item-id.ts";
 import type { ChipView, ThreadStateId } from "./view.ts";
 
 // Where a thread stands, as a person says it: on its chip, its page and in
@@ -31,7 +32,7 @@ const readsAs: Partial<Record<string, string>> = { folder: "File", slack: "Messa
 
 // What a person reads for an item's key; its title says which file or message.
 export function keyLabel(item: { id: string; key: string }): string {
-  return readsAs[item.id.slice(0, item.id.indexOf(":"))] ?? item.key;
+  return readsAs[kindOfItem(item.id) ?? ""] ?? item.key;
 }
 
 // The key beside a chip's icon: none for a file or a message, which its icon

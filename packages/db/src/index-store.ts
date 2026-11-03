@@ -9,6 +9,7 @@ import {
   type Instant,
   isInstant,
   isItemId,
+  isPrefix,
   keptSince,
   literal,
   nullable,
@@ -17,7 +18,6 @@ import {
   parseItemId,
   refine,
   type SourceKind,
-  sourceKinds,
   string,
   type IndexPage,
   type ItemId,
@@ -54,11 +54,7 @@ const referenceRow = object({
 });
 const changeRow = object({
   seq: number,
-  source: refine(
-    string,
-    (kind): kind is SourceKind => sourceKinds.some((k) => k === kind),
-    "expected a source",
-  ),
+  source: refine(string, isPrefix, "expected a source"),
   stable_id: string,
   version: number,
   at: refine(string, isInstant, "expected an instant"),
@@ -78,20 +74,18 @@ const fold = (text: string) =>
 const maxQueryChars = 256;
 const maxTerms = 8;
 const maxResults = 50;
-const sourcePrefix = new RegExp(`^(${sourceKinds.join("|")}):`);
+// A term that is an item ID, as its key.
+const keyOf = (term: string) => parseItemId(term)?.key ?? term;
 
 // A query as search() takes it: at most 256 characters and 8 distinct
-// terms, folded, with a "jira:" prefix on a term dropped, so a full item ID
-// works as a query. `whole` is the query as one key.
+// terms, folded, with a term that is a full item ID, such as "jira:syn-12",
+// taken as its key. `whole` is the query as one key.
 export function searchTerms(query: string): { terms: string[]; whole: string } {
   const bounded = fold(query.slice(0, maxQueryChars));
-  const stripped = bounded
-    .split(/\s+/)
-    .map((term) => term.replace(sourcePrefix, ""))
-    .filter(Boolean);
+  const stripped = bounded.split(/\s+/).map(keyOf).filter(Boolean);
   return {
     terms: [...new Set(stripped)].slice(0, maxTerms),
-    whole: bounded.trim().replace(sourcePrefix, ""),
+    whole: keyOf(bounded.trim()),
   };
 }
 
@@ -269,7 +263,7 @@ export function indexStore(db: DatabaseSync) {
     const references = referencesOf(workspaceId);
     const records = selectLive.all(workspaceId, source, source).map((raw) => {
       const record = recordOf(raw, attrs);
-      const named = references.get(`${parseItemId(record.id)?.source}\u0000${record.stableId}`);
+      const named = references.get(`${parseItemId(record.id)?.prefix}\u0000${record.stableId}`);
       return frozen(
         named ? { ...record, facets: { ...record.facets, references: named } } : record,
       );
@@ -306,7 +300,7 @@ export function indexStore(db: DatabaseSync) {
   // round trip, so one bad record can't break the window later.
   const check = <A>(source: SourceKind, attrs: Validator<A>, page: SyncPage) => {
     for (const r of page.records) {
-      if (parseItemId(r.id)?.source !== source) {
+      if (parseItemId(r.id)?.prefix !== source) {
         throw new Error(`${JSON.stringify(r.id)} is not a ${source} item ID`);
       }
       if (!isInstant(r.updatedAt)) throw new Error(`${r.id}: updatedAt is not a canonical instant`);
@@ -404,15 +398,15 @@ export function indexStore(db: DatabaseSync) {
                 const found = liveByHandle.get(workspaceId, id);
                 const toStableId = found ? stableIdRow(found) : null;
                 const resolved = toStableId?.ok ? toStableId.value.stable_id : null;
-                if (resolved === stableId && to.source === source) continue;
-                const key = `${to.source}\u0000${resolved ?? `handle\u0000${to.key}`}`;
+                if (resolved === stableId && to.prefix === source) continue;
+                const key = `${to.prefix}\u0000${resolved ?? `handle\u0000${to.key}`}`;
                 if (kept.has(key)) continue;
                 kept.add(key);
                 insertReference.run(
                   workspaceId,
                   source,
                   stableId,
-                  to.source,
+                  to.prefix,
                   resolved,
                   resolved === null ? to.key : null,
                   now,
@@ -470,7 +464,7 @@ export function indexStore(db: DatabaseSync) {
       if (!first) return [];
       return live(workspaceId, null, unknown)
         .filter((record) => {
-          const source = parseItemId(record.id)?.source;
+          const source = parseItemId(record.id)?.prefix;
           return !sources || (source !== undefined && sources.includes(source));
         })
         .filter((record) => matchesSearch(record, terms))

@@ -4,11 +4,11 @@
 // one Oriel derives carries a rule, true of every item it holds and of no
 // item it leaves out. Pure: `now` is passed in.
 import {
-  byItemId,
   type Cluster,
   type Grouping,
   type IndexRecord,
   type ItemId,
+  type ItemOrder,
   parseItemId,
   stuckDays,
 } from "@oriel/core";
@@ -16,11 +16,14 @@ import {
 const day = 86_400_000;
 
 // Records in item ID order (so SYN-9 comes before SYN-10).
-export const byKey = (a: IndexRecord, b: IndexRecord): number => byItemId(a.id, b.id);
+export const byKey =
+  (order: ItemOrder) =>
+  (a: IndexRecord, b: IndexRecord): number =>
+    order(a.id, b.id);
 
-// An item's identity: its source and stable ID. Handles can change.
+// An item's identity: its connection and stable ID. Handles can change.
 const identity = (id: ItemId, stableId: string) =>
-  `${parseItemId(id)?.source ?? ""}\u0000${stableId}`;
+  `${parseItemId(id)?.prefix ?? ""}\u0000${stableId}`;
 const ids = (records: readonly IndexRecord[]) => records.map((record) => record.id);
 
 // One cluster per epic: an item of kind "epic", even one with no stories, or
@@ -33,8 +36,8 @@ const ids = (records: readonly IndexRecord[]) => records.map((record) => record.
 export const epicGrouping: Grouping = {
   id: "epic",
   label: "Epic",
-  group(records) {
-    const sorted = records.toSorted(byKey);
+  group(records, _now, order) {
+    const sorted = records.toSorted(byKey(order));
     const containerOf = (record: IndexRecord) => {
       const container = record.facets.container ?? null;
       return container && identity(container.id, container.stableId);
@@ -104,11 +107,11 @@ export function assigneeOf(record: IndexRecord): { id: string; name: string } | 
 export const assigneeGrouping: Grouping = {
   id: "assignee",
   label: "Assignee",
-  group(records) {
+  group(records, _now, order) {
     const people = new Map<string, { name: string; items: IndexRecord[] }>();
     const unassigned: IndexRecord[] = [];
     const sourceless: IndexRecord[] = [];
-    for (const record of records.toSorted(byKey)) {
+    for (const record of records.toSorted(byKey(order))) {
       if (record.facets.people === undefined) {
         sourceless.push(record);
         continue;
@@ -170,8 +173,8 @@ const isOpenWork = (record: IndexRecord) =>
 export const stuckGrouping: Grouping = {
   id: "stuck",
   label: "Stuck",
-  group(records, now) {
-    const open = records.filter(isOpenWork).toSorted(byKey);
+  group(records, now, order) {
+    const open = records.filter(isOpenWork).toSorted(byKey(order));
     const idle = open
       .filter((item) => Date.parse(now) - Date.parse(item.updatedAt) >= stuckAfter)
       .toSorted((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
@@ -211,8 +214,8 @@ export const stuckGrouping: Grouping = {
 export const linkedGrouping: Grouping = {
   id: "linked",
   label: "Linked",
-  group(records) {
-    const sorted = records.toSorted(byKey);
+  group(records, _now, order) {
+    const sorted = records.toSorted(byKey(order));
     const live = new Map(sorted.map((record) => [identity(record.id, record.stableId), record]));
     const named = (record: IndexRecord) =>
       (record.facets.references ?? []).flatMap(
@@ -229,7 +232,7 @@ export const linkedGrouping: Grouping = {
       .map(([anchor, from]): Cluster => {
         const linked = [...new Set([...from, ...named(anchor)])].filter((r) => r !== anchor);
         return {
-          key: `${parseItemId(anchor.id)?.source ?? ""}:${anchor.stableId}`,
+          key: `${parseItemId(anchor.id)?.prefix ?? ""}:${anchor.stableId}`,
           label: anchor.title,
           anchor: null,
           itemIds: ids([anchor, ...linked]),
@@ -238,7 +241,7 @@ export const linkedGrouping: Grouping = {
       })
       .toSorted(
         (a, b) =>
-          b.itemIds.length - a.itemIds.length || byItemId(a.itemIds[0] ?? "", b.itemIds[0] ?? ""),
+          b.itemIds.length - a.itemIds.length || order(a.itemIds[0] ?? "", b.itemIds[0] ?? ""),
       );
   },
 };

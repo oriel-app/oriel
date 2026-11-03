@@ -43,7 +43,7 @@ import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/ji
 import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import { overviewItems, overviewView } from "@oriel/server/overview";
 import { groupings } from "@oriel/server/window";
-import { itemDocs, namespacesFor, sources } from "@oriel/sources";
+import { byItemId, itemDocs, namespacesFor, sources } from "@oriel/sources";
 import type { OrielWorkspace } from "./case.ts";
 import {
   buildFolder,
@@ -156,10 +156,10 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const reader: Reader = {
     async read(ids) {
       const files = ids.filter(
-        (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
+        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === "folder",
       );
       const messages = ids.filter(
-        (id): id is ItemId<"slack"> => parseItemId(id)?.source === "slack",
+        (id): id is ItemId<"slack"> => parseItemId(id)?.prefix === "slack",
       );
       const read = [
         ...(folder && files.length ? await folder.source.read(files) : []),
@@ -168,7 +168,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
       const gone = (id: ItemId): ReadResult => ({ id, status: "gone", reason: "deleted" });
       return ids.map((id): ReadResult => {
-        if (parseItemId(id)?.source !== "jira") return byId.get(id) ?? gone(id);
+        if (parseItemId(id)?.prefix !== "jira") return byId.get(id) ?? gone(id);
         const content = snapshot.content.get(id as ItemId<"jira">);
         return content ? { id, status: "ok", content } : gone(id);
       });
@@ -348,7 +348,7 @@ function windowOverview(
     threads: [],
     unopened: [],
     clusters: (grouping) => {
-      const found = clustered.get(grouping) ?? groupings[grouping].group(records, now);
+      const found = clustered.get(grouping) ?? groupings[grouping].group(records, now, byItemId);
       clustered.set(grouping, found);
       return found;
     },

@@ -76,6 +76,7 @@ function fresh() {
     return syncSource({
       source,
       attrs: unknown,
+      key: /^[A-Za-z0-9.-]+$/,
       recognize,
       index,
       workspaceId,

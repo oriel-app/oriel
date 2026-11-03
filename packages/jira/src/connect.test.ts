@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { type Credential, instant, syncSource, ulid } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { jiraAttrs } from "./attrs.ts";
+import { jiraAttrs, jiraKeyShape } from "./attrs.ts";
 import { checkConnection } from "./connect.ts";
 import { fixtureSnapshot } from "./fixture.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
@@ -53,6 +53,7 @@ test("a sync of the site in memory indexes what the fixture snapshot does", asyn
   const report = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: true,
@@ -79,6 +80,7 @@ test("a sync of the site in memory indexes what the fixture snapshot does", asyn
   const again = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: false,

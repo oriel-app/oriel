@@ -160,7 +160,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
   };
   const find = (id: string): MemoryIssue | null => {
     const parsed = parseItemId(id);
-    if (parsed?.source !== "jira" || hidden.has(parsed.key)) return null;
+    if (parsed?.prefix !== "jira" || hidden.has(parsed.key)) return null;
     return issues.get(parsed.key) ?? null;
   };
   const values = (issue: MemoryIssue): Record<string, unknown> => ({
@@ -221,7 +221,7 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
         points: args.points ?? null,
         accountId: null,
         epic:
-          args.epic !== null && parseItemId(args.epic)?.source === "jira"
+          args.epic !== null && parseItemId(args.epic)?.prefix === "jira"
             ? (args.epic as ItemId<"jira">)
             : null,
         status: "To Do",

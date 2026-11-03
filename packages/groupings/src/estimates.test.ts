@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, type IndexRecord, instant } from "@oriel/core";
+import { type Cluster, type IndexRecord, instant, itemOrder } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
 import { clusterZoom, listZoom } from "./zoom.ts";
+
+// Item IDs in declared kind order, as the composition root gives it.
+const order = itemOrder(["jira", "folder", "slack"]);
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
@@ -27,7 +30,7 @@ const cluster = (clusters: Cluster[], key: string) => {
 
 test("with nothing in the index that estimates, Stuck has no Unestimated cluster", () => {
   assert.deepEqual(
-    stuckGrouping.group(unestimating, now).map((c) => c.key),
+    stuckGrouping.group(unestimating, now, order).map((c) => c.key),
     ["no-update-14-days"],
   );
   // One board that estimates is enough for it to show, holding only its items.
@@ -35,12 +38,12 @@ test("with nothing in the index that estimates, Stuck has no Unestimated cluster
     ...unestimating.filter((r) => r.id !== "jira:SYN-23"),
     ...syn.filter((r) => r.id === "jira:SYN-23"),
   ];
-  const clusters = stuckGrouping.group(mixed, now);
+  const clusters = stuckGrouping.group(mixed, now, order);
   assert.deepEqual(cluster(clusters, "unestimated").itemIds, ["jira:SYN-23"]);
 });
 
 test("an epic row and its items on a board that takes no estimates count nothing as unestimated", () => {
-  const checkout = cluster(epicGrouping.group(unestimating, now), "10001");
+  const checkout = cluster(epicGrouping.group(unestimating, now, order), "10001");
   const row = clusterZoom(now, sources).view(checkout, unestimating);
   assert.deepEqual([row.points, row.estimated, row.unestimated], [0, 0, 0]);
   assert.equal(row.anchor?.noEstimates, true);
@@ -50,7 +53,7 @@ test("an epic row and its items on a board that takes no estimates count nothing
 });
 
 test("an item that estimates, or tracks no state at all, isn't marked as taking no estimates", () => {
-  const checkout = cluster(epicGrouping.group(syn, now), "10001");
+  const checkout = cluster(epicGrouping.group(syn, now, order), "10001");
   assert.ok(
     listZoom(now, sources)
       .view(checkout, syn)

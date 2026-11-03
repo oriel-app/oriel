@@ -126,7 +126,7 @@ export const slackFacets = (): Facets => ({ kind: "message" });
 
 // A record's Slack attrs, or null for another source's item.
 export function slackAttrsOf(record: IndexRecord): SlackAttrs | null {
-  if (parseItemId(record.id)?.source !== "slack") return null;
+  if (parseItemId(record.id)?.kind !== "slack") return null;
   const parsed = slackAttrs(record.attrs);
   return parsed.ok ? parsed.value : null;
 }
@@ -156,6 +156,10 @@ export function slackLinked(link: URL): string | null {
   const ts = thread && /^\d+\.\d{6}$/.test(thread) ? thread : `${seconds}.${micros}`;
   return `${channel}-${ts}`;
 }
+
+// A message's channel ID and its `ts`, which Slack keeps unique in the
+// channel (decision 0021). Its text is its title and content, never its key.
+export const slackKeyShape = /^[CG][A-Z0-9]{6,20}-[0-9]{10}\.[0-9]{6}$/;
 
 export const slackPresentation: Presentation = {
   name: "Slack",

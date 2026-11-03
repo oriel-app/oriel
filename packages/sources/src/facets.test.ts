@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { type SourceDeclaration, sourceKinds } from "@oriel/core";
-import { sources } from "./index.ts";
+import type { SourceDeclaration } from "@oriel/core";
+import { sourceKinds, sources } from "./index.ts";
 
 test("every source declares its facets beyond the common ones, each with a label", () => {
   assert.deepEqual(

@@ -26,7 +26,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
-import { sourceKinds } from "../packages/core/src/ids.ts";
+import { sourceKinds } from "../packages/sources/src/index.ts";
 import { themeProblems } from "./check-themes.ts";
 
 // `name@version` keys from every top-level `packages:` block.
@@ -60,7 +60,7 @@ function backticked(text: string): string[] {
 const adapters: readonly string[] = sourceKinds;
 
 // The one file that builds writers, and an adapter's own writer and its test:
-// `packages/<kind>/src/writer.ts` for a kind in core's source kinds only.
+// `packages/<kind>/src/writer.ts` for a declared kind only.
 const writersFile = "packages/changeset/src/writers.ts";
 const ownWriterFile = new RegExp(
   `^packages/(?:${sourceKinds.join("|")})/src/writer(?:\\.test)?\\.ts$`,

@@ -100,10 +100,11 @@ export function parse(text: string, { chips = false } = {}): Prose[] {
   return blocks(text.replace(/\r\n?/g, "\n").split("\n"), 0, chips);
 }
 
-// What `[[…]]` holds to be a chip: an item's source-qualified ID
-// (`jira:SYN-45`), or one of Oriel's own, a ULID. Anything else stays as typed.
-// Bounded, so an ID Oriel notes as unknown fits its note.
-const chipId = /^(?:[a-z]{1,20}:[^\s[\]]{1,500}|[0-9A-HJKMNP-TV-Z]{26})$/;
+// What `[[…]]` holds to be a chip: an item's ID, qualified by its connection
+// (`jira:SYN-45`, `jira.2:ACME-4`), or one of Oriel's own, a ULID. Anything
+// else stays as typed. Loose, so an ID Oriel doesn't know gets its note, and
+// bounded, so the ID fits it.
+const chipId = /^(?:[a-z]{1,20}(?:\.[0-9]{1,4})?:[^\s[\]]{1,500}|[0-9A-HJKMNP-TV-Z]{26})$/;
 
 // The IDs an agent's answer names as chips, once each, in order.
 export function chipIds(text: string): string[] {

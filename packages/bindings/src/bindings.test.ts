@@ -241,8 +241,8 @@ test("a region with a malformed ID is refused, and one without its anchor has no
     items: [...region.items, { id: 'jira:SYN-1" | string', stableId: "1" }],
   };
   assert.throws(() => bindingsFor(evil, { reader: base, namespaces }), /not a Jira item ID/);
-  const lower: Region = { ...region, items: [{ id: "jira:syn-1", stableId: "1" }] };
-  assert.throws(() => bindingsFor(lower, { reader: base, namespaces }), /not a Jira item ID/);
+  const spaced: Region = { ...region, items: [{ id: "jira:SYN 1", stableId: "1" }] };
+  assert.throws(() => bindingsFor(spaced, { reader: base, namespaces }), /not a Jira item ID/);
   const unanchored: Region = {
     ...region,
     items: region.items.filter((item) => item.id !== "jira:SYN-2"),

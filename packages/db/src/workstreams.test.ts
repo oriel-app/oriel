@@ -222,7 +222,7 @@ test("malformed members and unknown workstreams are refused, and nothing is reco
     () =>
       workstreams.add(
         workstream.id,
-        [{ id: "jira:syn-2" as WorkstreamMember["id"], stableId: "1" }],
+        [{ id: "jira:SYN 2" as WorkstreamMember["id"], stableId: "1" }],
         user,
         t0,
       ),

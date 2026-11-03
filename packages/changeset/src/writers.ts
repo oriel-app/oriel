@@ -4,7 +4,7 @@
 // thread or the agent runs can reach one. scripts/check-repo.ts allows an
 // `@oriel/<kind>/writer` import here and in an adapter's own writer files,
 // nowhere else.
-import type { Credential, Log, SourceKind, SourceWriter } from "@oriel/core";
+import type { Credential, Log, SourceWriter } from "@oriel/core";
 import { type JiraBoards, jiraWriter, restTransport } from "@oriel/jira/writer";
 import { slackWriter, writeApi } from "@oriel/slack/writer";
 
@@ -34,10 +34,10 @@ export type WriterConfig = {
     // the synthetic workspace gives one that answers from memory.
     fetch?: typeof fetch;
   };
-} & { [K in Exclude<SourceKind, "jira" | "slack">]?: never };
+};
 
-// Each writable source's writer, by kind.
-export type Writers = { [K in SourceKind]?: SourceWriter<K> };
+// Each writable source's writer, by its connection's prefix.
+export type Writers = Partial<Record<string, SourceWriter>>;
 
 export function buildWriters(config: WriterConfig, log: Log): Writers {
   const { jira, slack } = config;

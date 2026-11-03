@@ -2,11 +2,14 @@
 // cluster, and reads the newer ones when handed others.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { instant } from "@oriel/core";
+import { instant, itemOrder } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { epicGrouping } from "./groupings.ts";
 import { clusterZoom, listZoom } from "./zoom.ts";
+
+// Item IDs in declared kind order, as the composition root gives it.
+const order = itemOrder(["jira", "folder", "slack"]);
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
@@ -17,7 +20,7 @@ const sources = { jira: jiraPresentation };
 test("one zoom level handed newer records reads them, not the ones it had", () => {
   const rows = clusterZoom(now, sources);
   const list = listZoom(now, sources);
-  const checkout = epicGrouping.group(current, now).find((c) => c.key === "10001");
+  const checkout = epicGrouping.group(current, now, order).find((c) => c.key === "10001");
   assert.ok(checkout);
   // The same records, one of the checkout epic's items retitled since.
   const [first] = checkout.itemIds;

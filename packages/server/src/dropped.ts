@@ -18,7 +18,6 @@ import {
   parseItemId,
   type Presentations,
   type SourceKind,
-  sourceKinds,
 } from "@oriel/core";
 
 export type DroppedFile = { name: string; modified: number };
@@ -45,13 +44,12 @@ const decoded = (part: string) => {
   }
 };
 
-// "Jira, Folder and Slack": each source with items here, in `sourceKinds` order.
+// "Jira, Folder and Slack": each source with items here, in declared order.
 const sourceNames = new Intl.ListFormat("en-GB");
 const elsewhere = (sources: Presentations, kinds: ReadonlySet<SourceKind>) => {
-  const names = sourceKinds.flatMap((kind) => {
-    const source = sources[kind];
-    return source && kinds.has(kind) ? [source.name] : [];
-  });
+  const names = Object.entries(sources).flatMap(([kind, source]) =>
+    source && kinds.has(kind) ? [source.name] : [],
+  );
   return names.length > 0
     ? `Only ${sourceNames.format(names)} items can be added, not other pages.`
     : "Oriel has no items yet, so nothing can be added.";
@@ -79,9 +77,11 @@ export function resolveDropped(
       byPlace.set(place(url), record.id);
       if (url.protocol !== "file:") origins.add(url.origin);
     }
-    const kind = parseItemId(record.id)?.source;
-    if (kind) kinds.add(kind);
-    byHandle.set(record.id.slice(record.id.indexOf(":") + 1), record.id);
+    const parsed = parseItemId(record.id);
+    if (parsed) {
+      kinds.add(parsed.kind);
+      byHandle.set(parsed.key, record.id);
+    }
     const name = fileName(record.location);
     if (name) byName.set(name, [...(byName.get(name) ?? []), record]);
   }

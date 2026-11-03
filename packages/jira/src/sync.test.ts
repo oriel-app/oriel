@@ -12,7 +12,7 @@ import {
 } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { jiraAttrs } from "./attrs.ts";
+import { jiraAttrs, jiraKeyShape } from "./attrs.ts";
 import { fixtureSnapshot } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
 
@@ -33,7 +33,16 @@ function fresh() {
   const lines: { message: string; fields?: Record<string, unknown> }[] = [];
   const log: Log = (message, fields) => lines.push({ message, ...(fields ? { fields } : {}) });
   const sync = (source: Source<"jira", unknown>, full = false, now: Instant = t1) =>
-    syncSource({ source, attrs: jiraAttrs, index, workspaceId, full, clock: () => now, log });
+    syncSource({
+      source,
+      attrs: jiraAttrs,
+      key: jiraKeyShape,
+      index,
+      workspaceId,
+      full,
+      clock: () => now,
+      log,
+    });
   const live = () => index.records(workspaceId, "jira", jiraAttrs);
   return { index, workspaceId, lines, sync, live };
 }
@@ -213,6 +222,7 @@ test("items read one by one land over a listing that lags: a new one shows, a de
   const report = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: false,
@@ -240,6 +250,7 @@ test("a full sweep keeps an item read by itself that the listing doesn't have ye
   const report = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: true,
@@ -256,6 +267,7 @@ test("items are read before the listing, so a failed read applies nothing", asyn
   const { source, cursors } = wrapped(0, (page) => page);
   const options = {
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: true,
@@ -291,6 +303,7 @@ test("a read the listing has overtaken is left out, and an item already gone isn
   const report = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: true,
@@ -319,6 +332,7 @@ test("what the index holds as gone stays gone when a lagging listing still retur
   const report = await syncSource({
     source,
     attrs: jiraAttrs,
+    key: jiraKeyShape,
     index,
     workspaceId,
     full: true,
@@ -340,7 +354,14 @@ test("what a sweep wrongly held as gone comes back once the source has it by key
     ...page,
     records: page.records.filter((r) => r.stableId !== behind.stableId),
   }));
-  const options = { attrs: jiraAttrs, index, workspaceId, clock: () => t1, log: () => {} };
+  const options = {
+    attrs: jiraAttrs,
+    key: jiraKeyShape,
+    index,
+    workspaceId,
+    clock: () => t1,
+    log: () => {},
+  };
   await syncSource({ ...options, source: fixtureSource(fixture, { site, edited: 0 }), full: true });
   await syncSource({ ...options, source: missing, full: true });
   assert.ok(!index.liveStableIds(workspaceId, "jira").includes(behind.stableId));

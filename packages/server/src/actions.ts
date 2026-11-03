@@ -380,7 +380,7 @@ const handlers = {
       events: (change?.added ?? []).map((member) => ({
         name: "workstream.item-added",
         workstreamId: workstream.id,
-        source: parseItemId(member.id)?.source ?? "jira",
+        source: parseItemId(member.id)?.kind ?? "jira",
         cause: actor.kind,
       })),
     };

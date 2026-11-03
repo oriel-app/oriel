@@ -17,6 +17,7 @@ import {
   nullable,
   number,
   object,
+  parseItemId,
   refine,
   string,
   type Thread,
@@ -72,7 +73,7 @@ const wroteRow = object({
   applied: number,
   reverted: number,
   unconfirmed: number,
-  sources: string,
+  items: string,
 });
 
 // What can be added to a thread's chat. The agent's entries are its events
@@ -239,7 +240,7 @@ export function threadStore(db: DatabaseSync) {
   // counts as reverted once an applied reverse mutation undid it; a revert's
   // own changes count as nothing more. A row the engine left failed was sent
   // with no answer, so it may have landed: a refusal before sending puts it
-  // back to pending. Sources are where anything landed.
+  // back to pending. Items are what anything landed in.
   const selectWrote = db.prepare(`
     select
       count(*) filter (where m.status = 'applied' and c.revert_of is null and not undone)
@@ -247,9 +248,8 @@ export function threadStore(db: DatabaseSync) {
       count(*) filter (where m.status = 'applied' and c.revert_of is null and undone)
         as reverted,
       count(*) filter (where m.status = 'failed') as unconfirmed,
-      json_group_array(distinct substr(json_extract(m.applied, '$.item.id'), 1,
-        instr(json_extract(m.applied, '$.item.id'), ':') - 1))
-        filter (where m.status = 'applied') as sources
+      json_group_array(distinct json_extract(m.applied, '$.item.id'))
+        filter (where m.status = 'applied') as items
     from change_sets c join (
       select *, exists (
         select 1 from mutations r where r.reverts = mutations.id and r.status = 'applied'
@@ -306,14 +306,16 @@ export function threadStore(db: DatabaseSync) {
   const wrote = (id: Ulid): Wrote => {
     const row = wroteRow(selectWrote.get(id));
     if (!row.ok) throw new Error(`corrupt mutations: ${JSON.stringify(row.issues)}`);
-    const sources: unknown = JSON.parse(row.value.sources);
+    const items: unknown = JSON.parse(row.value.items);
+    // Each item's connection, once.
+    const sources = (Array.isArray(items) ? items : []).flatMap((id) =>
+      typeof id === "string" ? (parseItemId(id)?.prefix ?? []) : [],
+    );
     return {
       applied: row.value.applied,
       reverted: row.value.reverted,
       unconfirmed: row.value.unconfirmed,
-      sources: Array.isArray(sources)
-        ? sources.filter((s): s is string => typeof s === "string" && s !== "")
-        : [],
+      sources: [...new Set(sources)],
     };
   };
 

@@ -1,69 +1,86 @@
-// Identifiers and time. Items are addressed by source-qualified IDs
-// (`jira:SYN-12`, `folder:3f9a…`, `slack:C0A1B2C3D-1759309200.000100`), which
-// are handles; an item's identity is the source's stable ID, kept beside it.
-// Internal records use ULIDs. Time is canonical UTC ISO-8601 with
+// Identifiers and time. Items are addressed by IDs qualified by their
+// connection (`jira:SYN-12`, `folder:3f9a…`, `slack:C0A1B2C3D-1759309200.000100`),
+// which are handles; an item's identity is the source's stable ID, kept
+// beside it. Internal records use ULIDs. Time is canonical UTC ISO-8601 with
 // milliseconds, so instants sort as strings.
 
-// Adding a source here makes `keyShapes` below require its key shape.
-export const sourceKinds = ["jira", "folder", "slack"] as const;
-export type SourceKind = (typeof sourceKinds)[number];
-export type ItemId<K extends SourceKind = SourceKind> = `${K}:${string}`;
+// A connector's name in item IDs, such as `jira`. Core keeps no list of them:
+// packages/sources holds the closed list, and checks each kind's own key.
+export type SourceKind = string;
+// An item's handle: its connection's prefix, then its key. The prefix is the
+// kind for a kind's first connection (`jira:SYN-12`), and the kind and its
+// number for a later one (`jira.2:ACME-4`) (decision 0049).
+export type ItemId<K extends SourceKind = SourceKind> =
+  | `${K}:${string}`
+  | `${K}.${number}:${string}`;
 export type Ulid = string & { readonly __brand: "Ulid" };
 export type Instant = string & { readonly __brand: "Instant" };
 
-// Keys reach generated code (the region's `.d.ts` and guest stubs), so each
-// source's key shape is strict, and no key carries text a person wrote.
+// IDs reach generated code (the region's `.d.ts` and guest stubs), so every
+// one has this shape: a short lowercase kind, a later connection's number
+// (2 up, written without leading zeros, so one item has one handle), a colon,
+// then a key of letters, digits, `.`, `_` and `-`. Each kind's own key shape
+// is stricter, and no key carries text a person wrote.
+const idShape = /^([a-z]{2,16})(?:\.([2-9]|[1-9][0-9]{1,3}))?:([A-Za-z0-9._-]{1,128})$/;
 
-const keyShapes: Record<SourceKind, RegExp> = {
-  jira: /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/,
-  // A fixed-length hash of the folder's ID and the file's canonical relative
-  // path (decision 0019): a file's name is its title, never its key.
-  folder: /^[0-9a-f]{16}$/,
-  // A message's channel ID and its `ts`, which Slack keeps unique in the
-  // channel (decision 0021). Its text is its title and content, never its key.
-  slack: /^[CG][A-Z0-9]{6,20}-[0-9]{10}\.[0-9]{6}$/,
-};
+// What an ID names: `kind` is what the item is, and `prefix` whose it is,
+// its connection: the kind, with any number.
+export type ParsedItemId = { kind: SourceKind; prefix: string; key: string };
 
-export function parseItemId(id: string): { source: SourceKind; key: string } | null {
-  const at = id.indexOf(":");
-  const source = sourceKinds.find((kind) => kind === id.slice(0, at));
-  const key = id.slice(at + 1);
-  if (!source || !keyShapes[source].test(key)) return null;
-  return { source, key };
+export function parseItemId(id: string): ParsedItemId | null {
+  const match = idShape.exec(id);
+  if (!match) return null;
+  const [, kind = "", number, key = ""] = match;
+  return { kind, prefix: number === undefined ? kind : `${kind}.${number}`, key };
 }
+
+// The kind a connection's prefix is of: `jira` for `jira` and `jira.2` alike.
+export const kindOf = (prefix: string): SourceKind => prefix.split(".", 1)[0] ?? prefix;
+
+// Whether a value is a connection's prefix, as the index keeps its source.
+export const isPrefix = (value: string): boolean => parseItemId(`${value}:_`)?.prefix === value;
 
 export function isItemId(value: string): value is ItemId {
   return parseItemId(value) !== null;
 }
 
-// Item IDs in one order everywhere: by source, then by key, where a key that
-// ends in a number is ordered by what comes before it and then by that number
-// (so SYN-9 comes before SYN-10). Code-unit comparisons only, so it is the
-// same in every locale.
-export function byItemId(a: string, b: string): number {
-  const [sourceA, stemA, numberA] = orderOf(a);
-  const [sourceB, stemB, numberB] = orderOf(b);
-  if (sourceA !== sourceB) return sourceA - sourceB;
-  if (stemA !== stemB) return stemA < stemB ? -1 : 1;
-  if (numberA !== numberB) return numberA - numberB;
-  // Equal numbers written differently, such as 01 and 1.
-  return a === b ? 0 : a < b ? -1 : 1;
+// Item IDs in one order everywhere: by kind, in `kinds` order and then any
+// other by name, then by connection, then by key, where a key that ends in a
+// number is ordered by what comes before it and then by that number (so
+// SYN-9 comes before SYN-10). Code-unit comparisons only, so it is the same
+// in every locale. The composition root gives the declared kinds.
+export type ItemOrder = (a: string, b: string) => number;
+
+export function itemOrder(kinds: readonly SourceKind[]): ItemOrder {
+  const orderOf = (id: string): [number, string, number, string, number] => {
+    const parsed = parseItemId(id);
+    const at = parsed ? kinds.indexOf(parsed.kind) : -1;
+    const kind = at === -1 ? kinds.length : at;
+    const connection = parsed ? Number(parsed.prefix.slice(parsed.kind.length + 1) || 1) : 0;
+    const key = parsed?.key ?? id;
+    const digits = /[0-9]+$/.exec(key)?.[0] ?? "";
+    // A key whose number is too long to compare as one sorts by its text.
+    if (digits === "" || digits.length > 15) return [kind, parsed?.kind ?? "", connection, key, 0];
+    return [kind, parsed?.kind ?? "", connection, key.slice(0, -digits.length), Number(digits)];
+  };
+  return (a, b) => {
+    const [kindA, nameA, connectionA, stemA, numberA] = orderOf(a);
+    const [kindB, nameB, connectionB, stemB, numberB] = orderOf(b);
+    if (kindA !== kindB) return kindA - kindB;
+    if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+    if (connectionA !== connectionB) return connectionA - connectionB;
+    if (stemA !== stemB) return stemA < stemB ? -1 : 1;
+    if (numberA !== numberB) return numberA - numberB;
+    // Equal numbers written differently, such as 01 and 1.
+    return a === b ? 0 : a < b ? -1 : 1;
+  };
 }
 
-function orderOf(id: string): [number, string, number] {
-  const parsed = parseItemId(id);
-  const source = parsed ? sourceKinds.indexOf(parsed.source) : sourceKinds.length;
-  const key = parsed?.key ?? id;
-  const digits = /[0-9]+$/.exec(key)?.[0] ?? "";
-  // A key whose number is too long to compare as one sorts by its text.
-  if (digits === "" || digits.length > 15) return [source, key, 0];
-  return [source, key.slice(0, -digits.length), Number(digits)];
-}
-
-export function itemId<K extends SourceKind>(source: K, key: string): ItemId<K> {
-  if (!keyShapes[source].test(key))
-    throw new RangeError(`not a ${source} key: ${JSON.stringify(key)}`);
-  return `${source}:${key}`;
+// An item's handle, from its connection's prefix and its key.
+export function itemId<K extends SourceKind>(prefix: K, key: string): ItemId<K> {
+  const id: ItemId<K> = `${prefix}:${key}`;
+  if (!isItemId(id)) throw new RangeError(`not a ${prefix} key: ${JSON.stringify(key)}`);
+  return id;
 }
 
 export function instant(date: Date): Instant {

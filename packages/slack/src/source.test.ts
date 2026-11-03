@@ -62,7 +62,7 @@ test("each message posted in a picked channel is an item: channel and ts as its 
     },
   });
   for (const r of records) {
-    assert.equal(parseItemId(r.id)?.source, "slack", r.id);
+    assert.equal(parseItemId(r.id)?.prefix, "slack", r.id);
     assert.ok(slackAttrs(r.attrs).ok);
   }
 });

@@ -1,7 +1,7 @@
 // Slack's recognizer (decision 0027): links to messages in the workspace
 // Oriel reads, as a person pastes them. A reply's link names its message.
-import { type ItemId, isItemId, type Recognizer } from "@oriel/core";
-import { slackLinked } from "./attrs.ts";
+import { type ItemId, itemId, type Recognizer } from "@oriel/core";
+import { slackKeyShape, slackLinked } from "./attrs.ts";
 
 // What only the composition root knows: the workspace's address.
 export type SlackScope = { workspaceUrl: string };
@@ -26,8 +26,8 @@ export function slackRecognizer({ workspaceUrl }: SlackScope): Recognizer {
     const ids = (text.match(link) ?? []).flatMap((found): ItemId[] => {
       if (found.length > maxLink) return [];
       const url = URL.parse(trimmed(found));
-      const id = url?.origin === origin ? `slack:${slackLinked(url)}` : "";
-      return isItemId(id) ? [id] : [];
+      const key = url?.origin === origin ? slackLinked(url) : null;
+      return key !== null && slackKeyShape.test(key) ? [itemId("slack", key)] : [];
     });
     return [...new Set(ids)];
   };

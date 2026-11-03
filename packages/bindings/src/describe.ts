@@ -10,14 +10,13 @@
 // source without a namespace still gets `items.*` (decision 0019). The composition root passes the
 // namespaces in; bindings know no source.
 import {
-  byItemId,
   type ItemId,
+  itemOrder,
   type NamespaceScope,
   type NamespaceSpec,
   parseItemId,
   type Region,
   type SourceKind,
-  sourceKinds,
 } from "@oriel/core";
 import { intentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
@@ -40,20 +39,35 @@ export type Namespaces = Partial<Record<SourceKind, NamespaceSpec>>;
 // a source costs a region without them nothing.
 export type ItemDocs = Partial<Record<SourceKind, string>>;
 
-// The names the script sees. The list is fixed, whatever the region holds,
-// because the guest compiles the script before it knows the region: a
-// namespace the region has no functions in is empty, and the declarations
-// don't name it. Namespaces are read-only globals a script may shadow, so a
-// script can still name its own `items` or `folder`; the global functions
-// are parameters of the script's function, which it can't redeclare.
-export const spaceNames = ["items", ...sourceKinds, ...orielSpaces, "window"] as const;
-export const globals = [...spaceNames, "search", "show", "sketch"] as const;
+// The global functions, parameters of the script's function, which it
+// can't redeclare.
 export const parameters: readonly string[] = ["search", "show", "sketch"];
 
-// A region as the module sees it: its IDs, sorted, the item docs of the
-// sources it holds items from, and each source namespace it gets, with the
-// items that namespace binds.
+// Oriel's own names in every module, which no source's kind may take
+// (decision 0049).
+export const orielNames: readonly string[] = ["items", ...orielSpaces, "window", ...parameters];
+
+// The names the script sees: `items`, a namespace per kind, Oriel's own,
+// then the global functions. The list is fixed, whatever the region holds,
+// because the guest compiles the script before it knows the region: a
+// namespace the region has no functions in is empty, and the declarations
+// don't name it. The kinds are every source the composition root declares,
+// so it is fixed for the life of the server. Namespaces are read-only
+// globals a script may shadow, so a script can still name its own `items`
+// or `folder`.
+export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
+  "items",
+  ...kinds,
+  ...orielSpaces,
+  "window",
+];
+export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ...parameters];
+
+// A region as the module sees it: every name the script sees, its IDs,
+// sorted, the item docs of the sources it holds items from, and each source
+// namespace it gets, with the items that namespace binds.
 export type Scope = {
+  spaces: readonly string[];
   ids: readonly ItemId[];
   docs: readonly string[];
   sources: { kind: SourceKind; spec: NamespaceSpec; scope: NamespaceScope }[];
@@ -65,16 +79,22 @@ function checkedDoc(kind: SourceKind, doc: string): void {
     throw new Error(`${kind}: an item doc is one line of plain text, with no */`);
 }
 
-// IDs reach generated code, so each must have its source's strict key shape.
+// IDs reach generated code, so each must have the shape core checks. The
+// kinds are those the item docs and namespaces are given under, in that
+// order.
 export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs = {}): Scope {
+  const kinds = [...new Set([...Object.keys(items), ...Object.keys(namespaces)])];
+  const taken = kinds.find((kind) => orielNames.includes(kind));
+  if (taken !== undefined)
+    throw new Error(`${taken}: a source can't take one of Oriel's own names`);
   const names: Partial<Record<SourceKind, string>> = {};
-  for (const kind of sourceKinds) names[kind] = namespaces[kind]?.name;
+  for (const kind of kinds) names[kind] = namespaces[kind]?.name;
   const ids: ItemId[] = [];
   for (const { id } of region.items) {
     const checked = checkedId(id, names);
     if (!ids.includes(checked)) ids.push(checked);
   }
-  ids.sort(byItemId);
+  ids.sort(itemOrder(kinds));
   // A region whose anchor has left it is a region without one.
   const named = region.origin.kind === "cluster" ? region.origin.anchor : null;
   // By source and stable ID, under the handle the region has for it.
@@ -83,24 +103,25 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
     region.items.find(
       (item) =>
         item.stableId === named.stableId &&
-        parseItemId(item.id)?.source === parseItemId(named.id)?.source,
+        parseItemId(item.id)?.prefix === parseItemId(named.id)?.prefix,
     );
   const anchor = held && ids.includes(held.id) ? held.id : null;
-  const docs = sourceKinds.flatMap((kind) => {
+  const docs = kinds.flatMap((kind) => {
     const doc = items[kind];
     if (doc === undefined) return [];
     checkedDoc(kind, doc);
-    return ids.some((id) => parseItemId(id)?.source === kind) ? [doc] : [];
+    return ids.some((id) => parseItemId(id)?.kind === kind) ? [doc] : [];
   });
-  const sources = sourceKinds.flatMap((kind) => {
+  // A namespace is per kind: it binds the kind's items from every connection.
+  const sources = kinds.flatMap((kind) => {
     const spec = namespaces[kind];
-    const members = ids.filter((id) => parseItemId(id)?.source === kind);
+    const members = ids.filter((id) => parseItemId(id)?.kind === kind);
     // A region with no items yet gets the namespaces that can start one.
     if (!spec || (!members.length && (ids.length || !spec.blank))) return [];
     const own = anchor !== null && members.includes(anchor) ? anchor : null;
     return [{ kind, spec, scope: { ids: members, anchor: own } }];
   });
-  return { ids, docs, sources };
+  return { spaces: spacesOf(kinds), ids, docs, sources };
 }
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,

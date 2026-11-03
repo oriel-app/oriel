@@ -53,7 +53,7 @@ const reader: Reader = {
   read: async (ids) =>
     ids.map((id): ReadResult => {
       const content =
-        parseItemId(id)?.source === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
+        parseItemId(id)?.kind === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
       return content ? { id, status: "ok", content } : { id, status: "gone", reason: "deleted" };
     }),
   search: async (query, limit) => {
