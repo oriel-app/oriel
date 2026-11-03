@@ -1,8 +1,14 @@
-// Which model the agent and thread titles run on (decision 0037). With an API
-// key, the Messages API, as before. Without one, the person's own Claude Code
-// when a supported one is installed and signed in. Otherwise no model: each
-// turn says how to set one up, naming no credential. A settings page (OA-181)
-// will pass the person's choice as `prefer`; today nothing does.
+// Which model the agent and thread titles run on (decisions 0037 and 0041).
+// Oriel looks for each provider instance Settings lists: an API key in
+// `.env`, the person's own Claude Code, installed, a supported version and
+// signed in, and Codex, which it can't run on yet, so it's only looked for
+// on the PATH and never run (decision 0040). Each turn and each title
+// then runs on the provider and model Settings pick, among those found and
+// turned on, so a change in Settings applies at the next turn. With no pick,
+// the key wins, then Claude Code, as before Settings. With none, each turn
+// says how to set one up, naming no credential.
+import { accessSync, constants, statSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import {
   agent,
   anthropicProvider,
@@ -14,68 +20,285 @@ import {
   claudeCodeTitler,
   defaultModel,
   type HarnessProblem,
+  type Provider,
+  type Titler,
   titleModel,
 } from "@oriel/agent";
+import type { ModelOptionView, ModelPick, ProviderStatus, ProviderView } from "@oriel/web/view";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
-import type { AppOptions } from "./app.ts";
+import type { ProviderSetting, Settings } from "./settings.ts";
 
-export type ModelChoice =
-  | { kind: "api"; key: string }
-  | { kind: "claude-code"; cli: ClaudeCode }
-  | { kind: "none"; problem: HarnessProblem };
+// The models a Claude provider offers, by the API's IDs, the largest first.
+export const claudeModels: readonly { id: string; label: string }[] = [
+  { id: defaultModel, label: "Opus 5.5" },
+  { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+  { id: titleModel, label: "Haiku 5.5" },
+];
 
-export type ChooseOptions = {
+// What Oriel found for one instance when it last looked.
+export type Found =
+  | { status: "ready"; cli: ClaudeCode | null }
+  | { status: Exclude<ProviderStatus, "ready">; problem?: HarnessProblem };
+
+// What runs a turn or a title: an instance found ready and turned on, and
+// one of its models.
+export type Running = { provider: ProviderSetting; model: string; cli: ClaudeCode | null };
+
+export type Choice = { model: Running | null; title: Running | null; problem: string };
+
+export type ModelsOptions = {
   // ANTHROPIC_API_KEY from `.env`, or null.
   key: string | null;
-  // The person's pick, once a settings page offers one. Without it, the key
-  // wins.
-  prefer?: "api" | "claude-code";
-  claudeCode?: CheckOptions;
-  // Stands in for the CLI check in tests.
-  check?: typeof checkClaudeCode;
+  // `--claude-code <path>`; a path set in Settings wins.
+  claudeCodePath?: string;
+  // The environment the CLIs are found in. Default `process.env`.
+  env?: Readonly<Record<string, string | undefined>>;
+  // Stand in for the CLI check and the providers in tests.
+  check?: (options: CheckOptions) => ReturnType<typeof checkClaudeCode>;
+  provider?: (running: Running, key: string | null) => Provider;
+  titler?: (running: Running, key: string | null) => Titler;
 };
 
-export async function chooseModel(options: ChooseOptions): Promise<ModelChoice> {
-  const { key } = options;
-  if (key && options.prefer !== "claude-code") return { kind: "api", key };
-  const found = await (options.check ?? checkClaudeCode)(options.claudeCode);
-  if (found.ok) return { kind: "claude-code", cli: found.cli };
-  if (key) return { kind: "api", key };
-  return { kind: "none", problem: found.problem };
+export type Models = {
+  // Looks for every instance again, the CLIs' checks included.
+  look(settings: Settings): Promise<void>;
+  // What was found for an instance; "checking" until the first look ends.
+  found(id: string): Found;
+  choose(settings: Settings): Choice;
+  // The agent and the titler, each choosing again at every turn and title.
+  agent(settings: () => Settings, deps: ServerAgentDeps): Agent;
+  titler(settings: () => Settings): Titler;
+  // The models the default and Title model can be, from instances found
+  // ready and turned on.
+  options(settings: Settings): ModelOptionView[];
+  providers(settings: Settings): ProviderView[];
+  // The line the server prints at startup.
+  describe(settings: Settings): string;
+};
+
+const checking: Found = { status: "checking" };
+
+// An executable called `name` on `env`'s PATH.
+function onPath(name: string, env: Readonly<Record<string, string | undefined>>): boolean {
+  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`] : [name];
+  for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean))
+    for (const file of names)
+      try {
+        accessSync(join(dir, file), constants.X_OK);
+        if (statSync(join(dir, file)).isFile()) return true;
+      } catch {
+        // Not here.
+      }
+  return false;
 }
 
+// Why Codex, when it's the only CLI found, can't run the agent (decision
+// 0040). Oriel only looks for it; it never runs it.
+export const codexNotYet =
+  "Oriel can't run on Codex yet, because Codex can't be limited to Oriel's one tool. Install Claude Code and sign in to it, or add an API key.";
+
 // A turn with no model to run it: it says why and how to set one up.
-export function setupAgent(problem: HarnessProblem): Agent {
+export function setupAgent(message: string): Agent {
   return {
     async *turn() {
-      yield { kind: "error", message: problem.message };
+      yield { kind: "error", message };
       yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
     },
   };
 }
 
-// What the server is built with for a choice, and the line it prints.
-export function modelOptions(
-  choice: ModelChoice,
-): Pick<AppOptions, "agent" | "titler"> & { describe: string } {
-  if (choice.kind === "api") {
-    const apiKey = choice.key;
-    return {
-      agent: (deps: ServerAgentDeps) => agent({ ...deps, provider: anthropicProvider({ apiKey }) }),
-      titler: anthropicTitler({ apiKey }),
-      describe: `Agent: the model-backed agent (${defaultModel}), with the model key from .env. Thread titles: ${titleModel}.`,
-    };
+const ready = (found: Found): found is Extract<Found, { status: "ready" }> =>
+  found.status === "ready";
+
+export function models(options: ModelsOptions): Models {
+  const env = options.env ?? process.env;
+  const check = options.check ?? checkClaudeCode;
+  const { key } = options;
+  let found = new Map<string, Found>();
+  // Agents and titlers by instance, model and CLI, built once each.
+  const agents = new Map<string, Agent>();
+  const titlers = new Map<string, Titler>();
+  const cacheKey = (r: Running) => JSON.stringify([r.provider.id, r.model, r.cli]);
+  // Only the latest look's answers stand.
+  let looks = 0;
+
+  const providerOf =
+    options.provider ??
+    ((r: Running, apiKey: string | null): Provider =>
+      r.cli
+        ? claudeCodeProvider({ cli: r.cli, model: r.model })
+        : anthropicProvider({ apiKey: apiKey ?? "", model: r.model }));
+  const titlerOf =
+    options.titler ??
+    ((r: Running, apiKey: string | null): Titler =>
+      r.cli
+        ? claudeCodeTitler({ cli: r.cli, model: r.model })
+        : anthropicTitler({ apiKey: apiKey ?? "", model: r.model }));
+
+  async function lookFor(provider: ProviderSetting): Promise<Found> {
+    if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
+    if (provider.kind === "codex")
+      return onPath("codex", env) ? { status: "not-yet" } : { status: "missing" };
+    const path = provider.path ?? options.claudeCodePath;
+    const result = await check({ env, ...(path ? { path } : {}) });
+    return result.ok
+      ? { status: "ready", cli: result.cli }
+      : { status: result.problem.kind, problem: result.problem };
   }
-  if (choice.kind === "claude-code") {
-    const { cli } = choice;
-    return {
-      agent: (deps: ServerAgentDeps) => agent({ ...deps, provider: claudeCodeProvider({ cli }) }),
-      titler: claudeCodeTitler({ cli }),
-      describe: `Agent: ${defaultModel} through Claude Code ${cli.version} at ${cli.path}, on its own sign-in. Thread titles: ${titleModel}, the same way.`,
-    };
+
+  const foundOf = (id: string) => found.get(id) ?? checking;
+  const usable = (settings: Settings) =>
+    settings.providers.filter((p) => p.on && ready(foundOf(p.id)));
+
+  // The pick, if its instance is usable and offers its model; else the
+  // first usable instance, the key first, with `fallback`.
+  function running(settings: Settings, pick: ModelPick | null, fallback: string): Running | null {
+    const list = usable(settings);
+    const offered = (model: string) => claudeModels.some((m) => m.id === model);
+    const picked = pick && list.find((p) => p.id === pick.provider);
+    const [provider, model] =
+      picked && offered(pick.model)
+        ? [picked, pick.model]
+        : [list.find((p) => p.kind === "api") ?? list[0], fallback];
+    if (!provider) return null;
+    const at = foundOf(provider.id);
+    return { provider, model, cli: ready(at) ? at.cli : null };
   }
+
+  function choose(settings: Settings): Choice {
+    const model = running(settings, settings.model, defaultModel);
+    // Titles follow the default model's provider until the person picks.
+    const title = running(
+      settings,
+      settings.titleModel ?? (model && { provider: model.provider.id, model: titleModel }),
+      titleModel,
+    );
+    return { model, title, problem: model ? "" : problemOf(settings) };
+  }
+
+  // Why no model runs, and what to do, for a turn.
+  function problemOf(settings: Settings): string {
+    const claude = settings.providers.find((p) => p.kind === "claude-code");
+    const claudeFound = claude ? foundOf(claude.id) : checking;
+    if (settings.providers.some((p) => !p.on && ready(foundOf(p.id))))
+      return "Every provider Oriel can use is turned off. Turn one on in Settings.";
+    if (claudeFound.status === "checking")
+      return "Oriel is still looking for Claude Code. Try again in a moment.";
+    if (
+      claudeFound.status === "missing" &&
+      settings.providers.some((p) => foundOf(p.id).status === "not-yet")
+    )
+      return codexNotYet;
+    if ("problem" in claudeFound && claudeFound.problem) return claudeFound.problem.message;
+    return "Oriel has no model to run on. Open Settings to set one up.";
+  }
+
+  const label = (model: string) => claudeModels.find((m) => m.id === model)?.label ?? model;
+
   return {
-    agent: () => setupAgent(choice.problem),
-    describe: `Agent: none. ${choice.problem.message} Or set ANTHROPIC_API_KEY in .env, or pass --agent scripted for the scripted agent.`,
+    async look(settings) {
+      const look = ++looks;
+      found = new Map(settings.providers.map((p) => [p.id, found.get(p.id) ?? checking]));
+      const answers = await Promise.all(
+        settings.providers.map(async (p) => [p.id, await lookFor(p)] as const),
+      );
+      if (look !== looks) return;
+      found = new Map(answers);
+      agents.clear();
+      titlers.clear();
+    },
+    found: foundOf,
+    choose,
+    agent(settings, deps) {
+      return {
+        turn(input, turnOptions) {
+          const { model, problem } = choose(settings());
+          if (!model) return setupAgent(problem).turn(input, turnOptions);
+          const id = cacheKey(model);
+          let built = agents.get(id);
+          if (!built) {
+            built = agent({ ...deps, provider: providerOf(model, key) });
+            agents.set(id, built);
+          }
+          return built.turn(input, turnOptions);
+        },
+      };
+    },
+    titler(settings) {
+      return (text, titleOptions) => {
+        const { title } = choose(settings());
+        if (!title) return Promise.reject(new Error("No model is on to write titles."));
+        const id = cacheKey(title);
+        let built = titlers.get(id);
+        if (!built) {
+          built = titlerOf(title, key);
+          titlers.set(id, built);
+        }
+        return built(text, titleOptions);
+      };
+    },
+    options(settings) {
+      return usable(settings).flatMap((provider) =>
+        claudeModels.map((m) => ({
+          provider: provider.id,
+          model: m.id,
+          label: `${m.label} · ${provider.name}`,
+        })),
+      );
+    },
+    providers(settings) {
+      const { model, title } = choose(settings);
+      return settings.providers.flatMap((provider): ProviderView[] => {
+        const at = foundOf(provider.id);
+        // Codex shows only once it's installed: there's nothing to set up.
+        if (provider.kind === "codex" && at.status === "missing") return [];
+        return [
+          {
+            id: provider.id,
+            kind: provider.kind,
+            name: provider.name,
+            on: provider.on,
+            status: at.status,
+            detail: detailOf(provider, at),
+            version: ready(at) ? (at.cli?.version ?? null) : null,
+            path: provider.path ?? null,
+            uses: {
+              model: model?.provider.id === provider.id ? label(model.model) : null,
+              title: title?.provider.id === provider.id ? label(title.model) : null,
+            },
+          },
+        ];
+      });
+    },
+    describe(settings) {
+      const { model, title, problem } = choose(settings);
+      if (!model) return `Agent: none. ${problem}`;
+      const how = (r: Running) =>
+        r.cli
+          ? `${label(r.model)} through Claude Code ${r.cli.version} at ${r.cli.path}, on its own sign-in`
+          : `${label(r.model)} with the model key from .env`;
+      return `Agent: ${how(model)}. Thread titles: ${title ? how(title) : "the first message, clipped"}.`;
+    },
   };
+}
+
+// What a row says was found, in the person's words. Never a key. The
+// CLI's own problems say to restart Oriel; Settings can check again instead.
+function detailOf(provider: ProviderSetting, found: Found): string {
+  if ("problem" in found && found.problem)
+    return found.problem.message
+      .replace("then restart Oriel.", "then check again.")
+      .replace("Restart Oriel to try again.", "Check again to try once more.");
+  switch (found.status) {
+    case "ready":
+      return found.cli ? `Signed in · version ${found.cli.version}` : "A key is set in .env";
+    case "checking":
+      return "Checking…";
+    case "no-key":
+      return "No key is set. Add ANTHROPIC_API_KEY to .env, then restart Oriel.";
+    case "not-yet":
+      return codexNotYet;
+    default:
+      return provider.kind === "codex" ? "Not installed." : "Not found.";
+  }
 }

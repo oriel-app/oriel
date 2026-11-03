@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { WindowView } from "@oriel/web/view";
-import { handler, type Request, within } from "./site.ts";
+import { handler, type Look, type Request, within } from "./site.ts";
 
 const port = 4310;
 const host = "127.0.0.1:4310";
 
 // A site in its own temp dir, with a file beside its roots that must stay unserved.
-function site(t: TestContext) {
+function site(t: TestContext, look?: Look) {
   const root = mkdtempSync(join(tmpdir(), "oriel-site-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const dir of ["dist", "assets", "vendor"]) mkdirSync(join(root, dir));
@@ -32,6 +32,7 @@ function site(t: TestContext) {
       asOf: "2026-10-29T09:00:00.000Z",
       fixture: true,
     }),
+    ...(look ? { look: () => look } : {}),
   });
 }
 
@@ -137,4 +138,17 @@ test("the Done page is served at /done with its page number, and nothing is at /
     assert.equal(reply.status, 200, url);
     assert.match(text(reply.body), /<script type="module" src="\/app\/main.js"><\/script>/, url);
   }
+});
+
+test("the page's <html> carries the person's theme and text size, but a review link's doesn't", async (t) => {
+  const handle = site(t, { theme: "broadsheet", textSize: "large" });
+  for (const path of ["/", "/settings", "/settings/appearance", "/done"]) {
+    const page = text((await handle(get(path))).body);
+    assert.match(page, /<html lang="en" data-theme="broadsheet" data-text-size="large">/, path);
+  }
+  const review = text((await handle(get("/review/abc_DEF-123"))).body);
+  assert.match(review, /<html lang="en">/);
+  const plain = text((await site(t, { theme: "graphite", textSize: "default" })(get("/"))).body);
+  assert.match(plain, /<html lang="en">/);
+  assert.equal((await handle(get("/settings/nothing"))).status, 404);
 });

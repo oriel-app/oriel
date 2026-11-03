@@ -102,6 +102,14 @@ import {
 } from "./review.ts";
 import { type Route, routeUrl } from "./route.ts";
 import {
+  initSettings,
+  loadSettings,
+  type SettingsModel,
+  type SettingsMsg,
+  settingsReplied,
+  updateSettings,
+} from "./settings.ts";
+import {
   initSearch,
   type SearchModel,
   type SearchMsg,
@@ -180,6 +188,9 @@ export type Model = {
   panelAdds: PanelAdds;
   // The sidebar's search over the workspace's threads.
   search: SearchModel;
+  // The person's settings: Settings' page, and which key sends a question
+  // on every page.
+  settings: SettingsModel;
 };
 
 export type Msg =
@@ -201,6 +212,7 @@ export type Msg =
   // which holds every note in it, of every kind.
   | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "search"; msg: SearchMsg }
+  | { type: "settings"; msg: SettingsMsg }
   // A plain click on a link to an item: it opens in the panel. `list`: the
   // list on the page that holds the link, by item ID.
   | { type: "itemOpened"; id: string; list?: readonly string[] }
@@ -299,8 +311,12 @@ export function init(route: Route): [Model, Effect[]] {
     panelList: null,
     panelAdds: noAdds,
     search: initSearch(),
+    settings: initSettings(),
   };
-  return withPanel(...enter(empty, route));
+  const [model, effects] = enter(empty, route);
+  // A review link's page isn't the person's, so it keeps the default look.
+  const settings = route.page === "review" || route.page === "settings" ? [] : [loadSettings];
+  return withPanel(model, [...effects, ...settings]);
 }
 
 // The panel follows the route: it opens, reading the item, when the route
@@ -406,6 +422,10 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
       ];
     case "done":
       return [base, [...leaving, ...lists, ...watching]];
+    // Settings load again on each visit, so the providers show what Oriel
+    // found last.
+    case "settings":
+      return [base, [...leaving, loadSettings, ...lists, ...watching]];
     case "review": {
       const [review, effects] = initReview(route.token);
       return [{ ...base, review }, [...leaving, ...effects]];
@@ -587,6 +607,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [search, effects] = updateSearch(model.search, msg.msg);
       return [{ ...model, search }, effects];
     }
+    case "settings": {
+      const [settings, effects] = updateSettings(model.settings, msg.msg);
+      return [{ ...model, settings }, effects];
+    }
     // Opening the panel adds to history, so Back closes it; another item
     // takes its place.
     case "itemOpened": {
@@ -708,6 +732,12 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "search": {
       const [search, effects] = searchReplied(model.search, msg);
       return [{ ...model, search }, effects];
+    }
+    case "settings":
+    case "settingsChanged":
+    case "settingsLooked": {
+      const [settings, effects] = settingsReplied(model.settings, msg);
+      return [{ ...model, settings }, effects];
     }
     case "item":
     case "itemStamp": {

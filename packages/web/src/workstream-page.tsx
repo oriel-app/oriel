@@ -1,5 +1,5 @@
 // A workstream: ask about it, see its threads, and curate its items.
-import { useEffect, useRef } from "preact/hooks";
+import { useContext, useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
@@ -19,7 +19,9 @@ import {
   plural,
   StateChip,
   when,
+  SendKeyContext,
 } from "./parts.tsx";
+import { sends } from "./settings.ts";
 import type { UndoNote, Undos } from "./undos.ts";
 import type {
   WorkstreamChangeView,
@@ -42,6 +44,7 @@ export function WorkstreamPage(props: {
 }) {
   const { model, threads, ending, dispatch } = props;
   const send = (msg: WorkstreamMsg) => dispatch({ type: "workstream", msg });
+  const sendKey = useContext(SendKeyContext);
   const { view } = model;
   const list = useRef<HTMLUListElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -169,7 +172,7 @@ export function WorkstreamPage(props: {
             aria-label="Ask about this workstream"
             onInput={(event) => send({ type: "draftChanged", text: event.currentTarget.value })}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+              if (sends(event, sendKey)) {
                 event.preventDefault();
                 send({ type: "askClicked" });
               }

@@ -93,6 +93,7 @@ import type {
 } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
+import { defaultTheme } from "@oriel/web/themes";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
@@ -105,7 +106,14 @@ import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
+import type { Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
+import {
+  memorySettings,
+  type SettingsService,
+  settingsService,
+  type SettingsStore,
+} from "./settings.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
@@ -159,6 +167,16 @@ export type AppOptions = {
   // Writes each thread's title from its first message. Without one, a
   // thread's title is that message, clipped.
   titler?: Titler;
+  // The providers Settings picks among, which run the agent and titles when
+  // `agent` and `titler` are absent (decision 0041).
+  models?: Models;
+  // The person's settings; in memory, the defaults, when absent.
+  settings?: SettingsStore;
+  // The themes window.css has, the default first.
+  themes?: readonly string[];
+  // Whether the page may set where a CLI is: only behind the desktop app's
+  // launch secret, since a path set is a program the server runs.
+  cliPaths?: boolean;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -175,6 +193,7 @@ export type App = {
   // Jira as the window shows it: what's connected, and whether it can be.
   jira(): JiraView;
   api(request: Request, url: URL): Promise<Reply | null>;
+  settings: SettingsService;
   workspaceId: Ulid;
   // Resolves once no turn is running and no title is being written.
   settled(): Promise<void>;
@@ -672,12 +691,25 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     newId,
   };
-  const agent = (options.agent ?? ((deps) => scriptedAgent(deps, devPlan)))(agentDeps);
+  const store = options.settings ?? memorySettings();
+  const { models } = options;
+  const agent = options.agent
+    ? options.agent(agentDeps)
+    : models
+      ? models.agent(store.get, agentDeps)
+      : scriptedAgent(agentDeps, devPlan);
+  const settings = settingsService({
+    store,
+    models: options.agent ? null : (models ?? null),
+    themes: options.themes ?? [defaultTheme],
+    cliPaths: options.cliPaths ?? false,
+    picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
+  });
   const conversation = turns({
     threads,
     workstreams,
     agent,
-    titler: options.titler ?? null,
+    titler: options.titler ?? (models && !options.agent ? models.titler(store.get) : null),
     emit,
     caps,
     snapshot: () => index.snapshot(workspaceId),
@@ -1037,8 +1069,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     workspaceId,
     window,
     jira: jiraView,
+    settings,
     api: api({
       workspaceId,
+      settings,
       workstreams,
       threads,
       records,

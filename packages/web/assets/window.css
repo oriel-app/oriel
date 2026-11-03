@@ -163,6 +163,20 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Text size, from Settings: the root's size, which every rem follows. The
+   server writes the attribute, so the first paint is right. */
+html[data-text-size="small"] {
+  --text-size: 93.75%;
+}
+
+html[data-text-size="large"] {
+  --text-size: 112.5%;
+}
+
+html[data-text-size] {
+  font-size: var(--text-size);
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -803,6 +817,16 @@ button.nav-more {
 }
 
 .sidebar-done + .sidebar-sources {
+  margin-top: 0;
+}
+
+/* Settings, at the very foot, under the sources once they load. */
+.sidebar-foot {
+  display: grid;
+  margin-top: auto;
+}
+
+.sidebar-sources + .sidebar-foot {
   margin-top: 0;
 }
 
@@ -4751,7 +4775,7 @@ button.overview-title:hover {
 .ask {
   display: grid;
   gap: var(--space-2);
-  margin: var(--space-3) 0 var(--space-5);
+  margin: var(--space-3) 0 var(--space-6);
 }
 
 .ask-bar {
@@ -4898,6 +4922,273 @@ button.overview-title:hover {
   }
 }
 
+/* Settings (OA-181): its sections down the left, each a page, and the
+   section beside them. On a narrow screen the sections are tabs above. */
+.settings {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.settings-sections {
+  position: sticky;
+  top: var(--space-4);
+  display: grid;
+  gap: 1px;
+}
+
+.settings-body {
+  display: grid;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.settings-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+}
+
+.settings-lede {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: var(--leading-prose);
+}
+
+.settings-problem {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.provider-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: var(--list-frame);
+  border-radius: var(--radius-lg);
+  background: var(--list-bg);
+  list-style: none;
+}
+
+.provider-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.provider-row + .provider-row {
+  border-top: var(--border-thin) solid var(--line);
+}
+
+.provider-main {
+  display: grid;
+  flex: 1;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.provider-name {
+  font-weight: var(--weight-strong);
+}
+
+.provider-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.provider-mark {
+  flex: none;
+  align-self: center;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.provider-state {
+  color: var(--danger);
+  font-weight: var(--weight-medium);
+}
+
+.provider-row[data-status="ready"] .provider-mark {
+  background: var(--done);
+}
+
+.provider-row[data-status="ready"] .provider-state {
+  color: var(--done);
+}
+
+.provider-row:is([data-status="checking"], [data-status="not-yet"], [data-off]) .provider-mark {
+  background: var(--text-faint);
+}
+
+.provider-row:is([data-status="checking"], [data-status="not-yet"], [data-off]) .provider-state {
+  color: var(--text-faint);
+}
+
+.provider-uses {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.provider-path-open {
+  justify-self: start;
+  margin-left: calc(-1 * var(--space-2));
+}
+
+.provider-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.provider-path-label {
+  display: grid;
+  flex: 1 1 16rem;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings :is(.input, .select) {
+  min-height: 1.875rem;
+  padding: 0 var(--space-2);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.settings .input {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.settings :is(.input, .select):focus-visible {
+  outline-offset: 0;
+}
+
+/* A switch: on is the accent, your choice made. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 2.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background var(--duration-quick) var(--ease-out);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--on-accent);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--duration-quick) var(--ease-out);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(1rem);
+}
+
+.settings-field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-field + .settings-field {
+  margin-top: var(--space-3);
+}
+
+.settings-field-name {
+  padding: 0;
+  font-weight: var(--weight-medium);
+}
+
+.settings-field-about {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.settings-field .select {
+  justify-self: start;
+  max-width: 100%;
+  margin-top: var(--space-1);
+}
+
+.choices {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .settings-sections {
+    position: static;
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+  }
+
+  .provider-row {
+    padding-inline: var(--space-3);
+  }
+}
+
 /* Reduced motion, once for the window (decision 0034): every move and the
    pulse hold still, and the panel keeps its fade. */
 @media (prefers-reduced-motion: reduce) {
@@ -4910,7 +5201,9 @@ button.overview-title:hover {
   .fold-toggle .chevron,
   .swipe-row,
   .swipe-actions,
-  .window-chat {
+  .window-chat,
+  .switch,
+  .switch-knob {
     transition: none;
   }
 

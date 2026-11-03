@@ -2,10 +2,10 @@
 // grouping, its filters, and maybe a workstream it is adding items to; `/`
 // with any of those, Browse's address before the overview took `/`, opens
 // it too), a workstream, a thread, a new thread not started yet, the Done page
-// (the threads no longer working, in two tabs, a page at a time), or a review
-// link. A thread's address may name one of its change sets, to open the
-// thread there. On any page but a review link's, `item` is the item open in
-// the panel beside it, by its ID.
+// (the threads no longer working, in two tabs, a page at a time), Settings,
+// a page per section, or a review link. A thread's address may name one of
+// its change sets, to open the thread there. On any page but a review
+// link's, `item` is the item open in the panel beside it, by its ID.
 import {
   type BrowseFilter,
   browseFilter,
@@ -26,7 +26,12 @@ export type Page =
   // `tab`: the dropped threads; absent for the done and handed-off ones.
   // `number`: the tab's page, from 1; absent for the first.
   | { page: "done"; tab?: "dropped"; number?: number }
+  // Settings, at one of its sections (OA-181).
+  | { page: "settings"; section: SettingsSection }
   | { page: "review"; token: string };
+
+export const settingsSections = ["providers", "appearance", "asking"] as const;
+export type SettingsSection = (typeof settingsSections)[number];
 
 const ulid = "[0-9A-HJKMNP-TV-Z]{26}";
 const workstreamPath = new RegExp(`^/workstreams/(${ulid})$`);
@@ -57,6 +62,9 @@ function parsePage(pathname: string, search: string): Page {
   const token = reviewPath.exec(pathname)?.[1];
   if (token) return { page: "review", token };
   if (pathname === "/threads/new") return { page: "new-thread" };
+  if (pathname === "/settings") return { page: "settings", section: "providers" };
+  const section = /^\/settings\/(appearance|asking)$/.exec(pathname)?.[1];
+  if (section === "appearance" || section === "asking") return { page: "settings", section };
   if (pathname === "/done") {
     const number = Number(query.get("page"));
     return {
@@ -111,6 +119,8 @@ function pageUrl(route: Page): string {
       if (route.number && route.number > 1) query.set("page", String(route.number));
       return `${query}` ? `/done?${query}` : "/done";
     }
+    case "settings":
+      return route.section === "providers" ? "/settings" : `/settings/${route.section}`;
     case "review":
       return `/review/${route.token}`;
   }

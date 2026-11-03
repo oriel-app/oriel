@@ -43,7 +43,9 @@ import type { TurnInput } from "../packages/server/src/agent.ts";
 import { memoryStore } from "../packages/server/src/connection.ts";
 import type { SlackMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
+import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
+import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { loadJiraFixture } from "./fixtures/load.ts";
 
 type Grouping = "epic" | "assignee" | "stuck" | "linked";
@@ -288,6 +290,36 @@ const fillJira = async (page: Page, token: string) => {
 const chatty = (await writing({ kind: "fixture" })).serving;
 // A server whose threads are each rejected for real once, in a shot.
 const answering = (await writing()).serving;
+
+// Settings (OA-181), on a stand-in for the person's machine: Claude Code
+// found and signed in, Codex on the PATH, which Oriel never runs, and no API
+// key. Nothing is started; the check is a stand-in. One opens with large
+// text, which the server writes into the page.
+const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
+writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
+const configured = async (settings: Partial<Settings> = {}) => {
+  const chooser = models({
+    key: null,
+    env: { PATH: codexBin },
+    check: async () => ({
+      ok: true,
+      cli: { path: "/opt/homebrew/bin/claude", version: "2.1.314" },
+    }),
+  });
+  const kept = memorySettings(settings);
+  await chooser.look(kept.get());
+  return start(0, {
+    db: ":memory:",
+    jira: { kind: "fixture" },
+    models: chooser,
+    settings: kept,
+    // As the desktop app has it, so the path field shows.
+    cliPaths: true,
+  });
+};
+const settingsServer = await configured();
+const settingsLarge = await configured({ textSize: "large" });
+rmSync(codexBin, { recursive: true, force: true });
 
 // A request as the window sends it.
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
@@ -785,6 +817,40 @@ async function overviewShown(page: Page): Promise<void> {
 const suggesting = (await writing({ kind: "fixture" })).serving;
 
 const scenes: Scene[] = [
+  // Settings (OA-181): its sections, each a page; Providers first.
+  {
+    name: "settings-providers",
+    path: "/settings",
+    on: settingsServer,
+    act: (page) => page.locator(".provider-row").first().waitFor(),
+  },
+  {
+    name: "settings-path",
+    path: "/settings",
+    on: settingsServer,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Use a Claude Code at another path" }).click();
+      await page.getByRole("textbox", { name: "Path to Claude Code" }).waitFor();
+    },
+  },
+  {
+    name: "settings-appearance",
+    path: "/settings/appearance",
+    on: settingsServer,
+    act: (page) => page.locator(".choices").first().waitFor(),
+  },
+  {
+    name: "settings-appearance-large",
+    path: "/settings/appearance",
+    on: settingsLarge,
+    act: (page) => page.locator("html[data-text-size='large'] .choices").first().waitFor(),
+  },
+  {
+    name: "settings-asking",
+    path: "/settings/asking",
+    on: settingsServer,
+    act: (page) => page.locator(".choices").waitFor(),
+  },
   // The overview (decision 0027): with workstreams, threads waiting and the
   // folder beside Jira; and with Slack beside Jira.
   { name: "overview", path: "/", act: overviewShown },

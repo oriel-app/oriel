@@ -1,6 +1,6 @@
 // The sidebar, on every page but a review link: the window, the threads
 // waiting on the user, the user's workstreams with their threads under them, the
-// latest done threads, and the sources. It stays quiet unless something is
+// latest done threads, the sources, and Settings at the foot. It stays quiet unless something is
 // happening: what waits on the user is at the top, the rest fold.
 // On a wide screen it folds to a strip of icons, where the fold button counts
 // the threads waiting on the user; on a narrow one it's a drawer the menu
@@ -96,6 +96,17 @@ export function Sidebar(props: {
         browse={windowRoute(model.window)}
         dispatch={dispatch}
       />
+      <nav class="sidebar-foot" aria-label="Settings">
+        <Link
+          route={{ page: "settings", section: "providers" }}
+          dispatch={dispatch}
+          class="nav-link"
+          aria-current={page === "settings" ? "page" : undefined}
+        >
+          <SettingsIcon />
+          <span class="sidebar-label">Settings</span>
+        </Link>
+      </nav>
     </aside>
   );
 }
@@ -749,6 +760,16 @@ function WindowIcon() {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M2 6.5h12M5 9.5h6M5 11.5h4" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 4.5h6.25M12.25 4.5h1.25M2.5 11.5h1.25M7.25 11.5h6.25" />
+      <circle cx="10.5" cy="4.5" r="1.75" />
+      <circle cx="5.5" cy="11.5" r="1.75" />
     </svg>
   );
 }
