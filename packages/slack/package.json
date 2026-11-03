@@ -7,7 +7,7 @@
     "./writer": "./src/writer.ts"
   },
   "scripts": {
-    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   },
   "dependencies": {
     "@oriel/core": "workspace:*"

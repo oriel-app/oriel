@@ -9,6 +9,6 @@
     "./overview": "./src/overview.ts"
   },
   "scripts": {
-    "check": "tsc -p . && oxlint --deny-warnings . && node --test"
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
   }
 }

@@ -111,6 +111,15 @@ const planning = (input: TurnInput): Step[] => {
   return devPlan(input);
 };
 
+// Every server the shots start, each closed once they're done, so none is
+// left listening to keep the process alive.
+const started: Serving[] = [];
+const start = async (...args: Parameters<typeof serve>) => {
+  const serving = await serve(...args);
+  started.push(serving);
+  return serving;
+};
+
 // A server that writes to its own SYN site in memory, and reads Slack when
 // given it, on its own clock when given one.
 const writing = async (slack?: SlackMode, now?: () => Instant) => {
@@ -118,7 +127,7 @@ const writing = async (slack?: SlackMode, now?: () => Instant) => {
   const site = memorySite(loadJiraFixture(), instant(new Date()), {
     statuses: [{ name: "Ready for Dev", category: "todo" }],
   });
-  const serving = await serve(0, {
+  const serving = await start(0, {
     db: ":memory:",
     jira: {
       kind: "fixture",
@@ -139,12 +148,12 @@ const server = (await writing()).serving;
 const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
-const readOnly = await serve(0);
+const readOnly = await start(0);
 // A server that syncs from a SYN site in memory as from a live one; this
 // one's site goes offline once it has started.
 const live = async () => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
-  const serving = await serve(0, {
+  const serving = await start(0, {
     db: ":memory:",
     jira: {
       kind: "live",
@@ -168,7 +177,7 @@ const paged = await (async () => {
     id: String(90_000 + n),
     summary: `More checkout work, part ${n + 1}`,
   }));
-  return serve(0, {
+  return start(0, {
     db: ":memory:",
     jira: {
       kind: "live",
@@ -188,7 +197,7 @@ described.site.comment("SYN-23", "amara", textToAdf("Design signed this off on M
 described.site.comment("SYN-23", "esme", richComment);
 // A server that syncs SYN from a board that takes no estimates, as a
 // team-managed board with no points field does.
-const unpointed = await serve(0, {
+const unpointed = await start(0, {
   db: ":memory:",
   jira: {
     kind: "live",
@@ -204,7 +213,7 @@ const unpointed = await serve(0, {
 // takes only this account.
 const account = { email: "pm@example.com", token: "shots-only-value" };
 const unconnected = (syn = loadJiraFixture()) =>
-  serve(0, {
+  start(0, {
     db: ":memory:",
     jira: {
       kind: "window",
@@ -1761,25 +1770,9 @@ try {
   if (picked.length === 0) await onboarding();
 } finally {
   await browser.close();
-  await server.close();
-  await refusing.serving.close();
-  await offline.serving.close();
-  await described.serving.close();
-  await unpointed.close();
-  await paged.close();
-  await unanswered.serving.close();
   inFlight.release();
   await inFlight.approving;
-  await holding.serving.close();
-  await readOnly.close();
-  await connecting.close();
-  await empty.close();
-  await picking.close();
-  await ending.close();
-  await chatty.close();
-  await answering.close();
-  for (const { serving } of [handing, handed, handedBack]) await serving.close();
-  await idling.close();
+  for (const serving of started) await serving.close();
   rmSync(dirname(notes), { recursive: true, force: true });
 }
 
@@ -1835,7 +1828,6 @@ async function onboarding(): Promise<void> {
       problems.push(`onboarding: "token" appears ${total} times, over the budget of 1`);
   } finally {
     await context.close();
-    await on.close();
   }
 }
 
