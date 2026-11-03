@@ -10,6 +10,7 @@ export * from "./intents.ts";
 export * from "./namespace.ts";
 export * from "./ops.ts";
 export * from "./oriel-reads.ts";
+export * from "./overview.ts";
 export * from "./panel.ts";
 export * from "./references.ts";
 export * from "./run.ts";

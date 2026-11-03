@@ -3,6 +3,7 @@
 import type { SourceDeclaration } from "@oriel/core";
 import { slackAttrsOf, slackPanel, slackPresentation } from "./attrs.ts";
 import { type SlackContext, slackItemDoc, slackNamespace } from "./namespace.ts";
+import { slackOverview } from "./overview.ts";
 import { type SlackScope, slackRecognizer } from "./references.ts";
 import { slackSpecs } from "./specs.ts";
 
@@ -14,6 +15,7 @@ export const slackDeclaration = {
   // moved in a message besides its text.
   recognizer: slackRecognizer,
   facets: { replies: { label: "Replies", of: (record) => slackAttrsOf(record)?.replies ?? null } },
+  overview: slackOverview,
   namespace: (_records, context: SlackContext) => slackNamespace(context),
   specs: slackSpecs,
 } satisfies SourceDeclaration<SlackContext, SlackScope>;

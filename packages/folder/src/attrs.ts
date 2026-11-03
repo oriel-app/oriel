@@ -14,6 +14,7 @@ import {
   string,
   type Validator,
 } from "@oriel/core";
+import { folderOverview } from "./overview.ts";
 
 // What a file is, in the declarations' `Item` (see `ItemDocs` in bindings):
 // shape only, never source text.
@@ -84,4 +85,5 @@ export const folderDeclaration = {
   facets: {},
   // Nothing names a file by its key, a hash, so the folder recognizes none.
   recognizer: () => () => [],
+  overview: folderOverview,
 } satisfies SourceDeclaration;

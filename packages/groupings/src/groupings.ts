@@ -10,6 +10,7 @@ import {
   type IndexRecord,
   type ItemId,
   parseItemId,
+  stuckDays,
 } from "@oriel/core";
 
 const day = 86_400_000;
@@ -153,7 +154,7 @@ export const assigneeGrouping: Grouping = {
 
 // What "stuck" covers: work items, not epics, sub-tasks or documents.
 const workKinds = new Set(["story", "task", "bug"]);
-const stuckAfter = 14 * day;
+const stuckAfter = stuckDays * day;
 
 // A work item with a state other than done.
 const isOpenWork = (record: IndexRecord) =>

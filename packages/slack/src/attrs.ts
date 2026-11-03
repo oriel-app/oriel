@@ -36,6 +36,9 @@ export type SlackAttrs = {
   channel: { id: string; name: string };
   author: SlackPerson;
   replies: number;
+  // Its own text asks something (`asks`), its files' names aside. Absent
+  // when it doesn't, or when synced before Oriel kept it.
+  asks?: true;
 };
 
 export type SlackRecord = IndexRecord<"slack", SlackAttrs>;
@@ -79,7 +82,15 @@ export const slackAttrs = object({
   channel,
   author: person,
   replies: number,
+  asks: optional(literal(true)),
 }) satisfies Validator<SlackAttrs>;
+
+// Whether a message's own text, in plain words, asks something: a question
+// mark that ends a word, as a sentence ends, maybe inside markup or quotes,
+// or a full-width or Arabic one anywhere. Not one in a link's query, or
+// standing alone, as in code.
+export const asks = (text: string): boolean =>
+  /[？؟]|[^\s?][?]+[!?*_~)\]"'”’»]*(?=\s|$)/u.test(text);
 
 // What a read returns, checked where it is used: a reader may sit behind any
 // transport.

@@ -2,8 +2,11 @@
 // root (packages/server) and the eval harness read. Adding a source adds it
 // here, once; core's `sourceKinds` makes leaving one out a type error.
 import {
+  type Candidate,
   type IndexRecord,
   type NamespaceSpec,
+  type OverviewInput,
+  parseItemId,
   type OpSpecs,
   type Recognizer,
   recognizeAll,
@@ -101,5 +104,23 @@ export function recognizerFor(scopes: RecognizerScopes): Recognizer {
       // `RecognizerScopes` gives each source the scope its recognizer takes.
       kind in given ? [sources[kind].recognizer(given[kind] as never)] : [],
     ),
+  );
+}
+
+// Every source's candidates for the overview, each with its source, from
+// the index's records and change log across sources (decision 0027). Each
+// source sees only its own.
+export function candidatesFor(input: OverviewInput): (Candidate & { source: SourceKind })[] {
+  const records = Map.groupBy(input.records, (record) => parseItemId(record.id)?.source);
+  const changes = Map.groupBy(input.changes, (entry) => entry.source);
+  return sourceKinds.flatMap((kind) =>
+    sources[kind]
+      .overview({
+        records: records.get(kind) ?? [],
+        changes: changes.get(kind) ?? [],
+        held: input.held,
+        now: input.now,
+      })
+      .map((candidate) => ({ ...candidate, source: kind })),
   );
 }
