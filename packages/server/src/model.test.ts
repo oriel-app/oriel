@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessProblem } from "@oriel/agent";
-import { codexNotYet, models, type ModelsOptions, setupAgent } from "./model.ts";
+import { codexNotYet, codexOnly, models, type ModelsOptions, setupAgent } from "./model.ts";
 import { defaultSettings, type Settings } from "./settings.ts";
 
 const cli = { path: "/usr/local/bin/claude", version: "2.1.314" };
@@ -163,10 +163,13 @@ test("Codex has a row once it's on the PATH, never run, which Oriel can't run on
     await chooser.look(defaultSettings);
     const row = chooser.providers(defaultSettings).find((p) => p.kind === "codex");
     assert.equal(row?.status, "not-yet");
+    // The row says why; Claude Code's row and the key's, beside it, offer the fixes.
     assert.equal(row?.detail, codexNotYet);
+    assert.doesNotMatch(codexNotYet, /Install|API key/);
     assert.equal(chooser.options(defaultSettings).length, 0);
     // With no Claude Code and no key, a turn and the server's line say why.
-    assert.equal(chooser.choose(defaultSettings).problem, codexNotYet);
+    assert.equal(chooser.choose(defaultSettings).problem, codexOnly);
+    assert.match(codexOnly, /Install Claude Code and sign in to it, or add an API key\.$/);
     assert.match(chooser.describe(defaultSettings), /can't be limited to Oriel's one tool/);
   } finally {
     rmSync(bin, { recursive: true, force: true });

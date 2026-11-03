@@ -127,10 +127,12 @@ function onPath(name: string, env: Readonly<Record<string, string | undefined>>)
   return false;
 }
 
-// Why Codex, when it's the only CLI found, can't run the agent (decision
-// 0040). Oriel only looks for it; it never runs it.
+// Why Codex can't run the agent (decision 0040), as its row says beside the
+// rows that offer the fixes. Oriel only looks for it; it never runs it.
 export const codexNotYet =
-  "Oriel can't run on Codex yet, because Codex can't be limited to Oriel's one tool. Install Claude Code and sign in to it, or add an API key.";
+  "Oriel can't run on Codex yet, because Codex can't be limited to Oriel's one tool.";
+// The same for a turn, when Codex is the only CLI found: and what to do.
+export const codexOnly = `${codexNotYet} Install Claude Code and sign in to it, or add an API key.`;
 
 // A turn with no model to run it: it says why and how to set one up.
 export function setupAgent(message: string): Agent {
@@ -244,7 +246,7 @@ export function models(options: ModelsOptions): Models {
       claudeFound.status === "missing" &&
       settings.providers.some((p) => foundOf(p.id).status === "not-yet")
     )
-      return codexNotYet;
+      return codexOnly;
     if (options.desktop && claudeFound.status !== "untrusted")
       return "Oriel has no AI set up yet. Set up Claude Code in Settings, or add an API key there.";
     if ("problem" in claudeFound && claudeFound.problem) return claudeFound.problem.message;
