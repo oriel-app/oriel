@@ -116,6 +116,7 @@ import {
   type SettingsModel,
   type SettingsMsg,
   settingsReplied,
+  loadUsage,
   updateSettings,
 } from "./settings.ts";
 import {
@@ -443,7 +444,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     // Settings load again on each visit, so the providers show what Oriel
     // found last.
     case "settings":
-      return [base, [...leaving, loadSettings, loadSetup, ...lists, ...watching]];
+      return [base, [...leaving, loadSettings, loadUsage, loadSetup, ...lists, ...watching]];
     // The first run stands alone: what Oriel has found so far, then Claude
     // Code looked for again, and the sources.
     case "setup":
@@ -786,7 +787,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "settings":
     case "settingsChanged":
     case "settingsLooked":
-    case "settingsKey": {
+    case "settingsKey":
+    case "settingsUsage": {
       const [settings, effects] = settingsReplied(model.settings, msg);
       return [{ ...model, settings }, effects];
     }

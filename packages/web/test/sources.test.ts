@@ -8,7 +8,6 @@ import type { Replied } from "../src/http.ts";
 import { loadJira } from "../src/jira.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import {
-  ago,
   initSources,
   loadSources,
   sourcesLine,
@@ -107,17 +106,6 @@ test("folded, the sources are one line: how many, the oldest sync, and any probl
   );
   // A problem left by a source no longer listed isn't the line's.
   assert.equal(sourcesLine({ ...shown, problems: { other: "Gone." } }).problem, false);
-});
-
-test("a last sync reads as how long ago it was", () => {
-  const at = Date.parse("2026-10-30T09:00:00.000Z");
-  const synced = "2026-10-30T09:00:00.000Z";
-  assert.equal(ago(synced, at + 30_000), "just now");
-  assert.equal(ago(synced, at + 5 * 60_000), "5m ago");
-  assert.equal(ago(synced, at + 3 * 3_600_000), "3h ago");
-  assert.equal(ago(synced, at + 9 * 86_400_000), "9d ago");
-  // A clock behind the server's says just now, never a time to come.
-  assert.equal(ago(synced, at - 60_000), "just now");
 });
 
 test("once a source synced, the window, the workstream or thread on screen and the sources load again", () => {

@@ -17,18 +17,27 @@ import {
   checkClaudeCode,
   type CheckOptions,
   type ClaudeCode,
+  claudeCodePlan,
   claudeCodeProvider,
   claudeCodeTitler,
   defaultModel,
   type HarnessProblem,
   locateClaudeCode,
+  type PlanUsage,
   type Provider,
   type Titler,
   titleModel,
 } from "@oriel/agent";
-import type { ModelOptionView, ModelPick, ProviderStatus, ProviderView } from "@oriel/web/view";
+import type {
+  ModelOptionView,
+  ModelPick,
+  ProviderStatus,
+  ProviderView,
+  UsageView,
+} from "@oriel/web/view";
 import type { Agent, ServerAgentDeps } from "./agent.ts";
 import type { ProviderSetting, Settings } from "./settings.ts";
+import { memoryUsage, type UsageCounts } from "./usage.ts";
 
 // The models a Claude provider offers, by the API's IDs, the largest first.
 export const claudeModels: readonly { id: string; label: string }[] = [
@@ -75,6 +84,11 @@ export type ModelsOptions = {
   check?: (options: CheckOptions) => ReturnType<typeof checkClaudeCode>;
   provider?: (running: Running, key: string | null) => Provider;
   titler?: (running: Running, key: string | null) => Titler;
+  // Today's counts of each Claude Code instance's turns and tokens, kept in
+  // the data folder (decision 0046). In memory when absent.
+  counts?: UsageCounts;
+  // Asks a CLI how much of the plan is used; tests stand in for it.
+  plan?: (cli: ClaudeCode) => Promise<PlanUsage>;
 };
 
 export type Models = {
@@ -92,6 +106,9 @@ export type Models = {
   providers(settings: Settings): ProviderView[];
   // The line the server prints at startup.
   describe(settings: Settings): string;
+  // Each Claude Code instance's usage: today's counts, and the plan's
+  // windows from its CLI, asked now.
+  usage(settings: Settings): Promise<UsageView[]>;
 };
 
 const checking: Found = { status: "checking" };
@@ -143,18 +160,30 @@ export function models(options: ModelsOptions): Models {
   // Only the latest look's answers stand.
   let looks = 0;
 
+  // Only the turns and tokens of the person's Claude Code count toward
+  // their plan: an API key bills per question.
+  const counts = options.counts ?? memoryUsage(() => "");
   const providerOf =
     options.provider ??
     ((r: Running, apiKey: string | null): Provider =>
       r.cli
-        ? claudeCodeProvider({ cli: r.cli, model: r.model })
+        ? claudeCodeProvider({
+            cli: r.cli,
+            model: r.model,
+            counted: (used, first) => counts.count(r.provider.id, used, first),
+          })
         : anthropicProvider({ apiKey: apiKey ?? "", model: r.model }));
   const titlerOf =
     options.titler ??
     ((r: Running, apiKey: string | null): Titler =>
       r.cli
-        ? claudeCodeTitler({ cli: r.cli, model: r.model })
+        ? claudeCodeTitler({
+            cli: r.cli,
+            model: r.model,
+            counted: (used) => counts.count(r.provider.id, used, false),
+          })
         : anthropicTitler({ apiKey: apiKey ?? "", model: r.model }));
+  const planOf = options.plan ?? ((cli: ClaudeCode) => claudeCodePlan(cli, { env }));
 
   async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
@@ -311,6 +340,22 @@ export function models(options: ModelsOptions): Models {
           },
         ];
       });
+    },
+    async usage(settings) {
+      const instances = settings.providers.filter((p) => p.kind === "claude-code");
+      return Promise.all(
+        instances.map(async (provider): Promise<UsageView> => {
+          const at = foundOf(provider.id);
+          const cli = ready(at) ? at.cli : null;
+          // A CLI runs only once the trust check passes, as for a turn.
+          const refused = cli && (await options.trust?.(cli.path));
+          return {
+            provider: provider.id,
+            today: counts.today(provider.id),
+            plan: cli && !refused ? await planOf(cli) : { none: "not-ready" },
+          };
+        }),
+      );
     },
     describe(settings) {
       const { model, title, problem } = choose(settings);

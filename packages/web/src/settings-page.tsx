@@ -1,17 +1,27 @@
 // Settings (OA-181): its sections down the left, each its own address, with
 // room for more. Providers first: one row per provider instance, what Oriel
 // found for it and a switch, then the default model and the Title model,
-// picked from those connected and on. General: whether the desktop app asks
+// picked from those connected and on, and how much of the plan Oriel has
+// used. General: how a time is written, and whether the desktop app asks
 // before quitting while Oriel works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow } from "./cli-row.tsx";
-import { type Dispatch, Link } from "./parts.tsx";
+import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
 import { ProviderRow, Switch } from "./provider-row.tsx";
 import type { SettingsSection } from "./route.ts";
 import type { SettingsModel, SettingsMsg } from "./settings.ts";
 import type { SetupModel, SetupMsg } from "./setup.ts";
-import type { ModelPick, SendKey, SettingsChange, SettingsView, TextSize } from "./view.ts";
+import type {
+  ModelPick,
+  SendKey,
+  SettingsChange,
+  SettingsView,
+  PlanWindowView,
+  TextSize,
+  TimeFormat,
+  UsageView,
+} from "./view.ts";
 
 const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
@@ -163,6 +173,9 @@ function Providers(props: {
                     onRemove={() => send({ type: "keyRemoved" })}
                   />
                 )}
+                {provider.kind === "claude-code" && (
+                  <PlanUsage usage={model.usage?.find((u) => u.provider === provider.id) ?? null} />
+                )}
                 {provider.kind === "claude-code" && view.cliPaths && (
                   <CliPath
                     name={provider.name}
@@ -197,6 +210,60 @@ function Providers(props: {
         />
       </section>
     </>
+  );
+}
+
+const tokens = new Intl.NumberFormat(undefined, { notation: "compact" });
+
+const windowNames: Record<PlanWindowView["kind"], string> = {
+  session: "This session (5 hours)",
+  week: "This week",
+};
+
+// How much of the person's plan Oriel has used (decision 0046): its own
+// turns and tokens today, and the plan's windows as their Claude Code reports
+// them, each with when it resets.
+function PlanUsage({ usage }: { usage: UsageView | null }) {
+  const stamp = useStamp();
+  if (usage === null) return null;
+  const { today, plan } = usage;
+  return (
+    <div class="plan-usage">
+      <p class="plan-today">
+        Oriel today: {plural(today.turns, "turn")} · {tokens.format(today.inputTokens)} tokens read,{" "}
+        {tokens.format(today.outputTokens)} written
+      </p>
+      {"windows" in plan ? (
+        <>
+          <ul class="plan-windows" aria-label="Your plan">
+            {plan.windows.map((window) => (
+              <li key={window.kind} class="plan-window">
+                <span class="plan-window-name">{windowNames[window.kind]}</span>
+                <meter
+                  class="plan-meter"
+                  min={0}
+                  max={100}
+                  low={70}
+                  high={90}
+                  optimum={0}
+                  value={window.usedPercent}
+                  aria-label={`${windowNames[window.kind]}: ${window.usedPercent}% used`}
+                />
+                <span class="plan-window-used">
+                  {window.usedPercent}% used
+                  {window.resetsAt && ` · resets ${stamp(window.resetsAt, undefined, true)}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p class="plan-note">Your whole plan, Oriel and everything else, as Claude Code says.</p>
+        </>
+      ) : plan.none === "no-answer" ? (
+        <p class="plan-note">Claude Code didn't say how much of your plan is used. Check again.</p>
+      ) : plan.none === "no-plan" ? (
+        <p class="plan-note">This Claude Code isn't on a Claude plan, so it has no plan limits.</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -349,8 +416,14 @@ function ModelPicker(props: {
   );
 }
 
-// Whether the desktop app asks before it quits while a thread's turn runs or
-// a change set applies. Only the desktop app quits.
+const timeFormatNames: Record<TimeFormat, string> = {
+  relative: "Relative, such as 3 min ago",
+  absolute: "Date and time, such as Nov 3, 09:41",
+};
+
+// How a time is written, and whether the desktop app asks before it quits
+// while a thread's turn runs or a change set applies. Only the desktop app
+// quits.
 function General(props: { view: SettingsView; change(change: SettingsChange): void }) {
   const { view, change } = props;
   return (
@@ -358,6 +431,13 @@ function General(props: { view: SettingsView; change(change: SettingsChange): vo
       <h2 id="settings-general" class="settings-title">
         General
       </h2>
+      <Choices
+        name="Times"
+        about="How Oriel writes when something happened, everywhere but a review link's page."
+        options={Object.entries(timeFormatNames).map(([value, label]) => ({ value, label }))}
+        value={view.timeFormat}
+        onPick={(timeFormat) => change({ timeFormat: timeFormat as TimeFormat })}
+      />
       {view.asksBeforeQuitting ? (
         <div class="settings-field settings-switch">
           <span class="settings-field-name">Ask before quitting while Oriel works</span>
@@ -372,7 +452,7 @@ function General(props: { view: SettingsView; change(change: SettingsChange): vo
           />
         </div>
       ) : (
-        <p class="settings-lede">Only the desktop app asks before quitting.</p>
+        <p class="settings-field-about">Only the desktop app asks before quitting.</p>
       )}
     </section>
   );

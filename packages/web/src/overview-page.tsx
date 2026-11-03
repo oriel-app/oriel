@@ -14,7 +14,15 @@ import type { OverviewModel, OverviewMsg } from "./overview.ts";
 import type { Route } from "./route.ts";
 import { shown } from "./overview.ts";
 import { needsYouId } from "./sidebar.tsx";
-import { type Dispatch, ItemLink, ItemListContext, keyLabel, Link, plural } from "./parts.tsx";
+import {
+  type Dispatch,
+  ItemLink,
+  ItemListContext,
+  keyLabel,
+  Link,
+  plural,
+  useStamp,
+} from "./parts.tsx";
 import type { UndoNote, Undos } from "./undos.ts";
 import type {
   CandidateView,
@@ -217,12 +225,13 @@ function Counts(props: {
   const { view, model, dispatch } = props;
   const { counts } = view;
   const open = model.opened.includes("changed");
+  const stamp = useStamp();
   return (
     <p class="overview-counts" data-section="strip">
       <span class="overview-since">
         {view.lastSeen === null
           ? "In the last 90 days:"
-          : `Since you looked ${day(view.lastSeen)}:`}
+          : `Since you looked ${stamp(view.lastSeen, day)}:`}
       </span>
       <button
         type="button"
@@ -379,8 +388,11 @@ function Headlines({ view, dispatch }: { view: OverviewView; dispatch: Dispatch 
 
 function Headline(props: { line: HeadlineView; lastSeen: string | null; dispatch: Dispatch }) {
   const { line, lastSeen, dispatch } = props;
+  const stamp = useStamp();
   const label =
-    line.id === "moved" && lastSeen !== null ? `Moved most since ${day(lastSeen)}` : line.label;
+    line.id === "moved" && lastSeen !== null
+      ? `Moved most since ${stamp(lastSeen, day)}`
+      : line.label;
   return (
     <p class="overview-headline" data-headline={line.id}>
       <span class="overview-headline-label" title={`Oriel rule: ${line.rule}`}>

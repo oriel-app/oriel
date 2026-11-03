@@ -16,6 +16,7 @@ import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
+import { defaultTimeFormat, stamp, when } from "./time.ts";
 import type {
   Chips,
   ChipView,
@@ -23,6 +24,7 @@ import type {
   MemberView,
   SendKey,
   ThreadStateId,
+  TimeFormat,
   WaitingOn,
 } from "./view.ts";
 
@@ -147,6 +149,10 @@ export const ItemListContext = createContext<readonly string[] | null>(null);
 // Which key sends a question, as the person set it in Settings: Enter, with
 // Shift+Enter a new line; or Cmd+Enter (Ctrl+Enter), with Enter a new line.
 export const SendKeyContext = createContext<SendKey>("enter");
+
+// How a time is written, as Settings › General has it. A review link's page
+// has no provider, so the default.
+export const TimeFormatContext = createContext<TimeFormat>(defaultTimeFormat);
 
 // An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
@@ -600,14 +606,27 @@ export function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
-// An instant as a short date and time, in the reader's zone.
-export function when(instant: string): string {
-  return new Date(instant).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+// Writes an instant as Settings' time format says: relative, or as
+// `absolute` writes it, a short date and time by default.
+// `ahead`: a time to come, as when a limit resets.
+export function useStamp(): (
+  instant: string,
+  absolute?: (instant: string) => string,
+  ahead?: boolean,
+) => string {
+  const format = useContext(TimeFormatContext);
+  return (instant, absolute, ahead) => stamp(instant, format, Date.now(), absolute, ahead);
+}
+
+// An instant on the page, in the time format, with its date and time on
+// hover.
+export function Stamp({ at, absolute }: { at: string; absolute?: (instant: string) => string }) {
+  const written = useStamp();
+  return (
+    <time dateTime={at} title={when(at)}>
+      {written(at, absolute)}
+    </time>
+  );
 }
 
 // An item as Browse lists it: its type, key, title, and its status or

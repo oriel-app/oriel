@@ -203,3 +203,14 @@ test("asking before quitting is on by default, kept when turned off, and anythin
     askBeforeQuitting: false,
   });
 });
+
+test("times are relative by default, absolute once picked, and anything else reads as relative", () => {
+  inFolder((path) => {
+    assert.equal(settingsFile(path, quiet).get().timeFormat, "relative");
+    settingsFile(path, quiet).set(changed(defaultSettings, { timeFormat: "absolute" }, []));
+    assert.equal(settingsFile(path, quiet).get().timeFormat, "absolute");
+    writeFileSync(path, JSON.stringify({ timeFormat: "sundial" }));
+    assert.equal(settingsFile(path, quiet).get().timeFormat, "relative");
+  });
+  assert.equal(settingsChange({ timeFormat: "sundial" }).ok, false);
+});

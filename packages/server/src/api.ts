@@ -551,6 +551,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, deps.settings.view()),
     },
     {
+      // How much of the person's plan Oriel has used, under Claude Code's
+      // row: counts, and the plan's windows from the CLI (decision 0046).
+      // A POST, since it starts the CLI: only the window's own origin asks.
+      method: "POST",
+      path: at("/settings/usage"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        return json(200, { usage: await deps.settings.usage() });
+      },
+    },
+    {
       // One change, applied at once.
       method: "POST",
       path: at("/settings"),

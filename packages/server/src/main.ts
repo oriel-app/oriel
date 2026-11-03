@@ -47,6 +47,7 @@ import { serverEnv, slackEnv } from "./env.ts";
 import type { Log } from "@oriel/core";
 import { models as findModels } from "./model.ts";
 import { settingsFile } from "./settings.ts";
+import { usageFile } from "./usage.ts";
 import { firstPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
 import { anthropicSigned, installerTrust, withLocalBin } from "./setup/signature.ts";
@@ -145,7 +146,8 @@ if (channelWrite && values.data) {
         process.platform === "darwin"
           ? installerTrust({ home, verify: (path) => anthropicSigned(path) })
           : async () => null;
-      const models = findModels({ key: null, kept: store, env, trust, desktop: true });
+      const counts = usageFile(join(data, "usage.json"), log);
+      const models = findModels({ key: null, kept: store, env, trust, desktop: true, counts });
       const state = setupFile(join(data, "setup.json"));
       const fresh = !state.existed && !existsSync(join(data, "oriel.db"));
       // Not awaited here: the key comes from the shell, which answers once
@@ -212,7 +214,11 @@ const claudeCodePath = values["claude-code"];
 const models =
   values.agent === "scripted"
     ? null
-    : findModels({ key: env.modelKey, ...(claudeCodePath ? { claudeCodePath } : {}) });
+    : findModels({
+        key: env.modelKey,
+        ...(claudeCodePath ? { claudeCodePath } : {}),
+        counts: usageFile(join(dir, "usage.json"), log),
+      });
 await models?.look(settings.get());
 const serving = await serve(port, {
   db: join(dir, `${jira.kind}.db`),

@@ -6,7 +6,8 @@
 // on the desktop app, goes to the OS secret store once Anthropic takes it;
 // the page forgets it once it's sent, and the server never sends it back.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { SendKey, SettingsChange, SettingsView } from "./view.ts";
+import { defaultTimeFormat } from "./time.ts";
+import type { SendKey, SettingsChange, SettingsView, TimeFormat, UsageView } from "./view.ts";
 
 export type SettingsModel = {
   // As the server has them, with any change not yet answered shown; null
@@ -24,6 +25,9 @@ export type SettingsModel = {
   keying: boolean;
   // Why the last change or load didn't work, until one does.
   problem: string | null;
+  // How much of each Claude Code instance's plan Oriel has used; null
+  // until it loads.
+  usage: UsageView[] | null;
 };
 
 export type SettingsMsg =
@@ -36,6 +40,7 @@ export type SettingsMsg =
   | { type: "keyRemoved" };
 
 export const loadSettings: Effect = get("/api/settings", { kind: "settings" });
+export const loadUsage: Effect = post("/api/settings/usage", {}, { kind: "settingsUsage" });
 
 export function initSettings(): SettingsModel {
   return {
@@ -46,6 +51,7 @@ export function initSettings(): SettingsModel {
     key: "",
     keying: false,
     problem: null,
+    usage: null,
   };
 }
 
@@ -64,6 +70,10 @@ export const noAi = (model: SettingsModel): boolean => {
 
 // Which key sends a question, before the settings load too.
 export const sendKey = (model: SettingsModel): SendKey => model.view?.send ?? "enter";
+
+// How a time is written, before the settings load too.
+export const timeFormat = (model: SettingsModel): TimeFormat =>
+  model.view?.timeFormat ?? defaultTimeFormat;
 
 // Whether a key pressed in a box for a question sends it.
 export function sends(
@@ -95,6 +105,7 @@ function applied(view: SettingsView, change: SettingsChange): SettingsView {
   if ("notify" in change) return { ...view, notify: change.notify };
   if ("askBeforeQuitting" in change)
     return { ...view, askBeforeQuitting: change.askBeforeQuitting };
+  if ("timeFormat" in change) return { ...view, timeFormat: change.timeFormat };
   if ("model" in change) return { ...view, model: change.model };
   if ("titleModel" in change) return { ...view, titleModel: change.titleModel };
   if ("on" in change)
@@ -150,6 +161,9 @@ export function updateSettings(model: SettingsModel, msg: SettingsMsg): [Setting
 // the page shows what the server kept.
 export function settingsReplied(model: SettingsModel, msg: Replied): [SettingsModel, Effect[]] {
   const { kind } = msg.tag;
+  // Usage that didn't load leaves the rows as they were.
+  if (kind === "settingsUsage")
+    return [msg.ok ? { ...model, usage: (msg.body as { usage: UsageView[] }).usage } : model, []];
   if (
     kind !== "settings" &&
     kind !== "settingsChanged" &&
@@ -178,5 +192,7 @@ export function settingsReplied(model: SettingsModel, msg: Replied): [SettingsMo
   );
   // A load after a refused change keeps saying why it was refused.
   const problem = kind === "settings" ? model.problem : null;
-  return [{ ...model, view, pending, looking, keying, paths, problem }, [showLook(view)]];
+  // Checking again may have found a CLI to ask about the plan.
+  const usage = kind === "settingsLooked" ? [loadUsage] : [];
+  return [{ ...model, view, pending, looking, keying, paths, problem }, [showLook(view), ...usage]];
 }

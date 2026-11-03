@@ -12,7 +12,8 @@
 // CLI's own report of its tools, servers and permission mode is checked before
 // it can act, and a process that reports anything else is stopped. Oriel never
 // reads the CLI's credentials or changes its configuration: flags and
-// environment only.
+// environment only. How much of the person's plan is used is the CLI's own
+// answer on its control channel, which it gets with its own sign-in.
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { accessSync, constants, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -352,6 +353,63 @@ async function probeAccount(
   }
 }
 
+// One window of the person's plan, as the CLI reports it: the five-hour
+// session or the week, how much of it is used, and when it resets.
+export type PlanWindow = { kind: "session" | "week"; usedPercent: number; resetsAt: string | null };
+
+// The plan's windows, or why there are none: the CLI says no plan limits
+// apply (an API key, a cloud provider), or it didn't answer.
+export type PlanUsage = { windows: PlanWindow[] } | { none: "no-plan" | "no-answer" };
+
+const windowKinds = { five_hour: "session", seven_day: "week" } as const;
+
+// The CLI's answer to `get_usage`, as numbers only: never the account, the
+// session's cost or anything else it carries.
+export function parsePlan(response: unknown): PlanUsage {
+  if (!isObject(response) || response.rate_limits_available !== true) return { none: "no-plan" };
+  const limits = isObject(response.rate_limits) ? response.rate_limits : {};
+  const windows = Object.entries(windowKinds).flatMap(([key, kind]): PlanWindow[] => {
+    const window = limits[key];
+    if (!isObject(window) || typeof window.utilization !== "number") return [];
+    const usedPercent = Math.min(100, Math.max(0, Math.round(window.utilization)));
+    const at = typeof window.resets_at === "string" ? Date.parse(window.resets_at) : NaN;
+    return [{ kind, usedPercent, resetsAt: Number.isNaN(at) ? null : new Date(at).toISOString() }];
+  });
+  return { windows };
+}
+
+// How much of the person's plan is used, from the CLI's `get_usage`, which it
+// answers with its own sign-in. Like the sign-in check, it makes no model
+// request.
+export async function claudeCodePlan(
+  cli: ClaudeCode,
+  options: { env?: Readonly<Record<string, string | undefined>>; spawn?: Spawn } = {},
+): Promise<PlanUsage> {
+  const session = startSession({
+    cli,
+    spawn: options.spawn ?? spawnCli,
+    parent: options.env ?? process.env,
+    args: harnessArgs({
+      system: "Oriel checks the plan's usage.",
+      model: titleModel,
+      effort: "low",
+      run: false,
+    }),
+    maxOutputTokens: 1,
+    tool: null,
+    signal: AbortSignal.timeout(25_000),
+    log: () => {},
+  });
+  try {
+    await session.initialized;
+    return parsePlan(await session.request({ subtype: "get_usage", skip_behaviors: true }));
+  } catch {
+    return { none: "no-answer" };
+  } finally {
+    session.close();
+  }
+}
+
 // One running CLI: its stdout read line by line, the control requests it sends
 // answered at once, and everything else queued for whoever reads the
 // conversation. Closing it kills the process and removes its directory.
@@ -359,6 +417,8 @@ type Session = {
   send(message: Message): void;
   // The CLI's answer to `initialize`.
   initialized: Promise<unknown>;
+  // Oriel's own control request, and the CLI's answer; rejects if it refuses.
+  request(request: Message): Promise<unknown>;
   // The next message that isn't a control request; rejects once the process
   // has ended, with why.
   take(): Promise<Message>;
@@ -414,8 +474,12 @@ function startSession(options: SessionOptions): Session {
     ended ??= why;
     notify();
     settleInit.reject(ended);
+    for (const waiting of requests.values()) waiting.reject(ended);
+    requests.clear();
   };
   const settleInit = Promise.withResolvers<unknown>();
+  const requests = new Map<string, PromiseWithResolvers<unknown>>();
+  let requested = 0;
   // Never unhandled: a session nobody initializes still ends.
   settleInit.promise.catch(() => {});
 
@@ -566,6 +630,12 @@ function startSession(options: SessionOptions): Session {
         if (response.subtype === "success") settleInit.resolve(response.response);
         else end(new ProviderError("Claude Code refused to start a session."));
       }
+      const waiting = requests.get(text(response.request_id));
+      if (waiting) {
+        requests.delete(text(response.request_id));
+        if (response.subtype === "success") waiting.resolve(response.response);
+        else waiting.reject(new ProviderError("Claude Code refused Oriel's request."));
+      }
       return;
     }
     if (message.type === "system" && message.subtype === "init") checkInit(message);
@@ -618,6 +688,14 @@ function startSession(options: SessionOptions): Session {
   return {
     send,
     initialized: settleInit.promise,
+    request(request) {
+      if (ended) return Promise.reject(ended);
+      const id = `oriel-${++requested}`;
+      const waiting = Promise.withResolvers<unknown>();
+      requests.set(id, waiting);
+      send({ type: "control_request", request_id: id, request });
+      return waiting.promise;
+    },
     async take() {
       for (;;) {
         if (ended) throw ended;
@@ -740,6 +818,9 @@ export type ClaudeCodeOptions = {
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
   idleMs?: number;
+  // Told each response's tokens, as it ends, and whether it's a turn's
+  // first: counts for Settings, never content.
+  counted?: (used: Usage, first: boolean) => void;
 };
 
 // A rough count of a response's output so far, from what it streamed and
@@ -758,6 +839,8 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
       if (!tool || request.tools.length !== 1)
         throw new ProviderError("The local harness serves exactly one tool, run.");
       let session: Session | null = null;
+      let responses = 0;
+      const count = (used: Usage) => options.counted?.(used, responses++ === 0);
       return {
         async *next(results, { maxOutputTokens }) {
           signal.throwIfAborted();
@@ -829,12 +912,14 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
                 cacheWriteTokens: 0,
               };
               log("provider.response", { model, stop: "max-tokens", harness: "claude-code" });
+              const reached = { ...used, outputTokens: Math.max(used.outputTokens, limit) };
+              count(reached);
               yield {
                 kind: "end",
                 stop: "max-tokens",
                 detail: "max_tokens",
                 model,
-                usage: { ...used, outputTokens: Math.max(used.outputTokens, limit) },
+                usage: reached,
               } satisfies ModelEvent;
               return;
             }
@@ -855,6 +940,7 @@ export function claudeCodeProvider(options: ClaudeCodeOptions): Provider {
           });
           for (const call of calls) yield { kind: "call", call };
           const { stop, detail, usage: final } = reply;
+          count(final);
           yield { kind: "end", stop, detail, model: reply.model, usage: final };
           // A response that asked for nothing ends the turn.
           if (stop !== "calls") current.close();
@@ -873,6 +959,8 @@ export type ClaudeCodeTitlerOptions = {
   model?: string;
   env?: Readonly<Record<string, string | undefined>>;
   spawn?: Spawn;
+  // Told the title's tokens, as the provider's `counted` is.
+  counted?: (used: Usage) => void;
 };
 
 // Thread titles through the person's Claude Code: the small model, the
@@ -912,6 +1000,14 @@ export function claudeCodeTitler(options: ClaudeCodeTitlerOptions): Titler {
             count("cache_creation_input_tokens"),
           output_tokens: count("output_tokens"),
           harness: "claude-code",
+        });
+        const cacheReadTokens = count("cache_read_input_tokens");
+        const cacheWriteTokens = count("cache_creation_input_tokens");
+        options.counted?.({
+          inputTokens: count("input_tokens") + cacheReadTokens + cacheWriteTokens,
+          outputTokens: count("output_tokens"),
+          cacheReadTokens,
+          cacheWriteTokens,
         });
         if (message.is_error || message.subtype !== "success") throw resultError(message);
         if (message.stop_reason === "refusal")

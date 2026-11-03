@@ -244,6 +244,7 @@ test("with no AI set up, the ask bar says so, but not before Oriel has looked", 
       notifies: false,
       askBeforeQuitting: true,
       asksBeforeQuitting: false,
+      timeFormat: "relative" as const,
     },
   });
   assert.equal(noAi(settings(0, "missing")), true);

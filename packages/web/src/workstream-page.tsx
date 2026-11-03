@@ -18,7 +18,7 @@ import {
   Link,
   plural,
   StateChip,
-  when,
+  Stamp,
   SendKeyContext,
 } from "./parts.tsx";
 import { sends } from "./settings.ts";
@@ -152,7 +152,8 @@ export function WorkstreamPage(props: {
           </p>
           {workstream.done && (
             <p class="workstream-done">
-              <StateChip state="done" waitingOn={null} /> Marked done {when(workstream.done.at)}
+              <StateChip state="done" waitingOn={null} /> Marked done{" "}
+              <Stamp at={workstream.done.at} />
               {doneBy[workstream.done.by]}
             </p>
           )}
@@ -302,7 +303,9 @@ function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch 
                 causes[change.cause]
               )}
             </span>
-            <span class="change-at">{when(change.at)}</span>
+            <span class="change-at">
+              <Stamp at={change.at} />
+            </span>
           </li>
         ))}
       </ol>
@@ -335,7 +338,9 @@ export function Threads(props: {
               {(thread.waitingOn || thread.state !== props.said) && (
                 <StateChip state={thread.state} waitingOn={thread.waitingOn} />
               )}
-              <span class="thread-link-at">{when(thread.activityAt)}</span>
+              <span class="thread-link-at">
+                <Stamp at={thread.activityAt} />
+              </span>
             </Link>
           </ThreadMenu>
         </li>

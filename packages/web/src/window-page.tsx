@@ -14,6 +14,7 @@ import {
   points,
   Replies,
   SearchIcon,
+  useStamp,
 } from "./parts.tsx";
 import { ViewTabs } from "./overview-page.tsx";
 import {
@@ -257,12 +258,16 @@ function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   );
 }
 
-function Counts({ view, filter }: { view: WindowView; filter: BrowseFilter }) {
-  const asOf = new Date(view.asOf).toLocaleDateString(undefined, {
+// The fixture's date, as Browse writes it absolute.
+const fixtureDay = (instant: string) =>
+  new Date(instant).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+
+function Counts({ view, filter }: { view: WindowView; filter: BrowseFilter }) {
+  const asOf = useStamp()(view.asOf, fixtureDay);
   return (
     <p class="counts">
       {filtered(filter)

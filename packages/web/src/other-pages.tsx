@@ -3,7 +3,7 @@ import { WorkstreamMenu } from "./end-workstream.tsx";
 import { threadCount } from "./ending.ts";
 import { Threads } from "./workstream-page.tsx";
 import { type DoneTab, doneRoute, doneShown } from "./nav.ts";
-import { type Dispatch, Link, Mark, plural, when } from "./parts.tsx";
+import { type Dispatch, Link, Mark, plural, Stamp } from "./parts.tsx";
 import { type ReviewModel, type ReviewMsg, reviewSteps } from "./review.ts";
 import { stepLabel } from "./thread.ts";
 import { Diff } from "./thread-page.tsx";
@@ -67,7 +67,9 @@ export function DonePage(props: {
                       {plural(threadCount(workstream), "thread")}
                     </span>
                     {workstream.done && (
-                      <span class="thread-link-at">{when(workstream.done.at)}</span>
+                      <span class="thread-link-at">
+                        <Stamp at={workstream.done.at} />
+                      </span>
                     )}
                   </Link>
                 </WorkstreamMenu>

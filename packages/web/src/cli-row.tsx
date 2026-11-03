@@ -4,6 +4,7 @@
 // fails, one sentence, Try again, Show details with a log to copy, and other
 // ways. Oriel never sees the sign-in: the browser does it with Claude Code.
 import type { ComponentChildren } from "preact";
+import { useStamp } from "./parts.tsx";
 import { ProviderRow } from "./provider-row.tsx";
 import type { DetailsOf, SetupModel, SetupMsg } from "./setup.ts";
 import type { CliView, ProviderView } from "./view.ts";
@@ -295,7 +296,7 @@ function Failed(props: {
         ? { label: "Start again", onClick: () => again("sign-in") }
         : { label: "Try again", onClick: () => again(failed.what as "install" | "update") };
   if (failed.why === "no-plan") return null;
-  const resets = resetsAt(failed.resets);
+  const resets = resetsAt(failed.resets, useStamp());
   const what: DetailsOf = failed.what;
   return (
     <div class="cli-box" data-tone={failed.why === "usage-limit" ? "warn" : "danger"} role="alert">
@@ -351,11 +352,13 @@ function Failed(props: {
   );
 }
 
-// When a usage limit resets, as the person's clock says it: an instant from
-// the CLI, or its own words.
-function resetsAt(resets: string | null): string | null {
+// When a usage limit resets, in the time format: an instant from the CLI,
+// or its own words.
+function resetsAt(resets: string | null, stamp: ReturnType<typeof useStamp>): string | null {
   if (resets === null) return null;
-  const at = Date.parse(resets);
-  if (Number.isNaN(at)) return resets;
-  return `at ${new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  if (Number.isNaN(Date.parse(resets))) return resets;
+  return stamp(resets, clockAt, true);
 }
+
+const clockAt = (instant: string) =>
+  `at ${new Date(instant).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
