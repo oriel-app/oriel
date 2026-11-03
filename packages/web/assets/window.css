@@ -5200,15 +5200,27 @@ button.overview-title:hover {
     gap: var(--space-4);
   }
 
+  /* Every section in sight, on two lines at a large text size. */
   .settings-sections {
     position: static;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-1);
-    overflow-x: auto;
   }
 
+  /* An action too wide to sit beside the row's words, such as Install with
+     its size, goes beneath them, at the right. */
   .provider-row {
+    flex-wrap: wrap;
     padding-inline: var(--space-3);
+  }
+
+  .provider-main {
+    flex-basis: 10rem;
+  }
+
+  .provider-side {
+    margin-left: auto;
   }
 }
 
