@@ -8,6 +8,15 @@ import { actionLineView } from "./action-lines.ts";
 const own = { thread: ulid(1, new Uint8Array(10)), workstream: ulid(2, new Uint8Array(10)) };
 const touched = { kind: "workstream" as const, id: own.workstream, name: "Boarding" };
 const ids = (...keys: string[]) => keys.map((key) => `jira:${key}` as ItemId);
+// A remove whose undo adds back `back`, or has none when nothing can come back.
+const remove = (items: ItemId[], back: ItemId[]): ActionLine & { applied: true } => ({
+  call: { action: "workstream.remove", input: { workstream: own.workstream, items } },
+  touched,
+  applied: true,
+  undo: back.length
+    ? { action: "workstream.add", input: { workstream: own.workstream, items: back } }
+    : null,
+});
 
 test("an add names only what it added, and says so when the workstream had it all", () => {
   const add = (items: ItemId[], added: ItemId[]): ActionLine => ({
@@ -31,10 +40,7 @@ test("an add names only what it added, and says so when the workstream had it al
 test("what was done names every item; what wasn't, the first few", () => {
   const keys = Array.from({ length: 8 }, (_, i) => `SYN-${i + 1}`);
   const input = { workstream: own.workstream, items: ids(...keys) };
-  const done = actionLineView(
-    { call: { action: "workstream.remove", input }, touched, applied: true, undo: null },
-    own,
-  );
+  const done = actionLineView(remove(input.items, input.items), own);
   assert.equal(
     done.text,
     "Removed SYN-1, SYN-2, SYN-3, SYN-4, SYN-5, SYN-6, SYN-7 and SYN-8 from this workstream.",
@@ -65,10 +71,7 @@ test("a rename says the name it had, from its undo; each item is named once", ()
   assert.equal(renamed.text, "Renamed “Boarding” to “Gates”.");
   const twice = { workstream: own.workstream, items: ids("SYN-3", "SYN-3") };
   assert.equal(
-    actionLineView(
-      { call: { action: "workstream.remove", input: twice }, touched, applied: true, undo: null },
-      own,
-    ).text,
+    actionLineView(remove(twice.items, ids("SYN-3")), own).text,
     "Removed SYN-3 from this workstream.",
   );
 });
@@ -130,5 +133,27 @@ test("an undone line says so and offers the call that does it again, if any", ()
       own,
     ).text,
     "Reopened this thread.",
+  );
+});
+
+test("a removal says what the Undo can't add back, and why", () => {
+  const text = (line: ActionLine) => actionLineView(line, own).text;
+  assert.equal(
+    text(remove(ids("OA-39"), [])),
+    "Removed OA-39 from this workstream. It's no longer in the window, so it can't come back.",
+  );
+  assert.equal(
+    text(remove(ids("OA-39", "OA-40"), [])),
+    "Removed OA-39 and OA-40 from this workstream. They're no longer in the window, so they can't come back.",
+  );
+  assert.equal(
+    text(remove(ids("SYN-1", "OA-39", "OA-40"), ids("SYN-1"))),
+    "Removed SYN-1, OA-39 and OA-40 from this workstream. OA-39 and OA-40 are no longer in the window, so they can't come back.",
+  );
+  // Undone, the line says so before what the Undo couldn't give back.
+  const partly = remove(ids("SYN-1", "OA-39"), ids("SYN-1"));
+  assert.equal(
+    text({ ...partly, since: { undone: true, next: null } }),
+    "Removed SYN-1 and OA-39 from this workstream, which you undid. OA-39 is no longer in the window, so it can't come back.",
   );
 });
