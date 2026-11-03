@@ -152,6 +152,77 @@ html {
   }
 }
 
+/* Broadsheet (decision 0034): a newspaper page. Cream paper and ink, serif
+   section heads under a heavy rule, square corners, open lists on the page
+   and a marked ask bar, with roomier rows. The accent is umber; each state
+   has a hue of its own. */
+:root[data-theme="broadsheet"] {
+  --bg: #f4efe3;
+  --surface: #fffcf5;
+  --surface-hover: #ebe3d1;
+  --surface-sunk: color-mix(in srgb, var(--bg) 50%, var(--surface));
+  --line: #dbd0b9;
+  --line-strong: #b4a385;
+  --text: #26221b;
+  --text-muted: #574b39;
+  --text-faint: #6a5d48;
+  --accent: #80520f;
+  --on-accent: #fffcf5;
+  --todo: #635845;
+  --in-progress: #1d5c9e;
+  --done: #2c6b45;
+  --danger: #94202c;
+  --derived: #4a4752;
+  --del: #6a5d48;
+  --tint: 12%;
+  --list-bg: var(--bg);
+  --type-story: color-mix(in srgb, var(--done) 55%, var(--line-strong));
+  --type-bug: color-mix(in srgb, var(--danger) 55%, var(--line-strong));
+  --type-task: color-mix(in srgb, var(--in-progress) 55%, var(--line-strong));
+  --type-epic: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+  --type-other: var(--line-strong);
+  --avatar: var(--surface-hover);
+  --avatar-text: var(--text-muted);
+
+  --title-weight: var(--weight-regular);
+
+  --section-rule: var(--border-thick) solid var(--text);
+  --section-head-font: var(--weight-strong) var(--text-lg) / var(--leading-tight)
+    var(--font-heading);
+  --section-head-case: none;
+  --section-head-tracking: 0;
+  --list-frame: none;
+  --row: 2.25rem;
+  --row-pad: 0.5rem;
+  --ask-mark: var(--border-thick) solid var(--accent);
+
+  --radius-sm: 0;
+  --radius: 2px;
+  --radius-lg: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="broadsheet"] {
+    --bg: #1a1814;
+    --surface: #211e19;
+    --surface-hover: #2b2721;
+    --line: #36322a;
+    --line-strong: #4d473c;
+    --text: #efe8d8;
+    --text-muted: #c2b8a3;
+    --text-faint: #a39a86;
+    --accent: #e9ad55;
+    --on-accent: #1a1814;
+    --todo: #aaa08c;
+    --in-progress: #78b4ea;
+    --done: #86c9a5;
+    --danger: #f08078;
+    --derived: #bdb7c6;
+    --del: #a39a86;
+    --tint: 16%;
+  }
+}
+
 *,
 *::before,
 *::after {

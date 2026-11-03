@@ -102,6 +102,19 @@ test("a sketch's theme sheet holds the neutral tokens of the person's theme, lig
   assert.match(sheet, /--font-heading: Charter, "Iowan Old Style", Cambria, Georgia, serif;/);
 });
 
+test("Broadsheet's sketch sheet is its paper and ink, with square corners", () => {
+  const sheet = sketchSheet(windowCss, "broadsheet");
+  assert.match(sheet, /^ {2}--bg: #f4efe3;$/m);
+  assert.match(sheet, /^ {4}--bg: #1a1814;$/m);
+  assert.match(sheet, /^ {2}--radius-sm: 0;$/m);
+  // What Broadsheet leaves alone is the default's, in both schemes.
+  assert.match(sheet, /^ {2}--space-4: 1rem;$/m);
+  assert.match(
+    sheet,
+    /^ {4}--font-heading: Charter, "Iowan Old Style", Cambria, Georgia, serif;$/m,
+  );
+});
+
 test("a sketch's theme sheet follows the theme it's built for", () => {
   const paper = `${windowCss}
 :root[data-theme="paper"] {
