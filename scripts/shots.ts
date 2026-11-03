@@ -781,6 +781,7 @@ const scenes: Scene[] = [
       await page.locator(".ask-input").fill(question);
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page.locator(`.window-chat .answer-block[data-form="${form}"]`).waitFor();
+      await page.locator(".window-chat .working").waitFor({ state: "detached" });
     },
   })),
   {
