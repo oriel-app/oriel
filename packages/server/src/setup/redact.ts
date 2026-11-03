@@ -18,7 +18,7 @@ export function redacted(line: string, home: string): string {
     // A value given to a word that names a secret, as `code: …`, `token=…`
     // or JSON's `"password":"…"`.
     .replace(
-      /\b(password|passwd|secret|token|api[_ -]?key|code)(["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}]+)/gi,
+      /\b(password|passwd|secret|token|api[_ -]?key|code)(["']?\s*[:=]\s*)("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;}]+)/gi,
       "$1$2[hidden]",
     )
     // Long runs of letters and digits, as keys, codes and tokens are.
