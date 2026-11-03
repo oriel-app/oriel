@@ -331,6 +331,7 @@ function world({ running = false, applying = false } = {}) {
     running: () => running,
     unsettled: async () => [],
     emit: (event) => events.push(event.name),
+    later: () => () => {},
     publish: (changed) => published.push(changed),
     now: () => t0,
     newId: () => id(100),

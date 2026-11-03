@@ -226,6 +226,19 @@ test("a working thread waits on its agent mid-turn, then on a review or the user
     "review",
   );
   assert.equal(waitingOn({ ...working, changeSets: [set("applying")] }), "apply");
+  // Unless its apply has stalled on its source (OA-82): then the user should
+  // know, though nothing can be done with it yet.
+  assert.equal(
+    waitingOn({ ...working, changeSets: [{ ...set("applying"), stalled: true }] }),
+    "stalled",
+  );
+  assert.equal(
+    waitingOn({
+      ...working,
+      changeSets: [set("applying"), { ...set("applying"), stalled: true }],
+    }),
+    "stalled",
+  );
   // Applied, rejected, or partly applied and the rest dismissed: nothing to decide.
   assert.equal(waitingOn({ ...working, changeSets: [set("applied", "revert")] }), "reply");
   assert.equal(waitingOn({ ...working, changeSets: [set("rejected")] }), "reply");
@@ -378,4 +391,15 @@ test("the sidebar lists the threads waiting on the user, most recently active fi
   );
   assert.equal(where.needsYou, where.waiting.length);
   assert.deepEqual(nav(at({ page: "done" }, false)).waiting, []);
+});
+
+test("a thread whose apply stalled is in Needs you, beside those to review", () => {
+  const stuck = threadSummary({ id: "01JBZ0000000000000000000T7", waitingOn: "stalled" });
+  const applying = threadSummary({ id: "01JBZ0000000000000000000T8", waitingOn: "apply" });
+  const [start] = init({ page: "done" });
+  const model: Model = { ...start, threads: [stuck, applying] };
+  assert.deepEqual(
+    nav(model).waiting.map((each) => each.id),
+    [stuck.id],
+  );
 });

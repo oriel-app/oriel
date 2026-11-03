@@ -110,6 +110,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // Not a rejection: the person didn't decline it; the source stopped it.
   | { name: "changeset.dismissed"; changeSetId: Ulid; via: "thread" | "review-link" }
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
+  // An apply went a send's lease with nothing sent or answered (OA-82).
+  | { name: "changeset.stalled"; changeSetId: Ulid; threadId: Ulid }
   | { name: "review-link.opened"; changeSetId: Ulid }
   // A live review link whose change set the page won't show: its workstream
   // was deleted (decision 0028). Not an open (OA-143).

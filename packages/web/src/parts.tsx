@@ -444,6 +444,7 @@ export const waitingNames: Record<WaitingOn, string> = {
   held: "Message held",
   review: "Needs review",
   apply: "Applying…",
+  stalled: "Apply stalled",
   reply: "Your turn",
 };
 

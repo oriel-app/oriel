@@ -10,6 +10,7 @@ import type {
   ThreadSummaryView,
   ThreadView,
 } from "@oriel/web/view";
+import { sendLeaseMs } from "@oriel/changeset";
 import { json, type Script, testApp } from "./testing.ts";
 
 // SYN-1's epic, whose stories SYN-23, SYN-99 and SYN-104 have no estimate.
@@ -462,6 +463,32 @@ test("while a change set applies, nothing is offered for it and every action wai
   assert.equal(applied.body.changeSet.status, "applied");
   assert.equal(applied.body.changeSet.applying, false);
   assert.deepEqual(applied.body.changeSet.nextSteps, [{ kind: "revert" }]);
+});
+
+test("a change set whose apply stalls on its source shows stalled, back in Needs you, until it moves", async (t) => {
+  const app = await proposed(t);
+  const held = app.site.hold("SYN-99");
+  const approving = app.approve();
+  await held.reached;
+  const summary = async () =>
+    json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.find(
+      (thread) => thread.id === app.threadId,
+    );
+  const set = async () => (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
+  assert.equal((await summary())?.waitingOn, "apply");
+  assert.equal((await set())?.stalled, false);
+  // A send's lease with no answer: stalled, and still nothing to do with it.
+  app.advance(sendLeaseMs);
+  assert.equal((await summary())?.waitingOn, "stalled");
+  assert.deepEqual(
+    [(await set())?.stalled, (await set())?.status, (await set())?.nextSteps],
+    [true, "applying", []],
+  );
+  // Its source answers: applied, and stalled no more.
+  held.release();
+  const applied = await approving;
+  assert.equal(applied.body.changeSet.stalled, false);
+  assert.notEqual((await summary())?.waitingOn, "stalled");
 });
 
 test("an item a change set creates joins the workstream, with markers in its threads", async (t) => {

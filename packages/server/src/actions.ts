@@ -27,6 +27,7 @@ import {
   type TelemetryEvent,
   type Ulid,
 } from "@oriel/core";
+import { sendLeaseMs } from "@oriel/changeset";
 import type { WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type FolderView, type GroupingId, isGroupingId, type JiraView } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
@@ -105,6 +106,9 @@ export type ActionDeps = {
   // Moves the workspace's last-seen stamp to `at` and change log entry
   // `seq`, never back.
   markSeen(at: Instant, seq: number): void;
+  // Calls `then` once `ms` have passed, unless the call it gives back
+  // cancels that first.
+  later(ms: number, then: () => void): () => void;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
   now(): Instant;
@@ -195,19 +199,45 @@ const approverOf = (actor: Actor, token: string | undefined): Approver => {
 
 // Applies a change set, and tells when that starts and when it ends. The
 // engine marks it applying before `apply` returns its promise, so the first
-// reload sees that. What it created then joins its workstream.
+// reload sees that. What it created then joins its workstream. Meanwhile it
+// may stall, its last send unanswered for a send's lease (OA-82), and the
+// window should see it stuck, with no word from its source to say so: once
+// the lease could have run, and each minute after, it looks, and tells the
+// window again when that has changed.
 const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
   const applying = deps.changeSets.apply(set.id);
-  deps.publish({ thread: set.threadId, changeSet: set.id, applying: true });
+  const told = (applying: boolean) =>
+    deps.publish({ thread: set.threadId, changeSet: set.id, applying });
+  told(true);
+  let stalled = false;
+  const look = () => {
+    if (deps.changeSets.stalled(set.id) !== stalled) {
+      stalled = !stalled;
+      told(true);
+      if (stalled)
+        deps.emit({
+          name: "changeset.stalled",
+          changeSetId: set.id,
+          threadId: set.threadId,
+          at: deps.now(),
+          workspaceId: deps.workspaceId,
+        });
+    }
+    cancel = deps.later(lookAgainMs, look);
+  };
+  let cancel = deps.later(sendLeaseMs, look);
   let report: Awaited<typeof applying>;
   try {
     report = await applying;
   } finally {
-    deps.publish({ thread: set.threadId, changeSet: set.id, applying: false });
+    cancel();
+    told(false);
   }
   await deps.applied(await mustChangeSet(deps, set.id));
   return report;
 };
+
+const lookAgainMs = 60_000;
 
 // Items as the index has them now. One it doesn't have is refused, unless
 // the change set acting created it, as it joins before the next sync.

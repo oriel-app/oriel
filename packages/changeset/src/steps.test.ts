@@ -262,6 +262,53 @@ test("a send still within its lease isn't retried until the lease runs out", asy
   assert.equal((await later.apply(set.id)).applied.length, 2);
 });
 
+test("an apply whose last send goes a send's lease unanswered has stalled, and stays busy until it returns", async () => {
+  const { changeSets, run, jira, advance } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+  ]);
+  await approve(changeSets, set.id);
+  const reached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  jira.hooks.before = async () => {
+    reached.resolve();
+    await release.promise;
+  };
+  const applying = changeSets.apply(set.id);
+  await reached.promise;
+  advance(sendLeaseMs - 1);
+  assert.equal(changeSets.stalled(set.id), false);
+  advance(1);
+  assert.equal(changeSets.stalled(set.id), true);
+  // Still applying, and nothing else can be done with it: a send may land.
+  assert.equal(changeSets.applying(set.id), true);
+  assert.deepEqual(await changeSets.nextSteps(set.id), []);
+  await assert.rejects(changeSets.dismiss(set.id), { code: "busy" });
+  jira.hooks.before = undefined;
+  release.resolve();
+  assert.equal((await applying).applied.length, 2);
+  assert.equal(changeSets.stalled(set.id), false);
+});
+
+test("an apply that keeps sending hasn't stalled, however long it takes", async () => {
+  const { changeSets, run, jira, advance } = setup();
+  const set = await changeSets.capture(run, [
+    estimate("jira:SYN-21", 5),
+    estimate("jira:SYN-3", 3),
+    estimate("jira:SYN-8", 13),
+  ]);
+  await approve(changeSets, set.id);
+  // Each send answers just within a lease: together they run past three.
+  const seen: boolean[] = [];
+  jira.hooks.before = () => {
+    advance(sendLeaseMs - 1);
+    seen.push(changeSets.stalled(set.id));
+  };
+  assert.equal((await changeSets.apply(set.id)).applied.length, 3);
+  assert.deepEqual(seen, [false, false, false]);
+});
+
 test("a revert drops what never landed, which completes the set", async () => {
   const { db, changeSets, run, workstreamId, events, indexed } = setup();
   const set = await changeSets.capture(run, [

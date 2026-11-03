@@ -122,6 +122,7 @@ export const changeSetView = (over: Partial<ChangeSetView> = {}): ChangeSetView 
   status: "open",
   nextSteps: [{ kind: "approve" }, { kind: "reject" }],
   applying: false,
+  stalled: false,
   sentUnapplied: false,
   decision: null,
   errors: [],

@@ -247,6 +247,7 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     running: (thread) => thread === busy || thread === mine,
     unsettled: async () => [],
     emit: () => {},
+    later: () => () => {},
     publish: () => {},
     now: () => t0,
     newId: () => id(next++),
