@@ -2,14 +2,14 @@
 // its own words (OA-91), and each names the change set it is about (OA-86).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { OrielNote, Ulid } from "@oriel/core";
+import type { AgentNote, Ulid } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import { noteText, roundClosed, threadMessages } from "./prompt.ts";
 import { t0 } from "./testing.ts";
 
 const first = "01JBZ00000000000000000CS01" as Ulid;
 const second = "01JBZ00000000000000000CS02" as Ulid;
-const notes: OrielNote[] = [
+const notes: AgentNote[] = [
   { kind: "rejected", changeSet: first, via: "thread" },
   { kind: "rejected", changeSet: second, via: "review-link" },
 ];

@@ -8,7 +8,7 @@ import type {
   Instant,
   Intent,
   Log,
-  OrielNote,
+  AgentNote,
   ProxiedRead,
   Region,
   Run,
@@ -52,8 +52,9 @@ export type ChatMessage =
   // refused and why (decision 0024).
   | { role: "actions"; text: string; at: Instant }
   // Oriel's own line about what someone did, such as rejecting a change set:
-  // the model reads it as Oriel's, never as its own words (OA-91).
-  | { role: "note"; note: OrielNote; at: Instant }
+  // the model reads it as Oriel's, never as its own words (OA-91). Its check
+  // of an answer's quotes is the window's alone.
+  | { role: "note"; note: AgentNote; at: Instant }
   // A compact record of a sandbox run, for history. With its script, history
   // replays the run faithfully.
   | { role: "run"; runId: Ulid; summary: string; script?: string; at: Instant };

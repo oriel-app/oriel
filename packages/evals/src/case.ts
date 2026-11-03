@@ -21,7 +21,7 @@ import {
   number,
   object,
   optional,
-  orielNote,
+  agentNote,
   refine,
   type Result,
   string,
@@ -231,7 +231,7 @@ const evalCaseShape = object({
     atLeastOne(
       union(
         object({ role: union(literal("user"), literal("assistant")), text }),
-        object({ role: literal("note"), note: orielNote }),
+        object({ role: literal("note"), note: agentNote }),
       ),
     ),
   ),

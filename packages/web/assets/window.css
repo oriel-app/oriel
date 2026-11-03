@@ -2622,6 +2622,35 @@ a.replies:hover {
   color: var(--text-muted);
 }
 
+/* A quote from an item (decision 0032): Oriel's caption, with the item's
+   chip, over the quote, which its check marks as found there word for word
+   or not. */
+.reply .quote-from {
+  margin: 0 0 var(--space-3);
+}
+
+.quote-from figcaption {
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.reply .quote-from blockquote {
+  margin: 0;
+}
+
+.quote-from[data-found="true"] blockquote {
+  border-left-color: var(--accent);
+}
+
+.quote-from[data-found="false"] blockquote {
+  border-left-color: var(--danger);
+}
+
+.quote-not-found {
+  color: var(--danger);
+}
+
 .reply code {
   padding: 0.1em 0.3em;
   border-radius: var(--radius-sm);

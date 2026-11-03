@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./overview": "./src/overview.ts",
+    "./quotes": "./src/quotes.ts",
     "./window": "./src/window.ts"
   },
   "scripts": {

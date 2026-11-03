@@ -761,6 +761,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     caps,
     snapshot: () => index.snapshot(workspaceId),
     chips: (ids, threadId) => viewer.chips(ids, threadId),
+    // Only items in the index: an answer may name any key, and the check
+    // mustn't answer for an item nobody synced.
+    read: (ids) => {
+      const indexed = new Set<string>(records().map((record) => record.id));
+      return reader.read(ids.filter((id) => indexed.has(id)));
+    },
     now,
     newId,
     log,

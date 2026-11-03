@@ -41,7 +41,7 @@ import type {
   ThreadSummaryView,
   ThreadView,
 } from "@oriel/web/view";
-import { chipIds } from "@oriel/web/markdown";
+import { chipIds, quoteKey } from "@oriel/web/markdown";
 import { waitingOn, waitsOnUser } from "@oriel/web/view";
 import { actionLineView } from "./action-lines.ts";
 import { agentEvent, type AgentEvent } from "./agent.ts";
@@ -419,8 +419,9 @@ export function views(deps: ViewDeps) {
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "note") {
-      // The agent alone reads of unknown chips: the answer showed each.
-      if (message.note.kind === "unknown-chips") return null;
+      // The agent alone reads of unknown chips: the answer showed each. A
+      // check of the answer's quotes captions them (`ThreadView.quotes`).
+      if (message.note.kind === "unknown-chips" || message.note.kind === "quotes") return null;
       const { kind, changeSet, via } = message.note;
       return { ...at, kind: "note", note: { kind, changeSetId: changeSet, via } };
     }
@@ -660,6 +661,13 @@ export function views(deps: ViewDeps) {
         ),
         writable: deps.writable,
         chips: await chips(answered(entries), id),
+        quotes: Object.fromEntries(
+          messages.flatMap((m) =>
+            m.role === "note" && m.note.kind === "quotes"
+              ? m.note.checked.map((quote) => [quoteKey(quote), quote.found])
+              : [],
+          ),
+        ),
         ...(threads.isWindowChat(id) ? { windowChat: true as const } : {}),
       };
     },

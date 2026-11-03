@@ -355,6 +355,12 @@ export type ChipView =
 // "unknown reference". An ID not in it was named since, while the turn ran.
 export type Chips = Readonly<Record<string, ChipView | null>>;
 
+// Whether each quote from an item in a thread's answers is in that item word
+// for word, as Oriel checked it when its turn ended (decision 0032), by its
+// item and its text (`quoteKey`). A quote not in it is still being said, or
+// went unchecked.
+export type Quotes = Readonly<Record<string, boolean>>;
+
 // What the sidebar's search found (OA-110): a thread, or one of its change
 // sets, with the words around the match. `query` is the query it answers, as
 // the server read it.
@@ -549,6 +555,7 @@ export type ThreadView = {
   // be reviewed and rejected only.
   writable: boolean;
   chips: Chips;
+  quotes: Quotes;
 };
 
 // What the thread's event stream sends: a new chat entry, or whether a turn

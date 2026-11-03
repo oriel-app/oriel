@@ -44,7 +44,7 @@ function postable(id: string, host: NamespaceHost, channels: readonly string[]):
 // What a Slack item is, in the declarations' `Item` (see `ItemDocs` in
 // bindings): shape only, never source text. Its text is `slackText`'s.
 export const slackItemDoc =
-  "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic. Name it by who wrote it, where and when.";
+  "A Slack item is a chat message in a channel, not a ticket: its title is its author and first line, its text the message and then each reply in its thread, each with its author and time. It has no status, assignee or estimate, and its channel isn't an epic.";
 
 // Slack's namespace. With no context, Slack isn't connected, and it offers
 // nothing to write.
