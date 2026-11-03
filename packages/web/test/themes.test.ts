@@ -76,7 +76,7 @@ test("a theme's tokens are the shared ones, the default's, then its own", () => 
 });
 
 test("a sketch's theme sheet holds the neutral tokens of the person's theme, light and dark", () => {
-  const sheet = sketchSheet(windowCss, defaultTheme);
+  const sheet = sketchSheet(windowCss, defaultTheme, "default");
   const named = [...sheet.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1]);
   assert.deepEqual(named, [...sketchTokens, ...sketchTokens]);
   // Never the accent, a state, --del, or a section, list or ask-bar token,
@@ -103,7 +103,7 @@ test("a sketch's theme sheet holds the neutral tokens of the person's theme, lig
 });
 
 test("Broadsheet's sketch sheet is its paper and ink, with square corners", () => {
-  const sheet = sketchSheet(windowCss, "broadsheet");
+  const sheet = sketchSheet(windowCss, "broadsheet", "default");
   assert.match(sheet, /^ {2}--bg: #f4efe3;$/m);
   assert.match(sheet, /^ {4}--bg: #1a1814;$/m);
   assert.match(sheet, /^ {2}--radius-sm: 0;$/m);
@@ -127,11 +127,21 @@ test("a sketch's theme sheet follows the theme it's built for", () => {
   }
 }
 `;
-  const sheet = sketchSheet(paper, "paper");
+  const sheet = sketchSheet(paper, "paper", "default");
   assert.match(sheet, /^ {2}--bg: #fffdf5;$/m);
   assert.match(sheet, /^ {4}--bg: #12110d;$/m);
   assert.match(sheet, /^ {2}--radius: 0;$/m);
   // A dark value the theme leaves alone is the default's.
   assert.match(sheet, /^ {4}--surface: #1c1c1a;$/m);
-  assert.throws(() => sketchSheet(windowCss, "paper"), /No theme is called paper/);
+  assert.throws(() => sketchSheet(windowCss, "paper", "default"), /No theme is called paper/);
+});
+
+test("a sketch's sheet sets the root's size from Text size, as the page's html does", () => {
+  const size = (textSize: "small" | "default" | "large") =>
+    sketchSheet(windowCss, defaultTheme, textSize).match(/^ {2}font-size: (.+);$/m)?.[1];
+  assert.equal(size("small"), "93.75%");
+  assert.equal(size("default"), undefined);
+  assert.equal(size("large"), "112.5%");
+  // Every size is read from window.css's own rule, so neither can drift.
+  assert.throws(() => sketchSheet(":root {}", defaultTheme, "large"), /no --text-size for large/);
 });

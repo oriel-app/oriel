@@ -26,7 +26,9 @@
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
 // and 390px, and the onboarding. `--theme broadsheet` picks that theme in
 // each scene's settings, as the person would, and writes to
-// shots/broadsheet/; with none, the default theme, to shots/.
+// shots/broadsheet/; with none, the default theme, to shots/. `--text-size
+// large` sets that Text size in each scene's settings too, and writes to a
+// folder of its name below the theme's.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -34,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { defaultTheme, themeNames } from "../packages/web/themes.ts";
+import { type TextSize, textSizes } from "../packages/web/src/view.ts";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
@@ -79,7 +82,11 @@ type Scene = {
 };
 
 const asked = parseArgs({
-  options: { width: { type: "string", multiple: true }, theme: { type: "string" } },
+  options: {
+    width: { type: "string", multiple: true },
+    theme: { type: "string" },
+    "text-size": { type: "string" },
+  },
   allowPositionals: true,
 });
 const theme = asked.values.theme ?? defaultTheme;
@@ -87,8 +94,14 @@ const themes = themeNames(
   readFileSync(new URL("../packages/web/assets/window.css", import.meta.url), "utf8"),
 );
 if (!themes.includes(theme)) throw new Error(`No theme is called ${theme}: ${themes.join(", ")}`);
+const textSize = asked.values["text-size"];
+if (textSize !== undefined && !(textSizes as readonly string[]).includes(textSize))
+  throw new Error(`No text size is called ${textSize}: ${textSizes.join(", ")}`);
 
-const out = new URL(theme === defaultTheme ? "../shots/" : `../shots/${theme}/`, import.meta.url);
+const out = new URL(
+  `../shots/${theme === defaultTheme ? "" : `${theme}/`}${textSize === undefined ? "" : `${textSize}/`}`,
+  import.meta.url,
+);
 mkdirSync(out, { recursive: true });
 
 // What the scripted agent proposes when asked to plan: the checkout epic
@@ -2678,6 +2691,8 @@ try {
         if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
         const on = scene.make ? await scene.make() : (scene.on ?? server);
         if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
+        if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
+          await on.app.settings.change({ textSize: textSize as TextSize });
         await page.goto(new URL(scene.path, on.url).href);
         await scene.act?.(page);
         const path = fileURLToPath(new URL(`${scene.name}-${scheme}-${width}.png`, out));

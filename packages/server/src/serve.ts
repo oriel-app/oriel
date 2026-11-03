@@ -163,7 +163,8 @@ export async function serve(
         ...launch,
       }),
     );
-    // Each theme's sheet, built the first time a frame asks for it.
+    // Each theme and text size's sheet, built the first time a frame asks
+    // for it.
     const sheets = new Map<string, string>();
     const { settings } = app;
     sketchBuilt.resolve(
@@ -172,9 +173,10 @@ export async function serve(
         framedBy: address.port,
         sketch: app.sketch,
         sheet: () => {
-          const { theme } = settings.page();
-          const sheet = sheets.get(theme) ?? sketchStyle(css, theme);
-          sheets.set(theme, sheet);
+          const { theme, textSize } = settings.page();
+          const key = `${theme} ${textSize}`;
+          const sheet = sheets.get(key) ?? sketchStyle(css, theme, textSize);
+          sheets.set(key, sheet);
           return sheet;
         },
         ...launch,

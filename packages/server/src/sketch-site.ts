@@ -15,6 +15,7 @@
 // inner frame has an opaque origin, so a request from it would be
 // cross-site, if the policy let one out at all.
 import { checkSketch, isUlid, type Sketch, type Ulid } from "@oriel/core";
+import type { TextSize } from "@oriel/web/view";
 import { sketchSheet } from "@oriel/web/themes";
 import { hasLaunchSecret, ownHosts, refusal } from "./guard.ts";
 import type { Reply, Request } from "./site.ts";
@@ -25,7 +26,7 @@ export type SketchSite = {
   // The window's port: only its pages may frame a sketch.
   framedBy: number;
   sketch(thread: Ulid, sketch: Ulid): Sketch | null;
-  // Oriel's sheet for the frame, in the person's theme.
+  // Oriel's sheet for the frame, in the person's theme and text size.
   sheet(): string;
   // In the desktop app, the launch secret and the cookie that carries it,
   // which every request must hold, as the window's own do (decision 0036).
@@ -72,10 +73,10 @@ button, input, select, textarea {
 }
 `;
 
-// The frame's sheet: `theme`'s neutral tokens, built from window.css's own
-// theme blocks, then the plain look.
-export const sketchStyle = (css: string, theme: string): string =>
-  `${sketchSheet(css, theme)}${plainLook}`;
+// The frame's sheet: `theme`'s neutral tokens and `textSize`'s root size,
+// built from window.css's own rules, then the plain look.
+export const sketchStyle = (css: string, theme: string, textSize: TextSize): string =>
+  `${sketchSheet(css, theme, textSize)}${plainLook}`;
 
 // The outer document's policy (decision 0033): no fetch of any kind and no
 // navigation of the inner frame; inline styles, with no URL that can load;

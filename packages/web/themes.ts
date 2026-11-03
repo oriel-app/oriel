@@ -7,6 +7,7 @@
 // the page.
 
 import { sketchTokens } from "@oriel/core";
+import type { TextSize } from "./src/view.ts";
 
 export { sketchTokens };
 
@@ -154,12 +155,26 @@ export function resolve(
   });
 }
 
-// The sketch theme sheet for `theme`, built from window.css's own theme
-// blocks: the tokens above under their own names, light and dark through
-// `prefers-color-scheme`, every `var()` resolved, since the frame has no
-// other sheet to look one up in.
-export function sketchSheet(css: string, theme: string): string {
+// The root's size for a text size from Settings, as window.css's own
+// `html[data-text-size]` rule sets it, or null for the default, which sets
+// none.
+export function textSizeValue(css: string, textSize: TextSize): string | null {
+  if (textSize === "default") return null;
+  const selector = `html[data-text-size="${textSize}"]`;
+  const rule = rules(css).find((r) => r.at.length === 0 && r.selector === selector);
+  const value = rule?.declarations.find((d) => d.property === "--text-size")?.value;
+  if (value === undefined) throw new Error(`window.css sets no --text-size for ${textSize}`);
+  return value;
+}
+
+// The sketch theme sheet for `theme` and `textSize`, built from window.css's
+// own theme blocks: the tokens above under their own names, light and dark
+// through `prefers-color-scheme`, every `var()` resolved, since the frame
+// has no other sheet to look one up in; and the root's size, which every
+// rem follows, as on the page.
+export function sketchSheet(css: string, theme: string, textSize: TextSize): string {
   if (!themeNames(css).includes(theme)) throw new Error(`No theme is called ${theme}`);
+  const size = textSizeValue(css, textSize);
   const block = (scheme: Scheme, indent: string) => {
     const values = tokens(css, theme, scheme);
     return sketchTokens.map((name) => {
@@ -171,6 +186,7 @@ export function sketchSheet(css: string, theme: string): string {
   return [
     ":root {",
     "  color-scheme: light dark;",
+    ...(size === null ? [] : [`  font-size: ${size};`]),
     ...block("light", "  "),
     "}",
     "@media (prefers-color-scheme: dark) {",
