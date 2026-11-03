@@ -77,6 +77,8 @@ Who controls what:
   - Oriel reading, storing or passing on the CLI's sign-in;
   - a vendor API key, or the launch secret, in the CLI's environment;
   - a CLI path or argument built from content or model output.
+  - the first run (decision 0038) running anything but a vendor's installer from its fixed URL and the CLI's own sign-in, status and update commands, or running a binary before its signature and Team ID are checked;
+  - a sign-in code, the sign-in link's query or the account's email in a log, telemetry or Oriel's store, or anything written to the CLI's stdin during its sign-in.
 - **Updates and the relay:**
   - an update applied without checking the manifest's Ed25519 signature, the archive's hash and its code signature, or one that isn't newer than the running version;
   - the update signing key anywhere online, CI included;
