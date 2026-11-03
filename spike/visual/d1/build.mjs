@@ -156,6 +156,7 @@ ${[
       `<div class="type-row"><code>${t}</code><span style="font-size:var(${t})">${use}</span></div>`,
   )
   .join("")}
+${dir === "b" ? '<div class="type-row"><code>--text-prose</code><span style="font:var(--text-prose)/var(--leading-prose) var(--font-prose)">The agent\'s reply, a description, a message</span></div>' : ""}
 <div class="type-row"><code>--font-mono</code><span style="font:var(--text-sm) var(--font-mono)">jira:SYN-45 · 01M6FYSS</span></div>
 </div><div>
 <div class="type-row"><code>--weight-regular</code><span style="font-weight:var(--weight-regular)">Regular, for reading</span></div>
