@@ -4,8 +4,18 @@
 // The source's is read methods only, checked at run time too, so a cast
 // can't send a write (decision 0021); only `@oriel/slack/writer` hands out one
 // that posts.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as wait } from "node:timers/promises";
-import { boolean, type Credential, object, optional, string } from "@oriel/core";
+import {
+  boolean,
+  type Credential,
+  object,
+  optional,
+  requestMs,
+  retryMs,
+  string,
+  type WriteLimit,
+} from "@oriel/core";
 
 export const readMethods = [
   "auth.test",
@@ -45,12 +55,22 @@ export function bearer(token: string): Credential {
 export type WebApiOptions = {
   credential: Credential;
   fetch?: typeof fetch;
-  // How a retry waits; tests pass one that resolves at once.
+  // How a retry waits, and how a call gives up after `ms`; tests pass ones
+  // they control.
   wait?: (ms: number) => Promise<unknown>;
+  timeout?: (ms: number) => AbortSignal;
   timeoutMs?: number;
 };
 
 const maxAttempts = 5;
+
+// The limit of the write a call is made for, if it is made for one.
+const writeLimits = new AsyncLocalStorage<WriteLimit>();
+
+// Runs a write with every call made for it, however deep, held to `limit`.
+export function withinLimit<T>(limit: WriteLimit | undefined, write: () => Promise<T>): Promise<T> {
+  return limit ? writeLimits.run(limit, write) : write();
+}
 const envelope = object({ ok: boolean, error: optional(string) });
 
 export function webApi(options: WebApiOptions): SlackApi {
@@ -66,11 +86,14 @@ export function methodsApi<M extends string>(
 ): SlackApi<M> {
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
+  const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
   return async (method, params) => {
+    const limit = writeLimits.getStore();
     if (!methods.includes(method))
       throw new Error(`refusing a method ${side} doesn't use: ${method}`);
     for (let attempt = 1; ; attempt++) {
+      const ms = requestMs(timeoutMs, limit, "Slack");
       // The credential's own message stays out of the error, in case it names
       // a secret.
       const credentials = await options.credential.headers().catch((error: unknown) => {
@@ -80,12 +103,11 @@ export function methodsApi<M extends string>(
         method: "POST",
         headers: { ...credentials, Accept: "application/json" },
         body: new URLSearchParams(params),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeout(ms),
       });
       if (response.status === 429 && attempt < maxAttempts) {
         await response.body?.cancel();
-        const seconds = Number(response.headers.get("Retry-After")) || 5;
-        await pause(Math.min(seconds, 60) * 1000);
+        await pause(retryMs(response.headers.get("Retry-After"), limit, "Slack"));
         continue;
       }
       const text = await response.text();

@@ -199,6 +199,35 @@ test("Slack refusing a write made no change, and says why in words", async () =>
   );
 });
 
+test("every call of a write keeps within its limit, and a stalled post itself sent nothing", async () => {
+  const workspace = fixtureApi(fixture);
+  const asked: number[] = [];
+  const writer = slackWriter({
+    api: writeApi({
+      credential: { headers: async () => ({}) },
+      // Slack asks for the post to wait ten minutes.
+      fetch: async (input, init) =>
+        String(input).endsWith("/chat.postMessage")
+          ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
+          : workspace.fetch(input, init),
+      timeout: (ms) => {
+        asked.push(ms);
+        return new AbortController().signal;
+      },
+    }),
+    channels: [weather],
+    log: () => {},
+  });
+  await assert.rejects(
+    writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara }), {
+      left: () => 20_000,
+    }),
+    refused(false, /wait 600 seconds/),
+  );
+  // Who the token is for, then the post: each had 20 s.
+  assert.ok(asked.length > 1 && asked.every((ms) => ms === 20_000));
+});
+
 test("a conversation reads as the source reads it: mentions named, as the window titles it", async () => {
   const { writer } = setup();
   // Bastian's question, which mentions someone.

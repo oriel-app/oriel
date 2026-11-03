@@ -26,7 +26,14 @@ import {
 } from "./fake-jira.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";
 import { jiraSource } from "./source.ts";
-import { type JiraRequest, type JiraResponse, readOnly, type Transport } from "./transport.ts";
+import {
+  basicAuth,
+  type JiraRequest,
+  type JiraResponse,
+  readOnly,
+  readTransport,
+  type Transport,
+} from "./transport.ts";
 import { jiraWriter, restTransport } from "./writer.ts";
 
 // Stands in for packages/changeset, the only place that mints approvals in
@@ -493,6 +500,61 @@ test("anything that fails before the write goes out sent nothing", async () => {
     unsent(/no stable ID to check/),
   );
   assert.deepEqual(jira.writes(), []);
+});
+
+// A fetch that answers from a fake site's transport, so a real transport,
+// with its timeouts and retries, can be put in front of it.
+const fetchOver =
+  (transport: Transport, answer = (_req: JiraRequest): Response | null => null): typeof fetch =>
+  async (input, init) => {
+    const url = new URL(String(input));
+    const req: JiraRequest = {
+      method: (init?.method ?? "GET") as JiraRequest["method"],
+      path: `${url.pathname}${url.search}`,
+      ...(init?.body ? { body: JSON.parse(String(init.body)) as unknown } : {}),
+    };
+    const given = answer(req);
+    if (given) return given;
+    const { status, body } = await transport(req);
+    return new Response(body === null ? null : JSON.stringify(body), { status });
+  };
+
+test("every request of a write keeps within its limit, the shared boards' too, and a stalled write itself sent nothing", async () => {
+  const jira = fakeSite();
+  const asked: number[] = [];
+  const credential = basicAuth("a@example.com", "t");
+  const timeout = (ms: number) => {
+    asked.push(ms);
+    return new AbortController().signal;
+  };
+  // Jira asks for the estimate to wait ten minutes.
+  const fetch = fetchOver(jira.transport, (req) =>
+    req.method === "PUT"
+      ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
+      : null,
+  );
+  // As the server builds them: the boards over the source's own transport.
+  const boards = jiraBoards({
+    transport: readTransport({ site, credential, fetch, timeout }),
+    projects: ["SYN"],
+    log: () => {},
+  });
+  const w = jiraWriter({
+    transport: restTransport({ site, credential, fetch, timeout }),
+    project: "SYN",
+    boards,
+    log: () => {},
+  });
+  await assert.rejects(
+    w.apply(request("setEstimate", "jira:SYN-12", { points: 5 }), { left: () => 20_000 }),
+    unsent(/wait 600 seconds/),
+  );
+  // The board's discovery, the read before, and the write: each had 20 s.
+  assert.ok(jira.calls.some((call) => call.path.startsWith("/rest/agile/1.0/board")));
+  assert.ok(asked.length > 2 && asked.every((ms) => ms === 20_000));
+  // A read for no write keeps its own timeout.
+  await w.current("jira:SYN-12", ["summary"]);
+  assert.equal(asked.at(-1), 30_000);
 });
 
 test("a write whose credentials fail never goes out, and the failure names no secret", async () => {

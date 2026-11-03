@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { WriteStalled } from "@oriel/core";
 import { type Exchange, recording, replay } from "./cassette.ts";
-import { basicAuth, readOnly, restTransport, type Transport } from "./transport.ts";
+import { basicAuth, readOnly, restTransport, type Transport, withinLimit } from "./transport.ts";
 
 const site = "https://oriel.atlassian.net";
 
@@ -76,6 +77,121 @@ test("rate limits are retried after Retry-After; a 503 only for reads", async ()
   const stubborn = restTransport({ site, credential, fetch: third.fetch, wait });
   assert.equal((await stubborn({ method: "GET", path: "/rest/api/3/myself" })).status, 429);
   assert.equal(third.sent.length, 5);
+});
+
+// A write's limit on a fake clock: it has until `until`, and each wait moves
+// the clock on by as long as it waits.
+function clock(until: number) {
+  const time = { now: 0 };
+  const waits: number[] = [];
+  const timeouts: number[] = [];
+  return {
+    time,
+    waits,
+    timeouts,
+    limit: { left: () => until - time.now },
+    wait: async (ms: number) => {
+      waits.push(ms);
+      time.now += ms;
+    },
+    // Each request's timeout, which only the test fires.
+    timeout: (ms: number) => {
+      timeouts.push(ms);
+      return new AbortController().signal;
+    },
+  };
+}
+
+test("a write's requests keep within its limit, and a Retry-After past it stalls the write", async () => {
+  const credential = basicAuth("a@example.com", "t");
+  const put = { method: "PUT", path: "/rest/api/3/issue/SYN-1", body: {} } as const;
+  const c = clock(120_000);
+  const first = fetchFrom(json({}, 429, { "Retry-After": "10" }), json({ ok: true }));
+  const write = restTransport({
+    site,
+    credential,
+    fetch: first.fetch,
+    wait: c.wait,
+    timeout: c.timeout,
+  });
+  // Asked to wait 10 s with 120 s left, it waits, then goes again.
+  assert.equal((await withinLimit(c.limit, () => write(put))).status, 200);
+  assert.deepEqual([c.waits, c.timeouts], [[10_000], [30_000, 30_000]]);
+  // With 20 s left, a request gets 20 s, not its own 30.
+  c.time.now = 100_000;
+  const second = fetchFrom(json({ ok: true }));
+  const late = restTransport({ site, credential, fetch: second.fetch, timeout: c.timeout });
+  assert.equal((await withinLimit(c.limit, () => late(put))).status, 200);
+  assert.equal(c.timeouts.at(-1), 20_000);
+  // Asked to wait 600 s, it stalls at once: no wait, and nothing sent again.
+  c.time.now = 0;
+  const third = fetchFrom(json({}, 429, { "Retry-After": "600" }));
+  const stalled = restTransport({
+    site,
+    credential,
+    fetch: third.fetch,
+    wait: c.wait,
+    timeout: c.timeout,
+  });
+  await assert.rejects(
+    withinLimit(c.limit, () => stalled(put)),
+    (error) => error instanceof WriteStalled && /wait 600 seconds/.test(error.message),
+  );
+  assert.deepEqual([third.sent.length, c.waits], [1, [10_000]]);
+  // With no time left, nothing goes out.
+  c.time.now = 120_000;
+  const fourth = fetchFrom(json({ ok: true }));
+  const over = restTransport({ site, credential, fetch: fourth.fetch, timeout: c.timeout });
+  await assert.rejects(
+    withinLimit(c.limit, () => over(put)),
+    WriteStalled,
+  );
+  assert.equal(fourth.sent.length, 0);
+  // A read for no write keeps its own timeout, and any Retry-After.
+  const fifth = fetchFrom(json({}, 429, { "Retry-After": "600" }), json({ ok: true }));
+  const read = restTransport({
+    site,
+    credential,
+    fetch: fifth.fetch,
+    wait: c.wait,
+    timeout: c.timeout,
+  });
+  assert.equal((await read({ method: "GET", path: "/rest/api/3/myself" })).status, 200);
+  assert.deepEqual([c.waits.at(-1), c.timeouts.at(-1)], [60_000, 30_000]);
+});
+
+test("a hung request is given up on when its write's time runs out", async () => {
+  const c = clock(20_000);
+  const signals: AbortController[] = [];
+  const timeout = (ms: number) => {
+    c.timeouts.push(ms);
+    const controller = new AbortController();
+    signals.push(controller);
+    return controller.signal;
+  };
+  // A fetch that never answers, until its request is aborted.
+  const sent = Promise.withResolvers<void>();
+  const hung = ((_url: string | URL | Request, init?: RequestInit) => {
+    sent.resolve();
+    return new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    });
+  }) as typeof fetch;
+  const write = restTransport({
+    site,
+    credential: basicAuth("a@example.com", "t"),
+    fetch: hung,
+    timeout,
+  });
+  const sending = withinLimit(c.limit, () =>
+    write({ method: "POST", path: "/rest/api/3/issue", body: {} }),
+  );
+  await sent.promise;
+  assert.deepEqual(c.timeouts, [20_000]);
+  // Its 20 s run out.
+  c.time.now = 20_000;
+  signals[0]?.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+  await assert.rejects(sending, { name: "TimeoutError" });
 });
 
 test("only https origins and /rest/ paths are accepted", async () => {

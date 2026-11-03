@@ -3,8 +3,9 @@
 // sends requests over HTTPS behind a `Credential`; a cassette replays recorded
 // ones; an MCP-backed implementation could answer the same requests without
 // touching either. Only `@oriel/jira/writer` exports `restTransport`.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as wait } from "node:timers/promises";
-import { type Credential, SourceRefused } from "@oriel/core";
+import { type Credential, requestMs, retryMs, SourceRefused, type WriteLimit } from "@oriel/core";
 
 export type JiraRequest = {
   method: "GET" | "POST" | "PUT" | "DELETE";
@@ -33,12 +34,23 @@ export type RestOptions = {
   site: string;
   credential: Credential;
   fetch?: typeof fetch;
-  // How a retry waits; tests pass one that resolves at once.
+  // How a retry waits, and how a request gives up after `ms`; tests pass
+  // ones they control.
   wait?: (ms: number) => Promise<unknown>;
+  timeout?: (ms: number) => AbortSignal;
   timeoutMs?: number;
 };
 
 const maxAttempts = 5;
+
+// The limit of the write a request is made for, if it is made for one:
+// whatever makes it, the writer or the boards it shares with the source.
+const writeLimits = new AsyncLocalStorage<WriteLimit>();
+
+// Runs a write with every request made for it, however deep, held to `limit`.
+export function withinLimit<T>(limit: WriteLimit | undefined, write: () => Promise<T>): Promise<T> {
+  return limit ? writeLimits.run(limit, write) : write();
+}
 
 // A site as an https origin with no trailing slash, or a RangeError.
 export function siteOrigin(site: string): string {
@@ -54,13 +66,16 @@ export function restTransport(options: RestOptions): Transport {
   const site = new URL(siteOrigin(options.site));
   const send = options.fetch ?? fetch;
   const pause = options.wait ?? wait;
+  const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
   return async (request) => {
+    const limit = writeLimits.getStore();
     // "/rest/" keeps a path from naming another host ("//host") or escaping the API.
     if (!request.path.startsWith("/rest/")) throw new RangeError("Jira paths start with /rest/");
     const url = new URL(request.path, site);
     const hasBody = request.body !== undefined;
     for (let attempt = 1; ; attempt++) {
+      const ms = requestMs(timeoutMs, limit, "Jira");
       // Without its credentials the request never goes out. The credential's
       // own message stays out of it, in case it names a secret.
       const credentials = await options.credential.headers().catch((error: unknown) => {
@@ -77,7 +92,7 @@ export function restTransport(options: RestOptions): Transport {
           ...(hasBody ? { "Content-Type": "application/json" } : {}),
         },
         ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeout(ms),
       });
       // A 429 was not processed, so any request may retry it; a 503 might
       // have been, so only reads do.
@@ -85,8 +100,7 @@ export function restTransport(options: RestOptions): Transport {
         response.status === 429 || (response.status === 503 && request.method === "GET");
       if (retry && attempt < maxAttempts) {
         await response.body?.cancel();
-        const seconds = Number(response.headers.get("Retry-After")) || 5;
-        await pause(Math.min(seconds, 60) * 1000);
+        await pause(retryMs(response.headers.get("Retry-After"), limit, "Jira"));
         continue;
       }
       return { status: response.status, body: parse(await response.text()) };

@@ -17,6 +17,7 @@ import {
   type Ulid,
   ulid,
   unknown,
+  type WriteLimit,
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
@@ -142,8 +143,9 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
   const landings: { request: Request; before: MemoryIssue | null; after: MemoryIssue | null }[] =
     [];
   const hooks: {
-    // Runs before a request lands; a promise that never settles is a crash.
-    before?: (request: Request, call: number) => Promise<void> | void;
+    // Runs before a request lands, with the write's limit; a promise that
+    // never settles is a crash.
+    before?: (request: Request, call: number, limit?: WriteLimit) => Promise<void> | void;
     // Runs after a request has landed, before the writer answers.
     after?: (request: Request, call: number) => Promise<void> | void;
     read?: (id: ItemId) => Promise<void> | void;
@@ -327,10 +329,10 @@ export function memoryJira(start: MemorySnapshot, clock: Instant, carried?: Carr
 
   const writer: SourceWriter<"jira"> = {
     kind: "jira",
-    async apply(request: Approved<Request>) {
+    async apply(request: Approved<Request>, limit?: WriteLimit) {
       const plain: Request = structuredClone({ ...request });
       calls.push(plain);
-      await hooks.before?.(plain, calls.length);
+      await hooks.before?.(plain, calls.length, limit);
       const prior = plain.target === null ? null : structuredClone(find(plain.target));
       const result = land(plain);
       const key = parseItemId(result.item.id)?.key ?? "";

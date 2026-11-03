@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type CapturedMutation, type NextStep, SourceRefused, type Ulid } from "@oriel/core";
 import { workstreamStore } from "@oriel/db";
-import { plainError, sendLeaseMs } from "./change-sets.ts";
+import { plainError, sendLeaseMs, writeLimitMs } from "./change-sets.ts";
 import { approve, nth, preview, setup, status } from "./testing.ts";
 
 const estimate = (target: string, points: number): CapturedMutation => ({
@@ -289,6 +289,41 @@ test("an apply whose last send goes a send's lease unanswered has stalled, and s
   release.resolve();
   assert.equal((await applying).applied.length, 2);
   assert.equal(changeSets.stalled(set.id), false);
+});
+
+test("a write has until a write's limit after it went, inside a send's lease, then gives up", async () => {
+  assert.ok(writeLimitMs < sendLeaseMs);
+  for (const [givesUp, steps] of [
+    // Asked to wait past its limit: sent again by nothing, it is unsent.
+    [
+      new SourceRefused("Jira asked Oriel to wait 600 seconds before sending it again", {
+        sent: false,
+      }),
+      ["retry", "reject"],
+    ],
+    // Hung until its limit ran out: it may have landed.
+    [
+      new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      ["retry", "dismiss"],
+    ],
+  ] as const) {
+    const { changeSets, run, jira, advance } = setup();
+    const set = await changeSets.capture(run, [estimate("jira:SYN-21", 5)]);
+    await approve(changeSets, set.id);
+    const left: number[] = [];
+    jira.hooks.before = (_request, _call, limit) => {
+      left.push(limit?.left() ?? -1);
+      advance(writeLimitMs);
+      left.push(limit?.left() ?? -1);
+      throw givesUp;
+    };
+    assert.equal((await changeSets.apply(set.id)).failed.length, 1);
+    assert.deepEqual(left, [writeLimitMs, 0]);
+    // Over before the window would see it stalled, with what can be done next.
+    assert.equal(changeSets.applying(set.id), false);
+    assert.equal(changeSets.stalled(set.id), false);
+    assert.deepEqual(kinds(await changeSets.nextSteps(set.id)), steps);
+  }
 });
 
 test("an apply that keeps sending hasn't stalled, however long it takes", async () => {

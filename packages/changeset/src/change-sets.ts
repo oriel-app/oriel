@@ -147,6 +147,11 @@ const linkLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 // other apply sends that row again, so a slow write can't land after a later
 // one. A crashed send blocks its row this long.
 export const sendLeaseMs = 5 * 60 * 1000;
+// How long a write may take, every request of it and every wait between, by
+// when it gives up, unanswered or unsent: well inside a send's lease, so the
+// apply ends, and with it Try again and Dismiss show, before the window
+// would see it stalled, and no send of it is still going after (OA-172).
+export const writeLimitMs = 2 * 60 * 1000;
 // A send's mark ends with when it was sent.
 const sendMark = / \(sent (\S+)\)$/;
 const tokenShape = /^[A-Za-z0-9_-]{43}$/;
@@ -1530,7 +1535,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       const unsure = spec.idempotent ? "" : ` ${uncertain}`;
       let result: unknown;
       try {
-        result = await writerOf(kind).apply(request);
+        const until = sending.ms + writeLimitMs;
+        result = await writerOf(kind).apply(request, { left: () => until - at().ms });
       } catch (error) {
         const said = `${message(error).replace(/\.$/, "")}.`;
         // Nothing landed: the source changed nothing, or the write was never

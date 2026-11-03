@@ -166,7 +166,9 @@ export type WriteResult<K extends SourceKind = SourceKind> = {
 // only packages/changeset imports that (checked by scripts/check-repo.ts).
 export interface SourceWriter<K extends SourceKind = SourceKind> {
   readonly kind: K;
-  apply(request: Approved<WriteRequest<K>>): Promise<WriteResult<K>>;
+  // Every request it makes for the write, and every wait between them, keeps
+  // within `limit`. The engine, its one caller, always gives one.
+  apply(request: Approved<WriteRequest<K>>, limit?: WriteLimit): Promise<WriteResult<K>>;
   // Current values, for revert's conflict check.
   current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
   // Current values, with the stable ID of the item the handle names now, so
@@ -194,6 +196,50 @@ export class SourceRefused extends Error {
     this.name = "SourceRefused";
     this.sent = options.sent;
   }
+}
+
+// How long a write may still take, in ms by the engine's clock: each request
+// `apply` makes for it, their retries and the waits between them.
+export type WriteLimit = { left(): number };
+
+// What a transport throws when a write's time runs out before a request of it
+// goes out, or when the source asks for it again later than that. Nothing of
+// that request reached the source, or the source turned it away unprocessed,
+// as with a 429.
+export class WriteStalled extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WriteStalled";
+  }
+}
+
+// How long one request may take: its own timeout, or what is left of the
+// write it is for. With none left it isn't sent.
+export function requestMs(
+  timeoutMs: number,
+  limit: WriteLimit | undefined,
+  source: string,
+): number {
+  if (!limit) return timeoutMs;
+  const left = limit.left();
+  if (left <= 0) throw new WriteStalled(`${source} took longer than Oriel waits on a write`);
+  return Math.min(timeoutMs, left);
+}
+
+// How long to wait before a request goes again, as the source's Retry-After
+// asks: 5 seconds with none, at most 60. Asked to wait longer than the write
+// has left, it stalls.
+export function retryMs(
+  retryAfter: string | null,
+  limit: WriteLimit | undefined,
+  source: string,
+): number {
+  const seconds = Number(retryAfter) || 5;
+  if (limit && seconds * 1000 > limit.left())
+    throw new WriteStalled(
+      `${source} asked Oriel to wait ${seconds} seconds before sending it again, longer than Oriel waits on a write`,
+    );
+  return Math.min(seconds, 60) * 1000;
 }
 
 // The common facets' shapes, which the change log checks too.
