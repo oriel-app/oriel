@@ -2652,7 +2652,7 @@ for (const start of onlyOnboarding ? [] : picked)
     throw new Error(`No scene's name starts with ${start}`);
 const schemes = ["light", "dark"] as const;
 
-const browser = await chromium.launch({ channel: "chrome" });
+const browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true });
 const problems: string[] = [];
 try {
   for (const scheme of schemes) {

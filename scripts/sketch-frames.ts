@@ -230,6 +230,7 @@ const out = mkdtempSync(join(tmpdir(), "oriel-sketch-frames-"));
 const netlog = join(out, "netlog.json");
 const browser: Browser = await chromium.launch({
   channel: "chrome",
+  chromiumSandbox: true,
   args: [
     `--host-resolver-rules=MAP *.exfil.test 127.0.0.1, EXCLUDE localhost`,
     `--log-net-log=${netlog}`,

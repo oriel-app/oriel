@@ -185,7 +185,7 @@ function report(label: string, opens: Open[]) {
   });
 }
 
-const browser = await chromium.launch({ channel: "chrome" });
+const browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true });
 const problems: string[] = [];
 const started: Serving[] = [];
 try {

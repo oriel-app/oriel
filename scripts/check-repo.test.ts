@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   actionProblems,
   allowlist,
+  chromeLaunchProblems,
   decisionClashes,
   exemptRoutes,
   lockedPackages,
@@ -468,4 +469,47 @@ test("two decisions with one number are caught, once per number", () => {
   assert.equal(found.length, 1);
   assert.match(found[0] ?? "", /0049-sheets\.md and 0049-sketch-sizes\.md and 0049-themes\.md/);
   assert.match(found[0] ?? "", /next-decision/);
+});
+
+test("a Chrome launch must be the installed Chrome with its sandbox on, and nothing passes --no-sandbox", () => {
+  const ok = `const browser = await chromium.launch({
+  channel: "chrome",
+  chromiumSandbox: true,
+  args: [\`--log-net-log=\${join(out, "x")}\`],
+});`;
+  assert.deepEqual(chromeLaunchProblems("scripts/ok.ts", ok), []);
+  const bundled = chromeLaunchProblems(
+    "scripts/a.ts",
+    `await chromium.launch({ chromiumSandbox: true });`,
+  );
+  assert.equal(bundled.length, 1);
+  assert.match(
+    bundled[0] ?? "",
+    /^scripts\/a\.ts: .*channel: "chrome"; it renders agent-written HTML/,
+  );
+  const unsandboxed = chromeLaunchProblems(
+    "scripts/b.ts",
+    `await chromium.launchPersistentContext(dir, { channel: "chrome" });`,
+  );
+  assert.equal(unsandboxed.length, 1);
+  assert.match(unsandboxed[0] ?? "", /chromiumSandbox: true/);
+  // The options belong to the call: a later call's don't count for it.
+  assert.equal(
+    chromeLaunchProblems(
+      "scripts/c.ts",
+      `await chromium.launch(); const o = { channel: "chrome", chromiumSandbox: true };`,
+    ).length,
+    2,
+  );
+  const flagged = chromeLaunchProblems(
+    "scripts/d.ts",
+    `spawn(chrome, ["--headless", "--no-sandbox"]);`,
+  );
+  assert.equal(flagged.length, 1);
+  assert.match(flagged[0] ?? "", /passes --no-sandbox/);
+  assert.ok(
+    problems({ ...clean, sources: [{ path: "scripts/e.ts", text: "chromium.launch({})" }] }).some(
+      (p) => p.startsWith("scripts/e.ts: launches Chrome"),
+    ),
+  );
 });
