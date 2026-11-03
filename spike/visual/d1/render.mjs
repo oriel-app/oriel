@@ -22,7 +22,12 @@ try {
     await tab.goto(`file://${page}`);
     await tab.waitForFunction("window.contrast");
     contrast[theme] = await tab.evaluate("window.contrast");
-    shots[theme] = (await tab.screenshot({ fullPage: true })).toString("base64");
+    // A tall window, not a full-page capture, which leaves the sandboxed
+    // frame below the fold blank.
+    const height = await tab.evaluate("document.documentElement.scrollHeight");
+    await tab.setViewportSize({ width: 1180, height });
+    await tab.waitForTimeout(200);
+    shots[theme] = (await tab.screenshot()).toString("base64");
     writeFileSync(`${out}/specimen-${theme}.png`, Buffer.from(shots[theme], "base64"));
     await context.close();
   }

@@ -44,6 +44,9 @@ const svg = (kind, cls = "chip-icon") =>
 const chip = (kind, key, name, state, stateName) =>
   `<a class="chip-link" href="#"><span class="chip" data-kind="${kind}"${state ? ` data-state="${state}"` : ""}>${svg(kind)}${key ? `<span class="chip-key">${key}</span>` : ""}<span class="chip-name">${name}</span>${stateName ? `<span class="chip-state">${stateName}</span>` : ""}</span></a>`;
 
+// The one accent: A's indigo, or B's signal (B's buttons and links are ink).
+const accent = dir === "b" ? "--signal" : "--accent";
+const onAccent = dir === "b" ? "--on-signal" : "--on-accent";
 const neutrals = ["--n0", "--n1", "--n2", "--n3", "--n4", "--n5", "--n6", "--n7"];
 const states = [
   ["--todo", "To do"],
@@ -67,9 +70,10 @@ button{padding:6px 14px;border:0;border-radius:6px;background:#3d47c4;color:#fff
 
 const contrastPairs = [
   ...["--n7", "--n6", "--n5"].flatMap((t) => ["--n0", "--n1", "--n2"].map((b) => [t, b])),
-  ["--accent", "--n0"],
-  ["--accent", "--n1"],
-  ["--on-accent", "--accent"],
+  [accent, "--n0"],
+  [accent, "--n1"],
+  [onAccent, accent],
+  ...(dir === "b" ? [["--n0", "--n7"]] : []),
   ...states.flatMap(([t]) => [
     [t, "--n0"],
     [t, "--n1"],
@@ -132,7 +136,7 @@ const html = `<!doctype html>
 <div class="grid">${neutrals.map((n) => `<div class="sw"><i style="background:var(${n})"></i><b>${n}</b><span data-value="${n}"></span></div>`).join("")}</div>
 <h3>One accent, seven states, and each state's tint</h3>
 <div class="grid">
-  <div class="sw"><i style="background:var(--accent)"></i><b>--accent</b><span data-value="--accent"></span></div>
+  <div class="sw"><i style="background:var(${accent})"></i><b>${accent}</b><span data-value="${accent}"></span></div>
   ${states.map(([t, name]) => `<div class="sw"><i style="background:linear-gradient(90deg,var(${t}) 55%, color-mix(in srgb, var(${t}) var(--tint), var(--n0)) 55%)"></i><b>${t}</b>${name} <span data-value="${t}"></span></div>`).join("")}
 </div>
 <h3>Text on background, WCAG 2 contrast (AA is 4.5 for text)</h3>
