@@ -266,7 +266,7 @@ add(
   ),
 );
 const failedInstall = (details: boolean) =>
-  `<div class="box bad"><p><strong>Claude Code didn't install, and nothing changed on your Mac.</strong> The download from Anthropic stopped. A work network can block it; if trying again doesn't help, send the details to your IT team.</p><div class="actions">${button("Try again", "primary")}${button(details ? "Hide details" : "Show details")}${details ? button("Copy details") : link("Other ways to install")}</div>${
+  `<div class="box bad"><p><strong>Claude Code didn't finish installing.</strong> The download from Anthropic stopped partway. A work network can block it; if trying again doesn't help, send the details to your IT team.</p><div class="actions">${button("Try again", "primary")}${button(details ? "Hide details" : "Show details")}${details ? button("Copy details") : link("Other ways to install")}</div>${
     details
       ? `<pre class="log">Oriel 0.9.0 · macOS 26.1 · Apple silicon
 23:14:02  Install Claude Code with Anthropic's installer
@@ -274,7 +274,7 @@ const failedInstall = (details: boolean) =>
 23:14:03  Downloading Claude Code 2.1.317…
 23:14:51  curl: (56) Recv failure: Connection reset by peer
 23:14:51  Download failed
-23:14:51  The installer stopped (exit 1). Nothing was installed.</pre><p class="small faint">These hold no password or key. Send them to whoever helps you with your Mac.</p>`
+23:14:51  The installer stopped (exit 1) before Claude Code was set up.</pre><p class="small faint">These hold no password or key. Send them to whoever helps you with your Mac.</p>`
       : ""
   }</div>`;
 add(
@@ -606,6 +606,80 @@ ${
 </main></div>`;
 add("31-change", "A change to approve", thread(true, false), "");
 add("32-approved", "Approved", thread(true, true), "");
+
+// After the design critique: the test turn, a sync that fails, a version too
+// new, and a folder alone.
+
+add(
+  "36-test-turn-limit",
+  "The test turn hit a usage limit",
+  aiStep(
+    card(
+      row(
+        "claude",
+        `<span class="ready">Signed in</span> · Claude Pro · maya@example.com`,
+        "",
+        `<div class="box warn"><p><strong>Claude Code is signed in, but your Claude plan has reached its usage limit until 3:40 pm.</strong> You can finish setting up now; questions to Oriel wait until then.</p><div class="actions">${button("Continue anyway", "primary")}${button("Use Codex")}${link("Pay Anthropic per question instead")}</div></div>`,
+        true,
+      ),
+      missing("codex"),
+    ),
+    "Continue with Claude Code",
+    false,
+  ),
+);
+add(
+  "37-sync-failed",
+  "A source failed to read",
+  `${top}<main class="setup"><h1>Reading your work</h1><p class="setup-lead">Usually under a minute. Oriel shows your work when it's done.</p>${card(
+    source(
+      "J",
+      "Jira · Payments",
+      `Stopped after 40 of 120 issues: Jira didn't answer.`,
+      `<div class="box bad" style="margin-top:var(--space-2)"><div class="actions" style="margin-top:0">${button("Try again", "primary")}${button("Change")}${button("Copy details")}</div></div>`,
+      "",
+    ),
+    source("F", "Launch notes", `23 files`, `<span class="ready">Done</span>`, ""),
+  )}<footer class="setup-foot"><div class="left"><span class="faint">Your notes are ready. Jira can catch up later.</span></div>${button("Open with what's ready", "primary big")}</footer></main>`,
+);
+add(
+  "38-too-new",
+  "Installed, but newer than Oriel works with",
+  aiStep(
+    card(
+      row(
+        "claude",
+        `This Claude Code (3.0.1) is newer than Oriel works with yet.`,
+        "",
+        `<div class="box"><p>Oriel's next update will work with it. Until then:</p><div class="actions">${button("Use Codex")}${link("Pay Anthropic per question instead")}${link("Set up later")}</div></div>`,
+      ),
+      missing("codex"),
+    ),
+    "Continue",
+    false,
+  ),
+);
+add(
+  "39-folder-only",
+  "The window with only a folder",
+  `<div class="win"><aside class="win-side">
+<div class="win-brand"><img src="../../../packages/web/assets/icon.svg" alt=""> Oriel</div>
+<div class="win-nav">Window</div>
+<div class="win-label">Workstreams</div><div class="win-empty">None yet.</div>
+<div class="win-sources"><div><span>Launch notes</span><span class="faint">23 files</span></div></div>
+</aside><main class="win-main">
+<div class="win-head"><span class="tab" aria-current="page">Overview</span><span class="tab">Browse</span><span class="faint">23 items · 0 workstreams</span></div>
+<div class="hello"><span><strong>Oriel only reads folders.</strong> Ask about your notes now; to have Oriel draft changes for you to approve, connect Jira or Slack.</span>${button("Connect Jira or Slack")}</div>
+<div class="ask"><div class="input">Ask about your window</div>${button("Ask", "primary")}</div>
+<div class="starts"><span class="start" data-hot>What's in Launch plan?</span><span class="start">Make Launch plan a workstream</span></div>
+<div class="sec">Not in a workstream yet · 3</div><div class="rows">
+<div class="r"><div><span class="rule">Oriel rule</span> <span class="faint small">A folder no workstream holds</span></div></div>
+<div class="r"><span>Launch plan</span><span class="faint">9 files · Folder</span></div>
+<div class="r"><span>Research</span><span class="faint">8 files · Folder</span></div>
+<div class="r"><span>Meeting notes</span><span class="faint">6 files · Folder</span></div>
+</div></main></div>`,
+  "",
+);
 
 // Coming back, skipping, and Settings.
 

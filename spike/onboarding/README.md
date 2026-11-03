@@ -10,6 +10,8 @@ Your work: `21` the sources → `22` Jira → `23` Jira refused → `24` the pro
 
 After: `29` the overview, first run → `30` the first answer → `31` a change to approve → `32` approved. Also: `33` reopened halfway, `34` the AI skipped, `35` Settings with the same rows.
 
+Added after the design critique: `36` the test turn meets a usage limit · `37` a source fails to read · `38` a version newer than Oriel works with · `39` the window with only a folder, which Oriel only reads.
+
 ## Walkthroughs
 
 Two agents walked round 1, each given only a persona and the screenshots in order. Both guessed about 11 minutes from the first screen to an approved change, four of them on Jira's token. Both said they'd stop at Terminal.
@@ -36,3 +38,19 @@ Two agents walked round 1, each given only a persona and the screenshots in orde
 | With the AI skipped, the sidebar said "or ask Oriel to" (ChatGPT)                                                                    | Removed                                                                                                                                                                   |
 
 Declined: a field to paste the code the vendor's page shows, since it would pass a sign-in code through Oriel (0038, the vendors' terms); signing in with Atlassian now, which needs an Atlassian app and somewhere to keep its secret.
+
+## Design critique
+
+Codex Sol read decision 0038 and these screens: changes asked, two blockers and seven shoulds. All nine taken; the decision's text carries the fixes.
+
+| Finding | Change |
+| --- | --- |
+| D1 blocker: a folder alone can't reach an approved change set | With a folder alone the first run ends at the first answer, and the overview says changes need Jira or Slack (`39`) |
+| D2: one completion fact can't remember a skip, or which AI was picked | The setup stores each step done or skipped; the AI picked is a setting |
+| D3: the test turn's failures had no screen | A usage limit, no connection, no access and a refused configuration each get a sentence and a way on (`36`) |
+| D4: a sync that fails or reads nothing had no screen | Per-source failure with Try again and Change; the overview opens with what's ready (`37`) |
+| D5: Update can't fix a version too new, and the installer could install one | Too new says Oriel's next update will support it; Oriel names a supported version to the installer (`38`) |
+| D6 blocker: Claude's installer runs the binary before Oriel can check it | The decision says whom the install trusts: the vendor's installer and manifest; Oriel's own signature check guards Oriel's launches |
+| D7: the installer would run with the person's PATH | A fixed system PATH, and `codesign` and `spctl` by absolute path |
+| D8: the budget's measurement mixed people and scripts | Three timed paths; telemetry measures people, the scripted run Oriel's part |
+| D9: "nothing changed on your Mac" claims more than a failed install proves | "Didn't finish installing" (`15`, `16`) |

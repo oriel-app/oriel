@@ -128,6 +128,22 @@
     "title": "Approved"
   },
   {
+    "name": "36-test-turn-limit",
+    "title": "The test turn hit a usage limit"
+  },
+  {
+    "name": "37-sync-failed",
+    "title": "A source failed to read"
+  },
+  {
+    "name": "38-too-new",
+    "title": "Installed, but newer than Oriel works with"
+  },
+  {
+    "name": "39-folder-only",
+    "title": "The window with only a folder"
+  },
+  {
     "name": "33-welcome-back",
     "title": "Quit halfway, then reopened"
   },
