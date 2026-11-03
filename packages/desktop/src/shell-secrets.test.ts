@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import { type Crypt, secretStore } from "../shell/secrets.ts";
+import { type Crypt, secretStore, shellSecrets } from "../shell/secrets.ts";
 
 // Stands in for safe storage: a fixed XOR, enough to tell ciphertext from
 // the secret on disk.
@@ -101,4 +101,26 @@ test("a secret under a key the OS has moved on from is written again", async (t)
   state.stale = true;
   assert.equal(await store.get("jira"), "tok");
   assert.notEqual(statSync(join(dir, "jira")).ino, before);
+});
+
+test("secrets kept in memory never reach safe storage", async (t) => {
+  const dir = folder(t);
+  let reached = 0;
+  const os = () => {
+    reached++;
+    return fakeCrypt().crypt;
+  };
+  const store = shellSecrets(true, dir, os);
+  assert.equal(await store.get("jira"), null);
+  await store.set("jira", "tok-123");
+  assert.equal(await store.get("jira"), "tok-123");
+  await store.delete("jira");
+  assert.equal(await store.get("jira"), null);
+  await assert.rejects(store.set("slack", "s"), /not a secret's name/);
+  assert.equal(reached, 0);
+  assert.throws(() => readdirSync(dir), { code: "ENOENT" });
+  // Otherwise, the OS's store.
+  await shellSecrets(false, dir, os).set("jira", "tok-123");
+  assert.equal(reached, 1);
+  assert.deepEqual(readdirSync(dir), ["jira"]);
 });

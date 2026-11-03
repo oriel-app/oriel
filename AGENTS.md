@@ -7,6 +7,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 - `pnpm check`: typecheck, lint, unit tests, repo checks. It must be green before you say done; report its output, not "tests pass".
 - `pnpm --filter <pkg> check` while iterating. CI runs everything.
 - `pnpm perf`: the window's open on a 4,000-item world, in Chrome, against its budget. Run it after touching the index, the overview or Browse.
+- `pnpm desktop:try <scenario>`: the built desktop app, hidden, on a fresh data folder, with its secrets in memory. See `packages/desktop/README.md`.
 
 ## Gotchas
 
@@ -17,6 +18,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 ## Ways to hurt yourself
 
+- Launching the desktop app any other way than `pnpm desktop:try`. Its window and Keychain prompts land on the maintainer's screen.
 - Putting source content (titles, descriptions, comments) in a system prompt or a `.d.ts`. It belongs in tool results.
 - Any import path from sandbox, bindings or thread code to a `SourceWriter`.
 - Reading the clock, the network or a live model in a unit test.

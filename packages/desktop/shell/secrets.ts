@@ -4,6 +4,10 @@
 // written to its own file in the data folder's `Secrets/`. Only ciphertext
 // is ever on disk, and no secret is ever logged. The encryption is a
 // parameter, so tests reach the files without Electron.
+//
+// Under `--background` or `--launch-file`, for development, secrets are kept
+// in memory instead, so a launch from a script never reaches safe storage or
+// the OS's key (rules.ts, secretsInMemory).
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { secretNames } from "./rules.ts";
@@ -22,11 +26,29 @@ export type SecretStore = {
   delete(name: string): Promise<void>;
 };
 
-export function secretStore(dir: string, crypt: Crypt): SecretStore {
-  const file = (name: string) => {
-    if (!secretNames.includes(name)) throw new Error("not a secret's name");
-    return join(dir, name);
+const named = (name: string) => {
+  if (!secretNames.includes(name)) throw new Error("not a secret's name");
+  return name;
+};
+
+// The store the shell uses: in memory, where `os` is never called, or the
+// OS's.
+export function shellSecrets(inMemory: boolean, dir: string, os: () => Crypt): SecretStore {
+  return inMemory ? memorySecrets() : secretStore(dir, os());
+}
+
+// Secrets kept only while the app runs, and gone when it quits.
+export function memorySecrets(): SecretStore {
+  const kept = new Map<string, string>();
+  return {
+    get: async (name) => kept.get(named(name)) ?? null,
+    set: async (name, secret) => void kept.set(named(name), secret),
+    delete: async (name) => void kept.delete(named(name)),
   };
+}
+
+export function secretStore(dir: string, crypt: Crypt): SecretStore {
+  const file = (name: string) => join(dir, named(name));
   const usable = async () => {
     const problem = await crypt.problem();
     if (problem) throw new Error(problem);

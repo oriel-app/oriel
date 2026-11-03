@@ -19,7 +19,8 @@
 // Only an Apple-issued certificate, such as the Apple Development one any
 // Apple ID gets, carries a team ID, so only builds signed as one read the
 // item without asking (decision 0047).
-// A new build replaces the old one; the zip stays cached beside it.
+// A new build replaces the old one. The zip stays cached outside the repo,
+// in `~/Library/Caches/oriel/electron/`, which every worktree shares.
 //
 // `--measure` marks the build so that `--measure <file>` at launch writes when
 // the overview first rendered, for timing a start.
@@ -38,10 +39,19 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { electronNode, electronZips, type Target, target, zipName, zipUrl } from "./electron.ts";
+import {
+  electronNode,
+  electronZips,
+  type Target,
+  target,
+  zipCache,
+  zipName,
+  zipUrl,
+} from "./electron.ts";
 import { readFuses, setFuses } from "./fuses.ts";
 
 export type Manifest = {
@@ -127,9 +137,8 @@ export const helperSuffixes = ["", " (GPU)", " (Plugin)", " (Renderer)"];
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-// The pinned zip, from the cache if its hash still matches.
-async function electronZip(cache: string, on: Target): Promise<string> {
-  const path = join(cache, zipName(on));
+// The pinned zip, from the cache at `path` if its hash still matches.
+async function electronZip(path: string, on: Target): Promise<string> {
   const expected = electronZips[on];
   if (existsSync(path) && sha256(path) === expected) return path;
   console.log(`Downloading ${zipUrl(on)}…`);
@@ -139,9 +148,11 @@ async function electronZip(cache: string, on: Target): Promise<string> {
   const got = createHash("sha256").update(bytes).digest("hex");
   if (got !== expected)
     throw new Error(`${zipName(on)} has SHA-256 ${got}, not the pinned ${expected}`);
-  mkdirSync(cache, { recursive: true });
-  writeFileSync(`${path}.part`, bytes);
-  renameSync(`${path}.part`, path);
+  mkdirSync(dirname(path), { recursive: true });
+  // Another worktree's build may be downloading it too.
+  const part = `${path}.${process.pid}.part`;
+  writeFileSync(part, bytes);
+  renameSync(part, path);
   return path;
 }
 
@@ -326,7 +337,7 @@ if (import.meta.main) {
   console.log("Building the web app…");
   execFileSync("pnpm", ["--filter", "@oriel/web", "build"], { cwd: root, stdio: "inherit" });
 
-  const zip = await electronZip(join(desktop, "build/cache"), on);
+  const zip = await electronZip(zipCache(homedir(), on), on);
   rmSync(build, { recursive: true, force: true });
   mkdirSync(build, { recursive: true });
   const app = macShell(zip, build, join(desktop, "icon.svg"));
@@ -379,5 +390,5 @@ if (import.meta.main) {
       .map(([name, on]) => `${name} ${on ? "on" : "off"}`)
       .join(", ")}`,
   );
-  console.log(`Open it with: open ${relative(root, app)}`);
+  console.log("Try it with: pnpm desktop:try <scenario> (packages/desktop/README.md)");
 }
