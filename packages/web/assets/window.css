@@ -680,7 +680,7 @@ button.nav-disclose:hover {
   font-weight: var(--weight-medium);
 }
 
-.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   color: var(--accent);
 }
 
@@ -714,7 +714,7 @@ button.nav-disclose:hover {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   background: var(--accent);
 }
 
@@ -1122,7 +1122,7 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
+.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -4813,7 +4813,7 @@ button.overview-title:hover {
 }
 
 .ask-question {
-  height: 1.5rem;
+  min-height: 1.5rem;
   padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius-lg);
