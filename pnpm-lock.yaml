@@ -105,6 +105,9 @@ importers:
       '@oriel/sources':
         specifier: workspace:*
         version: link:../sources
+      '@oriel/web':
+        specifier: workspace:*
+        version: link:../web
 
   packages/folder:
     dependencies:

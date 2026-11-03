@@ -3,20 +3,20 @@
 import { type ComponentChildren, createContext } from "preact";
 import { useContext, useEffect, useMemo, useState } from "preact/hooks";
 import {
-  type ChipKind,
+  chipKey,
   chipLabel,
-  type ChipState,
+  chipName,
+  chipState,
   chipStateName,
-  linkChip,
+  keyLabel,
   stateNames,
-  type Workspace,
 } from "./chip.ts";
 import { carries, type Dropped, readDrop } from "./drop.ts";
 import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
-import type { ItemRow, MemberView, ThreadStateId, WaitingOn } from "./view.ts";
+import type { Chips, ChipView, ItemRow, MemberView, ThreadStateId, WaitingOn } from "./view.ts";
 
 export type Dispatch = (msg: Msg) => void;
 
@@ -227,9 +227,12 @@ export function Replies(props: { id: string; replies: { count: number; url: stri
 // A link opens only to a site the thread's own items come from (`linksTo`, as
 // origins), or with "any", to any http(s) address; any other shows its label
 // and its whole address as text. A link to an item the page knows is a link
-// to that item (`ItemLink`).
-export function Markdown({ text, linksTo }: { text: string; linksTo: Sites }) {
-  const read = useMemo(() => parse(text), [text]);
+// to that item (`ItemLink`). Only an agent's answer (`answer`) has chips
+// (decision 0032), drawn from `ChipsContext`; in any other text, such as a
+// source's own, `[[…]]` is text.
+export function Markdown(props: { text: string; linksTo: Sites; answer?: boolean }) {
+  const { text, linksTo, answer = false } = props;
+  const read = useMemo(() => parse(text, { chips: answer }), [text, answer]);
   return <ProseBlocks prose={read} linksTo={linksTo} />;
 }
 
@@ -333,6 +336,8 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
       );
     case "route":
       return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
+    case "chip":
+      return <AnswerChip key={key} id={inline.id} />;
     case "mention":
     case "channel":
       return (
@@ -343,66 +348,131 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
   }
 }
 
-// A reply's link to a thread in Oriel, or a change set in one: a chip with
-// its name and where it stands, which opens it in the window, as any in-app
-// link does. One the window doesn't know shows the reply's label. Where
-// nothing can navigate, as on a review link's page, it is its label.
+// A reply's link to a thread in Oriel, or a change set in one, which opens it
+// in the window, as any in-app link does. Where nothing can navigate, as on a
+// review link's page, it is its label.
 function RouteLink(props: { route: Route; label: ComponentChildren }) {
   const links = useContext(ItemLinksContext);
-  const workspace = useContext(WorkspaceContext);
   if (links === null) return <span>{props.label}</span>;
-  const chip = linkChip(props.route, workspace);
-  if (chip === null)
-    return (
-      <Link route={props.route} dispatch={links.dispatch}>
-        {props.label}
-      </Link>
-    );
   return (
-    <Link
-      route={props.route}
-      dispatch={links.dispatch}
-      class="chip-link"
-      aria-label={chipLabel(chip)}
-    >
-      <Chip kind={chip.kind} name={chip.name ?? props.label} state={chip.state} />
+    <Link route={props.route} dispatch={links.dispatch}>
+      {props.label}
     </Link>
   );
 }
 
-// The window's threads and their change sets, for the chips that name them.
-export const WorkspaceContext = createContext<Workspace>({ threads: null, changeSets: null });
+// The chips a thread's answers name, by ID, as the server resolved them.
+export const ChipsContext = createContext<Chips>({});
 
-// A chip (chip.ts): its kind's icon, its name, and where it stands.
-export function Chip(props: { kind: ChipKind; name: ComponentChildren; state: ChipState | null }) {
-  const { kind, state } = props;
+// A chip in an answer, by its ID. One the server hasn't resolved yet, named
+// while the turn runs, holds its place until the thread reloads as the turn
+// ends; one it couldn't resolve says so.
+function AnswerChip({ id }: { id: string }) {
+  const chips = useContext(ChipsContext);
+  if (!Object.hasOwn(chips, id))
+    return (
+      <span class="chip" data-pending="">
+        …
+      </span>
+    );
+  const view = chips[id];
+  if (!view)
+    return (
+      <span class="chip" data-unknown="" title="Oriel has nothing with this ID">
+        unknown reference
+      </span>
+    );
+  return <Chip id={id} view={view} />;
+}
+
+// A chip (chip.ts), wherever an item, a thread, a change set or a workstream
+// is named in a line: its kind's icon and its key, which never break apart,
+// its name, cut at a word, and where it stands. It opens the item in the
+// panel, or the thread or workstream. Where nothing can navigate, as on a
+// review link's page, it is text: its name and where it stands.
+export function Chip({ id, view }: { id: string; view: ChipView }) {
+  const links = useContext(ItemLinksContext);
+  const key = chipKey(view);
+  const state = chipStateName(view);
+  const label = chipLabel(view);
+  if (links === null)
+    return (
+      <span class="chip" data-kind={view.kind} data-plain="">
+        {[key, view.name].filter(Boolean).join(" ")}
+        {state && ` (${state})`}
+      </span>
+    );
+  // Without a key, the icon keeps the name's first word beside it instead.
+  const name = chipName(view.name);
+  const space = key ? -1 : name.indexOf(" ");
+  const first = space < 0 ? name : name.slice(0, space);
+  const body = (
+    <>
+      <span class="chip-lead">
+        <ChipIcon view={view} />
+        {key ? <span class="chip-key">{key}</span> : <span class="chip-name">{first}</span>}
+      </span>
+      {key && " "}
+      {(key || space >= 0) && <span class="chip-name">{key ? name : name.slice(space)}</span>}
+      {state && <span class="chip-state">{state}</span>}
+    </>
+  );
+  const shared = { "data-kind": view.kind, "data-state": chipState(view) };
+  if (view.kind === "item")
+    return (
+      <span class="chip" {...shared} title={label}>
+        <ItemLink item={{ id, url: view.url }} class="chip-link">
+          {body}
+        </ItemLink>
+      </span>
+    );
+  const route: Route =
+    view.kind === "thread"
+      ? { page: "thread", id }
+      : view.kind === "change-set"
+        ? { page: "thread", id: view.thread, changeSet: id }
+        : { page: "workstream", id };
   return (
-    <span class="chip" data-kind={kind} data-state={state ?? undefined}>
-      <ChipIcon kind={kind} />
-      <span class="chip-name">{props.name}</span>
-      {state && <span class="chip-state">{chipStateName(state)}</span>}
+    <span class="chip" {...shared} title={label}>
+      <Link route={route} dispatch={links.dispatch} class="chip-link" aria-label={label}>
+        {body}
+      </Link>
     </span>
   );
 }
 
-function ChipIcon({ kind }: { kind: ChipKind }) {
-  switch (kind) {
-    // A speech bubble: a chat.
-    case "thread":
-      return (
-        <svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z" />
-        </svg>
-      );
-    // A plus over a minus: a diff.
-    case "change-set":
-      return (
-        <svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2.5" y="2" width="11" height="12" rx="2" />
-          <path d="M8 4.5v4M6 6.5h4M6 11h4" />
-        </svg>
-      );
-  }
+function ChipIcon({ view }: { view: ChipView }) {
+  const shape =
+    view.kind === "thread" ? (
+      // A speech bubble: a chat.
+      <path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z" />
+    ) : view.kind === "change-set" ? (
+      // A plus over a minus: a diff.
+      <>
+        <rect x="2.5" y="2" width="11" height="12" rx="2" />
+        <path d="M8 4.5v4M6 6.5h4M6 11h4" />
+      </>
+    ) : view.kind === "workstream" ? (
+      // Lines of a list.
+      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
+    ) : view.source === "folder" ? (
+      // A page with its corner turned.
+      <path d="M4 2h5l3 3v9H4zM9 2v3h3" />
+    ) : view.source === "slack" ? (
+      // A message.
+      <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />
+    ) : (
+      // A ticket's tick.
+      <>
+        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+        <path d="M5.5 8l1.8 1.8L10.5 6" />
+      </>
+    );
+  return (
+    <svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {shape}
+    </svg>
+  );
 }
 
 function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChildren }) {
@@ -429,13 +499,7 @@ function MarkdownLink(props: { href: string; sites: Sites; label: ComponentChild
   );
 }
 
-// What a person reads for an item's key. A file's key is a hash and a
-// message's is a channel ID and a time, which mean nothing to anyone, so each
-// reads as what the item is; its title says which.
-export function keyLabel(item: { id: string; key: string }): string {
-  if (item.id.startsWith("folder:")) return "File";
-  return item.id.startsWith("slack:") ? "Message" : item.key;
-}
+export { keyLabel } from "./chip.ts";
 
 // A working thread reads as what it waits on, so one whose agent has finished
 // doesn't look busy.

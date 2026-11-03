@@ -184,6 +184,7 @@ test("an item that moved keeps its title in a workstream's history and a thread'
     now: () => at,
     running: () => false,
     changeSets: {
+      get: async () => null,
       ofThread: async () => [],
       nextSteps: async () => [],
       applying: () => false,
@@ -193,15 +194,15 @@ test("an item that moved keeps its title in a workstream's history and a thread'
   });
   const added = (await shown.workstream(id(2)))?.changes[0]?.added[0];
   assert.deepEqual([added?.key, added?.title], ["OA-1", "Moved story"]);
-  const marker = shown
-    .thread(
+  const marker = (
+    await shown.thread(
       id(3),
       [],
       new Map(),
       () => false,
       () => false,
     )
-    ?.entries.find((e) => e.kind === "marker");
+  )?.entries.find((e) => e.kind === "marker");
   assert.ok(marker?.kind === "marker");
   assert.deepEqual(
     marker.added.map((r) => r.title),

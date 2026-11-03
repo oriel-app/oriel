@@ -4,8 +4,8 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
-import { ItemListContext, Member } from "./parts.tsx";
-import type { BlockView } from "./view.ts";
+import { Chip, ItemListContext } from "./parts.tsx";
+import type { BlockView, ChipView, MemberView } from "./view.ts";
 
 const number = (value: number) => value.toLocaleString("en-US");
 
@@ -78,12 +78,26 @@ function BlockBody({ block }: { block: BlockView }) {
     case "rows":
       return (
         <ItemListContext.Provider value={block.items.map((item) => item.ref.id)}>
-          <ul class="members compact">
+          <ul class="block-rows">
             {block.items.map((item, i) => (
-              <Member key={i} member={item} inRegion={item.inRegion === true} />
+              <li key={i}>
+                <Chip id={item.ref.id} view={rowChip(item)} />
+                {item.inRegion && <span class="in-region">in this workstream</span>}
+              </li>
             ))}
           </ul>
         </ItemListContext.Provider>
       );
   }
 }
+
+// A row's item as a chip, so it looks as it does named in a sentence
+// (decision 0032); one the index no longer has says so.
+const rowChip = ({ ref, row }: MemberView): ChipView => ({
+  kind: "item",
+  source: ref.id.slice(0, ref.id.indexOf(":")),
+  key: ref.key,
+  name: row?.title ?? ref.title ?? "Not in the index",
+  url: ref.url,
+  state: row?.status ?? null,
+});

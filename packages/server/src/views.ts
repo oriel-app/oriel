@@ -13,6 +13,7 @@ import {
   type IndexRecord,
   type Instant,
   type ItemId,
+  isUlid,
   type NextStep,
   parseItemId,
   type Presentations,
@@ -24,9 +25,10 @@ import { itemRow } from "@oriel/groupings";
 import type {
   BlockView,
   ChangeSetStatus,
-  ChangeSetSummaryView,
   ChangeSetView,
   ChatEntry,
+  Chips,
+  ChipView,
   DiffView,
   WorkstreamChangeView,
   WorkstreamSummary,
@@ -39,7 +41,8 @@ import type {
   ThreadSummaryView,
   ThreadView,
 } from "@oriel/web/view";
-import { waitingOn } from "@oriel/web/view";
+import { chipIds } from "@oriel/web/markdown";
+import { waitingOn, waitsOnUser } from "@oriel/web/view";
 import { actionLineView } from "./action-lines.ts";
 import { agentEvent, type AgentEvent } from "./agent.ts";
 import { listedWorkstreams } from "./window-chat.ts";
@@ -54,7 +57,7 @@ export type ViewDeps = {
   asOf: () => Instant;
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
-  changeSets: Pick<ChangeSets, "ofThread" | "nextSteps" | "applying" | "stalled">;
+  changeSets: Pick<ChangeSets, "get" | "ofThread" | "nextSteps" | "applying" | "stalled">;
   writable: boolean;
 };
 
@@ -414,6 +417,8 @@ export function views(deps: ViewDeps) {
       return { ...at, kind: "held", from: sender, text, outcome };
     }
     if (message.role === "note") {
+      // The agent alone reads of unknown chips: the answer showed each.
+      if (message.note.kind === "unknown-chips") return null;
       const { kind, changeSet, via } = message.note;
       return { ...at, kind: "note", note: { kind, changeSetId: changeSet, via } };
     }
@@ -493,6 +498,64 @@ export function views(deps: ViewDeps) {
     }
   };
 
+  // What each ID a thread's answers name is, as its chip draws it (decision
+  // 0032): an item from the index, by its handle now, or a thread, change
+  // set or workstream from Oriel's own data; null for one Oriel can't
+  // resolve. An item the thread's workstream has held, gone from the index
+  // since, is its key, as the workstream shows it. Nothing comes from the
+  // answer's own words.
+  const chips = async (ids: readonly string[], threadId: Ulid): Promise<Chips> => {
+    const { byId } = lookup();
+    const asOf = deps.asOf();
+    const now = deps.now();
+    const workstreamId = threads.get(threadId, now)?.workstreamId;
+    const held = new Set(
+      workstreamId
+        ? workstreams.changes(workstreamId, 0).flatMap((change) => change.added.map((m) => m.id))
+        : [],
+    );
+    const chip = async (id: string): Promise<ChipView | null> => {
+      const parsed = parseItemId(id);
+      if (parsed) {
+        const record = byId.get(id as ItemId);
+        if (!record && held.has(id as ItemId)) {
+          const name = "Not in the index";
+          return {
+            kind: "item",
+            source: parsed.source,
+            key: parsed.key,
+            name,
+            url: null,
+            state: null,
+          };
+        }
+        if (!record) return null;
+        const row = itemRow(record, asOf, deps.presentations);
+        const { key, title: name, status: state } = row;
+        const url = webUrl(record.location);
+        return { kind: "item", source: parsed.source, key, name, url, state };
+      }
+      if (!isUlid(id)) return null;
+      const thread = threads.get(id, now);
+      if (thread) {
+        const summary = await threadSummary({ thread, activityAt: thread.createdAt });
+        const state = waitsOnUser(summary.waitingOn) ? "needs-you" : thread.state;
+        return { kind: "thread", name: summary.title ?? "New thread", state };
+      }
+      const workstream = workstreams.get(id);
+      if (workstream) {
+        const done = threads.workstreamDone(id, now) !== null;
+        return { kind: "workstream", name: workstream.name, done };
+      }
+      const set = await deps.changeSets.get(id);
+      if (!set || !threads.get(set.threadId, now)) return null;
+      const all = await deps.changeSets.ofThread(set.threadId);
+      const name = title(set.threadId) ?? "New thread";
+      return { kind: "change-set", thread: set.threadId, name, state: changeSetState(set, all) };
+    };
+    return Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await chip(id)])));
+  };
+
   const regionIds = (workstreamId: Ulid, version: number): Set<string> =>
     new Set(workstreams.region(workstreamId, version)?.items.map((m) => m.id) ?? []);
 
@@ -522,23 +585,8 @@ export function views(deps: ViewDeps) {
       return Promise.all(threads.list(workspaceId, deps.now()).map(threadSummary));
     },
 
-    // Where each change set of the workspace's threads stands, beside the
-    // list of threads, so a link to one says so wherever it is shown.
-    async changeSets(workspaceId: Ulid): Promise<ChangeSetSummaryView[]> {
-      const each = await Promise.all(
-        threads.list(workspaceId, deps.now()).map(async ({ thread }) => {
-          const all = await deps.changeSets.ofThread(thread.id);
-          return all.map((set) => ({
-            id: set.id,
-            thread: thread.id,
-            state: changeSetState(set, all),
-          }));
-        }),
-      );
-      return each.flat();
-    },
-
     title,
+    chips,
 
     entry(message: Message, threadId: Ulid): ChatEntry | null {
       const thread = threads.get(threadId, deps.now());
@@ -550,7 +598,7 @@ export function views(deps: ViewDeps) {
       );
     },
 
-    thread(
+    async thread(
       id: Ulid,
       sets: readonly ChangeSet[],
       steps: ReadonlyMap<string, readonly NextStep[]>,
@@ -559,7 +607,7 @@ export function views(deps: ViewDeps) {
       // Whether a change set can be approved here; by the thread's own
       // `writable` unless given.
       writable: (changeSetId: string) => boolean = () => deps.writable,
-    ): ThreadView | null {
+    ): Promise<ThreadView | null> {
       const thread = threads.get(id, deps.now());
       if (!thread) return null;
       const workstream = workstreams.get(thread.workstreamId);
@@ -602,6 +650,7 @@ export function views(deps: ViewDeps) {
           ),
         ),
         writable: deps.writable,
+        chips: await chips(answered(entries), id),
         ...(threads.isWindowChat(id) ? { windowChat: true as const } : {}),
       };
     },
@@ -674,3 +723,17 @@ export function views(deps: ViewDeps) {
 }
 
 export type Views = ReturnType<typeof views>;
+
+// The IDs a thread's answers name as chips. An answer streams in as many
+// text entries, which may split an ID, so each run of them is read whole.
+export function answered(entries: readonly ChatEntry[]): string[] {
+  const answers: string[] = [];
+  let last: ChatEntry | undefined;
+  for (const entry of entries) {
+    if (entry.kind === "text")
+      if (last?.kind === "text") answers[answers.length - 1] += entry.text;
+      else answers.push(entry.text);
+    last = entry;
+  }
+  return [...new Set(answers.flatMap(chipIds))];
+}

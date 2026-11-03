@@ -312,12 +312,32 @@ export type ActionLineView = {
 export type UndoView = { action: string; input: unknown };
 export type Undoable<T> = T & { undo: UndoView | null };
 
-// Where a change set of a thread stands, in a person's words: what a link to
-// it shows, wherever one is.
-export type ChangeSetSummaryView = { id: string; thread: string; state: ChangeSetState };
+// Every thread in the workspace.
+export type ThreadsView = { threads: ThreadSummaryView[] };
 
-// Every thread in the workspace, and every change set of each.
-export type ThreadsView = { threads: ThreadSummaryView[]; changeSets: ChangeSetSummaryView[] };
+// A chip (decision 0032): what an agent's answer names as `[[id]]`, as Oriel
+// draws it in the line, from the index and its own data, never from the
+// agent's words. An item, by its source, its key, its title and its status;
+// a thread, by its title and where it stands, needing the user among them; a
+// change set, by its thread's title and where it stands; a workstream, by its
+// name and whether it is done.
+export type ChipView =
+  | {
+      kind: "item";
+      source: string;
+      key: string;
+      name: string;
+      url: string | null;
+      state: { name: string; category: StatusCategory } | null;
+    }
+  | { kind: "thread"; name: string; state: ThreadStateId | "needs-you" }
+  | { kind: "change-set"; thread: string; name: string; state: ChangeSetState }
+  | { kind: "workstream"; name: string; done: boolean };
+
+// The chips a thread's answers name, by ID, as the server resolved them when
+// it built the view: null for an ID Oriel can't resolve, which draws as
+// "unknown reference". An ID not in it was named since, while the turn ran.
+export type Chips = Readonly<Record<string, ChipView | null>>;
 
 // What the sidebar's search found (OA-110): a thread, or one of its change
 // sets, with the words around the match. `query` is the query it answers, as
@@ -506,6 +526,7 @@ export type ThreadView = {
   // Whether approving can write to any source; when false, change sets can
   // be reviewed and rejected only.
   writable: boolean;
+  chips: Chips;
 };
 
 // What the thread's event stream sends: a new chat entry, or whether a turn

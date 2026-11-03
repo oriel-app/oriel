@@ -107,7 +107,6 @@ const read = (id: string, name: string, activityAt: string): ThreadRead => ({
   state: "done",
   workstream: { id: "w" as ThreadRead["id"], name: "Weather" },
   activityAt: activityAt as ThreadRead["activityAt"],
-  link: `/threads/${id}`,
 });
 
 test("threads and change sets are found by what each says, and a change set by where it stands", () => {
@@ -120,7 +119,6 @@ test("threads and change sets are found by what each says, and a change set by w
     createdAt: "2026-10-02" as ChangeSetRead["createdAt"],
     decided: { kind: "approved", by: "Amara", at: "2026-10-02" as ChangeSetRead["createdAt"] },
     changes: [{ source: "Slack", sentence: "Post in #weather as Amara.", text: ["Test post"] }],
-    link: "/threads/t1?changeSet=c1",
   };
   const found = findThreads([asking, posting], () => "", [set], "approved slack test post", 5);
   // The thread asking repeats the question; the change set answers it.

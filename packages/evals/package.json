@@ -18,6 +18,7 @@
     "@oriel/sandbox": "workspace:*",
     "@oriel/server": "workspace:*",
     "@oriel/slack": "workspace:*",
-    "@oriel/sources": "workspace:*"
+    "@oriel/sources": "workspace:*",
+    "@oriel/web": "workspace:*"
   }
 }

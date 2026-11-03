@@ -273,7 +273,7 @@ function rules(evalCase: EvalCase): Issue[] {
   // A note names a change set the workspace has.
   const sets = new Set(evalCase.oriel?.changeSets.map((set) => set.id));
   evalCase.before?.forEach((said, i) => {
-    if (said.role === "note" && !sets.has(said.note.changeSet))
+    if (said.role === "note" && said.note.kind === "rejected" && !sets.has(said.note.changeSet))
       found.push({ path: `$.before[${i}].note.changeSet`, message: "no such change set in oriel" });
   });
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)

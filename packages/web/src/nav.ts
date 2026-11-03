@@ -111,8 +111,8 @@ export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
 
 // Whether a thread waits on the user: a reason held for them, a change set
 // to review, an apply stalled on its source, or a reply. Needs you lists
-// it, and a link to it says so.
-export const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thread.waitingOn);
+// it.
+const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thread.waitingOn);
 
 // A decision sent from the thread's page shows in every list at once: while
 // the list still has the thread needing a review, it waits on what the
@@ -120,7 +120,7 @@ export const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thre
 // Needs you as applying, and Reject leaves it there only if it still needs
 // the user. Whatever the server says next stands, as does a failure, which
 // puts it back.
-export function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryView {
+function decided(model: Model): (summary: ThreadSummaryView) => ThreadSummaryView {
   const { thread } = model;
   const ahead = thread && Object.keys(thread.deciding).length > 0 ? expected(thread) : null;
   if (thread === null || ahead === null) return (summary) => summary;

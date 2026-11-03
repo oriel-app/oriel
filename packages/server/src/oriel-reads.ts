@@ -5,7 +5,6 @@
 // the same things. It reads no source: what a change set wrote is told from
 // its rows and the index (`ChangeSets.changes`).
 import {
-  changeSetLink,
   type ChangeSetRead,
   type ChangeSets,
   findThreads,
@@ -13,7 +12,6 @@ import {
   type Known,
   type OrielReads,
   type ThreadRead,
-  threadLink,
   type Ulid,
 } from "@oriel/core";
 import type { Message, ThreadStore, WorkstreamStore } from "@oriel/db";
@@ -60,7 +58,6 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
           name: workstreams.get(thread.workstreamId)?.name ?? "",
         },
         activityAt,
-        link: threadLink(thread.id),
       }));
 
   // Each thread's change sets, newest first, read as a person reads them.
@@ -81,7 +78,6 @@ export function orielReads(deps: OrielReadDeps): OrielReads {
               at: set.decision.at,
             },
             changes: await deps.changeSets.changes(set, known),
-            link: changeSetLink(thread, set.id),
           })),
         );
       }),

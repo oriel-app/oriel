@@ -154,6 +154,7 @@ export const threadView = (over: Partial<ThreadView> = {}): ThreadView => ({
   running: false,
   changeSets: [],
   writable: true,
+  chips: {},
   ...over,
 });
 

@@ -2,8 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import { WorkstreamPage } from "./workstream-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
-import { decided, doneTab, workstreamThreads, nav } from "./nav.ts";
-import { type Dispatch, ItemLinksContext, Link, Mark, plural, WorkspaceContext } from "./parts.tsx";
+import { doneTab, workstreamThreads, nav } from "./nav.ts";
+import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
@@ -74,12 +74,6 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
-  // What links to threads and change sets name, on the page and in the panel.
-  // Each thread as the sidebar shows it, a decision sent ahead.
-  const workspace = {
-    threads: model.threads?.map(decided(model)) ?? null,
-    changeSets: model.changeSets,
-  };
   // The panel's adds, as notes in whichever stack of Undos is on screen.
   const added = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   return (
@@ -101,27 +95,21 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <div class="shell-main">
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <WorkspaceContext.Provider value={workspace}>
-            <Page model={model} added={added} dispatch={dispatch} />
-          </WorkspaceContext.Provider>
+          <Page model={model} added={added} dispatch={dispatch} />
         </ItemLinksContext.Provider>
       </div>
       {model.route.page === "overview" && model.chat.open && !model.panel && (
-        <WorkspaceContext.Provider value={workspace}>
-          <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
-        </WorkspaceContext.Provider>
+        <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
       )}
       {model.panel && (
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <WorkspaceContext.Provider value={workspace}>
-            <ItemPanel
-              model={model.panel}
-              place={placeIn(model.panelList, model.panel.id)}
-              workstream={currentWorkstream(model)}
-              adds={model.panelAdds}
-              dispatch={dispatch}
-            />
-          </WorkspaceContext.Provider>
+          <ItemPanel
+            model={model.panel}
+            place={placeIn(model.panelList, model.panel.id)}
+            workstream={currentWorkstream(model)}
+            adds={model.panelAdds}
+            dispatch={dispatch}
+          />
         </ItemLinksContext.Provider>
       )}
       <Closing model={model.closing} dispatch={dispatch} />
