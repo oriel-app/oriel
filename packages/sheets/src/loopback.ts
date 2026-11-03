@@ -52,7 +52,12 @@ function check(request: IncomingMessage, origin: string, state: string): Redirec
   // A page that rebinds a name of its own to 127.0.0.1 still sends that name.
   if (`http://${request.headers.host ?? ""}` !== origin)
     return { status: "refused", problem: "a request for another host" };
-  const url = new URL(request.url ?? "", origin);
+  // Only a path, read against this origin: an absolute target can't name
+  // another host, and one that doesn't parse can't throw.
+  const target = `${origin}${request.url ?? ""}`;
+  if (!request.url?.startsWith("/") || !URL.canParse(target))
+    return { status: "refused", problem: "a request to another path" };
+  const url = new URL(target);
   if (url.pathname !== path) return { status: "refused", problem: "a request to another path" };
   const query = url.searchParams;
   const states = query.getAll("state");

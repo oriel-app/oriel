@@ -106,6 +106,20 @@ test("a request to another path is refused, and ends the sign-in", async () => {
   assert.equal(await send(port, get(port, `/?code=4/abc&state=${state}`)), "error ECONNREFUSED");
 });
 
+test("a target that isn't a path is refused, and nothing throws", async () => {
+  for (const target of [`http://[/?code=4/abc&state=${state}`, `//evil.example/?state=${state}`]) {
+    const { listener, port } = await listening();
+    assert.equal(
+      status(await send(port, `GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n\r\n`)),
+      "400",
+    );
+    assert.deepEqual(await listener.redirect, {
+      status: "refused",
+      problem: "a request to another path",
+    });
+  }
+});
+
 test("a request naming another host, or not a GET, is refused", async () => {
   const rebound = await listening();
   const query = `/?code=4/abc&state=${state}`;
