@@ -56,10 +56,8 @@ const budgets = {
   // is done, and where the user deletes one (decision 0028). Climb oa-144
   // cut 295 bytes of repeats and moved Revert's 157 here from the system
   // prompt, for 4,594, with about 200 bytes of room for OA-89 and OA-121.
-  // Then show(), the one binding for blocks (decision 0030), took 293 of
-  // them and 87 more, for 4,887.
   tool: 600,
-  base: 4_890,
+  base: 4_800,
   // What each source adds: its item doc, its namespace if it has one.
   jira: 3_200,
   folder: 250,
@@ -121,7 +119,7 @@ test("an item doc is one line and can't close its comment", () => {
 
 test("the window chat's window namespace adds within its budget, in its module only", () => {
   // The overview's shape and window.overview(), in a window chat only (decision 0027).
-  const window = 1_540;
+  const window = 1_500;
   const region = regionOf([]);
   const plain = bindingsFor(region, { reader: world.reader, namespaces: {} }).dts;
   const chat = bindingsFor(region, {

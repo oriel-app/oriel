@@ -3,7 +3,8 @@
 // the block from what that read returned (core's `buildBlock`), so a script
 // can't hand Oriel a block's numbers. The turn checks the spec too, so a
 // wrong one is refused with what each form takes, rather than failing the
-// run: the declaration stays short, and the refusal teaches the rest.
+// run: the declaration stays short, and the refusal teaches the rest:
+// `from`, and each form's fields, which the type leaves open.
 import { param, read, unknown } from "@oriel/core";
 import type { Fn, Host } from "./fn.ts";
 
@@ -12,11 +13,11 @@ export const showFn: Fn = {
   outsideRegion: false,
   ...read({
     name: "show",
-    doc: "Rows of items, bars or a table under your reply, built by Oriel from a read this turn ran (same args).",
+    doc: "Rows, bars or a table from a read this turn ran (same args).",
     params: [
       param(
-        "block",
-        '{ read: string; args?: unknown[]; from?: string; form: "rows" | "bars" | "table"; label?: string; value?: string; columns?: string[] }',
+        "b",
+        '{ read: string; args?: unknown[]; form: "rows" | "bars" | "table"; [k: string]: unknown }',
         unknown,
       ),
     ],
