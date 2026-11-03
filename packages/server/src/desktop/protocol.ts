@@ -1,0 +1,64 @@
+// The messages between the desktop app's shell and its server (decision
+// 0036), as validated types. PROTOCOL.md beside this file tells the shell's
+// side in prose: the launch secret on stdin's first line, its cookie, then
+// one JSON object per line each way. The server asks; the shell answers each
+// request once, by its id, in any order.
+import { isAbsolute } from "node:path";
+import {
+  type Infer,
+  literal,
+  nullable,
+  number,
+  object,
+  refine,
+  string,
+  union,
+  unknown,
+  type Validator,
+} from "@oriel/core";
+
+// The cookie the shell puts in the webview's store, holding the secret.
+export const launchCookie = "oriel-launch";
+
+// 32 bytes, as 64 lowercase hex characters.
+export const isLaunchSecret = (line: string): boolean => /^[0-9a-f]{64}$/.test(line);
+
+const name = refine(
+  string,
+  (text) => /^[a-z][a-z0-9.-]{0,63}$/.test(text),
+  "a secret's name is lowercase",
+);
+const secret = refine(string, (text) => Buffer.byteLength(text) <= 16_384, "at most 16 KiB");
+const id = refine(number, (n) => Number.isSafeInteger(n) && n > 0, "a positive integer");
+
+// What the server asks the shell for, without its id.
+export const request = union(
+  object({ kind: literal("folder.pick"), prompt: string }),
+  object({ kind: literal("secret.get"), name }),
+  object({ kind: literal("secret.set"), name, secret }),
+  object({ kind: literal("secret.delete"), name }),
+  object({ kind: literal("notify"), title: string, body: string }),
+);
+export type ShellRequest = Infer<typeof request>;
+export type RequestKind = ShellRequest["kind"];
+
+// What a successful answer's `value` is, for each kind of request.
+export const answers = {
+  "folder.pick": nullable(refine(string, isAbsolute, "an absolute path")),
+  "secret.get": nullable(string),
+  "secret.set": literal(null),
+  "secret.delete": literal(null),
+  notify: literal(null),
+} satisfies Record<RequestKind, Validator<unknown>>;
+export type Answer<K extends RequestKind> = Infer<(typeof answers)[K]>;
+
+// A line from the shell. Its value is checked against the request's kind
+// once the id finds the request.
+export const reply = union(
+  object({ id, ok: literal(true), value: unknown }),
+  object({ id, ok: literal(false), error: string }),
+);
+export type ShellReply = Infer<typeof reply>;
+
+// Lines to the shell.
+export type ServerLine = { kind: "ready"; url: string } | ({ id: number } & ShellRequest);

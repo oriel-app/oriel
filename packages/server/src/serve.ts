@@ -1,9 +1,10 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { assets, dist, entry, vendor } from "@oriel/web/files";
 import { type App, type AppOptions, createApp } from "./app.ts";
-import { handler, type Reply, type Site } from "./site.ts";
+import { handler, type Reply, type Request, type Site } from "./site.ts";
 
 export type Serving = { url: string; port: number; app: App; close(): Promise<void> };
 
@@ -63,39 +64,36 @@ async function send(res: ServerResponse, method: string, reply: Reply): Promise<
   res.end();
 }
 
-// Listens on 127.0.0.1 only. Port 0 picks a free one. The app is built once
-// the port is known, since review links name it.
+export type ServeOptions = {
+  // The desktop app's launch secret, and the cookie that carries it.
+  launch?: Site["launch"];
+  // Called once the server listens, before the app is built. Requests that
+  // come meanwhile wait for it.
+  listening?: (url: string) => void;
+  // Runs once the app is built, before any request reaches it.
+  beforeRequests?: (app: App) => Promise<void>;
+};
+
+// Listens on 127.0.0.1 only, on the first of `ports` that's free. Port 0
+// picks a free one. The app is built once the port is known, since review
+// links name it.
 export async function serve(
-  port: number,
+  ports: number | readonly number[],
   options: Omit<AppOptions, "reviewBase"> = { db: ":memory:", jira: { kind: "fixture" } },
+  serving: ServeOptions = {},
 ): Promise<Serving> {
   const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("not listening on TCP");
+  const address = await listen(server, typeof ports === "number" ? [ports] : ports);
   const url = `http://127.0.0.1:${address.port}/`;
-  let app: App;
-  try {
-    app = await createApp({ ...options, reviewBase: new URL("review/", url) });
-  } catch (error) {
-    server.close();
-    throw error;
-  }
-  const handle = handler({
-    ...webFiles(),
-    port: address.port,
-    window: app.window,
-    api: app.api,
-  });
+  const built = Promise.withResolvers<(request: Request) => Promise<Reply>>();
+  // Nobody may be waiting on it when it fails.
+  built.promise.catch(() => {});
   server.on("request", (req, res) => {
     const method = req.method ?? "GET";
-    handle({ method, url: req.url ?? "/", headers: req.headers, body: bodyReader(req) })
+    built.promise
+      .then((handle) =>
+        handle({ method, url: req.url ?? "/", headers: req.headers, body: bodyReader(req) }),
+      )
       .then((reply) => send(res, method, reply))
       .catch((error: unknown) => {
         console.error(error);
@@ -107,6 +105,27 @@ export async function serve(
         res.end("internal error\n");
       });
   });
+  serving.listening?.(url);
+  let app: App | null = null;
+  try {
+    app = await createApp({ ...options, reviewBase: new URL("review/", url) });
+    await serving.beforeRequests?.(app);
+  } catch (error) {
+    built.reject(error);
+    server.closeAllConnections();
+    server.close();
+    await app?.close();
+    throw error;
+  }
+  built.resolve(
+    handler({
+      ...webFiles(),
+      port: address.port,
+      window: app.window,
+      api: app.api,
+      ...(serving.launch ? { launch: serving.launch } : {}),
+    }),
+  );
   return {
     url,
     port: address.port,
@@ -121,4 +140,27 @@ export async function serve(
       await app.close();
     },
   };
+}
+
+// Listens on the first port that isn't taken. Any other failure stops it.
+async function listen(server: Server, ports: readonly number[]): Promise<AddressInfo> {
+  for (const [i, port] of ports.entries()) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+    } catch (error) {
+      const taken = (error as NodeJS.ErrnoException).code === "EADDRINUSE";
+      if (taken && i < ports.length - 1) continue;
+      throw error;
+    }
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("not listening on TCP");
+    return address;
+  }
+  throw new Error("no port to listen on");
 }

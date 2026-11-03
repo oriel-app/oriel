@@ -147,6 +147,9 @@ export type SlackMode =
 export type AppOptions = {
   // A SQLite file, or ":memory:".
   db: string;
+  // Holds SQLite's exclusive lock on the file while the app runs, so no
+  // second server can open it (decision 0036).
+  exclusive?: boolean;
   jira: JiraMode;
   // No Slack when absent.
   slack?: SlackMode;
@@ -177,6 +180,8 @@ export type App = {
   settled(): Promise<void>;
   // The pilot telemetry stored so far, oldest first.
   telemetry(): StoredEvent[];
+  // Revokes every live review link, and says how many there were.
+  revokeReviewLinks(): Promise<number>;
   close(): Promise<void>;
 };
 
@@ -228,7 +233,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => instant(new Date()));
   const newId = () => ulid(Date.parse(now()));
   const log: Log = options.log ?? (() => {});
-  const db = open(options.db);
+  const db = open(options.db, { exclusive: options.exclusive ?? false });
   migrate(db, loadMigrations(), now());
   const workspaceId =
     firstWorkspace(db) ??
@@ -274,7 +279,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     project: saved.project,
     ...(send ? { fetch: send } : {}),
   });
-  const saved = mode.kind === "window" ? mode.store.load() : null;
+  const saved = mode.kind === "window" ? await mode.store.load() : null;
   let writes: JiraWrites | null =
     mode.kind === "live"
       ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
@@ -951,7 +956,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         };
       }
       try {
-        mode.store.save({ site: at, email, token: typed.token.trim(), project });
+        await mode.store.save({ site: at, email, token: typed.token.trim(), project });
       } catch (error) {
         log("jira connection not saved", { error: (error as NodeJS.ErrnoException).code ?? "" });
         return { problem: "Oriel couldn't save the connection on this computer. Try again." };
@@ -1092,6 +1097,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     }),
     settled: () => conversation.settled(),
     telemetry: () => telemetry.list(workspaceId),
+    revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
     // Stops every turn, waits for the last sync, and closes the database.
     // Closing twice does nothing more.
     async close() {

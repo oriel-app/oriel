@@ -88,6 +88,20 @@ export function fakeSandbox(scripts: Record<string, Script>): Sandbox {
   };
 }
 
+// Proposes 3 points for the first unestimated story in the region: one
+// change set to review.
+export const estimate: Script = async (bindings) => {
+  const stories = (await bindings.read("jira.listItems", [])).value as {
+    id: string;
+    gone: boolean;
+    points?: number | null;
+    issueType?: string;
+  }[];
+  const story = stories.find((s) => !s.gone && s.points === null && s.issueType !== "Epic");
+  if (!story) throw new Error("the region has no unestimated story");
+  return { value: [story.id], writes: [["jira.setEstimate", [story.id, 3]]] };
+};
+
 export type TestOptions = {
   plan?: (input: Parameters<Agent["turn"]>[0]) => Step[];
   scripts?: Record<string, Script>;

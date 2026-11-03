@@ -216,6 +216,9 @@ export function store(db: DatabaseSync) {
   const revokeLinks = db.prepare(
     "update review_links set revoked_at = ? where change_set_id = ? and revoked_at is null",
   );
+  const revokeAllLinks = db.prepare(
+    "update review_links set revoked_at = ? where workspace_id = ? and revoked_at is null",
+  );
   const insertLink = db.prepare(
     "insert into review_links (token_hash, workspace_id, change_set_id, created_at) values (?, ?, ?, ?)",
   );
@@ -496,6 +499,11 @@ export function store(db: DatabaseSync) {
 
     revokeLinks(changeSetId: Ulid, at: Instant): void {
       revokeLinks.run(at, changeSetId);
+    },
+
+    // How many were live.
+    revokeAllLinks(workspaceId: Ulid, at: Instant): number {
+      return Number(revokeAllLinks.run(at, workspaceId).changes);
     },
 
     // Records when a change set's last change applied, once. True if this

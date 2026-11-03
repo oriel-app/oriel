@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { type GroupingId, isGroupingId, type WindowView } from "@oriel/web/view";
-import { refusal } from "./guard.ts";
+import { hasLaunchSecret, refusal } from "./guard.ts";
 
 // Everything the server serves. Paths are absolute.
 export type Site = {
@@ -19,6 +19,9 @@ export type Site = {
   // The JSON routes under /api/, past the guard; null for a path it doesn't
   // have, which then 404s.
   api?: (request: Request, url: URL) => Promise<Reply | null>;
+  // In the desktop app, the launch secret every request but a review link's
+  // must carry in this cookie (decision 0036). `pnpm dev` has none.
+  launch?: { cookie: string; secret: string };
 };
 
 export type Request = {
@@ -27,6 +30,7 @@ export type Request = {
   headers: {
     host?: string;
     origin?: string;
+    cookie?: string;
     "content-type"?: string;
     "last-event-id"?: string | string[];
   };
@@ -91,6 +95,15 @@ const oldWorkstreamPath = new RegExp(`^/groups/(${ulidPath})$`);
 // A review link: the shell only. Its GET opens and decides nothing, because
 // chat apps unfurl links with GETs; the page asks with an explicit POST.
 const reviewPath = /^\/review\/[A-Za-z0-9_-]{1,64}$/;
+
+// What a review link's page needs, where the review token is the credential:
+// the only requests the desktop app answers without its launch secret. Making
+// or revoking a link isn't among them.
+function forReviewers(method: string, path: string): boolean {
+  if (method === "POST") return /^\/api\/review\/(open|decide|dismiss)$/.test(path);
+  if (method !== "GET" && method !== "HEAD") return false;
+  return reviewPath.test(path) || /^\/(app|assets|vendor)\//.test(path);
+}
 
 export function vendorPath(specifier: string): string {
   return `/vendor/${specifier}.js`;
@@ -161,6 +174,12 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
     const url = URL.parse(request.url, "http://localhost");
     if (url === null) return plain(400, "bad URL");
     const path = url.pathname;
+    if (
+      site.launch &&
+      !forReviewers(request.method, path) &&
+      !hasLaunchSecret(request.headers.cookie, site.launch.cookie, site.launch.secret)
+    )
+      return plain(403, "this server answers only the Oriel app that started it");
     if (path.startsWith("/api/") && site.api) {
       const answered = await site.api(request, url);
       if (answered) return { ...answered, headers: { ...headers, ...answered.headers } };
