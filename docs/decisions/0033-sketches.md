@@ -1,6 +1,6 @@
 # 0033 The agent can sketch in HTML, in a frame that reaches nothing
 
-Accepted 2026-11-02. Amends 0030 and 0032. Changes SPEC §2. Built after the visual identity (OA-112).
+Accepted 2026-11-02. Amends 0030 and 0032. Changes SPEC §2. Built after the visual identity (OA-112). Amended by 0034: the theme sheet holds the neutral tokens 0034 lists, with the values of the person's theme.
 
 Adds: none
 
