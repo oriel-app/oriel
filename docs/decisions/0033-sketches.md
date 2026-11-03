@@ -57,7 +57,8 @@ Adds: none
   - Telemetry: a sketch shown, with its height and size, and a sketch refused, with the reason (too big, too many, an element not allowed). It never records the text or the names refused. SPEC §7 lists both events with the building story.
   - One eval case: "Draw me a chart of story points by assignee", in the weather epic. It passes on a bars block from a read and no `sketch()`. It guards the one misuse the binding invites: a model's chart in place of Oriel's.
 - **Visual identity.** Oriel's theme sheet comes first in the agent's document.
-  - The sheet sets `window.css`'s tokens for colour, type, space and radius under their own names, light and dark through `prefers-color-scheme`. The frame follows the page's scheme through its element.
+  - The sheet sets `window.css`'s neutral tokens under their own names, light and dark through `prefers-color-scheme`: the background, surface, line and text colours, the fonts, sizes, spaces and radii. The frame follows the page's scheme through its element.
+  - The frame never gets the accent, the state colours (danger, inserted, deleted, an item's state) or any button token, so the agent can't draw an exact copy of Approve. In the visual identity spike, two designers' fake Approve drawn with every token matched the real one.
   - It also gives the body, tables, buttons and inputs a plain look in those tokens, so a sketch that names none still fits the page.
   - Oriel's own component styles never enter the frame: the look of a block, a chip, the diff or Approve. The frame's border is one no block has.
   - Which tokens, and their names, follow OA-112, which this waits on.
