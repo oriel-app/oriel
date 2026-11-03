@@ -5,10 +5,9 @@
 // is ever on disk, and no secret is ever logged. The encryption is a
 // parameter, so tests reach the files without Electron.
 //
-// Under `--background` or `--memory-secrets`, for development, secrets are
-// kept in memory instead, so a launch from a script never reaches safe
-// storage or the OS's key, and never puts a Keychain prompt on the person's
-// screen.
+// Under `--background` or `--launch-file`, for development, secrets are kept
+// in memory instead, so a launch from a script never reaches safe storage or
+// the OS's key (rules.ts, secretsInMemory).
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { secretNames } from "./rules.ts";

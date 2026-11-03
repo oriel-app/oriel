@@ -208,7 +208,7 @@ async function launch(scenario: Scenario, show: boolean, force: boolean) {
   // A new instance, of this copy. In the background: not brought forward,
   // hidden, its window never shown, its secrets in memory.
   const args = show
-    ? ["--data", data, "--launch-file", "--memory-secrets"]
+    ? ["--data", data, "--launch-file"]
     : ["--background", "--data", data, "--launch-file"];
   execFileSync("open", ["-n", ...(show ? [] : ["-g", "-j"]), ...env, copy, "--args", ...args]);
 

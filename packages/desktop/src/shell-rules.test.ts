@@ -319,9 +319,10 @@ test("in the background only the person's own click brings the window forward", 
   for (const why of unasked) assert.equal(raises(why, true), false, why);
 });
 
-test("in the background, or when asked, secrets stay in memory, away from the OS's store", () => {
+test("in the background, or with a launch file, secrets stay in memory, away from the OS's store", () => {
   assert.equal(secretsInMemory(["Oriel", "--background", "--data", "/tmp/o"]), true);
-  assert.equal(secretsInMemory(["Oriel", "--memory-secrets", "--data", "/tmp/o"]), true);
+  // Whoever reads the launch file's cookie reaches none of the person's secrets.
+  assert.equal(secretsInMemory(["Oriel", "--launch-file", "--data", "/tmp/o"]), true);
   assert.equal(secretsInMemory(["Oriel", "--data", "/tmp/o"]), false);
   assert.equal(secretsInMemory(["Oriel"]), false);
 });

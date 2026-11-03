@@ -30,12 +30,14 @@
 // - `--background`, for development: the window starts hidden and nothing
 //   brings it forward on its own (rules.ts, raises), so a launch from a
 //   script never covers what the person is doing. Clicking the Dock icon
-//   shows it. Secrets are kept in memory, never in the OS's store, as
-//   with `--memory-secrets` (rules.ts, secretsInMemory).
+//   shows it. Secrets are kept in memory, never in the OS's store
+//   (rules.ts, secretsInMemory).
 // - `--launch-file`, for development: each time the server starts, the
 //   shell writes its URL, the launch cookie and the shell's PID to
 //   `Shell/launch.json` in the data folder, readable by its owner only, so
-//   a script can reach the server's API, as `pnpm desktop:try` does.
+//   a script can reach the server's API, as `pnpm desktop:try` does. Its
+//   secrets are kept in memory too, so that cookie reaches none of the
+//   person's.
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {

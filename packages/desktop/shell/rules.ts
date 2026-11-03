@@ -351,9 +351,10 @@ export function raises(why: Raise, background: boolean): boolean {
 }
 
 // Whether the secret store keeps secrets in memory, so the app never
-// reaches the OS's store (secrets.ts): with `--background`, and with
-// `--memory-secrets`, which `pnpm desktop:try --show` passes. Then a try
-// never asks for the person's password or leaves an item in their keychain.
+// reaches the OS's store (secrets.ts): with `--background`, so a try never
+// asks for the person's password or leaves an item in their keychain; and
+// with `--launch-file`, so whatever reads that file's cookie reaches a
+// server that holds none of the person's secrets.
 export function secretsInMemory(argv: readonly string[]): boolean {
-  return argv.includes("--background") || argv.includes("--memory-secrets");
+  return argv.includes("--background") || argv.includes("--launch-file");
 }

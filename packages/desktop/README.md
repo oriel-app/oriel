@@ -22,7 +22,7 @@ It prints the URL, the PID, and a `curl` line for the API. `-H @<folder>/headers
 - `--build` builds even when nothing changed.
 - Give the page a second after launch before sending a first-run command: as it opens, it looks for the CLI.
 
-The shell's flags behind it: `--background`, `--data <dir>`, `--memory-secrets`, and `--launch-file`, which writes `Shell/launch.json` (the URL, the cookie, the shell's PID) in the data folder.
+The shell's flags behind it: `--background`, `--data <dir>`, and `--launch-file`, which writes `Shell/launch.json` (the URL, the cookie, the shell's PID) in the data folder. With `--background` or `--launch-file`, secrets stay in memory.
 
 ## Before a pilot: a clean Mac in a VM
 
