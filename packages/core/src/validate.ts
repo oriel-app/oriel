@@ -144,21 +144,43 @@ export function record<T>(value: Validator<T>): Described<Record<string, T>> {
   );
 }
 
-// The first alternative that passes wins; on failure, every alternative's issues are reported.
+// The first alternative that passes wins. On failure, every alternative's
+// issues are reported, unless the alternatives are objects told apart by a
+// literal, such as `kind`: then only the issues of those whose literal the
+// input has, so a bad Jira connect names only Jira's fields.
 export function union<const V extends readonly Validator<unknown>[]>(
   ...alternatives: V
 ): Described<Infer<V[number]>> {
+  const shapes = alternatives.map(shapeOf);
+  const literals = shapes.map((shape) =>
+    shape.kind === "object"
+      ? new Map(
+          Object.entries(shape.fields).flatMap(([key, field]) =>
+            field.kind === "literal" ? [[key, field.value] as const] : [],
+          ),
+        )
+      : new Map(),
+  );
+  const tags = [...(literals[0]?.keys() ?? [])].filter((key) =>
+    literals.every((fields) => fields.has(key)),
+  );
+  const tagged = (input: unknown, i: number) =>
+    tags.length > 0 &&
+    isPlainObject(input) &&
+    tags.every((key) => Object.hasOwn(input, key) && input[key] === literals[i]?.get(key));
   return described<Infer<V[number]>>(
     (input, path = "$") => {
-      const issues: Issue[] = [];
-      for (const alternative of alternatives) {
+      const all: Issue[] = [];
+      const ofTagged: Issue[] = [];
+      for (const [i, alternative] of alternatives.entries()) {
         const result = alternative(input, path);
         if (result.ok) return result as Result<Infer<V[number]>>;
-        issues.push(...result.issues);
+        all.push(...result.issues);
+        if (tagged(input, i)) ofTagged.push(...result.issues);
       }
-      return { ok: false, issues };
+      return { ok: false, issues: ofTagged.length > 0 ? ofTagged : all };
     },
-    { kind: "union", alternatives: alternatives.map(shapeOf) },
+    { kind: "union", alternatives: shapes },
   );
 }
 

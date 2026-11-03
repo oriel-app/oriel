@@ -113,6 +113,11 @@ test("details Jira won't take are refused in plain words, and nothing is kept", 
   assert.match(await refused({ ...details, site: "acme.atlassian.net" }), /only to oriel/);
   assert.match(await refused({ ...details, site: "http://localhost:8080" }), /Type your Jira site/);
   assert.equal((await app.post("/api/jira", { ...details, token: "" })).status, 400);
+  // A detail the window's check refuses is named alone, not beside the folder's.
+  assert.equal(
+    await refused({ ...details, token: "x".repeat(1100) }),
+    "$.token: expected an API token",
+  );
   assert.equal((await app.post("/api/jira", { ...details, token: "x".repeat(5000) })).status, 413);
   assert.equal(app.store.saved(), null);
   assert.deepEqual(json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected, null);

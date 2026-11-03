@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { IndexRecord, Instant, ItemId } from "@oriel/core";
+import { sources } from "@oriel/sources";
 import { resolveDropped } from "./dropped.ts";
 
 const changed = "2026-10-30T00:00:00.000Z";
@@ -27,7 +28,8 @@ const records = [
   record("folder:00000000000000d4", "file:///notes/caf%C3%A9.md"),
 ];
 
-const links = (...dropped: string[]) => resolveDropped(records, { links: dropped, files: [] });
+const links = (...dropped: string[]) =>
+  resolveDropped(records, { links: dropped, files: [] }, sources);
 
 test("a dropped Jira card is its issue's link; query, fragment and a trailing slash don't matter", () => {
   assert.deepEqual(
@@ -69,30 +71,30 @@ test("a file is the folder file with its name and time, in either Unicode form",
     { name: "q3-launch.md", modified: at + 900 },
     { name: "café.md", modified: at },
   ];
-  assert.deepEqual(resolveDropped(records, { links: [], files }).ids, [
+  assert.deepEqual(resolveDropped(records, { links: [], files }, sources).ids, [
     "folder:00000000000000a1",
     "folder:00000000000000d4",
   ]);
 });
 
 test("what names nothing, another file by a folder file's name, or two like it, is refused with why", () => {
-  const { ids, refused } = resolveDropped(records, {
-    links: ["https://example.com/doc", "just some words", "javascript:alert(1)"],
-    files: [
-      { name: "q3-launch.md", modified: at - 60_000 },
-      { name: "Plan.md", modified: at },
-      { name: "elsewhere.md", modified: at },
-    ],
-  });
+  const { ids, refused } = resolveDropped(
+    records,
+    {
+      links: ["https://example.com/doc", "just some words", "javascript:alert(1)"],
+      files: [
+        { name: "q3-launch.md", modified: at - 60_000 },
+        { name: "Plan.md", modified: at },
+        { name: "elsewhere.md", modified: at },
+      ],
+    },
+    sources,
+  );
   assert.deepEqual(ids, []);
   assert.deepEqual(
     refused.map((r) => [r.what, r.why.split(/[.;,]/)[0], r.syncMightHelp]),
     [
-      [
-        "https://example.com/doc",
-        "Only Jira items and files in the connected folder can be added",
-        false,
-      ],
+      ["https://example.com/doc", "Only Jira and Folder items can be added", false],
       ["just some words", "This doesn't name anything Oriel has", false],
       ["javascript:alert(1)", "This doesn't name anything Oriel has", true],
       ["q3-launch.md", "This isn't the connected folder's file by this name", true],
@@ -100,4 +102,21 @@ test("what names nothing, another file by a folder file's name, or two like it, 
       ["elsewhere.md", "Only files in the connected folder can be added", true],
     ],
   );
+});
+
+test("a link to a site Oriel doesn't index is refused by naming each source it has items from", () => {
+  const why = (from: readonly IndexRecord[]) =>
+    resolveDropped(from, { links: ["https://example.com/doc"], files: [] }, sources).refused[0]
+      ?.why;
+  assert.equal(why(records), "Only Jira and Folder items can be added, not other pages.");
+  const message = record(
+    "slack:C0FW1WEATHR-1788444000.000100",
+    "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100",
+  );
+  assert.equal(
+    why([...records, message]),
+    "Only Jira, Folder and Slack items can be added, not other pages.",
+  );
+  assert.equal(why([message]), "Only Slack items can be added, not other pages.");
+  assert.equal(why([]), "Oriel has no items yet, so nothing can be added.");
 });
