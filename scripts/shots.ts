@@ -2652,6 +2652,20 @@ scenes.push(
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
   },
+  // Both signed in with the person's own API key: no line about training.
+  {
+    name: "first-run-settings-api-keys",
+    path: "/settings",
+    make: firstRun({
+      cli: { signedIn: true },
+      codex: "ready",
+      apiKeys: true,
+      jira: true,
+      state: setupFinished,
+    }),
+    act: (page) =>
+      page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+  },
 );
 
 const widths = asked.values.width?.map(Number) ?? [1280, 390];

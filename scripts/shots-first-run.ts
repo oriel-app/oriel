@@ -49,7 +49,8 @@ const stubCli = (version: string) =>
     '    touch "$HOME/.signed-in"; echo "Login successful." ;;',
     '  "auth status")',
     '    if [ -f "$HOME/.signed-in" ]; then',
-    '      echo \'{"loggedIn":true,"authMethod":"claude.ai","email":"maya@example.com","subscriptionType":"pro"}\'',
+    '      if [ -f "$HOME/.api-key" ]; then echo \'{"loggedIn":true,"authMethod":"api_key"}\'',
+    '      else echo \'{"loggedIn":true,"authMethod":"claude.ai","email":"maya@example.com","subscriptionType":"pro"}\'; fi',
     "    else echo '{\"loggedIn\":false}'; exit 1; fi ;;",
     '  "update ") echo "Claude Code is up to date." ;;',
     "  *) exit 2 ;;",
@@ -82,6 +83,8 @@ export type FirstRunOptions = {
   cli?: { version?: string; signedIn?: boolean };
   // Codex on the PATH: signed out, or "ready", signed in (decision 0048).
   codex?: true | "ready";
+  // Both signed in with the person's own API key, with no plan.
+  apiKeys?: true;
   install?: Install;
   login?: Login;
   // What Claude Code says instead of answering the test turn; it answers
@@ -146,6 +149,7 @@ export async function firstRunServer(
     );
     if (options.codex === "ready") writeFileSync(join(home, ".codex-signed-in"), "");
   }
+  if (options.apiKeys) writeFileSync(join(home, ".api-key"), "");
   writeFileSync(join(home, ".stub-login"), options.login ?? "works");
   writeFileSync(join(home, ".stub-install"), options.install ?? "works");
   const env = { HOME: home, PATH: ["/usr/bin", "/bin", bin, codexBin].join(":") };
@@ -208,7 +212,9 @@ export async function firstRunServer(
             { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
             { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
           ],
-          account: { plan: "ChatGPT Plus", email: "sam@example.com", personal: true },
+          account: options.apiKeys
+            ? { plan: null, email: null, personal: false }
+            : { plan: "ChatGPT Plus", email: "sam@example.com", personal: true },
         }
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
