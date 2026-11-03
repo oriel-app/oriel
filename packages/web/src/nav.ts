@@ -14,6 +14,7 @@ import {
   type ThreadSummaryView,
   type WaitingOn,
   waitingOn,
+  waitsOnUser,
 } from "./view.ts";
 
 export type NavWorkstream = {
@@ -109,8 +110,7 @@ export const byLabel = (a: ThreadSummaryView, b: ThreadSummaryView): number =>
 
 // Whether a thread waits on the user: a reason held for them, a change set
 // to review, or a reply. Needs you lists it, and a link to it says so.
-export const needsYou = (thread: ThreadSummaryView): boolean =>
-  thread.waitingOn === "held" || thread.waitingOn === "review" || thread.waitingOn === "reply";
+export const needsYou = (thread: ThreadSummaryView): boolean => waitsOnUser(thread.waitingOn);
 
 // A decision sent from the thread's page shows in every list at once: while
 // the list still has the thread needing a review, it waits on what the

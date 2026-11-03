@@ -144,6 +144,11 @@ export type NoteView = {
 // waits on nothing.
 export type WaitingOn = "agent" | "held" | "review" | "apply" | "reply";
 
+// Whether a thread waiting so waits on the user: a message held for them, a
+// change set to review, or a reply. Needs you lists it.
+export const waitsOnUser = (waiting: WaitingOn | null): boolean =>
+  waiting === "held" || waiting === "review" || waiting === "reply";
+
 // `held`: a message from anyone but the user waits on them to send it to the
 // agent or discard it.
 // Whether a held message in the chat waits on the user.
@@ -505,3 +510,127 @@ export type ReviewView = { changeSet: ChangeSetView; diff: DiffView };
 
 // Every JSON error reply.
 export type ErrorReply = { error: string };
+
+// The overview (decision 0027): the window's first view, of workstreams
+// first, then what no workstream holds yet, ranked across sources. Every
+// number, list and signal here is computed from the index, the change log
+// and Oriel's own data when it is asked for, never by a model; each derived
+// one carries its rule. The window chat's `window.overview()` reads the
+// same. Source text (titles) is text, never HTML.
+export type OverviewView = {
+  // The instant it was built for. Day counts count back from it.
+  asOf: string;
+  // The last change log entry it counts, which leaving the overview marks
+  // seen, so an entry that commits after it was built stays unseen.
+  seq: number;
+  // When the user last left the overview; null before they ever have, when
+  // "since" counts every change the log keeps.
+  lastSeen: string | null;
+  counts: {
+    // Items with a change logged since, in a workstream or not.
+    changed: number;
+    workstreamsMoved: number;
+    needsYou: number;
+    notInWorkstream: number;
+  };
+  // What changed since, by workstream, most first, and how much of it no
+  // workstream holds.
+  changed: { workstreams: { id: string; name: string; moved: number }[]; elsewhere: number };
+  needsYou: {
+    // The threads waiting on the user, longest waiting first. The page
+    // shows the first few until "more" is asked for.
+    threads: ThreadSummaryView[];
+    // Review links sent that nobody has opened yet, oldest first.
+    unopened: UnopenedLinkView[];
+  };
+  // One computed line each for the standing questions, each with its rule.
+  // A question with no answer now, such as "quiet longest" with no
+  // workstream, has none.
+  headlines: HeadlineView[];
+  // Every open workstream, most moved first. The page shows the first few,
+  // and any gone quiet, until "more" is asked for.
+  workstreams: WorkstreamRowView[];
+  // The top candidates, and how many there are in all.
+  candidates: { rows: CandidateView[]; total: number };
+  people: { rows: PersonRowView[]; total: number };
+};
+
+export type UnopenedLinkView = {
+  changeSetId: string;
+  thread: { id: string; title: string | null };
+  workstream: { id: string; name: string };
+  sentAt: string;
+};
+
+// What a line or a row names: a workstream, a thread, or an item.
+export type OverviewRef =
+  | { kind: "workstream"; id: string; name: string }
+  | { kind: "item"; item: ItemRef };
+
+export type HeadlineView = {
+  id: "moved" | "quiet" | "talked" | "top";
+  // The question it answers, as its label shows it.
+  label: string;
+  rule: string;
+  subject: OverviewRef;
+  // What the measure found, in Oriel's words: "23 items moved, 7 to done".
+  detail: string;
+};
+
+// A signal a workstream row shows, with its rule.
+export type SignalView = { text: string; rule: string };
+
+export type WorkstreamRowView = {
+  id: string;
+  name: string;
+  size: number;
+  // Its members by source, by the source's name, most first.
+  bySource: { source: string; count: number }[];
+  status: Record<StatusCategory, number>;
+  // Members with a change logged since the user last looked, and how many of
+  // those moved to done; the first few, by item.
+  moved: number;
+  movedDone: number;
+  movedItems: ItemRef[];
+  // Changes logged to its members on each of the last 14 days, oldest first.
+  activity: number[];
+  // Its latest member update or thread activity, and the whole days since;
+  // `quiet` once that is as long as an item takes to count as stuck.
+  lastActivity: string;
+  idleDays: number;
+  quiet: boolean;
+  threads: { working: number; waiting: number; done: number; dropped: number };
+  signals: SignalView[];
+};
+
+// One candidate from Not in a workstream yet, ranked across sources: an
+// item, or a cluster that Make a workstream copies, with the rule that found
+// it and its source's name.
+export type CandidateView = {
+  subject:
+    | { kind: "item"; item: ItemRef }
+    | {
+        kind: "cluster";
+        grouping: GroupingId;
+        key: string;
+        label: string;
+        // The item it hangs off, if any, and how many items Make a
+        // workstream would hold, that one included.
+        anchor: ItemRef | null;
+        size: number;
+      };
+  rule: string;
+  source: string;
+  weight: number;
+  detail: string | null;
+  // When its items last changed.
+  changedAt: string;
+};
+
+export type PersonRowView = {
+  id: string;
+  name: string;
+  inProgress: number;
+  // The workstream holding most of their items in progress, if any does.
+  top: { id: string; name: string; count: number } | null;
+};

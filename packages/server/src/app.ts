@@ -17,6 +17,7 @@ import {
 import {
   type ActionInput,
   type ChangeSet,
+  type Cluster,
   type Credential,
   type IndexRecord,
   type Instant,
@@ -45,6 +46,7 @@ import {
   workstreamStore,
   indexStore,
   loadMigrations,
+  lastSeen,
   markSeen,
   migrate,
   open,
@@ -80,7 +82,7 @@ import {
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
 import { itemDocs, namespacesFor, recognizerFor, sources, specs } from "@oriel/sources";
-import type { FolderView, GroupingId, JiraView, WindowView } from "@oriel/web/view";
+import type { FolderView, GroupingId, JiraView, OverviewView, WindowView } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
@@ -93,6 +95,7 @@ import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
+import { overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
@@ -711,7 +714,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return set ? created(set) : [];
     },
     emit,
-    markSeen: (at) => markSeen(db, workspaceId, at),
+    markSeen: (at, seq) => markSeen(db, workspaceId, at, seq),
     turns: conversation,
     changeSets: sets,
     applied: (set) => applied(set),
@@ -904,6 +907,35 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
   };
 
+  // The overview, computed now from the index, the change log, workstreams,
+  // threads and review links: what the page shows and the window chat's
+  // `window.overview()` reads (decision 0027).
+  const overview = async (): Promise<OverviewView> => {
+    const all = records();
+    const at = asOf ?? now();
+    const open = viewer.workstreams(workspaceId).filter((summary) => summary.done === null);
+    const grouped = new Map<GroupingId, Cluster[]>();
+    return overviewView({
+      records: all,
+      changes: index.changes(workspaceId),
+      seen: lastSeen(db, workspaceId),
+      workstreams: open.map((summary) => ({
+        id: summary.id,
+        name: summary.name,
+        createdAt: summary.createdAt as Instant,
+        members: workstreams.region(summary.id as Ulid, summary.version)?.items ?? [],
+      })),
+      threads: await viewer.threads(workspaceId),
+      unopened: await sets.unopenedLinks(workspaceId),
+      clusters: (grouping) => {
+        const found = grouped.get(grouping) ?? groupings[grouping].group(all, at);
+        grouped.set(grouping, found);
+        return found;
+      },
+      now: at,
+    });
+  };
+
   const window = (grouping: GroupingId) =>
     windowView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null);
 
@@ -963,6 +995,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             keepOf(filter),
           ),
       },
+      overview,
       jira: jiraView,
       folder: folderView,
       log,

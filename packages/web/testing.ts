@@ -13,6 +13,7 @@ import type {
   ItemRef,
   ItemRow,
   MemberView,
+  OverviewView,
   SearchResultView,
   ThreadSummaryView,
   ThreadView,
@@ -172,5 +173,19 @@ export const actionLine = (over: Partial<ActionLineView> = {}): ActionLineView =
   why: null,
   touched: null,
   undo: null,
+  ...over,
+});
+
+export const overviewView = (over: Partial<OverviewView> = {}): OverviewView => ({
+  asOf: at,
+  seq: 7,
+  lastSeen: null,
+  counts: { changed: 0, workstreamsMoved: 0, needsYou: 0, notInWorkstream: 0 },
+  changed: { workstreams: [], elsewhere: 0 },
+  needsYou: { threads: [], unopened: [] },
+  headlines: [],
+  workstreams: [],
+  candidates: { rows: [], total: 0 },
+  people: { rows: [], total: 0 },
   ...over,
 });

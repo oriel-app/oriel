@@ -1,6 +1,7 @@
-// Where the page is: Browse, at /browse (with a grouping, its filters, and
-// maybe a workstream it is adding items to; `/` shows it too until the overview takes
-// `/`), a workstream, a thread, a new thread not started yet, the Done page
+// Where the page is: the overview, at `/`; Browse, at /browse (with a
+// grouping, its filters, and maybe a workstream it is adding items to; `/`
+// with any of those, Browse's address before the overview took `/`, opens
+// it too), a workstream, a thread, a new thread not started yet, the Done page
 // (the threads no longer working, in two tabs, a page at a time), or a review
 // link. A thread's address may name one of its change sets, to open the
 // thread there. On any page but a review link's, `item` is the item open in
@@ -8,6 +9,7 @@
 import {
   type BrowseFilter,
   browseFilter,
+  filterKeys,
   filterParams,
   type GroupingId,
   isGroupingId,
@@ -16,6 +18,7 @@ import {
 export type Route = Page & { item?: string };
 
 export type Page =
+  | { page: "overview" }
   | ({ page: "window"; grouping: GroupingId; addTo: string | null } & BrowseFilter)
   | { page: "workstream"; id: string }
   | { page: "thread"; id: string; changeSet?: string }
@@ -64,6 +67,12 @@ function parsePage(pathname: string, search: string): Page {
   }
   const grouping = query.get("grouping");
   const addTo = query.get("addTo");
+  const browsing =
+    pathname === "/browse" ||
+    grouping !== null ||
+    addTo !== null ||
+    filterKeys.some((key) => query.has(key));
+  if (!browsing) return { page: "overview" };
   return {
     page: "window",
     grouping: isGroupingId(grouping) ? grouping : "epic",
@@ -81,6 +90,8 @@ export function routeUrl(route: Route): string {
 
 function pageUrl(route: Page): string {
   switch (route.page) {
+    case "overview":
+      return "/";
     case "window": {
       const query = new URLSearchParams([["grouping", route.grouping], ...filterParams(route)]);
       if (route.addTo) query.set("addTo", route.addTo);

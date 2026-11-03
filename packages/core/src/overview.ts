@@ -69,3 +69,18 @@ export const stuckDays = 14;
 // Whether an item in progress has had no update in `stuckDays`.
 export const stalled = (record: IndexRecord, now: Instant): boolean =>
   record.facets.state === "in-progress" && daysSince(record.updatedAt, now) >= stuckDays;
+
+// The overview's sections with a "more", as telemetry names them: what
+// changed since the user looked, Needs you, the workstreams, Not in a
+// workstream yet, and in progress by person.
+export const overviewSections = [
+  "changed",
+  "needs-you",
+  "workstreams",
+  "candidates",
+  "people",
+] as const;
+export type OverviewSection = (typeof overviewSections)[number];
+
+export const isOverviewSection = (value: string): value is OverviewSection =>
+  overviewSections.some((section) => section === value);

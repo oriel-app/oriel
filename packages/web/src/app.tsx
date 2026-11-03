@@ -13,8 +13,9 @@ import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
-import { windowRoute } from "./update.ts";
 import { useProgram } from "./use-program.ts";
+import { OverviewPage } from "./overview-page.tsx";
+import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
@@ -150,6 +151,17 @@ function writeFolded(folded: boolean) {
 
 function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
   switch (model.route.page) {
+    case "overview":
+      return (
+        model.overview && (
+          <OverviewPage
+            model={model.overview}
+            jira={model.jira}
+            browse={windowRoute(model.window)}
+            dispatch={dispatch}
+          />
+        )
+      );
     case "window":
       return (
         model.window && (
@@ -219,7 +231,7 @@ function Bar(props: { model: Model; dispatch: Dispatch; open: boolean; onMenu():
           </span>
         )}
       </button>
-      <Link route={windowRoute(model.window)} dispatch={dispatch} class="brand">
+      <Link route={{ page: "overview" }} dispatch={dispatch} class="brand">
         <Mark />
         Oriel
       </Link>

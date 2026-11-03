@@ -93,8 +93,8 @@ test("the Done page is at /done, with its page number past the first", () => {
   assert.equal(routeUrl({ page: "done", number: 3 }), "/done?page=3");
   assert.deepEqual(parseRoute("/done", "?page=3"), { page: "done", number: 3 });
   assert.deepEqual(parseRoute("/done", ""), { page: "done" });
-  // The inbox's old address is gone: it opens the window, as any unknown one does.
-  assert.equal(parseRoute("/inbox", "").page, "window");
+  // The inbox's old address is gone: it opens the overview, as any unknown one does.
+  assert.equal(parseRoute("/inbox", "").page, "overview");
   // A page that isn't one is the first.
   for (const search of ["?page=1", "?page=0", "?page=-2", "?page=2.5", "?page=x"])
     assert.deepEqual(parseRoute("/done", search), { page: "done" }, search);

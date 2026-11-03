@@ -1865,6 +1865,19 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return reviewUrl(token);
     },
 
+    // The link the token is, not one minted since for its change set.
+    async reviewLinkOpened(token) {
+      const link = liveLink(token);
+      if (link) rows.markLinkOpened(link.token_hash, at().now);
+    },
+
+    async unopenedLinks(workspaceId) {
+      return rows.unopenedLinks(
+        workspaceId,
+        new Date(at().ms - linkLifetimeMs).toISOString() as Instant,
+      );
+    },
+
     async revokeReviewLink(id) {
       const set = mustLoad(id);
       rows.revokeLinks(set.id, at().now);

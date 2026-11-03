@@ -155,14 +155,15 @@ test("an entry older than 90 days goes with the next sync, even one that changed
   );
 });
 
-test("what the user hasn't seen is what committed after they last left the overview", () => {
+test("what the user hasn't seen is what committed after the entry the overview they left showed", () => {
   const { db, index, workspaceId, sync } = fresh();
   assert.equal(lastSeen(db, workspaceId), null);
   sync([record("1", "SYN-1", { state: "todo" })], t0);
   sync([record("1", "SYN-1", { state: "in-progress" })], later(1));
+  const shown = index.changes(workspaceId).at(-1)?.seq ?? 0;
   // A sync that started before the user left, and committed after.
   const run = index.beginSync(workspaceId, "jira", attrs, later(2), declared);
-  markSeen(db, workspaceId, later(3));
+  markSeen(db, workspaceId, later(3), shown);
   run.apply({ records: [record("1", "SYN-1", { state: "done" })], gone: [], cursor: null });
   run.finish(null, later(4));
   const seen = lastSeen(db, workspaceId);
@@ -172,10 +173,11 @@ test("what the user hasn't seen is what committed after they last left the overv
     ["done"],
   );
   // The stamp's time never goes back, nor what it had seen.
-  markSeen(db, workspaceId, later(1));
+  markSeen(db, workspaceId, later(1), 0);
   assert.equal(lastSeen(db, workspaceId)?.at, later(3));
-  assert.ok((lastSeen(db, workspaceId)?.seq ?? 0) >= (seen?.seq ?? 0));
-  markSeen(db, workspaceId, later(5));
+  assert.equal(lastSeen(db, workspaceId)?.seq, seen?.seq);
+  // An entry no page could have shown, not committed yet, isn't seen.
+  markSeen(db, workspaceId, later(5), Number.MAX_SAFE_INTEGER);
   assert.equal(lastSeen(db, workspaceId)?.at, later(5));
   assert.deepEqual(index.changes(workspaceId, lastSeen(db, workspaceId)?.seq), []);
 });
@@ -184,7 +186,7 @@ test("once a prune empties the change log, what changes next is still unseen", (
   const { db, index, workspaceId, sync } = fresh();
   sync([record("1", "SYN-1", { state: "todo" })], t0);
   sync([record("1", "SYN-1", { state: "done" })], later(1));
-  markSeen(db, workspaceId, later(2));
+  markSeen(db, workspaceId, later(2), index.changes(workspaceId).at(-1)?.seq ?? 0);
   sync([record("1", "SYN-1", { state: "done" })], later(100));
   assert.deepEqual(index.changes(workspaceId), []);
   sync([record("1", "SYN-1", { state: "todo" })], later(101));

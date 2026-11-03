@@ -45,7 +45,7 @@ test("leaving the overview moves the last-seen stamp, which only the user does",
   const db = database(t);
   const app = await testApp(t, { db });
   app.advance(60_000);
-  const left = json<{ seenAt: string }>(await app.post("/api/overview/leave", {}));
+  const left = json<{ seenAt: string }>(await app.post("/api/overview/leave", { seq: 0 }));
   assert.equal(left.seenAt, "2026-10-29T09:01:00.000Z");
   assert.deepEqual(app.app.telemetry().at(-1)?.data, {
     action: "overview.leave",

@@ -102,8 +102,9 @@ export type ActionDeps = {
   // A thread's change sets still to apply, pending or approved: whether
   // each waits on the user, and the items it names.
   unsettled(threadId: Ulid): Promise<{ waits: boolean; names: readonly ItemId[] }[]>;
-  // Moves the workspace's last-seen stamp to `at`, never back.
-  markSeen(at: Instant): void;
+  // Moves the workspace's last-seen stamp to `at` and change log entry
+  // `seq`, never back.
+  markSeen(at: Instant, seq: number): void;
   emit(event: TelemetryEvent): void;
   publish(changed: Changed): void;
   now(): Instant;
@@ -814,9 +815,9 @@ const handlers = {
     };
   },
 
-  "overview.leave": async (_input, _actor, deps) => {
+  "overview.leave": async ({ seq }, _actor, deps) => {
     const seenAt = deps.now();
-    deps.markSeen(seenAt);
+    deps.markSeen(seenAt, seq);
     return { output: { seenAt }, undo: null, changed: null, events: [] };
   },
 } satisfies { [N in ActionName]: Handler<N> };

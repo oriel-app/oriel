@@ -161,7 +161,14 @@ test("Browse has its own address, with its grouping, and the old one still opens
   assert.equal(routeUrl(route), "/browse?grouping=stuck");
   assert.deepEqual(parseRoute("/browse", "?grouping=stuck"), route);
   assert.deepEqual(parseRoute("/", "?grouping=stuck"), route);
-  assert.deepEqual(parseRoute("/", ""), { ...route, grouping: "epic" });
+  assert.deepEqual(parseRoute("/", "?addTo=01JBZ000000000000000000000"), {
+    ...route,
+    grouping: "epic",
+    addTo: "01JBZ000000000000000000000",
+  });
+  // `/` alone is the overview now (decision 0027).
+  assert.deepEqual(parseRoute("/", ""), { page: "overview" });
+  assert.equal(routeUrl({ page: "overview" }), "/");
 });
 
 test("a later page from another list than the first page's loads the window again", () => {

@@ -14,7 +14,6 @@ import { changeSetStateNames, stateNames } from "./chip.ts";
 import { Chevron, type Dispatch, Link, Mark, plural, SearchIcon, waitingNames } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
-import { windowRoute } from "./update.ts";
 
 // A workstream shows this many of its threads; the rest are on its page.
 const shown = 5;
@@ -35,7 +34,7 @@ export function Sidebar(props: {
   return (
     <aside id="sidebar" class="sidebar" aria-label="Sidebar">
       <div class="sidebar-head">
-        <Link route={windowRoute(model.window)} dispatch={dispatch} class="brand">
+        <Link route={{ page: "overview" }} dispatch={dispatch} class="brand">
           <Mark />
           <span class="sidebar-label">Oriel</span>
         </Link>
@@ -70,10 +69,10 @@ export function Sidebar(props: {
       />
       <nav class="sidebar-pages" aria-label="Pages">
         <Link
-          route={windowRoute(model.window)}
+          route={{ page: "overview" }}
           dispatch={dispatch}
           class="nav-link"
-          aria-current={page === "window" ? "page" : undefined}
+          aria-current={page === "overview" || page === "window" ? "page" : undefined}
         >
           <WindowIcon />
           <span class="sidebar-label">Window</span>
@@ -82,7 +81,10 @@ export function Sidebar(props: {
       {/* While a search shows its results, they take the lists' place. */}
       {!searching(model.search) && (
         <>
-          <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
+          {/* The overview lists them itself, first. */}
+          {page !== "overview" && (
+            <NeedsYou where={where} loaded={model.threads !== null} dispatch={dispatch} />
+          )}
           <Workstreams where={where} dispatch={dispatch} />
           <Done where={where} loaded={model.threads !== null} dispatch={dispatch} />
         </>
