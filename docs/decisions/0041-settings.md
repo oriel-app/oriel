@@ -1,6 +1,6 @@
 # 0041 Settings: providers, models and the look, kept by the server
 
-Accepted 2026-11-03 (OA-181). Amends 0020, 0024, 0034 and 0037. Changes SPEC §7. Amended by 0042: on the desktop app, the API key's row takes a key, checked with Anthropic and kept in the OS secret store; `POST /settings/key` is exempt too. Amended by 0043: a Notifications section, one switch, on by default, for the desktop app's notifications.
+Accepted 2026-11-03 (OA-181). Amends 0020, 0024, 0034 and 0037. Changes SPEC §7. Amended by 0042: on the desktop app, the API key's row takes a key, checked with Anthropic and kept in the OS secret store; `POST /settings/key` is exempt too. Amended by 0043: a Notifications section, one switch, on by default, for the desktop app's notifications. Amended by 0045: a General section, with Ask before quitting while Oriel works, on by default, on the desktop app.
 
 Adds: none
 

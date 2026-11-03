@@ -11,7 +11,8 @@ export type Request =
   | { kind: "secret.set"; name: string; secret: string }
   | { kind: "secret.delete"; name: string }
   | { kind: "notify"; title: string; body: string; open: string }
-  | { kind: "window.focus" };
+  | { kind: "window.focus" }
+  | { kind: "working"; threads: number };
 
 export type Parsed =
   | { id: number; request: Request }
@@ -77,6 +78,12 @@ export function parseRequest(line: string): Parsed {
     }
     case "window.focus":
       return { id, request: { kind: "window.focus" } };
+    case "working": {
+      const { threads } = fields;
+      return typeof threads === "number" && Number.isSafeInteger(threads) && threads >= 0
+        ? { id, request: { kind: "working", threads } }
+        : { id, refused: "working needs a count of threads" };
+    }
     default:
       return { id, refused: "not a request the shell answers" };
   }
@@ -177,6 +184,22 @@ export function notificationText(platform: string, text: string): string {
   return platform === "linux"
     ? line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c)
     : line;
+}
+
+// What the shell asks before quitting while Oriel works on `threads`
+// threads (decision 0045). Quit is the default, Cancel what Escape picks.
+export function quitQuestion(threads: number): {
+  message: string;
+  buttons: [string, string];
+  defaultId: 0;
+  cancelId: 1;
+} {
+  return {
+    message: `Oriel is still working on ${threads} ${threads === 1 ? "thread" : "threads"}. Quit anyway?`,
+    buttons: ["Quit", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+  };
 }
 
 // Splits a stream into lines, dropping any line longer than `max` bytes.

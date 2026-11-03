@@ -36,6 +36,7 @@ const open = refine(
   "a path on the server's origin",
 );
 const id = refine(number, (n) => Number.isSafeInteger(n) && n > 0, "a positive integer");
+const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "a count");
 
 // What the server asks the shell for, without its id.
 export const request = union(
@@ -47,6 +48,9 @@ export const request = union(
   // The first run brings Oriel back to the front once the CLI's sign-in in
   // the browser ends (decision 0038).
   object({ kind: literal("window.focus") }),
+  // How many threads Oriel is working on, for asking before quitting
+  // (decision 0045); 0 while Settings has that off.
+  object({ kind: literal("working"), threads: count }),
 );
 export type ShellRequest = Infer<typeof request>;
 export type RequestKind = ShellRequest["kind"];
@@ -59,6 +63,7 @@ export const answers = {
   "secret.delete": literal(null),
   notify: literal(null),
   "window.focus": literal(null),
+  working: literal(null),
 } satisfies Record<RequestKind, Validator<unknown>>;
 export type Answer<K extends RequestKind> = Infer<(typeof answers)[K]>;
 

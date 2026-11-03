@@ -1,6 +1,6 @@
 # 0039 The desktop shell is Electron, taken from its release zip
 
-Accepted 2026-11-02. Amends 0036's shell. Changes SPEC §1, §3 and §6, and the security reviewer's threat model. Amended by 0042: the secret store is built, a file of ciphertext per secret in the data folder's `Secrets/`, under fixed names, refused when the OS has no key.
+Accepted 2026-11-02. Amends 0036's shell. Changes SPEC §1, §3 and §6, and the security reviewer's threat model. Amended by 0042: the secret store is built, a file of ciphertext per secret in the data folder's `Secrets/`, under fixed names, refused when the OS has no key. Amended by 0045: the app's icon is Oriel's, drawn from `packages/desktop/icon.svg`, and Quit and the window's close ask first while Oriel works.
 
 Adds: none
 

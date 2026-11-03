@@ -189,3 +189,17 @@ test("notifications are on by default, kept when turned off, and anything else r
     assert.equal(settingsFile(path, quiet).get().notify, true);
   });
 });
+
+test("asking before quitting is on by default, kept when turned off, and anything else reads as on", () => {
+  inFolder((path) => {
+    assert.equal(settingsFile(path, quiet).get().askBeforeQuitting, true);
+    settingsFile(path, quiet).set({ ...defaultSettings, askBeforeQuitting: false });
+    assert.equal(settingsFile(path, quiet).get().askBeforeQuitting, false);
+    writeFileSync(path, JSON.stringify({ askBeforeQuitting: 0 }));
+    assert.equal(settingsFile(path, quiet).get().askBeforeQuitting, true);
+  });
+  assert.deepEqual(changed(defaultSettings, { askBeforeQuitting: false }, []), {
+    ...defaultSettings,
+    askBeforeQuitting: false,
+  });
+});

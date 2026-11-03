@@ -1,7 +1,8 @@
 // Settings (OA-181): its sections down the left, each its own address, with
 // room for more. Providers first: one row per provider instance, what Oriel
 // found for it and a switch, then the default model and the Title model,
-// picked from those connected and on. Appearance: the theme and the text
+// picked from those connected and on. General: whether the desktop app asks
+// before quitting while Oriel works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow } from "./cli-row.tsx";
@@ -14,6 +15,7 @@ import type { ModelPick, SendKey, SettingsChange, SettingsView, TextSize } from 
 
 const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
+  { id: "general", name: "General" },
   { id: "appearance", name: "Appearance" },
   { id: "asking", name: "Asking" },
   { id: "notifications", name: "Notifications" },
@@ -65,6 +67,8 @@ export function SettingsPage(props: {
               setup={props.setup}
               sendSetup={sendSetup}
             />
+          ) : section === "general" ? (
+            <General view={view} change={change} />
           ) : section === "appearance" ? (
             <Appearance view={view} change={change} />
           ) : section === "asking" ? (
@@ -342,6 +346,35 @@ function ModelPicker(props: {
         ))}
       </select>
     </label>
+  );
+}
+
+// Whether the desktop app asks before it quits while a thread's turn runs or
+// a change set applies. Only the desktop app quits.
+function General(props: { view: SettingsView; change(change: SettingsChange): void }) {
+  const { view, change } = props;
+  return (
+    <section class="settings-section" aria-labelledby="settings-general">
+      <h2 id="settings-general" class="settings-title">
+        General
+      </h2>
+      {view.asksBeforeQuitting ? (
+        <div class="settings-field settings-switch">
+          <span class="settings-field-name">Ask before quitting while Oriel works</span>
+          <span class="settings-field-about">
+            While a thread's turn is running or a change set is applying, Quit (Cmd+Q) and closing
+            Oriel's window ask first.
+          </span>
+          <Switch
+            on={view.askBeforeQuitting}
+            label="Ask before quitting while Oriel works"
+            onChange={(askBeforeQuitting) => change({ askBeforeQuitting })}
+          />
+        </div>
+      ) : (
+        <p class="settings-lede">Only the desktop app asks before quitting.</p>
+      )}
+    </section>
   );
 }
 

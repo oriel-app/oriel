@@ -341,7 +341,7 @@ test("the API key is kept in the shell's store from Settings, and the next launc
   assert.equal(await two.exited, 0);
 });
 
-test("the folder picker and notifications go to the shell", async (t) => {
+test("the folder picker, notifications and how many threads Oriel works on go to the shell", async (t) => {
   const shell = start(folder(t));
   t.after(() => void shell.input.end());
   const { serving, exited } = await shell.running;
@@ -367,6 +367,15 @@ test("the folder picker and notifications go to the shell", async (t) => {
     // The scripted agent's estimate proposes a change set.
     [["A change set waits for your review", "Estimate it", `/threads/${thread.id}`]],
   );
+  // While its turn ran, Oriel worked on one thread, and then on none.
+  const working = () =>
+    shell.out.flatMap((line) => ("id" in line && line.kind === "working" ? [line.threads] : []));
+  assert.deepEqual(working(), [1, 0]);
+  // With asking before quitting off, the shell hears nothing of the next turn.
+  await send(serving.url, "/api/settings", { askBeforeQuitting: false });
+  await send(serving.url, `/api/threads/${thread.id}/messages`, { text: "And again" });
+  await serving.app.settled();
+  assert.deepEqual(working(), [1, 0]);
   shell.input.end();
   assert.equal(await exited, 0);
 });

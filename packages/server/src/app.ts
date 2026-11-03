@@ -121,6 +121,7 @@ import {
   type SettingsStore,
 } from "./settings.ts";
 import { type Notify, notifier } from "./notify.ts";
+import { quitGuard, type Working, workingThreads } from "./working.ts";
 import { type Setup, type SetupOptions, setupService } from "./setup/setup.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
@@ -191,6 +192,9 @@ export type AppOptions = {
   keys?: { store: KeyStore; check?: (key: string) => Promise<KeyCheck> };
   // The desktop app's notifications, through its shell (OA-184).
   notify?: Notify;
+  // Tells the desktop app's shell how many threads Oriel is working on, so
+  // it asks before quitting (decision 0045).
+  working?: Working;
   // The system's folder picker, through the desktop app's shell: the
   // folder picked, or null if the person cancelled.
   pickFolder?: (prompt: string) => Promise<string | null>;
@@ -736,6 +740,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     cliPaths: options.cliPaths ?? false,
     ...(options.keys ? { keys: options.keys } : {}),
     notifies: options.notify !== undefined,
+    asksBeforeQuitting: options.working !== undefined,
+    saved: () => guarding?.changed(),
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
   });
   const conversation = turns({
@@ -775,6 +781,22 @@ export async function createApp(options: AppOptions): Promise<App> {
       })
     : null;
   const unwatchNotifying = notifying ? conversation.watchAny(() => notifying.changed()) : () => {};
+  // And asks before quitting while Oriel works on a thread.
+  const guarding = options.working
+    ? quitGuard({
+        working: () =>
+          workingThreads({
+            threads: threads.list(workspaceId, now()).map(({ thread }) => thread),
+            running: conversation.running,
+            changeSets: (threadId) => sets.ofThread(threadId),
+            applying: (changeSetId) => sets.applying(changeSetId),
+          }),
+        on: () => store.get().askBeforeQuitting,
+        tell: options.working,
+        log,
+      })
+    : null;
+  const unwatchGuarding = guarding ? conversation.watchAny(() => guarding.changed()) : () => {};
 
   // The items a change set names, as targets or, by each op's catalogue,
   // among its arguments; never a new item's ref.
@@ -1285,6 +1307,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     settled: async () => {
       await conversation.settled();
       await notifying?.idle();
+      await guarding?.idle();
       await setup.idle();
     },
     telemetry: () => telemetry.list(workspaceId),
@@ -1298,6 +1321,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       await conversation.settled();
       unwatchNotifying();
       await notifying?.stop();
+      unwatchGuarding();
+      await guarding?.stop();
       setup.close();
       await setup.idle();
       await waiting;

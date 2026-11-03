@@ -17,7 +17,9 @@
 // - One instance per data folder: Electron's lock lives in the shell's folder
 //   inside it. A second launch brings the first one's window forward.
 // - Quitting closes the server's stdin, and kills its process group after
-//   5 s. The server's stderr goes to the logs folder. If the server dies on
+//   5 s. While the server says Oriel is working on a thread, Quit in the
+//   menu (Cmd+Q) and closing the window ask the person first (decision
+//   0045). The server's stderr goes to the logs folder. If the server dies on
 //   its own, the window says so and offers Restart.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -56,6 +58,7 @@ import {
   pathEnd,
   pathStart,
   printedPath,
+  quitQuestion,
   readyOrigin,
   restartUrl,
   serverPath,
@@ -81,6 +84,10 @@ let origin: string | null = null;
 let path: Promise<string | null> | null = null;
 let quitting = false;
 let picking = false;
+// How many threads the server says Oriel is working on, while it runs, and
+// whether the question before quitting is on screen.
+let working = 0;
+let asking = false;
 let log = -1;
 
 // Only once Electron is ready: on Linux and Windows the OS's key isn't
@@ -140,7 +147,24 @@ function ready() {
   own.setDevicePermissionHandler(() => false);
   own.on("will-download", (event) => event.preventDefault());
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }]),
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { label: `Quit ${app.name}`, accelerator: "CommandOrControl+Q", click: quit },
+        ],
+      },
+      { role: "editMenu" },
+      { role: "windowMenu" },
+    ]),
   );
   window = new BrowserWindow({
     width: 1280,
@@ -160,8 +184,38 @@ function ready() {
       devTools: false,
     },
   });
+  // Closing the window quits, so it asks first too.
+  window.on("close", (event) => {
+    if (quitting || working === 0) return;
+    event.preventDefault();
+    ask();
+  });
   measure(window.webContents);
   start();
+}
+
+// Quit from the menu, the person's own: it asks first while Oriel works. A
+// quit from the Dock, the OS or a signal reaches before-quit, which Electron
+// gives no way to tell from this one, so it doesn't ask: none of them may
+// wait on a question.
+function quit() {
+  if (quitting || working === 0) app.quit();
+  else ask();
+}
+
+// Whether to quit while Oriel works. Quit quits, without asking again.
+function ask() {
+  if (asking || !window) return;
+  asking = true;
+  show();
+  note(`asked before quitting, while working on ${working}`);
+  void dialog
+    .showMessageBox(window, { type: "warning", noLink: true, ...quitQuestion(working) })
+    .then(({ response }) => {
+      asking = false;
+      note(response === 0 ? "quitting anyway" : "not quitting");
+      if (response === 0) app.quit();
+    });
 }
 
 function show() {
@@ -345,6 +399,7 @@ function exited(child: ChildProcessWithoutNullStreams) {
   if (server !== child) return;
   server = null;
   origin = null;
+  working = 0;
   clearTimeout(deadline);
   // Anything the server left in its group, such as a Deno or tsc.
   if (child.pid) killGroup(child.pid);
@@ -415,6 +470,9 @@ async function handle(request: Request): Promise<string | null> {
       // Over the browser the person signed in with, which has the focus.
       show();
       if (process.platform === "darwin") app.focus({ steal: true });
+      return null;
+    case "working":
+      working = request.threads;
       return null;
   }
 }

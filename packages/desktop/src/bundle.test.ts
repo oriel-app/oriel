@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Manifest, shipped, workspaceClosure } from "./bundle.ts";
+import { iconset, type Manifest, shipped, workspaceClosure } from "./bundle.ts";
 
 test("the app takes the workspace packages the server reaches, and no others", () => {
   const manifests = new Map<string, Manifest>([
@@ -55,4 +55,14 @@ test("the app leaves tests, their support files and build state behind", () => {
     "tsconfig.tsbuildinfo",
   ])
     assert.equal(shipped(path), false, path);
+});
+
+test("the icon is drawn at every size iconutil packs, up to 1024 pixels", () => {
+  const set = iconset();
+  assert.equal(set.length, 10);
+  assert.deepEqual(set.slice(0, 2), [
+    { name: "icon_16x16.png", pixels: 16 },
+    { name: "icon_16x16@2x.png", pixels: 32 },
+  ]);
+  assert.deepEqual(set.at(-1), { name: "icon_512x512@2x.png", pixels: 1024 });
 });

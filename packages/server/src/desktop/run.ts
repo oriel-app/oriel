@@ -100,6 +100,9 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
         await lines.shell.ask({ kind: "notify", ...notice });
       },
       pickFolder: (prompt) => lines.shell.ask({ kind: "folder.pick", prompt }),
+      working: async (threads) => {
+        await lines.shell.ask({ kind: "working", threads });
+      },
       ...(setup
         ? {
             setup: {

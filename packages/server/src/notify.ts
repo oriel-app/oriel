@@ -10,6 +10,7 @@
 // nothing.
 import type { Log } from "@oriel/core";
 import { type ThreadSummaryView, type WaitingOn, waitsOnUser } from "@oriel/web/view";
+import { type Looks, looks } from "./looks.ts";
 
 export type Notice = { title: string; body: string; open: string };
 export type Notify = (notice: Notice) => Promise<void>;
@@ -46,14 +47,7 @@ export function newlyWaiting(
   return { now, notices };
 }
 
-export type Notifier = {
-  // The workspace changed: look again, after any look still running.
-  changed(): void;
-  // Resolves once no look is running or queued.
-  idle(): Promise<void>;
-  // Waits for the last look, and looks no more.
-  stop(): Promise<void>;
-};
+export type Notifier = Looks;
 
 export async function notifier(deps: {
   threads(): Promise<ThreadSummaryView[]>;
@@ -62,31 +56,15 @@ export async function notifier(deps: {
   log: Log;
 }): Promise<Notifier> {
   let before = newlyWaiting(new Map(), await deps.threads()).now;
-  let stopped = false;
-  let queued = false;
-  let running: Promise<void> = Promise.resolve();
-  const look = async () => {
-    queued = false;
-    if (stopped) return;
-    const { now, notices } = newlyWaiting(before, await deps.threads());
-    before = now;
-    if (!deps.on()) return;
-    for (const notice of notices)
-      // Never the notice itself: its body is a thread's title.
-      deps.notify(notice).catch(() => deps.log("notify: the shell didn't show it", {}));
-  };
-  return {
-    changed() {
-      if (queued || stopped) return;
-      queued = true;
-      running = running
-        .then(look)
-        .catch((error: unknown) => deps.log("notify: couldn't look", { error: String(error) }));
+  return looks(
+    async () => {
+      const { now, notices } = newlyWaiting(before, await deps.threads());
+      before = now;
+      if (!deps.on()) return;
+      for (const notice of notices)
+        // Never the notice itself: its body is a thread's title.
+        deps.notify(notice).catch(() => deps.log("notify: the shell didn't show it", {}));
     },
-    idle: () => running,
-    async stop() {
-      stopped = true;
-      await running;
-    },
-  };
+    (error) => deps.log("notify: couldn't look", { error: String(error) }),
+  );
 }
