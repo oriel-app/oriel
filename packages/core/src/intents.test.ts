@@ -15,7 +15,7 @@ const remove = (workstream: string, ...items: string[]): Intent => ({
 test("a workstream or thread field is the agent's own by the type it names", () => {
   assert.deepEqual(alternatives("workstream.add").map(ownedFields), [{ workstream: "workstream" }]);
   assert.deepEqual(alternatives("thread.done").map(ownedFields), [{ thread: "thread" }]);
-  assert.deepEqual(alternatives("workstream.create").map(ownedFields), [{}, {}, {}]);
+  assert.deepEqual(alternatives("workstream.create").map(ownedFields), [{}, {}, {}, {}]);
 });
 
 test("adjacent calls of one action on one workstream merge; others keep their order", () => {

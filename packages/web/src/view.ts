@@ -163,6 +163,9 @@ export const waitsOnUser = (waiting: WaitingOn | null): boolean =>
 export const holding = (entries: readonly ChatEntry[]): boolean =>
   entries.some((entry) => entry.kind === "held" && entry.outcome === null);
 
+// A window chat waits on the user only for a held message or a change set:
+// an answer to a question asked from the overview isn't the user's turn
+// (decision 0027), or every question would add itself to Needs you.
 export function waitingOn(thread: {
   state: ThreadStateId;
   running: boolean;
@@ -172,6 +175,7 @@ export function waitingOn(thread: {
     nextSteps: readonly { kind: string }[];
     stalled?: boolean;
   }[];
+  windowChat?: boolean;
 }): WaitingOn | null {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
@@ -181,7 +185,8 @@ export function waitingOn(thread: {
   if (thread.changeSets.some(open)) return "review";
   const applying = thread.changeSets.filter((set) => set.status === "applying");
   if (applying.some((set) => set.stalled)) return "stalled";
-  return applying.length > 0 ? "apply" : "reply";
+  if (applying.length > 0) return "apply";
+  return thread.windowChat ? null : "reply";
 }
 
 // One item in the panel beside the page, read live through the reader the
@@ -224,11 +229,13 @@ export type WorkstreamSummary = {
   id: string;
   name: string;
   // Where it came from: a copy of a cluster (its grouping's name for it),
-  // items picked by hand, or nothing, for a thread started from nothing.
+  // items picked by hand, or nothing, for a thread started from nothing or
+  // the window chat's first question.
   origin:
     | { kind: "cluster"; grouping: string; label: string | null }
     | { kind: "picked" }
-    | { kind: "thread" };
+    | { kind: "thread" }
+    | { kind: "window" };
   version: number;
   size: number;
   createdAt: string;
@@ -336,6 +343,17 @@ export type RunView = {
 
 // One entry in a thread's chat, in `seq` order. Adjacent text entries are
 // one reply streamed in parts; a run's start and finish share its `runId`.
+// A block under the agent's reply (decision 0030): typed data, never HTML.
+// Oriel built it from a read's result, and its caption says which. `more`:
+// how many the read had past what it shows.
+// `outside`: from a read outside the workstream, the escape hatch, which
+// is read-only; a row the workstream holds too says so (`inRegion`).
+export type BlockView = { caption: string; more: number; outside: boolean } & (
+  | { form: "bars"; bars: { label: string; value: number }[] }
+  | { form: "table"; columns: string[]; rows: (string | number | boolean | null)[][] }
+  | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
+);
+
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
   // `ownAgent`: this thread's agent made every change it covers.
@@ -353,7 +371,9 @@ export type ChatEntry = { seq: number; at: string } & (
   | { kind: "text"; text: string }
   | { kind: "run.started"; runId: string; script: string }
   | { kind: "run.finished"; runId: string; run: RunView }
-  | { kind: "search"; runId: string; hits: (ItemRef & { inRegion: boolean })[] }
+  // A table, bars or rows of items Oriel built from a read the agent ran,
+  // or what a run found outside the workstream (the escape hatch).
+  | { kind: "block"; block: BlockView }
   | { kind: "change-set"; changeSetId: string }
   // What Oriel did with the actions the agent asked for, under its reply.
   | { kind: "actions"; lines: ActionLineView[] }
@@ -464,6 +484,9 @@ export type DiffView = {
 export type ThreadView = {
   id: string;
   title: string | null;
+  // The window chat's thread (decision 0027), which the user's turn alone
+  // doesn't put in Needs you.
+  windowChat?: true;
   workstream: { id: string; name: string; version: number };
   state: ThreadStateId;
   doneBy: "applied" | "marked" | null;

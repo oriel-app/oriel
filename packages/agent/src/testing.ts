@@ -10,6 +10,7 @@ import {
   instant,
   type ItemId,
   type MutationRecord,
+  type OrielReads,
   parseItemId,
   type ProxiedRead,
   type Reader,
@@ -100,8 +101,19 @@ export function fixtureRegion(name: string): Region {
   };
 }
 
-export const regionBindings = (region: Region, threadId?: Ulid) =>
-  bindingsFor(region, { reader, namespaces, ...(threadId ? { thread: threadId } : {}) });
+export const regionBindings = (
+  region: Region,
+  threadId?: Ulid,
+  show?: (spec: unknown) => string,
+  oriel?: OrielReads,
+) =>
+  bindingsFor(region, {
+    reader,
+    namespaces,
+    ...(threadId ? { thread: threadId } : {}),
+    ...(show ? { show } : {}),
+    ...(oriel ? { oriel } : {}),
+  });
 
 export const runLimits: RunLimits = {
   wallMs: 60_000,

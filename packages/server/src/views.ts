@@ -1,7 +1,9 @@
 // The view data the JSON routes return, built from the stores. Plain data in
 // the shapes @oriel/web/view declares; the window renders it as it is.
 import {
+  type Block,
   byItemId,
+  escapeHatchBlock,
   type ChangeSet,
   type ChangeSets,
   type ChangeSetState,
@@ -20,6 +22,7 @@ import { plainError } from "@oriel/changeset";
 import type { WorkstreamStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
 import { itemRow } from "@oriel/groupings";
 import type {
+  BlockView,
   ChangeSetStatus,
   ChangeSetSummaryView,
   ChangeSetView,
@@ -39,6 +42,7 @@ import type {
 import { waitingOn } from "@oriel/web/view";
 import { actionLineView } from "./action-lines.ts";
 import { agentEvent, type AgentEvent } from "./agent.ts";
+import { listedWorkstreams } from "./window-chat.ts";
 
 export type ViewDeps = {
   workstreams: WorkstreamStore;
@@ -334,6 +338,7 @@ export function views(deps: ViewDeps) {
       running: deps.running(thread.id),
       held: thread.state === "working" && threads.held(thread.id).length > 0,
       changeSets: thread.state === "working" ? await changeSetsOf(thread.id) : [],
+      windowChat: threads.isWindowChat(thread.id),
     }),
     activityAt,
   });
@@ -370,6 +375,25 @@ export function views(deps: ViewDeps) {
         else by.delete(member.id);
     }
     return by;
+  };
+
+  // A block as the window shows it: rows of items as Browse shows them, from
+  // the index now, each from outside the region that the region holds too
+  // saying so.
+  const blockView = (built: Block, region: ReadonlySet<string>): BlockView => {
+    const { spec: _spec, ...block } = built;
+    if (block.form !== "rows") return block;
+    const { byId } = lookup();
+    const asOf = deps.asOf();
+    const items = block.items.map((id) => {
+      const record = byId.get(id);
+      return {
+        ref: ref(record, id),
+        row: record ? itemRow(record, asOf, deps.presentations) : null,
+        ...(block.outside && region.has(id) ? { inRegion: true as const } : {}),
+      };
+    });
+    return { ...block, items };
   };
 
   // A stored chat message as the window shows it; null for an agent event
@@ -429,20 +453,18 @@ export function views(deps: ViewDeps) {
         return { ...at, kind: "run.started", runId: event.runId, script: event.script };
       case "run.finished":
         return { ...at, kind: "run.finished", runId: event.runId, run: runView(event.result) };
+      // The escape hatch: what a run reached outside the region, as rows,
+      // marked so (decision 0030). An item the region holds too says so.
+      // What a run reached outside the region shows unasked, as the escape
+      // hatch's block (decision 0030), built as any block is.
       case "search": {
-        return {
-          ...at,
-          kind: "search",
-          runId: event.runId,
-          hits: event.hits.map((hit) => ({
-            id: hit.id,
-            key: keyOf(hit.id),
-            title: hit.title,
-            url: webUrl(hit.location),
-            inRegion: region.has(hit.id),
-          })),
-        };
+        const block = escapeHatchBlock(event.hits);
+        return block ? { ...at, kind: "block", block: blockView(block, region) } : null;
       }
+      case "block.refused":
+        return null;
+      case "block":
+        return { ...at, kind: "block", block: blockView(event.block, region) };
       case "change-set":
         return { ...at, kind: "change-set", changeSetId: event.changeSetId };
       case "actions":
@@ -479,7 +501,10 @@ export function views(deps: ViewDeps) {
     members,
 
     workstreams(workspaceId: Ulid): WorkstreamSummary[] {
-      return workstreams.list(workspaceId).map((workstream) => workstreamSummary(workstream.id));
+      return workstreams
+        .list(workspaceId)
+        .filter(listedWorkstreams({ workstreams, threads, now: deps.now }))
+        .map((workstream) => workstreamSummary(workstream.id));
     },
 
     async workstream(id: Ulid): Promise<WorkstreamView | null> {
@@ -577,6 +602,7 @@ export function views(deps: ViewDeps) {
           ),
         ),
         writable: deps.writable,
+        ...(threads.isWindowChat(id) ? { windowChat: true as const } : {}),
       };
     },
 

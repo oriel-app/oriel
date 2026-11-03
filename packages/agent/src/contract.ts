@@ -3,6 +3,7 @@
 import type {
   ActionLine,
   Bindings,
+  Block,
   ChangeSets,
   Instant,
   Intent,
@@ -67,6 +68,12 @@ export type AgentEvent =
   | { kind: "run.finished"; runId: Ulid; result: RunResult }
   // The escape hatch, rendered as its own block (SPEC §1.6).
   | { kind: "search"; runId: Ulid; hits: SearchHit[] }
+  // A block the agent asked for, which Oriel built from a read the turn ran
+  // (decision 0030): shown under the reply, so they come after its text.
+  | { kind: "block"; runId: Ulid; block: Block }
+  // A block a run asked for and Oriel refused, for telemetry; the run's
+  // result told the agent why.
+  | { kind: "block.refused"; runId: Ulid }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
   // What became of the intents the turn's last run (`runId`) recorded,
@@ -98,8 +105,9 @@ export type AgentDeps = {
   provider: Provider;
   sandbox: Sandbox;
   // The server wires each source's namespace in. Oriel's own actions
-  // default to the thread's workstream and the thread.
-  bindingsFor: (region: Region, thread: Ulid) => Bindings;
+  // default to the thread's workstream and the thread. `show` builds the
+  // block a run asks for, from a read its turn ran, and says what it did.
+  bindingsFor: (region: Region, thread: Ulid, show?: (spec: unknown) => string) => Bindings;
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if

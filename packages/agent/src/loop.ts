@@ -12,21 +12,9 @@
 // and a run that fails proposes nothing. Both settle when the turn ends,
 // however it ends, except on abort.
 import { createHash } from "node:crypto";
-import {
-  array,
-  type Bindings,
-  isInstant,
-  isItemId,
-  type Log,
-  object,
-  refine,
-  type Run,
-  type RunLimits,
-  type RunResult,
-  type SearchHit,
-  string,
-} from "@oriel/core";
+import { type Log, object, type Run, type RunLimits, type RunResult, string } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
+import { turnBlocks } from "./blocks.ts";
 import { proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
@@ -43,17 +31,6 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 export const systemPromptHash = sha256(systemPrompt);
 
 const runInput = object({ script: string });
-
-// What the bindings' `search()` answers with, checked before it reaches the
-// window.
-const searchHits = array(
-  object({
-    id: refine(string, isItemId, "expected an item ID"),
-    title: string,
-    location: string,
-    updatedAt: refine(string, isInstant, "expected an instant"),
-  }),
-);
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -133,6 +110,7 @@ async function* turn(
   }
 
   const proposed = proposal();
+  const shownBlocks = turnBlocks();
 
   // One `run` call: refused without a run if it isn't one, else a run in the
   // sandbox, recorded whatever its outcome. `charge` is the usage of the
@@ -150,27 +128,12 @@ async function* turn(
       return refuse("The run tool takes an object with one field, script: a string of TypeScript.");
     const { script } = parsed.value;
     signal.throwIfAborted();
-    const bindings = deps.bindingsFor(region, thread.id);
     const runId = deps.newId();
+    // Its bindings, with show(), each read they answer noted for blocks.
+    const shown = shownBlocks.run(runId, (show) => deps.bindingsFor(region, thread.id, show));
+    const { bindings } = shown;
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
-    // The window shows what the escape hatch found as its own block; the
-    // sandbox keeps only each read's hash. A run's searches share the block,
-    // so an item two of them found is in it once, where it was first found.
-    const hits = new Map<string, SearchHit>();
-    const watched: Bindings = {
-      dts: bindings.dts,
-      shim: bindings.shim,
-      capture: (fn, args, ref) => bindings.capture(fn, args, ref),
-      intend: (fn, args) => bindings.intend(fn, args),
-      read: async (fn, args) => {
-        const answer = await bindings.read(fn, args);
-        const found = fn === "search" ? searchHits(answer.value) : null;
-        for (const hit of found?.ok ? found.value : [])
-          if (!hits.has(hit.id)) hits.set(hit.id, hit);
-        return answer;
-      },
-    };
     const record = (outcome: Run["outcome"], result: RunResult | null) =>
       deps.runs.record(
         {
@@ -195,7 +158,7 @@ async function* turn(
     yield { kind: "run.started", runId, script };
     let result: RunResult;
     try {
-      result = await deps.sandbox.run(script, watched, {
+      result = await deps.sandbox.run(script, bindings, {
         limits: runLimits,
         signal,
         log: runLog,
@@ -208,11 +171,11 @@ async function* turn(
     // A run-level cap (wall time, reads, mutations, output) shows here as the
     // run's outcome, not as a `limit`: the model reads the error and can go on.
     yield { kind: "run.finished", runId, result };
-    if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
+    yield* shown.ran(result);
     const replaced = proposed.ran(runId, result);
     return {
       callId: call.id,
-      content: runResultText(result, replaced.mutations, replaced.intents),
+      content: runResultText(result, replaced.mutations, replaced.intents, shown.said),
       isError: result.outcome !== "ok",
     };
   }
@@ -300,6 +263,7 @@ async function* turn(
     yield failed(errorText(error));
   }
 
+  yield* shownBlocks.settle();
   yield* proposed.settle(deps, thread, signal, log);
   yield done();
 }

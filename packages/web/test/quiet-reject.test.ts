@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect, Replied } from "../src/http.ts";
 import {
-  blocks,
+  entriesOf,
   expected,
   folded,
   initThread,
@@ -119,7 +119,7 @@ test("Oriel's line is a note of its own, never part of the agent's reply", () =>
     { seq: 5, at, kind: "note", note: { kind: "rejected", changeSetId: setId, via: "thread" } },
   ];
   assert.deepEqual(
-    blocks(entries).map((b) => (b.kind === "reply" ? b.text : b.kind)),
+    entriesOf(entries).map((b) => (b.kind === "reply" ? b.text : b.kind)),
     ["user", "I proposed a new title.", "change-set", "note"],
   );
 });

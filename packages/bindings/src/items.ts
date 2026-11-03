@@ -1,6 +1,6 @@
 // What works for any item in the region, whatever its source: `items.read()`
 // and `items.list()`, which return its title and text, and the escape hatch.
-import { type ItemId, number, optionalParam, param, read, string } from "@oriel/core";
+import { type ItemId, number, optionalParam, param, read, searchFields, string } from "@oriel/core";
 import { type Fn, type Host, outside } from "./fn.ts";
 
 const field = (content: unknown, key: string): unknown =>
@@ -38,6 +38,10 @@ const readItem: Fn = {
 const listItems: Fn = {
   space: "items",
   outsideRegion: false,
+  fields: {
+    source: "this workstream's items, read live",
+    lists: { "": { id: "Item", title: "Title" } },
+  },
   ...read({
     name: "list",
     doc: "Every item in this region, read live, in RegionId order.",
@@ -52,6 +56,7 @@ export const itemFns: readonly Fn[] = [readItem, listItems];
 export const searchFn: Fn = {
   space: null,
   outsideRegion: true,
+  fields: searchFields,
   ...read({
     name: "search",
     doc: "Anything indexed, in this region or outside it, by key or title words. Results are read-only and can't be written.",

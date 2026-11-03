@@ -14,12 +14,12 @@ import {
   type Dispatch,
   DropZone,
   ItemListContext,
+  Member,
   Link,
   plural,
   StateChip,
   when,
 } from "./parts.tsx";
-import { Member } from "./thread-page.tsx";
 import type { UndoNote, Undos } from "./undos.ts";
 import type {
   WorkstreamChangeView,
@@ -141,7 +141,9 @@ export function WorkstreamPage(props: {
               ? `Copied from a cluster in the ${workstream.origin.grouping} grouping`
               : workstream.origin.kind === "thread"
                 ? "Made by a thread started from nothing"
-                : "Picked by hand"}
+                : workstream.origin.kind === "window"
+                  ? "Made by a question in the window chat"
+                  : "Picked by hand"}
             {" · "}
             {plural(workstream.size, "item")} · v{workstream.version}
           </p>

@@ -7,7 +7,7 @@ import type { Effect, Replied } from "../src/http.ts";
 import { nav } from "../src/nav.ts";
 import { init, type Model, update } from "../src/root.ts";
 import {
-  blocks,
+  entriesOf,
   initThread,
   streamed,
   threadReplied,
@@ -92,7 +92,7 @@ const reload: Effect = {
 };
 
 test("a held message is a block of its own, under who it is from", () => {
-  const [, block] = blocks(viewWith(held(null)).entries);
+  const [, block] = entriesOf(viewWith(held(null)).entries);
   assert.deepEqual(block, {
     seq,
     at,

@@ -1,4 +1,5 @@
 export * from "./actions.ts";
+export * from "./block.ts";
 export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
@@ -21,4 +22,5 @@ export * from "./sync.ts";
 export * from "./telemetry.ts";
 export * from "./thread.ts";
 export * from "./validate.ts";
+export * from "./window-chat.ts";
 export * from "./zoom.ts";

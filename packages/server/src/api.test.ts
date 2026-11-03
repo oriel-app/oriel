@@ -351,25 +351,29 @@ test("search results come back as their own block, and count as the escape hatch
     },
   });
   const view = await app.view();
-  const found = view.entries.find((e) => e.kind === "search");
-  assert.ok(found?.kind === "search");
-  assert.ok(found.hits.length > 0);
-  for (const hit of found.hits) {
-    assert.match(hit.title ?? "", /weather/i);
-    assert.ok(hit.url === null || hit.url.startsWith("https://"));
+  // The escape hatch is a rows block, marked as from outside the workstream.
+  const hits = (entries: typeof view.entries) => {
+    const found = entries.find((e) => e.kind === "block" && e.block.outside);
+    assert.ok(found?.kind === "block" && found.block.form === "rows");
+    return found.block.items;
+  };
+  const found = hits(view.entries);
+  assert.ok(found.length > 0);
+  for (const { ref } of found) {
+    assert.match(ref.title ?? "", /weather/i);
+    assert.ok(ref.url === null || ref.url.startsWith("https://"));
   }
   // The weather epic isn't in the checkout workstream.
-  assert.ok(found.hits.some((hit) => !hit.inRegion));
+  assert.ok(found.some((hit) => !hit.inRegion));
   const used = app.app.telemetry().find((e) => e.name === "escape-hatch.used");
   assert.equal(used?.data.threadId, app.threadId);
   // A hit is shown against the version the search ran in, whatever the workstream
   // holds since.
-  const outside = found.hits.find((hit) => !hit.inRegion);
+  const outside = found.find((hit) => !hit.inRegion);
   assert.ok(outside);
-  await app.post(`/api/workstreams/${app.workstreamId}/add`, { items: [outside.id] });
-  const later = (await app.view()).entries.find((e) => e.kind === "search");
-  assert.ok(later?.kind === "search");
-  assert.equal(later.hits.find((hit) => hit.id === outside.id)?.inRegion, false);
+  await app.post(`/api/workstreams/${app.workstreamId}/add`, { items: [outside.ref.id] });
+  const later = hits((await app.view()).entries);
+  assert.equal(later.find((hit) => hit.ref.id === outside.ref.id)?.inRegion, undefined);
 });
 
 test("a review link works without the thread; its GET opens and decides nothing", async (t) => {

@@ -446,3 +446,17 @@ function headlines(
     });
   return lines;
 }
+
+// Every item the overview shows, once each, in the order it shows them: what
+// the window chat's window.overview() reaches outside its region (decision
+// 0027).
+export function overviewItems(view: OverviewView): string[] {
+  const refs = [
+    ...view.headlines.flatMap((line) => (line.subject.kind === "item" ? [line.subject.item] : [])),
+    ...view.workstreams.flatMap((row) => row.movedItems),
+    ...view.candidates.rows.flatMap(({ subject }) =>
+      subject.kind === "item" ? [subject.item] : subject.lead ? [subject.lead] : [],
+    ),
+  ];
+  return [...new Set(refs.map((ref) => ref.id))];
+}

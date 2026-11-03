@@ -2,7 +2,7 @@
 // thread's state is derived from what happened in it, never stored; only
 // marking it done has no other record, so that time is kept, and who did it.
 // `now` is passed in.
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import {
   type Actor,
   type HeldSender,
@@ -151,6 +151,26 @@ export function threadStore(db: DatabaseSync) {
   const selectByWorkspace = db.prepare(`
     select id from threads where workspace_id = ? and ${live}
     order by created_at desc, id desc`);
+  // The window chat's threads (decision 0027). Prepared when first used, so
+  // a store over a database migrated only part way still opens.
+  let windowChats: Record<"newest" | "start" | "is" | "leave" | "forget", StatementSync> | null =
+    null;
+  const windowChat = () =>
+    (windowChats ??= {
+      // The newest the user hasn't left with New chat.
+      newest: db.prepare(`
+        select threads.id from window_chats c join threads on threads.id = c.thread_id
+        where c.workspace_id = ? and c.left_at is null and ${live}
+        order by threads.created_at desc, threads.id desc limit 1`),
+      start: db.prepare(`
+        insert into window_chats (thread_id, workspace_id)
+        select id, workspace_id from threads where id = ?`),
+      is: db.prepare("select 1 from window_chats where thread_id = ?"),
+      leave: db.prepare(
+        "update window_chats set left_at = ?2 where thread_id = ?1 and left_at is null",
+      ),
+      forget: db.prepare("delete from window_chats where thread_id = ?"),
+    });
   const selectByWorkstream = db.prepare(`
     select id from threads where workstream_id = ? and ${live}
     order by created_at desc, id desc`);
@@ -258,11 +278,12 @@ export function threadStore(db: DatabaseSync) {
     "delete from done_marks where thread_id = ?",
     "delete from threads where id = ?",
   ].map((sql) => db.prepare(sql));
-  // A workstream made for a thread from nothing, once it holds no thread, kept or
+  // A workstream made for a thread from nothing, or for the window chat, once
+  // it holds no thread, kept or
   // not, and no item, as when its one thread was abandoned.
   const selectEmptyWorkstream = db.prepare(`
     select g.id from workstreams g
-    where g.id = ?1 and json_extract(g.origin, '$.kind') = 'thread'
+    where g.id = ?1 and json_extract(g.origin, '$.kind') in ('thread', 'window')
       and not exists (select 1 from threads where workstream_id = ?1)
       and not exists (select 1 from workstream_members where workstream_id = ?1 and removed_version is null)`);
   const dropEmpty = dropWorkstream.map((sql) => db.prepare(sql));
@@ -593,6 +614,7 @@ export function threadStore(db: DatabaseSync) {
           revokeLinks.run(id, now);
           return { workstreamId: thread.workstream_id, kept: true, workstreamRemoved: false };
         }
+        windowChat().forget.run(id);
         for (const statement of purge) statement.run(id);
         const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
         if (empty) for (const statement of dropEmpty) statement.run(thread.workstream_id);
@@ -616,6 +638,32 @@ export function threadStore(db: DatabaseSync) {
     },
 
     // A workspace's threads, newest first, with their latest activity.
+    // The window chat the window shows: the newest one the user hasn't left
+    // with New chat, while it is working. Once that one is done or dropped,
+    // there is none, and the next question starts a fresh one.
+    windowChat(workspaceId: Ulid, now: Instant): Thread | null {
+      const [id] = ids(windowChat().newest.all(workspaceId));
+      const thread = id === undefined ? null : get(id, now);
+      return thread?.state === "working" ? thread : null;
+    },
+
+    // The thread is a window chat: its workstream's first, made by the
+    // window chat's first question. Any other thread on that workstream is
+    // an ordinary one.
+    startWindowChat(id: Ulid): void {
+      windowChat().start.run(id);
+    },
+
+    isWindowChat(id: Ulid): boolean {
+      return windowChat().is.get(id) !== undefined;
+    },
+
+    // The user started a fresh window chat: this one is no longer the
+    // window's, whatever its state.
+    leaveWindowChat(id: Ulid, now: Instant): void {
+      windowChat().leave.run(id, now);
+    },
+
     list(workspaceId: Ulid, now: Instant): ThreadSummary[] {
       return ids(selectByWorkspace.all(workspaceId)).map((id) => summary(id, now));
     },

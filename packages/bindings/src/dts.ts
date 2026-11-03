@@ -6,6 +6,7 @@ import { type Scope, spaceNames } from "./describe.ts";
 import type { Fn } from "./fn.ts";
 import { itemTypes } from "./items.ts";
 import { orielTypes } from "./oriel.ts";
+import { windowTypes } from "./window.ts";
 import { actionTypes } from "./actions.ts";
 
 const header = [
@@ -51,6 +52,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
     ...orielTypes,
     ...actionTypes,
+    ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
     "",
     ...spaceNames.flatMap((name) => namespace(name, fns)),
     ...fns

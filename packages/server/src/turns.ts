@@ -15,6 +15,7 @@ import type {
   Ulid,
 } from "@oriel/core";
 import { capturedRules, type Titler } from "@oriel/agent";
+import { nameOf } from "./names.ts";
 import {
   type Agent,
   agentEvent,
@@ -271,20 +272,24 @@ export function turns(deps: TurnDeps) {
       .join("; ");
   };
 
+  // Each event goes in the chat, but a refused block, which the run's result
+  // already told the agent, and which the user never sees: it is only
+  // counted.
   const record = (threadId: Ulid, event: AgentEvent) => {
-    const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
-    published(threadId, seq);
-    if (event.kind === "search") {
-      const thread = threads.get(threadId, deps.now());
-      if (thread)
-        deps.emit({
-          name: "escape-hatch.used",
-          at: deps.now(),
-          workspaceId: thread.workspaceId,
-          threadId,
-          runId: event.runId,
-        });
+    if (event.kind !== "block.refused") {
+      const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
+      published(threadId, seq);
     }
+    if (event.kind !== "search" && event.kind !== "block" && event.kind !== "block.refused") return;
+    const thread = threads.get(threadId, deps.now());
+    if (!thread) return;
+    const at = deps.now();
+    const { workspaceId } = thread;
+    if (event.kind === "search")
+      deps.emit({ name: "escape-hatch.used", at, workspaceId, threadId, runId: event.runId });
+    else if (event.kind === "block")
+      deps.emit({ name: "block.shown", at, workspaceId, threadId, form: event.block.form });
+    else deps.emit({ name: "block.refused", at, workspaceId, threadId });
   };
 
   // Titles the thread from its first message, beside its first turn. The
@@ -305,6 +310,13 @@ export function turns(deps: TurnDeps) {
         // One deleted meanwhile takes none.
         if (!threads.get(threadId, deps.now())) return;
         threads.setTitle(threadId, written, deps.now());
+        // A window chat's workstream takes its title, so kept chats read as
+        // what they were about, until the user names it (the store keeps
+        // their name).
+        const thread = threads.get(threadId, deps.now());
+        const workstream = thread && workstreams.get(thread.workstreamId);
+        if (workstream?.origin.kind === "window")
+          workstreams.rename(workstream.id, nameOf(written), "oriel");
         publish(threadId, { type: "status", running: running.has(threadId) });
       })
       .catch((error: unknown) => {

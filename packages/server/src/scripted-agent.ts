@@ -3,17 +3,12 @@
 // deps. A turn follows a plan instead of a model, but its runs are real: the
 // sandbox runs each script against the region's bindings, and the run is
 // recorded. What the last run to capture writes captured becomes the change
-// set, and the last run's intents apply, as for any agent (`proposal`).
+// set, and the last run's intents apply, as for any agent (`proposal`); the
+// blocks its runs ask for show under its reply, as for any agent (`turnBlocks`).
 import { createHash } from "node:crypto";
-import { proposal } from "@oriel/agent";
-import { array, type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
-import {
-  type Agent,
-  type ServerAgentDeps,
-  type AgentEvent,
-  searchHit,
-  type TurnInput,
-} from "./agent.ts";
+import { proposal, turnBlocks } from "@oriel/agent";
+import { type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
+import { type Agent, type ServerAgentDeps, type AgentEvent, type TurnInput } from "./agent.ts";
 
 // Text to say, a script to run, a search, which is a run whose result
 // renders as its own block, or a look through Oriel's own threads, which
@@ -55,6 +50,7 @@ async function* steps(
 ): AsyncGenerator<AgentEvent> {
   const { thread, region } = input;
   const proposed = proposal();
+  const shownBlocks = turnBlocks();
   // A run may capture no more than a change set may hold.
   const limits = {
     ...deps.limits.run,
@@ -74,7 +70,8 @@ async function* steps(
           : `return await thread.find(${JSON.stringify(step.threads)}, 1);`;
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
-    const bindings = deps.bindingsFor(region, thread.id);
+    const shown = shownBlocks.run(runId, (show) => deps.bindingsFor(region, thread.id, show));
+    const { bindings } = shown;
     const startedAt = deps.now();
     const run = {
       id: runId,
@@ -114,6 +111,7 @@ async function* steps(
       result.reads,
     );
     yield { kind: "run.finished", runId, result };
+    yield* shown.ran(result);
     // A model reads a failed run and answers from it; the rest of the plan
     // assumed the run worked, so the turn ends here, saying why, with what
     // earlier runs proposed.
@@ -122,13 +120,10 @@ async function* steps(
       yield { kind: "text", text: `Nothing to propose: ${failed.error.message}.` };
       break;
     }
-    if ("search" in step) {
-      const hits = array(searchHit)(returned(result));
-      if (hits.ok) yield { kind: "search", runId, hits: hits.value };
-    }
     if ("threads" in step) yield { kind: "text", text: linkTo(returned(result)) };
     proposed.ran(runId, result);
   }
+  yield* shownBlocks.settle();
   yield* proposed.settle(deps, thread, signal, log);
 }
 

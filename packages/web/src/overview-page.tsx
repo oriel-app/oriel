@@ -30,6 +30,8 @@ import type {
   WorkstreamRowView,
 } from "./view.ts";
 import { ConnectJira, StatusBar } from "./window-page.tsx";
+import { AskBar } from "./window-chat-view.tsx";
+import type { WindowChatModel } from "./window-chat.ts";
 
 export function OverviewPage(props: {
   model: OverviewModel;
@@ -41,6 +43,9 @@ export function OverviewPage(props: {
   jira: JiraModel;
   // Browse as the user last left it.
   browse: Route;
+  chat: WindowChatModel;
+  // Whether the window chat has a conversation.
+  ongoing: boolean;
   dispatch: Dispatch;
 }) {
   const { model, ending, added, jira, browse, dispatch } = props;
@@ -53,7 +58,7 @@ export function OverviewPage(props: {
         {view && <Counts view={view} model={model} dispatch={dispatch} />}
       </div>
       {view && model.opened.includes("changed") && <Changed view={view} dispatch={dispatch} />}
-      <AskSlot />
+      <AskBar chat={props.chat} view={view} ongoing={props.ongoing} dispatch={dispatch} />
       {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
       {view === null ? (
         model.problem === null ? (
@@ -108,12 +113,6 @@ export function OverviewPage(props: {
       />
     </main>
   );
-}
-
-// Where the ask bar goes, under the counts strip (OA-136 fills it): the
-// window chat's one place on the overview. Empty until then.
-function AskSlot() {
-  return null;
 }
 
 // Where answers the user pinned go, under the headlines (decision 0030,

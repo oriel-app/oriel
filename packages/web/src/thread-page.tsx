@@ -3,6 +3,7 @@
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect } from "preact/hooks";
+import { BlockFigure } from "./block.tsx";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -11,21 +12,20 @@ import {
   ItemKey,
   ItemLinksContext,
   ItemListContext,
+  Member,
   Link,
   Markdown,
   plural,
   points,
-  Replies,
   StateChip,
   waitingNames,
-  TypeMark,
 } from "./parts.tsx";
 import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { lines, type Piece } from "./text-diff.ts";
 import {
-  type Block,
-  blocks,
+  type Entry,
+  entriesOf,
   expected,
   folded,
   type NewThreadModel,
@@ -42,7 +42,6 @@ import {
   type HeldFrom,
   type ItemRef,
   type ItemValue,
-  type MemberView,
   type NoteView,
   type RunView,
   type ThreadView,
@@ -144,6 +143,7 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
                   running: view.running,
                   held: holding(view.entries),
                   changeSets: view.changeSets,
+                  windowChat: view.windowChat === true,
                 })}
               />
               {view.state !== "done" && (
@@ -158,8 +158,8 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
             </div>
           </header>
           <ol class="chat">
-            {blocks(view.entries).map((block) => (
-              <ChatBlock key={block.seq} block={block} model={model} view={view} send={send} />
+            {entriesOf(view.entries).map((entry) => (
+              <ChatEntryItem key={entry.seq} entry={entry} model={model} view={view} send={send} />
             ))}
             {view.running && (
               <li class="working" role="status">
@@ -221,59 +221,46 @@ export function NewThreadPage({ model, dispatch }: { model: NewThreadModel; disp
   );
 }
 
-function ChatBlock(props: {
-  block: Block;
+export function ChatEntryItem(props: {
+  entry: Entry;
   model: ThreadModel;
   view: ThreadView;
   send: (msg: ThreadMsg) => void;
 }) {
-  const { block } = props;
-  switch (block.kind) {
+  const { entry } = props;
+  switch (entry.kind) {
     case "user":
-      return <li class="user-message">{block.text}</li>;
+      return <li class="user-message">{entry.text}</li>;
     case "reply":
       return (
         <li class="reply">
-          <Markdown text={block.text} linksTo={sites(props.view)} />
+          <Markdown text={entry.text} linksTo={sites(props.view)} />
         </li>
       );
     case "marker":
       return (
         <li class="marker" role="note">
           <span>
-            {block.added.length > 0 && <>Added {refList(block.added)}</>}
-            {block.added.length > 0 && block.removed.length > 0 && " · "}
-            {block.removed.length > 0 && <>Removed {refList(block.removed)}</>}
+            {entry.added.length > 0 && <>Added {refList(entry.added)}</>}
+            {entry.added.length > 0 && entry.removed.length > 0 && " · "}
+            {entry.removed.length > 0 && <>Removed {refList(entry.removed)}</>}
           </span>
         </li>
       );
     case "run":
       return (
         <li class="run-block">
-          <Run script={block.script} run={block.run} stopped={block.stopped} />
+          <Run script={entry.script} run={entry.run} stopped={entry.stopped} />
         </li>
       );
-    case "search":
+    case "block":
       return (
-        <li class="search-block">
-          <p class="search-label">
-            Searched outside this workstream · {plural(block.hits.length, "result")} · read-only
-          </p>
-          <ItemListContext.Provider value={block.hits.map((hit) => hit.id)}>
-            <ul class="hits">
-              {block.hits.map((hit) => (
-                <li key={hit.id}>
-                  <ItemKey item={hit} />
-                  <span class="hit-title">{hit.title}</span>
-                  {hit.inRegion && <span class="in-region">in this workstream</span>}
-                </li>
-              ))}
-            </ul>
-          </ItemListContext.Provider>
+        <li class="block-entry">
+          <BlockFigure block={entry.block} />
         </li>
       );
     case "change-set": {
-      const set = props.view.changeSets.find((s) => s.id === block.changeSetId);
+      const set = props.view.changeSets.find((s) => s.id === entry.changeSetId);
       if (!set) return null;
       return (
         <li class="change-set-block">
@@ -284,19 +271,19 @@ function ChatBlock(props: {
     case "actions":
       return (
         <li class="actions-block" aria-label="What the agent did in Oriel">
-          <ActionLines seq={block.seq} lines={block.lines} model={props.model} send={props.send} />
+          <ActionLines seq={entry.seq} lines={entry.lines} model={props.model} send={props.send} />
         </li>
       );
     case "held":
       return (
-        <li class="held-block" data-outcome={block.outcome ?? "held"}>
-          <HeldMessage block={block} model={props.model} view={props.view} send={props.send} />
+        <li class="held-block" data-outcome={entry.outcome ?? "held"}>
+          <HeldMessage block={entry} model={props.model} view={props.view} send={props.send} />
         </li>
       );
     case "note":
       return (
         <li class="oriel-note" role="note">
-          <OrielNote note={block.note} />
+          <OrielNote note={entry.note} />
         </li>
       );
     // A limit is a per-thread cap that ended the turn; a run's own cap stays
@@ -305,13 +292,13 @@ function ChatBlock(props: {
       return (
         <li
           class="notice"
-          data-tone={block.tone}
-          role={block.tone === "limit" ? "status" : undefined}
+          data-tone={entry.tone}
+          role={entry.tone === "limit" ? "status" : undefined}
         >
-          {block.tone === "limit" && (
+          {entry.tone === "limit" && (
             <strong>This thread has hit its limit, so the agent stopped here. </strong>
           )}
-          {block.text}
+          {entry.text}
         </li>
       );
   }
@@ -382,7 +369,7 @@ function ActionLines(props: {
 
 // The thread's items by address, so a link to one in a reply, or in a diff's
 // value, opens its panel.
-const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
+export const itemsOf = (view: ThreadView): ReadonlyMap<string, string> =>
   new Map(view.members.flatMap(({ ref }) => (ref.url ? [[addressOf(ref.url), ref.id]] : [])));
 
 // Who a held message is from, each kind of sender in its own words, and
@@ -405,7 +392,7 @@ function heldFrom(from: HeldFrom) {
 // user sends it, as it is or edited, as their own message; or they discard
 // it (decision 0024).
 function HeldMessage(props: {
-  block: Extract<Block, { kind: "held" }>;
+  block: Extract<Entry, { kind: "held" }>;
   model: ThreadModel;
   view: ThreadView;
   send: (msg: ThreadMsg) => void;
@@ -994,7 +981,7 @@ export function Diff(props: {
   );
 }
 
-function Composer(props: {
+export function Composer(props: {
   draft: string;
   sending: boolean;
   running: boolean;
@@ -1071,34 +1058,5 @@ function Region({ view }: { view: ThreadView }) {
         </ul>
       </ItemListContext.Provider>
     </aside>
-  );
-}
-
-export function Member({ member, onRemove }: { member: MemberView; onRemove?: () => void }) {
-  const { ref, row } = member;
-  return (
-    <li class={row ? "member" : "member gone"} data-item={ref.id}>
-      <TypeMark row={row} />
-      <ItemKey item={ref} />
-      <span class="member-title">{row?.title ?? ref.title ?? "Not in the index"}</span>
-      {row?.status ? (
-        <span class="status" data-category={row.status.category}>
-          {row.status.name}
-        </span>
-      ) : (
-        row?.replies && <Replies id={ref.id} replies={row.replies} />
-      )}
-      {onRemove && (
-        <button
-          type="button"
-          class="remove-member"
-          title={`Remove ${ref.key} from this workstream`}
-          aria-label={`Remove ${ref.key}`}
-          onClick={onRemove}
-        >
-          ×
-        </button>
-      )}
-    </li>
   );
 }

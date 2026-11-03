@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./panel": "./src/panel.ts",
     "./oriel-reads": "./src/oriel-reads.ts",
-    "./overview": "./src/overview.ts"
+    "./overview": "./src/overview.ts",
+    "./window-chat": "./src/window-chat.ts"
   },
   "scripts": {
     "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"

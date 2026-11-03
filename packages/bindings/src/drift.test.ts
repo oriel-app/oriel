@@ -70,13 +70,25 @@ for (const [name, region] of regions) {
   });
 }
 
+test("a window chat's module: the stubs typecheck against the declarations, window included", async () => {
+  const [, region] = regions[0];
+  const overview = async () => ({ view: null, items: [] });
+  const bindings = bindingsFor(region, { reader, namespaces, overview });
+  const fns = describe(scopeOf(region, namespaces), { window: true });
+  assert.ok(fns.some((fn) => fn.space === "window" && fn.name === "overview"));
+  const start = `__oriel.start({ ${globals.join(", ")} });\n`;
+  assert.ok(bindings.shim.endsWith(stubs(fns) + start), "the shim ends with these stubs");
+  assert.deepEqual(await checkStubs(bindings.dts, fns), []);
+});
+
 test("every function lives under a name the guest hands the script, and each name is used", () => {
   for (const [, region] of regions) {
     const homes = new Set(describe(scopeOf(region, namespaces)).map((fn) => fn.space ?? fn.name));
     // Every name but a namespace for a source the region holds nothing from,
-    // which the guest still hands the script, empty.
+    // and the window chat's own, which the guest still hands the script,
+    // empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder", "slack"]);
+    assert.deepEqual(unused, ["folder", "slack", "window"]);
     assert.ok([...homes].every((home) => (globals as readonly string[]).includes(home)));
   }
 });

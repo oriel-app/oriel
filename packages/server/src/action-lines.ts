@@ -71,6 +71,7 @@ const words: { [N in ActionName]: Words } = {
   "thread.reopen": (_, place) => [`Reopened ${place}`, `reopen ${place}`],
   // A person's, or closed to the agent, so never the agent's; worded all the
   // same.
+  "window.new-chat": () => ["Started a fresh window chat", "start a fresh window chat"],
   "thread.open": (_, place) => [`Opened a thread on ${place}`, `open a thread on ${place}`],
   "thread.say": (_, place) => [`Said something in ${place}`, `say something in ${place}`],
   "thread.stop": (_, place) => [`Stopped the turn in ${place}`, `stop the turn in ${place}`],

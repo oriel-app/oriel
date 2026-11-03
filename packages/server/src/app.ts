@@ -95,11 +95,12 @@ import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
-import { heldBy, overviewView } from "./overview.ts";
+import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
+import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
 
@@ -579,7 +580,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
   });
-  const regionBindings = (region: Region, thread?: Ulid) => {
+  const regionBindings = (region: Region, thread?: Ulid, show?: (spec: unknown) => string) => {
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
     // What the last sync found on the boards; nothing before one.
@@ -593,6 +594,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: itemDocs,
       oriel: reads,
       ...(thread ? { thread } : {}),
+      ...(show ? { show } : {}),
+      // The window chat reads the overview, as the page shows it.
+      ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
     });
   };
 
@@ -921,7 +925,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const openWorkstreams = () =>
     viewer
       .workstreams(workspaceId)
-      .filter((summary) => summary.done === null)
+      .filter((summary) => summary.done === null && inOverview(summary))
       .map((summary) => ({
         id: summary.id,
         name: summary.name,
@@ -946,6 +950,29 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       now: at,
     });
+  };
+
+  // The overview as the window chat's agent reads it, with the items it
+  // shows as the index has them: what reached outside the region, which
+  // shows as the escape-hatch block and which an action may add (decision
+  // 0027).
+  const windowOverview = async () => {
+    const view = await overview();
+    const byId = new Map(records().map((record) => [record.id as string, record]));
+    const items = overviewItems(view).flatMap((id) => {
+      const record = byId.get(id);
+      return record
+        ? [
+            {
+              id: record.id,
+              title: record.title,
+              location: record.location,
+              updatedAt: record.updatedAt,
+            },
+          ]
+        : [];
+    });
+    return { view, items };
   };
 
   const window = (grouping: GroupingId) =>

@@ -3,7 +3,7 @@
 // that list, as the agent's own markers do. Anyone else's stays.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blocks } from "../src/thread.ts";
+import { entriesOf } from "../src/thread.ts";
 import type { ChatEntry } from "../src/view.ts";
 import { actionLine, itemRef } from "../testing.ts";
 
@@ -32,7 +32,7 @@ const entries: ChatEntry[] = [
 ];
 
 test("the marker an Undo under the reply left folds into its list", () => {
-  const out = blocks([...entries, marker(5, true)]);
+  const out = entriesOf([...entries, marker(5, true)]);
   assert.deepEqual(
     out.map((b) => b.kind),
     ["user", "reply", "actions"],
@@ -45,7 +45,7 @@ test("an Undo's marker folds even after more was said", () => {
     { seq: 6, at, kind: "text", text: "Anytime." },
     { seq: 7, at, kind: "done" },
   ];
-  const out = blocks([...entries, ...later, marker(8, true)]);
+  const out = entriesOf([...entries, ...later, marker(8, true)]);
   assert.deepEqual(
     out.map((b) => b.kind),
     ["user", "reply", "actions", "user", "reply"],
@@ -53,7 +53,7 @@ test("an Undo's marker folds even after more was said", () => {
 });
 
 test("a marker anyone else's change left stays in the chat", () => {
-  const out = blocks([...entries, marker(5, false)]);
+  const out = entriesOf([...entries, marker(5, false)]);
   assert.deepEqual(
     out.map((b) => b.kind),
     ["user", "reply", "actions", "marker"],

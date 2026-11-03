@@ -126,7 +126,14 @@ export function decided(model: Model): (summary: ThreadSummaryView) => ThreadSum
   if (thread === null || ahead === null) return (summary) => summary;
   return (summary) =>
     summary.id === thread.id && summary.waitingOn === "review"
-      ? { ...summary, waitingOn: waitingOn({ ...ahead, held: holding(ahead.entries) }) }
+      ? {
+          ...summary,
+          waitingOn: waitingOn({
+            ...ahead,
+            held: holding(ahead.entries),
+            windowChat: ahead.windowChat === true,
+          }),
+        }
       : summary;
 }
 

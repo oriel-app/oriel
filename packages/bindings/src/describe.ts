@@ -23,6 +23,8 @@ import { intentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
 import { itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
+import { showFn } from "./block.ts";
+import { windowFns } from "./window.ts";
 
 export type { Fn } from "./fn.ts";
 export { pathOf } from "./fn.ts";
@@ -43,9 +45,9 @@ export type ItemDocs = Partial<Record<SourceKind, string>>;
 // don't name it. Namespaces are read-only globals a script may shadow, so a
 // script can still name its own `items` or `folder`; the global functions
 // are parameters of the script's function, which it can't redeclare.
-export const spaceNames = ["items", ...sourceKinds, ...orielSpaces] as const;
-export const globals = [...spaceNames, "search"] as const;
-export const parameters: readonly string[] = ["search"];
+export const spaceNames = ["items", ...sourceKinds, ...orielSpaces, "window"] as const;
+export const globals = [...spaceNames, "search", "show"] as const;
+export const parameters: readonly string[] = ["search", "show"];
 
 // A region as the module sees it: its IDs, sorted, the item docs of the
 // sources it holds items from, and each source namespace it gets, with the
@@ -101,11 +103,12 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 }
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,
-// then its actions, in registry order), then the escape hatch. The order is
+// then its actions, in registry order), the window chat's `window` if the
+// thread is one, then the escape hatch and blocks. The order is
 // the order of the declarations, so it is part of the byte-stable output. A
 // namespace's write must name an op in its catalogue that a run may capture;
 // revert-only ops are never offered.
-export function describe(scope: Scope): Fn[] {
+export function describe(scope: Scope, options: { window?: boolean } = {}): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
       if (fn.kind === "read") return { ...fn, space: kind, outsideRegion: false };
@@ -115,5 +118,6 @@ export function describe(scope: Scope): Fn[] {
       return { ...fn, space: kind, spec: entry };
     }),
   );
-  return [...itemFns, ...namespaced, ...orielFns, ...intentFns, searchFn];
+  const window = options.window ? windowFns : [];
+  return [...itemFns, ...namespaced, ...orielFns, ...intentFns, ...window, searchFn, showFn];
 }

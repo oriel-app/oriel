@@ -7,6 +7,7 @@ import type { Route } from "./route.ts";
 import type { BrowseFilter, GroupingId, UndoView } from "./view.ts";
 import type { Ending } from "./ending.ts";
 import type { OverviewSection } from "@oriel/core/overview";
+import type { StartQuestion } from "@oriel/core/window-chat";
 
 export type Tag =
   | { kind: "workstreams" }
@@ -50,6 +51,10 @@ export type Tag =
   // and that undone.
   | { kind: "overviewMade"; key: string; grouping: GroupingId }
   | { kind: "overviewUnmade"; key: string }
+  // Which window chat the window shows; a question asked in it; New chat.
+  | { kind: "windowChat" }
+  | { kind: "windowChatAsked" }
+  | { kind: "windowChatNew" }
   // The sidebar's search, by the query it asked about.
   | { kind: "search"; request: number }
   // An item read for the panel, and when the index last saw it change.
@@ -149,7 +154,8 @@ export type Report =
   | { name: "items.searched"; queryLength: number; results: number }
   | { name: "overview.opened" }
   | { name: "overview.more-opened"; section: OverviewSection }
-  | { name: "overview.suggestion-made"; workstreamId: string; grouping: GroupingId };
+  | { name: "overview.suggestion-made"; workstreamId: string; grouping: GroupingId }
+  | { name: "window-chat.question-used"; question: StartQuestion };
 
 // Best effort: its reply changes nothing.
 export const report = (event: Report): Effect =>

@@ -1,17 +1,22 @@
-// Graders. Five are programmatic: the captured change set against a golden
+// Graders. Six are programmatic: the captured change set against a golden
 // diff, zero mutations (and zero intents), the calls the turn's intents
-// applied as, text surfaced to the user as content, and text the reply
-// mentions. The sixth
+// applied as, the blocks it showed against their reads, text surfaced to the
+// user as content, and text the reply mentions. The seventh
 // is an LLM judge for open-ended output, which checks a rubric of claims one
 // by one and must be a different model from the one under test.
 import {
   array,
+  type Answered,
+  type Block,
+  type BlockForm,
   boolean,
+  buildBlock,
   type CapturedMutation,
   type ItemId,
   number,
   object,
   parseItemId,
+  readKey,
   string,
 } from "@oriel/core";
 import { type Fetch, messagesResponse, messagesUrl } from "./anthropic.ts";
@@ -224,6 +229,42 @@ export function gradeIntents(
       detail: expected.length === 1 ? "1 call matches" : `${expected.length} calls match`,
     };
   return { grader: "intents", pass: false, detail: problems.join("; ") };
+}
+
+// What the host recorded of a read, as the system under test hands it on.
+const isAnswered = (value: unknown): value is Answered =>
+  typeof value === "object" &&
+  value !== null &&
+  "value" in value &&
+  "outside" in value &&
+  "fields" in value;
+
+// A block shown in the turn, with what its read answered in that turn (null
+// if none did).
+export type ShownBlock = { block: Block; answered: unknown };
+
+// The turn showed a block of `form` from `read`, and every block it showed is
+// the one Oriel builds from what its read answered: a block whose numbers
+// aren't its read's fails (decision 0030).
+export function gradeBlocks(
+  expected: { form: BlockForm; read: string },
+  shown: readonly ShownBlock[],
+): Grade {
+  const problems = shown.flatMap(({ block, answered }) => {
+    if (!isAnswered(answered))
+      return [`the ${block.form} block from ${block.spec.read} names no read the turn answered`];
+    const rebuilt = buildBlock(block.spec, answered);
+    const what = `the ${block.form} block from ${readKey(block.spec.read, block.spec.args)}`;
+    if (!rebuilt.ok) return [`${what} can't be built from its read: ${rebuilt.why}`];
+    return canonicalJson(rebuilt.block) === canonicalJson(block)
+      ? []
+      : [`${what} doesn't match what its read answered`];
+  });
+  if (!shown.some(({ block }) => block.form === expected.form && block.spec.read === expected.read))
+    problems.push(`no ${expected.form} block from ${expected.read} was shown`);
+  return problems.length
+    ? { grader: "blocks", pass: false, detail: problems.join("; ") }
+    : { grader: "blocks", pass: true, detail: `${shown.length} shown, each its read's` };
 }
 
 // Unicode compatibility forms, markdown emphasis, case and runs of whitespace

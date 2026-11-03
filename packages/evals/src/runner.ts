@@ -8,6 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import {
   array,
   boolean,
+  builtBlock,
   type Infer,
   type Instant,
   literal,
@@ -48,6 +49,7 @@ import {
 import type { Cassettes } from "./cassette.ts";
 import {
   type Grade,
+  gradeBlocks,
   gradeExactDiff,
   gradeIntents,
   gradeJudge,
@@ -86,12 +88,16 @@ export type SystemInput = {
 export const systemOutput = object({
   mutations: array(capturedMutation),
   intents: optional(array(object({ action: string, input: record(unknown) }))),
+  // Each block the turn showed, with what its read answered.
+  blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   reply: string,
   transcript: array(unknown),
 });
-// A system may leave its intents out, as one that never asks for actions.
-export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents"> & {
+// A system may leave its intents and blocks out, as one that never asks for
+// either.
+export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks"> & {
   intents?: Infer<typeof systemOutput>["intents"];
+  blocks?: Infer<typeof systemOutput>["blocks"];
 };
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
@@ -314,6 +320,7 @@ async function grade(
           : { title: fileTitle(expectation.file) };
       grades.push(gradeSurfaced(named, expectation.text, output.reply));
     }
+    if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));

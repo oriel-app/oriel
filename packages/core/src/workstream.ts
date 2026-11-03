@@ -7,14 +7,16 @@ import type { Instant, ItemId, Ulid } from "./ids.ts";
 
 // Where a workstream came from: a copy of a cluster's members at that moment (it
 // doesn't follow the cluster afterwards), items the user picked, or nothing,
-// made for a thread started from nothing with its first message. A workstream
+// made for a thread started from nothing with its first message, or for the
+// window chat with its first question (decision 0027). A workstream
 // made from a cluster remembers that cluster's anchor (e.g. the epic), which
 // bindings bind into functions like `listStories()`. The anchor is matched by
 // its stable ID, so an epic that moves projects stays the anchor.
 export type WorkstreamOrigin =
   | { kind: "cluster"; grouping: string; cluster: string; anchor: WorkstreamMember | null }
   | { kind: "picked" }
-  | { kind: "thread" };
+  | { kind: "thread" }
+  | { kind: "window" };
 
 export type Workstream = {
   id: Ulid;
