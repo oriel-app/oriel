@@ -6,8 +6,11 @@
 :root {
   color-scheme: light dark;
 
-  /* Colour. Eight neutrals, paper to ink; one signal; seven states. Only the
-     signal is a colour: the states are inks, told apart by their marks. */
+  /* Colour. Eight neutrals, paper to ink; one accent, the signal; seven
+     states. Only the signal is a colour, and it means "needs you": the
+     states are inks told apart by their marks, and what can be pressed is
+     ink too, so an Approve is the darkest thing on the page, not the
+     brightest. */
   --n0: #fdfcf8;
   --n1: #f6f4ee;
   --n2: #ece9e1;
@@ -16,12 +19,12 @@
   --n5: #6b665b;
   --n6: #49453d;
   --n7: #1a1814;
-  --accent: #b23218;
-  --on-accent: #ffffff;
+  --signal: #b23218;
+  --on-signal: #ffffff;
   --todo: var(--n5);
   --in-progress: #3d4a5c;
   --done: #3f6146;
-  --needs-you: var(--accent);
+  --needs-you: var(--signal);
   --stalled: #875800;
   --applied: var(--done);
   --reverted: #6e5640;
@@ -93,11 +96,12 @@
   --text: var(--n7);
   --text-muted: var(--n6);
   --text-faint: var(--n5);
-  --accent-text: var(--on-accent);
-  --accent-soft: color-mix(in srgb, var(--accent) var(--tint), var(--n0));
+  --accent: var(--n7);
+  --accent-text: var(--n0);
+  --accent-soft: var(--n2);
   --focus: var(--n7);
-  --danger: var(--accent);
-  --danger-soft: color-mix(in srgb, var(--accent) var(--tint), var(--n0));
+  --danger: var(--signal);
+  --danger-soft: color-mix(in srgb, var(--signal) var(--tint), var(--n0));
   --ins: var(--applied);
   --ins-soft: color-mix(in srgb, var(--applied) var(--tint), var(--n0));
   --del: var(--n5);
@@ -152,8 +156,8 @@
     --n5: #9c978b;
     --n6: #c2bdb1;
     --n7: #efebe2;
-    --accent: #ff7a57;
-    --on-accent: #131210;
+    --signal: #ff7a57;
+    --on-signal: #131210;
     --in-progress: #a9b6c9;
     --done: #9cc2a3;
     --stalled: #e0b45c;
@@ -4980,9 +4984,7 @@ button.overview-title:hover {
 
 .status[data-category="in-progress"],
 .state-chip[data-state="working"],
-.state-dot[data-state="working"],
-.chip:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
-  --chip-state: var(--in-progress);
+.state-dot[data-state="working"] {
   color: var(--in-progress);
 }
 
@@ -4996,9 +4998,7 @@ button.overview-title:hover {
 
 .status[data-category="done"],
 .state-chip:is([data-state="done"], [data-state="handed-off"]),
-.state-dot:is([data-state="done"], [data-state="handed-off"]),
-.chip:is([data-state="done"], [data-state="applied"], [data-state="handed-off"]) {
-  --chip-state: var(--done);
+.state-dot:is([data-state="done"], [data-state="handed-off"]) {
   color: var(--done);
 }
 
@@ -5031,11 +5031,22 @@ button.overview-title:hover {
 }
 
 .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
-.chip:is([data-state="needs-you"], [data-state="pending"]) {
-  --chip-state: var(--needs-you);
+.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
   color: var(--needs-you);
   background: none;
+}
+
+.chip-state {
+  color: var(--chip-state);
+}
+
+.chip-state::before {
+  color: var(--chip-dot);
+}
+
+.chip:is([data-state="needs-you"], [data-state="pending"]) {
+  --chip-dot: var(--needs-you);
+  --chip-state: var(--needs-you);
 }
 
 .state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"])::before,
@@ -5082,14 +5093,47 @@ button.overview-title:hover {
   border-top: 0;
 }
 
-.overview-signal {
-  color: var(--stalled);
+/* A stall is told by its mark, so forty workstreams don't read as alarms. */
+.overview-signal::before {
+  display: inline-block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-right: var(--space-1);
+  background: var(--stalled);
+  content: "";
+  transform: rotate(45deg) scale(0.85);
 }
 
 /* The one thing in colour on a row: the count of what waits on the user. */
 .badge {
   background: none;
   color: var(--needs-you);
+}
+
+.bar-count {
+  background: var(--needs-you);
+  color: var(--on-signal);
+}
+
+/* A diff is marked up as an editor would: struck out, and written in. */
+.side[data-side="before"] {
+  background: none;
+}
+
+.side[data-side="before"] .side-sign {
+  color: var(--text-faint);
+}
+
+.side del {
+  background: none;
+  color: var(--text-faint);
+  text-decoration: line-through var(--border-thin) var(--n7);
+}
+
+.side ins {
+  background: var(--ins-soft);
+  text-decoration: underline var(--border-thick) var(--ins);
+  text-underline-offset: 0.15em;
 }
 
 .composer {
