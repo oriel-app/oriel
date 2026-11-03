@@ -276,10 +276,14 @@ function block(prose: Prose, key: number, to: Sites): ComponentChildren {
         <ul key={key}>{items}</ul>
       );
     }
-    case "quote":
+    case "quote": {
+      const from = quotedFrom(prose);
+      if (from)
+        return <QuoteFrom key={key} id={from.id} rest={from.rest} to={to} />;
       return (
         <blockquote key={key}>{prose.children.map((inner, i) => block(inner, i, to))}</blockquote>
       );
+    }
     case "code":
       return (
         <pre key={key}>
@@ -333,6 +337,8 @@ function span(inline: Inline, key: number, to: Sites): ComponentChildren {
       );
     case "route":
       return <RouteLink key={key} route={inline.route} label={spans(inline.children)} />;
+    case "ref":
+      return <Ref key={key} id={inline.id} />;
     case "mention":
     case "channel":
       return (
@@ -532,4 +538,142 @@ export function when(instant: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// Spike (reply-elements): what a reference names, as Oriel draws it. The
+// window builds it from its own data (the index, threads, change sets and
+// workstreams), never from the agent's words. `text` is the item's own text,
+// for checking a quote from it.
+export type RefView = {
+  kind: "item" | "thread" | "change-set" | "workstream";
+  source: "jira" | "folder" | "slack" | null;
+  // A tracker item's key; null for one with none a person reads.
+  key: string | null;
+  name: string;
+  state: { id: string; name: string } | null;
+  text?: string;
+};
+export const RefsContext = createContext<(id: string) => RefView | null>(() => null);
+
+// How long a name runs inside a sentence before it is cut, whole on hover.
+const refNameMax = 44;
+const cut = (name: string) =>
+  name.length > refNameMax ? `${name.slice(0, refNameMax - 1).trimEnd()}…` : name;
+
+// A reference, drawn inline as a link in the sentence: an icon for what it
+// is, its name, and where it stands. It wraps with the line like any words.
+export function Ref({ id }: { id: string }) {
+  const view = useContext(RefsContext)(id);
+  if (!view)
+    return (
+      <span class="ref" data-unknown title={`Oriel has nothing with the ID ${id}`}>
+        unknown reference
+      </span>
+    );
+  const full = [view.key, view.name].filter(Boolean).join(" ");
+  return (
+    <a
+      class="ref"
+      href="#"
+      data-kind={view.kind}
+      data-source={view.source ?? undefined}
+      data-state={view.state?.id}
+      title={full + (view.state ? ` · ${view.state.name}` : "")}
+      onClick={(event) => event.preventDefault()}
+    >
+      <RefIcon view={view} />
+      {view.key && <span class="ref-key">{view.key}</span>}
+      {view.key && " "}
+      <span class="ref-name">{cut(view.name)}</span>
+      {view.state && <span class="ref-state">{view.state.name}</span>}
+    </a>
+  );
+}
+
+function RefIcon({ view }: { view: RefView }) {
+  const shape =
+    view.kind === "thread" ? (
+      <path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z" />
+    ) : view.kind === "change-set" ? (
+      <>
+        <rect x="2.5" y="2" width="11" height="12" rx="2" />
+        <path d="M8 4.5v4M6 6.5h4M6 11h4" />
+      </>
+    ) : view.kind === "workstream" ? (
+      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
+    ) : view.source === "folder" ? (
+      <path d="M4 2h5l3 3v9H4zM9 2v3h3" />
+    ) : view.source === "slack" ? (
+      <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />
+    ) : (
+      <>
+        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+        <path d="M5.5 8l1.8 1.8L10.5 6" />
+      </>
+    );
+  return (
+    <svg class="ref-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {shape}
+    </svg>
+  );
+}
+
+// A quote whose first line is a lone reference: quoted from that item.
+function quotedFrom(prose: Prose & { kind: "quote" }): { id: string; rest: Prose[] } | null {
+  const [first, ...rest] = prose.children;
+  if (first?.kind !== "paragraph") return null;
+  const [lead, ...after] = first.children.filter(
+    (inline) => !(inline.kind === "text" && inline.text.trim() === ""),
+  );
+  if (lead?.kind !== "ref") return null;
+  const tail = after[0]?.kind === "break" ? after.slice(1) : after;
+  const body = tail.length ? [{ kind: "paragraph" as const, children: tail }, ...rest] : rest;
+  return body.length ? { id: lead.id, rest: body } : null;
+}
+
+const flat = (text: string) =>
+  text.normalize("NFKC").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+
+const proseText = (prose: readonly Prose[]): string =>
+  prose
+    .map((each) =>
+      each.kind === "paragraph" || each.kind === "heading"
+        ? inlineText(each.children)
+        : each.kind === "quote"
+          ? proseText(each.children)
+          : each.kind === "code"
+            ? each.text
+            : "",
+    )
+    .join(" ");
+
+const inlineText = (inlines: readonly Inline[]): string =>
+  inlines
+    .map((inline) =>
+      inline.kind === "text" || inline.kind === "code"
+        ? inline.text
+        : inline.kind === "break"
+          ? " "
+          : "children" in inline
+            ? inlineText(inline.children)
+            : "",
+    )
+    .join("");
+
+// The quote, under the item it is from, and whether Oriel found it there
+// word for word.
+function QuoteFrom(props: { id: string; rest: Prose[]; to: Sites }) {
+  const view = useContext(RefsContext)(props.id);
+  const said = flat(proseText(props.rest)).replace(/^"|"$/g, "");
+  const found = view?.text !== undefined && flat(view.text).includes(said);
+  return (
+    <figure class="quote-from" data-found={found ? "" : undefined}>
+      <figcaption>
+        {found ? "Word for word from " : "Quoted from "}
+        <Ref id={props.id} />
+        {!found && <span class="quote-unchecked"> · not found there word for word</span>}
+      </figcaption>
+      <blockquote>{props.rest.map((inner, i) => block(inner, i, props.to))}</blockquote>
+    </figure>
+  );
 }

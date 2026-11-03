@@ -4642,3 +4642,110 @@ button.overview-title:hover {
     order: 1;
   }
 }
+
+/* Spike (reply-elements): a reference in a reply, read as part of its
+   sentence. No box: an icon, the name as a link, and where it stands, in
+   small text after it, all wrapping with the line. */
+.ref {
+  --ref-dot: var(--todo);
+  --ref-state: var(--text-faint);
+}
+
+.reply a.ref {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.ref-icon {
+  width: 0.875em;
+  height: 0.875em;
+  margin-right: 0.2em;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.1em;
+}
+
+.ref-key {
+  font-weight: 600;
+}
+
+.ref-name {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.reply a.ref:hover .ref-name {
+  text-decoration-color: currentColor;
+}
+
+.ref-key + .ref-name,
+.ref[data-kind="item"] .ref-name {
+  color: var(--text-muted);
+}
+
+.ref-state {
+  margin-left: 0.35em;
+  color: var(--ref-state);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ref-state::before {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-right: 0.25em;
+  border-radius: 50%;
+  background: var(--ref-dot);
+  content: "";
+  vertical-align: 0.08em;
+}
+
+.ref:is([data-state="working"], [data-state="approved"], [data-state="in-progress"]) {
+  --ref-dot: var(--in-progress);
+  --ref-state: var(--in-progress-text);
+}
+
+.ref:is([data-state="needs-you"], [data-state="pending"]) {
+  --ref-dot: var(--accent);
+  --ref-state: var(--accent);
+}
+
+.ref:is([data-state="done"], [data-state="applied"]) {
+  --ref-dot: var(--done);
+  --ref-state: var(--done-text);
+}
+
+.ref[data-unknown] {
+  color: var(--text-faint);
+  border-bottom: 1px dashed var(--line-strong);
+}
+
+/* A quote under the item it came from. */
+.reply .quote-from {
+  margin: 0 0 var(--space-3);
+}
+
+.quote-from figcaption {
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.reply .quote-from blockquote {
+  margin: 0;
+}
+
+.quote-from[data-found] blockquote {
+  border-left-color: var(--accent);
+}
+
+.quote-unchecked {
+  color: var(--danger, var(--text-faint));
+}

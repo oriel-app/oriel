@@ -14,7 +14,11 @@ export type Inline =
   | { kind: "link"; href: string; children: Inline[] }
   | { kind: "route"; route: Route; children: Inline[] }
   // A person or a channel a source's text names; markdown has neither.
-  | { kind: "mention" | "channel"; text: string };
+  | { kind: "mention" | "channel"; text: string }
+  // Spike (reply-elements): `[[id]]`, the agent's reference to an item,
+  // thread, change set or workstream by its ID. Oriel draws its name and
+  // state; the agent writes neither.
+  | { kind: "ref"; id: string };
 
 export type Prose =
   | { kind: "paragraph"; children: Inline[] }
@@ -310,6 +314,16 @@ export function inline(text: string, depth = 0): Inline[] {
       i += run;
       continue;
     }
+    if (char === "[" && text[i + 1] === "[") {
+      const close = text.indexOf("]]", i + 2);
+      const id = close < 0 ? "" : text.slice(i + 2, close).trim();
+      if (referenceId.test(id)) {
+        flush();
+        out.push({ kind: "ref", id });
+        i = close + 2;
+        continue;
+      }
+    }
     if (char === "[") {
       const linked = link(line, i);
       if (linked) {
@@ -340,6 +354,10 @@ export function inline(text: string, depth = 0): Inline[] {
   flush();
   return out;
 }
+
+// What `[[…]]` may hold: a source-qualified item ID (`jira:SYN-45`) or one
+// of Oriel's own, a ULID. Anything else stays as typed.
+const referenceId = /^(?:[a-z]+:[^\s[\]]{1,200}|[0-9A-HJKMNP-TV-Z]{26})$/;
 
 // Where `from` is past every place a search for `key` already failed from.
 const failedBefore = (line: Line, key: string, from: number) =>
