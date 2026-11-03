@@ -94,7 +94,8 @@ const nameValue = refine(string, (name) => name.trim() !== "" && name.length <= 
 // A CLI's path as Settings takes it: absolute, and to a program named for
 // the CLI, so a path can only ever start the CLI it names.
 export function cliPath(kind: ProviderKind, path: string): boolean {
-  const names = kind === "claude-code" ? ["claude", "claude.exe", "claude.cmd"] : [];
+  const program = kind === "claude-code" ? "claude" : kind === "codex" ? "codex" : null;
+  const names = program ? [program, `${program}.exe`, `${program}.cmd`] : [];
   return (
     path.length <= 1024 &&
     !path.includes("\0") &&
@@ -237,7 +238,9 @@ export function changed(
     throw new SettingsRefused(
       provider.kind === "claude-code"
         ? "Give the full path to the claude program, such as /opt/homebrew/bin/claude."
-        : "This provider takes no path.",
+        : provider.kind === "codex"
+          ? "Give the full path to the codex program, such as /opt/homebrew/bin/codex."
+          : "This provider takes no path.",
     );
   return { ...settings, providers: providers({ ...provider, path: change.path }) };
 }

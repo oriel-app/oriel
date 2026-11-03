@@ -62,8 +62,8 @@ const spawnCli: Spawn = (command, args, options) =>
   spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
 // The person's environment, passed through: where they signed in (home and
-// config directory), how they reach the network, and their locale. Nothing
-// else, so no API key, base URL or Claude Code setting in Oriel's own
+// the CLI's config directory), how they reach the network, and their locale.
+// Nothing else, so no API key, base URL or CLI setting in Oriel's own
 // environment reaches the CLI.
 const passed = [
   "HOME",
@@ -74,7 +74,6 @@ const passed = [
   "LANG",
   "LC_ALL",
   "LC_CTYPE",
-  "CLAUDE_CONFIG_DIR",
   "HTTPS_PROXY",
   "HTTP_PROXY",
   "NO_PROXY",
@@ -89,14 +88,16 @@ const passed = [
   "LOCALAPPDATA",
 ] as const;
 
-// The person's own variables from the allowlist above, and nothing else. The
-// first run's commands (decision 0038) start the CLI and its installer with
-// these, never with Oriel's whole environment.
+// The person's own variables from the allowlist above, with the CLI's config
+// directory, and nothing else. The first run's commands (decision 0038)
+// start the CLI and its installer with these, never with Oriel's whole
+// environment.
 export function passedEnv(
   parent: Readonly<Record<string, string | undefined>>,
+  configDir: "CLAUDE_CONFIG_DIR" | "CODEX_HOME" = "CLAUDE_CONFIG_DIR",
 ): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const name of passed) {
+  for (const name of [...passed, configDir]) {
     const value = parent[name];
     if (value !== undefined) env[name] = value;
   }
@@ -217,6 +218,16 @@ export function locateClaudeCode(
   env: Readonly<Record<string, string | undefined>>,
   path?: string,
 ): string | null {
+  return locateCli("claude", env, path);
+}
+
+// The first executable called `name` on the person's PATH, or the one at
+// `path` when one is configured.
+export function locateCli(
+  name: string,
+  env: Readonly<Record<string, string | undefined>>,
+  path?: string,
+): string | null {
   const executable = (file: string) => {
     try {
       accessSync(file, constants.X_OK);
@@ -226,7 +237,7 @@ export function locateClaudeCode(
     }
   };
   if (path) return executable(path) ? path : null;
-  const names = process.platform === "win32" ? ["claude.exe", "claude.cmd"] : ["claude"];
+  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`] : [name];
   for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean))
     for (const name of names) if (executable(join(dir, name))) return join(dir, name);
   return null;

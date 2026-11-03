@@ -1,14 +1,14 @@
 // Which model the server runs the agent and titles on: the one Settings
 // picks among the providers found and turned on; with no pick, the key when
-// there is one, else the person's Claude Code, else none, which says how to
-// set one up.
+// there is one, else the person's Claude Code, else their Codex, else none,
+// which says how to set one up.
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessProblem } from "@oriel/agent";
-import { codexNotYet, codexOnly, models, type ModelsOptions, setupAgent } from "./model.ts";
+import { models, type ModelsOptions, setupAgent } from "./model.ts";
 import { defaultSettings, type Settings } from "./settings.ts";
 
 const cli = { path: "/usr/local/bin/claude", version: "2.1.314" };
@@ -19,6 +19,25 @@ const problem: HarnessProblem = {
     "Oriel's agent runs on Claude Code, which isn't installed here. Install Claude Code and sign in to it, then restart Oriel.",
 };
 const absent = async () => ({ ok: false as const, problem });
+// The person's Codex, signed in, and the models it lists.
+const codexCli = { path: "/usr/local/bin/codex", version: "0.166.0" };
+const codexModels = [
+  { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
+  { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
+];
+const codexReady = async () => ({
+  ok: true as const,
+  cli: codexCli,
+  models: codexModels,
+  account: { plan: "ChatGPT Plus", email: null },
+});
+const codexSignedOut = async () => ({
+  ok: false as const,
+  problem: {
+    kind: "signed-out" as const,
+    message: "Codex is installed but not signed in. Sign in to it, then restart Oriel.",
+  },
+});
 // No codex on this PATH.
 const env = { PATH: "" };
 
@@ -153,27 +172,86 @@ test("rows say what was found, which models each runs, and never the key", async
   );
 });
 
-test("Codex has a row once it's on the PATH, never run, which Oriel can't run on yet (0040)", async () => {
-  const bin = mkdtempSync(join(tmpdir(), "oriel-codex-"));
-  try {
-    const codex = join(bin, process.platform === "win32" ? "codex.exe" : "codex");
-    writeFileSync(codex, "");
-    chmodSync(codex, 0o755);
-    const chooser = models({ key: null, check: absent, env: { PATH: bin } });
-    await chooser.look(defaultSettings);
-    const row = chooser.providers(defaultSettings).find((p) => p.kind === "codex");
-    assert.equal(row?.status, "not-yet");
-    // The row says why; Claude Code's row and the key's, beside it, offer the fixes.
-    assert.equal(row?.detail, codexNotYet);
-    assert.doesNotMatch(codexNotYet, /Install|API key/);
-    assert.equal(chooser.options(defaultSettings).length, 0);
-    // With no Claude Code and no key, a turn and the server's line say why.
-    assert.equal(chooser.choose(defaultSettings).problem, codexOnly);
-    assert.match(codexOnly, /Install Claude Code and sign in to it, or add an API key\.$/);
-    assert.match(chooser.describe(defaultSettings), /can't be limited to Oriel's one tool/);
-  } finally {
-    rmSync(bin, { recursive: true, force: true });
-  }
+test("Codex is a choice once signed in, but Claude Code stays the default while both are ready (0048)", async () => {
+  const chooser = titled({ key: null, check: found, checkCodex: codexReady });
+  await chooser.look(defaultSettings);
+  assert.equal(chooser.choose(defaultSettings).model?.provider.id, "claude-code");
+  const row = chooser.providers(defaultSettings).find((p) => p.kind === "codex");
+  assert.deepEqual(
+    [row?.status, row?.detail, row?.version],
+    ["ready", "Signed in · version 0.166.0", "0.166.0"],
+  );
+  // Its models are the ones it lists, picked like any other.
+  assert.deepEqual(
+    chooser
+      .options(defaultSettings)
+      .filter((o) => o.provider === "codex")
+      .map((o) => o.label),
+    ["GPT-6.1-Sol · Codex", "GPT-6-Luna · Codex"],
+  );
+  const picked: Settings = {
+    ...defaultSettings,
+    model: { provider: "codex", model: "gpt-6-luna" },
+  };
+  const choice = chooser.choose(picked);
+  assert.deepEqual([choice.model?.provider.id, choice.model?.model], ["codex", "gpt-6-luna"]);
+  assert.equal(choice.model?.cli, codexCli);
+  // Titles follow it, on Codex's own default.
+  assert.deepEqual([choice.title?.provider.id, choice.title?.model], ["codex", "gpt-6.1-sol"]);
+  assert.match(
+    chooser.describe(picked),
+    /GPT-6-Luna through Codex 0\.166\.0 at \/usr\/local\/bin\/codex/,
+  );
+  // A Claude model is no Codex model: the pick falls back.
+  const wrong: Settings = {
+    ...defaultSettings,
+    model: { provider: "codex", model: "claude-opus-5-5" },
+  };
+  assert.equal(chooser.choose(wrong).model?.provider.id, "claude-code");
+  // With Claude Code off, Codex alone runs threads and titles.
+  const alone = chooser.choose(off(defaultSettings, "claude-code"));
+  assert.deepEqual(
+    [alone.model?.provider.id, alone.model?.model, alone.title?.model],
+    ["codex", "gpt-6.1-sol", "gpt-6.1-sol"],
+  );
+});
+
+test("with only Codex, signed out, a turn says Codex's own sentence; not installed, no row", async () => {
+  const chooser = titled({ key: null, check: absent, checkCodex: codexSignedOut });
+  await chooser.look(defaultSettings);
+  assert.equal(chooser.choose(defaultSettings).problem, (await codexSignedOut()).problem.message);
+  assert.equal(
+    chooser.providers(defaultSettings).find((p) => p.kind === "codex")?.status,
+    "signed-out",
+  );
+  // Not on this PATH: the real check finds nothing and runs nothing.
+  const none = titled({ key: null, check: absent });
+  await none.look(defaultSettings);
+  assert.equal(
+    none.providers(defaultSettings).find((p) => p.kind === "codex"),
+    undefined,
+  );
+  assert.equal(none.choose(defaultSettings).problem, problem.message);
+});
+
+test("Codex's usage is its own plan's, asked of Codex", async () => {
+  const asked: string[] = [];
+  const chooser = titled({
+    key: null,
+    check: found,
+    checkCodex: codexReady,
+    plan: async (at, kind) => {
+      asked.push(`${kind} ${at.path}`);
+      return { windows: [] };
+    },
+  });
+  await chooser.look(defaultSettings);
+  const usage = await chooser.usage(defaultSettings);
+  assert.deepEqual(
+    usage.map((u) => u.provider),
+    ["claude-code", "codex"],
+  );
+  assert.deepEqual(asked, ["claude-code /usr/local/bin/claude", "codex /usr/local/bin/codex"]);
 });
 
 test("a path set in Settings is the one checked, over --claude-code", async () => {
@@ -195,6 +273,37 @@ test("a path set in Settings is the one checked, over --claude-code", async () =
   };
   await chooser.look(set);
   assert.deepEqual(paths, ["/flag/claude", "/set/claude"]);
+  // And Codex's, for Codex.
+  const codexPaths: (string | undefined)[] = [];
+  const codex = titled({
+    key: null,
+    check: absent,
+    checkCodex: async (options) => {
+      codexPaths.push(options.path);
+      return codexSignedOut();
+    },
+  });
+  await codex.look({
+    ...defaultSettings,
+    providers: defaultSettings.providers.map((p) =>
+      p.kind === "codex" ? { ...p, path: "/set/codex" } : p,
+    ),
+  });
+  assert.deepEqual(codexPaths, ["/set/codex"]);
+  // A path that finds nothing keeps Codex's row, so its path can be fixed.
+  const wrong = titled({
+    key: null,
+    check: absent,
+    checkCodex: async () => ({ ok: false, problem }),
+  });
+  const pathed: Settings = {
+    ...defaultSettings,
+    providers: defaultSettings.providers.map((p) =>
+      p.kind === "codex" ? { ...p, path: "/set/codex" } : p,
+    ),
+  };
+  await wrong.look(pathed);
+  assert.equal(wrong.providers(pathed).find((p) => p.kind === "codex")?.status, "missing");
   // The CLI's own words, with Check again in place of a restart.
   assert.match(chooser.providers(set)[0]?.detail ?? "", /then check again\.$/);
 });
@@ -246,7 +355,7 @@ test("on the desktop app a turn with no AI points to Settings, never to a termin
   const { problem: said } = desktop.choose(defaultSettings);
   assert.equal(
     said,
-    "Oriel has no AI set up yet. Set up Claude Code in Settings, or add an API key there.",
+    "Oriel has no AI set up yet. Set up Claude Code or Codex in Settings, or add an API key there.",
   );
   assert.doesNotMatch(said, /terminal/i);
   // Under pnpm dev, the harness's own words stand.

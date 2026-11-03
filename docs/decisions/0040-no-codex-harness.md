@@ -1,6 +1,6 @@
 # 0040 Codex can't be the harness yet
 
-Accepted 2026-11-03. Applies 0036's Model use rule to Codex and settles 0037's "Codex isn't built yet". Changes SPEC §7.
+Accepted 2026-11-03. Applies 0036's Model use rule to Codex and settles 0037's "Codex isn't built yet". Changes SPEC §7. Superseded by 0048: the maintainer overruled it, accepting that Codex loads the person's own settings, can read files from its read-only sandbox, and can't report its tools, and Codex runs as a preview with as much of the lock-down as it allows.
 
 Adds: none
 

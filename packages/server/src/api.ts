@@ -231,9 +231,11 @@ const setupCommand = object({
     literal("update"),
     literal("cancel"),
   ),
+  // Which CLI, Claude Code when absent; Oriel only signs Codex in.
+  cli: optional(union(literal("claude-code"), literal("codex"))),
 });
 const setupAi = object({
-  ai: union(literal("claude-code"), literal("api")),
+  ai: union(literal("claude-code"), literal("codex"), literal("api")),
   anyway: optional(literal(true)),
 });
 const setupProgress = object({
@@ -600,21 +602,22 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The desktop app's setup, and the Claude Code row it shares with
-      // Settings (decision 0038). Under `pnpm dev`, all null.
+      // The desktop app's setup, and the CLI rows it shares with Settings
+      // (decisions 0038 and 0048). Under `pnpm dev`, all null.
       method: "GET",
       path: at("/setup"),
       run: async () => json(200, await deps.setup.view()),
     },
     {
-      // A command for the person's Claude Code, from a fixed list. One that
-      // runs on, as an install does, answers at once; the page asks again.
+      // A command for the person's Claude Code or Codex, from a fixed list.
+      // One that runs on, as an install does, answers at once; the page asks
+      // again.
       method: "POST",
       path: at("/setup/cli"),
       async run(_, request) {
-        const { command } = await readJson(request, smallBody, setupCommand);
+        const { command, cli } = await readJson(request, smallBody, setupCommand);
         try {
-          return json(200, await deps.setup.command(command));
+          return json(200, await deps.setup.command(command, cli ?? "claude-code"));
         } catch (error) {
           if (error instanceof SetupRefused) throw new Refused(409, error.message);
           throw error;
@@ -622,7 +625,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      // The AI the first run continues with: Claude Code once its test turn
+      // The AI the first run continues with: a CLI once its test turn
       // answers, or the API key Settings kept.
       method: "POST",
       path: at("/setup/ai"),

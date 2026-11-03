@@ -97,10 +97,17 @@ test("a change is one setting, checked", () => {
       SettingsRefused,
       path,
     );
-  assert.throws(
-    () => changed(defaultSettings, { provider: "codex", path: "/usr/bin/codex" }, themes),
-    SettingsRefused,
+  // Codex's path names the codex program (decision 0048); the key takes none.
+  assert.equal(
+    changed(defaultSettings, { provider: "codex", path: "/usr/bin/codex" }, themes).providers[1]
+      ?.path,
+    "/usr/bin/codex",
   );
+  for (const [provider, path] of [
+    ["codex", "/usr/bin/claude"],
+    ["api", "/usr/bin/codex"],
+  ] as const)
+    assert.throws(() => changed(defaultSettings, { provider, path }, themes), SettingsRefused);
   const set = changed(
     defaultSettings,
     { provider: "claude-code", path: "/opt/homebrew/bin/claude" },

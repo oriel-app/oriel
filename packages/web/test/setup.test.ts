@@ -44,6 +44,7 @@ const view = (
 ): SetupView => ({
   providers: [],
   cli: cli("ready"),
+  codex: null,
   firstRun: {
     step: steps.ai ? "work" : "ai",
     steps: { ai: steps.ai ?? null, work: null },
@@ -265,5 +266,28 @@ test("a command a poll sees finish reloads Settings, so the ask bar knows the AI
   const [, still] = run(model, replied("setup", running));
   assert.ok(!gets(still).includes("/api/settings"));
   const [, done] = run(model, replied("setup", view({ cli: cli("ready") })));
+  assert.ok(gets(done).includes("/api/settings"));
+});
+
+test("Codex's sign-in and Continue name Codex, and its finished sign-in reloads Settings (0048)", () => {
+  const [model] = run(init({ page: "setup" })[0], replied("setup", view({ cli: cli("missing") })));
+  const [, signing] = run(model, {
+    type: "setup",
+    msg: { type: "commandClicked", command: "sign-in", cli: "codex" },
+  });
+  assert.deepEqual(posts(signing), [["/api/setup/cli", { command: "sign-in", cli: "codex" }]]);
+  const [, going] = run(model, { type: "setup", msg: { type: "continueClicked", ai: "codex" } });
+  assert.deepEqual(posts(going), [["/api/setup/ai", { ai: "codex" }]]);
+  // While Codex signs in, the page asks again; once it's done, Settings reloads.
+  const running = view({
+    cli: cli("missing"),
+    codex: cli("signing-in", { running: { command: "sign-in", phase: "waiting", ms: 0 } }),
+  });
+  const [waiting, polled] = run(model, replied("setup", running));
+  assert.equal(afters(polled).length, 1);
+  const [, done] = run(
+    waiting,
+    replied("setup", view({ cli: cli("missing"), codex: cli("ready") })),
+  );
   assert.ok(gets(done).includes("/api/settings"));
 });

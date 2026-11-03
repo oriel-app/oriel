@@ -6,7 +6,7 @@
 // before quitting while Oriel works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
-import { ClaudeCodeRow } from "./cli-row.tsx";
+import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
 import { ProviderRow, Switch } from "./provider-row.tsx";
 import type { SettingsSection } from "./route.ts";
@@ -102,6 +102,19 @@ function Providers(props: {
 }) {
   const { model, view, send, change, setup } = props;
   const cli = setup.view?.cli ?? null;
+  const codex = setup.view?.codex ?? null;
+  const usage = (id: string) => model.usage?.find((u) => u.provider === id) ?? null;
+  const path = (provider: SettingsView["providers"][number]) =>
+    view.cliPaths && (
+      <CliPath
+        name={provider.name}
+        program={provider.kind === "codex" ? "codex" : "claude"}
+        saved={provider.path}
+        typed={model.paths[provider.id]}
+        onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
+        onSave={() => send({ type: "pathSaved", provider: provider.id })}
+      />
+    );
   if (view.scripted)
     return (
       <section class="settings-section" aria-labelledby="settings-providers">
@@ -131,8 +144,8 @@ function Providers(props: {
           </button>
         </div>
         <p class="settings-lede">
-          Oriel's agent runs on one of these. Your own Claude Code runs on your subscription, signed
-          in however you signed it in; Oriel never sees how.
+          Oriel's agent runs on one of these. Your own Claude Code, or Codex as a preview, runs on
+          your subscription, signed in however you signed it in; Oriel never sees how.
         </p>
         <ul class="provider-rows">
           {view.providers.map((provider) =>
@@ -147,16 +160,21 @@ function Providers(props: {
                 onToggle={(on) => change({ provider: provider.id, on })}
                 onKey={() => document.getElementById("provider-api")?.scrollIntoView()}
               >
-                {view.cliPaths && (
-                  <CliPath
-                    name={provider.name}
-                    saved={provider.path}
-                    typed={model.paths[provider.id]}
-                    onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
-                    onSave={() => send({ type: "pathSaved", provider: provider.id })}
-                  />
-                )}
+                {path(provider)}
               </ClaudeCodeRow>
+            ) : provider.kind === "codex" && codex ? (
+              <CodexRow
+                key={provider.id}
+                provider={provider}
+                cli={codex}
+                model={setup}
+                send={props.sendSetup}
+                onToggle={(on) => change({ provider: provider.id, on })}
+                onKey={() => document.getElementById("provider-api")?.scrollIntoView()}
+              >
+                <PlanUsage usage={usage(provider.id)} name={provider.name} />
+                {path(provider)}
+              </CodexRow>
             ) : (
               <ProviderRow
                 key={provider.id}
@@ -173,18 +191,10 @@ function Providers(props: {
                     onRemove={() => send({ type: "keyRemoved" })}
                   />
                 )}
-                {provider.kind === "claude-code" && (
-                  <PlanUsage usage={model.usage?.find((u) => u.provider === provider.id) ?? null} />
+                {provider.kind !== "api" && (
+                  <PlanUsage usage={usage(provider.id)} name={provider.name} />
                 )}
-                {provider.kind === "claude-code" && view.cliPaths && (
-                  <CliPath
-                    name={provider.name}
-                    saved={provider.path}
-                    typed={model.paths[provider.id]}
-                    onType={(text) => send({ type: "pathTyped", provider: provider.id, text })}
-                    onSave={() => send({ type: "pathSaved", provider: provider.id })}
-                  />
-                )}
+                {provider.kind !== "api" && path(provider)}
               </ProviderRow>
             ),
           )}
@@ -221,9 +231,9 @@ const windowNames: Record<PlanWindowView["kind"], string> = {
 };
 
 // How much of the person's plan Oriel has used (decision 0046): its own
-// turns and tokens today, and the plan's windows as their Claude Code reports
-// them, each with when it resets.
-function PlanUsage({ usage }: { usage: UsageView | null }) {
+// turns and tokens today, and the plan's windows as their Claude Code or
+// Codex reports them, each with when it resets.
+function PlanUsage({ usage, name }: { usage: UsageView | null; name: string }) {
   const stamp = useStamp();
   if (usage === null) return null;
   const { today, plan } = usage;
@@ -256,21 +266,22 @@ function PlanUsage({ usage }: { usage: UsageView | null }) {
               </li>
             ))}
           </ul>
-          <p class="plan-note">Your whole plan, Oriel and everything else, as Claude Code says.</p>
+          <p class="plan-note">Your whole plan, Oriel and everything else, as {name} says.</p>
         </>
       ) : plan.none === "no-answer" ? (
-        <p class="plan-note">Claude Code didn't say how much of your plan is used. Check again.</p>
+        <p class="plan-note">{name} didn't say how much of your plan is used. Check again.</p>
       ) : plan.none === "no-plan" ? (
-        <p class="plan-note">This Claude Code isn't on a Claude plan, so it has no plan limits.</p>
+        <p class="plan-note">This {name} isn't on a subscription plan, so it has no plan limits.</p>
       ) : null}
     </div>
   );
 }
 
-// Where Claude Code is, when it isn't on the PATH Oriel was started with:
-// the full path to the `claude` program. Saving checks it at once.
+// Where a CLI is, when it isn't on the PATH Oriel was started with: the
+// full path to the `claude` or `codex` program. Saving checks it at once.
 function CliPath(props: {
   name: string;
+  program: "claude" | "codex";
   saved: string | null;
   typed: string | undefined;
   onType(text: string): void;
@@ -280,7 +291,7 @@ function CliPath(props: {
   if (!open)
     return (
       <button type="button" class="quiet-action provider-path-open" onClick={() => setOpen(true)}>
-        Use a Claude Code at another path
+        Use a {props.name} at another path
       </button>
     );
   const value = props.typed ?? props.saved ?? "";
@@ -298,7 +309,7 @@ function CliPath(props: {
           type="text"
           class="input"
           value={value}
-          placeholder="/opt/homebrew/bin/claude"
+          placeholder={`/opt/homebrew/bin/${props.program}`}
           spellcheck={false}
           autoComplete="off"
           onInput={(event) => props.onType(event.currentTarget.value)}

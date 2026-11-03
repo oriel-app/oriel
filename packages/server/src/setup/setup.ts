@@ -1,6 +1,7 @@
 // The desktop app's first run, and the commands Settings shares with it
 // (decision 0038). For the person's Claude Code: check, install, sign in,
-// update and cancel, each a fixed command run as a child of the server, with
+// update and cancel; for their Codex, a preview (decision 0048): check, sign
+// in and cancel. Each is a fixed command run as a child of the server, with
 // what it's doing and, when it fails, one sentence and a log they can copy.
 // Then the test turn that proves the plan answers, the AI chosen as a
 // setting, and the first run's own steps, each done or skipped.
@@ -11,11 +12,18 @@ import {
   claudeCodeMinVersion,
   claudeCodeTitler,
   type ClaudeCode,
+  codexEnv,
+  codexTitler,
+  codexTooNew,
+  codexVersion,
   defaultModel,
   locateClaudeCode,
+  locateCodex,
   parseVersion,
   passedEnv,
   supportedVersion,
+  type Titler,
+  titleModel,
   tooNew,
 } from "@oriel/agent";
 import type { Instant, Log, TelemetryEvent, Ulid } from "@oriel/core";
@@ -28,10 +36,11 @@ import type {
   FirstRunView,
   SetupView,
 } from "@oriel/web/view";
-import type { Found, Models } from "../model.ts";
+import { codexDefault, type Found, type Models } from "../model.ts";
 import type { SettingsService, SettingsStore } from "../settings.ts";
 import {
   type Account,
+  codexSignIn,
   fetchText,
   install,
   installerUrl,
@@ -50,6 +59,11 @@ import { nextStep, type SetupState, type SetupStore } from "./state.ts";
 // tokens it reported either way.
 export type TestTurn = { said: string | null; inputTokens: number; outputTokens: number };
 
+// The CLIs the setup runs commands for.
+export type Cli = "claude-code" | "codex";
+
+const cliNames: Record<Cli, string> = { "claude-code": "Claude Code", codex: "Codex" };
+
 // The desktop app's side of the setup. Tests and `pnpm shots` stand in for
 // the installer, the signature check, the test turn and the window.
 export type SetupOptions = {
@@ -64,7 +78,8 @@ export type SetupOptions = {
   trust: (path: string) => Promise<string | null>;
   start?: Start;
   installer?: { script(): Promise<string>; latest(): Promise<string | null> };
-  testTurn?: (cli: ClaudeCode) => Promise<TestTurn>;
+  // On the CLI's smallest model for Claude Code, its default for Codex.
+  testTurn?: (cli: ClaudeCode, kind: Cli, model: string) => Promise<TestTurn>;
   // Brings the window to the front, through the shell.
   front?: () => Promise<void>;
 };
@@ -86,11 +101,12 @@ export type Setup = {
   // Whether every page opens the first run: until it has finished. Under
   // `pnpm dev` there's none.
   firstRun(): "pending" | "finished";
-  // Starts a command, which runs on after this returns, or checks again.
-  command(command: CliCommand | "check" | "cancel"): Promise<SetupView>;
-  // The AI the person continues with: Claude Code once a test turn answers
-  // (or, `anyway`, past a usage limit), or the API key Settings kept.
-  choose(ai: "claude-code" | "api", anyway: boolean): Promise<SetupView>;
+  // Starts a command for a CLI, Claude Code unless named, which runs on
+  // after this returns, or checks again.
+  command(command: CliCommand | "check" | "cancel", cli?: Cli): Promise<SetupView>;
+  // The AI the person continues with: a CLI once a test turn answers (or,
+  // `anyway`, past a usage limit), or the API key Settings kept.
+  choose(ai: Cli | "api", anyway: boolean): Promise<SetupView>;
   progress(did: Progress): Promise<SetupView>;
   // Resolves once no command is running.
   idle(): Promise<void>;
@@ -131,6 +147,7 @@ export function setupService(deps: {
     deps.emit({ ...event, at: now(), workspaceId: deps.workspaceId } as TelemetryEvent);
 
   type Running = {
+    cli: Cli;
     command: CliCommand;
     phase: CliPhase;
     startedAt: number;
@@ -141,21 +158,22 @@ export function setupService(deps: {
   // The command running now, to its end.
   let runs: Promise<void> = Promise.resolve();
   let log: string[] = [];
-  let failed: CliView["failed"] = null;
+  // The last failure of each CLI's commands or test turn.
+  const failed: Record<Cli, CliView["failed"]> = { "claude-code": null, codex: null };
   let account: Account | null = null;
   // The test turn found a plan without Claude Code, until the next sign-in.
   let noPlan = false;
 
-  const claudeSetting = () => store.get().providers.find((p) => p.kind === "claude-code") ?? null;
-  const found = (): Found => {
-    const claude = claudeSetting();
-    return claude && models ? models.found(claude.id) : { status: "checking" };
+  const setting = (kind: Cli) => store.get().providers.find((p) => p.kind === kind) ?? null;
+  const found = (kind: Cli = "claude-code"): Found => {
+    const instance = setting(kind);
+    return instance && models ? models.found(instance.id) : { status: "checking" };
   };
   // The CLI's file, wherever it is, ready or not.
-  const located = () => {
+  const located = (kind: Cli = "claude-code") => {
     if (!options) return null;
-    const claude = claudeSetting();
-    return locateClaudeCode(options.env, claude?.path);
+    const path = setting(kind)?.path;
+    return kind === "codex" ? locateCodex(options.env, path) : locateClaudeCode(options.env, path);
   };
   const start = options?.start ?? startChild;
 
@@ -192,12 +210,20 @@ export function setupService(deps: {
 
   // How a version too old updates (decision 0038): Claude Code's own update,
   // unless Homebrew or npm installed it, whose command Oriel names instead.
-  function updateBy(): CliView["update"] {
-    const path = located();
+  // Codex is always the person's own to update (decision 0048).
+  function updateBy(kind: Cli): CliView["update"] {
+    const path = located(kind);
     let real = "";
     try {
       real = path ? realpathSync(path) : "";
     } catch {
+      return null;
+    }
+    if (kind === "codex") {
+      if (real.includes(`${sep}Caskroom${sep}codex${sep}`))
+        return { by: "person", command: "brew upgrade --cask codex" };
+      if (real.includes(`${sep}node_modules${sep}@openai${sep}codex${sep}`))
+        return { by: "person", command: "npm install -g @openai/codex@latest" };
       return null;
     }
     if (real.includes(`${sep}Caskroom${sep}claude-code${sep}`))
@@ -207,22 +233,28 @@ export function setupService(deps: {
     return { by: "oriel" };
   }
 
-  function cliView(): CliView | null {
+  function cliView(kind: Cli = "claude-code"): CliView | null {
     if (!options) return null;
-    const at = found();
+    const at = found(kind);
     const version =
       at.status === "ready"
         ? (at.cli?.version ?? null)
         : ((at.problem && "version" in at.problem ? at.problem.version : undefined) ?? null);
-    const parsed = version ? parseVersion(version) : null;
-    const state: CliState = running
-      ? commandStates[running.command]
+    const parsed = version
+      ? kind === "codex"
+        ? codexVersion(version)
+        : parseVersion(version)
+      : null;
+    const newer = parsed && (kind === "codex" ? codexTooNew(parsed) : tooNew(parsed));
+    const mine = running?.cli === kind ? running : null;
+    const state: CliState = mine
+      ? commandStates[mine.command]
       : at.status === "ready"
-        ? noPlan
+        ? noPlan && kind === "claude-code"
           ? "no-plan"
           : "ready"
         : at.status === "unsupported"
-          ? parsed && tooNew(parsed)
+          ? newer
             ? "too-new"
             : "unsupported"
           : at.status === "missing" ||
@@ -231,17 +263,24 @@ export function setupService(deps: {
               at.status === "checking"
             ? at.status
             : "missing";
+    const signedIn = state === "ready" || state === "no-plan";
     return {
       state,
       version,
-      account: state === "ready" || state === "no-plan" ? account : null,
-      running: running && {
-        command: running.command,
-        phase: running.phase,
-        ms: ms(running.startedAt),
+      account: !signedIn
+        ? null
+        : kind === "codex"
+          ? at.status === "ready"
+            ? (at.account ?? null)
+            : null
+          : account,
+      running: mine && {
+        command: mine.command,
+        phase: mine.phase,
+        ms: ms(mine.startedAt),
       },
-      update: state === "unsupported" ? updateBy() : null,
-      failed,
+      update: state === "unsupported" ? updateBy(kind) : null,
+      failed: failed[kind],
     };
   }
 
@@ -262,17 +301,20 @@ export function setupService(deps: {
     if (options) await readAccount();
     return viewNow();
   };
-  const viewNow = (): SetupView => ({
-    // Claude Code's row, and Codex's once it's found, which Oriel can't run
-    // on yet (decision 0040).
-    providers: options
+  const viewNow = (): SetupView => {
+    // Claude Code's row, and Codex's once it's installed (decision 0048).
+    const providers = options
       ? (models?.providers(store.get()) ?? []).filter(
-          (p) => p.kind === "claude-code" || (p.kind === "codex" && p.status === "not-yet"),
+          (p) => p.kind === "claude-code" || p.kind === "codex",
         )
-      : [],
-    cli: cliView(),
-    firstRun: firstRunView(),
-  });
+      : [];
+    return {
+      providers,
+      cli: cliView(),
+      codex: providers.some((p) => p.kind === "codex") ? cliView("codex") : null,
+      firstRun: firstRunView(),
+    };
+  };
 
   const save = (change: Partial<SetupState>) => {
     if (!options) return;
@@ -281,10 +323,11 @@ export function setupService(deps: {
 
   // Runs one command to its end, with the row's phase and log as it goes;
   // the page asks for the view while it runs.
-  async function run(command: CliCommand): Promise<void> {
+  async function run(command: CliCommand, cli: Cli): Promise<void> {
     if (!options) return;
     const began = Date.parse(now());
     const current: Running = {
+      cli,
       command,
       phase: command === "install" ? "downloading" : command === "sign-in" ? "waiting" : "updating",
       startedAt: began,
@@ -292,12 +335,12 @@ export function setupService(deps: {
       cancelled: false,
     };
     running = current;
-    failed = null;
+    failed[cli] = null;
     log = [];
     note(`${type()} ${release()} · ${arch()}`);
-    emit({ name: "cli.started", command });
+    emit({ name: "cli.started", command, cli });
     const runOptions: RunOptions = {
-      env: passedEnv(options.env),
+      env: cli === "codex" ? codexEnv(options.env) : passedEnv(options.env),
       start,
       home: options.home,
       log: note,
@@ -310,19 +353,20 @@ export function setupService(deps: {
     };
     let outcome: "done" | "failed" | "cancelled" = "failed";
     const fail = (why: CliFailure, sentence: string) => {
-      failed = { what: command, why, sentence, log: [...log], resets: null };
+      failed[cli] = { what: command, why, sentence, log: [...log], resets: null };
     };
     try {
       if (command === "install") outcome = await installing(runOptions, current, fail);
       else {
-        const cli = located();
-        const refused = cli ? await options.trust(cli) : "Oriel can't find Claude Code now.";
-        if (refused || !cli) {
+        const path = located(cli);
+        const refused = path ? await options.trust(path) : `Oriel can't find ${cliNames[cli]} now.`;
+        if (refused || !path) {
           note(`Oriel's check: ${refused}`);
-          fail("untrusted", `Oriel didn't run Claude Code: ${refused}`);
+          fail("untrusted", `Oriel didn't run ${cliNames[cli]}: ${refused}`);
         } else if (current.cancelled) outcome = "cancelled";
-        else if (command === "sign-in") outcome = await signingIn(runOptions, current, cli, fail);
-        else outcome = await updating(runOptions, current, cli, fail);
+        else if (command === "sign-in")
+          outcome = await signingIn(runOptions, current, path, cli, fail);
+        else outcome = await updating(runOptions, current, path, fail);
       }
     } catch (error) {
       deps.log("setup: a command failed", { command, error: String(error) });
@@ -331,10 +375,10 @@ export function setupService(deps: {
     } finally {
       if (current.cancelled) {
         outcome = "cancelled";
-        failed = null;
+        failed[cli] = null;
       }
       running = null;
-      emit({ name: "cli.ended", command, outcome, ms: ms(began) });
+      emit({ name: "cli.ended", command, outcome, ms: ms(began), cli });
     }
   }
 
@@ -410,27 +454,32 @@ export function setupService(deps: {
   async function signingIn(
     runOptions: RunOptions,
     current: Running,
-    cli: string,
+    path: string,
+    cli: Cli,
     fail: (why: CliFailure, sentence: string) => void,
   ): Promise<"done" | "failed"> {
+    const site = cli === "codex" ? "OpenAI" : "claude.ai";
     const timer = setTimeout(() => {
-      note("Nothing came back from claude.ai in 15 minutes, so Oriel stopped waiting.");
+      note(`Nothing came back from ${site} in 15 minutes, so Oriel stopped waiting.`);
       current.stop();
     }, signInMs);
     timer.unref();
-    const ended = await signIn({ ...runOptions, cli }).finally(() => clearTimeout(timer));
+    const signing = cli === "codex" ? codexSignIn : signIn;
+    const ended = await signing({ ...runOptions, cli: path }).finally(() => clearTimeout(timer));
     await options?.front?.().catch(() => {});
-    noPlan = false;
+    if (cli === "claude-code") noPlan = false;
     await look();
     if (current.cancelled) return "failed";
-    if (ended.code === 0 && found().status === "ready") {
+    if (ended.code === 0 && found(cli).status === "ready") {
       save({ signedIn: true });
       return "done";
     }
-    note(`Claude Code's sign-in ended (exit ${ended.code ?? "by a signal"}) without an account.`);
+    note(
+      `${cliNames[cli]}'s sign-in ended (exit ${ended.code ?? "by a signal"}) without an account.`,
+    );
     fail(
       "sign-in",
-      "Sign-in didn't finish: nothing came back from claude.ai. If you closed the tab or picked the wrong account, start again.",
+      `Sign-in didn't finish: nothing came back from ${site}. If you closed the tab or picked the wrong account, start again.`,
     );
     return "failed";
   }
@@ -457,11 +506,13 @@ export function setupService(deps: {
   // model: the only check that proves the plan answers.
   const testTurn =
     options?.testTurn ??
-    (async (cli: ClaudeCode): Promise<TestTurn> => {
+    (async (cli: ClaudeCode, kind: Cli, model: string): Promise<TestTurn> => {
       const counted = { inputTokens: 0, outputTokens: 0 };
-      const titler = claudeCodeTitler({ cli, env: options?.env ?? {} });
+      const env = options?.env ?? {};
+      const titler: Titler =
+        kind === "codex" ? codexTitler({ cli, model, env }) : claudeCodeTitler({ cli, model, env });
       try {
-        await titler("Oriel checks that Claude Code answers.", {
+        await titler(`Oriel checks that ${cliNames[kind]} answers.`, {
           signal: AbortSignal.timeout(120_000),
           log: (message, fields = {}) => {
             if (message !== "title: response") return;
@@ -475,10 +526,15 @@ export function setupService(deps: {
       }
     });
 
-  async function chosen(ai: "claude-code" | "api"): Promise<void> {
+  // The model a CLI's turns run on once chosen: Claude's largest, or Codex's
+  // own default.
+  const modelFor = (ai: Cli | "api"): string =>
+    ai === "codex" ? codexDefault(found("codex")) : defaultModel;
+
+  async function chosen(ai: Cli | "api"): Promise<void> {
     const instance = store.get().providers.find((p) => p.kind === ai);
     if (!instance) throw new SetupRefused("That AI isn't one Oriel lists.");
-    await settings.change({ model: { provider: instance.id, model: defaultModel } });
+    await settings.change({ model: { provider: instance.id, model: modelFor(ai) } });
     emit({ name: "first-run.ai-chosen", ai });
     save({ steps: { ...options?.state.get().steps, ai: "done" } });
   }
@@ -486,18 +542,27 @@ export function setupService(deps: {
   return {
     view,
     firstRun: () => (options && options.state.get().finishedAt === null ? "pending" : "finished"),
-    async command(command) {
+    async command(command, cli = "claude-code") {
       if (!options)
         throw new SetupRefused("Only the desktop app installs or signs in Claude Code.");
+      // Oriel only signs Codex in: installing and updating it are the
+      // person's own (decision 0048).
+      if (cli === "codex" && (command === "install" || command === "update"))
+        throw new SetupRefused("Oriel doesn't install or update Codex.");
       if (command === "cancel") {
-        if (running) {
+        if (running?.cli === cli) {
           running.cancelled = true;
           running.stop();
         }
         return view();
       }
       // Start again: the sign-in running stops, and a fresh one starts.
-      if (running && command === "sign-in" && running.command === "sign-in") {
+      if (
+        running &&
+        command === "sign-in" &&
+        running.command === "sign-in" &&
+        running.cli === cli
+      ) {
         running.cancelled = true;
         running.stop();
         await runs;
@@ -505,12 +570,12 @@ export function setupService(deps: {
       if (running)
         throw new SetupRefused("Oriel is already doing that. Wait for it, or cancel it.");
       if (command === "check") {
-        failed = null;
+        failed[cli] = null;
         await look();
         return view();
       }
       // Runs on: the page asks for the view as it goes.
-      runs = run(command);
+      runs = run(command, cli);
       return view();
     },
     async choose(ai, anyway) {
@@ -522,38 +587,44 @@ export function setupService(deps: {
         await chosen("api");
         return view();
       }
-      const at = found();
+      const at = found(ai);
       if (running || at.status !== "ready" || !at.cli)
-        throw new SetupRefused("Claude Code isn't ready yet.");
+        throw new SetupRefused(`${cliNames[ai]} isn't ready yet.`);
       if (!anyway) {
         const began = Date.parse(now());
         // The file may have changed since Oriel looked: it runs only once the
         // check passes again.
         const refused = await options.trust(at.cli.path);
         if (refused) throw new SetupRefused(refused);
-        const turn = await testTurn(at.cli);
+        const turn = await testTurn(at.cli, ai, ai === "codex" ? modelFor(ai) : titleModel);
         // The CLI's own words go only where they're redacted.
         const said = turn.said === null ? null : redacted(turn.said, options.home);
-        const failure = said === null ? null : testFailure(said);
+        const failure = said === null ? null : testFailure(said, ai);
         emit({
           name: "first-run.test-turn",
           ms: ms(began),
           inputTokens: turn.inputTokens,
           outputTokens: turn.outputTokens,
           ...(failure ? { failed: failure.why } : {}),
+          cli: ai,
         });
         if (failure) {
-          noPlan = failure.why === "no-plan";
-          failed = {
+          if (ai === "claude-code") noPlan = failure.why === "no-plan";
+          failed[ai] = {
             what: "test",
             ...failure,
-            log: ["Oriel asked Claude Code one short question, on its smallest model.", said ?? ""],
+            log: [
+              ai === "codex"
+                ? "Oriel asked Codex one short question, on its default model."
+                : "Oriel asked Claude Code one short question, on its smallest model.",
+              said ?? "",
+            ],
           };
           return view();
         }
       }
-      failed = null;
-      await chosen("claude-code");
+      failed[ai] = null;
+      await chosen(ai);
       return view();
     },
     async progress(did) {
@@ -618,23 +689,26 @@ export function setupService(deps: {
 // What a test turn's failure says, from the CLI's own words (decision 0038):
 // a usage limit, with when it resets; no connection; a plan without access;
 // a configuration the harness refuses; or the CLI's own sentence.
-export function testFailure(said: string): {
+export function testFailure(
+  said: string,
+  cli: Cli = "claude-code",
+): {
   why: CliFailure;
   sentence: string;
   resets: string | null;
 } {
-  const text = said.replace(/^Claude Code stopped: /, "");
+  const name = cliNames[cli];
+  const text = said.replace(new RegExp(`^${name} stopped: `), "");
   if (/\blimit\b/i.test(text) && /(usage|rate|hour|week|reached|hit)/i.test(text)) {
     const epoch = /\|(\d{10})\b/.exec(text)?.[1];
     const words = /\bresets?\s+(?:at\s+)?([^.·|]{1,40})/i.exec(text)?.[1]?.trim() ?? null;
     return {
       why: "usage-limit",
-      sentence:
-        "Claude Code is signed in, but your Claude plan has reached its usage limit. You can finish setting up now; questions to Oriel wait until then.",
+      sentence: `${name} is signed in, but your ${cli === "codex" ? "ChatGPT" : "Claude"} plan has reached its usage limit. You can finish setting up now; questions to Oriel wait until then.`,
       resets: epoch ? new Date(Number(epoch) * 1000).toISOString() : words,
     };
   }
-  if (said.startsWith("Oriel stopped Claude Code"))
+  if (said.startsWith(`Oriel stopped ${name}`))
     return { why: "refused", sentence: said, resets: null };
   if (
     /(connection|network|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|getaddrinfo|offline|timed? ?out|unreachable)/i.test(
@@ -643,8 +717,7 @@ export function testFailure(said: string): {
   )
     return {
       why: "no-connection",
-      sentence:
-        "Claude Code couldn't reach Claude just now. A work network can block it; if trying again doesn't help, send the details to your IT team.",
+      sentence: `${name} couldn't reach ${cli === "codex" ? "OpenAI" : "Claude"} just now. A work network can block it; if trying again doesn't help, send the details to your IT team.`,
       resets: null,
     };
   if (
@@ -654,13 +727,16 @@ export function testFailure(said: string): {
   )
     return {
       why: "no-plan",
-      sentence: "This account's plan doesn't include Claude Code. Claude Pro or Max does.",
+      sentence:
+        cli === "codex"
+          ? "This account's plan doesn't include Codex."
+          : "This account's plan doesn't include Claude Code. Claude Pro or Max does.",
       resets: null,
     };
   const first = text.trim().split("\n")[0]?.slice(0, 200) ?? "";
   return {
     why: "other",
-    sentence: first ? `Claude Code didn't answer: ${first}` : "Claude Code didn't answer.",
+    sentence: first ? `${name} didn't answer: ${first}` : `${name} didn't answer.`,
     resets: null,
   };
 }

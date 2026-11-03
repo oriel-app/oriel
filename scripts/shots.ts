@@ -393,8 +393,8 @@ const chatty = (await writing({ kind: "fixture" })).serving;
 const answering = (await writing()).serving;
 
 // Settings (OA-181), on a stand-in for the person's machine: Claude Code
-// found and signed in, Codex on the PATH, which Oriel never runs, and no API
-// key. Nothing is started; the check is a stand-in. One opens with large
+// and Codex found and signed in, and no API key. Nothing is started; the
+// checks are stand-ins. One opens with large
 // text, which the server writes into the page.
 const codexBin = mkdtempSync(join(tmpdir(), "oriel-shots-codex-"));
 writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
@@ -427,21 +427,40 @@ const configured = async (settings: Partial<Settings> = {}) => {
       ok: true,
       cli: { path: "/opt/homebrew/bin/claude", version: "2.1.314" },
     }),
-    counts,
-    // The plan as a Claude Code on Max reports it (decision 0046).
-    plan: async () => ({
-      windows: [
-        {
-          kind: "session",
-          usedPercent: 34,
-          resetsAt: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
-        },
-        {
-          kind: "week",
-          usedPercent: 78,
-          resetsAt: new Date(Date.now() + 4.2 * 86_400_000).toISOString(),
-        },
+    checkCodex: async () => ({
+      ok: true,
+      cli: { path: join(codexBin, "codex"), version: "0.166.0" },
+      models: [
+        { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
+        { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
       ],
+      account: { plan: "ChatGPT Plus", email: "sam@example.com" },
+    }),
+    counts,
+    // The plan as a Claude Code on Max reports it (decision 0046), and as
+    // Codex on ChatGPT Plus does: its week only.
+    plan: async (_cli, kind) => ({
+      windows:
+        kind === "codex"
+          ? [
+              {
+                kind: "week",
+                usedPercent: 26,
+                resetsAt: new Date(Date.now() + 6.1 * 86_400_000).toISOString(),
+              },
+            ]
+          : [
+              {
+                kind: "session",
+                usedPercent: 34,
+                resetsAt: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
+              },
+              {
+                kind: "week",
+                usedPercent: 78,
+                resetsAt: new Date(Date.now() + 4.2 * 86_400_000).toISOString(),
+              },
+            ],
     }),
   });
   const kept = memorySettings(settings);
@@ -2299,17 +2318,28 @@ scenes.push(
     },
   },
   {
+    // Codex alone, signed out: a preview, with its own sign-in (decision 0048).
     name: "setup-codex-only",
     path: "/setup",
     make: firstRun({ codex: true }),
-    act: (page) => page.getByRole("button", { name: "Use an API key" }).waitFor(),
+    act: (page) =>
+      page.locator("#provider-codex").getByRole("button", { name: "Sign in" }).waitFor(),
+  },
+  {
+    name: "setup-codex-signed-in",
+    path: "/setup",
+    make: firstRun({ codex: true }),
+    act: async (page) => {
+      await page.locator("#provider-codex").getByRole("button", { name: "Sign in" }).click();
+      await page.getByRole("button", { name: "Continue with Codex" }).waitFor();
+    },
   },
   {
     name: "setup-api-key",
     path: "/setup",
     make: firstRun({ codex: true }),
     act: async (page) => {
-      await page.getByRole("button", { name: "Use an API key" }).click();
+      await page.getByRole("button", { name: "pay Anthropic per question", exact: true }).click();
       await page.getByRole("heading", { name: "Pay Anthropic per question" }).waitFor();
     },
   },

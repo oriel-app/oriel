@@ -1,5 +1,6 @@
 // What the first run runs for the person's Claude Code (decision 0038), and
-// how: a fixed list, every argument in code, never a string from the page.
+// Codex's sign-in (decision 0048), and how: a fixed list, every argument in
+// code, never a string from the page.
 // Each child runs in its own process group with stdin closed, so Cancel,
 // Start again and quitting stop all of it, and nothing waits on a terminal.
 // Its output becomes the log a person can copy, line by line, redacted.
@@ -217,6 +218,16 @@ export async function signIn(options: RunOptions & { cli: string }): Promise<End
     tmpdir(),
     options,
   );
+  return { code, phase: "waiting" };
+}
+
+// Codex's own sign-in, `codex login` (decision 0048), started the same way:
+// it opens the person's browser itself, on OpenAI's page, which hands the
+// sign-in back to Codex's own listener on localhost. It reads nothing from
+// stdin, so there is nothing to paste through Oriel.
+export async function codexSignIn(options: RunOptions & { cli: string }): Promise<Ended> {
+  options.phase("waiting");
+  const code = await run(options.cli, ["login"], options.env, tmpdir(), options);
   return { code, phase: "waiting" };
 }
 

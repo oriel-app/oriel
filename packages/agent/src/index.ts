@@ -28,6 +28,7 @@ export {
   claudeCodeTitler,
   type HarnessProblem,
   locateClaudeCode,
+  locateCli,
   parsePlan,
   parseVersion,
   type PlanUsage,
@@ -37,6 +38,23 @@ export {
   supportedVersion,
   tooNew,
 } from "./claude-code.ts";
+export {
+  accountOf as codexAccountOf,
+  checkCodex,
+  type Codex,
+  type CodexAccount,
+  codexAnswer,
+  codexEnv,
+  codexMinVersion,
+  type CodexModel,
+  codexPlan,
+  codexProvider,
+  codexTitler,
+  codexTooNew,
+  codexVersion,
+  locateCodex,
+  supportedCodex,
+} from "./codex.ts";
 export {
   anthropicTitler,
   maxTitleChars,

@@ -80,6 +80,7 @@ Who controls what:
   - a CLI path or argument built from content or model output.
   - the first run (decision 0038) running anything but a vendor's installer from its fixed URL and the CLI's own sign-in, status and update commands, or running a binary before its signature and Team ID are checked;
   - a sign-in code, the sign-in link's query or the account's email in a log, telemetry or Oriel's store, or anything written to the CLI's stdin during its sign-in.
+  - Codex, a preview (decision 0048), whose accepted exceptions are the person's own Codex config loading, a read-only sandbox that can still read files, and a tool list the harness can't verify: anything that widens them, such as a request of Codex's other than a `run` call answered with anything but a decline, a lock-down flag, thread setting or start check dropped, or an item other than a message, its reasoning, a `run` call, a declined file change or Codex compacting its context let through without stopping the turn.
 - **Updates and the relay:**
   - an update applied without checking the manifest's Ed25519 signature, the archive's hash and its code signature, or one that isn't newer than the running version;
   - the update signing key anywhere online, CI included;

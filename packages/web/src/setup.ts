@@ -1,7 +1,7 @@
 // The desktop app's first run (decision 0038): two steps, Your AI and then
 // Your work, then the first sync, then the overview. What the server knows,
-// the Claude Code row and the first run's progress, comes from one view,
-// which Settings' Claude Code row shares. While a command runs, or Jira's
+// the Claude Code and Codex rows and the first run's progress, comes from
+// one view, which Settings' CLI rows share. While a command runs, or Jira's
 // first sync reads, the page asks for it again each second. Which screen
 // shows is the page's own.
 import { type Effect, errorOf, get, post, report, type Replied } from "./http.ts";
@@ -47,10 +47,11 @@ export type SetupModel = {
 export type DetailsOf = "install" | "sign-in" | "update" | "test" | "jira";
 
 export type SetupMsg =
-  | { type: "commandClicked"; command: CliCommand | "check" | "cancel" }
-  // Continue with Claude Code, which runs the test turn first; `anyway`,
-  // past a usage limit.
-  | { type: "continueClicked"; anyway?: true }
+  // A command for Claude Code, or for Codex (decision 0048).
+  | { type: "commandClicked"; command: CliCommand | "check" | "cancel"; cli?: "codex" }
+  // Continue with Claude Code, or Codex, which runs the test turn first;
+  // `anyway`, past a usage limit.
+  | { type: "continueClicked"; anyway?: true; ai?: "codex" }
   | { type: "keyTyped"; text: string }
   | { type: "keySaved" }
   | { type: "screenShown"; screen: SetupScreen }
@@ -100,6 +101,7 @@ export function initSetup(): SetupModel {
 const busy = (model: SetupModel) =>
   model.watching ||
   model.view?.cli?.running != null ||
+  model.view?.codex?.running != null ||
   (model.view?.firstRun?.reading != null && !model.view.firstRun.reading.stopped);
 
 // Asks for the view again in a second, while something runs, once at a time.
@@ -117,7 +119,13 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
       if (model.sending) return [model, []];
       return [
         { ...model, sending: true, details: false, another: false, problem: null },
-        [post("/api/setup/cli", { command: msg.command }, { kind: "setupCli" })],
+        [
+          post(
+            "/api/setup/cli",
+            { command: msg.command, ...(msg.cli ? { cli: msg.cli } : {}) },
+            { kind: "setupCli" },
+          ),
+        ],
       ];
     case "continueClicked":
       if (model.sending) return [model, []];
@@ -126,7 +134,7 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
         [
           post(
             "/api/setup/ai",
-            { ai: "claude-code", ...(msg.anyway ? { anyway: true } : {}) },
+            { ai: msg.ai ?? "claude-code", ...(msg.anyway ? { anyway: true } : {}) },
             { kind: "setupAi" },
           ),
         ],

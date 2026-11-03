@@ -13,6 +13,7 @@ import type { Page } from "playwright-core";
 import {
   type CheckOptions,
   locateClaudeCode,
+  locateCodex,
   parseVersion,
   supportedVersion,
 } from "../packages/agent/src/index.ts";
@@ -79,7 +80,8 @@ const stubInstaller = [
 export type FirstRunOptions = {
   // Claude Code as the person's Mac has it, or none.
   cli?: { version?: string; signedIn?: boolean };
-  codex?: boolean;
+  // Codex on the PATH: signed out, or "ready", signed in (decision 0048).
+  codex?: true | "ready";
   install?: Install;
   login?: Login;
   // What Claude Code says instead of answering the test turn; it answers
@@ -136,7 +138,13 @@ export async function firstRunServer(
   const codexBin = join(home, "codex-bin");
   if (options.codex) {
     mkdirSync(codexBin, { recursive: true });
-    writeFileSync(join(codexBin, "codex"), "", { mode: 0o755 });
+    // `codex login` signs in at once, as the browser would hand it back.
+    writeFileSync(
+      join(codexBin, "codex"),
+      '#!/bin/bash\n[ "$1" = login ] && echo "Starting local login server on http://localhost:1455." && touch "$HOME/.codex-signed-in"\n',
+      { mode: 0o755 },
+    );
+    if (options.codex === "ready") writeFileSync(join(home, ".codex-signed-in"), "");
   }
   writeFileSync(join(home, ".stub-login"), options.login ?? "works");
   writeFileSync(join(home, ".stub-install"), options.install ?? "works");
@@ -185,7 +193,33 @@ export async function firstRunServer(
   const settings = options.data
     ? settingsFile(join(options.data, "settings.json"), () => {})
     : memorySettings();
-  const chooser = models({ key: null, kept: keys, env, check, trust: async () => null });
+  // Codex's check, as its stub answers: found, and signed in once its
+  // sign-in left its mark. The real check, which starts Codex, never runs.
+  const checkCodex = async ({ env: given, path }: CheckOptions) => {
+    await look.promise;
+    const cli = locateCodex(given ?? {}, path);
+    if (!cli)
+      return { ok: false as const, problem: { kind: "missing" as const, message: "Not found." } };
+    return existsSync(join(home, ".codex-signed-in"))
+      ? {
+          ok: true as const,
+          cli: { path: cli, version: "0.166.0" },
+          models: [
+            { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
+            { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
+          ],
+          account: { plan: "ChatGPT Plus", email: "sam@example.com" },
+        }
+      : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
+  };
+  const chooser = models({
+    key: null,
+    kept: keys,
+    env,
+    check,
+    checkCodex,
+    trust: async () => null,
+  });
   // Not awaited when it's held, so the page sees it still looking.
   void chooser.look(settings.get());
 
