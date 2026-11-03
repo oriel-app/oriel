@@ -19,6 +19,7 @@
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
     "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts",
     "desktop": "node packages/desktop/src/bundle.ts",
+    "desktop:try": "node scripts/desktop-try.ts",
     "sketch-frames": "pnpm --filter @oriel/web build && node scripts/sketch-frames.ts"
   },
   "devDependencies": {

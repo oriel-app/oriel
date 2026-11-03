@@ -349,3 +349,11 @@ export type Raise =
 export function raises(why: Raise, background: boolean): boolean {
   return !background || why === "dock" || why === "notification";
 }
+
+// Whether the secret store keeps secrets in memory, so the app never
+// reaches the OS's store (secrets.ts): with `--background`, and with
+// `--memory-secrets`, which `pnpm desktop:try --show` passes. Then a try
+// never asks for the person's password or leaves an item in their keychain.
+export function secretsInMemory(argv: readonly string[]): boolean {
+  return argv.includes("--background") || argv.includes("--memory-secrets");
+}

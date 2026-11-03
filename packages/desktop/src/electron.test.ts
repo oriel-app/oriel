@@ -8,6 +8,7 @@ import {
   electronVersion,
   electronZips,
   target,
+  zipCache,
   zipUrl,
 } from "./electron.ts";
 
@@ -27,6 +28,13 @@ test("every pinned zip is a SHA-256 from the release, and a target names one", (
   assert.equal(
     zipUrl("darwin-arm64"),
     `https://github.com/electron/electron/releases/download/v${electronVersion}/electron-v${electronVersion}-darwin-arm64.zip`,
+  );
+});
+
+test("the zip is cached outside the repo, once for every worktree, by its hash", () => {
+  assert.equal(
+    zipCache("/Users/p", "darwin-arm64"),
+    `/Users/p/Library/Caches/oriel/electron/${electronZips["darwin-arm64"]}.zip`,
   );
 });
 

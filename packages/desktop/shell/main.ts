@@ -30,7 +30,12 @@
 // - `--background`, for development: the window starts hidden and nothing
 //   brings it forward on its own (rules.ts, raises), so a launch from a
 //   script never covers what the person is doing. Clicking the Dock icon
-//   shows it.
+//   shows it. Secrets are kept in memory, never in the OS's store, as
+//   with `--memory-secrets` (rules.ts, secretsInMemory).
+// - `--launch-file`, for development: each time the server starts, the
+//   shell writes its URL, the launch cookie and the shell's PID to
+//   `Shell/launch.json` in the data folder, readable by its owner only, so
+//   a script can reach the server's API, as `pnpm desktop:try` does.
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
@@ -77,11 +82,12 @@ import {
   raises,
   readyOrigin,
   restartUrl,
+  secretsInMemory,
   serverPath,
   storageProblem,
   type Request,
 } from "./rules.ts";
-import { secretStore } from "./secrets.ts";
+import { shellSecrets } from "./secrets.ts";
 
 const quitGrace = 5_000;
 const loginShellTimeout = 5_000;
@@ -90,6 +96,7 @@ const maxLine = 1 << 20;
 const home = homedir();
 const where = folders(process.argv, home);
 const background = process.argv.includes("--background");
+const launchFile = process.argv.includes("--launch-file");
 const resources = process.resourcesPath;
 const deno = join(resources, "deno");
 const main = join(resources, "server/packages/server/src/main.ts");
@@ -107,8 +114,8 @@ let asking = false;
 let log = -1;
 
 // Only once Electron is ready: on Linux and Windows the OS's key isn't
-// there before.
-const secrets = secretStore(join(where.data, "Secrets"), {
+// there before. In the background, in memory: see secrets.ts.
+const secrets = shellSecrets(secretsInMemory(process.argv), join(where.data, "Secrets"), () => ({
   problem: async () =>
     storageProblem(
       process.platform,
@@ -125,7 +132,7 @@ const secrets = secretStore(join(where.data, "Secrets"), {
     const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(data);
     return { text: result, stale: shouldReEncrypt };
   },
-});
+}));
 
 for (const dir of [where.data, where.logs, where.shell])
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -404,8 +411,22 @@ async function open(child: UtilityProcess, line: string, secret: string) {
     secure: false,
     sameSite: "strict",
   });
+  if (launchFile) writeLaunchFile(found, secret);
   // Not if the server stopped meanwhile, which shows the stopped page.
   if (server === child) await window?.loadURL(`${found}/`);
+}
+
+// Written whole and renamed into place, as the secret store writes.
+function writeLaunchFile(url: string, secret: string) {
+  const path = join(where.shell, "launch.json");
+  const next = `${path}.${process.pid}.tmp`;
+  const text = JSON.stringify({
+    url: `${url}/`,
+    cookie: `oriel-launch=${secret}`,
+    pid: process.pid,
+  });
+  writeFileSync(next, `${text}\n`, { mode: 0o600 });
+  renameSync(next, path);
 }
 
 let deadline: NodeJS.Timeout | undefined;
