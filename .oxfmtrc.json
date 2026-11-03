@@ -4,6 +4,7 @@
     "tests/golden/**",
     "packages/*/test-data/**",
     "tests/cassettes/**",
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+    "packages/desktop/vendor/**"
   ]
 }

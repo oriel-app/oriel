@@ -21,7 +21,7 @@ Core ideas, in priority order:
 4. **Trust at the coarse level** is the central product risk. Nothing on the overview is generated when it opens: every signal on it shows its rule (decision 0027). Any generated summary cites the items it rests on. Browse doesn't zoom: a cluster row opens to its items, and an item opens in the panel (decision 0029). Flag any place you invent a hierarchy or summary the source doesn't have.
 5. **Right rail:** one generated summary per region with links that open each item in a panel beside the page, in its source's own view, read live (or in its source, with Cmd/Ctrl or a middle click), and a stale marker when the index lags (decision 0025).
 6. **Escape hatch:** `search()` reaches the rest of the window (anything indexed outside the region), and so do the window chat's `window.overview()` rows (decision 0027). Results are read-only and render in the transcript as a block of rows, shown without the agent asking (decision 0030); an agent may add one to a workstream (decision 0024).
-7. **The desktop app** is phase 2: the same server, run on the user's machine as the child of a thin native shell over the system webview (decisions 0029, 0036). It uses the user's own command-line agent, on their subscription, by default. There is no canvas.
+7. **The desktop app** is phase 2: the same server, run on the user's machine as the child of a thin Electron shell, one for every OS (decisions 0029, 0036, 0039). It uses the user's own command-line agent, on their subscription, by default. There is no canvas.
 
 ## 2. Glossary (use these words, in code and in prose)
 
@@ -39,7 +39,7 @@ Core ideas, in priority order:
 - **Phase 0 — repo setup** (§10). Done first, as its own PR, so every later agent inherits it.
 - **Phase 1 — the engine and the window.** Jira and folder sync → the window as a grouped list, then as the overview with Browse (decision 0027) → a workstream from a cluster or hand-picked items → a thread on the workstream → generated per-region `.d.ts` → sandbox run with read proxy and write capture → change-set diff, approve, replay, revert, review link → the four thread states in the sidebar and the Done page → right-rail summary → eval harness. The deliverable is the window page.
 - **The first end-to-end slice has two sources,** Jira and a local folder of markdown files, so no Jira shape leaks into core, groupings or bindings. Slack follows as the third source, read-only first, for conversation-shaped content: threads, no hierarchy (decision 0021).
-- **Phase 2 — the desktop app** (decision 0029), and the next milestone: the same server in a desktop shell, run on the user's machine, with connections in the OS keychain. Decision 0036 settles it: a native shell per OS, macOS first, with no package; the server as its child on loopback, behind a per-launch secret; signed, notarized updates signed with a key the maintainer keeps offline once the maintainer has a certificate; the user's own command-line agent as the default model; and review links through a relay whose store sees only ciphertext. Pilots and onboarding wait for it.
+- **Phase 2 — the desktop app** (decision 0029), and the next milestone: the same server in a desktop shell, run on the user's machine, with connections in the OS keychain. Decision 0036 settles it, with 0039: an Electron shell, macOS first, taken from its release zip by hash with no package; the server as its child on loopback, behind a per-launch secret; signed, notarized updates signed with a key the maintainer keeps offline once the maintainer has a certificate; the user's own command-line agent as the default model; and review links through a relay whose store sees only ciphertext. Pilots and onboarding wait for it.
 
 ## 4. MLP scope (phase 1, build only this)
 
@@ -88,7 +88,7 @@ Concretely:
 - **Evals:** an in-house runner (JSON cases, run, grade, report). No eval framework dependency.
 - **Storage:** Node's built-in SQLite (decision 0011), with numbered SQL migrations applied by an in-house runner. A Postgres driver stays allowed if multi-tenant hosting ever needs it.
 - **Model access:** the Anthropic SDK is allowed (maintained by the vendor); raw HTTP is also acceptable.
-- **Desktop shell:** a native shell per OS over the system webview, built with the OS's own toolchain, with no package (decision 0036). The runtimes it bundles are the ones `mise.toml` pins.
+- **Desktop shell:** Electron, one shell for every OS, taken from its official release zip at a pinned version and SHA-256, never from npm, so it adds no package; its types are the release's own, vendored and hash-checked (decision 0039). The server runs on the Node `mise.toml` pins, which the app bundles beside Deno.
 
 Enforcement: `AGENTS.md` carries the allowlist; CI fails when the lockfile gains a package without a matching ADR in `docs/decisions/`. No unmaintained packages, ever; we go Rust for a component before pulling in a dead one.
 

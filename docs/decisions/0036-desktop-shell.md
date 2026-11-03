@@ -1,6 +1,6 @@
 # 0036 The desktop app: a thin native shell per OS over the same server
 
-Accepted 2026-11-02. Settles what 0029 left open. Amends 0001, 0020, 0022 and 0029. Changes SPEC §1, §3, §4, §5, §6, §7 and §14, and the security reviewer's threat model. Amended by 0037: the harness reaches `run` over the command-line agent's own stdin and stdout, a narrower per-turn capability than a socket or a token file, and passes it an allowlisted environment, stricter than one minus vendor keys. Amended by 0038: with no CLI found or signed in, the first run installs it with its vendor's installer and starts its own sign-in, with no terminal.
+Accepted 2026-11-02. Settles what 0029 left open. Amends 0001, 0020, 0022 and 0029. Changes SPEC §1, §3, §4, §5, §6, §7 and §14, and the security reviewer's threat model. Amended by 0037: the harness reaches `run` over the command-line agent's own stdin and stdout, a narrower per-turn capability than a socket or a token file, and passes it an allowlisted environment, stricter than one minus vendor keys. Amended by 0038: with no CLI found or signed in, the first run installs it with its vendor's installer and starts its own sign-in, with no terminal. Amended by 0039: the shell is Electron, one for every OS, taken from its release zip by hash with no package; the server still runs as its child on the Node mise.toml pins, and the rest of this decision stands.
 
 Adds: none
 
