@@ -43,6 +43,14 @@ import {
   updateJira,
 } from "./jira.ts";
 import { samePage, withItem } from "./nav.ts";
+import {
+  initSources,
+  loadSources,
+  type SourcesModel,
+  type SourcesMsg,
+  sourcesReplied,
+  updateSources,
+} from "./sources.ts";
 import type { Hold } from "./undos.ts";
 import {
   checkPanel,
@@ -149,8 +157,10 @@ export type Model = {
   review: ReviewModel | null;
   // The connected folder, beside the workstreams.
   folder: FolderModel;
-  // Jira, which the window offers to connect until it is, then to sync.
+  // Jira, which the window offers to connect until it is.
   jira: JiraModel;
+  // Every connected source, at the foot of the sidebar, to sync.
+  sources: SourcesModel;
   // For the chrome: the workspace's workstreams and threads.
   workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[] | null;
@@ -182,6 +192,7 @@ export type Msg =
   | { type: "review"; msg: ReviewMsg }
   | { type: "folder"; msg: FolderMsg }
   | { type: "jira"; msg: JiraMsg }
+  | { type: "sources"; msg: SourcesMsg }
   | { type: "closing"; msg: ClosingMsg }
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
@@ -217,7 +228,7 @@ export type Msg =
 // page that moved them.
 const loadWorkstreams: Effect = get("/api/workstreams", { kind: "workstreams" });
 const loadThreads: Effect = get("/api/threads", { kind: "threads" });
-const lists: Effect[] = [loadWorkstreams, loadThreads, loadFolder, loadJira];
+const lists: Effect[] = [loadWorkstreams, loadThreads, loadFolder, loadJira, loadSources];
 
 // The workstream or thread on screen, loaded again.
 const reloadShown = (model: Model): Effect[] => {
@@ -230,6 +241,21 @@ const reloadShown = (model: Model): Effect[] => {
   if (route.page === "thread" && thread) return [refreshThread(thread)];
   return [];
 };
+
+// Once a source connected or synced, what's on screen shows what changed
+// there: new items in the window, a member deleted in its source as gone on
+// a workstream's page or in a thread's rail, and the sources' list itself,
+// with `reload`, what the reply didn't bring.
+function sourceSynced(model: Model, reload: Effect[]): [Model, Effect[]] {
+  const [window, effects] = model.window
+    ? updateWindow(model.window, { type: "retryClicked" })
+    : [null, []];
+  const overview = model.route.page === "overview" ? [loadOverview] : [];
+  return [
+    { ...model, window },
+    [...effects, ...reloadShown(model), ...overview, ...reload, loadSources],
+  ];
+}
 
 // However the workspace changed, and whoever changed it, every page hears it
 // the same way: the lists load again, and so does a workstream's page or the
@@ -264,6 +290,7 @@ export function init(route: Route): [Model, Effect[]] {
     review: null,
     folder: initFolder(),
     jira: initJira(),
+    sources: initSources(),
     workstreams: null,
     threads: null,
     closing: initClosing(),
@@ -520,6 +547,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [jira, effects] = updateJira(model.jira, msg.msg);
       return [{ ...model, jira }, effects];
     }
+    case "sources": {
+      const [sources, effects] = updateSources(model.sources, msg.msg);
+      return [{ ...model, sources }, effects];
+    }
     case "closing": {
       const [closing, effects] = updateClosing(model.closing, msg.msg);
       return [{ ...model, closing }, effects];
@@ -709,29 +740,21 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [newThread, effects] = newThreadReplied(model.newThread, msg);
       return [{ ...model, newThread }, effects];
     }
-    // Once the folder synced, the window shows its files.
     case "folder":
-    case "folderConnected":
-    case "folderSynced": {
+    case "folderConnected": {
       const { model: folder, synced } = folderReplied(model.folder, msg);
-      if (synced && model.route.page === "overview") return [{ ...model, folder }, [loadOverview]];
-      if (!synced || model.window === null) return [{ ...model, folder }, []];
-      const [window, effects] = updateWindow(model.window, { type: "retryClicked" });
-      return [{ ...model, folder, window }, effects];
+      return synced ? sourceSynced({ ...model, folder }, []) : [{ ...model, folder }, []];
     }
-    // Once Jira connected or synced, what's on screen shows what changed there: new items
-    // in the window, and a member deleted in Jira as gone on a workstream's page
-    // or in a thread's rail.
     case "jira":
-    case "jiraConnected":
-    case "jiraSynced": {
+    case "jiraConnected": {
       const { model: jira, synced } = jiraReplied(model.jira, msg);
-      if (!synced) return [{ ...model, jira }, []];
-      const [window, effects] = model.window
-        ? updateWindow(model.window, { type: "retryClicked" })
-        : [null, []];
-      const overview = model.route.page === "overview" ? [loadOverview] : [];
-      return [{ ...model, jira, window }, [...effects, ...reloadShown(model), ...overview]];
+      return synced ? sourceSynced({ ...model, jira }, []) : [{ ...model, jira }, []];
+    }
+    case "sources":
+    case "sourceSynced": {
+      const { model: sources, synced } = sourcesReplied(model.sources, msg);
+      // Jira's count says whether its project is empty.
+      return synced ? sourceSynced({ ...model, sources }, [loadJira]) : [{ ...model, sources }, []];
     }
     case "createWorkstream":
     case "addToWorkstream": {

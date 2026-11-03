@@ -1,6 +1,6 @@
-// The connected folder, beside the workstreams: connecting one by its typed path
-// (there is no native picker on localhost), and syncing it again. It stays a
-// quiet line until the user opens it.
+// The connected folder: connecting one by its typed path (there is no
+// native picker on localhost), from the sidebar's sources, in place of the
+// one before. Syncing it is the sidebar's, as for every source.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { FolderView } from "./view.ts";
 
@@ -18,8 +18,7 @@ export type FolderMsg =
   | { type: "opened" }
   | { type: "closed" }
   | { type: "pathChanged"; path: string }
-  | { type: "connectClicked" }
-  | { type: "syncClicked" };
+  | { type: "connectClicked" };
 
 export const loadFolder: Effect = get("/api/folder", { kind: "folder" });
 
@@ -43,12 +42,6 @@ export function updateFolder(model: FolderModel, msg: FolderMsg): [FolderModel, 
         [post("/api/folder", { path }, { kind: "folderConnected" })],
       ];
     }
-    case "syncClicked":
-      if (model.pending || model.view === null) return [model, []];
-      return [
-        { ...model, pending: true, problem: null },
-        [post("/api/folder/sync", {}, { kind: "folderSynced" })],
-      ];
   }
 }
 
@@ -66,8 +59,7 @@ export function folderReplied(
         : model,
       synced: false,
     };
-  if (tag.kind !== "folderConnected" && tag.kind !== "folderSynced")
-    return { model, synced: false };
+  if (tag.kind !== "folderConnected") return { model, synced: false };
   if (!msg.ok)
     return { model: { ...model, pending: false, problem: errorOf(msg.body) }, synced: false };
   const { folder } = msg.body as { folder: FolderView };

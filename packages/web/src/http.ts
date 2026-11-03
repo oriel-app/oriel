@@ -68,10 +68,11 @@ export type Tag =
   | { kind: "itemStamp"; id: string }
   | { kind: "folder" }
   | { kind: "folderConnected" }
-  | { kind: "folderSynced" }
   | { kind: "jira" }
   | { kind: "jiraConnected" }
-  | { kind: "jiraSynced" };
+  | { kind: "sources" }
+  // A source synced on demand, by its kind.
+  | { kind: "sourceSynced"; source: string };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.

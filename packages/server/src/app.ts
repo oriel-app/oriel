@@ -82,7 +82,15 @@ import {
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
 import { itemDocs, namespacesFor, recognizerFor, sources, specs } from "@oriel/sources";
-import type { FolderView, GroupingId, JiraView, OverviewView, WindowView } from "@oriel/web/view";
+import type {
+  FolderView,
+  GroupingId,
+  JiraView,
+  OverviewView,
+  SlackView,
+  SourceView,
+  WindowView,
+} from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { Titler } from "@oriel/agent";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
@@ -486,6 +494,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: index.records(workspaceId, "folder", folderAttrs).length,
       syncedAt: index.source(workspaceId, "folder")?.syncedAt ?? null,
     };
+  const slackView = (): SlackView | null =>
+    slack && {
+      workspace: URL.parse(slack.scope.workspaceUrl)?.host ?? slack.scope.workspaceUrl,
+      items: index.records(workspaceId, "slack", slackAttrs).length,
+      syncedAt: index.source(workspaceId, "slack")?.syncedAt ?? null,
+    };
   const connectFolder = async (
     picked: string,
   ): Promise<{ folder: FolderView } | { problem: string }> => {
@@ -740,6 +754,14 @@ export async function createApp(options: AppOptions): Promise<App> {
             ? { problem: problem ?? "No folder is connected." }
             : { folder: view };
         }
+        if (kind === "slack") {
+          if (!slack) throw new ActionError("conflict", "Slack isn't connected to this window.");
+          const problem = await syncSlack();
+          const view = slackView();
+          return problem || !view
+            ? { problem: problem ?? "Slack isn't connected to this window." }
+            : { slack: view };
+        }
         if (!jiraView().connected)
           throw new ActionError("conflict", "Jira isn't connected to this window yet.");
         const problem = await syncJira();
@@ -862,6 +884,33 @@ export async function createApp(options: AppOptions): Promise<App> {
       })(),
     connectable: mode.kind === "window" && source === null,
   });
+  // Every connected source, in `sourceKinds` order, as the sidebar lists them.
+  const sourcesView = (): SourceView[] => {
+    const jira = jiraView().connected;
+    const files = folderView();
+    const messages = slackView();
+    const connected: Partial<Record<SourceKind, Omit<SourceView, "kind" | "name">>> = {
+      ...(jira && {
+        jira: { ...jira, about: `${jira.project} on ${URL.parse(jira.site)?.host ?? jira.site}` },
+      }),
+      ...(files && { folder: { ...files, about: files.path } }),
+      ...(messages && { slack: { ...messages, about: messages.workspace } }),
+    };
+    return sourceKinds.flatMap((kind) => {
+      const each = connected[kind];
+      return each
+        ? [
+            {
+              kind,
+              name: sources[kind].name,
+              about: each.about,
+              items: each.items,
+              syncedAt: each.syncedAt,
+            },
+          ]
+        : [];
+    });
+  };
   // Connects Jira with the details the user typed: checked against the site
   // first, then synced, and kept only once both worked. The token goes into
   // a credential and the store, and nowhere else: not a log line, an event,
@@ -1038,6 +1087,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       overview,
       jira: jiraView,
       folder: folderView,
+      sources: sourcesView,
       log,
     }),
     settled: () => conversation.settled(),

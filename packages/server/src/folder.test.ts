@@ -14,7 +14,14 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type { DiffView, FolderView, WorkstreamView, ThreadView, WindowView } from "@oriel/web/view";
+import type {
+  DiffView,
+  FolderView,
+  SourceView,
+  ThreadView,
+  WindowView,
+  WorkstreamView,
+} from "@oriel/web/view";
 import { host, json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
@@ -50,6 +57,15 @@ test("connecting a folder by its path syncs its markdown files into the window",
   const app = await connected(t);
   assert.deepEqual([app.folder.path, app.folder.items], [app.dir.root, 2]);
   assert.deepEqual(json(await app.get("/api/folder")), { folder: app.folder });
+  // The sidebar lists it after Jira, as it lists every source.
+  const { sources } = json<{ sources: SourceView[] }>(await app.get("/api/sources"));
+  assert.deepEqual(
+    sources.map(({ kind, name, about, items }) => [kind, name, about, items]),
+    [
+      ["jira", "Jira", "SYN on oriel.atlassian.net", 120],
+      ["folder", "Folder", app.dir.root, 2],
+    ],
+  );
   const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
   const own = window.clusters.find((c) => c.row.key === "no-epics-in-source");
   assert.deepEqual(own?.list.map((row) => row.title).toSorted(), ["Interviews", "Launch plan"]);

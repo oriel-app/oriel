@@ -381,7 +381,7 @@ export const actions = {
   // deleted in the source.
   "source.sync": {
     doc: "Syncs a source into the window.",
-    input: object({ source: union(literal("folder"), literal("jira")) }),
+    input: object({ source: union(literal("folder"), literal("jira"), literal("slack")) }),
     class: {
       kind: "direct",
       inverse: null,

@@ -132,6 +132,22 @@ export type JiraView = {
   connectable: boolean;
 };
 
+// Slack: the workspace whose picked channels the index reads, how many
+// conversations it has from them, and when it last synced.
+export type SlackView = { workspace: string; items: number; syncedAt: string | null };
+
+// A connected source as the sidebar lists it, every one drawn the same way:
+// its kind, its declared name, what of it is connected (Jira's project and
+// site, the folder's path, Slack's workspace), how many items the index has
+// from it, and when it last synced.
+export type SourceView = {
+  kind: string;
+  name: string;
+  about: string;
+  items: number;
+  syncedAt: string | null;
+};
+
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;
 export type ThreadStateId = (typeof threadStates)[number];
 

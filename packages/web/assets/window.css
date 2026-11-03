@@ -713,12 +713,27 @@ button.nav-disclose:hover {
   margin-top: auto;
 }
 
-.sidebar-done .rail-title {
+/* A section's heading that folds it, with what it says folded, or its
+   actions, at its end. */
+.fold-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.fold-head .rail-title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   padding: 0;
 }
 
-.done-toggle {
+.sidebar-workstreams .fold-head {
+  margin-bottom: var(--space-1);
+}
+
+.fold-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -735,21 +750,21 @@ button.nav-disclose:hover {
   cursor: pointer;
 }
 
-.done-toggle:hover {
+.fold-toggle:hover {
   color: var(--text);
 }
 
-.done-toggle .chevron {
+.fold-toggle .chevron {
   width: 0.75rem;
   height: 0.75rem;
   transition: transform 120ms ease;
 }
 
-.done-toggle[aria-expanded="true"] .chevron {
+.fold-toggle[aria-expanded="true"] .chevron {
   transform: rotate(90deg);
 }
 
-.done-toggle .nav-count {
+.fold-toggle .nav-count {
   margin-left: auto;
   letter-spacing: 0;
 }
@@ -769,32 +784,100 @@ button.nav-more {
   cursor: pointer;
 }
 
-/* The sources sit at the foot of the sidebar: Jira, then the folder. */
-.sidebar .sidebar-done + .sources {
-  margin-top: 0;
-}
-
-.sidebar .sources {
+/* The sources sit at the foot of the sidebar, folded to one quiet line
+   that draws the eye only while a sync runs or a source has a problem. */
+.sidebar-sources {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-1);
   margin-top: auto;
-  padding: var(--space-3) var(--space-2) 0;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
-.sources .folder {
+.sidebar-done + .sidebar-sources {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
-.jira {
-  display: grid;
+.sources-line {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-1);
+  padding-right: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.source-line .icon {
+.sidebar-sources[data-syncing] .sources-line {
+  color: var(--accent);
+}
+
+.sidebar-sources[data-problem] .sources-line,
+.warning-mark {
+  color: var(--danger);
+}
+
+.nav-sources {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A source: its name, items and last sync open Browse filtered to it;
+   Sync sits at its end, shown on hover or focus where there is hover. */
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.source-synced {
   color: var(--text-faint);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.source-row[data-syncing] .source-synced {
+  color: var(--accent);
+}
+
+.source-row .source-problem {
+  grid-column: 1 / -1;
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+@media (hover: hover) {
+  .source-row:not(:hover, :focus-within) .source-sync {
+    opacity: 0;
+  }
+}
+
+.add-source {
+  padding-left: var(--space-2);
+}
+
+.nav-sources .folder-form {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* The overview's count of what waits on the user points here: the list is
+   marked for a moment. */
+.sidebar-needs {
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.sidebar-needs[data-shown] {
+  animation: shown 1.6s ease-out;
+}
+
+@keyframes shown {
+  from {
+    background: var(--accent-soft);
+  }
 }
 
 /* Folded, on a wide screen: icons only, with their names kept for readers. */
@@ -823,7 +906,7 @@ button.nav-more {
     white-space: nowrap;
   }
 
-  .shell[data-folded] :is(.sidebar-needs, .sidebar-workstreams, .sidebar-done, .sidebar .sources) {
+  .shell[data-folded] :is(.sidebar-needs, .sidebar-workstreams, .sidebar-done, .sidebar-sources) {
     display: none;
   }
 
@@ -1236,36 +1319,7 @@ button.nav-more {
   padding: var(--inset-top) var(--space-6) 6rem;
 }
 
-/* The folder: a quiet line, and a path only when asked. */
-
-.folder {
-  display: grid;
-  gap: var(--space-1);
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
-
-.source-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-muted);
-}
-
-.source-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.add-folder {
-  justify-self: start;
-  margin-left: calc(-1 * var(--space-2));
-}
+/* The folder's path, typed when the user adds a source. */
 
 .folder-form {
   display: grid;
@@ -4451,16 +4505,10 @@ button.overview-title:hover {
 }
 
 .overview-sub,
-.overview-age,
 .overview-last,
 .overview-note {
   color: var(--text-muted);
   font-size: var(--text-sm);
-}
-
-.overview-age {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
 }
 
 .overview-note {
@@ -4589,34 +4637,6 @@ button.overview-title:hover {
   stroke: var(--line-strong);
 }
 
-/* A thread waiting on the user: one line, its title and workstream cut short. */
-.overview-thread {
-  flex-wrap: nowrap;
-}
-
-/* The title says what is asked, so the workstream's name gives way first. */
-.overview-thread .overview-title {
-  flex: 0 0 auto;
-  max-width: 70%;
-}
-
-.overview-thread .overview-sub {
-  flex: 0 1 auto;
-  min-width: 2rem;
-}
-
-.overview-thread .overview-title,
-.overview-thread .overview-sub {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.overview-thread .state-chip,
-.overview-thread .overview-age {
-  flex: none;
-}
-
 /* In progress, by person: a short line each. */
 .overview-person {
   justify-content: space-between;
@@ -4721,21 +4741,6 @@ button.overview-title:hover {
 
   .overview-workstream .overview-spark {
     display: none;
-  }
-
-  /* Narrow, the workstream's name goes under the title, muted. */
-  .overview-thread {
-    flex-wrap: wrap;
-  }
-
-  .overview-thread .overview-title {
-    flex: 1 1 0;
-    max-width: none;
-  }
-
-  .overview-thread .overview-sub {
-    flex: 1 0 100%;
-    order: 1;
   }
 }
 

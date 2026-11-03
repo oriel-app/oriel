@@ -30,7 +30,13 @@ import {
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
 import type { WorkstreamStore, ThreadStore } from "@oriel/db";
-import { type FolderView, type GroupingId, isGroupingId, type JiraView } from "@oriel/web/view";
+import {
+  type FolderView,
+  type GroupingId,
+  isGroupingId,
+  type JiraView,
+  type SlackView,
+} from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
@@ -67,7 +73,11 @@ export type Changed =
 
 // A source the user connects or syncs from the window, as it stands then; or
 // what went wrong, in plain words.
-export type SourceOutcome = { folder: FolderView } | { jira: JiraView } | { problem: string };
+export type SourceOutcome =
+  | { folder: FolderView }
+  | { jira: JiraView }
+  | { slack: SlackView }
+  | { problem: string };
 
 // A change-set refusal (`ChangeSetError`, by its name and code), which the
 // window's routes map by its code.

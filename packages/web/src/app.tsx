@@ -1,11 +1,11 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { WorkstreamPage } from "./workstream-page.tsx";
 import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
 import { doneTab, workstreamThreads, nav } from "./nav.ts";
 import { type Dispatch, ItemLinksContext, Link, Mark, plural } from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
-import { MenuIcon, Sidebar } from "./sidebar.tsx";
+import { MenuIcon, needsYouId, Sidebar } from "./sidebar.tsx";
 import { Closing } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
@@ -68,9 +68,33 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       document.querySelector<HTMLElement>(".bar-menu")?.focus();
     setDrawer(false);
   }, [model.route]);
+  // The overview's count of the threads waiting on the user shows them: the
+  // sidebar opens, if it's folded or a drawer, a search in it clears, and
+  // their list takes focus, marked for a moment, once it shows.
+  const needsYouAsked = useRef(false);
+  const showNeedsYou = () => {
+    needsYouAsked.current = true;
+    if (model.search.query !== "") dispatch({ type: "search", msg: { type: "cleared" } });
+    if (matchMedia(narrow).matches) setDrawer(true);
+    else if (folded) fold();
+    else markNeedsYou();
+  };
+  const markNeedsYou = () => {
+    const list = document.getElementById(needsYouId);
+    if (!list) return;
+    needsYouAsked.current = false;
+    list.focus();
+    list.removeAttribute("data-shown");
+    void list.offsetWidth;
+    list.setAttribute("data-shown", "");
+  };
   useEffect(() => {
-    if (drawer) document.querySelector<HTMLElement>("#sidebar a")?.focus();
+    if (drawer && !needsYouAsked.current)
+      document.querySelector<HTMLElement>("#sidebar a")?.focus();
   }, [drawer]);
+  useEffect(() => {
+    if (needsYouAsked.current) markNeedsYou();
+  }, [drawer, folded, model.search.query]);
   // A review link stands alone: no window, no threads, no navigation.
   if (model.route.page === "review")
     return model.review && <ReviewPage model={model.review} dispatch={dispatch} />;
@@ -95,7 +119,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <div class="shell-main">
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-          <Page model={model} added={added} dispatch={dispatch} />
+          <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
         </ItemLinksContext.Provider>
       </div>
       {model.route.page === "overview" && model.chat.open && !model.panel && (
@@ -153,7 +177,7 @@ function writeFolded(folded: boolean) {
   }
 }
 
-function Page(props: { model: Model; added: Undos; dispatch: Dispatch }) {
+function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch: Dispatch }) {
   const { model, dispatch } = props;
   switch (model.route.page) {
     case "overview":
@@ -167,6 +191,7 @@ function Page(props: { model: Model; added: Undos; dispatch: Dispatch }) {
             browse={windowRoute(model.window)}
             chat={model.chat}
             ongoing={model.thread !== null}
+            onNeedsYou={props.onNeedsYou}
             dispatch={dispatch}
           />
         )
