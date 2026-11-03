@@ -221,7 +221,7 @@ mkdirSync(dir, { recursive: true });
 const log: Log = (message, fields) => console.log(JSON.stringify({ message, ...fields }));
 // The person's settings, in the data folder. The scripted agent when asked
 // for; otherwise the provider and model Settings pick among those found:
-// `.env`'s key, the person's Claude Code, or none.
+// `.env`'s key, the person's Claude Code, their Codex as a preview, or none.
 const settings = settingsFile(join(dir, "settings.json"), log);
 const claudeCodePath = values["claude-code"];
 const models =

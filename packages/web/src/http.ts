@@ -79,7 +79,7 @@ export type Tag =
   | { kind: "settingsChanged" }
   | { kind: "settingsLooked" }
   | { kind: "settingsKey" }
-  // How much of the plan Oriel has used, under Claude Code's row.
+  // How much of the plan Oriel has used, under each CLI's row.
   | { kind: "settingsUsage" }
   // The desktop app's first run and its commands for the person's CLI
   // (decision 0038): loaded, a command, the AI chosen, a step, and the key

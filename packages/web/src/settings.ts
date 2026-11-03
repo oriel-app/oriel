@@ -25,7 +25,7 @@ export type SettingsModel = {
   keying: boolean;
   // Why the last change or load didn't work, until one does.
   problem: string | null;
-  // How much of each Claude Code instance's plan Oriel has used; null
+  // How much of each CLI instance's plan Oriel has used; null
   // until it loads.
   usage: UsageView[] | null;
 };

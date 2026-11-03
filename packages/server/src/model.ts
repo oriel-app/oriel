@@ -1,32 +1,37 @@
-// Which model the agent and thread titles run on (decisions 0037 and 0041).
-// Oriel looks for each provider instance Settings lists: an API key, in
-// `.env` or, on the desktop app, in the OS secret store, the person's own
-// Claude Code, installed, a supported version and
-// signed in, and Codex, which it can't run on yet, so it's only looked for
-// on the PATH and never run (decision 0040). Each turn and each title
-// then runs on the provider and model Settings pick, among those found and
-// turned on, so a change in Settings applies at the next turn. With no pick,
-// the key wins, then Claude Code, as before Settings. With none, each turn
-// says how to set one up, naming no credential.
-import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, join } from "node:path";
+// Which model the agent and thread titles run on (decisions 0037, 0041 and
+// 0048). Oriel looks for each provider instance Settings lists: an API key,
+// in `.env` or, on the desktop app, in the OS secret store, and the person's
+// own Claude Code and Codex, each installed, a supported version and signed
+// in. Each turn and each title then runs on the provider and model Settings
+// pick, among those found and turned on, so a change in Settings applies at
+// the next turn. With no pick, the key wins, then Claude Code, then Codex, a
+// preview. With none, each turn says how to set one up, naming no
+// credential.
 import {
   agent,
   anthropicProvider,
   anthropicTitler,
   checkClaudeCode,
+  checkCodex,
   type CheckOptions,
   type ClaudeCode,
   claudeCodePlan,
   claudeCodeProvider,
   claudeCodeTitler,
+  type CodexAccount,
+  type CodexModel,
+  codexPlan,
+  codexProvider,
+  codexTitler,
   defaultModel,
   type HarnessProblem,
   locateClaudeCode,
+  locateCodex,
   type PlanUsage,
   type Provider,
   type Titler,
   titleModel,
+  type Usage,
 } from "@oriel/agent";
 import type {
   ModelOptionView,
@@ -47,9 +52,10 @@ export const claudeModels: readonly { id: string; label: string }[] = [
 ];
 
 // What Oriel found for one instance when it last looked. An untrusted CLI's
-// problem is the trust check's sentence.
+// problem is the trust check's sentence. A ready Codex has the models it
+// lists and, for its row only, its plan and email.
 export type Found =
-  | { status: "ready"; cli: ClaudeCode | null }
+  | { status: "ready"; cli: ClaudeCode | null; models?: CodexModel[]; account?: CodexAccount }
   | {
       status: Exclude<ProviderStatus, "ready">;
       problem?: HarnessProblem | { kind: "untrusted"; message: string };
@@ -82,13 +88,14 @@ export type ModelsOptions = {
   env?: Readonly<Record<string, string | undefined>>;
   // Stand in for the CLI check and the providers in tests.
   check?: (options: CheckOptions) => ReturnType<typeof checkClaudeCode>;
+  checkCodex?: (options: CheckOptions) => ReturnType<typeof checkCodex>;
   provider?: (running: Running, key: string | null) => Provider;
   titler?: (running: Running, key: string | null) => Titler;
-  // Today's counts of each Claude Code instance's turns and tokens, kept in
-  // the data folder (decision 0046). In memory when absent.
+  // Today's counts of each CLI instance's turns and tokens, kept in the
+  // data folder (decision 0046). In memory when absent.
   counts?: UsageCounts;
   // Asks a CLI how much of the plan is used; tests stand in for it.
-  plan?: (cli: ClaudeCode) => Promise<PlanUsage>;
+  plan?: (cli: ClaudeCode, kind: "claude-code" | "codex") => Promise<PlanUsage>;
 };
 
 export type Models = {
@@ -106,33 +113,16 @@ export type Models = {
   providers(settings: Settings): ProviderView[];
   // The line the server prints at startup.
   describe(settings: Settings): string;
-  // Each Claude Code instance's usage: today's counts, and the plan's
-  // windows from its CLI, asked now.
+  // Each CLI instance's usage: today's counts, and the plan's windows from
+  // its CLI, asked now.
   usage(settings: Settings): Promise<UsageView[]>;
 };
 
 const checking: Found = { status: "checking" };
 
-// An executable called `name` on `env`'s PATH.
-function onPath(name: string, env: Readonly<Record<string, string | undefined>>): boolean {
-  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`] : [name];
-  for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean))
-    for (const file of names)
-      try {
-        accessSync(join(dir, file), constants.X_OK);
-        if (statSync(join(dir, file)).isFile()) return true;
-      } catch {
-        // Not here.
-      }
-  return false;
-}
-
-// Why Codex can't run the agent (decision 0040), as its row says beside the
-// rows that offer the fixes. Oriel only looks for it; it never runs it.
-export const codexNotYet =
-  "Oriel can't run on Codex yet, because Codex can't be limited to Oriel's one tool.";
-// The same for a turn, when Codex is the only CLI found: and what to do.
-export const codexOnly = `${codexNotYet} Install Claude Code and sign in to it, or add an API key.`;
+// Which instance runs when nothing is picked: the key, then Claude Code,
+// then Codex.
+const order = ["api", "claude-code", "codex"] as const;
 
 // A turn with no model to run it: it says why and how to set one up.
 export function setupAgent(message: string): Agent {
@@ -146,6 +136,13 @@ export function setupAgent(message: string): Agent {
 
 const ready = (found: Found): found is Extract<Found, { status: "ready" }> =>
   found.status === "ready";
+
+// The model Codex runs when nothing names one: its own default, else the
+// first it lists; none until it's found ready.
+export function codexDefault(found: Found): string {
+  const list = ready(found) ? (found.models ?? []) : [];
+  return (list.find((m) => m.isDefault) ?? list[0])?.id ?? "";
+}
 
 export function models(options: ModelsOptions): Models {
   const env = options.env ?? process.env;
@@ -167,30 +164,38 @@ export function models(options: ModelsOptions): Models {
   const counts = options.counts ?? memoryUsage(() => "");
   const providerOf =
     options.provider ??
-    ((r: Running, apiKey: string | null): Provider =>
-      r.cli
-        ? claudeCodeProvider({
-            cli: r.cli,
-            model: r.model,
-            counted: (used, first) => counts.count(r.provider.id, used, first),
-          })
-        : anthropicProvider({ apiKey: apiKey ?? "", model: r.model }));
+    ((r: Running, apiKey: string | null): Provider => {
+      const counted = (used: Usage, first: boolean) => counts.count(r.provider.id, used, first);
+      if (!r.cli) return anthropicProvider({ apiKey: apiKey ?? "", model: r.model });
+      return r.provider.kind === "codex"
+        ? codexProvider({ cli: r.cli, model: r.model, counted })
+        : claudeCodeProvider({ cli: r.cli, model: r.model, counted });
+    });
   const titlerOf =
     options.titler ??
-    ((r: Running, apiKey: string | null): Titler =>
-      r.cli
-        ? claudeCodeTitler({
-            cli: r.cli,
-            model: r.model,
-            counted: (used) => counts.count(r.provider.id, used, false),
-          })
-        : anthropicTitler({ apiKey: apiKey ?? "", model: r.model }));
-  const planOf = options.plan ?? ((cli: ClaudeCode) => claudeCodePlan(cli, { env }));
+    ((r: Running, apiKey: string | null): Titler => {
+      const counted = (used: Usage) => counts.count(r.provider.id, used, false);
+      if (!r.cli) return anthropicTitler({ apiKey: apiKey ?? "", model: r.model });
+      return r.provider.kind === "codex"
+        ? codexTitler({ cli: r.cli, model: r.model, counted })
+        : claudeCodeTitler({ cli: r.cli, model: r.model, counted });
+    });
+  const planOf =
+    options.plan ??
+    ((cli: ClaudeCode, kind: "claude-code" | "codex") =>
+      kind === "codex" ? codexPlan(cli, { env }) : claudeCodePlan(cli, { env }));
 
   async function lookFor(provider: ProviderSetting, key: string | null): Promise<Found> {
     if (provider.kind === "api") return key ? { status: "ready", cli: null } : { status: "no-key" };
-    if (provider.kind === "codex")
-      return onPath("codex", env) ? { status: "not-yet" } : { status: "missing" };
+    if (provider.kind === "codex") {
+      const result = await (options.checkCodex ?? checkCodex)({
+        env,
+        ...(provider.path ? { path: provider.path } : {}),
+      });
+      return result.ok
+        ? { status: "ready", cli: result.cli, models: result.models, account: result.account }
+        : { status: result.problem.kind, problem: result.problem };
+    }
     const given = provider.path ?? options.claudeCodePath;
     // With a trust check, the CLI is found first, so the check sees the file
     // the look then runs.
@@ -207,29 +212,55 @@ export function models(options: ModelsOptions): Models {
   const foundOf = (id: string) => found.get(id) ?? checking;
   const usable = (settings: Settings) =>
     settings.providers.filter((p) => p.on && ready(foundOf(p.id)));
+  // The models an instance offers: Claude's three, or what Codex lists.
+  const modelsOf = (provider: ProviderSetting): readonly { id: string; label: string }[] => {
+    if (provider.kind !== "codex") return claudeModels;
+    const at = foundOf(provider.id);
+    return ready(at) ? (at.models ?? []) : [];
+  };
+  // What an instance runs when nothing names a model: for threads, Claude's
+  // largest or Codex's own default; for titles, Claude's smallest or the same.
+  const defaultFor = (provider: ProviderSetting, purpose: "model" | "title"): string => {
+    if (provider.kind !== "codex") return purpose === "model" ? defaultModel : titleModel;
+    return codexDefault(foundOf(provider.id));
+  };
+  // Codex's row shows once it's installed: on the PATH, or at a path set in
+  // Settings, which its row can change. Oriel doesn't install it.
+  const shown = (provider: ProviderSetting) =>
+    provider.kind !== "codex" ||
+    foundOf(provider.id).status !== "missing" ||
+    provider.path !== undefined ||
+    locateCodex(env) !== null;
 
   // The pick, if its instance is usable and offers its model; else the
-  // first usable instance, the key first, with `fallback`.
-  function running(settings: Settings, pick: ModelPick | null, fallback: string): Running | null {
+  // first usable instance, the key first, then Claude Code, with its default.
+  function running(
+    settings: Settings,
+    pick: ModelPick | null,
+    purpose: "model" | "title",
+  ): Running | null {
     const list = usable(settings);
-    const offered = (model: string) => claudeModels.some((m) => m.id === model);
     const picked = pick && list.find((p) => p.id === pick.provider);
+    const first = order.map((kind) => list.find((p) => p.kind === kind)).find(Boolean);
     const [provider, model] =
-      picked && offered(pick.model)
+      picked && modelsOf(picked).some((m) => m.id === pick.model)
         ? [picked, pick.model]
-        : [list.find((p) => p.kind === "api") ?? list[0], fallback];
-    if (!provider) return null;
+        : first
+          ? [first, defaultFor(first, purpose)]
+          : [null, ""];
+    if (!provider || !model) return null;
     const at = foundOf(provider.id);
     return { provider, model, cli: ready(at) ? at.cli : null };
   }
 
   function choose(settings: Settings): Choice {
-    const model = running(settings, settings.model, defaultModel);
+    const model = running(settings, settings.model, "model");
     // Titles follow the default model's provider until the person picks.
     const title = running(
       settings,
-      settings.titleModel ?? (model && { provider: model.provider.id, model: titleModel }),
-      titleModel,
+      settings.titleModel ??
+        (model && { provider: model.provider.id, model: defaultFor(model.provider, "title") }),
+      "title",
     );
     return { model, title, problem: model ? "" : problemOf(settings) };
   }
@@ -238,22 +269,24 @@ export function models(options: ModelsOptions): Models {
   function problemOf(settings: Settings): string {
     const claude = settings.providers.find((p) => p.kind === "claude-code");
     const claudeFound = claude ? foundOf(claude.id) : checking;
+    const codex = settings.providers.find((p) => p.kind === "codex");
+    const codexFound = codex ? foundOf(codex.id) : null;
     if (settings.providers.some((p) => !p.on && ready(foundOf(p.id))))
       return "Every provider Oriel can use is turned off. Turn one on in Settings.";
     if (claudeFound.status === "checking")
       return "Oriel is still looking for Claude Code. Try again in a moment.";
-    if (
-      claudeFound.status === "missing" &&
-      settings.providers.some((p) => foundOf(p.id).status === "not-yet")
-    )
-      return codexOnly;
     if (options.desktop && claudeFound.status !== "untrusted")
-      return "Oriel has no AI set up yet. Set up Claude Code in Settings, or add an API key there.";
+      return "Oriel has no AI set up yet. Set up Claude Code or Codex in Settings, or add an API key there.";
+    // Only Codex is there, and it isn't ready: its own problem.
+    const codexProblem = codexFound && "problem" in codexFound ? codexFound.problem : undefined;
+    if (claudeFound.status === "missing" && codexProblem && codexFound?.status !== "missing")
+      return codexProblem.message;
     if ("problem" in claudeFound && claudeFound.problem) return claudeFound.problem.message;
     return "Oriel has no model to run on. Open Settings to set one up.";
   }
 
-  const label = (model: string) => claudeModels.find((m) => m.id === model)?.label ?? model;
+  const label = (provider: ProviderSetting, model: string) =>
+    modelsOf(provider).find((m) => m.id === model)?.label ?? model;
 
   return {
     async look(settings) {
@@ -312,7 +345,7 @@ export function models(options: ModelsOptions): Models {
     },
     options(settings) {
       return usable(settings).flatMap((provider) =>
-        claudeModels.map((m) => ({
+        modelsOf(provider).map((m) => ({
           provider: provider.id,
           model: m.id,
           label: `${m.label} · ${provider.name}`,
@@ -323,8 +356,7 @@ export function models(options: ModelsOptions): Models {
       const { model, title } = choose(settings);
       return settings.providers.flatMap((provider): ProviderView[] => {
         const at = foundOf(provider.id);
-        // Codex shows only once it's installed: there's nothing to set up.
-        if (provider.kind === "codex" && at.status === "missing") return [];
+        if (!shown(provider)) return [];
         return [
           {
             id: provider.id,
@@ -336,15 +368,18 @@ export function models(options: ModelsOptions): Models {
             version: ready(at) ? (at.cli?.version ?? null) : null,
             path: provider.path ?? null,
             uses: {
-              model: model?.provider.id === provider.id ? label(model.model) : null,
-              title: title?.provider.id === provider.id ? label(title.model) : null,
+              model: model?.provider.id === provider.id ? label(provider, model.model) : null,
+              title: title?.provider.id === provider.id ? label(provider, title.model) : null,
             },
           },
         ];
       });
     },
     async usage(settings) {
-      const instances = settings.providers.filter((p) => p.kind === "claude-code");
+      // Codex's, like its row, only once it's installed.
+      const instances = settings.providers.flatMap((p) =>
+        p.kind === "api" || !shown(p) ? [] : [{ ...p, kind: p.kind }],
+      );
       return Promise.all(
         instances.map(async (provider): Promise<UsageView> => {
           const at = foundOf(provider.id);
@@ -354,7 +389,7 @@ export function models(options: ModelsOptions): Models {
           return {
             provider: provider.id,
             today: counts.today(provider.id),
-            plan: cli && !refused ? await planOf(cli) : { none: "not-ready" },
+            plan: cli && !refused ? await planOf(cli, provider.kind) : { none: "not-ready" },
           };
         }),
       );
@@ -364,8 +399,8 @@ export function models(options: ModelsOptions): Models {
       if (!model) return `Agent: none. ${problem}`;
       const how = (r: Running) =>
         r.cli
-          ? `${label(r.model)} through Claude Code ${r.cli.version} at ${r.cli.path}, on its own sign-in`
-          : `${label(r.model)} with ${where === "store" ? "the API key in the OS secret store" : "the model key from .env"}`;
+          ? `${label(r.provider, r.model)} through ${r.provider.kind === "codex" ? "Codex" : "Claude Code"} ${r.cli.version} at ${r.cli.path}, on its own sign-in`
+          : `${label(r.provider, r.model)} with ${where === "store" ? "the API key in the OS secret store" : "the model key from .env"}`;
       return `Agent: ${how(model)}. Thread titles: ${title ? how(title) : "the first message, clipped"}.`;
     },
   };
@@ -388,8 +423,6 @@ function detailOf(provider: ProviderSetting, found: Found, where: "env" | "store
       return where === "store"
         ? "No key is set. Paste one from Anthropic's console to pay per question."
         : "No key is set. Add ANTHROPIC_API_KEY to .env, then restart Oriel.";
-    case "not-yet":
-      return codexNotYet;
     default:
       return provider.kind === "codex" ? "Not installed." : "Not found.";
   }

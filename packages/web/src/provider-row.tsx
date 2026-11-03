@@ -3,6 +3,8 @@
 // set, never the key), the models it runs now, and a switch to turn it on or
 // off. Settings lists these, and the first run shows the same rows, with
 // what it can do for the person's Claude Code beneath (decision 0038).
+// Codex's row is marked a preview, with what's less locked down than Claude
+// Code (decision 0048).
 import type { ComponentChildren } from "preact";
 import type { ProviderKind, ProviderStatus, ProviderView } from "./view.ts";
 
@@ -13,7 +15,6 @@ const statusNames: Record<ProviderStatus, string> = {
   unsupported: "Needs an update",
   "signed-out": "Not signed in",
   "no-key": "No key",
-  "not-yet": "Not supported yet",
   untrusted: "Not run",
   checking: "Checking",
 };
@@ -27,9 +28,13 @@ export const providerAbout: Record<ProviderKind, string> = {
 
 const marks: Record<ProviderKind, string> = { "claude-code": "C", codex: "O", api: "A" };
 
+// What a person gives up running on Codex, in one plain line.
+export const codexPreview =
+  "Less locked down than Claude Code: your own Codex settings still load, and Oriel can't check every tool Codex gives its model.";
+
 export function ProviderRow(props: {
   provider: ProviderView;
-  // Turns it on or off; absent where it can't be, as Codex's row.
+  // Turns it on or off; absent where it can't be, as in the first run.
   onToggle?(on: boolean): void;
   // The row's own line of state, in place of its status and detail, as the
   // first run's Claude Code row has.
@@ -66,8 +71,12 @@ export function ProviderRow(props: {
         {marks[provider.kind]}
       </span>
       <div class="provider-main">
-        <span class="provider-name">{provider.name}</span>
+        <span class="provider-name">
+          {provider.name}
+          {provider.kind === "codex" && <span class="provider-badge">Preview</span>}
+        </span>
         <span class="provider-about">{providerAbout[provider.kind]}</span>
+        {provider.kind === "codex" && <span class="provider-preview">{codexPreview}</span>}
         {props.status ?? (
           <span class="provider-status">
             <span class="provider-mark" aria-hidden="true" />
@@ -79,7 +88,7 @@ export function ProviderRow(props: {
         {props.children}
       </div>
       {props.side && <div class="provider-side">{props.side}</div>}
-      {onToggle && provider.kind !== "codex" && (
+      {onToggle && (
         <Switch on={provider.on} label={`Use ${provider.name}`} onChange={(on) => onToggle(on)} />
       )}
     </li>

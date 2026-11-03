@@ -754,7 +754,6 @@ export type ModelPick = { provider: string; model: string };
 // - missing, unsupported, signed-out: the CLI isn't there, is a version
 //   Oriel can't drive, or has no account;
 // - no-key: no API key is set;
-// - not-yet: installed, but Oriel can't run on it yet;
 // - untrusted: from the vendor's installer, but its code signature isn't the
 //   vendor's, so Oriel won't run it (decision 0038);
 // - checking: Oriel is looking now.
@@ -764,7 +763,6 @@ export type ProviderStatus =
   | "unsupported"
   | "signed-out"
   | "no-key"
-  | "not-yet"
   | "untrusted"
   | "checking";
 
@@ -822,17 +820,18 @@ export type SettingsView = {
 // the tokens its responses read and wrote, titles included (decision 0046).
 export type UsageCountsView = { turns: number; inputTokens: number; outputTokens: number };
 
-// One window of the person's plan as their Claude Code reports it: the
-// five-hour session or the week, how much is used, and when it resets.
+// One window of the person's plan as their CLI reports it: the five-hour
+// session or the week, how much is used, and when it resets.
 export type PlanWindowView = {
   kind: "session" | "week";
   usedPercent: number;
   resetsAt: string | null;
 };
 
-// A Claude Code instance's usage, under its row in Settings: Oriel's own
-// counts for today, and the plan's windows, or why there are none: no plan
-// limits apply (an API key), the CLI didn't answer, or it isn't ready.
+// A Claude Code or Codex instance's usage, under its row in Settings:
+// Oriel's own counts for today, and the plan's windows, or why there are
+// none: no plan limits apply (an API key), the CLI didn't answer, or it
+// isn't ready.
 export type UsageView = {
   provider: string;
   today: UsageCountsView;
@@ -856,9 +855,10 @@ export type SettingsChange =
   | { provider: string; on: boolean }
   | { provider: string; path: string | null };
 
-// The person's Claude Code as the first run and Settings show it, on the
-// desktop app (decision 0038): what Oriel found, what it's running for them,
-// and what went wrong.
+// The person's Claude Code, or their Codex (decision 0048), as the first run
+// and Settings show it, on the desktop app (decision 0038): what Oriel
+// found, what it's running for them, and what went wrong. Codex has no
+// install, update or no-plan state: Oriel only signs it in.
 // - checking, missing, signed-out, untrusted, ready: as its provider row;
 // - unsupported: a version too old, which an update fixes; too-new: one
 //   past what Oriel drives, which Oriel's next update will;
@@ -896,7 +896,8 @@ export type CliFailure =
 export type CliView = {
   state: CliState;
   version: string | null;
-  // Once signed in, as `claude auth status` says: shown, never stored.
+  // Once signed in, as `claude auth status` or Codex's `account/read` says:
+  // shown, never stored.
   account: { plan: string | null; email: string | null } | null;
   // While a command runs: what it's doing and how long it has run.
   running: { command: CliCommand; phase: CliPhase; ms: number } | null;
@@ -931,11 +932,13 @@ export type FirstRunView = {
 };
 
 // What the desktop app's setup and Settings show: the CLI rows as Settings
-// has them (Claude Code, and Codex once found), the Claude Code row's own
-// state, and the first run. Each null under `pnpm dev`, which has neither.
+// has them (Claude Code, and Codex once installed), each CLI's own state,
+// and the first run. Each null under `pnpm dev`, which has neither, and
+// `codex` while Codex isn't installed.
 export type SetupView = {
   providers: ProviderView[];
   cli: CliView | null;
+  codex: CliView | null;
   firstRun: FirstRunView | null;
 };
 

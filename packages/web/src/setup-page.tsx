@@ -4,12 +4,11 @@
 // plans before product names, what installs and where the work goes, what's
 // happening while it does, and a failure that keeps its help on screen.
 import type { ComponentChildren } from "preact";
-import { ClaudeCodeRow } from "./cli-row.tsx";
+import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import type { FolderMsg } from "./folder.ts";
 import { JiraDetails, JiraProjects } from "./jira-connect.tsx";
 import { type JiraMsg, pickedProject } from "./jira.ts";
 import { type Dispatch, Mark, plural } from "./parts.tsx";
-import { ProviderRow } from "./provider-row.tsx";
 import type { Model } from "./root.ts";
 import type { SetupMsg, SetupScreen } from "./setup.ts";
 
@@ -97,8 +96,14 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
   const claude = view?.providers.find((p) => p.kind === "claude-code");
   const codex = view?.providers.find((p) => p.kind === "codex");
   const cli = view?.cli;
+  const codexCli = view?.codex ?? null;
   const ready = cli?.state === "ready";
   const missing = cli?.state === "missing";
+  // Claude Code is picked whenever it's ready; Codex, a preview, only when
+  // it's the one ready (decision 0048).
+  const ai = ready ? "claude-code" : codexCli?.state === "ready" ? "codex" : null;
+  const name = ai === "codex" ? "Codex" : "Claude Code";
+  const tested = ai === "codex" ? codexCli?.failed?.what === "test" : cli?.failed?.what === "test";
   // Why Claude Code, said only while it isn't on this Mac yet.
   const explain = missing || cli?.state === "checking";
   return (
@@ -115,18 +120,20 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
             cli={cli}
             model={setup}
             send={send}
-            picked={ready}
+            picked={ai === "claude-code"}
             onKey={() => show("key")}
             onOtherWays={() => show("other-ways")}
           />
         )}
-        {codex && (
-          <ProviderRow
+        {codex && codexCli && (
+          <CodexRow
             provider={codex}
-            status={<span class="cli-line">Found on this Mac. Not supported yet.</span>}
-          >
-            <span class="cli-note">{codex.detail}</span>
-          </ProviderRow>
+            cli={codexCli}
+            model={setup}
+            send={send}
+            picked={ai === "codex"}
+            onKey={() => show("key")}
+          />
         )}
       </ul>
       {explain && (
@@ -136,26 +143,17 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
           password, and nothing outside your own folder.
         </p>
       )}
-      {codex && missing ? (
-        <div class="setup-box">
-          <p>
-            <strong>You have ChatGPT, which Oriel can't run on yet.</strong> The shortest way in is
-            an Anthropic API key: nothing to install, about five minutes on Anthropic's site, and
-            Anthropic bills each question.
-          </p>
-          <button type="button" class="button primary" onClick={() => show("key")}>
-            Use an API key
-          </button>
-          <p class="cli-small">Or, with a Claude Pro or Max plan, install Claude Code above.</p>
-        </div>
-      ) : codex ? (
+      {codex && missing && ai !== "codex" ? (
         <p class="setup-note">
-          Oriel uses Claude Code. Codex is on this Mac too, but Oriel can't run on it yet.
+          With a ChatGPT plan, sign in to Codex above and Oriel runs on it, as a preview. Or{" "}
+          {link("pay Anthropic per question", () => show("key"))}: nothing to install.
         </p>
       ) : (
+        !codex &&
         missing && (
           <p class="setup-note">
-            Only have ChatGPT? Oriel can't run on it yet. The shortest way in is to{" "}
+            Only have ChatGPT? Oriel runs on Codex, OpenAI's assistant, as a preview once it's on
+            this Mac. The shortest way in is to{" "}
             {link("pay Anthropic per question", () => show("key"))}: nothing to install.
           </p>
         )
@@ -173,13 +171,15 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
         <button
           type="button"
           class="button primary setup-next"
-          disabled={!ready || setup.sending || cli?.failed?.what === "test"}
-          onClick={() => send({ type: "continueClicked" })}
+          disabled={ai === null || setup.sending || tested}
+          onClick={() =>
+            send({ type: "continueClicked", ...(ai === "codex" ? { ai: "codex" as const } : {}) })
+          }
         >
           {setup.testing
-            ? "Checking that Claude Code answers…"
-            : ready
-              ? "Continue with Claude Code"
+            ? `Checking that ${name} answers…`
+            : ai
+              ? `Continue with ${name}`
               : "Continue"}
         </button>
       </Foot>

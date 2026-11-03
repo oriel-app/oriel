@@ -1,7 +1,8 @@
 // The first run's commands against stand-ins: an installer script that
 // prints Anthropic's installer's lines and leaves a stub `claude` where it
-// does, and stub CLIs that answer `auth login`, `auth status` and `update` as
-// Claude Code does. Each runs as a real child in a throwaway home, by
+// does, stub CLIs that answer `auth login`, `auth status` and `update` as
+// Claude Code does, and a stub `codex` that answers `login` as Codex does.
+// Each runs as a real child in a throwaway home, by
 // /bin/bash, never from the network; the signature check, the test turn and
 // the window's shell are stand-ins too.
 import assert from "node:assert/strict";
@@ -17,7 +18,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { locateClaudeCode } from "@oriel/agent";
+import { locateClaudeCode, locateCodex } from "@oriel/agent";
 import type { CheckOptions } from "@oriel/agent";
 import type { SetupView } from "@oriel/web/view";
 import { models } from "../model.ts";
@@ -50,6 +51,23 @@ function stubCli(options: { version?: string; login?: "signs-in" | "fails" } = {
     '  "update ") echo "Updating…"; touch "$HOME/.updated" ;;',
     "  *) exit 2 ;;",
     "esac",
+    "",
+  ].join("\n");
+}
+
+// A stub `codex`: `login` prints Codex's lines, then signs in or fails.
+function stubCodex(login: "signs-in" | "fails"): string {
+  return [
+    "#!/bin/bash",
+    'if [ "$1" != "login" ]; then exit 2; fi',
+    'echo "$*" > "$HOME/codex-login-args"',
+    'if [ -t 0 ]; then echo tty > "$HOME/codex-login-stdin"; else cat > "$HOME/codex-login-stdin"; fi',
+    'echo "Starting local login server on http://localhost:1455."',
+    'echo "If your browser did not open, navigate to this URL to authenticate:"',
+    'echo "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_abcdefghijklmnop&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789&state=zyxwvutsrqponmlkjihgfedcba9876543210"',
+    login === "fails"
+      ? 'echo "Login failed for maya@example.com"; exit 1'
+      : 'touch "$HOME/.codex-signed-in"; echo "Successfully logged in"',
     "",
   ].join("\n");
 }
@@ -90,6 +108,8 @@ type World = {
   // Who brought the window to the front, and what the trust check saw.
   fronted: number;
   trusted: string[];
+  // Each test turn, by CLI and model.
+  tested: string[];
 };
 
 // A home with Claude Code installed or not, signed in or not, and the app
@@ -107,11 +127,13 @@ async function firstRun(
     trust?: (path: string) => string | null;
     testTurn?: TestTurn;
     start?: Start;
+    // A stub Codex on the PATH, signed in or not, and how its sign-in ends.
+    codex?: { signedIn?: boolean; login?: "signs-in" | "fails" };
   } = {},
 ) {
   const home = mkdtempSync(join(tmpdir(), "oriel-first-run-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const world: World = { home, fronted: 0, trusted: [] };
+  const world: World = { home, fronted: 0, trusted: [], tested: [] };
   if (options.installed?.brew) {
     const cask = join(home, "homebrew", "Caskroom", "claude-code", "2.0.4");
     mkdirSync(cask, { recursive: true });
@@ -125,6 +147,17 @@ async function firstRun(
     });
   }
   if (options.signedIn) writeFileSync(join(home, ".signed-in"), "");
+  if (options.codex) {
+    mkdirSync(join(home, ".local", "bin"), { recursive: true });
+    writeFileSync(
+      join(home, ".local", "bin", "codex"),
+      stubCodex(options.codex.login ?? "signs-in"),
+      {
+        mode: 0o755,
+      },
+    );
+    if (options.codex.signedIn) writeFileSync(join(home, ".codex-signed-in"), "");
+  }
   const env = { HOME: home, PATH: `/usr/bin:/bin:${join(home, ".local", "bin")}` };
   const trust = async (path: string) => {
     world.trusted.push(path);
@@ -146,8 +179,23 @@ async function firstRun(
       ? { ok: true as const, cli: { path: cli, version } }
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
+  // Codex's check, as far as its stub answers: found, and signed in once its
+  // sign-in left its mark. The real check, which starts Codex, never runs.
+  const checkCodex = async ({ env: given, path }: CheckOptions) => {
+    const cli = locateCodex(given ?? {}, path);
+    if (!cli)
+      return { ok: false as const, problem: { kind: "missing" as const, message: "Not found." } };
+    return existsSync(join(home, ".codex-signed-in"))
+      ? {
+          ok: true as const,
+          cli: { path: cli, version: "0.166.0" },
+          models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true }],
+          account: { plan: "ChatGPT Plus", email: "maya@example.com" },
+        }
+      : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
+  };
   const settings = memorySettings();
-  const chooser = models({ key: null, env, check, trust });
+  const chooser = models({ key: null, env, check, checkCodex, trust });
   await chooser.look(settings.get());
   const state = memorySetup();
   const setup: SetupOptions = {
@@ -160,7 +208,10 @@ async function firstRun(
       script: async () => (await options.script) ?? options.installer ?? stubInstaller(),
       latest: async () => options.latest ?? "2.1.317",
     },
-    testTurn: async () => options.testTurn ?? { said: null, inputTokens: 2900, outputTokens: 4 },
+    testTurn: async (_cli, kind, model) => {
+      world.tested.push(`${kind} ${model}`);
+      return options.testTurn ?? { said: null, inputTokens: 2900, outputTokens: 4 };
+    },
     front: async () => {
       world.fronted += 1;
     },
@@ -232,7 +283,7 @@ test("missing, installed by Anthropic's installer, signed in, then chosen: one r
   assert.equal(view.firstRun?.steps.ai, "done");
   assert.deepEqual(run.settings.get().model, { provider: "claude-code", model: "claude-opus-5-5" });
   assert.deepEqual(run.events("first-run.test-turn"), [
-    { ms: 0, inputTokens: 2900, outputTokens: 4 },
+    { ms: 0, inputTokens: 2900, outputTokens: 4, cli: "claude-code" },
   ]);
   assert.deepEqual(run.events("first-run.ai-chosen"), [{ ai: "claude-code" }]);
 
@@ -381,7 +432,7 @@ test("a test turn that fails says why, offers the way on, and chooses nothing", 
   assert.equal(view.firstRun?.steps.ai, null);
   assert.equal(run.settings.get().model, null);
   assert.deepEqual(run.events("first-run.test-turn"), [
-    { ms: 0, inputTokens: 0, outputTokens: 0, failed: "usage-limit" },
+    { ms: 0, inputTokens: 0, outputTokens: 0, failed: "usage-limit", cli: "claude-code" },
   ]);
   // Continue anyway, past a usage limit.
   view = await run.send("/api/setup/ai", { ai: "claude-code", anyway: true });
@@ -423,6 +474,16 @@ test("the test turn's failures, each in a sentence the person can act on", () =>
     testFailure(cases[4]![0]).sentence,
     "Oriel stopped Claude Code: it loaded tools other than run.",
   );
+  // Codex's, in its own words and its plan's.
+  const codex = (said: string) => testFailure(said, "codex");
+  assert.equal(codex("Codex stopped: You've hit your usage limit.").why, "usage-limit");
+  assert.match(codex("Codex stopped: You've hit your usage limit.").sentence, /ChatGPT plan/);
+  assert.equal(codex("Oriel stopped Codex: it loaded an MCP server.").why, "refused");
+  assert.equal(codex("Codex stopped: stream disconnected: network error").why, "no-connection");
+  assert.equal(
+    codex("Codex stopped: Something else.").sentence,
+    "Codex didn't answer: Something else.",
+  );
 });
 
 test("a step done or skipped is kept, and the setup reopens at the first neither", async (t) => {
@@ -447,7 +508,7 @@ test("a step done or skipped is kept, and the setup reopens at the first neither
 test("under pnpm dev there is no first run and nothing to install", async (t) => {
   const app = await testApp(t);
   const view = json<SetupView>(await app.get("/api/setup"));
-  assert.deepEqual(view, { providers: [], cli: null, firstRun: null });
+  assert.deepEqual(view, { providers: [], cli: null, codex: null, firstRun: null });
   assert.equal((await app.get("/")).status, 200);
   assert.equal((await app.get("/setup")).headers.location, "/");
   assert.equal((await app.post("/api/setup/cli", { command: "install" })).status, 409);
@@ -519,4 +580,65 @@ test("Start again stops the sign-in running, and a fresh one starts", async (t) 
     run.events("cli.ended").map(({ outcome }) => outcome),
     ["cancelled", "done"],
   );
+});
+
+test("Codex, a preview: signed in with its own login, with no terminal, then chosen (0048)", async (t) => {
+  const run = await firstRun(t, { installed: {}, signedIn: true, codex: {} });
+  let view = await run.send("/api/setup/progress", { did: "opened" });
+  assert.deepEqual(run.events("first-run.cli-found"), [
+    { cli: "claude-code", state: "ready" },
+    { cli: "codex", state: "signed-out" },
+  ]);
+  assert.deepEqual(
+    view.providers.map((p) => [p.kind, p.status]),
+    [
+      ["claude-code", "ready"],
+      ["codex", "signed-out"],
+    ],
+  );
+  assert.equal(view.codex?.state, "signed-out");
+  // Cancel on Codex's row leaves Claude Code's command alone.
+  await run.send("/api/setup/cli", { command: "cancel", cli: "codex" });
+  // Oriel only signs Codex in.
+  for (const command of ["install", "update"])
+    assert.equal((await run.post("/api/setup/cli", { command, cli: "codex" })).status, 409);
+
+  view = await run.send("/api/setup/cli", { command: "sign-in", cli: "codex" });
+  assert.equal(view.codex?.state, "signing-in");
+  // Claude Code's row is as it was.
+  assert.equal(view.cli?.state, "ready");
+  await run.app.settled();
+  view = await run.view();
+  assert.equal(view.codex?.state, "ready");
+  assert.deepEqual(view.codex?.account, { plan: "ChatGPT Plus", email: "maya@example.com" });
+  // Codex's own command, with stdin closed: nothing passes through Oriel.
+  assert.equal(readFileSync(join(run.world.home, "codex-login-args"), "utf8").trim(), "login");
+  assert.equal(readFileSync(join(run.world.home, "codex-login-stdin"), "utf8"), "");
+  assert.equal(run.world.fronted, 1);
+  assert.deepEqual(run.events("cli.ended"), [
+    { command: "sign-in", outcome: "done", ms: 0, cli: "codex" },
+  ]);
+
+  // Claude Code stays the default; continuing with Codex tests its default model.
+  view = await run.send("/api/setup/ai", { ai: "codex" });
+  assert.deepEqual(run.world.tested, ["codex gpt-6.1-sol"]);
+  assert.deepEqual(run.settings.get().model, { provider: "codex", model: "gpt-6.1-sol" });
+  assert.deepEqual(run.events("first-run.ai-chosen"), [{ ai: "codex" }]);
+  assert.equal(run.events("first-run.test-turn")[0]?.cli, "codex");
+});
+
+test("a Codex sign-in that fails says so on Codex's row, with a log that holds no email or link query", async (t) => {
+  const run = await firstRun(t, { codex: { login: "fails" } });
+  await run.send("/api/setup/progress", { did: "opened" });
+  await run.send("/api/setup/cli", { command: "sign-in", cli: "codex" });
+  await run.app.settled();
+  const view = await run.view();
+  assert.equal(view.codex?.state, "signed-out");
+  assert.equal(view.codex?.failed?.why, "sign-in");
+  assert.match(view.codex?.failed?.sentence ?? "", /nothing came back from OpenAI/);
+  // Claude Code's row has no failure of Codex's.
+  assert.equal(view.cli?.failed, null);
+  const log = (view.codex?.failed?.log ?? []).join("\n");
+  assert.match(log, /auth\.openai\.com\/oauth\/authorize\?…/);
+  assert.doesNotMatch(log, /maya@example\.com|code_challenge|client_id|state=/);
 });

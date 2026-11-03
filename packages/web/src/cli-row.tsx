@@ -3,6 +3,8 @@
 // (Install, Sign in, Update), what it's doing while that runs, and, when it
 // fails, one sentence, Try again, Show details with a log to copy, and other
 // ways. Oriel never sees the sign-in: the browser does it with Claude Code.
+// The person's Codex, a preview, has a row like it with only Sign in
+// (decision 0048).
 import type { ComponentChildren } from "preact";
 import { useStamp } from "./parts.tsx";
 import { ProviderRow } from "./provider-row.tsx";
@@ -246,13 +248,149 @@ export function ClaudeCodeRow(props: {
       {below}
       {cli.failed && !running && (
         <Failed
-          cli={cli}
           failed={cli.failed}
           model={model}
           send={send}
           onKey={props.onKey}
           {...(props.onOtherWays ? { onOtherWays: props.onOtherWays } : {})}
         />
+      )}
+      {props.children}
+    </ProviderRow>
+  );
+}
+
+// The person's Codex, a preview (decision 0048): what Oriel found, Sign in
+// through Codex's own `codex login`, what it's doing while that runs, and,
+// when it fails, the same box as Claude Code's. Oriel doesn't install or
+// update Codex: an old one names the person's own command.
+export function CodexRow(props: {
+  provider: ProviderView;
+  cli: CliView;
+  model: SetupModel;
+  send(msg: SetupMsg): void;
+  picked?: boolean;
+  onToggle?(on: boolean): void;
+  onKey(): void;
+  children?: ComponentChildren;
+}) {
+  const { provider, cli, model, send } = props;
+  const run = (command: "sign-in" | "check" | "cancel") =>
+    send({ type: "commandClicked", command, cli: "codex" });
+  const button = (label: string, onClick: () => void, primary = false) => (
+    <button
+      type="button"
+      class={primary ? "button primary" : "button"}
+      disabled={model.sending}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+  const quiet = (label: string, onClick: () => void) => (
+    <button type="button" class="link-action" disabled={model.sending} onClick={onClick}>
+      {label}
+    </button>
+  );
+  const { state, account, running } = cli;
+  let status: ComponentChildren = null;
+  let side: ComponentChildren = null;
+  let below: ComponentChildren = null;
+  switch (state) {
+    case "checking":
+      status = <Waiting>Looking for it on this Mac…</Waiting>;
+      break;
+    case "signed-out":
+      status = (
+        <span class="cli-line">
+          <strong>Installed.</strong> Now sign in with your ChatGPT account.
+        </span>
+      );
+      side = button("Sign in", () => run("sign-in"), true);
+      below = (
+        <span class="cli-note">
+          Your browser opens OpenAI's sign-in. Oriel never sees your password or your chats.
+        </span>
+      );
+      break;
+    case "signing-in":
+      status = <Waiting>Waiting for you in your browser… {running && elapsed(running.ms)}</Waiting>;
+      side = quiet("Cancel", () => run("cancel"));
+      below = (
+        <div class="cli-box">
+          <p>
+            <strong>A tab opened on OpenAI's sign-in.</strong> Sign in with your ChatGPT account.
+            Oriel comes back to the front by itself when you're done.
+          </p>
+          <p class="cli-small">
+            No tab, or the wrong account? {quiet("Start again", () => run("sign-in"))}
+          </p>
+        </div>
+      );
+      break;
+    case "unsupported":
+      status = (
+        <span class="cli-line">
+          This Codex{cli.version && ` (${cli.version})`} is older than Oriel works with.
+        </span>
+      );
+      side = button("Check again", () => run("check"));
+      below = (
+        <span class="cli-note">
+          {cli.update?.by === "person" ? (
+            <>
+              Update it with the tool you installed it with: run <code>{cli.update.command}</code>{" "}
+              in Terminal, then check again.
+            </>
+          ) : (
+            "Update it the way you installed it, then check again."
+          )}
+        </span>
+      );
+      break;
+    case "too-new":
+      status = (
+        <span class="cli-line">
+          This Codex{cli.version && ` (${cli.version})`} is newer than Oriel works with yet. Oriel's
+          next update will work with it.
+        </span>
+      );
+      break;
+    case "ready":
+      status = (
+        <span class="provider-status">
+          <span class="provider-mark" aria-hidden="true" />
+          <span class="provider-state">Ready</span>
+          {[account?.plan, account?.email].filter(Boolean).map((part) => (
+            <span key={part}>· {part}</span>
+          ))}
+        </span>
+      );
+      if (props.picked !== undefined)
+        side = (
+          <span
+            class="cli-picked"
+            role="img"
+            aria-label="Picked"
+            data-on={props.picked || undefined}
+          />
+        );
+      break;
+    default:
+      status = <span class="cli-line">{provider.detail}</span>;
+  }
+  if (cli.failed && !running && cli.failed.what !== "test") side = null;
+  return (
+    <ProviderRow
+      provider={provider}
+      status={status}
+      side={side}
+      {...(props.picked !== undefined ? { picked: props.picked } : {})}
+      {...(props.onToggle ? { onToggle: props.onToggle } : {})}
+    >
+      {below}
+      {cli.failed && !running && (
+        <Failed failed={cli.failed} model={model} send={send} onKey={props.onKey} codex />
       )}
       {props.children}
     </ProviderRow>
@@ -269,29 +407,31 @@ function Waiting(props: { children: ComponentChildren }) {
 }
 
 // What went wrong, in one sentence, never more than Oriel knows, with the
-// way on: Try again, Show details, other ways.
+// way on: Try again, Show details, other ways. `codex`: Codex's row's.
 function Failed(props: {
-  cli: CliView;
   failed: NonNullable<CliView["failed"]>;
   model: SetupModel;
   send(msg: SetupMsg): void;
   onKey(): void;
   onOtherWays?(): void;
+  codex?: true;
 }) {
   const { failed, model, send } = props;
+  const which = props.codex ? ({ cli: "codex" } as const) : {};
+  const ai = props.codex ? ({ ai: "codex" } as const) : {};
   const again = (command: "install" | "sign-in" | "update") =>
-    send({ type: "commandClicked", command });
+    send({ type: "commandClicked", command, ...which });
   const busy = model.sending;
   const retry =
     failed.what === "test"
       ? failed.why === "usage-limit"
         ? {
             label: "Continue anyway",
-            onClick: () => send({ type: "continueClicked", anyway: true }),
+            onClick: () => send({ type: "continueClicked", anyway: true, ...ai }),
           }
         : failed.why === "no-plan"
           ? null
-          : { label: "Try again", onClick: () => send({ type: "continueClicked" }) }
+          : { label: "Try again", onClick: () => send({ type: "continueClicked", ...ai }) }
       : failed.what === "sign-in"
         ? { label: "Start again", onClick: () => again("sign-in") }
         : { label: "Try again", onClick: () => again(failed.what as "install" | "update") };

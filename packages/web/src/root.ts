@@ -201,8 +201,8 @@ export type Model = {
   // The person's settings: Settings' page, and which key sends a question
   // on every page.
   settings: SettingsModel;
-  // The desktop app's first run, and the Claude Code row Settings shares
-  // with it (decision 0038).
+  // The desktop app's first run, and the Claude Code and Codex rows
+  // Settings shares with it (decisions 0038 and 0048).
   setup: SetupModel;
 };
 
@@ -798,9 +798,11 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "setupProgress":
     case "setupKey": {
       const [setup, effects] = setupReplied(model.setup, msg);
-      // What Claude Code or the AI chosen changed shows in Settings too, and
-      // in the ask bar: once asked, and once a command has finished.
-      const finished = model.setup.view?.cli?.running != null && setup.view?.cli?.running == null;
+      // What Claude Code, Codex or the AI chosen changed shows in Settings
+      // too, and in the ask bar: once asked, and once a command has finished.
+      const ended = (key: "cli" | "codex") =>
+        model.setup.view?.[key]?.running != null && setup.view?.[key]?.running == null;
+      const finished = ended("cli") || ended("codex");
       const moved = msg.tag.kind === "setupCli" || msg.tag.kind === "setupAi" || finished;
       return [{ ...model, setup }, moved && msg.ok ? [...effects, loadSettings] : effects];
     }

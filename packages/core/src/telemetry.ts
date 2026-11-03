@@ -177,24 +177,32 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // What the first run found of each command-line agent, by its state.
   | { name: "first-run.cli-found"; cli: "claude-code" | "codex"; state: string }
   // An install, sign-in or update of the person's CLI started, from the
-  // first run or Settings, and how it ended, after how long.
-  | { name: "cli.started"; command: "install" | "sign-in" | "update" }
+  // first run or Settings, and how it ended, after how long. `cli`: which,
+  // since Codex's sign-in (decision 0048); an event without it was Claude
+  // Code's.
+  | {
+      name: "cli.started";
+      command: "install" | "sign-in" | "update";
+      cli?: "claude-code" | "codex";
+    }
   | {
       name: "cli.ended";
       command: "install" | "sign-in" | "update";
       outcome: "done" | "failed" | "cancelled";
       ms: number;
+      cli?: "claude-code" | "codex";
     }
   // The test turn that proves the plan answers: how long, its tokens, and
-  // why it failed if it did.
+  // why it failed if it did, on which CLI, as above.
   | {
       name: "first-run.test-turn";
       ms: number;
       inputTokens: number;
       outputTokens: number;
       failed?: string;
+      cli?: "claude-code" | "codex";
     }
-  | { name: "first-run.ai-chosen"; ai: "claude-code" | "api" }
+  | { name: "first-run.ai-chosen"; ai: "claude-code" | "codex" | "api" }
   | { name: "first-run.step-skipped"; step: "ai" | "work" }
   // Show details' log was copied, for someone helping the person.
   | { name: "first-run.details-copied"; what: string }
