@@ -92,7 +92,8 @@ import type {
   WindowView,
 } from "@oriel/web/view";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import type { Titler } from "@oriel/agent";
+import type { KeyCheck, Titler } from "@oriel/agent";
+import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
@@ -177,6 +178,8 @@ export type AppOptions = {
   // Whether the page may set where a CLI is: only behind the desktop app's
   // launch secret, since a path set is a program the server runs.
   cliPaths?: boolean;
+  // Where the page may keep an API key: the desktop app's OS secret store.
+  keys?: { store: KeyStore; check?: (key: string) => Promise<KeyCheck> };
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
@@ -703,6 +706,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     models: options.agent ? null : (models ?? null),
     themes: options.themes ?? [defaultTheme],
     cliPaths: options.cliPaths ?? false,
+    ...(options.keys ? { keys: options.keys } : {}),
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
   });
   const conversation = turns({

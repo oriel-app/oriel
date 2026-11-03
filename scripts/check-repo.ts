@@ -144,6 +144,7 @@ export const exemptRoutes: Record<string, string> = {
   // Decision 0041: no agent or outside tool may pick which CLI runs.
   "/settings": "the person's own settings, which no agent may change",
   "/settings/look": "the person's own settings, which no agent may change",
+  "/settings/key": "the person's own API key, which no agent may set or see",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

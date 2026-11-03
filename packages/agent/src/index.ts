@@ -9,10 +9,13 @@ export {
   type AnthropicOptions,
   anthropicProvider,
   apiVersion,
+  checkKey,
   defaultModel,
   type Effort,
   fallbackBeta,
+  type KeyCheck,
   messagesUrl,
+  modelsUrl,
 } from "./anthropic.ts";
 export {
   checkClaudeCode,

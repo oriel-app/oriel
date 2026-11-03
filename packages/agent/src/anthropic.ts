@@ -17,6 +17,7 @@ import {
 } from "./provider.ts";
 
 export const messagesUrl = "https://api.anthropic.com/v1/messages";
+export const modelsUrl = "https://api.anthropic.com/v1/models";
 // On this version, a request that sends `temperature`, `top_p` or `top_k` is
 // refused; this provider sends none.
 export const apiVersion = "2026-10-21";
@@ -33,6 +34,28 @@ export const fallbackBeta = "server-side-fallback-2026-07-01";
 export function anthropicKey(envFile: string | null): string | null {
   const key = envFile ? parseEnv(envFile).ANTHROPIC_API_KEY : undefined;
   return key && /^[!-~]+$/.test(key) ? key : null;
+}
+
+export type KeyCheck = "ok" | "rejected" | "unreachable";
+
+// Whether Anthropic takes `apiKey`, by one small request that lists one
+// model and runs none, so it costs nothing (decision 0038). "rejected" when
+// Anthropic refuses the key; "unreachable" for anything else.
+export async function checkKey(
+  apiKey: string,
+  send: typeof fetch = (input, init) => fetch(input, init),
+): Promise<KeyCheck> {
+  try {
+    const response = await send(`${modelsUrl}?limit=1`, {
+      headers: { "x-api-key": apiKey, "anthropic-version": apiVersion },
+      signal: AbortSignal.timeout(15_000),
+    });
+    await response.body?.cancel();
+    if (response.ok) return "ok";
+    return response.status === 401 || response.status === 403 ? "rejected" : "unreachable";
+  } catch {
+    return "unreachable";
+  }
 }
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";

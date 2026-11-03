@@ -735,7 +735,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     }
     case "settings":
     case "settingsChanged":
-    case "settingsLooked": {
+    case "settingsLooked":
+    case "settingsKey": {
       const [settings, effects] = settingsReplied(model.settings, msg);
       return [{ ...model, settings }, effects];
     }

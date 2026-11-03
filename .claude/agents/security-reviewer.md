@@ -22,7 +22,7 @@ What an attacker wants:
 
 - **Credentials:**
   - the maintainer's Jira and Slack credentials, which can write, and the Anthropic key;
-  - a pilot PM's own tokens, typed in when they connect a source and kept in the OS keychain on the desktop app;
+  - a pilot PM's own tokens, typed in when they connect a source and kept in the OS secret store on the desktop app (decision 0042);
   - the desktop app's launch secret, which is the only access control on its server;
   - the sign-in of the user's command-line agent, which Oriel must never read, store or relay;
   - a live review link, and the key in its fragment;
@@ -55,7 +55,7 @@ Who controls what:
 - **Browser and the desktop shell:**
   - a request served without the launch secret on the desktop app, other than the review link page's own routes with their token, which are listed in decision 0036;
   - a route the harness uses to reach `run` that skips the launch secret without a per-turn capability of its own;
-  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a keychain entry outside Oriel's own;
+  - anything but channel lines on the server's stdout, a shell request outside the channel's fixed list, or a secret outside the fixed names the shell takes (decision 0042), or one written as plaintext;
   - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
   - the webview navigating away from the server's origin, or any bridge from the page to the shell;
   - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); or an Electron zip or types file whose hash isn't the pinned one;

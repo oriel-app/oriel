@@ -131,6 +131,12 @@ test("a request the protocol doesn't allow is never sent", async () => {
   input.write(`${secret}\n`);
   lines.ready("http://127.0.0.1:4320/");
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "../Jira" }), /isn't a request/);
+  // Only the names the server keeps: the Jira connection and the API key.
+  await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "slack" }), /isn't a request/);
+  await assert.rejects(
+    lines.shell.ask({ kind: "secret.delete", name: "anthropic-key.old" }),
+    /isn't a request/,
+  );
   await assert.rejects(
     lines.shell.ask({ kind: "secret.set", name: "jira", secret: "x".repeat(16_385) }),
     /isn't a request/,
