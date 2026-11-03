@@ -1,6 +1,6 @@
 # 0023 The inbox becomes the Done page
 
-Accepted 2026-11-01 (OA-53). Amended 2026-11-01 (OA-55): dropped threads have their own tab.
+Accepted 2026-11-01 (OA-53). Amended 2026-11-01 (OA-55): dropped threads have their own tab. Amended by #117: a change set whose apply stalled on its source also waits on the user and shows in Needs you.
 
 Adds: none
 

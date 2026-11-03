@@ -1,6 +1,6 @@
 # 0030 The window chat opens from an ask bar; answers carry blocks, and a block can be pinned
 
-Accepted 2026-11-02 (OA-136, OA-137). Amends 0024 and 0027. Changes SPEC §1, §2, §4, §7 and §10, and AGENTS.md's checklist.
+Accepted 2026-11-02 (OA-136, OA-137). Amends 0024 and 0027. Changes SPEC §1, §2, §4, §7 and §10, and AGENTS.md's checklist. Amended by 0032: an answer names items, threads, change sets and workstreams as chips, `[[id]]` drawn by Oriel, and quotes synced text under the item it is from, checked word for word; a rows block draws its items as chips.
 
 Adds: none
 
