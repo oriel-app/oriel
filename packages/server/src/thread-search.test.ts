@@ -78,7 +78,7 @@ test("the sidebar's search finds a change set by what it wrote, and opens its th
   assert.deepEqual(json<SearchView>(await app.get("/api/search?q=")).results, []);
 });
 
-test("another thread's agent finds where the user approved the post, with a link that opens it there", async (t) => {
+test("another thread's agent finds where the user approved the post, by IDs it names as chips", async (t) => {
   const app = await posted(t);
   const { id: asking } = json<{ id: string }>(
     await app.post(`/api/workstreams/${app.workstreamId}/threads`, {
@@ -92,12 +92,14 @@ test("another thread's agent finds where the user approved the post, with a link
   const value = JSON.parse(run.run.returned ?? "null") as {
     found: ThreadFound[];
     sets: { id: string; state: string; decided: { kind: string } | null }[];
-    threads: { id: string; link: string }[];
+    threads: { id: string }[];
     workstreams: { name: string; items: string[]; threads: number }[];
   };
   const [first] = value.found;
   assert.equal(first?.changeSet?.id, app.changeSetId);
-  assert.equal(first?.changeSet?.link, `/threads/${app.threadId}?changeSet=${app.changeSetId}`);
+  // Oriel's reads give IDs, never addresses (decision 0032).
+  assert.equal(first?.changeSet?.thread, app.threadId);
+  assert.ok(!("link" in (first?.changeSet ?? {})) && !("link" in (first?.thread ?? {})));
   assert.equal(first?.changeSet?.state, "applied");
   assert.equal(first?.changeSet?.decided?.kind, "approved");
   assert.deepEqual(first?.changeSet?.changes, [
@@ -112,8 +114,8 @@ test("another thread's agent finds where the user approved the post, with a link
     [app.changeSetId],
   );
   assert.deepEqual(
-    value.threads.map((thread) => thread.link).toSorted(),
-    [`/threads/${app.threadId}`, `/threads/${asking}`].toSorted(),
+    value.threads.map((thread) => thread.id).toSorted(),
+    [app.threadId, asking].toSorted(),
   );
   assert.equal(value.workstreams[0]?.name, "SMS updates");
   assert.equal(value.workstreams[0]?.threads, 2);
@@ -153,7 +155,7 @@ test("the window's search events say how long the query was and what it found, n
 });
 
 // Its script runs in the real sandbox, as `pnpm dev`'s do. This spawns Deno.
-test("the dev server's scripted agent answers where something happened with a link to it", async (t) => {
+test("the dev server's scripted agent answers where something happened with chips naming it", async (t) => {
   const { createSandbox } = await import("@oriel/sandbox");
   const { devPlan, scriptedAgent } = await import("./scripted-agent.ts");
   const sandbox = createSandbox();
@@ -182,11 +184,19 @@ test("the dev server's scripted agent answers where something happened with a li
   const view = json<ThreadView>(await asking.get(`/api/threads/${thread}`));
   const replies = view.entries.flatMap((e) => (e.kind === "text" ? [e.text] : []));
   assert.ok(
-    replies.includes(
-      `It was this change set, in [post: ${testPost}](/threads/${poster}?changeSet=${entry.changeSetId}).`,
-    ),
+    replies.includes(`It was [[${entry.changeSetId}]], in [[${poster}]].`),
     replies.join("\n"),
   );
+  // The thread view says what each is, from Oriel's own data (decision 0032).
+  assert.deepEqual(view.chips, {
+    [entry.changeSetId]: {
+      kind: "change-set",
+      thread: poster,
+      name: `post: ${testPost}`,
+      state: "pending",
+    },
+    [poster]: { kind: "thread", name: `post: ${testPost}`, state: "needs-you" },
+  });
 });
 
 test("a reason held from a review link's holder is never found, since it hasn't reached the agent", async (t) => {

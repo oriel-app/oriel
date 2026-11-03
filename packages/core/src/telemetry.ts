@@ -131,6 +131,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "block.shown"; threadId: Ulid; form: BlockForm }
   // A block the agent asked for and Oriel refused; the agent was told why.
   | { name: "block.refused"; threadId: Ulid }
+  // An answer named IDs as chips that Oriel couldn't resolve, `count` of
+  // them, which drew as "unknown reference" (decision 0032).
+  | { name: "chip.unknown"; threadId: Ulid; count: number }
   // The window chat (decision 0027): its first question made it; New chat
   // left it, `kept` working when something in it waits on the user.
   | { name: "window-chat.opened"; threadId: Ulid }

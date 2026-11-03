@@ -30,7 +30,6 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
-import { changeSetLink, threadLink } from "../packages/core/src/oriel-reads.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
   memorySite,
@@ -89,8 +88,9 @@ const handOffScript = [
 // Asked to mark stories done: two moved to Done, the built ones or the fixes.
 const finishScript = (keys: readonly string[]) =>
   [...keys.map((key) => `jira.setStatus("jira:${key}", "Done");`), "return null;"].join("\n");
-// What the agent says when asked which threads touched a story: links to
-// threads and a change set (OA-113), written once those exist.
+// What the agent says when asked which threads touched a story: chips for
+// an item, a file, a message, threads, a change set and a workstream, and
+// one ID Oriel doesn't know (decision 0032), written once those exist.
 let linkedReply = "";
 
 // The window chat's answers (decision 0030): each with a block Oriel builds
@@ -545,19 +545,21 @@ const askedWhere = await ask(
   handed.serving,
   handed.workstreamId,
 );
-// A third asks which threads touched SYN-61; the agent links to both
-// threads, as chips, and to the story, as a link to it.
-const handedView = await call<{ members: { ref: { key: string; url: string | null } }[] }>(
-  handed.serving,
-  "GET",
-  `/api/threads/${handed.threadId}`,
-);
-const syn61 = handedView.members.find((member) => member.ref.key === "SYN-61")?.ref.url;
+// A third asks which threads touched SYN-61; the agent names each thing as
+// a chip, a file from a folder beside Jira among them.
+await post("/api/folder", { path: notes }, handed.serving);
+const plan = handed.serving.app
+  .window("epic")
+  .clusters.flatMap((c) => c.list)
+  .find((row) => row.id.startsWith("folder:") && row.title === "Launch plan");
 linkedReply = [
-  `[SYN-61](${syn61}) went to the team in [this thread](${threadLink(handed.threadId)}),`,
-  `when you approved [the change](${changeSetLink(handed.threadId, handed.setId)}).`,
-  `You asked where that was in [another](${threadLink(askedWhere)}).`,
-].join(" ");
+  `[[jira:SYN-61]] went to the team in [[${handed.threadId}]], when you approved [[${handed.setId}]],`,
+  `which also replied to [[${smsCopy}]] in [[${handed.workstreamId}]].`,
+  `You asked where that was in [[${askedWhere}]].`,
+  "",
+  `- [[${plan?.id ?? "folder:missing"}]] says what ships first.`,
+  "- [[jira:SYN-6100]] is no story Oriel has.",
+].join("\n");
 const linked = await ask("Which threads touched SYN-61?", handed.serving, handed.workstreamId);
 
 // A workstream of one item, and one with none left, for how the page counts them.

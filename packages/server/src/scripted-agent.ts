@@ -120,7 +120,7 @@ async function* steps(
       yield { kind: "text", text: `Nothing to propose: ${failed.error.message}.` };
       break;
     }
-    if ("threads" in step) yield { kind: "text", text: linkTo(returned(result)) };
+    if ("threads" in step) yield { kind: "text", text: chipTo(returned(result)) };
     proposed.ran(runId, result);
   }
   yield* shownBlocks.settle();
@@ -161,17 +161,16 @@ const slackAsk = /^\s*(post|reply)\b[:\s]*([\s\S]*)$/i;
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
 const threadsAsk = /^\s*where\b/i;
 
-// A reply linking to the first thing thread.find() returned, as the agent's
-// would.
-function linkTo(found: unknown): string {
+// A reply naming the first thing thread.find() returned as a chip, as the
+// agent's would (decision 0032).
+function chipTo(found: unknown): string {
   const [first] = Array.isArray(found) ? found : [];
   const hit = typeof first === "object" && first !== null ? (first as Partial<ThreadFound>) : {};
   const { thread, changeSet } = hit;
   if (!thread) return "I couldn't find that in any thread.";
-  const name = thread.name ?? "a new thread";
   return changeSet
-    ? `It was this change set, in [${name}](${changeSet.link}).`
-    : `It was in [${name}](${thread.link}).`;
+    ? `It was [[${changeSet.id}]], in [[${thread.id}]].`
+    : `It was in [[${thread.id}]].`;
 }
 // Words a person adds around what they're looking for, which an index search
 // would require every item to contain.

@@ -10,6 +10,7 @@ import {
   type Dispatch,
   DropZone,
   ItemKey,
+  ChipsContext,
   ItemLinksContext,
   ItemListContext,
   Member,
@@ -234,7 +235,9 @@ export function ChatEntryItem(props: {
     case "reply":
       return (
         <li class="reply">
-          <Markdown text={entry.text} linksTo={sites(props.view)} />
+          <ChipsContext.Provider value={props.view.chips}>
+            <Markdown text={entry.text} linksTo={sites(props.view)} answer />
+          </ChipsContext.Provider>
         </li>
       );
     case "marker":

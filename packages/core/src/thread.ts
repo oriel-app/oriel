@@ -3,7 +3,7 @@
 // from what happened in it, never stored (packages/db derives it).
 import { holderName, maxReasonChars } from "./actions.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
-import { boolean, type Infer, literal, object, refine, string, union } from "./validate.ts";
+import { array, boolean, type Infer, literal, object, refine, string, union } from "./validate.ts";
 
 // Working until a change set applies or the user marks it done; handed off
 // when the assignee changes or an external link is attached; dropped after 7
@@ -60,12 +60,24 @@ export const heldText = (from: HeldSender, text: string): boolean =>
 // as a note from Oriel, never as something it said (OA-91). Each kind is one
 // variant. `rejected`: a change set of the thread was rejected, in the thread
 // or on its review link, and Oriel asks what was wrong with it, naming the
-// change set so two rejections can't be confused (OA-86).
+// change set so two rejections can't be confused (OA-86). `unknown-chips`:
+// the agent's last answer named IDs as chips that Oriel couldn't resolve,
+// which the window drew as "unknown reference" (decision 0032); the agent
+// alone reads it.
+export const maxUnknownChips = 20;
 export const orielNote = union(
   object({
     kind: literal("rejected"),
     changeSet: refine(string, isUlid, "expected a change set ID"),
     via: union(literal("thread"), literal("review-link")),
+  }),
+  object({
+    kind: literal("unknown-chips"),
+    ids: refine(
+      array(refine(string, (id) => id !== "" && id.length <= 600, "expected a chip's ID")),
+      (ids) => ids.length > 0 && ids.length <= maxUnknownChips,
+      `expected 1 to ${maxUnknownChips} IDs`,
+    ),
   }),
 );
 export type OrielNote = Infer<typeof orielNote>;

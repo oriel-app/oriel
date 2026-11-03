@@ -74,7 +74,7 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
   const chat = threadStore(db).messages(threadId);
   assert.deepEqual(
     chat.map((m) =>
-      m.role === "note"
+      m.role === "note" && m.note.kind === "rejected"
         ? [m.note.changeSet, m.note.via]
         : m.role === "agent"
           ? Reflect.get(Object(m.event), "kind")

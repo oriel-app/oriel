@@ -202,7 +202,7 @@ test("two rejections in a row ask twice, each naming its change set", async (t) 
   await app.post(`/api/threads/${app.threadId}/messages`, { text: "Both wrong." });
   await app.app.settled();
   const notes = (app.turns.at(-1)?.history ?? []).flatMap((m) =>
-    m.role === "note" ? [m.note.changeSet] : [],
+    m.role === "note" && m.note.kind === "rejected" ? [m.note.changeSet] : [],
   );
   assert.deepEqual(notes, [app.changeSetId, second.id]);
 });

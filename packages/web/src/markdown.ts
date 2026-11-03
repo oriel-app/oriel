@@ -3,7 +3,9 @@
 // italics, code and links inside them: to the web, or to a thread in Oriel,
 // as the agent's thread.* reads give it. It never becomes HTML, since a reply can
 // quote source content anyone can write. A reply is read while it streams, so
-// a mark without its closing half stays as typed.
+// a mark without its closing half stays as typed. In an agent's answer only,
+// `[[id]]` is a chip (decision 0032); anywhere else, as in a source's own
+// text, it is text.
 import { inAppRoute, type Route, safeHref } from "./route.ts";
 
 export type Inline =
@@ -14,7 +16,10 @@ export type Inline =
   | { kind: "link"; href: string; children: Inline[] }
   | { kind: "route"; route: Route; children: Inline[] }
   // A person or a channel a source's text names; markdown has neither.
-  | { kind: "mention" | "channel"; text: string };
+  | { kind: "mention" | "channel"; text: string }
+  // `[[id]]` in an agent's answer: an item, thread, change set or workstream
+  // by its ID, which Oriel draws with its name and state.
+  | { kind: "chip"; id: string };
 
 export type Prose =
   | { kind: "paragraph"; children: Inline[] }
@@ -87,11 +92,37 @@ const startsBlock = (lines: readonly string[], i: number) => {
 // Quotes, lists and marks nest at most this deep; deeper, they read as text.
 const deepest = 8;
 
-export function parse(text: string): Prose[] {
-  return blocks(text.replace(/\r\n?/g, "\n").split("\n"), 0);
+// `chips`: whether `[[id]]` is a chip, as in an agent's answer, and only there.
+export function parse(text: string, { chips = false } = {}): Prose[] {
+  return blocks(text.replace(/\r\n?/g, "\n").split("\n"), 0, chips);
 }
 
-function blocks(lines: readonly string[], depth: number): Prose[] {
+// What `[[…]]` holds to be a chip: an item's source-qualified ID
+// (`jira:SYN-45`), or one of Oriel's own, a ULID. Anything else stays as typed.
+const chipId = /^(?:[a-z]+:[^\s[\]]{1,500}|[0-9A-HJKMNP-TV-Z]{26})$/;
+
+// The IDs an agent's answer names as chips, once each, in order.
+export function chipIds(text: string): string[] {
+  const found = new Set<string>();
+  const inlines = (each: readonly Inline[]) => {
+    for (const one of each) {
+      if (one.kind === "chip") found.add(one.id);
+      else if ("children" in one) inlines(one.children);
+    }
+  };
+  const proses = (each: readonly Prose[]) => {
+    for (const one of each) {
+      if (one.kind === "paragraph" || one.kind === "heading") inlines(one.children);
+      else if (one.kind === "quote") proses(one.children);
+      else if (one.kind === "list") one.items.forEach(proses);
+      else if (one.kind === "table") [one.head, ...one.rows].flat().forEach(inlines);
+    }
+  };
+  proses(parse(text, { chips: true }));
+  return [...found];
+}
+
+function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[] {
   const nests = depth < deepest;
   const out: Prose[] = [];
   let i = 0;
@@ -127,7 +158,7 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
       out.push({
         kind: "heading",
         level: titled[1]?.length ?? 1,
-        children: inline(headingText(titled[2] ?? "")),
+        children: inline(headingText(titled[2] ?? ""), 0, chips),
       });
       i++;
       continue;
@@ -143,19 +174,19 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
         quoted.push(quote.exec(lines[i] ?? "")?.[1] ?? "");
         i++;
       }
-      out.push({ kind: "quote", children: blocks(quoted, depth + 1) });
+      out.push({ kind: "quote", children: blocks(quoted, depth + 1, chips) });
       continue;
     }
     if (nests && marker.test(line)) {
-      i = list(lines, i, out, depth);
+      i = list(lines, i, out, depth, chips);
       continue;
     }
     if (startsTable(lines, i)) {
-      const head = cells(line);
+      const head = cells(line, chips);
       const rows: Inline[][][] = [];
       i += 2;
       while (i < lines.length && !blank(lines[i] ?? "") && (lines[i] ?? "").includes("|")) {
-        rows.push(cells(lines[i] ?? ""));
+        rows.push(cells(lines[i] ?? "", chips));
         i++;
       }
       out.push({ kind: "table", head, rows });
@@ -167,14 +198,20 @@ function blocks(lines: readonly string[], depth: number): Prose[] {
       said.push((lines[i] ?? "").trim());
       i++;
     }
-    out.push({ kind: "paragraph", children: joined(said) });
+    out.push({ kind: "paragraph", children: joined(said, chips) });
   }
   return out;
 }
 
 // A list runs while its items share a marker kind. A line indented past the
 // marker belongs to the item above it, as does a line that starts nothing new.
-function list(lines: readonly string[], from: number, out: Prose[], depth: number): number {
+function list(
+  lines: readonly string[],
+  from: number,
+  out: Prose[],
+  depth: number,
+  chips: boolean,
+): number {
   const first = marker.exec(lines[from] ?? "");
   const ordered = first?.[3] !== undefined;
   const kind = (found: RegExpExecArray | null) =>
@@ -223,7 +260,7 @@ function list(lines: readonly string[], from: number, out: Prose[], depth: numbe
     ordered,
     start: ordered ? Number(first?.[3]) : 1,
     tight,
-    items: items.map((item) => blocks(item.lines, depth + 1)),
+    items: items.map((item) => blocks(item.lines, depth + 1, chips)),
   });
   return i;
 }
@@ -237,12 +274,13 @@ function cellTexts(line: string): string[] {
   return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim().replaceAll("\\|", "|"));
 }
 
-const cells = (line: string): Inline[][] => cellTexts(line).map((cell) => inline(cell));
+const cells = (line: string, chips: boolean): Inline[][] =>
+  cellTexts(line).map((cell) => inline(cell, 0, chips));
 
 // A paragraph's lines, with each line break kept: agents break lines on purpose.
-function joined(lines: readonly string[]): Inline[] {
+function joined(lines: readonly string[], chips: boolean): Inline[] {
   return lines.flatMap((line, i) =>
-    i === 0 ? inline(line) : [{ kind: "break" as const }, ...inline(line)],
+    i === 0 ? inline(line, 0, chips) : [{ kind: "break" as const }, ...inline(line, 0, chips)],
   );
 }
 
@@ -263,11 +301,12 @@ function runAt(text: string, at: number, char: string): number {
 type Line = {
   text: string;
   depth: number;
+  chips: boolean;
   brackets: Map<number, number>;
   failed: Map<string, number>;
 };
 
-export function inline(text: string, depth = 0): Inline[] {
+export function inline(text: string, depth = 0, chips = false): Inline[] {
   if (depth >= deepest) return text === "" ? [] : [{ kind: "text", text }];
   const brackets = new Map<number, number>();
   const open: number[] = [];
@@ -279,7 +318,7 @@ export function inline(text: string, depth = 0): Inline[] {
       if (from !== undefined) brackets.set(from, j);
     }
   }
-  const line: Line = { text, depth, brackets, failed: new Map() };
+  const line: Line = { text, depth, chips, brackets, failed: new Map() };
   const out: Inline[] = [];
   let plain = "";
   const flush = () => {
@@ -311,6 +350,13 @@ export function inline(text: string, depth = 0): Inline[] {
       continue;
     }
     if (char === "[") {
+      const named = chip(line, i);
+      if (named) {
+        flush();
+        out.push(named.node);
+        i = named.end;
+        continue;
+      }
       const linked = link(line, i);
       if (linked) {
         flush();
@@ -339,6 +385,16 @@ export function inline(text: string, depth = 0): Inline[] {
   }
   flush();
   return out;
+}
+
+// `[[id]]`, its two pairs of brackets each other's, holding a chip's ID, in
+// a line that reads chips.
+function chip(line: Line, from: number): { node: Inline; end: number } | null {
+  if (!line.chips || line.text[from + 1] !== "[") return null;
+  const inner = line.brackets.get(from + 1);
+  if (inner === undefined || line.brackets.get(from) !== inner + 1) return null;
+  const id = line.text.slice(from + 2, inner).trim();
+  return chipId.test(id) ? { node: { kind: "chip", id }, end: inner + 2 } : null;
 }
 
 // Where `from` is past every place a search for `key` already failed from.
@@ -413,7 +469,7 @@ function link(line: Line, from: number): { node: Inline; end: number } | null {
     skipSpaces();
   }
   if (text[at] !== ")") return null;
-  const children = () => inline(text.slice(from + 1, close), line.depth + 1);
+  const children = () => inline(text.slice(from + 1, close), line.depth + 1, line.chips);
   const route = inAppRoute(target);
   if (route) return { node: { kind: "route", route, children: children() }, end: at + 1 };
   const href = safeHref(target);
@@ -438,7 +494,7 @@ function emphasis(
     const open = from + run;
     const close = closingMark(line, open, char, size);
     if (close < 0) continue;
-    const inner = inline(text.slice(open, close), line.depth + 1);
+    const inner = inline(text.slice(open, close), line.depth + 1, line.chips);
     const node: Inline =
       size === 3
         ? { kind: "strong", children: [{ kind: "em", children: inner }] }

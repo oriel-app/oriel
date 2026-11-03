@@ -31,8 +31,6 @@ export type ThreadRead = {
   state: ThreadState;
   workstream: { id: Ulid; name: string };
   activityAt: Instant;
-  // Opens the thread in the window.
-  link: string;
 };
 
 // One change a change set made or proposes: the source it writes to, as a
@@ -47,8 +45,6 @@ export type ChangeSetRead = {
   // When the person approved or rejected it, and who; null while pending.
   decided: { kind: "approved" | "rejected"; by: string; at: Instant } | null;
   changes: readonly ChangeRead[];
-  // Opens its thread in the window, at this change set.
-  link: string;
 };
 
 // Where a search matched: the thread's name, what was said in it, or what one
@@ -82,8 +78,3 @@ export const noThreads: OrielReads = {
   changeSets: async () => [],
   find: async () => [],
 };
-
-// The window's addresses for a thread, and for one of its change sets.
-export const threadLink = (thread: string): string => `/threads/${thread}`;
-export const changeSetLink = (thread: string, changeSet: string): string =>
-  `/threads/${thread}?changeSet=${changeSet}`;

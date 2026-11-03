@@ -828,10 +828,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "GET",
       path: at("/threads"),
       run: async () =>
-        json(200, {
-          threads: await views.threads(deps.workspaceId),
-          changeSets: await views.changeSets(deps.workspaceId),
-        } satisfies ThreadsView),
+        json(200, { threads: await views.threads(deps.workspaceId) } satisfies ThreadsView),
     },
     {
       // A thread from nothing, with its first message: on a new workstream with no

@@ -124,7 +124,6 @@ import {
   windowRoute,
 } from "./update.ts";
 import type {
-  ChangeSetSummaryView,
   WorkstreamsView,
   WorkstreamSummary,
   ThreadsView,
@@ -151,11 +150,9 @@ export type Model = {
   folder: FolderModel;
   // Jira, which the window offers to connect until it is, then to sync.
   jira: JiraModel;
-  // For the chrome: the workspace's workstreams and threads, and where each
-  // thread's change sets stand, which a link to one shows.
+  // For the chrome: the workspace's workstreams and threads.
   workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[] | null;
-  changeSets: ChangeSetSummaryView[] | null;
   // Threads being marked done or deleted from a list of them.
   closing: ClosingModel;
   // Workstreams being marked done, reopened or deleted, from wherever, and
@@ -259,7 +256,6 @@ export function init(route: Route): [Model, Effect[]] {
     jira: initJira(),
     workstreams: null,
     threads: null,
-    changeSets: null,
     closing: initClosing(),
     ending: initEnding(),
     panel: null,
@@ -637,8 +633,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       return [model, []];
     case "threads": {
       if (!msg.ok) return [model, []];
-      const { threads, changeSets } = msg.body as ThreadsView;
-      return [{ ...model, threads, changeSets }, []];
+      const { threads } = msg.body as ThreadsView;
+      return [{ ...model, threads }, []];
     }
     // Telemetry is best effort; the window carries on either way. So is
     // marking the overview seen.

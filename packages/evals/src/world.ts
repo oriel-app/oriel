@@ -32,11 +32,9 @@ import {
   type ReadResult,
   type Region,
   type SearchHit,
-  changeSetLink,
   findThreads,
   noThreads,
   type OrielReads,
-  threadLink,
   type Ulid,
   ulid,
 } from "@oriel/core";
@@ -270,12 +268,10 @@ async function connectSlack(fixture: SlackFixture) {
 export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
   if (!workspace) return noThreads;
   const threads = workspace.threads
-    .map(({ said: _said, ...thread }) => ({ ...thread, link: threadLink(thread.id) }))
+    .map(({ said: _said, ...thread }) => thread)
     .toSorted((a, b) => b.activityAt.localeCompare(a.activityAt));
   const said = new Map(workspace.threads.map((thread) => [thread.id, thread.said.join("\n")]));
-  const sets = workspace.changeSets
-    .map((set) => ({ ...set, link: changeSetLink(set.thread, set.id) }))
-    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const sets = workspace.changeSets.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
   const workstreams = [...new Map(threads.map((t) => [t.workstream.id, t.workstream])).values()];
   return {
     workstreams: async () =>

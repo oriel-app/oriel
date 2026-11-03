@@ -58,7 +58,9 @@ test("rejecting two change sets back to back, then answering: the agent reads Or
   );
   // Oriel's lines are notes, last, the second just before the answer.
   assert.deepEqual(
-    history.slice(-2).map((m) => (m.role === "note" ? m.note.changeSet : m.role)),
+    history
+      .slice(-2)
+      .map((m) => (m.role === "note" && m.note.kind === "rejected" ? m.note.changeSet : m.role)),
     [first, second],
   );
   assert.deepEqual(

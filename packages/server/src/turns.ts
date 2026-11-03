@@ -3,18 +3,21 @@
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
 import { type WorkstreamStore, type Message, type Move, type ThreadStore } from "@oriel/db";
-import type {
-  ActionLine,
-  Actor,
-  HeldSender,
-  Instant,
-  Log,
-  OrielNote,
-  TelemetryEvent,
-  Thread,
-  Ulid,
+import {
+  type ActionLine,
+  type Actor,
+  type HeldSender,
+  type Instant,
+  type Log,
+  maxUnknownChips,
+  type OrielNote,
+  type TelemetryEvent,
+  type Thread,
+  type Ulid,
 } from "@oriel/core";
 import { capturedRules, type Titler } from "@oriel/agent";
+import { chipIds } from "@oriel/web/markdown";
+import type { Chips } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import {
   type Agent,
@@ -118,6 +121,9 @@ export type TurnDeps = {
   emit: (event: TelemetryEvent) => void;
   // The index snapshot a turn reads.
   snapshot: () => number;
+  // What each ID an answer names as a chip is; null for one Oriel can't
+  // resolve (decision 0032).
+  chips: (ids: readonly string[]) => Promise<Chips>;
   now: () => Instant;
   newId: () => Ulid;
   log: Log;
@@ -361,6 +367,34 @@ export function turns(deps: TurnDeps) {
       if (!done) record(thread.id, { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } });
     }
     if (signal.aborted) record(thread.id, { kind: "error", message: "Stopped." });
+    await unknownChips(thread, seq).catch((error: unknown) =>
+      log("turn: chips unchecked", {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  };
+
+  // The chips the turn's answer named that Oriel can't resolve, which the
+  // window draws as "unknown reference": counted, and noted for the agent's
+  // next turn, as Oriel's (decision 0032). Nothing corrects them this turn.
+  const unknownChips = async (thread: Thread, seq: number) => {
+    const said = history(
+      threads.messages(thread.id).filter((message) => message.seq > seq),
+      () => "",
+    ).flatMap((message) => (message.role === "assistant" ? chipIds(message.text) : []));
+    if (said.length === 0) return;
+    const resolved = await deps.chips([...new Set(said)]);
+    const unknown = Object.keys(resolved).filter((id) => resolved[id] === null);
+    if (unknown.length === 0 || !threads.get(thread.id, deps.now())) return;
+    const at = deps.now();
+    deps.emit({
+      name: "chip.unknown",
+      at,
+      workspaceId: thread.workspaceId,
+      threadId: thread.id,
+      count: unknown.length,
+    });
+    note(thread.id, { kind: "unknown-chips", ids: unknown.slice(0, maxUnknownChips) });
   };
 
   // The user's message, and a turn to answer it, which runs on after this

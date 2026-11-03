@@ -662,6 +662,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     emit,
     caps,
     snapshot: () => index.snapshot(workspaceId),
+    chips: (ids) => viewer.chips(ids),
     now,
     newId,
     log,

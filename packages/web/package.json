@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./files": "./files.ts",
+    "./markdown": "./src/markdown.ts",
     "./view": "./src/view.ts"
   },
   "scripts": {
