@@ -34,7 +34,9 @@ try {
   writeFileSync(
     both,
     `<body style="margin:0;display:flex;align-items:start;background:#888">` +
-      ["light", "dark"].map((theme) => `<img src="specimen-${name}-${theme}.png" style="width:1100px">`).join("") +
+      ["light", "dark"]
+        .map((theme) => `<img src="specimen-${name}-${theme}.png" style="width:1100px">`)
+        .join("") +
       `</body>`,
   );
   await tab.goto(both.href);

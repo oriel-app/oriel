@@ -758,7 +758,11 @@ button.nav-disclose:hover {
   --mark-bg: linear-gradient(to right, var(--mark) 50%, transparent 50%);
 }
 
-:is(.state-dot, .state-chip):is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]),
+:is(.state-dot, .state-chip):is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="reply"]
+),
 .chip:is([data-state="needs-you"], [data-state="pending"]) {
   --mark: var(--state-needs);
   --mark-bg: var(--mark);
@@ -780,12 +784,7 @@ button.nav-disclose:hover {
 
 :is(.state-dot, .state-chip)[data-state="dropped"],
 .chip:is([data-state="dropped"], [data-state="rejected"], [data-state="reverted"]) {
-  --mark-bg: linear-gradient(
-    135deg,
-    transparent 43%,
-    var(--mark) 43% 57%,
-    transparent 57%
-  );
+  --mark-bg: linear-gradient(135deg, transparent 43%, var(--mark) 43% 57%, transparent 57%);
 }
 
 .chip[data-state="reverted"] {
@@ -1185,7 +1184,12 @@ button.nav-more {
   white-space: nowrap;
 }
 
-.state-chip:not([data-state="working"], [data-state="done"], [data-state="handed-off"], [data-waiting]) {
+.state-chip:not(
+  [data-state="working"],
+  [data-state="done"],
+  [data-state="handed-off"],
+  [data-waiting]
+) {
   color: var(--todo-text);
 }
 
