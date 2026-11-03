@@ -32,7 +32,8 @@
 
   /* Type. Prose in a serif; Oriel's own data in sans; keys in mono. */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
-  --font-prose: Charter, "Bitstream Charter", "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
+  --font-prose:
+    Charter, "Bitstream Charter", "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --text-xs: 0.6875rem;
   --text-sm: 0.75rem;
@@ -686,7 +687,12 @@ button.nav-disclose:hover {
   font-weight: var(--weight-medium);
 }
 
-.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.nav-waiting-on:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   color: var(--accent);
 }
 
@@ -720,7 +726,12 @@ button.nav-disclose:hover {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.state-dot:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   background: var(--accent);
 }
 
@@ -1128,7 +1139,12 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.state-chip:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -5029,8 +5045,18 @@ button.overview-title:hover {
   opacity: 0.6;
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.state-chip:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+),
+.state-dot:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   color: var(--needs-you);
   background: none;
 }
@@ -5048,8 +5074,18 @@ button.overview-title:hover {
   --chip-state: var(--needs-you);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"])::before,
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]),
+.state-chip:is(
+    [data-waiting="review"],
+    [data-waiting="held"],
+    [data-waiting="stalled"],
+    [data-waiting="reply"]
+  )::before,
+.state-dot:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+),
 .chip:is([data-state="needs-you"], [data-state="pending"]) .chip-state::before {
   background: currentColor;
 }
