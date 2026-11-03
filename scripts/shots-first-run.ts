@@ -99,7 +99,10 @@ export type FirstRunOptions = {
   data?: string;
 };
 
-type Start = (port: number, options: Omit<AppOptions, "reviewBase">) => Promise<Serving>;
+type Start = (
+  port: number,
+  options: Omit<AppOptions, "reviewBase" | "sketchBase">,
+) => Promise<Serving>;
 
 // A home on disk for the stubs, removed once the shots are done, and any
 // other folder kept as long.

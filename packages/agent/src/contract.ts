@@ -16,6 +16,9 @@ import type {
   RunResult,
   Sandbox,
   SearchHit,
+  Shown,
+  Sketch,
+  SketchRefusal,
   Thread,
   Ulid,
 } from "@oriel/core";
@@ -74,6 +77,12 @@ export type AgentEvent =
   // A block a run asked for and Oriel refused, for telemetry; the run's
   // result told the agent why.
   | { kind: "block.refused"; runId: Ulid }
+  // A sketch a run asked for, as Oriel checked it (decision 0033): shown
+  // under the reply with the blocks, in the order asked for.
+  | { kind: "sketch"; runId: Ulid; sketch: Sketch }
+  // A sketch a run asked for and Oriel refused, by why, for telemetry; the
+  // run's result told the agent what to change.
+  | { kind: "sketch.refused"; runId: Ulid; reason: SketchRefusal }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
   // What became of the intents the turn's last run (`runId`) recorded,
@@ -105,9 +114,10 @@ export type AgentDeps = {
   provider: Provider;
   sandbox: Sandbox;
   // The server wires each source's namespace in. Oriel's own actions
-  // default to the thread's workstream and the thread. `show` builds the
-  // block a run asks for, from a read its turn ran, and says what it did.
-  bindingsFor: (region: Region, thread: Ulid, show?: (spec: unknown) => string) => Bindings;
+  // default to the thread's workstream and the thread. `shown` builds the
+  // block a run asks for, from a read its turn ran, and shows the sketch it
+  // asks for, and says what it did.
+  bindingsFor: (region: Region, thread: Ulid, shown?: Shown) => Bindings;
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if

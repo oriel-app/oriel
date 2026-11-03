@@ -12,8 +12,8 @@ import {
   parseItemId,
   type Reader,
   type ReadResult,
-  type ResultFields,
   type SearchHit,
+  type Shown,
   type SourceKind,
   sourceKinds,
   type Tombstone,
@@ -23,17 +23,15 @@ import {
 // Per-run host state: what a namespace's functions get, plus every item in
 // the region and the index, for `items` and `search()`, and Oriel's own
 // data, for its namespaces.
-export type Host = NamespaceHost & {
-  ids: readonly ItemId[];
-  search(query: string, limit: number): Promise<SearchHit[]>;
-  oriel: OrielReads;
-  // Builds the block a run asks for from a read its turn ran, and says what
-  // it did (decision 0030).
-  show(spec: unknown): string;
-  // The overview, in a window chat's module only (decision 0027). Its items
-  // count as this run's search() hits.
-  overview(): Promise<unknown>;
-};
+export type Host = NamespaceHost &
+  Shown & {
+    ids: readonly ItemId[];
+    search(query: string, limit: number): Promise<SearchHit[]>;
+    oriel: OrielReads;
+    // The overview, in a window chat's module only (decision 0027). Its items
+    // count as this run's search() hits.
+    overview(): Promise<unknown>;
+  };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
 // for the registry's actions: `workstream.*` and `thread.*`.
@@ -48,8 +46,6 @@ export type Space = "items" | SourceKind | OrielSpace | "window" | null;
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;
   outsideRegion: boolean;
-  // What its result holds that a block can show (decision 0030).
-  fields?: ResultFields;
   run(args: readonly unknown[], host: Host): Promise<unknown>;
 };
 

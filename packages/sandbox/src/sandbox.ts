@@ -17,6 +17,7 @@ import {
   type Log,
   type NewRef,
   type ProxiedRead,
+  recordedArgs,
   type RunError,
   type RunLimits,
   type RunResult,
@@ -283,11 +284,12 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
 
       // Every read passed to the source is logged once, before the run's
       // `sandbox.run` line: answered or failed as it settles, and unanswered
-      // when the run ends first. One that answers after that is ignored.
+      // when the run ends first. One that answers after that is ignored. The
+      // log and the record keep a sketch's size, never its HTML.
       const proxyRead = async (id: number, fn: string, args: unknown[]) => {
         const record: ReadRecord = {
           fn,
-          args,
+          args: recordedArgs(fn, args),
           ms: 0,
           status: "unanswered",
           outsideRegion: null,
@@ -309,7 +311,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           log("sandbox.read", {
             status: "answered",
             fn,
-            args,
+            args: record.args,
             ms: record.ms,
             outside_region: outsideRegion,
             payload_hash: record.payloadHash,
@@ -323,7 +325,7 @@ export function createSandbox(options: SandboxOptions = {}): DenoSandbox {
           log("sandbox.read", {
             status: "failed",
             fn,
-            args,
+            args: record.args,
             ms: record.ms,
             error: message,
           });

@@ -31,6 +31,8 @@ import {
   type Reader,
   type ReadResult,
   type Region,
+  type Shown,
+  type Sketch,
   type Sandbox,
   type Source,
   SourceRefused,
@@ -101,7 +103,7 @@ import type { KeyCheck, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
-import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
+import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api } from "./api.ts";
 import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
@@ -205,6 +207,9 @@ export type AppOptions = {
   sandbox?: Sandbox;
   // Review links are this URL plus a token.
   reviewBase: URL;
+  // Sketches are framed from this URL plus `<thread>/<sketch>`, on the
+  // sketch origin (decision 0033).
+  sketchBase: URL;
   // The agent's caps; the server holds the per-thread ones whatever the
   // agent does. `limits` below when absent.
   limits?: AgentLimits;
@@ -216,6 +221,9 @@ export type App = {
   window(grouping: GroupingId): WindowView;
   // The first run, which the desktop app opens on until it has finished.
   setup: Setup;
+  // A sketch as its thread stored it, for the sketch origin to serve; null
+  // when the thread is gone or never showed it (decision 0033).
+  sketch(threadId: Ulid, sketchId: Ulid): Sketch | null;
   // Jira as the window shows it: what's connected, and whether it can be.
   jira(): JiraView;
   api(request: Request, url: URL): Promise<Reply | null>;
@@ -653,7 +661,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
   });
-  const regionBindings = (region: Region, thread?: Ulid, show?: (spec: unknown) => string) => {
+  const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) => {
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
     // What the last sync found on the boards; nothing before one.
@@ -667,7 +675,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: itemDocs,
       oriel: reads,
       ...(thread ? { thread } : {}),
-      ...(show ? { show } : {}),
+      ...(shown ? { shown } : {}),
       // The window chat reads the overview, as the page shows it.
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
     });
@@ -767,6 +775,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     running: conversation.running,
     changeSets: sets,
+    sketchBase: options.sketchBase,
     get writable() {
       return writes !== null || slack !== null;
     },
@@ -1304,6 +1313,16 @@ export async function createApp(options: AppOptions): Promise<App> {
       setup,
       log,
     }),
+    sketch: (threadId, sketchId) => {
+      if (!threads.get(threadId, now())) return null;
+      for (const message of threads.messages(threadId)) {
+        if (message.role !== "agent") continue;
+        const event = agentEvent(message.event);
+        if (event.ok && event.value.kind === "sketch" && event.value.sketch.id === sketchId)
+          return event.value.sketch;
+      }
+      return null;
+    },
     settled: async () => {
       await conversation.settled();
       await notifying?.idle();

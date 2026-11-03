@@ -142,7 +142,7 @@ throw new Error("oops");`,
   );
   const events = await turn({ region: weather });
   assert.deepEqual(blocks(events), []);
-  assert.match(contentOf(model), /Oriel shows no block from a run that stopped\./);
+  assert.match(contentOf(model), /Oriel shows nothing from a run that stopped\./);
 });
 
 test("the same block twice shows once", async () => {
@@ -175,8 +175,10 @@ return "went on";`,
   const content = contentOf(model);
   assert.match(
     content,
-    /Oriel refused a block: a block names `read`.*Bars take `label` and `value`/,
+    /Oriel refused a block: a block names `read`.*Bars take `label` and `value`.*Oriel sums the rows that share a label/,
   );
+  // It names what the read it named declares, as the turn ran it.
+  assert.match(content, /workstream\.list declares its result: "name", "threads", "done"\./);
   assert.match(content, /Returned: "went on"/);
 });
 

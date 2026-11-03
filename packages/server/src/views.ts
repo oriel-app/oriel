@@ -59,6 +59,8 @@ export type ViewDeps = {
   running: (threadId: Ulid) => boolean;
   changeSets: Pick<ChangeSets, "get" | "ofThread" | "nextSteps" | "applying" | "stalled">;
   writable: boolean;
+  // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
+  sketchBase: URL;
 };
 
 // What fits on one line of a list of threads beside a thread's workstream and time.
@@ -467,9 +469,16 @@ export function views(deps: ViewDeps) {
         return block ? { ...at, kind: "block", block: blockView(block, region) } : null;
       }
       case "block.refused":
+      case "sketch.refused":
         return null;
       case "block":
         return { ...at, kind: "block", block: blockView(event.block, region) };
+      // A sketch, framed from the sketch origin, which checks it again.
+      case "sketch": {
+        const { id, height } = event.sketch;
+        const src = new URL(`${own.thread}/${id}`, deps.sketchBase).href;
+        return { ...at, kind: "sketch", sketch: { src, height } };
+      }
       case "change-set":
         return { ...at, kind: "change-set", changeSetId: event.changeSetId };
       case "actions":

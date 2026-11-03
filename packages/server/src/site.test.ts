@@ -11,7 +11,7 @@ const port = 4310;
 const host = "127.0.0.1:4310";
 
 // A site in its own temp dir, with a file beside its roots that must stay unserved.
-function site(t: TestContext, look?: Look) {
+function site(t: TestContext, look?: Look, sketches?: string) {
   const root = mkdtempSync(join(tmpdir(), "oriel-site-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const dir of ["dist", "assets", "vendor"]) mkdirSync(join(root, dir));
@@ -33,6 +33,7 @@ function site(t: TestContext, look?: Look) {
       fixture: true,
     }),
     ...(look ? { look: () => look } : {}),
+    ...(sketches ? { sketches } : {}),
   });
 }
 
@@ -151,4 +152,21 @@ test("the page's <html> carries the person's theme and text size, but a review l
   const plain = text((await site(t, { theme: "graphite", textSize: "default" })(get("/"))).body);
   assert.match(plain, /<html lang="en">/);
   assert.equal((await handle(get("/settings/nothing"))).status, 404);
+});
+
+test("the window's pages may frame the sketch origin, and a review link's page frames nothing", async (t) => {
+  const handle = site(t, undefined, "http://127.0.0.1:4311");
+  for (const path of ["/", "/threads/01J00000000000000000000000", "/api/window?grouping=epic"]) {
+    const csp = (await handle(get(path))).headers["content-security-policy"] ?? "";
+    assert.match(csp, /; frame-src http:\/\/127\.0\.0\.1:4311;/, path);
+  }
+  const review = await handle(get("/review/abc"));
+  assert.equal(review.status, 200);
+  const csp = review.headers["content-security-policy"] ?? "";
+  assert.doesNotMatch(csp, /frame-src/);
+  assert.match(csp, /^default-src 'none';/);
+  assert.equal(review.headers["x-robots-tag"], "noindex");
+  // Without a sketch origin, no page may frame anything.
+  const plain = (await site(t)(get("/"))).headers["content-security-policy"] ?? "";
+  assert.doesNotMatch(plain, /frame-src/);
 });

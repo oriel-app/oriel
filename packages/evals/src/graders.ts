@@ -249,7 +249,7 @@ export type ShownBlock = { block: Block; answered: unknown };
 // the one Oriel builds from what its read answered: a block whose numbers
 // aren't its read's fails (decision 0030).
 export function gradeBlocks(
-  expected: { form: BlockForm; read: string },
+  expected: { form: BlockForm; read: string | readonly string[] },
   shown: readonly ShownBlock[],
 ): Grade {
   const problems = shown.flatMap(({ block, answered }) => {
@@ -262,11 +262,19 @@ export function gradeBlocks(
       ? []
       : [`${what} doesn't match what its read answered`];
   });
-  if (!shown.some(({ block }) => block.form === expected.form && block.spec.read === expected.read))
-    problems.push(`no ${expected.form} block from ${expected.read} was shown`);
+  const reads = typeof expected.read === "string" ? [expected.read] : expected.read;
+  if (!shown.some(({ block }) => block.form === expected.form && reads.includes(block.spec.read)))
+    problems.push(`no ${expected.form} block from ${reads.join(" or ")} was shown`);
   return problems.length
     ? { grader: "blocks", pass: false, detail: problems.join("; ") }
     : { grader: "blocks", pass: true, detail: `${shown.length} shown, each its read's` };
+}
+
+// The turn never called sketch(), shown or refused (decision 0033).
+export function gradeNoSketch(calls: number): Grade {
+  return calls === 0
+    ? { grader: "no-sketch", pass: true, detail: "no sketch() call" }
+    : { grader: "no-sketch", pass: false, detail: `${calls} sketch() calls` };
 }
 
 // Unicode compatibility forms, markdown emphasis, case and runs of whitespace

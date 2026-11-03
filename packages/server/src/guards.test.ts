@@ -183,6 +183,7 @@ test("an item that moved keeps its title in a workstream's history and a thread'
     asOf: () => at,
     now: () => at,
     running: () => false,
+    sketchBase: new URL("http://127.0.0.1:4311/sketches/"),
     changeSets: {
       get: async () => null,
       ofThread: async () => [],

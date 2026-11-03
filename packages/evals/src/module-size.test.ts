@@ -56,8 +56,10 @@ const budgets = {
   // is done, and where the user deletes one (decision 0028). Climb oa-144
   // cut 295 bytes of repeats and moved Revert's 157 here from the system
   // prompt, for 4,594, with about 200 bytes of room for OA-89 and OA-121.
+  // Rose by 150 for sketch(), one line (decision 0033), and show() saying
+  // its bars sum by label: 4,668 to 4,829.
   tool: 600,
-  base: 4_800,
+  base: 4_950,
   // What each source adds: its item doc, its namespace if it has one.
   jira: 3_200,
   folder: 250,

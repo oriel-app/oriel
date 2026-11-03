@@ -5,7 +5,7 @@
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
 import { Chip, ItemListContext } from "./parts.tsx";
-import type { BlockView, ChipView, MemberView } from "./view.ts";
+import type { BlockView, ChipView, MemberView, SketchView } from "./view.ts";
 
 const number = (value: number) => value.toLocaleString("en-US");
 
@@ -19,6 +19,25 @@ export function BlockFigure({ block }: { block: BlockView }) {
       <BlockBody block={block} />
       {block.more > 0 && <p class="block-more">and {number(block.more)} more</p>}
       <figcaption>{block.caption}</figcaption>
+    </figure>
+  );
+}
+
+// A sketch under the agent's reply (decision 0033): its HTML, framed from
+// the sketch origin, in a frame with no sandbox token, at one of three
+// heights; a taller sketch scrolls inside it. Its border and caption are
+// Oriel's, outside the frame, so no sketch can fake them.
+export function SketchFigure({ sketch }: { sketch: SketchView }) {
+  return (
+    <figure class="answer-sketch">
+      <iframe
+        sandbox=""
+        src={sketch.src}
+        data-height={sketch.height}
+        title="A sketch by the agent"
+        referrerpolicy="no-referrer"
+      />
+      <figcaption>Sketched by the agent · not checked against Oriel's data</figcaption>
     </figure>
   );
 }

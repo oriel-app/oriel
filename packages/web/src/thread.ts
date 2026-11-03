@@ -6,6 +6,7 @@ import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
   BlockView,
+  SketchView,
   ActionLineView,
   ChangeSetView,
   NextStepView,
@@ -694,6 +695,7 @@ export type Entry =
       stopped: boolean;
     }
   | { kind: "block"; seq: number; block: BlockView }
+  | { kind: "sketch"; seq: number; sketch: SketchView }
   | { kind: "change-set"; seq: number; changeSetId: string }
   | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
@@ -751,6 +753,9 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
       }
       case "block":
         out.push({ kind: "block", seq: entry.seq, block: entry.block });
+        break;
+      case "sketch":
+        out.push({ kind: "sketch", seq: entry.seq, sketch: entry.sketch });
         break;
       case "held":
         out.push(entry);

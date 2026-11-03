@@ -13,7 +13,7 @@ export const showFn: Fn = {
   outsideRegion: false,
   ...read({
     name: "show",
-    doc: "Rows, bars or a table from a read this turn ran (same args).",
+    doc: "Rows, bars (summed by label) or a table from a read this turn ran (same args).",
     params: [
       param(
         "b",

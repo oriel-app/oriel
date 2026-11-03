@@ -102,6 +102,8 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const newId = counter(input.now);
   const records = memoryRecords(newId, input.now);
   const answered = new Map<string, Answered>();
+  // Every sketch() call, shown or refused.
+  let sketches = 0;
   const { region } = world;
   const thread: Thread = {
     id: newId(),
@@ -115,14 +117,14 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r, threadId, show) => {
+    bindingsFor: (r, threadId, shown) => {
       const bindings = bindingsFor(r, {
         reader: world.reader,
         namespaces: world.namespaces,
         items: world.items,
         oriel: world.oriel,
         thread: threadId,
-        ...(show ? { show } : {}),
+        ...(shown ? { shown } : {}),
         ...(world.overview ? { overview: world.overview } : {}),
       });
       // What each read answered, so the blocks grader can build each block
@@ -131,7 +133,9 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         ...bindings,
         read: async (fn, args) => {
           const answer = await bindings.read(fn, args);
-          if (fn !== "show") answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
+          if (fn === "sketch") sketches += 1;
+          if (fn !== "show" && fn !== "sketch")
+            answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
           return answer;
         },
       };
@@ -173,6 +177,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
           ]
         : [],
     ),
+    sketches,
     reply: replyOf(events),
     transcript: events,
   };

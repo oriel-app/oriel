@@ -31,6 +31,9 @@ export type Site = {
   // page opens it; once finished, it never shows again. Absent under
   // `pnpm dev`, which has no first run.
   firstRun?: () => "pending" | "finished";
+  // The sketch origin, which the window's pages may frame, and a review
+  // link's page may not (decision 0033).
+  sketches?: string;
 };
 
 export type Request = {
@@ -78,7 +81,12 @@ export function htmlTag({ theme, textSize }: Look): string {
 
 // Every reply carries these. A review link's page relies on two of them: no
 // referrer, so its token never leaves in a Referer header, and no caching.
-export function securityHeaders(importMapHash: string): Record<string, string> {
+// `frames`: the one origin a page may frame, the sketch origin; a review
+// link's page frames nothing.
+export function securityHeaders(
+  importMapHash: string,
+  frames: string | null = null,
+): Record<string, string> {
   return {
     "cache-control": "no-store",
     "content-security-policy": [
@@ -87,6 +95,7 @@ export function securityHeaders(importMapHash: string): Record<string, string> {
       "style-src 'self'",
       "img-src 'self'",
       "connect-src 'self'",
+      ...(frames ? [`frame-src ${frames}`] : []),
       "base-uri 'none'",
       "form-action 'none'",
       "frame-ancestors 'none'",
@@ -151,7 +160,9 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
   const importMap = JSON.stringify({
     imports: Object.fromEntries([...site.vendor.keys()].map((s) => [s, vendorPath(s)])),
   });
-  const headers = securityHeaders(createHash("sha256").update(importMap).digest("base64"));
+  const importMapHash = createHash("sha256").update(importMap).digest("base64");
+  const headers = securityHeaders(importMapHash, site.sketches ?? null);
+  const reviewHeaders = securityHeaders(importMapHash);
   const reply = (
     status: number,
     type: string,
@@ -229,6 +240,7 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
     // A review link's reader isn't the person who picked a look.
     if (reviewPath.test(path))
       return reply(200, "text/html; charset=utf-8", page(defaultLook), {
+        ...reviewHeaders,
         "x-robots-tag": "noindex",
       });
     if (path === "/api/window") {

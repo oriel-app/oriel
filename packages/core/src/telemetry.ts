@@ -4,6 +4,7 @@ import type { StartQuestion } from "./window-chat.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
+import type { SketchHeight, SketchRefusal } from "./sketch.ts";
 import type { OverviewSection } from "./overview.ts";
 import type { ZoomId } from "./zoom.ts";
 
@@ -135,6 +136,11 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "block.shown"; threadId: Ulid; form: BlockForm }
   // A block the agent asked for and Oriel refused; the agent was told why.
   | { name: "block.refused"; threadId: Ulid }
+  // A sketch the agent wrote showed under its reply, by its height and its
+  // size in bytes; or Oriel refused it, by why (decision 0033). Never its
+  // text or the names refused.
+  | { name: "sketch.shown"; threadId: Ulid; height: SketchHeight; bytes: number }
+  | { name: "sketch.refused"; threadId: Ulid; reason: SketchRefusal }
   // An answer named IDs as chips that Oriel couldn't resolve, `count` of
   // them, which drew as "unknown reference" (decision 0032).
   | { name: "chip.unknown"; threadId: Ulid; count: number }

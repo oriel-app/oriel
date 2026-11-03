@@ -165,6 +165,23 @@ const criteriaScript = [
   'for (const story of stories) jira.setDescription(story.id, "Acceptance criteria: a person can do it end to end, and a failure says why in plain words.");',
   "return stories.map((story) => story.id);",
 ].join("\n");
+// A sketch (decision 0033): the weather release as a timeline, which no
+// block draws, in the theme's variables. And what a chart of figures is
+// instead: a bars block Oriel builds from a read.
+const timeline = `<style>
+.row { display: grid; grid-template-columns: 7rem repeat(4, 1fr); gap: var(--space-1); margin-bottom: var(--space-1); font-size: var(--text-sm); }
+.row b { color: var(--text-muted); font-weight: var(--weight-medium); }
+.bar { padding: var(--space-1) var(--space-2); background: var(--surface-sunk); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+</style>
+<h3>Weather release</h3>
+<div class="row"><span></span><b>Nov 9</b><b>Nov 16</b><b>Nov 23</b><b>Nov 30</b></div>
+<div class="row"><span>Forecast API</span><span class="bar" style="grid-column: 2 / 4">SYN-26, SYN-47</span></div>
+<div class="row"><span>Alerts</span><span class="bar" style="grid-column: 3 / 5">SYN-84</span></div>
+<div class="row"><span>SMS copy</span><span class="bar" style="grid-column: 5">SYN-61</span></div>
+<p><small>Dates from the stories' sprints; SYN-85 has none yet.</small></p>`;
+const sketchScript = `return await sketch(${JSON.stringify(timeline)}, 240);`;
+const pointsScript = `await jira.listStories();
+await show({ read: "jira.listStories", form: "bars", label: "assignee.name", value: "points" });`;
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
@@ -186,6 +203,13 @@ const planning = (input: TurnInput): Step[] => {
         text: "Here are drafts, from what each story already says. Nothing changes in Jira until you approve.",
       },
     ];
+  if (/^sketch/i.test(input.text))
+    return [
+      { run: sketchScript },
+      { text: "Here's the release as the stories' sprints place it." },
+    ];
+  if (/story points by assignee/i.test(input.text))
+    return [{ run: pointsScript }, { text: "Amara and Yuting carry the most points." }];
   const answer = windowAnswers.find(([asked]) => asked.test(input.text));
   if (answer) return [{ run: answer[1] }, { text: answer[2] }];
   if (/\bplan\b/i.test(input.text))
@@ -468,6 +492,14 @@ const ask = async (text: string, on: Serving = server, workstreamId = workstream
   return opened.id;
 };
 const thread = await ask("Which stories here still need estimates?");
+// The weather epic's workstream: a sketch, and a chart that is a block.
+const weather = await post<{ id: string }>("/api/workstreams", {
+  kind: "cluster",
+  grouping: "epic",
+  cluster: "10003",
+});
+const sketched = await ask("Sketch the release timeline", server, weather.id);
+const charted = await ask("Draw me a chart of story points by assignee", server, weather.id);
 // The boarding epic's workstream, its finished stories taken out by the
 // agent and its thread closed: what Oriel did, listed under the reply, and
 // the workstream's log naming the agent's thread (OA-69).
@@ -1781,6 +1813,22 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
       await page.locator(".answer-block[data-outside]").waitFor();
     },
+  },
+  {
+    name: "thread-sketch",
+    path: `/threads/${sketched}`,
+    act: async (page) => {
+      await page
+        .frameLocator(".answer-sketch iframe")
+        .frameLocator("iframe")
+        .locator("h3")
+        .waitFor();
+    },
+  },
+  {
+    name: "thread-chart",
+    path: `/threads/${charted}`,
+    act: (page) => page.locator('.answer-block[data-form="bars"]').waitFor(),
   },
   {
     name: "thread-run-open",

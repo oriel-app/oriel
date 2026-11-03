@@ -1,0 +1,20 @@
+{
+  "id": "chart-points-by-assignee",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Draw me a chart of story points by assignee",
+  "expect": [
+    {
+      "grader": "blocks",
+      "form": "bars",
+      "read": ["jira.listStories", "jira.listItems"]
+    },
+    {
+      "grader": "no-sketch"
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ]
+}

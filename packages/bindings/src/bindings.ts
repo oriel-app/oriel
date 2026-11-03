@@ -8,6 +8,7 @@ import {
   type Reader,
   type Region,
   type SearchHit,
+  type Shown,
   type Ulid,
 } from "@oriel/core";
 import { intended } from "./actions.ts";
@@ -23,6 +24,9 @@ function named(path: string, error: unknown): Error {
   return new Error(`${path}: ${message(error)}`, { cause: error });
 }
 
+const notShown = (what: string) =>
+  `Oriel shows ${what} only in a thread's turn; this one isn't shown.`;
+
 const defined = (args: object) =>
   Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
 
@@ -35,9 +39,9 @@ const defined = (args: object) =>
 // without it the workspace has none. Oriel's actions are recorded as
 // intents, each checked against its declaration, with the region's
 // workstream and `thread` as the agent's own, and each item a workstream
-// gains in the region or found by this run's search(). `show` builds a
-// block from a read the turn ran (decision 0030). The composition root
-// passes them in.
+// gains in the region or found by this run's search(). `shown` builds a
+// block from a read the turn ran (decision 0030) and shows a sketch
+// (decision 0033). The composition root passes them in.
 export function bindingsFor(
   region: Region,
   options: {
@@ -46,7 +50,7 @@ export function bindingsFor(
     items?: ItemDocs;
     oriel?: OrielReads;
     thread?: Ulid;
-    show?: (spec: unknown) => string;
+    shown?: Shown;
     // The window chat's overview, with the items it shows as the index has
     // them; its thread's module gets `window` only with it (decision 0027).
     // `reachable`: the IDs of the items each cluster it names holds, which
@@ -87,8 +91,8 @@ export function bindingsFor(
       return hits;
     },
     oriel: options.oriel ?? noThreads,
-    show:
-      options.show ?? (() => "Oriel shows blocks only in a thread's turn; this one isn't shown."),
+    show: options.shown?.show ?? (() => notShown("blocks")),
+    sketch: options.shown?.sketch ?? (() => notShown("sketches")),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

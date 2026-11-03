@@ -278,15 +278,16 @@ export function turns(deps: TurnDeps) {
       .join("; ");
   };
 
-  // Each event goes in the chat, but a refused block, which the run's result
-  // already told the agent, and which the user never sees: it is only
-  // counted.
+  // Each event goes in the chat, but a refused block or sketch, which the
+  // run's result already told the agent, and which the user never sees: it
+  // is only counted.
   const record = (threadId: Ulid, event: AgentEvent) => {
-    if (event.kind !== "block.refused") {
+    if (event.kind !== "block.refused" && event.kind !== "sketch.refused") {
       const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
       published(threadId, seq);
     }
-    if (event.kind !== "search" && event.kind !== "block" && event.kind !== "block.refused") return;
+    const counted = ["search", "block", "block.refused", "sketch", "sketch.refused"];
+    if (!counted.includes(event.kind)) return;
     const thread = threads.get(threadId, deps.now());
     if (!thread) return;
     const at = deps.now();
@@ -295,7 +296,14 @@ export function turns(deps: TurnDeps) {
       deps.emit({ name: "escape-hatch.used", at, workspaceId, threadId, runId: event.runId });
     else if (event.kind === "block")
       deps.emit({ name: "block.shown", at, workspaceId, threadId, form: event.block.form });
-    else deps.emit({ name: "block.refused", at, workspaceId, threadId });
+    else if (event.kind === "block.refused")
+      deps.emit({ name: "block.refused", at, workspaceId, threadId });
+    else if (event.kind === "sketch") {
+      const { height, html } = event.sketch;
+      const bytes = Buffer.byteLength(html, "utf8");
+      deps.emit({ name: "sketch.shown", at, workspaceId, threadId, height, bytes });
+    } else if (event.kind === "sketch.refused")
+      deps.emit({ name: "sketch.refused", at, workspaceId, threadId, reason: event.reason });
   };
 
   // Titles the thread from its first message, beside its first turn. The

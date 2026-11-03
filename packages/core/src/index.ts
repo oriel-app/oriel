@@ -16,6 +16,7 @@ export * from "./panel.ts";
 export * from "./references.ts";
 export * from "./run.ts";
 export * from "./shape.ts";
+export * from "./sketch.ts";
 export * from "./sandbox.ts";
 export * from "./source.ts";
 export * from "./sync.ts";

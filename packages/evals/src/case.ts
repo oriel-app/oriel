@@ -104,13 +104,17 @@ const expectations = {
     grader: literal("intents"),
     calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemIdText)) })),
   }),
-  // A block of `form` from `read` was shown, and every block shown is the
-  // one Oriel builds from what its read answered (decision 0030).
+  // A block of `form` from `read`, or from one of them, was shown, and every
+  // block shown is the one Oriel builds from what its read answered
+  // (decision 0030).
   blocks: object({
     grader: literal("blocks"),
     form: union(literal("bars"), literal("table"), literal("rows")),
-    read: text,
+    read: union(text, atLeastOne(text)),
   }),
+  // The turn never called sketch(), shown or refused (decision 0033): a
+  // chart Oriel can build from a read is a block, never the agent's HTML.
+  "no-sketch": object({ grader: literal("no-sketch") }),
   // An item, unless it names only a file.
   surfaced: ((input, path = "$") => {
     if (has(input, "item") && has(input, "file"))

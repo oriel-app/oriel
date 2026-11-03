@@ -6,6 +6,10 @@
 // the sketch route builds a theme's sheet from it, so neither can drift from
 // the page.
 
+import { sketchTokens } from "@oriel/core";
+
+export { sketchTokens };
+
 export const defaultTheme = "graphite";
 
 export type Scheme = "light" | "dark";
@@ -149,45 +153,6 @@ export function resolve(
     return resolve(named, values, new Set([...seen, name]));
   });
 }
-
-// The tokens a sketch's theme sheet sets (decisions 0033 and 0034): the
-// neutral colours, the fonts, the text sizes, weights and leadings, the
-// space scale and the radii. Never the accent, a state, `--del`, or a
-// section, list or ask-bar token, so a sketch can't draw a copy of Approve.
-export const sketchTokens = [
-  "--bg",
-  "--surface",
-  "--surface-hover",
-  "--surface-sunk",
-  "--line",
-  "--line-strong",
-  "--text",
-  "--text-muted",
-  "--text-faint",
-  "--font",
-  "--font-mono",
-  "--font-heading",
-  "--text-xs",
-  "--text-sm",
-  "--text-md",
-  "--text-lg",
-  "--text-xl",
-  "--weight-regular",
-  "--weight-medium",
-  "--weight-strong",
-  "--leading-tight",
-  "--leading",
-  "--leading-prose",
-  "--space-1",
-  "--space-2",
-  "--space-3",
-  "--space-4",
-  "--space-6",
-  "--space-8",
-  "--radius-sm",
-  "--radius",
-  "--radius-lg",
-] as const;
 
 // The sketch theme sheet for `theme`, built from window.css's own theme
 // blocks: the tokens above under their own names, light and dark through

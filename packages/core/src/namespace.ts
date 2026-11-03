@@ -4,6 +4,7 @@
 // and the host side from it; the composition root hands it over by source
 // kind. Each parameter carries its TypeScript type, as the agent sees it,
 // beside the validator the host checks the guest's value with.
+import type { ResultFields } from "./block.ts";
 import type { ItemId } from "./ids.ts";
 import type { NewRef } from "./sandbox.ts";
 import type { OpCatalogue } from "./source.ts";
@@ -48,6 +49,8 @@ export type NamespaceRead = Base & {
   kind: "read";
   // The TypeScript type the read resolves to.
   returns: string;
+  // What its result holds that a block can show (decision 0030).
+  fields?: ResultFields;
   run(args: readonly unknown[], host: NamespaceHost): Promise<unknown>;
 };
 

@@ -173,9 +173,9 @@ const intentLines = (intents: readonly Intent[]) =>
   intents.map((intent) => json({ action: intent.action, input: intent.input }));
 
 // A run as the model reads it: its transcript, then what became of its writes,
-// of the actions it asked for and of the blocks it asked Oriel to show.
-// `replaced` and `replacedIntents` are what it replaced of an earlier run's;
-// `shown`, Oriel's line for each block. No run ID, timing or other value a
+// of the actions it asked for and of the blocks and sketches it asked Oriel
+// to show. `replaced` and `replacedIntents` are what it replaced of an
+// earlier run's; `shown`, Oriel's line for each block and sketch. No run ID, timing or other value a
 // replay can't reproduce.
 export function runResultText(
   result: RunResult,
@@ -189,7 +189,7 @@ export function runResultText(
   if (result.outcome !== "ok") {
     if (count) lines.push(`It captured ${changes(count)} before it stopped; they were discarded.`);
     if (asked) lines.push(`It recorded ${actions(asked)} before it stopped; they were discarded.`);
-    if (shown.length) lines.push("Oriel shows no block from a run that stopped.");
+    if (shown.length) lines.push("Oriel shows nothing from a run that stopped.");
     return lines.join("\n");
   }
   lines.push(...shown);

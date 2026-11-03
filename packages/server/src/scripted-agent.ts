@@ -4,9 +4,10 @@
 // sandbox runs each script against the region's bindings, and the run is
 // recorded. What the last run to capture writes captured becomes the change
 // set, and the last run's intents apply, as for any agent (`proposal`); the
-// blocks its runs ask for show under its reply, as for any agent (`turnBlocks`).
+// blocks and sketches its runs ask for show under its reply, as for any
+// agent (`turnShown`).
 import { createHash } from "node:crypto";
-import { proposal, turnBlocks } from "@oriel/agent";
+import { proposal, turnShown } from "@oriel/agent";
 import { type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
 import { type Agent, type ServerAgentDeps, type AgentEvent, type TurnInput } from "./agent.ts";
 
@@ -50,7 +51,7 @@ async function* steps(
 ): AsyncGenerator<AgentEvent> {
   const { thread, region } = input;
   const proposed = proposal();
-  const shownBlocks = turnBlocks();
+  const turnShows = turnShown(deps.newId);
   // A run may capture no more than a change set may hold.
   const limits = {
     ...deps.limits.run,
@@ -70,7 +71,7 @@ async function* steps(
           : `return await thread.find(${JSON.stringify(step.threads)}, 1);`;
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
-    const shown = shownBlocks.run(runId, (show) => deps.bindingsFor(region, thread.id, show));
+    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
     const { bindings } = shown;
     const startedAt = deps.now();
     const run = {
@@ -123,7 +124,7 @@ async function* steps(
     if ("threads" in step) yield { kind: "text", text: chipTo(returned(result)) };
     proposed.ran(runId, result);
   }
-  yield* shownBlocks.settle();
+  yield* turnShows.settle();
   yield* proposed.settle(deps, thread, signal, log);
 }
 
