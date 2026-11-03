@@ -4668,8 +4668,17 @@ button.overview-title:hover {
   vertical-align: -0.1em;
 }
 
+.ref-lead {
+  white-space: nowrap;
+}
+
 .ref-key {
   font-weight: 600;
+}
+
+/* A reference sets its own weight, so one the agent bolds reads as the rest. */
+.ref-name {
+  font-weight: 400;
 }
 
 .ref-name {

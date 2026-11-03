@@ -4,3 +4,15 @@
 {"round":"01M6FS5S5JV9SJGEW8RERJN514","label":"R1","split":"train","trials":27,"usd":0.6275721999999997}
 {"round":"01M6FS8FM6YKSV80W83HJ5FEP1","label":"R2","split":"train","trials":27,"usd":0.6506150999999998,"estimated":true}
 {"round":"01M6FS8FM6YKSV80W83HJ5FEP1","label":"R2","split":"train","trials":27,"usd":0.5277923999999998}
+{"round":"01M6FSB70K5HW8TRNYZ9BM9HX0","label":"R2b","split":"train","trials":27,"usd":0.6096741999999998,"estimated":true}
+{"round":"01M6FSB70K5HW8TRNYZ9BM9HX0","label":"R2b","split":"train","trials":27,"usd":0.4491461999999999}
+{"round":"01M6FSCWEN9Z15F1XE503F9BPX","label":"R2c","split":"train","trials":27,"usd":0.5695421999999998,"estimated":true}
+{"round":"01M6FSCWEN9Z15F1XE503F9BPX","label":"R2c","split":"train","trials":27,"usd":0.4883462}
+{"round":"01M6FSEEZDJJR0AQP29XM9K1QY","label":"R1b","split":"train","trials":27,"usd":0.5533029999999998,"estimated":true}
+{"round":"01M6FSEEZDJJR0AQP29XM9K1QY","label":"R1b","split":"train","trials":27,"usd":0.5117446000000001}
+{"round":"01M6FSG6TNQXNB7538SMBCZDXT","label":"R1c","split":"train","trials":27,"usd":0.5463765999999999,"estimated":true}
+{"round":"01M6FSG6TNQXNB7538SMBCZDXT","label":"R1c","split":"train","trials":27,"usd":0.5181102000000001}
+{"round":"01M6FSJ3C1DJ9GKCEA5PYK0V30","label":"baseb","split":"train","trials":27,"usd":0.5423385428571428,"estimated":true}
+{"round":"01M6FSJ3C1DJ9GKCEA5PYK0V30","label":"baseb","split":"train","trials":27,"usd":0.6414449999999998}
+{"round":"01M6FSM7W8J1CC5XSZPX7RP5PK","label":"basec","split":"train","trials":27,"usd":0.5547268499999999,"estimated":true}
+{"round":"01M6FSM7W8J1CC5XSZPX7RP5PK","label":"basec","split":"train","trials":27,"usd":0.49579840000000003}

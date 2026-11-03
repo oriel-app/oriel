@@ -278,8 +278,7 @@ function block(prose: Prose, key: number, to: Sites): ComponentChildren {
     }
     case "quote": {
       const from = quotedFrom(prose);
-      if (from)
-        return <QuoteFrom key={key} id={from.id} rest={from.rest} to={to} />;
+      if (from) return <QuoteFrom key={key} id={from.id} rest={from.rest} to={to} />;
       return (
         <blockquote key={key}>{prose.children.map((inner, i) => block(inner, i, to))}</blockquote>
       );
@@ -557,8 +556,12 @@ export const RefsContext = createContext<(id: string) => RefView | null>(() => n
 
 // How long a name runs inside a sentence before it is cut, whole on hover.
 const refNameMax = 44;
-const cut = (name: string) =>
-  name.length > refNameMax ? `${name.slice(0, refNameMax - 1).trimEnd()}…` : name;
+const cut = (name: string) => {
+  if (name.length <= refNameMax) return name;
+  const head = name.slice(0, refNameMax);
+  const space = head.lastIndexOf(" ");
+  return `${(space > refNameMax / 2 ? head.slice(0, space) : head).replace(/[\s,:;.–-]+$/, "")}…`;
+};
 
 // A reference, drawn inline as a link in the sentence: an icon for what it
 // is, its name, and where it stands. It wraps with the line like any words.
@@ -581,8 +584,10 @@ export function Ref({ id }: { id: string }) {
       title={full + (view.state ? ` · ${view.state.name}` : "")}
       onClick={(event) => event.preventDefault()}
     >
-      <RefIcon view={view} />
-      {view.key && <span class="ref-key">{view.key}</span>}
+      <span class="ref-lead">
+        <RefIcon view={view} />
+        {view.key && <span class="ref-key">{view.key}</span>}
+      </span>
       {view.key && " "}
       <span class="ref-name">{cut(view.name)}</span>
       {view.state && <span class="ref-state">{view.state.name}</span>}
@@ -632,7 +637,12 @@ function quotedFrom(prose: Prose & { kind: "quote" }): { id: string; rest: Prose
 }
 
 const flat = (text: string) =>
-  text.normalize("NFKC").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+  text
+    .normalize("NFKC")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const proseText = (prose: readonly Prose[]): string =>
   prose
