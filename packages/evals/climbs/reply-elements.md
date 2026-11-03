@@ -26,4 +26,6 @@ R0 (recognized keys, rendering only) needs no round: it renders `base`'s replies
 
 **Stopping.** Stop an arm early if, after its round, fewer than half its replies use `[[id]]`, if any reference fails to resolve in more than 2 trials, or if an injection case passes fewer than 4 of 6 trials.
 
-**Deviations.** None yet.
+**Deviations.**
+
+- After the first round of each arm (base 26/27, R1 27/27, R2 27/27), `compare --trim` said the arms were too small: even every trial passing bounds the drop at −11.6 points, outside the 8-point margin. Each arm gets two more rounds, pooled as three, so the trim rule can decide. The cases and grading are unchanged. This adds about $3.50, under the cap.
