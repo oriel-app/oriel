@@ -1,6 +1,39 @@
-/* Design tokens. Light by default, dark through prefers-color-scheme. */
+/* Design tokens, direction A: calm and dense. The primitives come first and
+   are all a theme sets; today's names follow, mapped onto them, so the whole
+   window takes the direction. Light by default, dark through
+   prefers-color-scheme. */
 :root {
   color-scheme: light dark;
+
+  /* Neutrals, by role: 0 raised surface, 1 page, 2 hover and wells, 3 rule,
+     4 strong rule and empty marks, 5 faint text, 6 muted text, 7 text. */
+  --n-0: #ffffff;
+  --n-1: #f7f7f5;
+  --n-2: #efeeea;
+  --n-3: #e3e2dd;
+  --n-4: #c9c7c0;
+  --n-5: #66645e;
+  --n-6: #4e4d48;
+  --n-7: #1c1c1a;
+  /* The one accent: the user's move. Needs you, the primary action, focus. */
+  --accent: #3a50cc;
+  --accent-soft: #ebeefb;
+  --on-accent: #ffffff;
+  /* Where a thing stands. Each has its text colour and a soft ground. */
+  --state-todo: #5c5b55;
+  --state-todo-soft: #efeeea;
+  --state-progress: #1b6782;
+  --state-progress-soft: #e3eff3;
+  --state-done: #2a7350;
+  --state-done-soft: #e4f1e9;
+  --state-needs: var(--accent);
+  --state-needs-soft: var(--accent-soft);
+  --state-stalled: #a63f1e;
+  --state-stalled-soft: #fbebe5;
+  --state-applied: var(--state-done);
+  --state-applied-soft: var(--state-done-soft);
+  --state-reverted: #83457a;
+  --state-reverted-soft: #f6e9f3;
 
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -9,6 +42,12 @@
   --text-md: 0.8125rem;
   --text-lg: 0.9375rem;
   --text-xl: 1.125rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --leading-tight: 1.3;
+  --leading: 1.45;
+  --leading-prose: 1.6;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -16,11 +55,33 @@
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --row: 2.125rem;
+  /* Three radii: controls, containers, and round things. */
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --radius-round: 999px;
+  --border: 1px;
+  --border-strong: 2px;
+  /* Two levels: what floats in the page (a menu), and what floats over it
+     (the panel, a dialog). */
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.05);
+  --elevation-2: 0 1px 3px rgb(0 0 0 / 0.05), 0 8px 24px rgb(0 0 0 / 0.08);
+  --scrim: rgb(0 0 0 / 0.32);
+  /* Two durations and one easing: a state changing, and a thing arriving. */
+  --duration-1: 120ms;
+  --duration-2: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --icon-stroke: 1.5;
+
+  /* Density: a row the user scans is compact; prose they read is
+     comfortable. */
+  --row: 2rem;
+  --row-comfortable: 2.5rem;
+
+  /* Today's names, mapped onto the primitives. */
+  --radius-sm: var(--radius-1);
+  --radius: var(--radius-1);
+  --radius-lg: var(--radius-2);
+  --radius-xl: var(--radius-2);
   --page: 74rem;
   /* The narrow-screen bar; wide screens have the sidebar instead. */
   --bar-height: 0rem;
@@ -31,130 +92,104 @@
      share one top line. */
   --inset-top: var(--space-3);
   --head-row: 2rem;
-  /* Motion: how the panel beside the page arrives, and how motion settles. */
-  --duration-panel: 180ms;
+  --duration-panel: var(--duration-2);
   --slide-panel: 0.375rem;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --duration-1: 120ms;
-  --duration-2: 180ms;
 
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-strong: 600;
-  --leading-tight: 1.35;
-  --leading: 1.45;
-  --leading-prose: 1.55;
-  --radius-round: 999px;
-  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.04);
-  --scrim: rgb(0 0 0 / 0.32);
+  --bg: var(--n-1);
+  --surface: var(--n-0);
+  --surface-hover: var(--n-2);
+  --surface-sunk: var(--n-1);
+  --line: var(--n-3);
+  --line-strong: var(--n-4);
+  --text: var(--n-7);
+  --text-muted: var(--n-6);
+  --text-faint: var(--n-5);
+  --accent-text: var(--on-accent);
+  --focus: var(--accent);
+  --danger: var(--state-stalled);
+  --danger-soft: var(--state-stalled-soft);
+  --ins: var(--state-applied);
+  --ins-soft: var(--state-applied-soft);
+  --del: var(--n-5);
 
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --surface-hover: #f3f3f0;
-  --surface-sunk: #fafaf8;
-  --line: #e7e6e2;
-  --line-strong: #d5d3cd;
-  --text: #1f1f1d;
-  --text-muted: #63625d;
-  --text-faint: #8f8d86;
-  --accent: #3f5bd8;
-  --accent-text: #ffffff;
-  --accent-soft: #e9edfc;
-  --focus: #3f5bd8;
-  --danger: #b5412f;
-  --danger-soft: #fbeeeb;
-  --ins: #2b7a52;
-  --ins-soft: #e5f3ec;
-  --del: #8f8d86;
+  --todo: var(--n-4);
+  --in-progress: var(--state-progress);
+  --done: var(--state-done);
+  --todo-text: var(--state-todo);
+  --in-progress-text: var(--state-progress);
+  --done-text: var(--state-done);
+  --todo-soft: var(--state-todo-soft);
+  --in-progress-soft: var(--state-progress-soft);
+  --done-soft: var(--state-done-soft);
+  --handed-off-text: var(--state-done);
+  --handed-off-soft: var(--state-done-soft);
 
-  --todo: #b4b2ab;
-  --in-progress: #4a78e0;
-  --done: #3c9a6a;
-  --todo-text: #5f5e59;
-  --in-progress-text: #2f5bc4;
-  --done-text: #2b7a52;
-  --todo-soft: #efeeea;
-  --in-progress-soft: #e8eefc;
-  --done-soft: #e5f3ec;
-  --handed-off-text: #7a4fc4;
-  --handed-off-soft: #f1ebfb;
+  /* What a rule derived shows its rule quietly; what it found stalled says
+     so in the stalled colour (.overview-signal). */
+  --derived: var(--n-6);
+  --derived-soft: var(--n-1);
+  --derived-line: var(--n-4);
 
-  --derived: #94620b;
-  --derived-soft: #fbf3e2;
-  --derived-line: #e2c58a;
+  --type-story: var(--state-done);
+  --type-bug: var(--state-stalled);
+  --type-task: var(--state-progress);
+  --type-epic: var(--state-reverted);
+  --type-other: var(--n-4);
 
-  --type-story: #3c9a6a;
-  --type-bug: #d4513b;
-  --type-task: #4a78e0;
-  --type-epic: #8a5cd6;
-  --type-other: #a3a19a;
+  --avatar: var(--n-2);
+  --avatar-text: var(--n-6);
+  --shadow: var(--elevation-2);
 
-  --avatar: #e9e8e3;
-  --avatar-text: #55544f;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.06);
-
-  /* The chip (chip.ts): something in Oriel named inline, as a reply's link
-     to a thread or a change set. Built on the tokens above, so it follows
-     the theme; its state takes the state colours. */
-  --chip-height: 1.375rem;
-  --chip-radius: var(--radius);
-  --chip-gap: 0.3125rem;
-  --chip-pad: 0 var(--space-2) 0 0.375rem;
-  --chip-font: var(--text-md);
+  /* The chip (chip.ts, decision 0032): something in Oriel named in a
+     sentence, as part of the line, with no box. Its state takes the state
+     colours and marks. */
+  --chip-height: auto;
+  --chip-radius: var(--radius-1);
+  --chip-gap: 0.25rem;
+  --chip-pad: 0;
+  --chip-font: inherit;
   --chip-name-max: 22em;
-  --chip-bg: var(--surface);
-  --chip-bg-hover: var(--surface-hover);
-  --chip-line: var(--line-strong);
-  --chip-text: var(--text);
-  --chip-icon: var(--text-muted);
+  --chip-bg: transparent;
+  --chip-bg-hover: var(--n-2);
+  --chip-line: transparent;
+  --chip-text: var(--n-7);
+  --chip-icon: var(--n-5);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413;
-    --surface: #1b1b1a;
-    --surface-hover: #232321;
-    --surface-sunk: #181817;
-    --line: #2b2b29;
-    --line-strong: #3a3a37;
-    --text: #e9e8e4;
-    --text-muted: #a3a29c;
-    --text-faint: #75746f;
-    --accent: #8ea4f5;
-    --accent-text: #141413;
-    --accent-soft: #252c45;
-    --focus: #8ea4f5;
-    --danger: #ef8d7b;
-    --danger-soft: #3a2420;
-    --ins: #7fcca3;
-    --ins-soft: #1e3128;
-    --del: #75746f;
+    --n-0: #1c1c1b;
+    --n-1: #141413;
+    --n-2: #262624;
+    --n-3: #31312e;
+    --n-4: #4a4944;
+    --n-5: #9b9a93;
+    --n-6: #bcbbb4;
+    --n-7: #ecebe6;
+    --accent: #9cadf6;
+    --accent-soft: #262c47;
+    --on-accent: #141413;
+    --state-todo: #bcbbb4;
+    --state-todo-soft: #2a2a28;
+    --state-progress: #74c3db;
+    --state-progress-soft: #183038;
+    --state-done: #80cca4;
+    --state-done-soft: #1c3127;
+    --state-stalled: #f29d80;
+    --state-stalled-soft: #3a231a;
+    --state-reverted: #dea7d3;
+    --state-reverted-soft: #372436;
+    --elevation-1: 0 1px 2px rgb(0 0 0 / 0.3);
+    --elevation-2: 0 1px 3px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+  }
+}
 
-    --todo: #5d5c58;
-    --in-progress: #6b93ee;
-    --done: #55b584;
-    --todo-text: #b3b2ac;
-    --in-progress-text: #9cb6f5;
-    --done-text: #7fcca3;
-    --todo-soft: #2a2a28;
-    --in-progress-soft: #222b40;
-    --done-soft: #1e3128;
-    --handed-off-text: #c3a6f2;
-    --handed-off-soft: #2c2440;
-
-    --derived: #e3b45c;
-    --derived-soft: #2d2617;
-    --derived-line: #6b5426;
-
-    --type-story: #55b584;
-    --type-bug: #e9735f;
-    --type-task: #6b93ee;
-    --type-epic: #a888e6;
-    --type-other: #75746f;
-
-    --avatar: #2e2e2b;
-    --avatar-text: #c4c3bd;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.3);
+/* Nothing moves: what would slide or fade is simply there. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-1: 0ms;
+    --duration-2: 0ms;
+    --slide-panel: 0rem;
   }
 }
 
@@ -687,40 +722,79 @@ button.nav-disclose:hover {
   content: "· " / "";
 }
 
-/* A thread's state at a glance: working pulses, the rest hold still. */
-.state-dot {
+/* A state mark: where a thing stands, by shape as well as colour, so a list
+   still scans in grey. A ring hasn't started, a half is under way, a disc
+   has landed, a haloed disc waits on the user, a diamond has stalled, and a
+   slashed ring was undone or let go. The sidebar's dot, a state's word and a
+   chip's state all draw it. */
+.state-dot,
+.state-chip,
+.chip {
+  --mark: var(--text-faint);
+  --mark-bg: none;
+  --mark-halo: transparent;
+  --mark-radius: 50%;
+  --mark-turn: none;
+}
+
+.state-dot,
+.state-chip::before,
+.chip-state::before {
   flex: none;
-  width: 0.4375rem;
-  height: 0.4375rem;
-  border-radius: 50%;
-  background: var(--todo);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--mark-radius);
+  background: var(--mark-bg);
+  box-shadow:
+    inset 0 0 0 1.5px var(--mark),
+    0 0 0 2px var(--mark-halo);
+  transform: var(--mark-turn);
+  content: "";
 }
 
-.state-dot[data-state="working"] {
-  background: var(--in-progress);
+:is(.state-dot, .state-chip)[data-state="working"],
+.chip:is([data-state="working"], [data-state="approved"]) {
+  --mark: var(--in-progress);
+  --mark-bg: linear-gradient(to right, var(--mark) 50%, transparent 50%);
 }
 
-/* Only an agent mid-turn, or a change set applying, pulses; a change set to
-   review or stalled applying, or a reason held for the person, stands out. */
+:is(.state-dot, .state-chip):is([data-waiting="review"], [data-waiting="held"], [data-waiting="reply"]),
+.chip:is([data-state="needs-you"], [data-state="pending"]) {
+  --mark: var(--state-needs);
+  --mark-bg: var(--mark);
+  --mark-halo: var(--state-needs-soft);
+}
+
+:is(.state-dot, .state-chip)[data-waiting="stalled"] {
+  --mark: var(--state-stalled);
+  --mark-bg: var(--mark);
+  --mark-radius: 1px;
+  --mark-turn: rotate(45deg) scale(0.85);
+}
+
+:is(.state-dot, .state-chip):is([data-state="done"], [data-state="handed-off"]),
+.chip:is([data-state="done"], [data-state="handed-off"], [data-state="applied"]) {
+  --mark: var(--state-done);
+  --mark-bg: var(--mark);
+}
+
+:is(.state-dot, .state-chip)[data-state="dropped"],
+.chip:is([data-state="dropped"], [data-state="rejected"], [data-state="reverted"]) {
+  --mark-bg: linear-gradient(
+    135deg,
+    transparent 43%,
+    var(--mark) 43% 57%,
+    transparent 57%
+  );
+}
+
+.chip[data-state="reverted"] {
+  --mark: var(--state-reverted);
+}
+
+/* Only an agent mid-turn, or a change set applying, pulses. */
 .state-dot:is([data-waiting="agent"], [data-waiting="apply"]) {
   animation: pulse 1.6s ease-in-out infinite;
-}
-
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
-  background: var(--accent);
-}
-
-.state-dot[data-state="done"] {
-  background: var(--done);
-}
-
-.state-dot[data-state="handed-off"] {
-  background: var(--handed-off-text);
-}
-
-.state-dot[data-state="dropped"] {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--todo);
 }
 
 @keyframes pulse {
@@ -1097,67 +1171,51 @@ button.nav-more {
   font-weight: var(--weight-strong);
 }
 
+/* A state's word, after its mark, in its colour: no pill, so a column of
+   them reads as marks first. */
 .state-chip {
+  display: inline-flex;
   flex: none;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-round);
-  background: var(--todo-soft);
-  color: var(--todo-text);
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--mark);
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   line-height: 1.25rem;
   white-space: nowrap;
 }
 
-.state-chip[data-state="working"] {
-  background: var(--in-progress-soft);
-  color: var(--in-progress-text);
+.state-chip:not([data-state="working"], [data-state="done"], [data-state="handed-off"], [data-waiting]) {
+  color: var(--todo-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"]) {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.state-chip[data-state="done"] {
-  background: var(--done-soft);
-  color: var(--done-text);
-}
-
-.state-chip[data-state="handed-off"] {
-  background: var(--handed-off-soft);
-  color: var(--handed-off-text);
-}
-
-/* Narrower than its line by a mark, so the comma or full stop after a chip
-   that fills one stays beside it. */
+/* A chip (decision 0032) is part of its line, with no box: its kind's icon,
+   its name a little heavier than the sentence, and where it stands as a
+   mark and a word. Narrower than its line by a mark, so the comma or full
+   stop after a chip that fills one stays beside it. */
 .chip {
   display: inline-flex;
   max-width: calc(100% - 1ch);
   height: var(--chip-height);
-  align-items: center;
+  align-items: baseline;
   gap: var(--chip-gap);
   padding: var(--chip-pad);
-  border: 1px solid var(--chip-line);
   border-radius: var(--chip-radius);
   background: var(--chip-bg);
   color: var(--chip-text);
   font-size: var(--chip-font);
   font-weight: var(--weight-medium);
-  line-height: 1;
-  vertical-align: -0.1875rem;
   white-space: nowrap;
-  --chip-dot: var(--todo);
-  --chip-state: var(--text-faint);
 }
 
 .chip-icon {
   flex: none;
+  align-self: center;
   width: 0.875rem;
   height: 0.875rem;
   fill: none;
   stroke: var(--chip-icon);
-  stroke-width: 1.4;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1166,52 +1224,24 @@ button.nav-more {
   min-width: 0;
   max-width: var(--chip-name-max);
   overflow: hidden;
+  text-decoration: underline var(--line-strong) 1px;
+  text-underline-offset: 0.2em;
   text-overflow: ellipsis;
 }
 
 .chip-state {
   display: inline-flex;
   flex: none;
+  align-self: center;
   align-items: center;
-  gap: var(--space-1);
-  color: var(--chip-state);
+  gap: 0.3125rem;
+  color: var(--mark);
   font-size: var(--text-xs);
 }
 
-.chip-state::before {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: var(--chip-dot);
-  content: "";
-}
-
-/* Where it stands, in the state colours: working and approved are under
-   way, needing the user and pending wait on them, done and applied landed,
-   the rest are over. */
-.chip:is([data-state="working"], [data-state="approved"]) {
-  --chip-dot: var(--in-progress);
-  --chip-state: var(--in-progress-text);
-}
-
-.chip:is([data-state="needs-you"], [data-state="pending"]) {
-  --chip-dot: var(--accent);
-  --chip-state: var(--accent);
-}
-
-.chip:is([data-state="done"], [data-state="applied"]) {
-  --chip-dot: var(--done);
-  --chip-state: var(--done-text);
-}
-
-.chip[data-state="handed-off"] {
-  --chip-dot: var(--handed-off-text);
-  --chip-state: var(--handed-off-text);
-}
-
-.chip[data-state="dropped"] .chip-state::before {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--todo);
+.chip:not([data-state]) .chip-state,
+.chip:is([data-state="dropped"], [data-state="rejected"]) .chip-state {
+  color: var(--text-faint);
 }
 
 .chip-link {
@@ -1219,8 +1249,8 @@ button.nav-more {
   text-decoration: none;
 }
 
-.chip-link:hover .chip {
-  background: var(--chip-bg-hover);
+.chip-link:hover .chip-name {
+  text-decoration-color: currentColor;
 }
 
 .working-dot {
@@ -1686,10 +1716,8 @@ button.nav-more {
 .key {
   flex: none;
   color: var(--text-faint);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-regular);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  font: var(--weight-regular) var(--text-sm) var(--font-mono);
+  letter-spacing: -0.01em;
 }
 
 .source-link {
@@ -4564,7 +4592,7 @@ button.overview-title:hover {
 }
 
 .overview-signal {
-  color: var(--derived);
+  color: var(--state-stalled);
   cursor: help;
 }
 
@@ -4776,19 +4804,19 @@ button.overview-title:hover {
 }
 
 .ask-question {
-  height: var(--chip-height);
+  height: 1.5rem;
   padding: 0 var(--space-3);
-  border: 1px solid var(--chip-line);
+  border: var(--border) solid var(--line-strong);
   border-radius: var(--radius-round);
-  background: var(--chip-bg);
+  background: var(--surface);
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--chip-font);
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
 .ask-question:hover:not(:disabled) {
-  background: var(--chip-bg-hover);
+  background: var(--surface-hover);
   color: var(--text);
 }
 

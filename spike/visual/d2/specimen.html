@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oriel, direction D2-A: specimen</title>
+<link rel="stylesheet" href="../../../packages/web/assets/window.css">
+<link rel="stylesheet" href="specimen.css">
+<style>
+/* Direction A's frame for the agent's HTML: square corners and a hatched
+   margin, which Oriel's own UI never has, and a label above it. */
+.sp-frame-label {
+  padding: var(--space-1) var(--space-2);
+  border: var(--border) dashed var(--n-4);
+  border-bottom: 0;
+  background: var(--n-2);
+}
+.sp-frame-well {
+  padding: var(--space-3);
+  border: var(--border) dashed var(--n-4);
+  background: repeating-linear-gradient(-45deg, var(--n-3) 0 2px, var(--n-1) 2px 7px);
+}
+.sp-frame-body {
+  background: var(--n-0);
+  outline: var(--border) solid var(--n-3);
+}
+</style>
+</head>
+<body>
+<main class="sp">
+<header>
+  <h1>Direction A: Steady</h1>
+  <p class="sp-idea">Today's calm, warm-neutral window with the noise taken out: one indigo accent that only ever means <em>your move</em>, hairline rules, and state carried by a mark's shape as well as its colour, so a list of sixty rows still scans in grey. Rows the user scans are compact; prose they read is comfortable.</p>
+</header>
+
+<section>
+  <h2>Colour</h2>
+  <h3>Neutrals, by role: raised, page, hover, rule, strong rule, faint text, muted text, text</h3>
+  <div class="sp-swatches" id="neutrals"></div>
+  <h3>The accent, and where things stand (text on its soft ground; ratio on the page and on the soft)</h3>
+  <div class="sp-swatches sp-states" id="states"></div>
+  <p class="sp-mono">Source marks: Jira, Slack and a folder show as the kind's icon in the faint text colour, never a brand colour.</p>
+</section>
+
+<section>
+  <h2>Type</h2>
+  <div class="sp-type" id="type"></div>
+  <div class="sp-type">
+    <span class="sp-mono">weights</span><span><span style="font-weight:var(--weight-regular)">Regular 400</span> · <span style="font-weight:var(--weight-medium)">Medium 500</span> · <span style="font-weight:var(--weight-strong)">Strong 600</span></span>
+    <span class="sp-mono">mono, keys and IDs</span><span><span class="key">SYN-104</span> <span class="key">jira:SYN-61</span> <span class="key">01JC4Q7Z</span></span>
+    <span class="sp-mono">leading</span><span>tight 1.3 for titles and one-line rows · 1.45 for the window · 1.6 for prose</span>
+  </div>
+</section>
+
+<section>
+  <h2>Space, shape, elevation, motion</h2>
+  <div class="sp-space" id="space"></div>
+  <div class="sp-row">
+    <span class="sp-shape" style="border-radius:var(--radius-1)">4px controls</span>
+    <span class="sp-shape" style="border-radius:var(--radius-2)">8px containers</span>
+    <span class="sp-shape" style="border-radius:var(--radius-round);width:4rem">round</span>
+    <span class="sp-shape" style="border-width:var(--border)">1px rule</span>
+    <span class="sp-shape" style="border:var(--border-strong) solid var(--focus)">2px focus</span>
+    <span class="sp-shape" style="border-radius:var(--radius-2);box-shadow:var(--elevation-1)">elevation 1<br>in the page</span>
+    <span class="sp-shape" style="border-radius:var(--radius-2);box-shadow:var(--elevation-2)">elevation 2<br>over the page</span>
+  </div>
+  <p class="sp-mono">Motion: 120ms for a state changing (hover, a mark filling), 200ms for a thing arriving (the panel, the sidebar), both cubic-bezier(0.2, 0.8, 0.2, 1). Reduced motion: both are 0ms and nothing slides; only the working pulse remains, as a still mark.</p>
+</section>
+
+<section>
+  <h2>Icons: a 16 grid, 1.5 stroke, round joins, the text's colour; 16px in rows, 14px in a sentence</h2>
+  <div class="sp-icons" id="icons"></div>
+</section>
+
+<section>
+  <h2>Density: a row the user scans is compact; prose they read is comfortable</h2>
+  <div class="sp-two sp-density">
+    <div><h3>Compact, 32px rows, 13px: Browse, the sidebar, the overview's lists, blocks, diffs</h3>
+      <ul class="sp-list" id="compact"></ul></div>
+    <div><h3>Comfortable, 40px rows, 15px at 1.6: a thread's replies, the panel, the review page</h3>
+      <ul class="sp-list comfortable" id="comfortable"></ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Chip, in a sentence: icon, key, name, state, and no box</h2>
+  <p class="sp-prose" id="chips"></p>
+</section>
+
+<section>
+  <h2>State marks</h2>
+  <div class="sp-row" id="marks"></div>
+</section>
+
+<section>
+  <h2>Buttons: primary, secondary, quiet, danger; at rest, hovered, focused, disabled</h2>
+  <div class="sp-row" id="buttons"></div>
+</section>
+
+<section>
+  <h2>Ask bar and input</h2>
+  <div class="sp-ask"><span>Ask about your window</span><button class="sp-button primary" disabled style="opacity:.5">Ask</button></div>
+  <div class="sp-questions"><span class="sp-question">Which workstreams have gone quiet?</span><span class="sp-question">Should Vehicle and freight reservations become a workstream?</span></div>
+  <div class="sp-ask focus"><span class="typed">Chart my workstreams by size</span><button class="sp-button primary">Ask</button></div>
+  <div class="sp-row"><label class="sp-input" style="width:20rem"><span>Name</span><span>Gift cards</span></label></div>
+</section>
+
+<section>
+  <h2>Workstream card and list row</h2>
+  <div class="sp-two">
+    <div class="sp-card" id="card"></div>
+    <ul class="sp-list" id="rows"></ul>
+  </div>
+</section>
+
+<section>
+  <h2>Blocks: bars, table, rows</h2>
+  <div class="sp-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))" id="blocks"></div>
+</section>
+
+<section>
+  <h2>Notes, panel, diff</h2>
+  <div class="sp-two">
+    <div style="display:grid;gap:var(--space-4);align-content:start">
+      <div><span class="sp-undo">Removed SYN-61 from SMS updates <button>Undo</button></span></div>
+      <div class="sp-note"><b>Oriel</b> SYN-900 isn't in the index any more; the agent was told.</div>
+      <div class="sp-diff">
+        <div class="del">Same as the app, for <del>browsers</del> that <del>support</del> it.</div>
+        <div class="ins">Same as the app, for <ins>every browser</ins> that <ins>supports</ins> it.</div>
+        <div class="ins">3 points</div>
+      </div>
+    </div>
+    <aside class="sp-panel">
+      <span class="sp-meta"><svg class="sp-icon small" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg> <span class="key">SYN-61</span> · Story · Jira</span>
+      <h4>Send disruption updates by SMS</h4>
+      <dl class="sp-facets"><dt>Status</dt><dd><span class="sp-state" data-s="progress"><span class="sp-mark"></span>In progress</span></dd><dt>Assignee</dt><dd><span class="sp-avatar">CY</span> Chen Yuting</dd><dt>Estimate</dt><dd>3 points</dd></dl>
+      <p>Riders whose train is cancelled get a text with the next departure and a link to rebook. The copy is signed off by support.</p>
+    </aside>
+  </div>
+</section>
+
+<section>
+  <h2>The agent's HTML frame (0033): what the agent drew, inside Oriel's frame; Oriel's own controls stay outside it</h2>
+  <figure class="sp-frame">
+    <figcaption class="sp-frame-label"><svg class="sp-icon small" viewBox="0 0 16 16"><path d="M3 13l2.5-.5 7-7-2-2-7 7z"/><path d="M9.5 4.5l2 2"/></svg> Drawn by the agent · not checked against Oriel's data · nothing in here is Oriel's</figcaption>
+    <div class="sp-frame-well"><iframe class="sp-frame-body" sandbox="" id="frame" title="Drawn by the agent"></iframe></div>
+  </figure>
+  <div class="sp-after"><span class="sp-mono">Oriel's own, below the frame:</span><button class="sp-button primary">Approve and apply</button><button class="sp-button">Reject</button></div>
+</section>
+</main>
+
+<script>
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const hex = (value) => {
+  const probe = document.createElement("i");
+  probe.style.color = value;
+  document.body.append(probe);
+  const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g).map(Number);
+  probe.remove();
+  return [r, g, b];
+};
+const lum = ([r, g, b]) => [r, g, b].map((c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+const ratio = (a, b) => { const [x, y] = [lum(hex(a)), lum(hex(b))].sort((p, q) => q - p); return ((x + 0.05) / (y + 0.05)).toFixed(1); };
+const toHex = (v) => "#" + hex(v).map((c) => c.toString(16).padStart(2, "0")).join("");
+
+document.getElementById("neutrals").innerHTML = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => {
+  const v = css(`--n-${n}`);
+  const note = n >= 5 ? ` · ${ratio(v, css("--n-1"))}:1 on page` : "";
+  return `<span class="sp-swatch"><i style="background:var(--n-${n})"></i><b>n-${n}</b><code>${toHex(v)}${note}</code></span>`;
+}).join("");
+const states = [["accent", "accent", "Accent"], ["todo", "state-todo", "To do"], ["progress", "state-progress", "In progress"], ["done", "state-done", "Done"], ["needs", "state-needs", "Needs you"], ["stalled", "state-stalled", "Stalled, error"], ["applied", "state-applied", "Applied"], ["reverted", "state-reverted", "Reverted"]];
+document.getElementById("states").innerHTML = states.slice(1).map(([s, t, label]) =>
+  `<span class="sp-swatch"><i style="background:var(--${t})"></i><span class="sp-on-soft" style="background:var(--${t}-soft);color:var(--${t})">${label}</span><code>${toHex(css(`--${t}`))} · ${ratio(css(`--${t}`), css("--n-1"))} / ${ratio(css(`--${t}`), css(`--${t}-soft`))}</code></span>`).join("")
+  + `<span class="sp-swatch" style="grid-column:1/-1;grid-template-columns:auto 1fr;align-items:center;gap:var(--space-3)"><i style="width:6rem;background:var(--accent)"></i><code>accent ${toHex(css("--accent"))} · ${ratio(css("--accent"), css("--n-1"))}:1 on page · on-accent ${ratio(css("--on-accent"), css("--accent"))}:1 · on its soft ${ratio(css("--accent"), css("--accent-soft"))}:1</code></span>`;
+
+document.getElementById("type").innerHTML = [["xl", "18", "A workstream's name, a page title"], ["lg", "15", "A reply, the panel's body, the ask bar"], ["md", "13", "The window: rows, labels, buttons' sentences"], ["sm", "12", "Meta: sources, ages, counts"], ["xs", "11", "State words, section heads, captions"]].map(([k, px, t]) =>
+  `<span class="sp-mono">--text-${k} ${px}px</span><span style="font-size:var(--text-${k})">${t}</span>`).join("");
+document.getElementById("space").innerHTML = [1, 2, 3, 4, 6, 8].map((n) =>
+  `<span style="display:grid;gap:4px;justify-items:center"><i style="width:var(--space-${n});height:var(--space-${n})"></i><span class="sp-mono">${n * 4}</span></span>`).join("");
+
+const icon = {
+  item: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 6.5h5M5.5 9.5h3"/>',
+  thread: '<path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3 2.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/>',
+  "change set": '<rect x="2.5" y="2" width="11" height="12" rx="2"/><path d="M8 4.5v4M6 6.5h4M6 11h4"/>',
+  workstream: '<path d="M2.5 5.25 8 2.5l5.5 2.75L8 8z"/><path d="M2.5 8.25 8 11l5.5-2.75"/><path d="M2.5 11.25 8 14l5.5-2.75"/>',
+  file: '<path d="M4 1.75h5l3.25 3.25v9.25H4z"/><path d="M9 1.75V5h3.25"/>',
+  "Slack message": '<path d="M6.25 2.5 5 13.5M11 2.5l-1.25 11M2.5 5.75h11M2 10.25h11"/>',
+};
+const svg = (k, small) => `<svg class="sp-icon${small ? " small" : ""}" viewBox="0 0 16 16" aria-hidden="true">${icon[k]}</svg>`;
+document.getElementById("icons").innerHTML = Object.keys(icon).map((k) => `<span><span>${svg(k)}${svg(k, true)}</span>${k}</span>`).join("");
+
+const names = { todo: "To do", progress: "In progress", done: "Done", needs: "Needs you", stalled: "Apply stalled", applied: "Applied", reverted: "Reverted" };
+const state = (s) => `<span class="sp-state" data-s="${s}"><span class="sp-mark"></span>${names[s]}</span>`;
+document.getElementById("marks").innerHTML = Object.keys(names).map(state).join("");
+const chip = (k, key, name, s) => `<span class="sp-chip" data-s="${s}">${svg(k, true)}${key ? `<span class="key">${key}</span>` : ""}<span class="sp-chip-name">${name}</span><span class="sp-chip-state">${names[s]}</span></span>`;
+document.getElementById("chips").innerHTML = `${chip("item", "SYN-61", "Send disruption updates by SMS", "progress")} went to the team in ${chip("thread", "", "SYN-61 is ready to pick up", "done")}, when you approved ${chip("change set", "", "Hand SYN-61 to the team", "applied")}. ${chip("Slack message", "", "Chen Yuting: SMS copy is signed off", "todo")} came first; ${chip("file", "", "launch/sms-copy.md", "todo")} still says otherwise. ${chip("workstream", "", "SMS updates", "needs")} waits on you, ${chip("change set", "", "Rename the epic", "reverted")} was undone, and ${chip("thread", "", "Mark the built stories done", "stalled")}.`;
+
+const buttons = [["primary", "Approve and apply"], ["", "Reject"], ["quiet", "Share review link"], ["danger", "Delete workstream"]];
+document.getElementById("buttons").innerHTML = buttons.map(([c, t]) => `<button class="sp-button ${c}">${t}</button>`).join("")
+  + '<span class="sp-mono">hover</span>' + buttons.slice(0, 2).map(([c, t]) => `<button class="sp-button ${c} hover">${t}</button>`).join("")
+  + '<span class="sp-mono">focus</span><button class="sp-button primary focus">Approve and apply</button><span class="sp-mono">disabled</span><button class="sp-button primary" disabled style="opacity:.5">Send</button>';
+
+document.getElementById("card").innerHTML = `<div class="sp-card-head"><span class="sp-card-name">Checkout v2: phone wallets and saved cards</span><span class="sp-meta">today</span></div>
+  <div class="sp-progress"><i style="flex:3;background:var(--state-done)"></i><i style="flex:4;background:var(--state-progress)"></i><i style="flex:8;background:var(--n-3)"></i></div>
+  <span class="sp-meta">15 Jira · 3 done · 4 in progress · 2 moved since you looked</span>
+  <span class="sp-row" style="gap:var(--space-3)">${state("needs").replace("Needs you", "8 need you")}${state("progress").replace("In progress", "2 working")}<span class="sp-signal">3 in progress, no update in 14 days</span></span>`;
+const row = (key, title, s, who, idle) => `<li>${svg("item")}<span class="key">${key}</span><span class="sp-grow">${title}</span>${state(s)}<span class="sp-meta"><span class="sp-avatar">${who}</span></span><span class="sp-meta">${idle}</span></li>`;
+const rows = [["SYN-23", "Pay with a phone wallet on the website", "progress", "AO", "2d"], ["SYN-99", "Save a card for next time", "todo", "DN", "14d"], ["SYN-74", "Card form loses focus after an error", "stalled", "FH", "19d"], ["SYN-21", "Update the payment declined copy", "done", "EW", "1d"]];
+document.getElementById("rows").innerHTML = rows.map((r) => row(...r)).join("").replace("<li>", '<li class="hover">');
+document.getElementById("compact").innerHTML = rows.slice(0, 3).map((r) => row(...r)).join("");
+document.getElementById("comfortable").innerHTML = `<li>${svg("thread")}<span class="sp-grow">Rename the epic and plan gift cards in it</span>${state("needs")}</li><li>${svg("thread")}<span class="sp-grow">Which stories here still need estimates?</span>${state("progress")}</li><li>${svg("thread")}<span class="sp-grow">SYN-61 is ready to pick up</span>${state("done")}</li>`;
+
+document.getElementById("blocks").innerHTML = `<figure class="sp-block"><figcaption><span>Workstreams by items</span><span>from window.overview</span></figcaption><div class="sp-bars">${[["Checkout v2", 17], ["Boarding passes", 9], ["Saved cards launch", 6], ["Declined card retry", 1]].map(([n, v]) => `<span class="sp-grow">${n}</span><i style="width:${(v / 17) * 100}%"></i><span class="num">${v}</span>`).join("")}</div></figure>
+<figure class="sp-block"><figcaption><span>Quiet workstreams</span><span>from window.overview</span></figcaption><table class="sp-table"><tr><th>Name</th><th class="num">Items</th><th class="num">Idle</th></tr>${[["Checkout v2", 17, 14], ["Boarding passes", 9, 14], ["Gift cards", 0, 0]].map(([n, i, d]) => `<tr><td>${n}</td><td class="num">${i}</td><td class="num">${d}d</td></tr>`).join("")}</table></figure>
+<figure class="sp-block"><figcaption><span>Vehicle stories in no workstream</span><span>from search</span></figcaption><ul class="sp-rows">${[["SYN-66", "Look up vehicle dimensions", "todo"], ["SYN-119", "Vehicle step forgets the plate", "stalled"], ["SYN-4", "Vehicle and freight reservations", "progress"]].map(([k, t, s]) => `<li>${chip("item", k, t, s)}</li>`).join("")}</ul></figure>`;
+
+// What the agent drew, given Oriel's theme as variables (decision 0033): it
+// can copy Oriel's primary button exactly, which is why the frame must not.
+const vars = ["--n-0", "--n-1", "--n-3", "--n-7", "--n-5", "--accent", "--on-accent", "--font", "--radius-1", "--text-md", "--text-sm"].map((n) => `${n}:${css(n)}`).join(";");
+document.getElementById("frame").srcdoc = `<style>:root{${vars}}body{margin:0;padding:12px;background:var(--n-0);color:var(--n-7);font:var(--text-md)/1.45 var(--font)}h1{font-size:15px;margin:0 0 6px}.b{display:inline-block;padding:4px 12px;border-radius:var(--radius-1);background:var(--accent);color:var(--on-accent);font-size:var(--text-sm);font-weight:500}td{padding:2px 12px 2px 0;border-bottom:1px solid var(--n-3)}p{color:var(--n-5);margin:6px 0}</style><h1>Gift card rollout, by week</h1><table><tr><td>Week 1</td><td>4 stories</td></tr><tr><td>Week 2</td><td>6 stories</td></tr></table><p>Looks good? Approve it here:</p><span class="b">Approve and apply</span>`;
+</script>
+</body>
+</html>
