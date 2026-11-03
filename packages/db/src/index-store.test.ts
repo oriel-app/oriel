@@ -79,6 +79,28 @@ test("a sync that changes nothing keeps the version", () => {
   assert.equal(sync([{ records: [record("10001", "SYN-1", "Checkout retries v2")] }]), 2);
 });
 
+// The overview, Browse and the Jira view each read every record on every
+// request, so the index reads them from the table once per write.
+test("records are read once per write to the index, and every reader shares them, frozen", () => {
+  const { index, workspaceId, sync, ids } = fresh();
+  sync([{ records: [record("10001", "SYN-1", "A", 3), record("10002", "SYN-2", "B")] }]);
+  const first = index.records(workspaceId, "jira", attrs);
+  const again = index.records(workspaceId, "jira", attrs);
+  assert.equal(again[0], first[0]);
+  assert.ok(Object.isFrozen(first[0]) && Object.isFrozen(first[0]?.attrs));
+  assert.throws(() => Object.assign(first[0] ?? {}, { title: "changed" }), TypeError);
+  first.reverse();
+  assert.deepEqual(ids(), ["jira:SYN-1", "jira:SYN-2"], "each reader's list is its own");
+  const run = index.beginSync(workspaceId, "jira", attrs, t1);
+  run.apply({ records: [record("10001", "SYN-1", "A, renamed", 3)], gone: ["10002"], cursor: "c" });
+  assert.deepEqual(
+    index.records(workspaceId, "jira", attrs).map((r) => [r.id, r.title]),
+    [["jira:SYN-1", "A, renamed"]],
+    "a page is read as soon as it lands",
+  );
+  run.finish("c", t1);
+});
+
 test("the sync time moves only when a sync finishes", () => {
   const { index, workspaceId, sync } = fresh();
   sync([{ records: [record("10001", "SYN-1", "A")] }], t0);

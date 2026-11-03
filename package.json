@@ -15,7 +15,8 @@
     "test": "node scripts/run-tests.ts",
     "dev": "pnpm --filter @oriel/web build && node packages/server/src/main.ts",
     "drive": "node scripts/drive.ts",
-    "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts"
+    "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
+    "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.5",

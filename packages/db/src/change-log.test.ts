@@ -195,3 +195,22 @@ test("once a prune empties the change log, what changes next is still unseen", (
     [later(101)],
   );
 });
+
+test("the change log is read once per write to the index, and every reader shares it, frozen", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([record("1", "SYN-1", { state: "todo" }), record("2", "SYN-2", { state: "todo" })], t0);
+  sync([record("1", "SYN-1", { state: "done" })], later(1));
+  const first = index.changes(workspaceId);
+  assert.equal(index.changes(workspaceId)[0], first[0]);
+  assert.ok(Object.isFrozen(first[0]) && Object.isFrozen(first[0]?.facets));
+  sync([record("2", "SYN-2", { state: "done" })], later(2));
+  assert.deepEqual(
+    index.changes(workspaceId).map((entry) => entry.stableId),
+    ["1", "2"],
+  );
+  assert.deepEqual(
+    index.changes(workspaceId, first[0]?.seq).map((entry) => entry.stableId),
+    ["2"],
+    "only what committed after the entry asked for",
+  );
+});
