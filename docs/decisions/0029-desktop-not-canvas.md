@@ -1,6 +1,6 @@
 # 0029 No canvas and no zoom; the desktop app is phase 2
 
-Accepted 2026-11-02. Supersedes 0005. Amends 0001, 0007 and 0027. Changes SPEC §1, §2, §3, §4, §6, §7, §8, §10, §13 and §14, AGENTS.md's checklist and the add-source skill.
+Accepted 2026-11-02. Supersedes 0005. Amends 0001, 0007 and 0027. Changes SPEC §1, §2, §3, §4, §6, §7, §8, §10, §13 and §14, AGENTS.md's checklist and the add-source skill. Amended by 0036, which settles its open questions: the shell, packaging and updates, the review link, whose model it uses, and the threat model.
 
 Adds: none
 

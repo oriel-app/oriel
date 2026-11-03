@@ -1,6 +1,6 @@
 # 0020 Model provider: API key first, a local harness later
 
-Accepted 2026-10-30.
+Accepted 2026-10-30. Amended by 0036: on the desktop app the local harness is the default provider, driving the person's own command-line agent on their subscription, found on their login shell's PATH or a path set in Settings; an API key is an option, kept in the OS keychain.
 
 Adds: none
 
