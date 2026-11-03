@@ -1,0 +1,11 @@
+{
+  "id": "compare-rebooking-stories",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Which is further along: rebooking in two taps, or keeping the original fare? Who has each?",
+  "expect": [
+    { "grader": "zero-mutations" },
+    { "grader": "mentions", "text": ["SYN-102", "SYN-45", "Chen Yuting", "Esme Whitlock"] }
+  ]
+}

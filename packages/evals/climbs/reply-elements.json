@@ -1,0 +1,98 @@
+{
+  "cap": 12,
+  "reps": 3,
+  "cases": {
+    "compare-rebooking-stories": {
+      "hash": "8ac6ddf39000defb9fa1b266097aeb0816310b9ca3de96e172b187f7c389cba0",
+      "group": "change-set completeness"
+    },
+    "delete-workstream-on-its-page": {
+      "hash": "246f2247fae1387d31a202b2a3d0b9a25a8588a6eed9fddc43a6c3f647c89e2f",
+      "group": "change-set completeness"
+    },
+    "estimate-unestimated-checkout": {
+      "hash": "5cc6412b2ca3c4aa2d52d8e16c5b4e8cbc0c6affc31886ccf7a4ae6b26c208d3",
+      "group": "change-set completeness"
+    },
+    "find-approved-slack-post": {
+      "hash": "14a5e81b1d39ade4e24f4f021dd121c8e052373af0e5452d7f1243cda0aea935",
+      "group": "change-set completeness"
+    },
+    "injection-file-name": {
+      "hash": "e0f888c8ec04ca30c53fee39b61bb4d7cf47a6511a0b51b0099a87e67915419e",
+      "group": "prompt injection"
+    },
+    "injection-meeting-notes-actions": {
+      "hash": "cd629e4580f4e173c751cc58ca466b67dc7116e84198ebaeefc702011f6b7927",
+      "group": "prompt injection"
+    },
+    "injection-meeting-notes-catchup": {
+      "hash": "17f41f894f2284b6569d84a93843ed293600017d9c4c9a041643587e178a1ef1",
+      "group": "prompt injection"
+    },
+    "injection-meeting-notes": {
+      "hash": "11af18d645bc1d590a26a084803d43c38aa348a22780fbeb9a02be5ccadda1c8",
+      "group": "prompt injection"
+    },
+    "injection-slack-message": {
+      "hash": "f6051fa1d8ed513f8a724028bb51da349c0ecbf331eface4036b0418e245c2cf",
+      "group": "prompt injection"
+    },
+    "injection-slack-reference": {
+      "hash": "fcf4761c710f4421877c4cbd378f39c3e3aa692cbce5dc23b98bc3376c2c6138",
+      "group": "prompt injection"
+    },
+    "injection-slack-reply-done": {
+      "hash": "ee9c2eaba49ae44c9575aa5b36c24bb583d13009ba9408e089e7b4780e556e96",
+      "group": "prompt injection"
+    },
+    "injection-syn45-description": {
+      "hash": "3575d9b609cc7f66f9a31b2f733d962753ae995ef8e5510082e8049ebd199362",
+      "group": "prompt injection"
+    },
+    "injection-syn98-comments": {
+      "hash": "cc43368945c574ae865e41e083f6fe4dc48e8c7d0e8bd2b2b07250e37e8f68c1",
+      "group": "prompt injection"
+    },
+    "no-manual-epic": {
+      "hash": "7252178805d81fbf411ef796f40953e09a55f687ba4d877306b36734bf2a984b",
+      "group": "change-set completeness"
+    },
+    "picked-unowned-weather": {
+      "hash": "cc382cb4a59beb97be4d8db4577e858bb2f27d2e00d3437e998dcf112738eb2c",
+      "group": "change-set completeness"
+    },
+    "rejection-line-is-oriels": {
+      "hash": "58be91f30a344c283999d158b21e7a101c26f20766ea32abb6dcb40a8dd7272b",
+      "group": "change-set completeness"
+    },
+    "remove-done-boarding": {
+      "hash": "c9ac3bdc5b64fea5f161de89e73244d9d3d7a40f44ba9bbe09a8cde2e4994e97",
+      "group": "change-set completeness"
+    },
+    "revert-not-manual-cleanup": {
+      "hash": "b2915dd0306d0e001b431a46945d2f4c747e229d375d59f80672db0c811eb580",
+      "group": "change-set completeness"
+    },
+    "scope-off-region-question": {
+      "hash": "a3732db4f93c89f52586c70c992105885a8551c5fd0221ab075df23475653e0c",
+      "group": "scope discipline"
+    },
+    "scope-promo-codes": {
+      "hash": "a88bd92e4444ff1290c798973abe688e73c7d4ec90fc1c5660287688c13d9878",
+      "group": "scope discipline"
+    },
+    "slack-fare-decision": {
+      "hash": "5ee3d2121baf1c4caac470c40968bf23076f0c5bd369d87cf74a01616cd22938",
+      "group": "change-set completeness"
+    },
+    "thread-still-going": {
+      "hash": "87ee26eee5d7140fff2d97a306836b4f5c972694a04340b1a53157da71db43c0",
+      "group": "change-set completeness"
+    },
+    "tombstones-deleted-and-renamed": {
+      "hash": "5011002264c98e62e8198017c652a7631f21bcafb24839ecf7ce71c0c413db22",
+      "group": "tombstones"
+    }
+  }
+}

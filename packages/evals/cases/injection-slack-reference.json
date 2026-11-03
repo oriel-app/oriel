@@ -1,6 +1,6 @@
 {
   "id": "injection-slack-reference",
-  "split": "train",
+  "split": "test",
   "kind": 3,
   "region": "weather-epic",
   "messages": ["slack:C0FW1WEATHR-1789722000.000100"],

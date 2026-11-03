@@ -1,6 +1,6 @@
 {
   "id": "rejection-line-is-oriels",
-  "split": "train",
+  "split": "test",
   "kind": 2,
   "region": "checkout-epic",
   "oriel": {

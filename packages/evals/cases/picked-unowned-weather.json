@@ -1,0 +1,8 @@
+{
+  "id": "picked-unowned-weather",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Which stories in this epic have nobody on them, and how far along are they?",
+  "expect": [{ "grader": "zero-mutations" }, { "grader": "mentions", "text": ["SYN-61", "SYN-117"] }]
+}

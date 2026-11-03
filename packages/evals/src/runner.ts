@@ -57,6 +57,7 @@ import {
   gradeZeroMutations,
 } from "./graders.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
+import { resolver, shown } from "./shown.ts";
 import { buildWorld, fixedId } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
@@ -109,7 +110,9 @@ export const caseResult = object({
   // absent outside one.
   group: optional(string),
   outcome: union(literal("pass"), literal("fail"), literal("error")),
-  grades: array(object({ grader: graderName, pass: boolean, detail: string })),
+  grades: array(
+    object({ grader: union(graderName, literal("refs")), pass: boolean, detail: string }),
+  ),
   error: nullable(string),
   // Why a case that finished in a live round saved no cassettes, so it won't
   // replay; null otherwise.
@@ -297,6 +300,23 @@ async function grade(
   transport: Fetch,
 ): Promise<Grade[]> {
   const grades: Grade[] = [];
+  // Spike (reply-elements): graders read the reply as the user would.
+  const seen = shown(
+    output.reply,
+    resolver({
+      fixture: options.fixture,
+      folder: options.folder ?? null,
+      slack: options.slack ?? null,
+      oriel: loaded.case.oriel,
+    }),
+  );
+  output = { ...output, reply: seen.text };
+  if (seen.refs)
+    grades.push({
+      grader: "refs",
+      pass: seen.unresolved.length === 0,
+      detail: `${seen.refs} references, unresolved: ${seen.unresolved.join(", ") || "none"}`,
+    });
   for (const expectation of loaded.case.expect) {
     if (expectation.grader === "exact-diff") {
       if (!loaded.golden) throw new Error(`${expectation.golden} was not loaded`);

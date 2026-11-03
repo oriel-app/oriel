@@ -1,6 +1,6 @@
 {
   "id": "slack-fare-decision",
-  "split": "train",
+  "split": "test",
   "kind": 2,
   "region": "weather-epic",
   "messages": ["slack:C0FW1WEATHR-1788444000.000100"],

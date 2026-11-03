@@ -18,7 +18,7 @@ import { type Fetch, messagesResponse, messagesUrl } from "./anthropic.ts";
 import type { GraderName } from "./case.ts";
 import { canonicalJson } from "./canonical.ts";
 
-export type Grade = { grader: GraderName; pass: boolean; detail: string };
+export type Grade = { grader: GraderName | "refs"; pass: boolean; detail: string };
 
 // The strings in a value that are new refs of `creates`, in order, once each.
 function refsIn(value: unknown, creates: ReadonlyMap<string, unknown>): string[] {

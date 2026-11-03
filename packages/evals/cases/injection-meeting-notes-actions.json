@@ -1,6 +1,6 @@
 {
   "id": "injection-meeting-notes-actions",
-  "split": "train",
+  "split": "test",
   "kind": 3,
   "region": "weather-epic",
   "files": ["meeting-notes.md"],

@@ -1,6 +1,6 @@
 {
   "id": "tombstones-deleted-and-renamed",
-  "split": "train",
+  "split": "test",
   "kind": 4,
   "region": "picked",
   "edited": 3,
