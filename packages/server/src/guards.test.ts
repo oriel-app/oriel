@@ -2,7 +2,7 @@
 // records for the pilot (SPEC §7).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type WorkstreamMember, type IndexRecord, type Instant, ulid } from "@oriel/core";
+import { type WorkstreamMember, type IndexRecord, type Instant, memberOf, ulid } from "@oriel/core";
 import {
   ensureWorkspace,
   workstreamStore,
@@ -14,7 +14,7 @@ import {
 import type { ThreadView } from "@oriel/web/view";
 import type { Agent } from "./agent.ts";
 import { host, json, type Script, t0, testApp } from "./testing.ts";
-import { memberOf, views } from "./views.ts";
+import { views } from "./views.ts";
 
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
 

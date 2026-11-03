@@ -106,6 +106,8 @@ export type World = {
   // A window chat's overview, as window.overview() reads it, with the items
   // it shows; absent for any other thread.
   overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
+  // The index as the case finds it: what a removal can give back.
+  records: readonly IndexRecord[];
   // Each region item as its source holds it, for the judge: a file with its
   // path and title, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -193,6 +195,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     reader,
     namespaces,
     items: itemDocs,
+    records,
     oriel: orielOf(input.oriel),
     ...(window ? { overview: async () => windowOverview(input, window, records) } : {}),
     async evidence() {

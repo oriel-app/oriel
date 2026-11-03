@@ -22,10 +22,12 @@ import {
   type ChangeSet,
   type Intent,
   type Instant,
+  memberOf,
   type MutationRecord,
   type Answered,
   planned,
   readKey,
+  removalForecast,
   type Run,
   type Sandbox,
   type Thread,
@@ -100,7 +102,7 @@ export const system: SystemUnderTest = agentSystem();
 
 async function turn(world: World, input: SystemInput, options: AgentSystemOptions) {
   const newId = counter(input.now);
-  const records = memoryRecords(newId, input.now);
+  const records = memoryRecords(newId, input.now, world);
   const answered = new Map<string, Answered>();
   const { region } = world;
   const thread: Thread = {
@@ -208,7 +210,7 @@ function counter(now: Instant): () => Ulid {
 
 // Runs and change sets in memory. As the change-set engine does, a capture
 // needs its run recorded first.
-function memoryRecords(newId: () => Ulid, now: Instant) {
+function memoryRecords(newId: () => Ulid, now: Instant, world: World) {
   const runs = new Set<Ulid>();
   const sets: CapturedMutation[][] = [];
   const calls: Intent[] = [];
@@ -223,6 +225,19 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
           applied: true as const,
           undo: null,
         }));
+      },
+      // As the server's dispatcher forecasts: a removal from the case's own
+      // workstream that takes what the index no longer has, through the same
+      // rule. Nothing else has a note.
+      async preview(_turn, intents) {
+        const { region, records } = world;
+        return intents.map(({ action, input }) => {
+          if (action !== "workstream.remove" || input["workstream"] !== region.workstreamId)
+            return null;
+          const items = Array.isArray(input["items"]) ? input["items"].map(String) : [];
+          const named = items.map((item) => memberOf(item, region.items, records));
+          return named.every((m) => m !== undefined) ? removalForecast(named, records) : null;
+        });
       },
     },
     runs: { record: (run: Run) => void runs.add(run.id) },

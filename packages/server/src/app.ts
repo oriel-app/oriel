@@ -647,6 +647,10 @@ export async function createApp(options: AppOptions): Promise<App> {
         if (!intents) throw new Error("Oriel's actions aren't ready yet");
         return intents.apply(turn, recorded);
       },
+      preview: (turn, recorded) => {
+        if (!intents) throw new Error("Oriel's actions aren't ready yet");
+        return intents.preview(turn, recorded);
+      },
     },
     runs: { record: (run, reads) => runs.record(run, reads) },
     limits: caps,

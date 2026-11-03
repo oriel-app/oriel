@@ -98,6 +98,15 @@ export function intentsOf(deps: IntentDeps) {
       }
       return lines;
     },
+    // What the dispatcher forecasts of each intent a run recorded, for the
+    // agent to read before the turn ends.
+    async preview(
+      turn: { thread: Thread },
+      intents: readonly Intent[],
+    ): Promise<(string | null)[]> {
+      const actor: Actor = { kind: "agent", threadId: turn.thread.id };
+      return intents.map((call) => deps.dispatch.forecast(call.action, call.input, actor));
+    },
   };
 }
 

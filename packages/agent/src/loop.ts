@@ -173,9 +173,13 @@ async function* turn(
     yield { kind: "run.finished", runId, result };
     yield* shown.ran(result);
     const replaced = proposed.ran(runId, result);
+    const notes =
+      result.outcome === "ok" && result.intents.length
+        ? await deps.actions.preview({ thread }, result.intents)
+        : [];
     return {
       callId: call.id,
-      content: runResultText(result, replaced.mutations, replaced.intents, shown.said),
+      content: runResultText(result, replaced.mutations, replaced.intents, shown.said, notes),
       isError: result.outcome !== "ok",
     };
   }

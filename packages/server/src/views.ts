@@ -8,6 +8,7 @@ import {
   type ChangeSets,
   type ChangeSetState,
   type Diff,
+  identity,
   type WorkstreamChange,
   type WorkstreamMember,
   type IndexRecord,
@@ -96,26 +97,6 @@ export function webUrl(location: string): string | null {
 }
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
-
-export const identity = (item: { id: string; stableId: string }) =>
-  `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
-
-// The member of a workstream a handle names. Through the index, by identity, so
-// an item that moved is found under its current handle; failing that, by the
-// handle the member was added with, if no live item has that member's
-// identity (it was deleted, or its key was reused by another item).
-export function memberOf(
-  handle: string,
-  held: readonly WorkstreamMember[],
-  records: readonly IndexRecord[],
-): WorkstreamMember | undefined {
-  const record = records.find((r) => r.id === handle);
-  const live = new Set(records.map(identity));
-  return (
-    (record && held.find((m) => identity(m) === identity(record))) ??
-    held.find((m) => m.id === handle && !live.has(identity(m)))
-  );
-}
 
 // What a diff field's value reads as: a person by name, an item by its key,
 // a link by its title. Blank text is empty.
@@ -230,13 +211,11 @@ export function views(deps: ViewDeps) {
   const lookup = () => {
     const records = deps.records();
     const byId = new Map(records.map((r) => [r.id, r]));
-    const byIdentity = new Map(
-      records.map((r) => [`${parseItemId(r.id)?.source}\u0000${r.stableId}`, r]),
-    );
+    const byIdentity = new Map(records.map((r) => [identity(r), r]));
     // By identity only: a handle another item has taken since names that
     // other item, not this one.
     const find = (member: WorkstreamMember): IndexRecord | undefined =>
-      byIdentity.get(`${parseItemId(member.id)?.source}\u0000${member.stableId}`);
+      byIdentity.get(identity(member));
     return { byId, find };
   };
 

@@ -17,6 +17,9 @@ import {
   type ChangeSets,
   type Cluster,
   type WorkstreamChange,
+  comesBack,
+  memberOf,
+  removalForecast,
   type WorkstreamMember,
   type WorkstreamOrigin,
   type IndexRecord,
@@ -32,7 +35,6 @@ import type { WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type FolderView, type GroupingId, isGroupingId, type JiraView } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
-import { identity, memberOf } from "./views.ts";
 
 // What a workstream made for a thread from nothing is called, until a change set
 // creates its epic and it takes that epic's name.
@@ -350,6 +352,21 @@ async function markDone(
   };
 }
 
+// The members a removal names, by identity: a moved item under its current
+// handle, and one the index no longer has under the handle the workstream
+// shows.
+function removing(deps: ActionDeps, id: Ulid, items: readonly string[]) {
+  const workstream = mustWorkstream(deps, id);
+  const held = deps.workstreams.region(workstream.id, workstream.version)?.items ?? [];
+  const records = deps.records();
+  const named = items.map((item) => {
+    const member = memberOf(item, held, records);
+    if (!member) throw new ActionError("invalid", `${item} isn't in this workstream`);
+    return member;
+  });
+  return { workstream, named, records };
+}
+
 const handlers = {
   "workstream.add": async ({ workstream: id, items }, actor, deps, cause) => {
     const workstream = mustWorkstream(deps, id);
@@ -376,16 +393,7 @@ const handlers = {
   },
 
   "workstream.remove": async ({ workstream: id, items }, actor, deps, cause) => {
-    const workstream = mustWorkstream(deps, id);
-    // By identity: a moved item is removed under its current handle, and
-    // one the index no longer has under the handle the workstream shows.
-    const held = deps.workstreams.region(workstream.id, workstream.version)?.items ?? [];
-    const records = deps.records();
-    const named = items.map((item) => {
-      const member = memberOf(item, held, records);
-      if (!member) throw new ActionError("invalid", `${item} isn't in this workstream`);
-      return member;
-    });
+    const { workstream, named, records } = removing(deps, id, items);
     // A change set still to apply in any of the workstream's threads would
     // stop partway without what it names (decision 0018), and a turn running
     // in another of them works in the workstream as it is.
@@ -405,10 +413,7 @@ const handlers = {
         );
     }
     const change = deps.workstreams.remove(workstream.id, named, cause, deps.now());
-    // Back under the handle the index has now; one it no longer has can't
-    // come back.
-    const live = new Map(records.map((record) => [identity(record), record.id]));
-    const back = (change?.removed ?? []).flatMap((member) => live.get(identity(member)) ?? []);
+    const { back } = comesBack(change?.removed ?? [], records);
     return {
       output: {},
       undo: back.length
@@ -895,6 +900,23 @@ const handlers = {
   },
 } satisfies { [N in ActionName]: Handler<N> };
 
+// What Oriel can tell whoever asked for a call, before it applies, of how it
+// would: a note, or null. A forecast only: the call still applies, or is
+// refused, as things are when it does. Only an action with something to say
+// has one.
+type Forecast<N extends ActionName> = (
+  input: ActionInput<N>,
+  actor: Actor,
+  deps: ActionDeps,
+) => string | null;
+
+const forecasts: { [N in ActionName]?: Forecast<N> } = {
+  "workstream.remove": ({ workstream, items }, _actor, deps) => {
+    const { named, records } = removing(deps, workstream, items);
+    return removalForecast(named, records);
+  },
+};
+
 // Why `actor` may not call the action, or null. A review-link holder may only
 // decide or dismiss the change set the link names, as the change set engine
 // checks. A change set acts only through what follows its apply, and a sync
@@ -928,6 +950,10 @@ export type Dispatch = {
     undoes?: Actor,
     via?: Ulid,
   ): Promise<{ undo: Call | null }>;
+  // The note a call's action forecasts, or null: none when the action has
+  // none to give, or the call would be refused or is malformed, which
+  // applying it says.
+  forecast(name: ActionName, input: unknown, actor: Actor): string | null;
 };
 
 // An action's input from what a request carried, checked as the dispatcher
@@ -983,9 +1009,19 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     if (outcome.changed) deps.publish(outcome.changed);
     return { ...(outcome.output as Output<typeof name>), undo: outcome.undo };
   };
+  const forecast = <N extends ActionName>(name: N, raw: unknown, actor: Actor): string | null => {
+    const ahead = forecasts[name] as Forecast<N> | undefined;
+    if (!ahead || refusal(name, actor) !== null) return null;
+    try {
+      return ahead(checked(name, raw as Fields<N>), actor, deps);
+    } catch (error) {
+      if (error instanceof ActionError) return null;
+      throw error;
+    }
+  };
   return Object.assign(
     <N extends ActionName>(name: N, input: ActionInput<N>, actor: Actor) =>
       untyped(name, input, actor),
-    { untyped },
+    { untyped, forecast },
   );
 }
