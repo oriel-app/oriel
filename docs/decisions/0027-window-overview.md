@@ -1,6 +1,6 @@
 # 0027 The window opens on an overview
 
-Accepted 2026-11-01. Changes SPEC §1, §2, §3, §4, §7, §8, §10, §12 and §13, and AGENTS.md's checklist. Amends 0018, 0024 and 0025. Amended by 0029: there is no canvas, so phase 2 is not the overview's cards placed by the user; Browse's zoom levels are a cluster row that opens to its items and an item that opens in the panel; and a model-written line on a workstream card falls under the summary-faithfulness eval. Amended by 0030: the window chat opens from an ask bar under the counts strip, not a standing right rail; answers carry blocks Oriel builds from a read's result, in any thread; a window chat's block can be pinned to the overview as a saved read; and in progress, by person, shows the top 10.
+Accepted 2026-11-01. Changes SPEC §1, §2, §3, §4, §7, §8, §10, §12 and §13, and AGENTS.md's checklist. Amends 0018, 0024 and 0025. Amended by 0029: there is no canvas, so phase 2 is not the overview's cards placed by the user; Browse's zoom levels are a cluster row that opens to its items and an item that opens in the panel; and a model-written line on a workstream card falls under the summary-faithfulness eval. Amended by 0030: the window chat opens from an ask bar under the counts strip, not a standing right rail; answers carry blocks Oriel builds from a read's result, in any thread; a block from an index read can be pinned to the overview as a saved read; and in progress, by person, shows the top 10.
 
 Adds: none
 

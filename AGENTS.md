@@ -26,7 +26,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 ## Hit every surface
 
-A change to items, threads or change sets is checked against: the overview (workstream cards, Not in a workstream yet, the window chat, pins), Browse under each grouping (epic, assignee, stuck, linked), workstream editing and the region-version marker, a cluster open and closed, the item panel, the right rail, the change-set diff, the review link, thread states (Needs you, the Done page), an eval fixture and a telemetry event.
+A change to items, threads or change sets is checked against: the overview (workstream cards, Not in a workstream yet, the window chat, pins), Browse under each grouping (epic, assignee, stuck, linked), workstream editing and the region-version marker, a cluster open and closed, the item panel, the right rail, the change-set diff, the review link, thread states (Needs you, the Done page), a thread's blocks, an eval fixture and a telemetry event.
 
 ## Dependencies
 
