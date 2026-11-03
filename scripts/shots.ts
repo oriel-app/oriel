@@ -24,13 +24,16 @@
 //
 // `pnpm shots --width 1440 panel-` takes only the scenes whose names
 // start with `panel-`, at 1440px wide; with neither, every scene at 1280px
-// and 390px, and the onboarding.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+// and 390px, and the onboarding. `--theme broadsheet` picks that theme in
+// each scene's settings, as the person would, and writes to
+// shots/broadsheet/; with none, the default theme, to shots/.
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
+import { defaultTheme, themeNames } from "../packages/web/themes.ts";
 import { type Instant, instant } from "../packages/core/src/ids.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
@@ -64,7 +67,7 @@ type Scene = {
   name: string;
   path: string;
   on?: Serving;
-  // A server of the scene's own, made afresh for each theme and width, as
+  // A server of the scene's own, made afresh for each scheme and width, as
   // the first run's are, whose state each shot moves.
   make?: () => Promise<Serving>;
   act?(page: Page): Promise<void>;
@@ -75,7 +78,17 @@ type Scene = {
   window?: true;
 };
 
-const out = new URL("../shots/", import.meta.url);
+const asked = parseArgs({
+  options: { width: { type: "string", multiple: true }, theme: { type: "string" } },
+  allowPositionals: true,
+});
+const theme = asked.values.theme ?? defaultTheme;
+const themes = themeNames(
+  readFileSync(new URL("../packages/web/assets/window.css", import.meta.url), "utf8"),
+);
+if (!themes.includes(theme)) throw new Error(`No theme is called ${theme}: ${themes.join(", ")}`);
+
+const out = new URL(theme === defaultTheme ? "../shots/" : `../shots/${theme}/`, import.meta.url);
 mkdirSync(out, { recursive: true });
 
 // What the scripted agent proposes when asked to plan: the checkout epic
@@ -2011,7 +2024,7 @@ const scenes: Scene[] = [
     },
   },
   // These last: the sidebar remembers them in the browser, and every
-  // scene of a width and theme shares one.
+  // scene of a width and scheme shares one.
   {
     // The latest done threads, opened at the foot of the sidebar.
     name: "sidebar-done",
@@ -2106,7 +2119,7 @@ const scenes: Scene[] = [
 ];
 
 // The desktop app's first run (decision 0038): each screen on a server of
-// its own, made afresh for each theme and width, since each shot moves it:
+// its own, made afresh for each scheme and width, since each shot moves it:
 // its stub Claude Code installed, signed in, or neither; Codex found or not;
 // SYN in memory as any Jira Cloud site; and the notes folder to pick.
 const firstRun =
@@ -2393,10 +2406,6 @@ scenes.push(
   },
 );
 
-const asked = parseArgs({
-  options: { width: { type: "string", multiple: true } },
-  allowPositionals: true,
-});
 const widths = asked.values.width?.map(Number) ?? [1280, 390];
 const picked = asked.positionals;
 for (const width of widths)
@@ -2406,17 +2415,17 @@ const onlyOnboarding = picked.length === 1 && picked[0] === "onboarding";
 for (const start of onlyOnboarding ? [] : picked)
   if (!scenes.some((scene) => scene.name.startsWith(start)))
     throw new Error(`No scene's name starts with ${start}`);
-const themes = ["light", "dark"] as const;
+const schemes = ["light", "dark"] as const;
 
 const browser = await chromium.launch({ channel: "chrome" });
 const problems: string[] = [];
 try {
-  for (const theme of themes) {
+  for (const scheme of schemes) {
     for (const width of widths) {
       const context = await browser.newContext({
         viewport: { width, height: width < 600 ? 844 : 800 },
         deviceScaleFactor: 2,
-        colorScheme: theme,
+        colorScheme: scheme,
         locale: "en-US",
         timezoneId: "UTC",
       });
@@ -2425,17 +2434,18 @@ try {
       page.on("console", (message) => {
         const expected = scene?.refused && message.text().includes(`status of ${scene.refused}`);
         if ((message.type() === "error" || message.type() === "warning") && !expected) {
-          problems.push(`${theme} ${width}: console ${message.type()}: ${message.text()}`);
+          problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
         }
       });
-      page.on("pageerror", (error) => problems.push(`${theme} ${width}: ${error.message}`));
+      page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
       for (scene of onlyOnboarding ? [] : scenes) {
         const { name } = scene;
         if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
         const on = scene.make ? await scene.make() : (scene.on ?? server);
+        if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
         await page.goto(new URL(scene.path, on.url).href);
         await scene.act?.(page);
-        const path = fileURLToPath(new URL(`${scene.name}-${theme}-${width}.png`, out));
+        const path = fileURLToPath(new URL(`${scene.name}-${scheme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: !scene.window, animations: "disabled" });
         // Leaving first cancels a held request quietly; aborting it logs.
         if (hung.length > 0) await page.goto("about:blank");
@@ -2446,7 +2456,8 @@ try {
       await context.close();
     }
   }
-  if (picked.length === 0 || onlyOnboarding) await onboarding();
+  // The onboarding's timed runs are the default theme's.
+  if ((picked.length === 0 || onlyOnboarding) && theme === defaultTheme) await onboarding();
 } finally {
   releaseAll();
   await browser.close();

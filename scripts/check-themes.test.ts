@@ -11,7 +11,9 @@ import {
   ruleProblems,
   themeColour,
   themeProblems,
+  type Vision,
 } from "./check-themes.ts";
+import { themeNames } from "../packages/web/themes.ts";
 
 const windowCss = readFileSync(
   new URL("../packages/web/assets/window.css", import.meta.url),
@@ -40,8 +42,28 @@ ${block(dark, "    ")}
 `;
 };
 
-test("Graphite, the default theme, passes every rule in light and dark", () => {
+test("Graphite, the default theme, and Broadsheet pass every rule in light and dark", () => {
+  assert.deepEqual(themeNames(windowCss), ["graphite", "broadsheet"]);
   assert.deepEqual(themeProblems(windowCss), []);
+});
+
+test("Broadsheet's states stay apart, to everyone, by more than twice the floor", () => {
+  const at = (scheme: "light" | "dark", name: string) =>
+    themeColour(windowCss, "broadsheet", scheme, name);
+  const apart = (scheme: "light" | "dark", a: string, b: string, vision?: Vision) =>
+    twoDecimals(distance(at(scheme, a), at(scheme, b), vision));
+  // Its closest pair of states, then the closest under each simulation.
+  assert.equal(apart("light", "--in-progress", "--derived"), 21.53);
+  assert.equal(apart("dark", "--in-progress", "--derived"), 22.16);
+  assert.equal(apart("light", "--accent", "--done", "protanopia"), 11.18);
+  assert.equal(apart("dark", "--in-progress", "--derived", "protanopia"), 12.54);
+  assert.equal(apart("light", "--accent", "--danger", "deuteranopia"), 6.81);
+  assert.equal(apart("dark", "--accent", "--danger", "deuteranopia"), 10.49);
+  assert.equal(apart("light", "--in-progress", "--done", "tritanopia"), 8.03);
+  assert.equal(apart("dark", "--in-progress", "--done", "tritanopia"), 7.19);
+  // Its worst contrast in each scheme.
+  assert.equal(twoDecimals(contrast(at("light", "--done"), at("light", "--surface-hover"))), 4.99);
+  assert.equal(twoDecimals(contrast(at("dark", "--todo"), at("dark", "--todo-soft"))), 4.86);
 });
 
 test("the check reproduces the spike's numbers on Graphite, which is 1A's palette", () => {
