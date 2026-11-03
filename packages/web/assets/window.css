@@ -680,7 +680,12 @@ button.nav-disclose:hover {
   font-weight: var(--weight-medium);
 }
 
-.nav-waiting-on:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.nav-waiting-on:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   color: var(--accent);
 }
 
@@ -714,7 +719,12 @@ button.nav-disclose:hover {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.state-dot:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.state-dot:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   background: var(--accent);
 }
 
@@ -1122,7 +1132,12 @@ button.nav-more {
   color: var(--in-progress-text);
 }
 
-.state-chip:is([data-waiting="review"], [data-waiting="held"], [data-waiting="stalled"], [data-waiting="reply"]) {
+.state-chip:is(
+  [data-waiting="review"],
+  [data-waiting="held"],
+  [data-waiting="stalled"],
+  [data-waiting="reply"]
+) {
   background: var(--accent-soft);
   color: var(--accent);
 }
