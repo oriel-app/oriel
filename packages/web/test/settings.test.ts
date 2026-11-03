@@ -16,6 +16,7 @@ import {
   sendKey,
   sends,
   timeFormat,
+  afterApprove,
   updateSettings,
 } from "../src/settings.ts";
 import type { ProviderView, SettingsView } from "../src/view.ts";
@@ -48,6 +49,7 @@ const view: SettingsView = {
   askBeforeQuitting: true,
   asksBeforeQuitting: false,
   timeFormat: "relative",
+  afterApprove: "stay",
 };
 const loaded: SettingsModel = { ...initSettings(), view };
 const replied = (tag: Replied["tag"], ok: boolean, body: unknown): Replied => ({
@@ -254,6 +256,16 @@ test("the time format shows at once, and goes to the server", () => {
   });
   assert.equal(timeFormat(model), "absolute");
   assert.deepEqual(posts(effects), [["/api/settings", { timeFormat: "absolute" }]]);
+});
+
+test("where a thread's page goes after an approval shows at once, and goes to the server", () => {
+  assert.equal(afterApprove(initSettings()), "stay");
+  const [model, effects] = updateSettings(loaded, {
+    type: "changed",
+    change: { afterApprove: "next" },
+  });
+  assert.equal(afterApprove(model), "next");
+  assert.deepEqual(posts(effects), [["/api/settings", { afterApprove: "next" }]]);
 });
 
 test("the plan's usage loads with Settings and after Check again, and a failed load changes nothing", () => {

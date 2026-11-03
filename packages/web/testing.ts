@@ -15,6 +15,7 @@ import type {
   MemberView,
   OverviewView,
   SearchResultView,
+  SettingsView,
   ThreadSummaryView,
   ThreadView,
   WindowView,
@@ -138,6 +139,27 @@ export const diffView = (over: Partial<DiffView> = {}): DiffView => ({
   changeSetId,
   hash: "h",
   lines: [],
+  ...over,
+});
+
+export const settingsView = (over: Partial<SettingsView> = {}): SettingsView => ({
+  providers: [],
+  models: [],
+  model: null,
+  titleModel: null,
+  scripted: true,
+  cliPaths: false,
+  apiKeys: false,
+  theme: "graphite",
+  themes: ["graphite"],
+  textSize: "default",
+  send: "enter",
+  notify: true,
+  notifies: false,
+  askBeforeQuitting: true,
+  asksBeforeQuitting: false,
+  timeFormat: "relative",
+  afterApprove: "stay",
   ...over,
 });
 

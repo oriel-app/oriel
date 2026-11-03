@@ -814,6 +814,7 @@ export type SettingsView = {
   askBeforeQuitting: boolean;
   asksBeforeQuitting: boolean;
   timeFormat: TimeFormat;
+  afterApprove: AfterApprove;
 };
 
 // Today's use of one provider instance, counted by Oriel: thread turns, and
@@ -842,6 +843,11 @@ export type UsageView = {
 export const timeFormats = ["relative", "absolute"] as const;
 export type TimeFormat = (typeof timeFormats)[number];
 
+// Where a thread's page goes once the person approves one of its change
+// sets: it stays, or goes on to the next thread that needs them.
+export const afterApproves = ["stay", "next"] as const;
+export type AfterApprove = (typeof afterApproves)[number];
+
 // One change from the settings page, applied at once.
 export type SettingsChange =
   | { theme: string }
@@ -850,6 +856,7 @@ export type SettingsChange =
   | { notify: boolean }
   | { askBeforeQuitting: boolean }
   | { timeFormat: TimeFormat }
+  | { afterApprove: AfterApprove }
   | { model: ModelPick }
   | { titleModel: ModelPick }
   | { provider: string; on: boolean }

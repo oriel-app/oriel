@@ -1,13 +1,20 @@
 // Settings (OA-181): the person's providers, the default model and the Title
-// model, the theme, the text size, and which key sends a question. Each
-// change shows at once and goes to the server, which keeps it; there's no
+// model, the theme, the text size, which key sends a question, and where a
+// thread's page goes after an approval. Each change shows at once and goes to the server, which keeps it; there's no
 // Save. The look, theme and text size, is on the page's <html>, which the
 // server writes for the first paint and a change sets in place. An API key,
 // on the desktop app, goes to the OS secret store once Anthropic takes it;
 // the page forgets it once it's sent, and the server never sends it back.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import { defaultTimeFormat } from "./time.ts";
-import type { SendKey, SettingsChange, SettingsView, TimeFormat, UsageView } from "./view.ts";
+import type {
+  AfterApprove,
+  SendKey,
+  SettingsChange,
+  SettingsView,
+  TimeFormat,
+  UsageView,
+} from "./view.ts";
 
 export type SettingsModel = {
   // As the server has them, with any change not yet answered shown; null
@@ -75,6 +82,11 @@ export const sendKey = (model: SettingsModel): SendKey => model.view?.send ?? "e
 export const timeFormat = (model: SettingsModel): TimeFormat =>
   model.view?.timeFormat ?? defaultTimeFormat;
 
+// Where a thread's page goes once an approval there is accepted, before the
+// settings load too.
+export const afterApprove = (model: SettingsModel): AfterApprove =>
+  model.view?.afterApprove ?? "stay";
+
 // Whether a key pressed in a box for a question sends it.
 export function sends(
   event: {
@@ -106,6 +118,7 @@ function applied(view: SettingsView, change: SettingsChange): SettingsView {
   if ("askBeforeQuitting" in change)
     return { ...view, askBeforeQuitting: change.askBeforeQuitting };
   if ("timeFormat" in change) return { ...view, timeFormat: change.timeFormat };
+  if ("afterApprove" in change) return { ...view, afterApprove: change.afterApprove };
   if ("model" in change) return { ...view, model: change.model };
   if ("titleModel" in change) return { ...view, titleModel: change.titleModel };
   if ("on" in change)

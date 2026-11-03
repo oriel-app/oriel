@@ -6,7 +6,7 @@
 // keyboard's, and a stack that goes, as when a page swaps it for another,
 // lets go of both, since no leave event comes.
 import { useEffect, useRef } from "preact/hooks";
-import type { Dispatch } from "./parts.tsx";
+import { type Dispatch, Link } from "./parts.tsx";
 import {
   type Held,
   type Hold,
@@ -28,6 +28,8 @@ export function UndoStack(props: {
   notes: readonly UndoNote[];
   problem?: UndoProblem | null;
   onHold(by: Hold, held: boolean): void;
+  // For a note's link.
+  dispatch: Dispatch;
 }) {
   const { problem } = props;
   const shown = useRef<readonly string[]>([]);
@@ -90,8 +92,20 @@ export function UndoStack(props: {
     >
       {notes.map(({ onUndo, ...note }) => (
         <p class="undo" key={note.key}>
-          <span>{note.said}</span>
-          {onUndo ? (
+          <span>
+            {note.said}
+            {note.heard && <span class="visually-hidden"> {note.heard}</span>}
+          </span>
+          {note.link ? (
+            <Link
+              route={note.link.route}
+              dispatch={props.dispatch}
+              class="undo-action"
+              aria-label={note.link.label}
+            >
+              {note.link.text}
+            </Link>
+          ) : onUndo ? (
             <UndoButton
               label={note.label}
               disabled={note.disabled}

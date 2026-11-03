@@ -221,3 +221,14 @@ test("times are relative by default, absolute once picked, and anything else rea
   });
   assert.equal(settingsChange({ timeFormat: "sundial" }).ok, false);
 });
+
+test("an approval stays on its thread by default, goes on once picked, and anything else reads as staying", () => {
+  inFolder((path) => {
+    assert.equal(settingsFile(path, quiet).get().afterApprove, "stay");
+    settingsFile(path, quiet).set(changed(defaultSettings, { afterApprove: "next" }, []));
+    assert.equal(settingsFile(path, quiet).get().afterApprove, "next");
+    writeFileSync(path, JSON.stringify({ afterApprove: "elsewhere" }));
+    assert.equal(settingsFile(path, quiet).get().afterApprove, "stay");
+  });
+  assert.equal(settingsChange({ afterApprove: "elsewhere" }).ok, false);
+});

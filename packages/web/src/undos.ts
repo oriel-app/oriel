@@ -1,5 +1,6 @@
 // What every Undo note in the window's stack shares (OA-142): how long one
 // shows while the user isn't on the stack, and what holds it meanwhile.
+import type { Route } from "./route.ts";
 
 // A note in the stack (undo-stack.tsx): what was done, and its Undo.
 export type UndoNote = {
@@ -11,6 +12,10 @@ export type UndoNote = {
   onUndo: (() => void) | null;
   cannot?: string;
   disabled?: boolean;
+  // Read out after `said`, for a screen reader only.
+  heard?: string;
+  // A link in place of an Undo, as back to the thread a page moved on from.
+  link?: { text: string; label: string; route: Route };
 };
 
 // What last failed, said at the foot of the stack until dismissed.

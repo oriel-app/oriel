@@ -121,6 +121,7 @@ export function WindowUndos(props: { ending: EndingModel; more: Undos; dispatch:
       notes={[...ended.notes, ...props.more.notes]}
       problem={ended.problem ?? props.more.problem}
       onHold={holdUndos(props.dispatch)}
+      dispatch={props.dispatch}
     />
   );
 }
