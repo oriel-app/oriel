@@ -31,6 +31,8 @@ export type Tag =
   | { kind: "thread"; id: string; statuses?: number }
   | { kind: "sent"; threadId: string }
   | { kind: "threadAction"; threadId: string }
+  // `statuses`, as a thread's load has it.
+  | { kind: "synced"; threadId: string; statuses: number }
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "held"; threadId: string; seq: number }

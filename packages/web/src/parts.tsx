@@ -28,6 +28,7 @@ import type {
   TimeFormat,
   WaitingOn,
 } from "./view.ts";
+import { Tooltip } from "./tooltip.tsx";
 
 export type Dispatch = (msg: Msg) => void;
 
@@ -681,15 +682,16 @@ export function Member({
       )}
       {inRegion && <span class="in-region">in this workstream</span>}
       {onRemove && (
-        <button
-          type="button"
-          class="remove-member"
-          title={`Remove ${ref.key} from this workstream`}
-          aria-label={`Remove ${ref.key}`}
-          onClick={onRemove}
-        >
-          ×
-        </button>
+        <Tooltip text={`Remove ${ref.key} from this workstream`}>
+          <button
+            type="button"
+            class="remove-member"
+            aria-label={`Remove ${ref.key}`}
+            onClick={onRemove}
+          >
+            ×
+          </button>
+        </Tooltip>
       )}
     </li>
   );

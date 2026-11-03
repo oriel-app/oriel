@@ -873,6 +873,29 @@ const unend = async (page: Page) => {
   await page.locator(".workstream-actions").waitFor();
 };
 
+// A thread marked done on a server of its own, which Sync now catches up
+// with its workstream: each shot of it first leaves it behind again, by
+// adding SYN-3 to the workstream or taking it out.
+const syncing = (await writing()).serving;
+const syncedWorkstream = await post<{ id: string }>("/api/workstreams", checkout, syncing);
+const synced = await ask("What's in here?", syncing, syncedWorkstream.id);
+await post(`/api/threads/${synced}/done`, {}, syncing);
+const leftBehind = async (page: Page) => {
+  type Shown = {
+    regionVersion: number;
+    workstream: { version: number };
+    members: { ref: { key: string } }[];
+  };
+  const view = await call<Shown>(syncing, "GET", `/api/threads/${synced}`);
+  if (view.regionVersion === view.workstream.version) {
+    const has = view.members.some((member) => member.ref.key === "SYN-3");
+    const path = `/api/workstreams/${syncedWorkstream.id}/${has ? "remove" : "add"}`;
+    await post(path, { items: ["jira:SYN-3"] }, syncing);
+  }
+  await page.reload();
+  await page.locator(".sync-now").waitFor();
+};
+
 // A workstream on a server of its own, to add an item to from the panel,
 // then step away and back (OA-149).
 const revisiting = (await writing()).serving;
@@ -1901,6 +1924,46 @@ const scenes: Scene[] = [
     name: "thread-behind",
     path: `/threads/${answered}`,
     act: (page) => page.locator(".rail-note").waitFor(),
+  },
+  {
+    name: "thread-sync",
+    path: `/threads/${synced}`,
+    on: syncing,
+    act: async (page) => {
+      await leftBehind(page);
+      await page.getByRole("button", { name: "Sync this thread with its workstream" }).click();
+      await page.locator(".sync-now").waitFor({ state: "detached" });
+      await page.locator(".chat .marker").last().waitFor();
+    },
+  },
+  // A tooltip a moment after the pointer rests on its control, and one at
+  // once on the keyboard's focus, kept inside a phone's width.
+  {
+    name: "tooltip-hover",
+    path: `/threads/${synced}`,
+    on: syncing,
+    window: true,
+    act: async (page) => {
+      await leftBehind(page);
+      await page.locator(".sync-now").hover();
+      await page.locator(".tooltip:popover-open").waitFor();
+    },
+  },
+  {
+    name: "tooltip-focus",
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await openSidebar(page);
+      // The drawer, once open, focuses its first link.
+      if ((page.viewportSize()?.width ?? 0) <= 760)
+        await page.locator("#sidebar a:focus").waitFor();
+      // New thread, near the window's edge, with a long tooltip, focused
+      // as from the keyboard: a key pressed since the last click.
+      await page.keyboard.press("Shift");
+      await page.locator(".sidebar .sidebar-new").focus();
+      await page.locator(".tooltip:popover-open").waitFor();
+    },
   },
   {
     name: "workstream-actions",

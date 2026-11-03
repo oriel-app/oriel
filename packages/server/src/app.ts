@@ -913,7 +913,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       }
       conversation.acted(
         "thread" in changed
-          ? { thread: changed.thread, chat: changed.chat === true, workstream: null, moves: [] }
+          ? {
+              thread: changed.thread,
+              chat: changed.chat === true,
+              workstream: null,
+              moves: changed.moved ? [changed.moved] : [],
+            }
           : {
               thread: null,
               workstream: changed.workstream,

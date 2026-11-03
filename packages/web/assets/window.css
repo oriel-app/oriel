@@ -3457,6 +3457,41 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
+/* Behind its workstream: a short line, and Sync now right after its last
+   word, which it never leaves. */
+.rail-note-end {
+  white-space: nowrap;
+}
+
+.sync-now {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.25rem 0 -0.25rem var(--space-1);
+  padding: 0;
+  vertical-align: middle;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sync-now:hover:not([aria-disabled]) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sync-now[aria-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sync-now[aria-busy] .icon {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .members.compact {
   border: 0;
   background: none;
@@ -3817,6 +3852,25 @@ a.replies:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--text);
+}
+
+/* A control's tooltip: in the top layer, above the control or below it,
+   placed by the window. The pointer passes through it to what's under it. */
+.tooltip {
+  position: fixed;
+  inset: auto;
+  max-width: min(18rem, calc(100vw - 2 * var(--space-2)));
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .context-menu-item {
@@ -5394,6 +5448,7 @@ button.overview-title:hover {
 
   .state-dot:is([data-waiting="agent"], [data-waiting="apply"]),
   .working .working-dot,
+  .sync-now[aria-busy] .icon,
   .spinner,
   .cli-bar {
     animation: none;

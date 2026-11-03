@@ -23,6 +23,7 @@ import { safeHref } from "./route.ts";
 import { when } from "./time.ts";
 import { UndoButton } from "./undo-stack.tsx";
 import type { ItemPanelView, PanelBlock, PanelInline, PanelMessage } from "./view.ts";
+import { Tooltip } from "./tooltip.tsx";
 
 export function ItemPanel(props: {
   model: PanelModel;
@@ -83,43 +84,46 @@ export function ItemPanel(props: {
     >
       {place && (
         <nav class="panel-steps" aria-label="This list's items" ref={steps}>
-          <button
-            type="button"
-            class="panel-step"
-            aria-label="Previous item"
-            title="Previous (↑)"
-            disabled={place.index === 0}
-            onClick={() => step(-1)}
-          >
-            <StepIcon up />
-          </button>
+          <Tooltip text="Previous (↑)">
+            <button
+              type="button"
+              class="panel-step"
+              aria-label="Previous item"
+              disabled={place.index === 0}
+              onClick={() => step(-1)}
+            >
+              <StepIcon up />
+            </button>
+          </Tooltip>
           <span class="panel-place">
             {place.index + 1} of {place.count}
           </span>
-          <button
-            type="button"
-            class="panel-step"
-            aria-label="Next item"
-            title="Next (↓)"
-            disabled={place.index === place.count - 1}
-            onClick={() => step(1)}
-          >
-            <StepIcon />
-          </button>
+          <Tooltip text="Next (↓)">
+            <button
+              type="button"
+              class="panel-step"
+              aria-label="Next item"
+              disabled={place.index === place.count - 1}
+              onClick={() => step(1)}
+            >
+              <StepIcon />
+            </button>
+          </Tooltip>
         </nav>
       )}
       <Fragment key={model.id}>
         <header class="panel-head">
           <p class="panel-source">{shown ? `${shown.source} · ${keyLabel(shown)}` : "Item"}</p>
-          <button
-            type="button"
-            class="panel-close"
-            aria-label="Close the panel"
-            title="Close (Esc)"
-            onClick={() => dispatch({ type: "panelClosed" })}
-          >
-            ×
-          </button>
+          <Tooltip text="Close (Esc)">
+            <button
+              type="button"
+              class="panel-close"
+              aria-label="Close the panel"
+              onClick={() => dispatch({ type: "panelClosed" })}
+            >
+              ×
+            </button>
+          </Tooltip>
           <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
             {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
           </h2>
@@ -200,21 +204,22 @@ function AddTo(props: {
   return (
     <>
       {said === null ? (
-        <button
-          type="button"
-          class="button panel-add"
-          title={`Add to “${workstream.name}”`}
-          disabled={add?.pending != null}
-          onClick={() =>
-            send({
-              type: "addClicked",
-              item: { id: view.id, key: itemName(view) },
-              workstream: { id: workstream.id, name: workstream.name },
-            })
-          }
-        >
-          Add to workstream
-        </button>
+        <Tooltip text={`Add to “${workstream.name}”`}>
+          <button
+            type="button"
+            class="button panel-add"
+            disabled={add?.pending != null}
+            onClick={() =>
+              send({
+                type: "addClicked",
+                item: { id: view.id, key: itemName(view) },
+                workstream: { id: workstream.id, name: workstream.name },
+              })
+            }
+          >
+            Add to workstream
+          </button>
+        </Tooltip>
       ) : (
         <p class="panel-added" role="status">
           <span>{said}</span>
