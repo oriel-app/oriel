@@ -3,6 +3,7 @@
 // sends requests over HTTPS behind a `Credential`; a cassette replays recorded
 // ones; an MCP-backed implementation could answer the same requests without
 // touching either. Only `@oriel/jira/writer` exports `restTransport`.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as wait } from "node:timers/promises";
 import { type Credential, requestMs, retryMs, SourceRefused, type WriteLimit } from "@oriel/core";
 
@@ -13,8 +14,7 @@ export type JiraRequest = {
   body?: unknown;
 };
 export type JiraResponse = { status: number; body: unknown };
-// A writer's requests keep within its write's limit.
-export type Transport = (request: JiraRequest, limit?: WriteLimit) => Promise<JiraResponse>;
+export type Transport = (request: JiraRequest) => Promise<JiraResponse>;
 
 // What the read side sends: GETs, and the search Jira only takes as a POST.
 export const searchPath = "/rest/api/3/search/jql";
@@ -43,6 +43,15 @@ export type RestOptions = {
 
 const maxAttempts = 5;
 
+// The limit of the write a request is made for, if it is made for one:
+// whatever makes it, the writer or the boards it shares with the source.
+const writeLimits = new AsyncLocalStorage<WriteLimit>();
+
+// Runs a write with every request made for it, however deep, held to `limit`.
+export function withinLimit<T>(limit: WriteLimit | undefined, write: () => Promise<T>): Promise<T> {
+  return limit ? writeLimits.run(limit, write) : write();
+}
+
 // A site as an https origin with no trailing slash, or a RangeError.
 export function siteOrigin(site: string): string {
   const url = URL.canParse(site) ? new URL(site) : null;
@@ -59,7 +68,8 @@ export function restTransport(options: RestOptions): Transport {
   const pause = options.wait ?? wait;
   const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  return async (request, limit) => {
+  return async (request) => {
+    const limit = writeLimits.getStore();
     // "/rest/" keeps a path from naming another host ("//host") or escaping the API.
     if (!request.path.startsWith("/rest/")) throw new RangeError("Jira paths start with /rest/");
     const url = new URL(request.path, site);

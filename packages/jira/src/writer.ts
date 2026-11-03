@@ -7,7 +7,6 @@
 // (plain text), "points", "assignee" (an account ID), "epic" (an item ID),
 // "status" (its name in the item's workflow), and "link:<linkId>" ({ url, title }, or null when there is no such link). A
 // create has no before values and a delete no after values.
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
   array,
   boolean,
@@ -24,7 +23,6 @@ import {
   string,
   unknown,
   type Validator,
-  type WriteLimit,
   type WriteResult,
   WriteStalled,
 } from "@oriel/core";
@@ -51,6 +49,7 @@ import {
   type JiraResponse,
   readOnly,
   type Transport,
+  withinLimit,
 } from "./transport.ts";
 
 // Only this entry hands out a transport that can write.
@@ -109,13 +108,8 @@ const valid = <T>(validate: Validator<T>, args: unknown, op: string): T => {
   throw new Error(`${op}: bad arguments (${where})`);
 };
 
-// The limit of the write `apply` is making, for every request made for it,
-// however deep in the writer.
-const limits = new AsyncLocalStorage<WriteLimit | undefined>();
-
 export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
-  const { log } = options;
-  const transport: Transport = (request) => options.transport(request, limits.getStore());
+  const { transport, log } = options;
   if (!projectKey.test(options.project)) throw new RangeError("expected a project key, like SYN");
 
   // Each write is one request, its `send`. A 4xx to it is Jira refusing it,
@@ -441,7 +435,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     // A target must come with the stable ID it is expected to have, and a
     // create with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }, limit) =>
-      limits.run(limit, async () => {
+      withinLimit(limit, async () => {
         const { send, state } = sender();
         try {
           if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);

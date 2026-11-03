@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WriteStalled } from "@oriel/core";
 import { type Exchange, recording, replay } from "./cassette.ts";
-import { basicAuth, readOnly, restTransport, type Transport } from "./transport.ts";
+import { basicAuth, readOnly, restTransport, type Transport, withinLimit } from "./transport.ts";
 
 const site = "https://oriel.atlassian.net";
 
@@ -115,13 +115,13 @@ test("a write's requests keep within its limit, and a Retry-After past it stalls
     timeout: c.timeout,
   });
   // Asked to wait 10 s with 120 s left, it waits, then goes again.
-  assert.equal((await write(put, c.limit)).status, 200);
+  assert.equal((await withinLimit(c.limit, () => write(put))).status, 200);
   assert.deepEqual([c.waits, c.timeouts], [[10_000], [30_000, 30_000]]);
   // With 20 s left, a request gets 20 s, not its own 30.
   c.time.now = 100_000;
   const second = fetchFrom(json({ ok: true }));
   const late = restTransport({ site, credential, fetch: second.fetch, timeout: c.timeout });
-  assert.equal((await late(put, c.limit)).status, 200);
+  assert.equal((await withinLimit(c.limit, () => late(put))).status, 200);
   assert.equal(c.timeouts.at(-1), 20_000);
   // Asked to wait 600 s, it stalls at once: no wait, and nothing sent again.
   c.time.now = 0;
@@ -134,7 +134,7 @@ test("a write's requests keep within its limit, and a Retry-After past it stalls
     timeout: c.timeout,
   });
   await assert.rejects(
-    stalled(put, c.limit),
+    withinLimit(c.limit, () => stalled(put)),
     (error) => error instanceof WriteStalled && /wait 600 seconds/.test(error.message),
   );
   assert.deepEqual([third.sent.length, c.waits], [1, [10_000]]);
@@ -142,7 +142,10 @@ test("a write's requests keep within its limit, and a Retry-After past it stalls
   c.time.now = 120_000;
   const fourth = fetchFrom(json({ ok: true }));
   const over = restTransport({ site, credential, fetch: fourth.fetch, timeout: c.timeout });
-  await assert.rejects(over(put, c.limit), WriteStalled);
+  await assert.rejects(
+    withinLimit(c.limit, () => over(put)),
+    WriteStalled,
+  );
   assert.equal(fourth.sent.length, 0);
   // A read for no write keeps its own timeout, and any Retry-After.
   const fifth = fetchFrom(json({}, 429, { "Retry-After": "600" }), json({ ok: true }));
@@ -180,7 +183,9 @@ test("a hung request is given up on when its write's time runs out", async () =>
     fetch: hung,
     timeout,
   });
-  const sending = write({ method: "POST", path: "/rest/api/3/issue", body: {} }, c.limit);
+  const sending = withinLimit(c.limit, () =>
+    write({ method: "POST", path: "/rest/api/3/issue", body: {} }),
+  );
   await sent.promise;
   assert.deepEqual(c.timeouts, [20_000]);
   // Its 20 s run out.

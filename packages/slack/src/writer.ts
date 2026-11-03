@@ -15,7 +15,6 @@
 // reply) and "updated" (the latest of its message, its replies and their
 // edits, so a reply or an edit since moves it). A post has no before values
 // and a deleted message no after values.
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
   type FieldValues,
   type ItemId,
@@ -26,11 +25,17 @@ import {
   SourceRefused,
   type SourceWriter,
   string,
-  type WriteLimit,
   type WriteResult,
   WriteStalled,
 } from "@oriel/core";
-import { methodsApi, readMethods, type SlackApi, SlackError, type WebApiOptions } from "./api.ts";
+import {
+  methodsApi,
+  readMethods,
+  type SlackApi,
+  SlackError,
+  type WebApiOptions,
+  withinLimit,
+} from "./api.ts";
 import { slackTitle } from "./attrs.ts";
 import {
   escapeText,
@@ -85,13 +90,8 @@ const refusals: Record<string, string> = {
 
 const reply = (ts: string) => `reply:${ts}`;
 
-// The limit of the write `apply` is making, for every call made for it,
-// however deep in the writer.
-const limits = new AsyncLocalStorage<WriteLimit | undefined>();
-
 export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> {
-  const { log } = options;
-  const api: WriterApi = (method, params) => options.api(method, params, limits.getStore());
+  const { api, log } = options;
   const allowed = new Set(options.channels);
 
   // Who the token is for, asked once it answers.
@@ -304,7 +304,7 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     // A target must come with the stable ID it is expected to have, and a
     // post with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }, limit) =>
-      limits.run(limit, async () => {
+      withinLimit(limit, async () => {
         const state = { sent: false };
         // The one request that writes. Slack refusing it made no change.
         const send: Send = async (method, params) => {

@@ -150,7 +150,7 @@ export const sendLeaseMs = 5 * 60 * 1000;
 // How long a write may take, every request of it and every wait between, by
 // when it gives up, unanswered or unsent: well inside a send's lease, so the
 // apply ends, and with it Try again and Dismiss show, before the window
-// would see it stalled, and no request of it is still going after (OA-172).
+// would see it stalled, and no send of it is still going after (OA-172).
 export const writeLimitMs = 2 * 60 * 1000;
 // A send's mark ends with when it was sent.
 const sendMark = / \(sent (\S+)\)$/;

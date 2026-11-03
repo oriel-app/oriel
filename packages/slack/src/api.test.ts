@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WriteStalled } from "@oriel/core";
-import { bearer, type ReadMethod, SlackError, webApi } from "./api.ts";
+import { bearer, type ReadMethod, SlackError, webApi, withinLimit } from "./api.ts";
 
 type Sent = { url: string; headers: Record<string, string>; body: string };
 
@@ -86,14 +86,14 @@ test("a write's call gets only what is left of it, and a Retry-After past that s
     json({ ok: true, messages: [] }),
   ]);
   const api = webApi({ ...options, fetch: first.send });
-  await api("conversations.history", { channel: "C0A" }, limit);
+  await withinLimit(limit, () => api("conversations.history", { channel: "C0A" }));
   // It waited 60 s, Slack's 100 capped, and went again with 60 s left.
   assert.deepEqual([waits, timeouts], [[60_000], [30_000, 30_000]]);
   time.now = 110_000;
   const second = fakeFetch([new Response("", { status: 429, headers: { "Retry-After": "30" } })]);
   const later = webApi({ ...options, fetch: second.send });
   await assert.rejects(
-    later("conversations.history", { channel: "C0A" }, limit),
+    withinLimit(limit, () => later("conversations.history", { channel: "C0A" })),
     (error) => error instanceof WriteStalled && /wait 30 seconds/.test(error.message),
   );
   assert.deepEqual([timeouts.at(-1), waits.length, second.sent.length], [10_000, 1, 1]);

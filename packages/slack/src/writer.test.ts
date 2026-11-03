@@ -6,9 +6,7 @@ import {
   SourceRefused,
   type SourceWriter,
   ulid,
-  type WriteLimit,
   type WriteRequest,
-  WriteStalled,
 } from "@oriel/core";
 import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
 import { fixtureApi } from "./fixture.ts";
@@ -203,27 +201,31 @@ test("Slack refusing a write made no change, and says why in words", async () =>
 
 test("every call of a write keeps within its limit, and a stalled post itself sent nothing", async () => {
   const workspace = fixtureApi(fixture);
-  const given: (WriteLimit | undefined)[] = [];
-  const api = writeApi({ credential: { headers: async () => ({}) }, fetch: workspace.fetch });
+  const asked: number[] = [];
   const writer = slackWriter({
-    api: (method, params, limit) => {
-      given.push(limit);
-      if (method === "chat.postMessage")
-        throw new WriteStalled("Slack asked Oriel to wait 600 seconds");
-      return api(method, params);
-    },
+    api: writeApi({
+      credential: { headers: async () => ({}) },
+      // Slack asks for the post to wait ten minutes.
+      fetch: async (input, init) =>
+        String(input).endsWith("/chat.postMessage")
+          ? new Response("", { status: 429, headers: { "Retry-After": "600" } })
+          : workspace.fetch(input, init),
+      timeout: (ms) => {
+        asked.push(ms);
+        return new AbortController().signal;
+      },
+    }),
     channels: [weather],
     log: () => {},
   });
-  const limit = { left: () => 60_000 };
   await assert.rejects(
-    writer.apply(
-      request("postMessage", null, { channel: weather, text: "Hi", author: amara }),
-      limit,
-    ),
+    writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara }), {
+      left: () => 20_000,
+    }),
     refused(false, /wait 600 seconds/),
   );
-  assert.ok(given.length > 1 && given.every((each) => each === limit));
+  // Who the token is for, then the post: each had 20 s.
+  assert.ok(asked.length > 1 && asked.every((ms) => ms === 20_000));
 });
 
 test("a conversation reads as the source reads it: mentions named, as the window titles it", async () => {

@@ -4,6 +4,7 @@
 // The source's is read methods only, checked at run time too, so a cast
 // can't send a write (decision 0021); only `@oriel/slack/writer` hands out one
 // that posts.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as wait } from "node:timers/promises";
 import {
   boolean,
@@ -28,11 +29,10 @@ export type ReadMethod = (typeof readMethods)[number];
 
 // One call: its method and its arguments as form fields. Resolves to the
 // reply's body when Slack says `ok`, and throws a `SlackError` when it
-// doesn't. A writer's calls keep within its write's limit.
+// doesn't.
 export type SlackApi<M extends string = ReadMethod> = (
   method: M,
   params: Record<string, string>,
-  limit?: WriteLimit,
 ) => Promise<unknown>;
 
 // What Slack said instead of `ok`, by its error code, such as
@@ -63,6 +63,14 @@ export type WebApiOptions = {
 };
 
 const maxAttempts = 5;
+
+// The limit of the write a call is made for, if it is made for one.
+const writeLimits = new AsyncLocalStorage<WriteLimit>();
+
+// Runs a write with every call made for it, however deep, held to `limit`.
+export function withinLimit<T>(limit: WriteLimit | undefined, write: () => Promise<T>): Promise<T> {
+  return limit ? writeLimits.run(limit, write) : write();
+}
 const envelope = object({ ok: boolean, error: optional(string) });
 
 export function webApi(options: WebApiOptions): SlackApi {
@@ -80,7 +88,8 @@ export function methodsApi<M extends string>(
   const pause = options.wait ?? wait;
   const timeout = options.timeout ?? AbortSignal.timeout;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  return async (method, params, limit) => {
+  return async (method, params) => {
+    const limit = writeLimits.getStore();
     if (!methods.includes(method))
       throw new Error(`refusing a method ${side} doesn't use: ${method}`);
     for (let attempt = 1; ; attempt++) {
