@@ -123,8 +123,8 @@ html {
   --shadow: 0 2px 4px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.1);
 
   /* Motion: quick for a state, move for a place, and how a move settles. */
-  --duration-quick: var(--duration-quick);
-  --duration-move: var(--duration-move);
+  --duration-quick: 120ms;
+  --duration-move: 180ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -4735,6 +4735,7 @@ button.overview-title:hover {
   /* Workstream names and titles wrap rather than truncate, in every
      theme (decision 0034). */
   .overview-workstream-name,
+  .overview-headline-body,
   .overview-moved-items .overview-title,
   .overview-candidate .overview-title {
     overflow: visible;

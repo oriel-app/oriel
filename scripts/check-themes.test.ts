@@ -226,6 +226,30 @@ html {
     );
 });
 
+test("shared tokens on html write no literals either, and every token resolves", () => {
+  const css = `${windowCss}
+html {
+  color: #ff0000;
+  border-radius: 999px;
+}
+:root {
+  --duration-move: var(--duration-move);
+  --row-pad: var(--row-gap);
+}
+`;
+  const found = ruleProblems(css);
+  for (const expected of [
+    /: html has a literal colour in color: #ff0000$/,
+    /: html has a literal radius in border-radius: 999px$/,
+    /graphite, light: --duration-move: --duration-move names itself$/,
+    /graphite, dark: --row-pad: --row-gap has no value$/,
+  ])
+    assert.ok(
+      found.some((p) => expected.test(p)),
+      `${expected} in:\n${found.join("\n")}`,
+    );
+});
+
 test("a colour token derived from others needs no dark value of its own", () => {
   const css = withTheme(
     { "--surface-sunk": "color-mix(in srgb, var(--bg) 50%, var(--surface))", "--line": "#e0ded8" },

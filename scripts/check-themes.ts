@@ -505,12 +505,15 @@ export function ruleProblems(css: string): string[] {
       }
       continue;
     }
-    for (const { property, line } of block.rule.declarations) {
+    for (const { property, value, line } of block.rule.declarations) {
       if (block.theme === "") {
         if (themeSet.has(property))
           found.push(
             `window.css:${line}: html sets ${property}, a theme token; it belongs in a theme block`,
           );
+        const what = literal(property, value);
+        if (what !== null)
+          found.push(`window.css:${line}: html has ${what} in ${property}: ${value}`);
         continue;
       }
       if (!themeSet.has(property))
@@ -524,6 +527,18 @@ export function ruleProblems(css: string): string[] {
       names.add(property);
     }
   }
+  // Every token resolves in every theme and scheme: none names itself, or
+  // a token nothing sets.
+  for (const theme of themeNames(css))
+    for (const scheme of schemes) {
+      const values = tokens(css, theme, scheme);
+      for (const [name, value] of values)
+        try {
+          resolve(value, values, new Set([name]));
+        } catch (error) {
+          found.push(`window.css: ${theme}, ${scheme}: ${name}: ${(error as Error).message}`);
+        }
+    }
   const defaults = set.get(defaultTheme);
   for (const theme of themeNames(css)) {
     const own = set.get(theme);
