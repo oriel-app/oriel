@@ -35,6 +35,7 @@
 // Settings are kept in the data folder. Nothing but the channel to the shell goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { PassThrough } from "node:stream";
 import { parseArgs } from "node:util";
 import { basicAuth } from "@oriel/jira";
 import { bearer } from "@oriel/slack";
@@ -69,8 +70,24 @@ const { values, tokens } = parseArgs({
   },
   tokens: true,
 });
+// In Electron's utility process (the desktop-size spike), the channel's
+// lines are messages on the parent port, and "end" stands for stdin's end.
+type Port = {
+  on(event: "message", listener: (event: { data: unknown }) => void): unknown;
+  postMessage(message: unknown): void;
+};
+const parentPort = (process as unknown as { parentPort?: Port }).parentPort;
+const portInput = parentPort ? new PassThrough() : null;
+parentPort?.on("message", ({ data }) => {
+  if (typeof data === "string") portInput?.write(`${data}\n`);
+  else portInput?.end();
+});
 // Taken before anything can write, so the channel's first line is its own.
-const channelWrite = values.desktop ? takeStdout(process.stdout, process.stderr) : null;
+const channelWrite = !values.desktop
+  ? null
+  : parentPort
+    ? (line: string) => parentPort.postMessage(line.replace(/\n$/, ""))
+    : takeStdout(process.stdout, process.stderr);
 const flags = new Set(tokens.flatMap((token) => (token.kind === "option" ? [token.name] : [])));
 if (values.desktop && [...flags].some((flag) => flag !== "desktop" && flag !== "data")) {
   console.error("--desktop takes only --data");
@@ -127,7 +144,7 @@ if (channelWrite && values.data) {
   // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({
     data: values.data,
-    input: process.stdin,
+    input: portInput ?? process.stdin,
     write: channelWrite,
     log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
     signals: process,

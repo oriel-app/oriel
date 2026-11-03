@@ -221,14 +221,41 @@ function macShell(zip: string, build: string, icon: string): string {
   return app;
 }
 
+// What the desktop-size spike tries: the server on Electron's own Node, a
+// stripped Node, and leaving out what the app never reads.
+export type Slim = { ownNode: boolean; stripNode: boolean; prune: boolean };
+
+// The tsc libs the pre-run typecheck reads: es2024 and what it references.
+export const keptLib = (name: string) =>
+  !/^lib\..*\.d\.ts$/.test(name) ||
+  /^lib\.(es5|es20\d\d(\.[a-z]+)*|decorators(\.legacy)?)\.d\.ts$/.test(name);
+
+// Chromium's UI strings and the app's own, for English only.
+function pruneShell(app: string) {
+  for (const dir of [
+    join(app, "Contents/Resources"),
+    join(app, "Contents/Frameworks/Electron Framework.framework/Versions/A/Resources"),
+  ])
+    for (const name of readdirSync(dir))
+      if (name.endsWith(".lproj") && name !== "en.lproj")
+        rmSync(join(dir, name), { recursive: true });
+}
+
 // The server and what it runs on, under `resources`.
-function addServer(root: string, resources: string) {
+function addServer(root: string, resources: string, slim: Slim) {
   // The runtimes mise.toml pins, as mise installed them.
   const node = mise(root, "node");
   const deno = mise(root, "deno");
-  mkdirSync(join(resources, "node/bin"), { recursive: true });
-  cpSync(join(node, "bin/node"), join(resources, "node/bin/node"));
-  cpSync(join(node, "LICENSE"), join(resources, "node/LICENSE"));
+  if (!slim.ownNode) {
+    mkdirSync(join(resources, "node/bin"), { recursive: true });
+    cpSync(join(node, "bin/node"), join(resources, "node/bin/node"));
+    cpSync(join(node, "LICENSE"), join(resources, "node/LICENSE"));
+    // Stripping drops the signature, which Apple silicon needs to run it.
+    if (slim.stripNode) {
+      execFileSync("strip", ["-x", join(resources, "node/bin/node")], { stdio: "ignore" });
+      execFileSync("codesign", ["--force", "--sign", "-", join(resources, "node/bin/node")]);
+    }
+  }
   mkdirSync(join(resources, "deno"), { recursive: true });
   cpSync(join(deno, "bin/deno"), join(resources, "deno/deno"));
 
@@ -277,7 +304,18 @@ function addServer(root: string, resources: string) {
       throw new Error(`${next.dep} isn't installed; run pnpm install`);
     }
     copied.add(next.dep);
-    clone(found, join(server, "node_modules", next.dep));
+    const leaveOut = (path: string) =>
+      // The launcher's JS API, docs, and every tsc lib the typecheck never reads.
+      (next.dep === "typescript" && /^(dist|vendor)(\/|$)/.test(path)) ||
+      /^(README\.md|NOTICE\.txt)$/.test(path) ||
+      (next.dep.startsWith("@typescript/") && path.startsWith("lib/") && !keptLib(path.slice(4))) ||
+      (next.dep === "preact" && /^(src|debug|devtools|test-utils|compat)(\/|$)/.test(path)) ||
+      path.endsWith(".map");
+    clone(
+      found,
+      join(server, "node_modules", next.dep),
+      slim.prune ? (path) => !leaveOut(path) : undefined,
+    );
     const { dependencies = {}, optionalDependencies = {} } = manifest(found);
     for (const dep of Object.keys(dependencies))
       pending.push({ dep, from: found, optional: false });
@@ -288,7 +326,7 @@ function addServer(root: string, resources: string) {
   // Every module the server loads resolves inside the app.
   const serve = pathToFileURL(join(server, "packages/server/src/serve.ts")).href;
   execFileSync(
-    join(resources, "node/bin/node"),
+    slim.ownNode ? join(node, "bin/node") : join(resources, "node/bin/node"),
     ["--input-type=module", "-e", `await import(${JSON.stringify(serve)})`],
     { env: {}, stdio: "inherit" },
   );
@@ -300,6 +338,9 @@ if (import.meta.main) {
     options: {
       target: { type: "string", default: `${process.platform}-${process.arch}` },
       measure: { type: "boolean", default: false },
+      "own-node": { type: "boolean", default: false },
+      "strip-node": { type: "boolean", default: false },
+      prune: { type: "boolean", default: false },
     },
   });
   const on = target(...(values.target.split("-") as [string, string]));
@@ -318,7 +359,13 @@ if (import.meta.main) {
   const zip = await electronZip(join(desktop, "build/cache"), on);
   rmSync(build, { recursive: true, force: true });
   mkdirSync(build, { recursive: true });
+  const slim: Slim = {
+    ownNode: values["own-node"],
+    stripNode: values["strip-node"],
+    prune: values.prune,
+  };
   const app = macShell(zip, build, join(desktop, "icon.svg"));
+  if (slim.prune) pruneShell(app);
   const resources = join(app, "Contents/Resources");
 
   console.log("Compiling the shell…");
@@ -339,6 +386,7 @@ if (import.meta.main) {
         type: "module",
         main: "main.js",
         ...(values.measure ? { measure: true } : {}),
+        ...(slim.ownNode ? { ownNode: true } : {}),
       },
       null,
       2,
@@ -346,7 +394,7 @@ if (import.meta.main) {
   );
 
   console.log("Adding the server…");
-  const thirdParty = addServer(root, resources);
+  const thirdParty = addServer(root, resources, slim);
 
   console.log("Signing, ad hoc…");
   execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
@@ -360,7 +408,7 @@ if (import.meta.main) {
     `Built ${relative(root, app)} in ${((performance.now() - started) / 1000).toFixed(1)} s.`,
   );
   console.log(
-    `  ${mb(size(app))}: Electron ${mb(size(join(app, "Contents/Frameworks")))}, Node ${mb(size(join(resources, "node")))}, Deno ${mb(size(join(resources, "deno")))}, server ${mb(size(join(resources, "server")))} (third-party ${thirdParty.join(", ")})`,
+    `  ${mb(size(app))}: Electron ${mb(size(join(app, "Contents/Frameworks")))}, Node ${slim.ownNode ? "Electron's" : mb(size(join(resources, "node")))}, Deno ${mb(size(join(resources, "deno")))}, server ${mb(size(join(resources, "server")))} (third-party ${thirdParty.join(", ")})`,
   );
   console.log(
     `  fuses: ${Object.entries(fuses)

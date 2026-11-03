@@ -22,6 +22,7 @@
 //   0045). The server's stderr goes to the logs folder. If the server dies on
 //   its own, the window says so and offers Restart.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -43,6 +44,7 @@ import {
   safeStorage,
   session,
   shell,
+  utilityProcess,
   type WebContents,
 } from "electron";
 import {
@@ -328,12 +330,14 @@ function start() {
   void serverEnvironment().then((env) => {
     if (quitting || server) return;
     const secret = randomBytes(32).toString("hex");
-    const child = spawn(node, [main, "--desktop", "--data", where.data], {
-      cwd: where.data,
-      env,
-      detached: true,
-      stdio: ["pipe", "pipe", log >= 0 ? log : "ignore"],
-    }) as unknown as ChildProcessWithoutNullStreams;
+    const child = ownNode()
+      ? forkServer(env)
+      : (spawn(node, [main, "--desktop", "--data", where.data], {
+          cwd: where.data,
+          env,
+          detached: true,
+          stdio: ["pipe", "pipe", log >= 0 ? log : "ignore"],
+        }) as unknown as ChildProcessWithoutNullStreams);
     server = child;
     child.stdin.on("error", () => {});
     child.stdin.write(`${secret}\n`);
@@ -526,6 +530,48 @@ async function notify(title: string, body: string, open: string): Promise<null> 
     notice.show();
   });
   return null;
+}
+
+// MARK: The server on Electron's own Node (the desktop-size spike)
+
+// `pnpm desktop --own-node` marks the app's package.json: the server runs in
+// a utility process on Electron's Node, with the channel's lines as messages.
+function ownNode(): boolean {
+  const own = JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as {
+    ownNode?: boolean;
+  };
+  return own.ownNode === true;
+}
+
+// The utility process, in the shape the rest of the shell uses: stdin's
+// lines become messages, and so do stdout's; ending stdin sends "end".
+function forkServer(env: Record<string, string>): ChildProcessWithoutNullStreams {
+  const child = utilityProcess.fork(main, ["--desktop", "--data", where.data], {
+    cwd: where.data,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    serviceName: "Oriel Server",
+  });
+  const stdout = Object.assign(new EventEmitter(), { setEncoding: () => stdout });
+  const facade = Object.assign(new EventEmitter(), {
+    pid: undefined as number | undefined,
+    stdout,
+    stdin: Object.assign(new EventEmitter(), {
+      write: (text: string) => {
+        for (const line of text.split("\n").filter(Boolean)) child.postMessage(line);
+        return true;
+      },
+      end: () => child.postMessage({ end: true }),
+    }),
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (log >= 0) writeSync(log, chunk);
+  });
+  child.on("spawn", () => (facade.pid = child.pid));
+  child.on("message", (line: string) => stdout.emit("data", `${line}\n`));
+  child.on("exit", (code) => facade.emit("exit", code, null));
+  child.on("error", (type) => facade.emit("error", new Error(String(type))));
+  return facade as unknown as ChildProcessWithoutNullStreams;
 }
 
 // MARK: Measuring
