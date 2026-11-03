@@ -19,11 +19,13 @@
 // packages/server changes state only through the dispatcher, apart from the
 // three exempt below, which must be as the list says. What a route does
 // besides dispatching is its author's word: the check sees only whether it
-// dispatches.
+// dispatches. And window.css's themes pass decision 0034's rules
+// (check-themes.ts).
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
 import { sourceKinds } from "../packages/core/src/ids.ts";
+import { themeProblems } from "./check-themes.ts";
 
 // `name@version` keys from every top-level `packages:` block.
 export function lockedPackages(lockfile: string): string[] {
@@ -289,6 +291,7 @@ function readLink(path: string): string {
 if (import.meta.main) {
   const found = [
     ...actionProblems(actions),
+    ...themeProblems(readFileSync("packages/web/assets/window.css", "utf8")),
     ...problems({
       claudeLink: readLink("CLAUDE.md"),
       lockfile: readFileSync("pnpm-lock.yaml", "utf8"),
