@@ -3,17 +3,8 @@
 // with why, naming the workstream or thread it touched. Every action has its
 // words here, so one the registry gains can't show without them. An applied
 // one offers its Undo, through the one path every Undo takes; once the user
-// undid it, it says so and offers the call that does it again, if any; one
-// with no Undo, for a reason the user can't see, says why.
-import {
-  type ActionLine,
-  type ActionName,
-  cantComeBack,
-  listKeys,
-  parseItemId,
-  type Ulid,
-  undoGap,
-} from "@oriel/core";
+// undid it, it says so and offers the call that does it again, if any.
+import { type ActionLine, type ActionName, parseItemId, type Ulid } from "@oriel/core";
 import type { ActionLineView } from "@oriel/web/view";
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
@@ -23,10 +14,11 @@ const shown = 6;
 // done, the first few and how many more. What was done names every item: the
 // thread's marker for it folds into this line, which is then its record.
 function listed(value: unknown, every = false): string {
-  const ids = [...new Set(Array.isArray(value) ? value : [])].map(String);
-  if (ids.length > shown && !every)
-    return `${ids.slice(0, shown).map(keyOf).join(", ")} and ${ids.length - shown} more`;
-  return listKeys(ids);
+  const keys = [...new Set(Array.isArray(value) ? value : [])].map((id) => keyOf(String(id)));
+  if (keys.length > shown && !every)
+    return `${keys.slice(0, shown).join(", ")} and ${keys.length - shown} more`;
+  if (keys.length < 2) return keys.join("");
+  return `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
 }
 
 // As the workstream has it: a name is trimmed when it is given.
@@ -35,33 +27,12 @@ const quoted = (name: unknown) => `“${String(name).trim()}”`;
 // What each action did, then what it would have done, given its input, the
 // place it touched, and what its undo gives back: the items an add added,
 // none of those it already had, and a rename's name before, none when the
-// name was already that. Then, if any, a sentence on what the Undo can't
-// give back.
+// name was already that.
 type Words = (
   input: Record<string, unknown>,
   place: string,
   undo: Record<string, unknown> | null,
-) => [string, string, string?];
-
-// What a removal took that its Undo can't give back. The Undo, from
-// `comesBack`, adds each item back under the handle the index has now, which
-// is the one it was removed by, so what it leaves out is what the index no
-// longer has.
-function lost(input: Record<string, unknown>, undo: Record<string, unknown> | null): string[] {
-  const back = new Set(Array.isArray(undo?.["items"]) ? undo["items"].map(String) : []);
-  const removed = Array.isArray(input["items"]) ? input["items"].map(String) : [];
-  return [...new Set(removed)].filter((id) => !back.has(id));
-}
-
-// What an applied line's Undo can't give back, as the agent reads the line;
-// null when it gives back all of it, and for any other line.
-export function undoGapOf(line: ActionLine): string | null {
-  if (!line.applied || line.call.action !== "workstream.remove") return null;
-  const undo = line.undo ? (line.undo.input as Record<string, unknown>) : null;
-  const gone = lost(line.call.input, undo);
-  const back = Array.isArray(undo?.["items"]) ? undo["items"].map(String) : [];
-  return gone.length ? undoGap(back, gone) : null;
-}
+) => [string, string];
 
 const words: { [N in ActionName]: Words } = {
   "workstream.add": (input, place, undo) => [
@@ -70,16 +41,10 @@ const words: { [N in ActionName]: Words } = {
       : `Added nothing to ${place}: it already had ${listed(input["items"])}`,
     `add ${listed(input["items"])} to ${place}`,
   ],
-  "workstream.remove": (input, place, undo) => {
-    const gone = lost(input, undo);
-    // Named, unless the sentence before named only them.
-    const named = gone.length < new Set(Array.isArray(input["items"]) ? input["items"] : []).size;
-    return [
-      `Removed ${listed(input["items"], true)} from ${place}`,
-      `remove ${listed(input["items"])} from ${place}`,
-      gone.length ? cantComeBack(gone, named) : undefined,
-    ];
-  },
+  "workstream.remove": (input, place) => [
+    `Removed ${listed(input["items"], true)} from ${place}`,
+    `remove ${listed(input["items"])} from ${place}`,
+  ],
   "workstream.create": (input) => [
     `Made the workstream ${quoted(input["name"])} with ${listed(input["items"], true)}`,
     `make the workstream ${quoted(input["name"])}`,
@@ -142,12 +107,12 @@ export function actionLineView(
       ? quoted(touched.name)
       : `a ${touched.kind}`;
   const undo = line.applied && line.undo ? (line.undo.input as Record<string, unknown>) : null;
-  const [done, not, note] = words[call.action](call.input, place, undo);
+  const [done, not] = words[call.action](call.input, place, undo);
   const undone = line.applied && line.since?.undone === true;
   const offer = line.applied ? (line.since ? line.since.next : line.undo) : null;
   return {
     text: line.applied
-      ? `${done}${undone ? ", which you undid" : ""}.${note ? ` ${note}.` : ""}`
+      ? `${done}${undone ? ", which you undid" : ""}.`
       : `Didn't ${not}: ${line.why}.`,
     applied: line.applied,
     ...(undone ? { undone: true as const } : {}),

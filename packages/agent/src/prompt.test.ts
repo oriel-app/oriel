@@ -191,27 +191,3 @@ test("a run's result carries what its writes are and what to do when it fails", 
   assert.equal(failed(), "Failed at runtime: boom\nHint: fix the script and run it again.");
   assert.equal(failed("Check the ID."), "Failed at runtime: boom\nHint: Check the ID.");
 });
-
-test("Oriel's note on how an intent would apply follows it; with none, the result reads as before", () => {
-  const remove = { action: "workstream.remove" as const, input: { items: ["jira:SYN-9"] } };
-  const done = { action: "thread.done" as const, input: {} };
-  const result: RunResult = {
-    reads: [],
-    mutations: [],
-    intents: [remove, done],
-    transcript: [],
-    outcome: "ok",
-    wallMs: 0,
-    coldStartMs: null,
-  };
-  const plain = runResultText(result, 0);
-  assert.equal(runResultText(result, 0, 0, [], [null, null]), plain);
-  const noted = runResultText(result, 0, 0, [], ["If this applies, there'll be no Undo.", null]);
-  assert.equal(
-    noted,
-    plain.replace(
-      `${JSON.stringify(remove)}\n`,
-      `${JSON.stringify(remove)}\nIf this applies, there'll be no Undo.\n`,
-    ),
-  );
-});

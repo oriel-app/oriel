@@ -118,11 +118,6 @@ await show({ read: "window.overview", from: "workstreams", form: "table", column
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
-  if (/\bdeleted in Jira\b/i.test(input.text))
-    return [
-      { run: `workstream.remove({ items: ["jira:SYN-59"] });\nreturn null;` },
-      { text: "SYN-59 is deleted in Jira, so I've taken it out of this workstream." },
-    ];
   const answer = windowAnswers.find(([asked]) => asked.test(input.text));
   if (answer) return [{ run: answer[1] }, { text: answer[2] }];
   if (/\bplan\b/i.test(input.text))
@@ -184,7 +179,7 @@ const holding = await writing();
 const readOnly = await start(0);
 // A server that syncs from a SYN site in memory as from a live one; this
 // one's site goes offline once it has started.
-const live = async (agent = false) => {
+const live = async () => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
   const serving = await start(0, {
     db: ":memory:",
@@ -195,9 +190,6 @@ const live = async (agent = false) => {
       project: "SYN",
       fetch: site.fetch,
     },
-    ...(agent
-      ? { agent: (deps: Parameters<typeof scriptedAgent>[0]) => scriptedAgent(deps, planning) }
-      : {}),
   });
   return { site, serving };
 };
@@ -328,20 +320,6 @@ const tidied = await ask(
   server,
   boarding.id,
 );
-// The boarding workstream after SYN-59 was deleted in Jira, which the agent
-// takes out: its line says why it has no Undo (OA-121).
-const deletedInJira = await (async () => {
-  const { site, serving } = await live(true);
-  const boarded = await post<{ id: string }>(
-    "/api/workstreams",
-    { kind: "cluster", grouping: "epic", cluster: "10002" },
-    serving,
-  );
-  site.remove("SYN-59");
-  await post("/api/jira/sync", {}, serving);
-  const threadId = await ask("SYN-59 was deleted in Jira; take it out", serving, boarded.id);
-  return { serving, threadId };
-})();
 // The same again, with the removal undone from under the reply (OA-88).
 const untidied = await ask(
   "Take the finished stories out of this workstream and close the thread",
@@ -1484,12 +1462,6 @@ const scenes: Scene[] = [
   {
     name: "thread-actions",
     path: `/threads/${tidied}`,
-    act: (page) => page.locator(".actions-block").waitFor(),
-  },
-  {
-    name: "thread-actions-gone",
-    path: `/threads/${deletedInJira.threadId}`,
-    on: deletedInJira.serving,
     act: (page) => page.locator(".actions-block").waitFor(),
   },
   {

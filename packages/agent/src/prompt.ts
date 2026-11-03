@@ -164,25 +164,19 @@ const actions = (count: number) =>
 const mutationLines = (mutations: readonly CapturedMutation[]) =>
   mutations.map((m) => json({ op: m.op, target: m.target, ref: m.ref, args: m.args }));
 
-// Each recorded intent, then Oriel's note on how it would apply, if any.
-const intentLines = (intents: readonly Intent[], notes: readonly (string | null)[]) =>
-  intents.flatMap((intent, i) => {
-    const note = notes[i];
-    return [json({ action: intent.action, input: intent.input }), ...(note ? [note] : [])];
-  });
+const intentLines = (intents: readonly Intent[]) =>
+  intents.map((intent) => json({ action: intent.action, input: intent.input }));
 
 // A run as the model reads it: its transcript, then what became of its writes,
 // of the actions it asked for and of the blocks it asked Oriel to show.
 // `replaced` and `replacedIntents` are what it replaced of an earlier run's;
-// `shown`, Oriel's line for each block; `notes`, its forecast for each intent
-// (`AgentDeps.actions.preview`). No run ID, timing or other value a replay
-// can't reproduce.
+// `shown`, Oriel's line for each block. No run ID, timing or other value a
+// replay can't reproduce.
 export function runResultText(
   result: RunResult,
   replaced: number,
   replacedIntents = 0,
   shown: readonly string[] = [],
-  notes: readonly (string | null)[] = [],
 ): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
@@ -204,7 +198,7 @@ export function runResultText(
     );
   }
   if (asked) {
-    lines.push(`Recorded ${actions(asked)}:`, ...intentLines(result.intents, notes));
+    lines.push(`Recorded ${actions(asked)}:`, ...intentLines(result.intents));
     lines.push(
       replacedIntents
         ? `They replace the ${actions(replacedIntents)} an earlier run in this turn recorded, and apply when this turn ends.`

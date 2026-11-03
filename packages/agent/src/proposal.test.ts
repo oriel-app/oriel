@@ -70,22 +70,3 @@ test("a stopped turn applies none of what it asked for", async () => {
   assert.deepEqual(records.applied, []);
   assert.ok(!kinds(events).includes("actions"));
 });
-
-test("the model reads Oriel's forecast for each action its run recorded, from the host", async () => {
-  const { turn, model, records } = harness([
-    { scripts: [`${remove("SYN-26")}\nthread.done();\nreturn 1;`] },
-    { text: ["Done."] },
-  ]);
-  const asked: string[][] = [];
-  records.deps.actions.preview = async (_turn, intents) => {
-    asked.push(intents.map((intent) => intent.action));
-    return intents.map((intent) => (intent.action === "workstream.remove" ? "A forecast." : null));
-  };
-  await turn({ region: weather, text: "Tidy up." });
-  assert.deepEqual(asked, [["workstream.remove", "thread.done"]]);
-  const results = model.conversations[0]?.results ?? [];
-  assert.match(
-    content(results[1]),
-    /\n\{"action":"workstream\.remove".*\nA forecast\.\n\{"action":"thread\.done"/,
-  );
-});
