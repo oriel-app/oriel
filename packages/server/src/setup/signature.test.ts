@@ -121,6 +121,8 @@ test("the log a person copies holds no password, key, code, email or link query"
     ["key sk-ant-api03-AbCdEf_123", "key [key]"],
     ["code: 4Hk9-QzLm", "code: [hidden]"],
     ["password=hunter2", "password=[hidden]"],
+    ['{"password":"hunter2","code":123456}', '{"password":[hidden],"code":[hidden]}'],
+    ["{'token': 'abc'}", "{'token': [hidden]}"],
     ["Authorization: Bearer abcdefgh12345678", "Authorization: Bearer [hidden]"],
     ["session 7f3a9c1e5b2d4f6a8c0e1a3b5d7f9a1c", "session [hidden]"],
     ["Installed to /Users/maya/.local/bin/claude", "Installed to ~/.local/bin/claude"],

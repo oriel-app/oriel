@@ -250,3 +250,17 @@ test("with no AI set up, the ask bar says so, but not before Oriel has looked", 
   assert.equal(noAi(settings(0, "missing", true)), false);
   assert.equal(noAi(initSettings()), false);
 });
+
+test("a command a poll sees finish reloads Settings, so the ask bar knows the AI is there", () => {
+  const running = view({
+    cli: cli("signing-in", { running: { command: "sign-in", phase: "waiting", ms: 0 } }),
+  });
+  const [model] = run(
+    init({ page: "settings", section: "providers" })[0],
+    replied("setup", running),
+  );
+  const [, still] = run(model, replied("setup", running));
+  assert.ok(!gets(still).includes("/api/settings"));
+  const [, done] = run(model, replied("setup", view({ cli: cli("ready") })));
+  assert.ok(gets(done).includes("/api/settings"));
+});

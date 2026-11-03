@@ -101,6 +101,8 @@ async function firstRun(
     installed?: { version?: string; login?: "signs-in" | "fails"; brew?: true };
     signedIn?: boolean;
     installer?: string;
+    // The installer's script arrives only when this resolves.
+    script?: Promise<string>;
     latest?: string;
     trust?: (path: string) => string | null;
     testTurn?: TestTurn;
@@ -155,7 +157,7 @@ async function firstRun(
     env,
     trust,
     installer: {
-      script: async () => options.installer ?? stubInstaller(),
+      script: async () => (await options.script) ?? options.installer ?? stubInstaller(),
       latest: async () => options.latest ?? "2.1.317",
     },
     testTurn: async () => options.testTurn ?? { said: null, inputTokens: 2900, outputTokens: 4 },
@@ -465,5 +467,56 @@ test("an installer that ends well without leaving Claude Code says it didn't fin
   assert.deepEqual(
     run.events("cli.ended").map(({ outcome }) => outcome),
     ["failed"],
+  );
+});
+
+test("Cancel while the installer downloads: it never runs", async (t) => {
+  const started: string[] = [];
+  const script = Promise.withResolvers<string>();
+  const run = await firstRun(t, {
+    script: script.promise,
+    start: (file, args, options) => {
+      started.push(file);
+      return startChild(file, args, options);
+    },
+  });
+  await run.send("/api/setup/cli", { command: "install" });
+  await run.send("/api/setup/cli", { command: "cancel" });
+  script.resolve(stubInstaller());
+  await run.app.settled();
+  assert.ok(!started.includes("/bin/bash"), "the installer ran after Cancel");
+  assert.equal(existsSync(join(run.world.home, "installer-env")), false);
+  assert.deepEqual(
+    run.events("cli.ended").map(({ outcome }) => outcome),
+    ["cancelled"],
+  );
+});
+
+test("Start again stops the sign-in running, and a fresh one starts", async (t) => {
+  // The first sign-in waits in the browser until it's stopped.
+  const stopped: string[] = [];
+  let first = true;
+  const start: Start = (file, args, options) => {
+    if (args[0] !== "auth" || args[1] !== "login" || !first) return startChild(file, args, options);
+    first = false;
+    const exited = Promise.withResolvers<number | null>();
+    return {
+      exited: exited.promise,
+      stop() {
+        stopped.push(args.join(" "));
+        exited.resolve(null);
+      },
+    };
+  };
+  const run = await firstRun(t, { installed: {}, start });
+  await run.send("/api/setup/cli", { command: "sign-in" });
+  const again = await run.send("/api/setup/cli", { command: "sign-in" });
+  assert.equal(again.cli?.state, "signing-in");
+  await run.app.settled();
+  assert.deepEqual(stopped, ["auth login --claudeai"]);
+  assert.equal((await run.view()).cli?.state, "ready");
+  assert.deepEqual(
+    run.events("cli.ended").map(({ outcome }) => outcome),
+    ["cancelled", "done"],
   );
 });

@@ -796,8 +796,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "setupProgress":
     case "setupKey": {
       const [setup, effects] = setupReplied(model.setup, msg);
-      // What Claude Code or the AI chosen changed shows in Settings too.
-      const moved = msg.tag.kind === "setupCli" || msg.tag.kind === "setupAi";
+      // What Claude Code or the AI chosen changed shows in Settings too, and
+      // in the ask bar: once asked, and once a command has finished.
+      const finished = model.setup.view?.cli?.running != null && setup.view?.cli?.running == null;
+      const moved = msg.tag.kind === "setupCli" || msg.tag.kind === "setupAi" || finished;
       return [{ ...model, setup }, moved && msg.ok ? [...effects, loadSettings] : effects];
     }
     case "item":

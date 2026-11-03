@@ -302,7 +302,11 @@ export function setupService(deps: {
       home: options.home,
       log: note,
       phase: (phase) => (current.phase = phase),
-      stopping: (stop) => (current.stop = stop),
+      // A child that starts after Cancel stops at once.
+      stopping: (stop) => {
+        current.stop = stop;
+        if (current.cancelled) stop();
+      },
     };
     let outcome: "done" | "failed" | "cancelled" = "failed";
     const fail = (why: CliFailure, sentence: string) => {
@@ -316,7 +320,8 @@ export function setupService(deps: {
         if (refused || !cli) {
           note(`Oriel's check: ${refused}`);
           fail("untrusted", `Oriel didn't run Claude Code: ${refused}`);
-        } else if (command === "sign-in") outcome = await signingIn(runOptions, current, cli, fail);
+        } else if (current.cancelled) outcome = "cancelled";
+        else if (command === "sign-in") outcome = await signingIn(runOptions, current, cli, fail);
         else outcome = await updating(runOptions, current, cli, fail);
       }
     } catch (error) {
@@ -359,6 +364,8 @@ export function setupService(deps: {
     // Its newest, unless that's one Oriel can't drive: then the version Oriel
     // was checked against, which the installer takes as an argument.
     const latest = await installer.latest().catch(() => null);
+    // Cancelled while the installer downloaded: it never runs.
+    if (current.cancelled) return "failed";
     const newest = latest ? parseVersion(latest) : null;
     const version = newest && !supportedVersion(newest) ? claudeCodeMinVersion : null;
     const ended = await install({ ...runOptions, script, version });
@@ -488,6 +495,12 @@ export function setupService(deps: {
           running.stop();
         }
         return view();
+      }
+      // Start again: the sign-in running stops, and a fresh one starts.
+      if (running && command === "sign-in" && running.command === "sign-in") {
+        running.cancelled = true;
+        running.stop();
+        await runs;
       }
       if (running)
         throw new SetupRefused("Oriel is already doing that. Wait for it, or cancel it.");

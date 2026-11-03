@@ -15,9 +15,10 @@ export function redacted(line: string, home: string): string {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
     .replace(/\bsk-ant-[A-Za-z0-9_-]+/g, "[key]")
     .replace(/\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [hidden]")
-    // A value given to a word that names a secret, as `code: …` or `token=…`.
+    // A value given to a word that names a secret, as `code: …`, `token=…`
+    // or JSON's `"password":"…"`.
     .replace(
-      /\b(password|passwd|secret|token|api[_ -]?key|code)(\s*[:=]\s*)("[^"]*"|\S+)/gi,
+      /\b(password|passwd|secret|token|api[_ -]?key|code)(["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}]+)/gi,
       "$1$2[hidden]",
     )
     // Long runs of letters and digits, as keys, codes and tokens are.
