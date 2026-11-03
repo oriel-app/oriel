@@ -1,6 +1,6 @@
 # 0020 Model provider: API key first, a local harness later
 
-Accepted 2026-10-30. Amended by 0036: on the desktop app the local harness is the default provider, driving the person's own command-line agent on their subscription, found on their login shell's PATH or a path set in Settings; an API key is an option, kept in the OS keychain. Amended by 0037: the local harness is built, on the person's own Claude Code, used when there is no API key; `Conversation` gains `close()`, and thread titles go through the harness too.
+Accepted 2026-10-30. Amended by 0036: on the desktop app the local harness is the default provider, driving the person's own command-line agent on their subscription, found on their login shell's PATH or a path set in Settings; an API key is an option, kept in the OS keychain. Amended by 0037: the local harness is built, on the person's own Claude Code, used when there is no API key; `Conversation` gains `close()`, and thread titles go through the harness too. Amended by 0038: Oriel may install the person's CLI with its vendor's installer and start the CLI's own sign-in, which completes in the vendor's page; it still never sees, stores or relays the credential.
 
 Adds: none
 
