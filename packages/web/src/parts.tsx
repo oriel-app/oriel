@@ -390,8 +390,9 @@ export const ChipsContext = createContext<Chips>({});
 export const QuotesContext = createContext<Quotes>({});
 
 // A quote from an item, under the item's chip, captioned by Oriel's check of
-// it (decision 0032), never by the answer's words: found there word for
-// word, or not. One still being said, or not checked, makes no claim.
+// it (decision 0032), never by the answer's words: "Word for word from" one
+// found there, "Quoted from" any other. One still being said, or not checked,
+// makes no claim.
 function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: Sites }) {
   const { quote, to } = props;
   const found: boolean | undefined = useContext(QuotesContext)[quoteKey(quote)];
@@ -400,7 +401,6 @@ function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: S
       <figcaption>
         {found ? "Word for word from " : "Quoted from "}
         <AnswerChip id={quote.id} />
-        {found === false && <span class="quote-not-found"> · not found there word for word</span>}
       </figcaption>
       <blockquote>{quote.children.map((inner, i) => block(inner, i, to))}</blockquote>
     </figure>

@@ -2647,10 +2647,6 @@ a.replies:hover {
   border-left-color: var(--danger);
 }
 
-.quote-not-found {
-  color: var(--danger);
-}
-
 .reply code {
   padding: 0.1em 0.3em;
   border-radius: var(--radius-sm);
