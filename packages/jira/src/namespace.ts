@@ -369,7 +369,7 @@ const offered = (Object.keys(jiraOps) as JiraOp[]).filter(
 // What a Jira item is, in the declarations' `Item` (see `ItemDocs` in
 // bindings): shape only, never source text.
 export const jiraItemDoc =
-  "A Jira item is a tracker item, such as a story or an epic: its title is its summary, its text its summary, description and comments. Name it by its key without jira:, such as ABC-12.";
+  "A Jira item is a tracker item, such as a story or an epic: its title is its summary, its text its summary, description and comments.";
 
 // What the namespace adds to the declarations: IDs and types only.
 function types(scope: JiraScope): string[] {

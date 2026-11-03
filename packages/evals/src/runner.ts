@@ -23,7 +23,9 @@ import {
 } from "@oriel/core";
 import type { AgentEvent } from "@oriel/agent";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
+import { checkQuotes } from "@oriel/server/quotes";
 import type { SlackFixture } from "@oriel/slack";
+import { quotesFrom } from "@oriel/web/markdown";
 import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import {
   cost,
@@ -55,6 +57,7 @@ import {
   gradeJudge,
   gradeAvoids,
   gradeMentions,
+  gradeQuotes,
   gradeSurfaced,
   gradeNoSketch,
   gradeZeroMutations,
@@ -121,7 +124,11 @@ export const caseResult = object({
   group: optional(string),
   outcome: union(literal("pass"), literal("fail"), literal("error")),
   grades: array(
-    object({ grader: union(graderName, literal("refs")), pass: boolean, detail: string }),
+    object({
+      grader: union(graderName, literal("refs"), literal("quotes")),
+      pass: boolean,
+      detail: string,
+    }),
   ),
   error: nullable(string),
   // Why a case that finished in a live round saved no cassettes, so it won't
@@ -330,9 +337,17 @@ async function grade(
         : null,
     }),
   );
+  // What the reply quotes from items, under their chips, as written.
+  const quoted = quotesFrom(output.reply);
+  const under = (id: string) => quoted.filter((quote) => quote.id === id).map((q) => q.text);
+  const checked = quoted.length
+    ? await inWorld(loaded, options, (world) => checkQuotes([output.reply], world.reader.read))
+    : [];
   output = { ...output, reply: seen.text };
   const refs = gradeRefs(seen);
   if (refs) grades.push(refs);
+  const quotes = gradeQuotes(checked);
+  if (quotes) grades.push(quotes);
   for (const expectation of loaded.case.expect) {
     if (expectation.grader === "exact-diff") {
       if (!loaded.golden) throw new Error(`${expectation.golden} was not loaded`);
@@ -348,7 +363,8 @@ async function grade(
         "item" in expectation
           ? (slackAuthor(options.slack ?? null, expectation.item) ?? expectation.item)
           : { title: fileTitle(expectation.file) };
-      grades.push(gradeSurfaced(named, expectation.text, output.reply));
+      const id = "item" in expectation ? expectation.item : fileId(expectation.file);
+      grades.push(gradeSurfaced(named, expectation.text, output.reply, under(id)));
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
@@ -390,7 +406,12 @@ function searchesOf(transcript: readonly unknown[]): unknown[] {
 
 // The region's items as their sources hold them once the case's edits are
 // applied; an item that is gone says so.
-async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> {
+// The case's world, built for one look and closed after it.
+async function inWorld<T>(
+  loaded: LoadedCase,
+  options: RoundOptions,
+  look: (world: Awaited<ReturnType<typeof buildWorld>>) => Promise<T>,
+): Promise<T> {
   const world = await buildWorld({
     fixture: options.fixture,
     folder: options.folder ?? null,
@@ -400,13 +421,24 @@ async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unkn
     ...(options.slack ? { slack: options.slack } : {}),
     edited: loaded.case.edited ?? 0,
     folderEdited: loaded.case.folderEdited ?? 0,
+    ...(loaded.case.window
+      ? {
+          window: {
+            workstreams: loaded.case.window.workstreams,
+            now: loaded.case.window.at ?? options.now,
+          },
+        }
+      : {}),
   });
   try {
-    return await world.evidence();
+    return await look(world);
   } finally {
     world.close();
   }
 }
+
+const evidence = (loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> =>
+  inWorld(loaded, options, (world) => world.evidence());
 
 // Notes each model a caller asks for and each model a response reports, and
 // what each response's tokens cost. A response is read from a copy, so a

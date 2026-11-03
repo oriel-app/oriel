@@ -12,7 +12,7 @@ import {
   stateNames,
 } from "./chip.ts";
 import { carries, type Dropped, readDrop } from "./drop.ts";
-import { type Inline, opens, parse, type Prose } from "./markdown.ts";
+import { type Inline, opens, parse, type Prose, quoteKey } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
@@ -22,6 +22,7 @@ import type {
   ChipView,
   ItemRow,
   MemberView,
+  Quotes,
   SendKey,
   ThreadStateId,
   TimeFormat,
@@ -301,6 +302,8 @@ function block(prose: Prose, key: number, to: Sites): ComponentChildren {
       return (
         <blockquote key={key}>{prose.children.map((inner, i) => block(inner, i, to))}</blockquote>
       );
+    case "quote-from":
+      return <QuoteFrom key={key} quote={prose} to={to} />;
     case "code":
       return (
         <pre key={key}>
@@ -381,6 +384,28 @@ function RouteLink(props: { route: Route; label: ComponentChildren }) {
 
 // The chips a thread's answers name, by ID, as the server resolved them.
 export const ChipsContext = createContext<Chips>({});
+
+// Whether each quote from an item in a thread's answers is there word for
+// word, as Oriel checked it.
+export const QuotesContext = createContext<Quotes>({});
+
+// A quote from an item, under the item's chip, captioned by Oriel's check of
+// it (decision 0032), never by the answer's words: "Word for word from" one
+// found there, "Quoted from" any other. One still being said, or not checked,
+// makes no claim.
+function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: Sites }) {
+  const { quote, to } = props;
+  const found: boolean | undefined = useContext(QuotesContext)[quoteKey(quote)];
+  return (
+    <figure class="quote-from" data-found={found === undefined ? undefined : String(found)}>
+      <figcaption>
+        {found ? "Word for word from " : "Quoted from "}
+        <AnswerChip id={quote.id} />
+      </figcaption>
+      <blockquote>{quote.children.map((inner, i) => block(inner, i, to))}</blockquote>
+    </figure>
+  );
+}
 
 // A chip in an answer, by its ID. One the server hasn't resolved yet, named
 // while the turn runs, holds its place until the thread reloads as the turn

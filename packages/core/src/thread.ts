@@ -63,20 +63,44 @@ export const heldText = (from: HeldSender, text: string): boolean =>
 // change set so two rejections can't be confused (OA-86). `unknown-chips`:
 // the agent's last answer named IDs as chips that Oriel couldn't resolve,
 // which the window drew as "unknown reference" (decision 0032); the agent
-// alone reads it.
+// alone reads it. `quotes`: whether each quote from an item in the agent's
+// last answer is in that item word for word, as Oriel checked it when the
+// turn ended (decision 0032); the window alone reads it, to caption each, so
+// it is no `AgentNote`.
 export const maxUnknownChips = 20;
+export const maxQuotes = 20;
+export const maxQuoteChars = 8_000;
+const chipIdValue = refine(string, (id) => id !== "" && id.length <= 600, "expected a chip's ID");
+const rejectedNote = object({
+  kind: literal("rejected"),
+  changeSet: refine(string, isUlid, "expected a change set ID"),
+  via: union(literal("thread"), literal("review-link")),
+});
+const unknownChipsNote = object({
+  kind: literal("unknown-chips"),
+  ids: refine(
+    array(chipIdValue),
+    (ids) => ids.length > 0 && ids.length <= maxUnknownChips,
+    `expected 1 to ${maxUnknownChips} IDs`,
+  ),
+});
+const quoteCheck = object({
+  id: chipIdValue,
+  text: refine(string, (text) => text !== "" && text.length <= maxQuoteChars, "expected a quote"),
+  found: boolean,
+});
+export type QuoteCheck = Infer<typeof quoteCheck>;
+export const agentNote = union(rejectedNote, unknownChipsNote);
+export type AgentNote = Infer<typeof agentNote>;
 export const orielNote = union(
+  rejectedNote,
+  unknownChipsNote,
   object({
-    kind: literal("rejected"),
-    changeSet: refine(string, isUlid, "expected a change set ID"),
-    via: union(literal("thread"), literal("review-link")),
-  }),
-  object({
-    kind: literal("unknown-chips"),
-    ids: refine(
-      array(refine(string, (id) => id !== "" && id.length <= 600, "expected a chip's ID")),
-      (ids) => ids.length > 0 && ids.length <= maxUnknownChips,
-      `expected 1 to ${maxUnknownChips} IDs`,
+    kind: literal("quotes"),
+    checked: refine(
+      array(quoteCheck),
+      (checked) => checked.length > 0 && checked.length <= maxQuotes,
+      `expected 1 to ${maxQuotes} quotes`,
     ),
   }),
 );

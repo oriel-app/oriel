@@ -4,8 +4,8 @@
 // as the agent's thread.* reads give it. It never becomes HTML, since a reply can
 // quote source content anyone can write. A reply is read while it streams, so
 // a mark without its closing half stays as typed. In an agent's answer only,
-// `[[id]]` is a chip (decision 0032); anywhere else, as in a source's own
-// text, it is text.
+// `[[id]]` is a chip, and a quote whose first line is one is quoted from it
+// (decision 0032); anywhere else, as in a source's own text, each is text.
 import { inAppRoute, type Route, safeHref } from "./route.ts";
 
 export type Inline =
@@ -26,6 +26,9 @@ export type Prose =
   | { kind: "heading"; level: number; children: Inline[] }
   | { kind: "list"; ordered: boolean; start: number; tight: boolean; items: Prose[][] }
   | { kind: "quote"; children: Prose[] }
+  // A quote from the item `id` names, as its lines after the chip say it
+  // (`text`): Oriel checks it against that item as the turn ends.
+  | { kind: "quote-from"; id: string; text: string; children: Prose[] }
   | { kind: "code"; text: string }
   | { kind: "table"; head: Inline[][]; rows: Inline[][][] }
   | { kind: "rule" };
@@ -115,13 +118,39 @@ export function chipIds(text: string): string[] {
     for (const one of each) {
       if (one.kind === "paragraph" || one.kind === "heading") inlines(one.children);
       else if (one.kind === "quote") proses(one.children);
-      else if (one.kind === "list") one.items.forEach(proses);
+      else if (one.kind === "quote-from") {
+        found.add(one.id);
+        proses(one.children);
+      } else if (one.kind === "list") one.items.forEach(proses);
       else if (one.kind === "table") [one.head, ...one.rows].flat().forEach(inlines);
     }
   };
   proses(parse(text, { chips: true }));
   return [...found];
 }
+
+// What an agent's answer quotes from items, each once, in order, nested ones
+// too. A quote reads as one only with its item and its text both, which is
+// how Oriel finds its check again.
+export type QuoteFrom = { id: string; text: string };
+
+export function quotesFrom(text: string): QuoteFrom[] {
+  const found = new Map<string, QuoteFrom>();
+  const proses = (each: readonly Prose[]) => {
+    for (const one of each) {
+      if (one.kind === "quote-from") found.set(quoteKey(one), { id: one.id, text: one.text });
+      if (one.kind === "quote" || one.kind === "quote-from") proses(one.children);
+      else if (one.kind === "list") one.items.forEach(proses);
+    }
+  };
+  proses(parse(text, { chips: true }));
+  return [...found.values()];
+}
+
+export const quoteKey = (quote: QuoteFrom): string => `${quote.id}\n${quote.text}`;
+
+// A quote's first line, alone, as a chip: `> [[jira:SYN-45]]`.
+const quotedChip = /^\s*\[\[\s*([^\][\s]+)\s*\]\]\s*$/;
 
 function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[] {
   const nests = depth < deepest;
@@ -175,7 +204,14 @@ function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[
         quoted.push(quote.exec(lines[i] ?? "")?.[1] ?? "");
         i++;
       }
-      out.push({ kind: "quote", children: blocks(quoted, depth + 1, chips) });
+      const from = chips ? quotedChip.exec(quoted[0] ?? "")?.[1] : undefined;
+      const said = quoted.slice(1);
+      const text = said.join("\n").trim();
+      out.push(
+        from !== undefined && chipId.test(from) && text !== ""
+          ? { kind: "quote-from", id: from, text, children: blocks(said, depth + 1, chips) }
+          : { kind: "quote", children: blocks(quoted, depth + 1, chips) },
+      );
       continue;
     }
     if (nests && marker.test(line)) {

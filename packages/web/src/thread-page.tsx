@@ -18,6 +18,7 @@ import {
   Markdown,
   plural,
   points,
+  QuotesContext,
   StateChip,
   waitingNames,
   SendKeyContext,
@@ -238,7 +239,9 @@ export function ChatEntryItem(props: {
       return (
         <li class="reply">
           <ChipsContext.Provider value={props.view.chips}>
-            <Markdown text={entry.text} linksTo={sites(props.view)} answer />
+            <QuotesContext.Provider value={props.view.quotes}>
+              <Markdown text={entry.text} linksTo={sites(props.view)} answer />
+            </QuotesContext.Provider>
           </ChipsContext.Provider>
         </li>
       );

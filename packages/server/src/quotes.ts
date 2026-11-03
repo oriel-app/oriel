@@ -1,0 +1,70 @@
+// Quotes from an item (decision 0032): a `>` quote in an agent's answer whose
+// first line is the item's chip, checked as the turn ends against the item's
+// title and text as Oriel reads them, the same read `items.read()` gives the
+// agent. The index keeps no item's text (SPEC §7), so the check reads it, for
+// items in the index only.
+// Oriel captions each quote from its check, never from the answer's words.
+import {
+  type ItemId,
+  maxQuoteChars,
+  maxQuotes,
+  parseItemId,
+  type QuoteCheck,
+  type Reader,
+} from "@oriel/core";
+import { type QuoteFrom, quoteKey, quotesFrom } from "@oriel/web/markdown";
+
+// What a quote says, and what an item says, as a reader compares them,
+// literally, as the agent read the item: Unicode compatibility forms, curly
+// quotes and runs of whitespace don't count. Marks do, and so does case.
+const plain = (text: string) =>
+  text
+    .normalize("NFKC")
+    .replace(/[“”„]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// The quoted words without the quote marks or ellipses around them, which
+// set them apart and aren't the item's.
+const said = (quote: string) => plain(quote).replace(/^(?:\.{3}|["' ])+|(?:\.{3}|["' ])+$/g, "");
+
+const wordy = /[\p{L}\p{N}]/u;
+
+// Whether the item's text holds the quote word for word, as whole words: a
+// quote of "safe to ship" isn't in "unsafe to ship".
+export const wordForWord = (quote: string, text: string): boolean => {
+  const words = said(quote);
+  if (words === "") return false;
+  const item = plain(text);
+  for (let at = item.indexOf(words); at >= 0; at = item.indexOf(words, at + 1)) {
+    const before = wordy.test(words[0] ?? "") && wordy.test(item[at - 1] ?? "");
+    const after = wordy.test(words.at(-1) ?? "") && wordy.test(item[at + words.length] ?? "");
+    if (!before && !after) return true;
+  }
+  return false;
+};
+
+// Each quote from an item in `answers`, as many as a note holds, and whether
+// its item holds it word for word. A quote from anything but an item, or from an item
+// Oriel can't read now, isn't found there.
+export async function checkQuotes(
+  answers: readonly string[],
+  read: Reader["read"],
+): Promise<QuoteCheck[]> {
+  const quotes = new Map<string, QuoteFrom>();
+  for (const quote of answers.flatMap(quotesFrom))
+    if (quote.text.length <= maxQuoteChars) quotes.set(quoteKey(quote), quote);
+  const checked = [...quotes.values()].slice(0, maxQuotes);
+  const ids = [...new Set(checked.map((quote) => quote.id))].filter(
+    (id): id is ItemId => parseItemId(id) !== null,
+  );
+  const texts = new Map<string, string>();
+  for (const result of ids.length ? await read(ids) : [])
+    if (result.status === "ok")
+      texts.set(result.id, `${result.content.title}\n${result.content.text}`);
+  return checked.map(({ id, text }) => {
+    const item = texts.get(id);
+    return { id, text, found: item !== undefined && wordForWord(text, item) };
+  });
+}
