@@ -1,6 +1,6 @@
 # 0032 An answer names things by ID, and Oriel draws them
 
-Accepted 2026-11-02 (the reply-elements spike, which replaces OA-150). Amends 0025 and 0030. Changes SPEC §2.
+Accepted 2026-11-02 (the reply-elements spike, which replaces OA-150). Amends 0025 and 0030. Changes SPEC §2. Amended by 0033: never HTML in an answer's text, a block or a chip; HTML only in a sketch, a sandboxed frame under the answer.
 
 Adds: none
 
