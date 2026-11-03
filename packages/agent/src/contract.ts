@@ -117,10 +117,6 @@ export type AgentDeps = {
       turn: { thread: Thread; changeSetId: Ulid | null },
       intents: readonly Intent[],
     ): Promise<ActionLine[]>;
-    // What Oriel can tell the agent of how a run's intents would apply,
-    // before they do: a note for each, in order, or null for one it has
-    // nothing to say of.
-    preview(turn: { thread: Thread }, intents: readonly Intent[]): Promise<(string | null)[]>;
   };
   runs: { record(run: Run, reads: ProxiedRead[]): void };
   limits: AgentLimits;

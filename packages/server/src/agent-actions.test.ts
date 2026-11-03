@@ -40,11 +40,9 @@ async function thread(
   t: TestContext,
   scripts: Record<string, Script>,
   plan: (text: string) => Step[] = () => [{ text: "Hello." }],
-  live = false,
 ) {
   let advance = (_ms: number) => {};
   const app = await testApp(t, {
-    live,
     scripts,
     plan: (input) => {
       advance(1000);
@@ -105,23 +103,6 @@ test("a removal the agent asked for applies at the turn's end, as the agent's, a
   // the agent's own change, for the list of what it did to fold in.
   const marker = view.entries.find((e) => e.kind === "marker");
   assert.ok(marker?.kind === "marker" && marker.ownAgent === true);
-});
-
-test("a removal of an item deleted in Jira says under the reply why it can't come back", async (t) => {
-  const app = await thread(
-    t,
-    { remove: remove("jira:SYN-10", "jira:SYN-21") },
-    (text) => (text === "Tidy" ? [{ run: "remove" }, { text: "Done." }] : []),
-    true,
-  );
-  app.site?.remove("SYN-10");
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
-  const [line] = app.lines(await app.ask("Tidy"));
-  assert.equal(
-    line?.text,
-    "Removed SYN-10 and SYN-21 from this workstream. SYN-10 is no longer in the window, so it can't come back.",
-  );
-  assert.deepEqual(line?.undo?.input, { workstream: app.workstreamId, items: ["jira:SYN-21"] });
 });
 
 test("the turn's last run that asked for actions gives them, adjacent calls merge, and marking its own thread done comes last", async (t) => {
@@ -547,46 +528,6 @@ test("the agent's history says which of its actions the user undid", () => {
   );
   assert.deepEqual(told, [
     { role: "actions", text: `applied ${JSON.stringify(call)}, which the user then undid`, at: t0 },
-  ]);
-});
-
-test("the agent's history says what a removal's Undo can't give back", () => {
-  const workstream = ulid(2, new Uint8Array(10));
-  const call = {
-    action: "workstream.remove" as const,
-    input: { workstream, items: ["jira:SYN-10", "jira:SYN-21"] },
-  };
-  const gone = {
-    action: "workstream.remove" as const,
-    input: { workstream, items: ["jira:SYN-30"] },
-  };
-  const lines = [
-    {
-      call,
-      touched: { kind: "workstream", id: workstream, name: null },
-      applied: true,
-      undo: { action: "workstream.add", input: { workstream, items: ["jira:SYN-21"] } },
-    },
-    {
-      call: gone,
-      touched: { kind: "workstream", id: workstream, name: null },
-      applied: true,
-      undo: null,
-    },
-  ];
-  const told = history(
-    [{ seq: 1, at: t0, role: "agent", event: { kind: "actions", runId: workstream, lines } }],
-    () => "",
-  );
-  assert.deepEqual(told, [
-    {
-      role: "actions",
-      text: [
-        `applied ${JSON.stringify(call)}; its Undo adds back only SYN-21: SYN-10 is no longer in the window, so it can't come back`,
-        `applied ${JSON.stringify(gone)}; there's no Undo: SYN-30 is no longer in the window, so it can't come back`,
-      ].join("\n"),
-      at: t0,
-    },
   ]);
 });
 

@@ -154,41 +154,6 @@ test("a removal undoes as adding back what the index still has", async () => {
   assert.equal(gone.undo, null);
 });
 
-test("a removal's forecast names what its Undo won't give back, as applying it then does", async () => {
-  const w = world();
-  const agent: Actor = { kind: "agent", threadId: w.changeSetId };
-  await w.dispatch(
-    "workstream.add",
-    { workstream: w.workstreamId, items: ["jira:SYN-9"] },
-    { kind: "change-set", changeSetId: w.changeSetId },
-  );
-  const forecast = (items: string[]) =>
-    w.dispatch.forecast("workstream.remove", { workstream: w.workstreamId, items }, agent);
-  assert.equal(
-    forecast(["jira:SYN-2", "jira:SYN-9"]),
-    "If this applies, its Undo adds back only SYN-2: SYN-9 is no longer in the window, so it can't come back.",
-  );
-  assert.equal(
-    forecast(["jira:SYN-9"]),
-    "If this applies, there's no Undo: SYN-9 is no longer in the window, so it can't come back.",
-  );
-  // All of it comes back, or it would be refused: nothing to say.
-  assert.equal(forecast(["jira:SYN-2"]), null);
-  assert.equal(forecast(["jira:SYN-77"]), null);
-  assert.equal(
-    w.dispatch.forecast("workstream.rename", { workstream: w.workstreamId, name: "Gates" }, agent),
-    null,
-  );
-  // A forecast changes nothing.
-  assert.deepEqual(w.held(), ["jira:SYN-1", "jira:SYN-2", "jira:SYN-9"]);
-  const removed = await w.dispatch(
-    "workstream.remove",
-    { workstream: w.workstreamId, items: ["jira:SYN-2", "jira:SYN-9"] },
-    user,
-  );
-  assert.deepEqual(removed.undo?.input, { workstream: w.workstreamId, items: ["jira:SYN-2"] });
-});
-
 test("a rename undoes as renaming it back, to whoever named it; one that changes nothing has no undo", async () => {
   const w = world();
   const named = () => {

@@ -232,9 +232,6 @@ export function memoryRecords(newId: () => Ulid) {
           undo: null,
         }));
       },
-      async preview(_turn, intents) {
-        return intents.map(() => null);
-      },
     },
     runs: { record: (run, reads) => void runs.push({ run, reads }) },
     changeSets: {

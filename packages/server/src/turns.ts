@@ -15,7 +15,6 @@ import type {
   Ulid,
 } from "@oriel/core";
 import { capturedRules, type Titler } from "@oriel/agent";
-import { undoGapOf } from "./action-lines.ts";
 import { nameOf } from "./names.ts";
 import {
   type Agent,
@@ -144,16 +143,13 @@ function runSummary(event: Extract<AgentEvent, { kind: "run.finished" }>): strin
 }
 
 // What the agent reads of the host's list under a reply: each call as it
-// applied or was refused, by ID, never by name, and what its Undo can't give
-// back.
+// applied or was refused, by ID, never by name.
 const actionsText = (lines: readonly ActionLine[]): string =>
   lines
     .map((line) => {
       const call = JSON.stringify(line.call);
       if (!line.applied) return `refused ${call}: ${line.why}`;
-      const undone = line.since?.undone ? ", which the user then undid" : "";
-      const gap = undoGapOf(line);
-      return `applied ${call}${undone}${gap ? `; ${gap}` : ""}`;
+      return `applied ${call}${line.since?.undone ? ", which the user then undid" : ""}`;
     })
     .join("\n");
 
