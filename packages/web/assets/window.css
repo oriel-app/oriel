@@ -1924,11 +1924,13 @@ button.nav-more {
   gap: var(--space-2);
 }
 
+/* A kind is told by its mark's shape: a square, but a bug's dot. A
+   theme's radius would round so small a square into a dot. */
 .type {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   background: var(--type-other);
 }
 
