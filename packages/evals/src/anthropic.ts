@@ -78,3 +78,58 @@ export const messagesResponse = object({
   stop_reason: nullable(string),
   content: array(object({ type: string, text: optional(string) })),
 });
+
+// The tokens a response bills, from a JSON body's `usage` or from a stream's
+// `message_start` and `message_delta` events, the later counts replacing the
+// earlier as the API sends them. All zero when it reports none.
+export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
+
+export function responseUsage(body: string): Usage {
+  const counts: Record<string, unknown> = {};
+  const take = (usage: unknown) => {
+    if (typeof usage === "object" && usage !== null) Object.assign(counts, usage);
+  };
+  const json = parseJson(body);
+  if (typeof json === "object" && json !== null && "usage" in json) take(json.usage);
+  else
+    for (const line of body.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const event = parseJson(line.slice("data:".length));
+      if (typeof event !== "object" || event === null) continue;
+      if ("message" in event && typeof event.message === "object" && event.message !== null)
+        take(Reflect.get(event.message, "usage"));
+      if ("usage" in event) take(event.usage);
+    }
+  const count = (key: string) => {
+    const value = counts[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+  return {
+    input: count("input_tokens"),
+    output: count("output_tokens"),
+    cacheRead: count("cache_read_input_tokens"),
+    cacheWrite: count("cache_creation_input_tokens"),
+  };
+}
+
+// Dollars per million tokens, as Anthropic lists them. A cache write costs
+// 1.25 times the input rate.
+const prices: Record<string, { input: number; output: number; cacheRead: number }> = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
+};
+
+export const isPriced = (model: string) => Object.hasOwn(prices, family(model));
+
+// What a response's tokens cost on `model`, in dollars; null for a model
+// with no listed price.
+export function cost(model: string, usage: Usage): number | null {
+  const price = prices[family(model)];
+  if (!price) return null;
+  const dollars =
+    usage.input * price.input +
+    usage.cacheWrite * price.input * 1.25 +
+    usage.cacheRead * price.cacheRead +
+    usage.output * price.output;
+  return dollars / 1e6;
+}

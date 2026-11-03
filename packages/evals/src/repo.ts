@@ -7,6 +7,7 @@ export const repoRoot = new URL("../../../", import.meta.url);
 export const casesDir = new URL("packages/evals/cases/", repoRoot);
 export const cassettesDir = new URL("tests/cassettes/", repoRoot);
 export const roundsDir = new URL(".evals/", repoRoot);
+export const climbsDir = new URL("packages/evals/climbs/", repoRoot);
 export const envFile = new URL(".env", repoRoot);
 const fixtureDir = new URL("fixtures/jira/", repoRoot);
 

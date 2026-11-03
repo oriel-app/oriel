@@ -1,7 +1,8 @@
-// A round: every case run once through the system under test, graded, and
-// written to its own directory under the gitignored `.evals/`: one JSONL line
-// per case (`results.jsonl`), a full transcript per case (`transcripts/`), and
-// a summary per split with a confidence interval (`summary.json`).
+// A round: every case run through the system under test, once or `reps`
+// times (trials), graded, and written to its own directory under the gitignored
+// `.evals/`: one JSONL line per trial (`results.jsonl`), a full transcript per
+// trial (`transcripts/`), and a summary per split with a confidence interval and
+// what the round's model calls cost (`summary.json`).
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
@@ -23,7 +24,15 @@ import type { AgentEvent } from "@oriel/agent";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 import type { SlackFixture } from "@oriel/slack";
 import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
-import { type Fetch, requestModel, responseModel, sameModel } from "./anthropic.ts";
+import {
+  cost,
+  type Fetch,
+  requestModel,
+  responseModel,
+  responseUsage,
+  sameModel,
+  type Usage,
+} from "./anthropic.ts";
 import { canonicalJson } from "./canonical.ts";
 import {
   capturedMutation,
@@ -94,6 +103,11 @@ export const caseResult = object({
   hash: string,
   split,
   kind: number,
+  // Which of the case's trials this is, from 0; absent for the first.
+  rep: optional(number),
+  // The case's group in a climb, which a comparison guards on its own;
+  // absent outside one.
+  group: optional(string),
   outcome: union(literal("pass"), literal("fail"), literal("error")),
   grades: array(object({ grader: graderName, pass: boolean, detail: string })),
   error: nullable(string),
@@ -102,7 +116,12 @@ export const caseResult = object({
   unrecorded: nullable(string),
   ms: number,
 });
-export type CaseResult = Infer<typeof caseResult>;
+// `rep` and `group` are left out when absent, so a round of single trials
+// outside a climb reads as rounds always have.
+export type CaseResult = Omit<Infer<typeof caseResult>, "rep" | "group"> & {
+  rep?: number;
+  group?: string;
+};
 
 // A case's `waiting` and `failing` marks are notes about the agent, not the
 // case, so marking or unmarking it still compares with the round before.
@@ -112,10 +131,16 @@ export function caseHash(loaded: LoadedCase): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+// What a round's model calls cost: the system under test's and the judge's.
+export type Spend = { usd: number; tokens: Usage };
+
 export type Summary = {
   model: string;
   judgeModel: string;
+  // Trials a case; absent for one. Each split's rate counts trials.
+  reps?: number;
   splits: Record<Split, Rate & { failed: number; errored: number }>;
+  spend?: Spend;
 };
 
 export type Round = { results: CaseResult[]; summary: Summary };
@@ -130,9 +155,13 @@ export type RoundOptions = {
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
-  // The cassettes one case's model calls go through, the judge's included.
-  // They are committed only when the case finishes without error.
-  transport: (caseId: string) => Cassettes;
+  // The cassettes one trial's model calls go through, the judge's included.
+  // They are committed only when the trial finishes without error.
+  transport: (caseId: string, rep: number) => Cassettes;
+  // Trials a case. Absent: one.
+  reps?: number;
+  // Each case's group, by ID, in a climb.
+  groups?: ReadonlyMap<string, string>;
   // This round's directory.
   out: URL;
   // Milliseconds, read only to time each case.
@@ -145,10 +174,17 @@ export async function runRound(options: RoundOptions): Promise<Round> {
   if (sameModel(options.judgeModel, options.model))
     throw new Error(`the judge model must differ from the model under test (${options.model})`);
   mkdirSync(new URL("transcripts/", options.out), { recursive: true });
-  const results = await pool(options.cases, options.concurrency ?? 1, (loaded) =>
-    runCase(loaded, options),
+  const reps = options.reps ?? 1;
+  // Every case's first trial, then every case's second, and so on, so a
+  // network outage costs many cases a trial each, not one case all of them.
+  const trials = Array.from({ length: reps }, (_, rep) =>
+    options.cases.map((loaded) => ({ loaded, rep })),
+  ).flat();
+  const done = await pool(trials, options.concurrency ?? 1, ({ loaded, rep }) =>
+    runCase(loaded, rep, options),
   );
-  const summary = summarize(results, options);
+  const results = done.map((d) => d.result);
+  const summary = { ...summarize(results, options), spend: total(done.map((d) => d.spend)) };
   writeFileSync(
     new URL("results.jsonl", options.out),
     results.map((r) => `${JSON.stringify(r)}\n`).join(""),
@@ -157,9 +193,13 @@ export async function runRound(options: RoundOptions): Promise<Round> {
   return { results, summary };
 }
 
-async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseResult> {
+async function runCase(
+  loaded: LoadedCase,
+  rep: number,
+  options: RoundOptions,
+): Promise<{ result: CaseResult; spend: Spend }> {
   const evalCase = loaded.case;
-  const tape = options.transport(evalCase.id);
+  const tape = options.transport(evalCase.id, rep);
   // Models as requested and as each response reports itself, so an alias
   // can't hide that the judge and the system under test are one model.
   const tested = watched(tape.fetch);
@@ -200,30 +240,53 @@ async function runCase(loaded: LoadedCase, options: RoundOptions): Promise<CaseR
   }
   const ms = options.clock() - started;
   const outcome = error !== null ? "error" : grades.every((g) => g.pass) ? "pass" : "fail";
+  const group = options.groups?.get(evalCase.id);
   const result: CaseResult = {
     id: evalCase.id,
     hash: caseHash(loaded),
     split: evalCase.split,
     kind: evalCase.kind,
+    ...(rep ? { rep } : {}),
+    ...(group === undefined ? {} : { group }),
     outcome,
     grades,
     error,
     unrecorded,
     ms,
   };
+  const spend = total([await tested.spend(), await judged.spend()]);
   const transcript = {
     ...result,
     case: evalCase,
     model: options.model,
     judgeModel: options.judgeModel,
     modelsCalled: await tested.models(),
+    spend,
     output,
   };
+  const name = rep ? `${evalCase.id}.rep${rep}` : evalCase.id;
   writeFileSync(
-    new URL(`transcripts/${evalCase.id}.json`, options.out),
+    new URL(`transcripts/${name}.json`, options.out),
     `${JSON.stringify(transcript, null, 2)}\n`,
   );
-  return result;
+  return { result, spend };
+}
+
+const none: Spend = { usd: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+
+function total(spends: readonly Spend[]): Spend {
+  return spends.reduce(
+    (sum, s) => ({
+      usd: sum.usd + s.usd,
+      tokens: {
+        input: sum.tokens.input + s.tokens.input,
+        output: sum.tokens.output + s.tokens.output,
+        cacheRead: sum.tokens.cacheRead + s.tokens.cacheRead,
+        cacheWrite: sum.tokens.cacheWrite + s.tokens.cacheWrite,
+      },
+    }),
+    none,
+  );
 }
 
 // Graders run in the case's order; a throw is the case's error.
@@ -307,23 +370,35 @@ async function evidence(loaded: LoadedCase, options: RoundOptions): Promise<unkn
   }
 }
 
-// Notes each model a caller asks for and each model a response reports. A
-// response is read from a copy, so a streamed body still streams to the caller.
-function watched(inner: Fetch): { fetch: Fetch; models: () => Promise<string[]> } {
+// Notes each model a caller asks for and each model a response reports, and
+// what each response's tokens cost. A response is read from a copy, so a
+// streamed body still streams to the caller.
+function watched(inner: Fetch): {
+  fetch: Fetch;
+  models: () => Promise<string[]>;
+  spend: () => Promise<Spend>;
+} {
   const seen = new Set<string>();
+  const spent: Spend[] = [];
   const reading: Promise<void>[] = [];
   const note = (model: string | null) => {
     if (model) seen.add(model);
   };
   const fetch: Fetch = async (input, init) => {
     const request = new Request(input, init);
-    note(requestModel(await request.clone().text()));
+    const asked = requestModel(await request.clone().text());
+    note(asked);
     const response = await inner(request);
     reading.push(
       response
         .clone()
         .text()
-        .then((body) => note(responseModel(body)))
+        .then((body) => {
+          const model = responseModel(body);
+          note(model);
+          const tokens = responseUsage(body);
+          spent.push({ usd: cost(model ?? asked ?? "", tokens) ?? 0, tokens });
+        })
         .catch(() => {}),
     );
     return response;
@@ -332,7 +407,11 @@ function watched(inner: Fetch): { fetch: Fetch; models: () => Promise<string[]> 
     await Promise.all(reading);
     return [...seen].sort();
   };
-  return { fetch, models };
+  const spend = async () => {
+    await Promise.all(reading);
+    return total(spent);
+  };
+  return { fetch, models, spend };
 }
 
 // A model in both lists, counting an alias and its snapshots as one.
@@ -368,6 +447,7 @@ function summarize(results: readonly CaseResult[], options: RoundOptions): Summa
   return {
     model: options.model,
     judgeModel: options.judgeModel,
+    ...(options.reps && options.reps > 1 ? { reps: options.reps } : {}),
     splits: { train: forSplit("train"), test: forSplit("test") },
   };
 }
@@ -401,8 +481,9 @@ export function formatRound(round: Round, failing: Failing = new Map()): string 
     // Past a known failure, name what else broke.
     const marked = known ? undefined : failing.get(r.id);
     const why = r.error ?? r.grades.find((g) => !g.pass && g.grader !== marked)?.detail ?? "";
+    const which = r.rep ? `, trial ${r.rep + 1}` : "";
     lines.push(
-      `${known ? "fail (known)" : r.outcome}  ${r.id} (${r.split}, kind ${r.kind}): ${why}`,
+      `${known ? "fail (known)" : r.outcome}  ${r.id} (${r.split}, kind ${r.kind}${which}): ${why}`,
     );
   }
   return lines.join("\n");
