@@ -1,33 +1,38 @@
 // The one stack of Undo notes at the foot of the window (OA-142): what was
-// done, each with its Undo or why it can't be undone, newest at the bottom,
-// read out as each shows, and what last failed. None runs out while the
+// done, each with its Undo or why it can't be undone, in the order they
+// showed, newest at the bottom, read out as each shows, and what last failed. None runs out while the
 // pointer or focus is on them, and ⌘Z or Ctrl+Z undoes the one at the bottom.
 // Every note's model hears one hold, through `onHold`: an Undo lets go of the
 // keyboard's, and a stack that goes, as when a page swaps it for another,
 // lets go of both, since no leave event comes.
 import { useEffect, useRef } from "preact/hooks";
-import { type Held, type Hold, latestNote, notHeld } from "./undos.ts";
-
-export type UndoNote = {
-  key: string;
-  said: string;
-  // The Undo as a screen reader names it.
-  label: string;
-  // Null when it can't be undone, which `cannot` then says, if anything.
-  onUndo: (() => void) | null;
-  cannot?: string;
-  disabled?: boolean;
-};
+import type { Dispatch } from "./parts.tsx";
+import {
+  type Held,
+  type Hold,
+  inShowingOrder,
+  latestNote,
+  notHeld,
+  type UndoNote,
+  type UndoProblem,
+} from "./undos.ts";
 
 const shortcut =
   typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "Meta+Z" : "Control+Z";
 
+// Every note's hold goes the one way, whichever stack is on screen.
+export const holdUndos = (dispatch: Dispatch) => (by: Hold, held: boolean) =>
+  dispatch({ type: "undoHeld", by, held });
+
 export function UndoStack(props: {
   notes: readonly UndoNote[];
-  problem?: { said: string; onDismiss(): void } | null;
+  problem?: UndoProblem | null;
   onHold(by: Hold, held: boolean): void;
 }) {
-  const { notes, problem } = props;
+  const { problem } = props;
+  const shown = useRef<readonly string[]>([]);
+  const notes = inShowingOrder(shown.current, props.notes);
+  shown.current = notes.map((note) => note.key);
   // What holds the stack now, and the latest `onHold`, for letting go after
   // it has gone.
   const held = useRef<Held>(notHeld);
@@ -87,16 +92,12 @@ export function UndoStack(props: {
         <p class="undo" key={note.key}>
           <span>{note.said}</span>
           {onUndo ? (
-            <button
-              type="button"
-              class="undo-action"
+            <UndoButton
+              label={note.label}
               disabled={note.disabled}
-              aria-label={note.label}
-              aria-keyshortcuts={note.key === latest?.key ? shortcut : undefined}
+              keys={note.key === latest?.key}
               onClick={() => undo(onUndo)}
-            >
-              Undo
-            </button>
+            />
           ) : (
             note.cannot && <span class="undo-note">{note.cannot}</span>
           )}
@@ -111,5 +112,27 @@ export function UndoStack(props: {
         </p>
       )}
     </div>
+  );
+}
+
+// A note's Undo, in the stack or beside the change it undoes (decision
+// 0024). `keys`: whether ⌘Z or Ctrl+Z presses it.
+export function UndoButton(props: {
+  label: string;
+  disabled?: boolean;
+  keys?: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button
+      type="button"
+      class="undo-action"
+      disabled={props.disabled}
+      aria-label={props.label}
+      aria-keyshortcuts={props.keys ? shortcut : undefined}
+      onClick={props.onClick}
+    >
+      Undo
+    </button>
   );
 }

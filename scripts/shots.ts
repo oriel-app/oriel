@@ -1111,7 +1111,8 @@ const scenes: Scene[] = [
       await page.locator(".panel-added, .panel-actions .panel-problem").first().waitFor();
     },
   },
-  // Its line and Undo come back with the item after stepping away (OA-149).
+  // Its line and Undo come back with the item after stepping away (OA-149),
+  // and its note stays in the stack meanwhile (OA-152).
   {
     name: "panel-add-back",
     window: true,
@@ -1128,6 +1129,29 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       await page.keyboard.press("ArrowUp");
       await page.locator(".item-panel .panel-facts").waitFor();
+    },
+  },
+  // Its Undo is a note in the window's stack too (OA-152): ⌘Z or Ctrl+Z
+  // undoes it there and beside the add at once.
+  {
+    name: "panel-add-undone",
+    window: true,
+    path: `/?grouping=epic&addTo=${revisited.id}`,
+    on: revisiting,
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page
+        .locator(".item a.key")
+        .filter({ hasNotText: /^SYN-(23|99)$/ })
+        .first()
+        .click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("button", { name: "Add to workstream" }).click();
+      await page.locator(".undos .undo", { hasText: "Added" }).waitFor();
+      await page.locator("body").press("ControlOrMeta+z");
+      await page.locator(".undos .undo").waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Add to workstream" }).waitFor();
     },
   },
   {

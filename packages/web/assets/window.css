@@ -3636,6 +3636,18 @@ a.replies:hover {
   transform: translateX(-50%);
 }
 
+/* Above Browse's bar for picked items, which sits where the stack would:
+   one row of it, or two on a narrow screen, where it wraps. */
+.shell:has(.selection-bar) .undos {
+  bottom: calc(var(--space-4) + 2.5rem + var(--space-2));
+}
+
+@media (max-width: 760px) {
+  .shell:has(.selection-bar) .undos {
+    bottom: calc(var(--space-4) + 5rem + var(--space-2));
+  }
+}
+
 .undo {
   display: flex;
   align-items: center;

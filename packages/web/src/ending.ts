@@ -38,10 +38,6 @@ export type EndingModel = {
   shown: boolean;
   // The times its countdown started; only the latest one's end hides it.
   countdown: number;
-  // The removals already in the page's stack when it showed, by the version
-  // each made: they sit above it, and any made later below, newest at the
-  // bottom.
-  above: readonly number[];
   held: Held;
   // What the last request said, when it failed.
   problem: string | null;
@@ -67,7 +63,6 @@ export const initEnding = (): EndingModel => ({
   ended: null,
   shown: false,
   countdown: 0,
-  above: [],
   held: notHeld,
   problem: null,
 });
@@ -156,16 +151,11 @@ function letGo(model: EndingModel, by: Hold): [EndingModel, Effect[]] {
   return [{ ...model, held, countdown }, [expiry(countdown)]];
 }
 
-// The server's answer, and what was done starting to run out once it shows,
-// below the removals (`above`, by version) already in the page's stack.
-export function endingAnswered(
-  model: EndingModel,
-  msg: Replied,
-  above: readonly number[],
-): [EndingModel, Effect[]] {
+// The server's answer, and what was done starting to run out once it shows.
+export function endingAnswered(model: EndingModel, msg: Replied): [EndingModel, Effect[]] {
   const next = endingReplied(model, msg);
   if (next.countdown === model.countdown) return [next, []];
-  return [{ ...next, above }, [expiry(next.countdown)]];
+  return [next, [expiry(next.countdown)]];
 }
 
 // The server's answer: what it did shows, with its Undo, and its countdown
@@ -207,16 +197,6 @@ export const leftPage = (model: EndingModel): EndingModel => ({
 export const deleted = (model: EndingModel, workstreamId: string): boolean =>
   (model.pending?.deleting === true && model.pending.workstreamId === workstreamId) ||
   (model.ended?.kind === "deleted" && model.ended.workstreamId === workstreamId);
-
-// The removals in the page's stack either side of what was done: those made
-// before it, above it, and those since, below, newest at the bottom.
-export function around<T extends { version: number }>(
-  model: EndingModel,
-  removals: readonly T[],
-): [T[], T[]] {
-  const before = (each: T) => model.above.includes(each.version);
-  return [removals.filter(before), removals.filter((each) => !before(each))];
-}
 
 // "2 of its threads", or "its thread", as what came along with the workstream.
 const its = (threads: number) => (threads === 1 ? "its thread" : `${threads} of its threads`);

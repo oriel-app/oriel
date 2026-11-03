@@ -12,7 +12,9 @@ import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
+import { addUndos } from "./panel-adds.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
+import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
 import { OverviewPage } from "./overview-page.tsx";
 import { windowRoute } from "./update.ts";
@@ -77,6 +79,8 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
     threads: model.threads?.map(decided(model)) ?? null,
     changeSets: model.changeSets,
   };
+  // The panel's adds, as notes in whichever stack of Undos is on screen.
+  const added = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   return (
     <div
       class="shell"
@@ -96,7 +100,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
         <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
           <WorkspaceContext.Provider value={workspace}>
-            <Page model={model} dispatch={dispatch} />
+            <Page model={model} added={added} dispatch={dispatch} />
           </WorkspaceContext.Provider>
         </ItemLinksContext.Provider>
       </div>
@@ -107,6 +111,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
               model={model.panel}
               place={placeIn(model.panelList, model.panel.id)}
               workstream={currentWorkstream(model)}
+              adds={model.panelAdds}
               dispatch={dispatch}
             />
           </WorkspaceContext.Provider>
@@ -115,6 +120,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
       <Closing model={model.closing} dispatch={dispatch} />
       <Endings
         model={model.ending}
+        added={added}
         shownByPage={
           model.route.page === "workstream" ||
           (model.route.page === "overview" && model.overview !== null)
@@ -152,13 +158,15 @@ function writeFolded(folded: boolean) {
   }
 }
 
-function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
+function Page(props: { model: Model; added: Undos; dispatch: Dispatch }) {
+  const { model, dispatch } = props;
   switch (model.route.page) {
     case "overview":
       return (
         model.overview && (
           <OverviewPage
             model={model.overview}
+            added={props.added}
             ending={model.ending}
             jira={model.jira}
             browse={windowRoute(model.window)}
@@ -184,6 +192,7 @@ function Page({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
             model={model.workstream}
             threads={workstreamThreads(model, model.workstream.id)}
             ending={model.ending}
+            added={props.added}
             dispatch={dispatch}
           />
         )

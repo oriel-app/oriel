@@ -43,23 +43,30 @@ import {
   updateJira,
 } from "./jira.ts";
 import { samePage, withItem } from "./nav.ts";
+import type { Hold } from "./undos.ts";
 import {
   checkPanel,
   type CurrentWorkstream,
-  keptAdds,
   openPanel,
-  type PanelAdds,
   type PanelModel,
   type PanelMsg,
   panelReplied,
+  stepped,
+  updatePanel,
+} from "./panel.ts";
+import {
+  addsLeft,
+  addsReplied,
   checkAdd,
+  holdAdds,
+  noAdds,
+  type PanelAddMsg,
+  type PanelAdds,
   recheckAdd,
   shownOf,
   standingAdds,
-  stepped,
-  updatePanel,
-  withAdds,
-} from "./panel.ts";
+  updateAdds,
+} from "./panel-adds.ts";
 import {
   initOverview,
   leaving as left,
@@ -148,8 +155,9 @@ export type Model = {
   // The list on the page the open item was opened from, by item ID, which
   // the panel steps through; null when it wasn't opened from one.
   panelList: readonly string[] | null;
-  // The panel's last add of each item, for as long as it can be undone,
-  // whatever item the panel shows.
+  // The panel's last add of each item to each workstream, whatever item the
+  // panel shows: in flight, or what came of it, with its Undo while that
+  // shows.
   panelAdds: PanelAdds;
   // The sidebar's search over the workspace's threads.
   search: SearchModel;
@@ -167,6 +175,10 @@ export type Msg =
   | { type: "closing"; msg: ClosingMsg }
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
+  | { type: "panelAdd"; msg: PanelAddMsg }
+  // The pointer or keyboard came onto the stack of Undo notes, or left it,
+  // which holds every note in it, of every kind.
+  | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "search"; msg: SearchMsg }
   // A plain click on a link to an item: it opens in the panel. `list`: the
   // list on the page that holds the link, by item ID.
@@ -239,7 +251,7 @@ export function init(route: Route): [Model, Effect[]] {
     ending: initEnding(),
     panel: null,
     panelList: null,
-    panelAdds: [],
+    panelAdds: noAdds,
     search: initSearch(),
   };
   return withPanel(...enter(empty, route));
@@ -251,7 +263,7 @@ function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
   const { item } = model.route;
   if (item === undefined) return [{ ...model, panel: null }, effects];
   if (model.panel?.id === item) return [model, effects];
-  const [panel, opened] = openPanel(item, model.panelAdds);
+  const [panel, opened] = openPanel(item);
   const checked = checkAdd(model.panelAdds, item, model.workstreams);
   return [{ ...model, panel }, [...effects, ...opened, ...checked]];
 }
@@ -299,6 +311,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     thread: null,
     newThread: null,
     ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
+    panelAdds: samePage(model.route, route) ? model.panelAdds : addsLeft(model.panelAdds),
     panelList: samePage(model.route, route) ? model.panelList : null,
   };
   switch (route.page) {
@@ -379,16 +392,8 @@ const wholeViews: ReadonlySet<Tag["kind"]> = new Set([
 // shows it undone some other way.
 function standing(msg: Msg, model: Model, effects: Effect[]): [Model, Effect[]] {
   if (msg.type !== "replied" || !msg.ok || !wholeViews.has(msg.tag.kind)) return [model, effects];
-  if (model.panelAdds.length === 0) return [model, effects];
-  const shown = shownOf(msg.body as WorkstreamView);
-  return [addsSeen(model, standingAdds(model.panelAdds, [shown])), effects];
-}
-
-// The panel's adds as they stand now, and the panel without one that doesn't.
-function addsSeen(model: Model, panelAdds: PanelAdds): Model {
-  if (panelAdds === model.panelAdds) return model;
-  const panel = model.panel && withAdds(model.panel, panelAdds);
-  return { ...model, panelAdds, panel };
+  const panelAdds = standingAdds(model.panelAdds, shownOf(msg.body as WorkstreamView));
+  return [panelAdds === model.panelAdds ? model : { ...model, panelAdds }, effects];
 }
 
 // The page a route opens, whatever is open in the panel beside it or where
@@ -495,6 +500,25 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       if (model.panel === null) return [model, []];
       const [panel, effects] = updatePanel(model.panel, msg.msg);
       return [{ ...model, panel }, effects];
+    }
+    case "panelAdd": {
+      const [panelAdds, effects] = updateAdds(model.panelAdds, msg.msg);
+      return [{ ...model, panelAdds }, effects];
+    }
+    case "undoHeld": {
+      const { by, held } = msg;
+      const [workstream, removals] = model.workstream
+        ? updateWorkstream(model.workstream, { type: "undoHeld", by, held })
+        : [null, []];
+      const [ending, ended] = updateEnding(model.ending, { type: "undoHeld", by, held });
+      const [overview, made] = model.overview
+        ? updateOverview(model.overview, { type: "undoHeld", by, held })
+        : [null, []];
+      const [panelAdds, added] = holdAdds(model.panelAdds, by, held);
+      return [
+        { ...model, workstream, ending, overview, panelAdds },
+        [...removals, ...ended, ...made, ...added],
+      ];
     }
     case "search": {
       const [search, effects] = updateSearch(model.search, msg.msg);
@@ -624,12 +648,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const changed = msg.ok
         ? [loadWorkstreams, ...reloadShown(model)]
         : msg.tag.kind === "panelAddUndone"
-          ? recheckAdd(model.panelAdds, msg.tag.id)
+          ? recheckAdd(msg.tag.workstreamId)
           : [];
-      const panelAdds = keptAdds(model.panelAdds, msg);
-      if (model.panel === null) return [{ ...model, panelAdds }, changed];
-      const [panel, effects] = panelReplied(model.panel, msg);
-      return [{ ...model, panelAdds, panel: withAdds(panel, panelAdds) }, [...effects, ...changed]];
+      const [panelAdds, counting] = addsReplied(model.panelAdds, msg);
+      return [{ ...model, panelAdds }, [...counting, ...changed]];
     }
     case "markedDone":
     case "deletion":
@@ -690,8 +712,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     // Its threads moved with it, so both lists load again, and its page, if
     // it is on screen and still there.
     case "ended": {
-      const shownAbove = (model.workstream?.removals ?? []).map((each) => each.version);
-      const [ending, counting] = endingAnswered(model.ending, msg, shownAbove);
+      const [ending, counting] = endingAnswered(model.ending, msg);
       const next = { ...model, ending };
       const { route } = model;
       const here = route.page === "workstream" && route.id === msg.tag.id;

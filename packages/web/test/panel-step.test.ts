@@ -1,7 +1,6 @@
 // From an open panel (OA-95): next and previous step through the list it was
 // opened from, without reloading the page, and the item can be added to the
-// workstream the page is about, with Undo through the one path every Undo
-// takes.
+// workstream the page is about (panel-add-back.test.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
@@ -116,93 +115,6 @@ test("the current workstream is the page's, or the one the window is adding to; 
   assert.ok(found?.members?.has("jira:SYN-1"));
   const [done] = init({ page: "done" });
   assert.equal(currentWorkstream(done), null);
-});
-
-test("adding goes through workstream.add and shows its Undo, which goes back the usual way", () => {
-  const [start] = opened({ page: "window", grouping: "epic", addTo: workstream });
-  const model = withWorkstream(start);
-  const [adding, effects] = update(model, {
-    type: "panel",
-    msg: { type: "addClicked", workstream: { id: workstream, name: "Fares" } },
-  });
-  assert.equal(adding.panel?.add?.adding, true);
-  const tag = {
-    kind: "panelAdded" as const,
-    id: "jira:SYN-2",
-    workstreamId: workstream,
-    name: "Fares",
-  };
-  assert.deepEqual(effects, [
-    {
-      type: "http",
-      method: "POST",
-      url: `/api/workstreams/${workstream}/add`,
-      body: { items: ["jira:SYN-2"] },
-      tag,
-    },
-  ]);
-  // A second click while it's in flight sends nothing.
-  assert.deepEqual(
-    update(adding, {
-      type: "panel",
-      msg: { type: "addClicked", workstream: { id: workstream, name: "Fares" } },
-    })[1],
-    [],
-  );
-  const undo = { action: "workstream.remove", input: { workstream, items: ["jira:SYN-2"] } };
-  const [added, after] = update(adding, {
-    type: "replied",
-    tag,
-    ok: true,
-    body: { ...workstreamView(), undo },
-  });
-  assert.deepEqual(added.panel?.add?.added, { workstreamId: workstream, name: "Fares", undo });
-  assert.deepEqual(loads(after), ["GET /api/workstreams"]);
-  const [undoing, undone] = update(added, { type: "panel", msg: { type: "addUndoClicked" } });
-  assert.deepEqual(loads(undone), ["POST /api/actions/workstream.remove"]);
-  const [back] = update(undoing, {
-    type: "replied",
-    tag: { kind: "panelAddUndone", id: "jira:SYN-2" },
-    ok: true,
-    body: { undo: null },
-  });
-  assert.deepEqual(back.panel?.add, { adding: false, added: null, problem: null });
-});
-
-test("an item in the workstream already is said so; a refusal says why", () => {
-  const [model] = opened({ page: "window", grouping: "epic", addTo: workstream });
-  const tag = {
-    kind: "panelAdded" as const,
-    id: "jira:SYN-2",
-    workstreamId: workstream,
-    name: "Fares",
-  };
-  const [already] = update(model, {
-    type: "replied",
-    tag,
-    ok: true,
-    body: { ...workstreamView(), undo: null },
-  });
-  assert.deepEqual(already.panel?.add?.added, {
-    workstreamId: workstream,
-    name: "Fares",
-    undo: null,
-  });
-  const [refused] = update(model, {
-    type: "replied",
-    tag,
-    ok: false,
-    body: { error: "That workstream is gone." },
-  });
-  assert.equal(refused.panel?.add?.problem, "That workstream is gone.");
-  // A reply for an item no longer open changes nothing in the panel.
-  const [other] = update(model, {
-    type: "replied",
-    tag: { ...tag, id: "jira:SYN-3" },
-    ok: true,
-    body: { undo: null },
-  });
-  assert.equal(other.panel?.add, undefined);
 });
 
 test("on a thread's page, its region tells members only while it is the workstream's latest", () => {
