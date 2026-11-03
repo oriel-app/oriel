@@ -31,9 +31,10 @@ export type DesktopOptions = {
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
-  // Finds the model the agent runs on, which can take a while: it runs once
-  // the secret is in, and a stop meanwhile doesn't wait for it.
-  model?: () => Promise<Pick<AppOptions, "agent" | "titler">>;
+  // Finds the models the agent can run on, with the person's settings, which
+  // can take a while: it runs once the secret is in, and a stop meanwhile
+  // doesn't wait for it.
+  model?: () => Promise<Pick<AppOptions, "agent" | "titler" | "models" | "settings">>;
   // How Jira is reached; tests pass a site in memory.
   jiraFetch?: typeof fetch;
 };
@@ -79,6 +80,7 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
       ...model,
       db: join(data, "oriel.db"),
       exclusive: true,
+      cliPaths: true,
       jira: {
         kind: "window",
         store: secretsStore(secretsOf(lines.shell), log),

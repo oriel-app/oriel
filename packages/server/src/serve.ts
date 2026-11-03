@@ -1,8 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assets, dist, entry, vendor } from "@oriel/web/files";
+import { themeNames } from "@oriel/web/themes";
 import { type App, type AppOptions, createApp } from "./app.ts";
 import { handler, type Reply, type Request, type Site } from "./site.ts";
 
@@ -106,9 +109,14 @@ export async function serve(
       });
   });
   serving.listening?.(url);
+  const files = webFiles();
   let app: App | null = null;
   try {
-    app = await createApp({ ...options, reviewBase: new URL("review/", url) });
+    app = await createApp({
+      themes: themeNames(readFileSync(join(files.assets, "window.css"), "utf8")),
+      ...options,
+      reviewBase: new URL("review/", url),
+    });
     await serving.beforeRequests?.(app);
   } catch (error) {
     built.reject(error);
@@ -119,9 +127,10 @@ export async function serve(
   }
   built.resolve(
     handler({
-      ...webFiles(),
+      ...files,
       port: address.port,
       window: app.window,
+      look: app.settings.page,
       api: app.api,
       ...(serving.launch ? { launch: serving.launch } : {}),
     }),

@@ -719,3 +719,83 @@ export type PersonRowView = {
   // The workstream holding most of their items in progress, if any does.
   top: { id: string; name: string; count: number } | null;
 };
+
+// Settings (OA-181), as the person picks them and the server keeps them.
+// A provider instance is one way to reach a model: the person's own Claude
+// Code or Codex, on their subscription, or an API key. A provider can have
+// a second account as another instance of the same kind, with its own ID and
+// name. The default model and the Title model are each one provider
+// instance and one of its models.
+export const providerKinds = ["claude-code", "codex", "api"] as const;
+export type ProviderKind = (typeof providerKinds)[number];
+export const textSizes = ["small", "default", "large"] as const;
+export type TextSize = (typeof textSizes)[number];
+// Whether Enter sends a question, Shift+Enter a new line; or Cmd+Enter (or
+// Ctrl+Enter) sends, and Enter is a new line.
+export const sendKeys = ["enter", "mod-enter"] as const;
+export type SendKey = (typeof sendKeys)[number];
+export type ModelPick = { provider: string; model: string };
+
+// What Oriel found when it last looked, by instance:
+// - ready: installed, signed in, a supported version; or a key is set;
+// - missing, unsupported, signed-out: the CLI isn't there, is a version
+//   Oriel can't drive, or has no account;
+// - no-key: no API key is set;
+// - not-yet: installed, but Oriel can't run on it yet;
+// - checking: Oriel is looking now.
+export type ProviderStatus =
+  | "ready"
+  | "missing"
+  | "unsupported"
+  | "signed-out"
+  | "no-key"
+  | "not-yet"
+  | "checking";
+
+// One provider instance's row. `detail` says what was found, in the person's
+// words, and never holds a key. `version`: the CLI's, when one answered.
+// `path`: where Settings says the CLI is, when it says. `uses`: the models
+// it runs now, by name, for threads and for titles; each null when another
+// provider runs that.
+export type ProviderView = {
+  id: string;
+  kind: ProviderKind;
+  name: string;
+  on: boolean;
+  status: ProviderStatus;
+  detail: string;
+  version: string | null;
+  path: string | null;
+  uses: { model: string | null; title: string | null };
+};
+
+export type ModelOptionView = ModelPick & { label: string };
+
+// The settings page. `models`: what the default model and the Title model
+// can be, from the providers connected and on. `model` and `titleModel`:
+// what runs now, null when nothing can. `scripted`: the server runs the
+// scripted agent, as `--agent scripted` asked, so no provider is used.
+// `cliPaths`: a CLI's path can be set here, which only the desktop app,
+// behind its launch secret, allows.
+export type SettingsView = {
+  providers: ProviderView[];
+  models: ModelOptionView[];
+  model: ModelPick | null;
+  titleModel: ModelPick | null;
+  scripted: boolean;
+  cliPaths: boolean;
+  theme: string;
+  themes: string[];
+  textSize: TextSize;
+  send: SendKey;
+};
+
+// One change from the settings page, applied at once.
+export type SettingsChange =
+  | { theme: string }
+  | { textSize: TextSize }
+  | { send: SendKey }
+  | { model: ModelPick }
+  | { titleModel: ModelPick }
+  | { provider: string; on: boolean }
+  | { provider: string; path: string | null };

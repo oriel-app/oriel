@@ -20,9 +20,11 @@ import {
   points,
   StateChip,
   waitingNames,
+  SendKeyContext,
 } from "./parts.tsx";
 import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
+import { sends } from "./settings.ts";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Entry,
@@ -994,6 +996,7 @@ export function Composer(props: {
   onSend(): void;
   onStop?(): void;
 }) {
+  const sendKey = useContext(SendKeyContext);
   return (
     <form
       class="composer"
@@ -1009,7 +1012,7 @@ export function Composer(props: {
         aria-label="Message"
         onInput={(event) => props.onDraft(event.currentTarget.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          if (sends(event, sendKey)) {
             event.preventDefault();
             props.onSend();
           }

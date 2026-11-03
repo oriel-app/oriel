@@ -68,6 +68,7 @@ import {
 } from "./actions.ts";
 import type { LinePlace } from "./intents.ts";
 import { resolveDropped } from "./dropped.ts";
+import { type SettingsService, SettingsRefused, settingsChange } from "./settings.ts";
 import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
@@ -119,6 +120,7 @@ export type ApiDeps = {
   folder(): FolderView | null;
   jira(): JiraView;
   sources(): SourceView[];
+  settings: SettingsService;
   log: Log;
 };
 
@@ -483,6 +485,36 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
   };
 
   const routes: Route[] = [
+    {
+      // Settings (OA-181): the person's providers, models and look. No
+      // reply carries a key, only whether one is set.
+      method: "GET",
+      path: at("/settings"),
+      run: async () => json(200, deps.settings.view()),
+    },
+    {
+      // One change, applied at once.
+      method: "POST",
+      path: at("/settings"),
+      async run(_, request) {
+        const change = await readJson(request, smallBody, settingsChange);
+        try {
+          return json(200, await deps.settings.change(change));
+        } catch (error) {
+          if (error instanceof SettingsRefused) throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
+      // Check again: looks for every provider, as at startup.
+      method: "POST",
+      path: at("/settings/look"),
+      async run(_, request) {
+        await readJson(request, smallBody, emptyBody);
+        return json(200, await deps.settings.look());
+      },
+    },
     {
       method: "GET",
       path: at("/folder"),

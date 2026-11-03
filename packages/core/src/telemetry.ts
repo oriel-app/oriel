@@ -158,6 +158,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // A cluster Not in a workstream yet suggested became a workstream, by
   // Make a workstream there; `grouping` is the cluster's.
   | { name: "overview.suggestion-made"; workstreamId: Ulid; grouping: string }
+  // The person picked a theme in Settings, by its name (decision 0034).
+  | { name: "theme.picked"; theme: string }
   // A call of an Oriel action that no event above counts.
   | { name: "action.called"; action: string; by: Actor; undoes?: Actor }
 );

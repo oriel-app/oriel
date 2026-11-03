@@ -21,15 +21,17 @@
 // The agent runs on the model key in `.env` when there is one. Without one, it
 // runs on the person's own Claude Code, found on the PATH or at
 // `--claude-code <path>`, signed in however they signed it in (decision
-// 0037). With neither, each turn says how to set one up. `--agent scripted`
-// runs the scripted agent instead, which needs no model.
+// 0037). Settings, kept in `.oriel/settings.json`, can pick another, a model,
+// or a path to the CLI (decision 0041). With neither, each turn says how to
+// set one up. `--agent scripted` runs the scripted agent instead, which needs
+// no model.
 //
 // `--desktop --data <dir>` is the server as the desktop app's shell starts
 // it, and takes no other flag: see desktop/PROTOCOL.md. Jira is connected
 // from the window and kept in the OS's store for secrets, and Slack is off.
 // The agent runs on the person's own Claude Code, found on the PATH the shell
 // gives, and never on `.env`'s key, which is `pnpm dev`'s (decision 0036).
-// Nothing but the channel to the shell goes to stdout.
+// Settings are kept in the data folder. Nothing but the channel to the shell goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -40,7 +42,9 @@ import { isAbsolute, join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
 import { fileStore } from "./connection.ts";
 import { serverEnv, slackEnv } from "./env.ts";
-import { chooseModel, modelOptions } from "./model.ts";
+import type { Log } from "@oriel/core";
+import { models as findModels } from "./model.ts";
+import { settingsFile } from "./settings.ts";
 import { firstPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
 
@@ -123,12 +127,12 @@ if (channelWrite && values.data) {
     signals: process,
     firstPort,
     async model() {
-      const model = modelOptions(await chooseModel({ key: null }));
-      described = model.describe;
-      return {
-        ...(model.agent ? { agent: model.agent } : {}),
-        ...(model.titler ? { titler: model.titler } : {}),
-      };
+      const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
+      const settings = settingsFile(join(values.data ?? "", "settings.json"), log);
+      const models = findModels({ key: null });
+      await models.look(settings.get());
+      described = models.describe(settings.get());
+      return { models, settings };
     },
   }).catch((error: unknown) => {
     if (error instanceof Stopped) process.exit(0);
@@ -171,27 +175,26 @@ if (values.slack === "live") {
   slack = { kind: "live", credential: bearer(found.token), channels };
 }
 
-// The scripted agent when asked for; otherwise the model `.env`'s key or the
-// person's Claude Code gives, or none.
-const claudeCodePath = values["claude-code"];
-const model =
-  values.agent === "scripted"
-    ? null
-    : modelOptions(
-        await chooseModel({
-          key: env.modelKey,
-          ...(claudeCodePath ? { claudeCode: { path: claudeCodePath } } : {}),
-        }),
-      );
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));
 mkdirSync(dir, { recursive: true });
+const log: Log = (message, fields) => console.log(JSON.stringify({ message, ...fields }));
+// The person's settings, in the data folder. The scripted agent when asked
+// for; otherwise the provider and model Settings pick among those found:
+// `.env`'s key, the person's Claude Code, or none.
+const settings = settingsFile(join(dir, "settings.json"), log);
+const claudeCodePath = values["claude-code"];
+const models =
+  values.agent === "scripted"
+    ? null
+    : findModels({ key: env.modelKey, ...(claudeCodePath ? { claudeCodePath } : {}) });
+await models?.look(settings.get());
 const serving = await serve(port, {
   db: join(dir, `${jira.kind}.db`),
   jira,
   ...(slack ? { slack } : {}),
-  ...(model?.agent ? { agent: model.agent } : {}),
-  ...(model?.titler ? { titler: model.titler } : {}),
-  log: (message, fields) => console.log(JSON.stringify({ message, ...fields })),
+  ...(models ? { models } : {}),
+  settings,
+  log,
 });
 console.log(`Oriel is running at ${serving.url}`);
 const shown = serving.app.jira();
@@ -209,7 +212,9 @@ console.log(
       ? "Slack: the synthetic channel. Change sets you approve post there, in memory."
       : `Slack: ${channels.map((name) => `#${name.replace(/^#/, "")}`).join(", ")}. Change sets you approve post there as the person Oriel reads Slack as.`,
 );
-console.log(model?.describe ?? "Agent: the scripted agent, as --agent scripted asked.");
+console.log(
+  models?.describe(settings.get()) ?? "Agent: the scripted agent, as --agent scripted asked.",
+);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { type GroupingId, isGroupingId, type WindowView } from "@oriel/web/view";
+import { defaultTheme } from "@oriel/web/themes";
+import { type GroupingId, isGroupingId, type TextSize, type WindowView } from "@oriel/web/view";
 import { hasLaunchSecret, refusal } from "./guard.ts";
 
 // Everything the server serves. Paths are absolute.
@@ -16,6 +17,10 @@ export type Site = {
   // named in the page's import map. Only these files are served.
   vendor: ReadonlyMap<string, string>;
   window(grouping: GroupingId): WindowView;
+  // The person's theme and text size, which the page's <html> carries, so
+  // its first paint is right with no script (decision 0034). The default
+  // ones when absent.
+  look?: () => Look;
   // The JSON routes under /api/, past the guard; null for a path it doesn't
   // have, which then 404s.
   api?: (request: Request, url: URL) => Promise<Reply | null>;
@@ -56,6 +61,17 @@ const types: Record<string, string> = {
   ".png": "image/png",
 };
 
+export type Look = { theme: string; textSize: TextSize };
+const defaultLook: Look = { theme: defaultTheme, textSize: "default" };
+
+// The page's <html>, with the attributes a look other than the default sets.
+// A theme's name is one window.css has, which Settings checked.
+export function htmlTag({ theme, textSize }: Look): string {
+  const themed = theme === defaultTheme ? "" : ` data-theme="${theme}"`;
+  const sized = textSize === "default" ? "" : ` data-text-size="${textSize}"`;
+  return `<html lang="en"${themed}${sized}>`;
+}
+
 // Every reply carries these. A review link's page relies on two of them: no
 // referrer, so its token never leaves in a Referer header, and no caching.
 export function securityHeaders(importMapHash: string): Record<string, string> {
@@ -84,6 +100,7 @@ const pagePaths = [
   /^\/$/,
   /^\/browse$/,
   /^\/done$/,
+  /^\/settings(?:\/(?:appearance|asking))?$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),
   // A thread not started yet: a draft in the browser until its first message.
@@ -142,20 +159,21 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
   });
   const plain = (status: number, message: string) =>
     reply(status, "text/plain; charset=utf-8", `${message}\n`);
-  const page = [
-    "<!doctype html>",
-    '<html lang="en">',
-    '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<meta name="color-scheme" content="light dark">',
-    "<title>Oriel</title>",
-    '<link rel="icon" href="/assets/icon.svg">',
-    '<link rel="stylesheet" href="/assets/window.css">',
-    `<script type="importmap">${importMap}</script>`,
-    `<script type="module" src="/app/${site.entry}"></script>`,
-    '<div id="app"></div>',
-    "",
-  ].join("\n");
+  const page = (look: Look) =>
+    [
+      "<!doctype html>",
+      htmlTag(look),
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      '<meta name="color-scheme" content="light dark">',
+      "<title>Oriel</title>",
+      '<link rel="icon" href="/assets/icon.svg">',
+      '<link rel="stylesheet" href="/assets/window.css">',
+      `<script type="importmap">${importMap}</script>`,
+      `<script type="module" src="/app/${site.entry}"></script>`,
+      '<div id="app"></div>',
+      "",
+    ].join("\n");
 
   async function file(path: string | null): Promise<Reply> {
     const type = path === null ? undefined : types[extname(path)];
@@ -195,9 +213,12 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
         location: `/workstreams/${moved}${url.search}`,
       });
     if (pagePaths.some((pattern) => pattern.test(path)))
-      return reply(200, "text/html; charset=utf-8", page);
+      return reply(200, "text/html; charset=utf-8", page(site.look?.() ?? defaultLook));
+    // A review link's reader isn't the person who picked a look.
     if (reviewPath.test(path))
-      return reply(200, "text/html; charset=utf-8", page, { "x-robots-tag": "noindex" });
+      return reply(200, "text/html; charset=utf-8", page(defaultLook), {
+        "x-robots-tag": "noindex",
+      });
     if (path === "/api/window") {
       const grouping = url.searchParams.get("grouping");
       if (!isGroupingId(grouping))

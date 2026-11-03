@@ -7,6 +7,8 @@
 // `live`, the app also syncs from that site, as from a live one. With
 // `connect`, Jira starts unconnected, and the window connects it to SYN in
 // memory, which answers only `account`.
+import type { Models } from "./model.ts";
+import type { SettingsStore } from "./settings.ts";
 import {
   type Bindings,
   type CapturedMutation,
@@ -125,6 +127,9 @@ export type TestOptions = {
   slack?: SlackMode;
   // SYN's board in memory takes no estimates: it has no points field.
   estimates?: false;
+  // The providers Settings picks among, in place of `agent` and `titler`.
+  models?: Models;
+  settings?: SettingsStore;
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -169,7 +174,11 @@ export async function testApp(
     limits: { ...limits, ...options.limits },
     now,
     sandbox: options.sandbox ?? fakeSandbox(options.scripts ?? {}),
-    agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)),
+    ...(options.models
+      ? { models: options.models }
+      : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
+    ...(options.settings ? { settings: options.settings } : {}),
+    themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });

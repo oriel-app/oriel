@@ -140,6 +140,9 @@ export const exemptRoutes: Record<string, string> = {
   "/telemetry": "the window's own telemetry",
   "/change-sets/:id/diff": "a read that records what was shown",
   "/review/open": "a read that records what was shown",
+  // Decision 0041: no agent or outside tool may pick which CLI runs.
+  "/settings": "the person's own settings, which no agent may change",
+  "/settings/look": "the person's own settings, which no agent may change",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

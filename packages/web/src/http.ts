@@ -4,7 +4,7 @@
 // return them, so they're tested without a DOM.
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
-import type { BrowseFilter, GroupingId, UndoView } from "./view.ts";
+import type { BrowseFilter, GroupingId, TextSize, UndoView } from "./view.ts";
 import type { Ending } from "./ending.ts";
 import type { OverviewSection } from "@oriel/core/overview";
 import type { StartQuestion } from "@oriel/core/window-chat";
@@ -72,7 +72,11 @@ export type Tag =
   | { kind: "jiraConnected" }
   | { kind: "sources" }
   // A source synced on demand, by its kind.
-  | { kind: "sourceSynced"; source: string };
+  | { kind: "sourceSynced"; source: string }
+  // Settings, loaded, changed, or looked for again (OA-181).
+  | { kind: "settings" }
+  | { kind: "settingsChanged" }
+  | { kind: "settingsLooked" };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.
@@ -114,7 +118,10 @@ export type Effect =
   | { type: "after"; ms: number; msg: Msg }
   // Sends `msg` once the page shows the update that asked, before it paints,
   // and after what the user did meanwhile.
-  | { type: "rendered"; msg: Msg };
+  | { type: "rendered"; msg: Msg }
+  // Puts the person's theme and text size on the page's <html>, as the
+  // server does for the first paint (decision 0034).
+  | { type: "showLook"; theme: string; textSize: TextSize };
 
 // A server's reply to an `http` effect. `body` is our own server's JSON in
 // the shape @oriel/web/view declares for that route, or `{ error }`.

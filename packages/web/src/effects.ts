@@ -149,6 +149,14 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
       // The page renders in a microtask; input events come first in a frame.
       requestAnimationFrame(() => dispatch(effect.msg));
       return;
+    case "showLook": {
+      // The default theme is `:root` itself, so naming it changes nothing.
+      const html = document.documentElement;
+      html.dataset.theme = effect.theme;
+      if (effect.textSize === "default") delete html.dataset.textSize;
+      else html.dataset.textSize = effect.textSize;
+      return;
+    }
   }
 }
 

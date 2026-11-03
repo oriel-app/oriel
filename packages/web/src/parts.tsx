@@ -16,7 +16,15 @@ import { type Inline, opens, parse, type Prose } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
 import type { Msg } from "./root.ts";
 import { type Route, routeUrl, safeHref } from "./route.ts";
-import type { Chips, ChipView, ItemRow, MemberView, ThreadStateId, WaitingOn } from "./view.ts";
+import type {
+  Chips,
+  ChipView,
+  ItemRow,
+  MemberView,
+  SendKey,
+  ThreadStateId,
+  WaitingOn,
+} from "./view.ts";
 
 export type Dispatch = (msg: Msg) => void;
 
@@ -135,6 +143,10 @@ export const ItemLinksContext = createContext<ItemLinks | null>(null);
 // thread's rail or search results. An item opened from it can step through it
 // in the panel.
 export const ItemListContext = createContext<readonly string[] | null>(null);
+
+// Which key sends a question, as the person set it in Settings: Enter, with
+// Shift+Enter a new line; or Cmd+Enter (Ctrl+Enter), with Enter a new line.
+export const SendKeyContext = createContext<SendKey>("enter");
 
 // An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
