@@ -107,10 +107,10 @@
   --handed-off-text: var(--applied);
   --handed-off-soft: color-mix(in srgb, var(--applied) var(--tint), var(--n0));
 
-  /* What Oriel computed rather than read: a rule's finding, a stale index. */
-  --derived: var(--stalled);
-  --derived-soft: color-mix(in srgb, var(--stalled) 7%, var(--n0));
-  --derived-line: color-mix(in srgb, var(--stalled) 30%, var(--n0));
+  /* What Oriel computed or found rather than read: a rule, a search. */
+  --derived: var(--n6);
+  --derived-soft: color-mix(in srgb, var(--n2) 55%, var(--n0));
+  --derived-line: var(--n4);
 
   /* A source's own marks stay muted: kind is told by shape and name. */
   --type-story: color-mix(in srgb, var(--done) 55%, var(--n4));
@@ -4048,7 +4048,7 @@ a.replies:hover {
 }
 
 .panel-behind {
-  color: var(--derived);
+  color: var(--stalled);
   font-weight: var(--weight-strong);
 }
 
@@ -4589,9 +4589,20 @@ button.overview-title:hover {
   font-weight: var(--weight-regular);
 }
 
+/* A stall is told by its mark, so forty workstreams don't read as alarms. */
 .overview-signal {
-  color: var(--derived);
+  color: var(--text-muted);
   cursor: help;
+}
+
+.overview-signal::before {
+  display: inline-block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  background: var(--stalled);
+  content: "";
 }
 
 .overview-spark {
@@ -4802,11 +4813,11 @@ button.overview-title:hover {
 }
 
 .ask-question {
-  height: var(--chip-height);
+  height: 1.5rem;
   padding: 0 var(--space-3);
-  border: var(--border-thin) solid var(--chip-line);
+  border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius-lg);
-  background: var(--chip-bg);
+  background: var(--surface);
   color: var(--text-muted);
   font: inherit;
   font-size: var(--chip-font);
@@ -4814,7 +4825,7 @@ button.overview-title:hover {
 }
 
 .ask-question:hover:not(:disabled) {
-  background: var(--chip-bg-hover);
+  background: var(--surface-hover);
   color: var(--text);
 }
 
