@@ -5726,7 +5726,8 @@ button.overview-title:hover {
 }
 
 .cli-note,
-.cli-small {
+.cli-small,
+.cli-training {
   margin: 0;
   color: var(--text-faint);
   font-size: var(--text-sm);

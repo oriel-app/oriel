@@ -194,7 +194,7 @@ async function firstRun(
           ok: true as const,
           cli: { path: cli, version: "0.166.0" },
           models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true }],
-          account: { plan: "ChatGPT Plus", email: "maya@example.com" },
+          account: { plan: "ChatGPT Plus", email: "maya@example.com", personal: true },
         }
       : { ok: false as const, problem: { kind: "signed-out" as const, message: "Signed out." } };
   };
@@ -274,7 +274,11 @@ test("missing, installed by Anthropic's installer, signed in, then chosen: one r
   await run.app.settled();
   view = await run.view();
   assert.equal(view.cli?.state, "ready");
-  assert.deepEqual(view.cli?.account, { plan: "Claude Pro", email: "maya@example.com" });
+  assert.deepEqual(view.cli?.account, {
+    plan: "Claude Pro",
+    email: "maya@example.com",
+    personal: true,
+  });
   assert.equal(run.world.fronted, 1);
   // The CLI's own sign-in, for a subscription, with nothing on its stdin.
   assert.equal(
@@ -646,7 +650,11 @@ test("Codex, a preview: signed in with its own login, with no terminal, then cho
   await run.app.settled();
   view = await run.view();
   assert.equal(view.codex?.state, "ready");
-  assert.deepEqual(view.codex?.account, { plan: "ChatGPT Plus", email: "maya@example.com" });
+  assert.deepEqual(view.codex?.account, {
+    plan: "ChatGPT Plus",
+    email: "maya@example.com",
+    personal: true,
+  });
   // Codex's own command, with stdin closed: nothing passes through Oriel.
   assert.equal(readFileSync(join(run.world.home, "codex-login-args"), "utf8").trim(), "login");
   assert.equal(readFileSync(join(run.world.home, "codex-login-stdin"), "utf8"), "");

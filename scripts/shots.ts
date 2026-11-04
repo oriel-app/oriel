@@ -447,7 +447,7 @@ const configured = async (settings: Partial<Settings> = {}) => {
         { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", isDefault: true },
         { id: "gpt-6-luna", label: "GPT-6-Luna", isDefault: false },
       ],
-      account: { plan: "ChatGPT Plus", email: "sam@example.com" },
+      account: { plan: "ChatGPT Plus", email: "sam@example.com", personal: true },
     }),
     counts,
     // The plan as a Claude Code on Max reports it (decision 0046), and as
@@ -2649,6 +2649,20 @@ scenes.push(
     name: "first-run-settings",
     path: "/settings",
     make: firstRun({ cli: { signedIn: true }, codex: true, jira: true, state: setupFinished }),
+    act: (page) =>
+      page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+  },
+  // Both signed in with the person's own API key: no line about training.
+  {
+    name: "first-run-settings-api-keys",
+    path: "/settings",
+    make: firstRun({
+      cli: { signedIn: true },
+      codex: "ready",
+      apiKeys: true,
+      jira: true,
+      state: setupFinished,
+    }),
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
   },

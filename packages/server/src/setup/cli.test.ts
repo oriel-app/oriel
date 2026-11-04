@@ -59,14 +59,20 @@ test("an answer that isn't an installer is refused: an error, or too much", asyn
 test("the plan and email come from the CLI's own status, only once it's signed in", () => {
   assert.deepEqual(
     accountOf('{"loggedIn":true,"email":"maya@example.com","subscriptionType":"max"}'),
-    { plan: "Claude Max", email: "maya@example.com" },
+    { plan: "Claude Max", email: "maya@example.com", personal: true },
   );
   assert.deepEqual(accountOf('{"loggedIn":true,"authMethod":"oauth_token"}'), {
     plan: null,
     email: null,
+    personal: true,
   });
   assert.equal(accountOf('{"loggedIn":false}'), null);
   assert.equal(accountOf("not json"), null);
+  // Team and Enterprise plans, and an API key, aren't trained on.
+  for (const plan of ["team", "enterprise"])
+    assert.equal(accountOf(`{"loggedIn":true,"subscriptionType":"${plan}"}`)?.personal, false);
+  assert.equal(accountOf('{"loggedIn":true,"subscriptionType":"pro"}')?.personal, true);
+  assert.equal(accountOf('{"loggedIn":true,"authMethod":"api_key"}')?.personal, false);
   // A plan name the page shows only as the CLI's own short word.
   assert.equal(accountOf('{"loggedIn":true,"subscriptionType":"<b>x</b>"}')?.plan, null);
 });

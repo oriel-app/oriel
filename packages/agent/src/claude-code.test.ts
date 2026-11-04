@@ -377,6 +377,18 @@ test("the environment passes the person's sign-in through and nothing that would
   assert.equal(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, "5000");
 });
 
+test("the environment turns off what Claude Code would upload besides the model's requests", () => {
+  // Fixed values, whatever the person's own environment says.
+  const env = harnessEnv({ HOME: "/home/pm", DISABLE_TELEMETRY: "", DO_NOT_TRACK: "0" }, 5000);
+  assert.equal(env.DISABLE_FEEDBACK_COMMAND, "1");
+  assert.equal(env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY, "1");
+  assert.equal(env.DISABLE_TELEMETRY, "1");
+  assert.equal(env.DISABLE_ERROR_REPORTING, "1");
+  assert.equal(env.DO_NOT_TRACK, undefined);
+  // Feature flags, and what needs them, stay as they are.
+  assert.equal(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
+});
+
 test("only a 2.x at or past the verified version is supported", () => {
   assert.deepEqual(parseVersion("2.1.314 (Claude Code)\n"), [2, 1, 314]);
   assert.equal(parseVersion("claude: command not found"), null);

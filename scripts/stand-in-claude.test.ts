@@ -20,6 +20,7 @@ test("the stand-in signs in, or fails to, as its state says", () => {
   assert.deepEqual(accountOf(command(works.next!, ["auth", "status", "--json"]).out.join("\n")), {
     plan: "Claude Pro",
     email: "pm@example.com",
+    personal: true,
   });
   assert.equal(command(out, ["mcp", "list"]).code, 2);
 });
