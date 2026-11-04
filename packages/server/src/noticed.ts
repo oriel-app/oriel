@@ -22,7 +22,16 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { addPin, dismiss, dismissals, pins, removePin } from "@oriel/db";
+import {
+  addPin,
+  dismiss,
+  dismissals,
+  keepPass,
+  kindOfSignal,
+  lastPass,
+  pins,
+  removePin,
+} from "@oriel/db";
 import type { BlockView, Chips, NoticedCardView, NoticedView } from "@oriel/web/view";
 import { evidenceFacts, type SignalInput, signalBlock, signalsOf } from "./signals.ts";
 
@@ -54,19 +63,35 @@ export type NoticedDeps = {
 
 type Pass = { key: string; notices: Notice[]; at: Instant; model: string };
 
+// How long Oriel waits before it looks for a model again, after it found
+// none for this set of signals.
+const noAiRetryMs = 10 * 60_000;
+
+// A stored pick: its signal's ID, and the line and quote Oriel checked.
+type Pick = { signal: string; why: string | null; quote: Notice["quote"] };
+
 export function noticedService(deps: NoticedDeps) {
   const clock = deps.clock ?? (() => performance.now());
-  let last: Pass | null = null;
   let running: { key: string; done: Promise<void> } | null = null;
   let failed: { key: string; problem: string } | null = null;
-  let noAi = false;
+  let noAi: { key: string; at: number } | null = null;
+  // The last pass, kept in the database so a restart doesn't pay for it
+  // again. Its picks' signals are filled in from the signals on offer.
+  const stored = lastPass(deps.db, deps.workspaceId);
+  let last: (Omit<Pass, "notices"> & { picks: Pick[] }) | null = stored && {
+    ...stored,
+    picks: Array.isArray(stored.picks) ? (stored.picks as Pick[]) : [],
+  };
 
   // What a pass is offered now: every signal not dismissed, weighed by
   // what dismissals taught, heaviest first.
   const offer = async () => {
     const input = await deps.input();
-    const gone = dismissals(deps.db, deps.workspaceId);
-    const kept = pins(deps.db, deps.workspaceId).flatMap((pin) => (pin.kind ? [pin.kind] : []));
+    const gone = dismissals(deps.db, deps.workspaceId, deps.now());
+    const kept = pins(deps.db, deps.workspaceId).flatMap((pin) => {
+      const kind = pin.signal ? kindOfSignal(pin.signal) : null;
+      return kind ? [kind] : [];
+    });
     const weight = kindWeights(gone, kept);
     const offered = signalsOf(input)
       .filter((signal) => !dismissed(signal, gone))
@@ -86,10 +111,10 @@ export function noticedService(deps: NoticedDeps) {
     const done = (async () => {
       const chosen = await deps.noticer();
       if (!chosen) {
-        noAi = true;
+        noAi = { key, at: clock() };
         return;
       }
-      noAi = false;
+      noAi = null;
       const ids = [...new Set(offered.flatMap((s) => s.items))];
       // Where each stands, from the index, beside its text from its source.
       const facts = new Map(
@@ -114,7 +139,10 @@ export function noticedService(deps: NoticedDeps) {
         input_tokens: ran.usage.inputTokens,
         output_tokens: ran.usage.outputTokens,
       });
-      last = { key, notices: ran.notices, at: deps.now(), model: ran.model || chosen.model };
+      if (ran.stop !== "done") throw new Error(`the pass ended without its answer (${ran.stop})`);
+      const picks = ran.notices.map((n) => ({ signal: n.signal.id, why: n.why, quote: n.quote }));
+      last = { key, picks, at: deps.now(), model: ran.model || chosen.model };
+      keepPass(deps.db, deps.workspaceId, last);
       failed = null;
     })()
       .catch((error: unknown) => {
@@ -132,9 +160,11 @@ export function noticedService(deps: NoticedDeps) {
   const refresh = async () => {
     const offered = await offer();
     const fresh = last?.key === offered.key;
+    const waiting = noAi?.key === offered.key && clock() - noAi.at < noAiRetryMs;
     if (
       offered.offered.length &&
       !fresh &&
+      !waiting &&
       running?.key !== offered.key &&
       failed?.key !== offered.key
     )
@@ -177,9 +207,9 @@ export function noticedService(deps: NoticedDeps) {
       const pinned = new Map(held.flatMap((pin) => (pin.signal ? [[pin.signal, pin.id]] : [])));
       // The last pass's cards whose signal is still on offer, with its
       // headline and figures as Oriel has them now.
-      const cards = (last?.notices ?? []).flatMap((notice) => {
-        const signal = now.get(notice.signal.id);
-        return signal ? [card(input, { ...notice, signal }, pinned)] : [];
+      const cards = (last?.picks ?? []).flatMap((pick) => {
+        const signal = now.get(pick.signal);
+        return signal ? [card(input, { signal, why: pick.why, quote: pick.quote }, pinned)] : [];
       });
       const chips = await deps.chips([
         ...new Set(
@@ -192,10 +222,10 @@ export function noticedService(deps: NoticedDeps) {
       ]);
       const status: NoticedView["status"] = !offered.length
         ? "quiet"
-        : running?.key === key
-          ? "running"
-          : noAi
-            ? "no-ai"
+        : noAi?.key === key
+          ? "no-ai"
+          : running?.key === key
+            ? "running"
             : failed?.key === key
               ? "failed"
               : "ready";
@@ -222,24 +252,24 @@ export function noticedService(deps: NoticedDeps) {
       dismiss(
         deps.db,
         deps.workspaceId,
-        { signal: signal.id, fingerprint: signal.fingerprint, kind: signal.kind },
+        { signal: signal.id, fingerprint: signal.fingerprint },
         deps.now(),
       );
-      if (last) last = { ...last, notices: last.notices.filter((n) => n.signal.id !== signalId) };
+      if (last) last = { ...last, picks: last.picks.filter((pick) => pick.signal !== signalId) };
       return true;
     },
 
     // Pins a card's block, as its saved read (decision 0030).
-    async pin(signalId: string): Promise<{ id: Ulid } | { refused: string }> {
+    // Null when no card has that signal now.
+    async pin(signalId: string): Promise<{ id: Ulid } | { refused: string } | null> {
       const { offered } = await offer();
       const signal = offered.find((each) => each.id === signalId);
-      if (!signal) return { refused: "That card isn't there any more." };
+      if (!signal) return null;
       const id = ulid(Date.parse(deps.now()));
       const refused = addPin(deps.db, deps.workspaceId, {
         id,
         spec: signal.block,
         signal: signal.id,
-        kind: signal.kind,
         createdAt: deps.now(),
       });
       return refused ?? { id };

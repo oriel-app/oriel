@@ -4,6 +4,7 @@
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
+import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
@@ -403,16 +404,13 @@ export type BlockView = { caption: string; more: number; outside: boolean } & (
 );
 
 // Noticed (docs/decisions/draft-noticed.md): what Oriel found in the window
-// unasked. A card is Oriel's signal, its headline, rule and block Oriel's,
+// unasked; its subject is core's `SignalSubject`. A card is Oriel's signal, its headline, rule and block Oriel's,
 // with one checked line from the model on why it may matter.
-export type NoticedSubjectView =
-  | { kind: "workstream"; id: string; name: string }
-  | { kind: "item"; id: string }
-  | { kind: "person"; id: string; name: string };
+export type NoticedSubjectView = SignalSubject;
 
 export type NoticedCardView = {
   signal: string;
-  kind: string;
+  kind: SignalKind;
   subject: NoticedSubjectView;
   headline: string;
   rule: string;

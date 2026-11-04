@@ -104,6 +104,9 @@ export type NoticedResult = {
   // Everything the model wrote, for a transcript.
   text: string;
   calledTool: boolean;
+  // Why the response ended: anything but "done" is a pass that failed, such
+  // as a call to the read the model was told not to run.
+  stop: string;
 };
 
 // Runs the pass. `onNotice` hears each card as soon as it is checked.
@@ -180,6 +183,7 @@ export async function runNoticed(
   let model = "";
   let usage: Usage = noUsage;
   let calledTool = false;
+  let stop = "other";
   try {
     for await (const event of conversation.next([], {
       maxOutputTokens: options.maxOutputTokens ?? 4000,
@@ -195,6 +199,7 @@ export async function runNoticed(
       else {
         model = event.model;
         usage = event.usage;
+        stop = event.stop;
       }
     }
   } finally {
@@ -211,5 +216,6 @@ export async function runNoticed(
     ms: context.clock() - start,
     text,
     calledTool,
+    stop,
   };
 }

@@ -833,7 +833,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/noticed/pin"),
       async run(_, request) {
         const typed = await readJson(request, tinyBody, object({ signal: unknown }));
-        return json(201, await deps.dispatch("pin.add", checked("pin.add", typed), user));
+        return json(201, await deps.dispatch("noticed.pin", checked("noticed.pin", typed), user));
       },
     },
     {
@@ -841,7 +841,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/pins/:id/remove"),
       async run([id = ""], request) {
         await readJson(request, tinyBody, emptyBody);
-        await deps.dispatch("pin.remove", { pin: id as Ulid }, user);
+        await deps.dispatch("noticed.unpin", { pin: id as Ulid }, user);
         return json(200, {});
       },
     },

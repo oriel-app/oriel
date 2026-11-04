@@ -92,7 +92,15 @@ test("prose that isn't a JSON line is skipped; a broken one is refused", () => {
 test("a dismissal holds while the fingerprint does, and three of a kind never kept halve its weight", () => {
   assert.ok(dismissed(signal, [{ signal: signal.id, fingerprint: signal.fingerprint }]));
   assert.ok(!dismissed(signal, [{ signal: signal.id, fingerprint: "slack:C1-1,slack:C1-2" }]));
-  const three = Array.from({ length: teachAfter }, () => ({ kind: "stalled" as const }));
+  const three = Array.from({ length: teachAfter }, (_, i) => ({
+    kind: "stalled" as const,
+    signal: `stalled:w${i}`,
+  }));
+  const again = Array.from({ length: teachAfter }, () => ({
+    kind: "stalled" as const,
+    signal: "stalled:w0",
+  }));
+  assert.equal(kindWeights(again, [])["stalled"], 1);
   assert.equal(kindWeights(three, [])["stalled"], 0.5);
   assert.equal(kindWeights(three, ["stalled"])["stalled"], 1);
   assert.equal(kindWeights(three.slice(1), [])["stalled"], 1);

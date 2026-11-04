@@ -288,7 +288,8 @@ export function runSignalRead(
 // The rules, each the same for every signal of its kind.
 export const signalRules: Record<SignalKind, string> = {
   stalled: `An open workstream with items not done, and no member update or thread activity in ${stuckDays} days`,
-  drift: "A workstream whose summed estimates rose by 5 or more, or by a quarter, in 14 days",
+  drift:
+    "Items in an open workstream whose estimates, summed, rose by 5 or more, or by a quarter and at least 3, in 14 days",
   overloaded: "A person with at least 5 items in progress, twice the median or more",
   contradicted: "A chat message that names an item after it was marked done",
   scope: "An epic that gained 3 items or more, and a quarter or more of its size, in 7 days",
@@ -324,7 +325,8 @@ export function signalsOf(input: SignalInput): Signal[] {
         headline: `${workstream.name}: nothing moved in ${idle} days, with ${plural(open.length, "item")} not done`,
         rule: signalRules.stalled,
         weight: weights.stalled * Math.min(open.length, 4),
-        fingerprint: `idle≥${doubling(idle, stuckDays)}`,
+        // The stall's start, so a new stall later is a new card.
+        fingerprint: `since ${lastActivity?.slice(0, 10)}, idle≥${doubling(idle, stuckDays)}`,
         // Its epic first, where a stall's reason is often written down.
         items: [
           ...epics,
@@ -342,7 +344,7 @@ export function signalsOf(input: SignalInput): Signal[] {
         id: `drift:${workstream.id}`,
         kind: "drift",
         subject: { kind: "workstream", id: workstream.id, name: workstream.name },
-        headline: `${workstream.name}: ${label(changes)} rose from ${before} to ${after} in 14 days, across ${plural(changes.length, "item")}`,
+        headline: `${workstream.name}: ${label(changes)} rose on ${plural(changes.length, "item")}, from ${before} to ${after} in all, in 14 days`,
         rule: signalRules.drift,
         weight: weights.moved * changes.length + 1,
         fingerprint: `after=${after}`,

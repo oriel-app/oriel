@@ -76,7 +76,10 @@ test("estimates that rose show as a table built by Oriel from the change log, un
     change("SYN-3", { declared: { estimate: { before: 1, after: 5 } } }, 20, 0),
   ];
   const drift = signalsOf(input(records, changes)).find((s) => s.kind === "drift");
-  assert.equal(drift?.headline, "Checkout: estimate rose from 8 to 16 in 14 days, across 2 items");
+  assert.equal(
+    drift?.headline,
+    "Checkout: estimate rose on 2 items, from 8 to 16 in all, in 14 days",
+  );
   const block = drift && signalBlock(input(records, changes), drift.block);
   assert.ok(block?.form === "table");
   assert.deepEqual(block.columns, ["Key", "Title", "Before", "After"]);

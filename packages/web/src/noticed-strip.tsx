@@ -5,6 +5,7 @@
 // Pin saves the card's block as a read rerun on each look; Ask about this
 // opens the window chat on it, by ID; Dismiss keeps it away until its
 // figures move on.
+import type { SignalKind } from "@oriel/core/noticed";
 import { BlockFigure } from "./block.tsx";
 import type { OverviewMsg } from "./overview.ts";
 import { AnswerChip, ChipsContext, type Dispatch, Link, Markdown, useStamp } from "./parts.tsx";
@@ -12,7 +13,7 @@ import { Tooltip } from "./tooltip.tsx";
 import type { Question } from "./window-chat.ts";
 import type { BlockView, NoticedCardView, NoticedView, PinView } from "./view.ts";
 
-const kindLabels: Record<string, string> = {
+const kindLabels: Record<SignalKind, string> = {
   stalled: "Stalled",
   drift: "Estimates rose",
   overloaded: "A lot in progress",
@@ -24,7 +25,7 @@ const kindLabels: Record<string, string> = {
 // name or title, which may be synced text (decision 0030).
 export function askAbout(card: NoticedCardView): Question {
   const { subject } = card;
-  const what: Record<string, string> = {
+  const what: Record<SignalKind, string> = {
     stalled: `that the workstream ${subject.id} stalled`,
     drift: `estimates rising in the workstream ${subject.id}`,
     overloaded: `that the person ${subject.id} has a lot in progress`,
@@ -34,7 +35,7 @@ export function askAbout(card: NoticedCardView): Question {
   return {
     kind: "noticed",
     label: "Ask about this",
-    text: `Oriel noticed ${what[card.kind] ?? subject.id}. What's behind it, and what should I do?`,
+    text: `Oriel noticed ${what[card.kind]}. What's behind it, and what should I do?`,
   };
 }
 
@@ -85,9 +86,9 @@ export function NoticedStrip(props: {
       {view.cards.length === 0 && view.status === "ready" && (
         <p class="noticed-none">Nothing Oriel found needs you now.</p>
       )}
-      {props.problem && (
+      {(props.problem ?? view.problem) && (
         <p class="overview-problem" role="alert">
-          {props.problem}
+          {props.problem ?? view.problem}
         </p>
       )}
       <ChipsContext.Provider value={view.chips}>
@@ -95,7 +96,7 @@ export function NoticedStrip(props: {
           {view.cards.map((card) => (
             <article class="noticed-card" key={card.signal} data-kind={card.kind}>
               <header class="noticed-card-head">
-                <span class="noticed-kind">{kindLabels[card.kind] ?? card.kind}</span>
+                <span class="noticed-kind">{kindLabels[card.kind]}</span>
                 <Tooltip text={`Oriel rule: ${card.rule}`}>
                   <span class="noticed-rule-mark" tabIndex={0} aria-label="Oriel's rule">
                     ⓘ
@@ -117,7 +118,7 @@ export function NoticedStrip(props: {
               {card.why && (
                 <div class="noticed-why">
                   <Markdown text={card.why} linksTo={new Set()} answer />
-                  <p class="noticed-why-by">The agent's words, unasked · no figures</p>
+                  <p class="noticed-why-by">The agent's words, unasked</p>
                 </div>
               )}
               {card.quote && (

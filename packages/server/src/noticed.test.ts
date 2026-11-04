@@ -96,12 +96,54 @@ test("a dismissed card stays away, and a pin reruns its read on every look with 
   assert.equal((await look()).pins.length, 0);
 });
 
-test("a fifth pin is refused, and a stray card can't be pinned or dismissed", async (t) => {
+test("a card pins once, and a stray card can't be pinned or dismissed", async (t) => {
   const { app, look } = await window(t);
-  const view = await look();
-  const signals = view.cards.map((card) => card.signal);
-  for (const signal of [...signals, ...signals].slice(0, 4))
-    assert.equal((await app.post("/api/noticed/pin", { signal })).status, 201);
-  assert.equal((await app.post("/api/noticed/pin", { signal: signals[0] })).status, 409);
+  const [first] = (await look()).cards;
+  assert.ok(first);
+  assert.equal((await app.post("/api/noticed/pin", { signal: first.signal })).status, 201);
+  assert.equal((await app.post("/api/noticed/pin", { signal: first.signal })).status, 409);
+  assert.equal((await app.post("/api/noticed/pin", { signal: "stalled:nothing" })).status, 404);
   assert.equal((await app.post("/api/noticed/dismiss", { signal: "stalled:nothing" })).status, 404);
+});
+
+test("with no model, the strip says so once and doesn't look again for every poll", async (t) => {
+  let asked = 0;
+  const app = await testApp(t, {
+    slack: { kind: "fixture" },
+    noticer: async () => {
+      asked++;
+      return null;
+    },
+  });
+  await app.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10003" });
+  json<NoticedView>(await app.get("/api/noticed"));
+  await new Promise((resolve) => setImmediate(resolve));
+  const views = [];
+  for (let i = 0; i < 3; i++) views.push(json<NoticedView>(await app.get("/api/noticed")).status);
+  assert.deepEqual(views, ["no-ai", "no-ai", "no-ai"]);
+  assert.equal(asked, 1);
+});
+
+test("a pass that ends on a tool call is a failure the strip shows, not an empty window", async (t) => {
+  const provider: Provider = {
+    converse: () => ({
+      async *next(): AsyncGenerator<ModelEvent> {
+        const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+        yield { kind: "call", call: { id: "c1", name: "run", input: { script: "1" } } };
+        yield { kind: "end", stop: "calls", detail: null, model: "stand-in", usage };
+      },
+    }),
+  };
+  const app = await testApp(t, {
+    slack: { kind: "fixture" },
+    noticer: async () => ({ provider, model: "stand-in" }),
+  });
+  await app.post("/api/workstreams", { kind: "cluster", grouping: "epic", cluster: "10003" });
+  let view = json<NoticedView>(await app.get("/api/noticed"));
+  while (view.status === "running") {
+    await new Promise((resolve) => setImmediate(resolve));
+    view = json<NoticedView>(await app.get("/api/noticed"));
+  }
+  assert.equal(view.status, "failed");
+  assert.ok(view.problem);
 });

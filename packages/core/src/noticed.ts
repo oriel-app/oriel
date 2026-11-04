@@ -187,16 +187,17 @@ export const dismissed = (signal: Signal, dismissals: readonly Dismissal[]): boo
   dismissals.some((d) => d.signal === signal.id && d.fingerprint === signal.fingerprint);
 
 // What dismissals teach, computed, never learned by a model: a kind the
-// person dismissed `teachAfter` times, and never pinned or asked about,
+// person dismissed on `teachAfter` signals, and never pinned or asked about,
 // weighs half, so other kinds outrank it. Each signal's rule says so.
 export const teachAfter = 3;
 export function kindWeights(
-  dismissals: readonly { kind: SignalKind }[],
+  dismissals: readonly { kind: SignalKind; signal: string }[],
   kept: readonly SignalKind[],
 ): Record<SignalKind, number> {
   return Object.fromEntries(
     signalKinds.map((kind) => {
-      const times = dismissals.filter((d) => d.kind === kind).length;
+      // Signals, not dismissals: one card dismissed again is one lesson.
+      const times = new Set(dismissals.filter((d) => d.kind === kind).map((d) => d.signal)).size;
       return [kind, times >= teachAfter && !kept.includes(kind) ? 0.5 : 1];
     }),
   ) as Record<SignalKind, number>;

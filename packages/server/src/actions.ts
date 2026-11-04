@@ -930,13 +930,14 @@ const handlers = {
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  "pin.add": async ({ signal }, _actor, deps) => {
+  "noticed.pin": async ({ signal }, _actor, deps) => {
     const pinned = await noticedOf(deps).pin(signal);
+    if (!pinned) throw new ActionError("not-found", "That card isn't there any more.");
     if ("refused" in pinned) throw new ActionError("conflict", pinned.refused);
     return { output: pinned, undo: null, changed: null, events: [] };
   },
 
-  "pin.remove": async ({ pin }, _actor, deps) => {
+  "noticed.unpin": async ({ pin }, _actor, deps) => {
     if (!noticedOf(deps).unpin(pin as Ulid)) throw new ActionError("not-found", "no such pin");
     return { output: {}, undo: null, changed: null, events: [] };
   },
