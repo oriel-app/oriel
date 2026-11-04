@@ -49,9 +49,21 @@ test("a link to add must be https", () => {
     assert.equal(ok(url), false, url);
 });
 
-test("only removeLink and deleteItem are revert-only", () => {
+test("a comment is 1 to 32,767 characters, and one to remove is named by digits only", () => {
+  const ok = (body: string) => jiraOps.addComment.args({ body }).ok;
+  assert.equal(ok("The date moved: the supplier slipped."), true);
+  assert.equal(ok("🛳".repeat(32_767)), true);
+  for (const body of ["", " \n ", "x".repeat(32_768)])
+    assert.equal(ok(body), false, JSON.stringify(body.slice(0, 8)));
+  const id = (commentId: string) => jiraOps.removeComment.args({ commentId }).ok;
+  assert.equal(id("10001"), true);
+  for (const commentId of ["", "0", "10001 ", "../../issue/SYN-1", "10001?x"])
+    assert.equal(id(commentId), false, commentId);
+});
+
+test("only removeLink, removeComment and deleteItem are revert-only", () => {
   assert.deepEqual(
     Object.entries(jiraOps).flatMap(([op, spec]) => (spec.revertOnly ? [op] : [])),
-    ["removeLink", "deleteItem"],
+    ["removeLink", "removeComment", "deleteItem"],
   );
 });

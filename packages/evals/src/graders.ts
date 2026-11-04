@@ -1,7 +1,7 @@
-// Graders. Six are programmatic: the captured change set against a golden
-// diff, zero mutations (and zero intents), the calls the turn's intents
+// Graders. Seven are programmatic: the captured change set against a golden
+// diff, or against the writes a case names, zero mutations (and zero intents), the calls the turn's intents
 // applied as, the blocks it showed against their reads, text surfaced to the
-// user as content, and text the reply mentions. The seventh
+// user as content, and text the reply mentions. The eighth
 // is an LLM judge for open-ended output, which checks a rubric of claims one
 // by one and must be a different model from the one under test.
 import {
@@ -179,6 +179,42 @@ export function gradeExactDiff(
     shared.size ? "lines that read the same differ in which new items they name" : "",
   ];
   return { grader: "exact-diff", pass: false, detail: parts.filter(Boolean).join(". ") };
+}
+
+// One of each expected write, in any order, and nothing else: each its op on
+// its item, its arguments' text holding every one of `text`, ignoring case.
+export function gradeWrites(
+  expected: readonly { op: string; item: ItemId; text?: readonly string[] }[],
+  actual: readonly CapturedMutation[],
+): Grade {
+  const words = (value: unknown): string[] =>
+    typeof value === "string"
+      ? [value]
+      : typeof value === "object" && value !== null
+        ? Object.values(value).flatMap(words)
+        : [];
+  const left = [...actual];
+  const missing = expected.flatMap((want) => {
+    const at = left.findIndex((m) => {
+      const said = words(m.args).join("\n").toLowerCase();
+      return (
+        m.op === want.op &&
+        m.target === want.item &&
+        (want.text ?? []).every((t) => said.includes(t.toLowerCase()))
+      );
+    });
+    if (at === -1)
+      return [`${want.op} ${want.item}${want.text ? ` saying ${JSON.stringify(want.text)}` : ""}`];
+    left.splice(at, 1);
+    return [];
+  });
+  if (!missing.length && !left.length)
+    return { grader: "writes", pass: true, detail: `${expected.length} writes as expected` };
+  const parts = [
+    missing.length ? `missing: ${missing.join("; ")}` : "",
+    left.length ? `unexpected: ${left.map(describer(actual)).join("; ")}` : "",
+  ];
+  return { grader: "writes", pass: false, detail: parts.filter(Boolean).join(". ") };
 }
 
 // An Oriel action the turn asked for, as the eval system says it applied.

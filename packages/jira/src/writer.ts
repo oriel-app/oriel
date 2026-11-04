@@ -5,8 +5,10 @@
 // Before and after values are keyed by core's field names (`FieldValues`):
 // "summary", "description"
 // (plain text), "points", "assignee" (an account ID), "epic" (an item ID),
-// "status" (its name in the item's workflow), and "link:<linkId>" ({ url, title }, or null when there is no such link). A
-// create has no before values and a delete no after values.
+// "status" (its name in the item's workflow), "link:<linkId>" ({ url, title },
+// or null when there is no such link) and "comment:<commentId>" (its plain
+// text, or null when there is no such comment). A create has no before
+// values and a delete no after values.
 import {
   array,
   boolean,
@@ -81,6 +83,7 @@ type IssueField = (typeof readable)[number];
 const isIssueField = (name: string): name is IssueField =>
   (readable as readonly string[]).includes(name);
 const linkField = (linkId: string) => `link:${linkId}`;
+const commentField = (commentId: string) => `comment:${commentId}`;
 
 const valuesIssue = issue(
   object({
@@ -96,6 +99,13 @@ const valuesIssue = issue(
 const remoteLink = object({ id: number, object: object({ url: string, title: optional(string) }) });
 const created = object({ id: numericId, key: issueKey });
 const createdLink = object({ id: number });
+const comment = object({
+  id: string,
+  body: optional(unknown),
+  author: optional(object({ accountId: string })),
+});
+const createdComment = object({ id: numericId });
+const myself = object({ accountId: string });
 const transitions = object({
   transitions: array(
     object({ id: string, to: object({ name: string }), isAvailable: optional(boolean) }),
@@ -155,7 +165,11 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     names: readonly string[],
   ): Promise<{ key: string; stableId: string; values: FieldValues } | "gone"> => {
     const unknownName = names.find(
-      (name) => !isIssueField(name) && name !== "updated" && !name.startsWith("link:"),
+      (name) =>
+        !isIssueField(name) &&
+        name !== "updated" &&
+        !name.startsWith("link:") &&
+        !name.startsWith("comment:"),
     );
     if (unknownName !== undefined) throw new RangeError(`not a Jira field: ${unknownName}`);
     const points = names.includes("points") ? await boards.field(projectOf(key)) : undefined;
@@ -183,6 +197,10 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       names.map(async (name): Promise<[string, unknown]> => {
         if (name === "updated") return [name, found.fields.updated];
         if (isIssueField(name)) return [name, read[name]()];
+        if (name.startsWith("comment:")) {
+          const posted = await commentOf(found.key, name.slice("comment:".length));
+          return [name, posted === null ? null : posted.text];
+        }
         return [name, await link(found.key, name.slice("link:".length))];
       }),
     );
@@ -199,6 +217,20 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     if (response.status === 404) return null;
     const found = await call(async () => response, request, remoteLink);
     return { url: found.object.url, title: found.object.title ?? found.object.url };
+  };
+
+  // One comment on an issue: its plain text and who wrote it, or null when
+  // the issue has no such comment.
+  const commentOf = async (key: string, commentId: string) => {
+    if (!numericId(commentId).ok) return null;
+    const request: JiraRequest = {
+      method: "GET",
+      path: `${api}/issue/${key}/comment/${commentId}`,
+    };
+    const response = await transport(request);
+    if (response.status === 404) return null;
+    const found = await call(async () => response, request, comment);
+    return { text: adfToText(found.body), author: found.author?.accountId ?? null };
   };
 
   // The target's current values, read through its handle, so long as the
@@ -361,6 +393,22 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           return { method: "DELETE", path: `${api}/issue/${key}/remotelink/${linkId}` };
         });
       }
+      case "addComment":
+        return addComment(send, target, valid(jiraOps.addComment.args, args, op));
+      case "removeComment": {
+        const { commentId } = valid(jiraOps.removeComment.args, args, op);
+        return edit(send, target, [commentField(commentId)], async (key) => {
+          const found = await commentOf(key, commentId);
+          if (found === null) throw new Error(`removeComment: ${key} has no comment ${commentId}`);
+          // Only a comment the connected account wrote is deleted.
+          const self = await call(transport, { method: "GET", path: `${api}/myself` }, myself);
+          if (found.author !== self.accountId)
+            throw new Error(
+              `removeComment: the comment on ${key} isn't the connected account's own, so Oriel won't delete it`,
+            );
+          return { method: "DELETE", path: `${api}/issue/${key}/comment/${commentId}` };
+        });
+      }
       case "deleteItem":
         valid(jiraOps.deleteItem.args, args, op);
         return deleteItem(send, target);
@@ -421,6 +469,23 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     const made = createdLink(response.body);
     if (!made.ok) throw new Error("addLink: Jira's answer had no link ID");
     const name = linkField(String(made.value.id));
+    return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
+  };
+
+  const addComment = async (
+    send: Send,
+    target: Target,
+    { body }: JiraArgs<"addComment">,
+  ): Promise<WriteResult<"jira">> => {
+    const before = await existing(target, []);
+    const response = await send({
+      method: "POST",
+      path: `${api}/issue/${before.key}/comment`,
+      body: { body: textToAdf(body) },
+    });
+    const made = createdComment(response.body);
+    if (!made.ok) throw new Error("addComment: Jira's answer had no comment ID");
+    const name = commentField(made.value.id);
     return { before: { [name]: null }, ...(await afterwards(before.key, before.stableId, [name])) };
   };
 

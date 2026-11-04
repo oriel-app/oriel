@@ -13,6 +13,7 @@ import {
   gradeDrafts,
   holds,
   judgeSystem,
+  gradeWrites,
 } from "./graders.ts";
 import { message, verdicts } from "./testing.ts";
 
@@ -476,4 +477,28 @@ test("a draft holds a golden's tabs, leaves out what it sets to null, and may ma
   // Lists of values are equal, in any order.
   assert.equal(holds({ done: ["Closed", "Done"] }, { done: ["Done", "Closed"] }), true);
   assert.equal(holds({ done: ["Closed", "Open"] }, { done: ["Closed"] }), false);
+});
+
+test("writes passes on each named write with its words, in any order, and nothing else", () => {
+  const comment: CapturedMutation = {
+    op: "addComment",
+    target: "jira:SYN-45",
+    ref: null,
+    args: { body: "The date moved to 14 August because the Refund API slipped." },
+  };
+  const rewrite: CapturedMutation = {
+    op: "setDescription",
+    target: "jira:SYN-45",
+    ref: null,
+    args: { description: "Moved to 14 August." },
+  };
+  const want = [{ op: "addComment", item: "jira:SYN-45" as const, text: ["refund api"] }];
+  assert.equal(gradeWrites(want, [comment]).pass, true);
+  const both = gradeWrites(want, [rewrite, comment]);
+  assert.equal(both.pass, false);
+  assert.match(both.detail, /^unexpected: setDescription jira:SYN-45/);
+  const elsewhere = gradeWrites(want, [{ ...comment, target: "jira:SYN-47" }]);
+  assert.match(elsewhere.detail, /missing: addComment jira:SYN-45 saying \["refund api"\]/);
+  assert.equal(gradeWrites(want, [{ ...comment, args: { body: "Moved." } }]).pass, false);
+  assert.equal(gradeWrites(want, []).pass, false);
 });

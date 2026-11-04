@@ -65,8 +65,13 @@ const fieldNames: Record<string, string> = {
   status: "Status",
   replies: "Replies",
 };
-// One of several of a kind, such as a link or a reply, by its prefix.
-const fieldKinds: Record<string, string> = { "link:": "Link", "reply:": "Reply" };
+// One of several of a kind, such as a link, a comment or a reply, by its
+// prefix.
+const fieldKinds: Record<string, string> = {
+  "link:": "Link",
+  "comment:": "Comment",
+  "reply:": "Reply",
+};
 const fieldName = (name: string) =>
   fieldNames[name] ??
   Object.entries(fieldKinds).find(([prefix]) => name.startsWith(prefix))?.[1] ??

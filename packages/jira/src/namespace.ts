@@ -24,7 +24,7 @@ import {
   write,
 } from "@oriel/core";
 import { isJiraId, type JiraContent, jiraContent } from "./attrs.ts";
-import { type JiraOp, jiraOps } from "./ops.ts";
+import { commentBody, type JiraOp, jiraOps } from "./ops.ts";
 import { keyOf, projectOf } from "./rest.ts";
 
 const outside = (id: string) =>
@@ -294,7 +294,14 @@ type Offered = {
 // How each one is offered in a region with items. Typed over Jira's
 // catalogue, so an op added there must be offered here or marked
 // revert-only; a new epic starts a plan, so only a blank region offers it.
-const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => NamespaceWrite } = {
+// Each item takes one comment a run: a diff would show a second as
+// rewriting the first.
+const writes: {
+  [O in Exclude<Offered, "createEpic">]: (
+    scope: JiraScope,
+    commented: Set<string>,
+  ) => NamespaceWrite;
+} = {
   createStory,
   setSummary: () =>
     write({
@@ -356,6 +363,22 @@ const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => Nam
       creates: false,
       params: [target, param("url", "string", string), param("title", "string", string)],
       build: ([id, url, title], host) => ({ target: writable(id, host), args: { url, title } }),
+    }),
+  addComment: (_scope, commented) =>
+    write({
+      name: "addComment",
+      doc: "Comment on an item, once a run: how to record a note or why something changed, rather than rewriting its description.",
+      op: "addComment",
+      creates: false,
+      // Checked here, so a refused comment doesn't use up the item's one.
+      params: [target, param("body", "string", commentBody)],
+      build: ([id, body], host) => {
+        const at = writable(id, host);
+        if (commented.has(at))
+          throw new RangeError(`${at} has a comment in this run already; say it all in one`);
+        commented.add(at);
+        return { target: at, args: { body } };
+      },
     }),
 };
 
@@ -437,13 +460,14 @@ export function jiraNamespace(
     // Region reads, then the writes in catalogue order.
     fns(given): NamespaceFn[] {
       const scope = jiraScope(given);
+      const commented = new Set<string>();
       if (!scope.ids.length) return [createEpic, createStoryInNewEpic(scope)];
       const epic = scope.anchor;
       return [
         ...(epic ? [getEpic(epic), listStories(scope, epic)] : []),
         getItem,
         listItems(scope),
-        ...offered.map((op) => writes[op](scope)),
+        ...offered.map((op) => writes[op](scope, commented)),
       ];
     },
   };

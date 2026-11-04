@@ -347,7 +347,8 @@ export function explainConflicts(
   const parts = conflicts.map((c) => {
     const item = key(c.target);
     const catalogue = catalogueOf(specs, c.target);
-    if (catalogue.explain) return catalogue.explain(c, title(c.target));
+    const own = catalogue.explain?.(c, title(c.target)) ?? null;
+    if (own !== null) return own;
     if (c.field === "item") return `${item} is no longer there`;
     if (c.field === catalogue.updatedField)
       return c.expected === undefined || c.expected === null

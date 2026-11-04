@@ -37,6 +37,36 @@ test("a write to a region item is captured with the op's checked arguments", () 
   );
 });
 
+test("a comment is captured once an item a run, and a blank one is refused", () => {
+  const bindings = boarding();
+  assert.deepEqual(
+    bindings.capture("jira.addComment", ["jira:SYN-13", "Moved to next sprint."], null),
+    { op: "addComment", target: "jira:SYN-13", ref: null, args: { body: "Moved to next sprint." } },
+  );
+  assert.throws(
+    () => bindings.capture("jira.addComment", ["jira:SYN-13", "And another thing."], null),
+    /jira:SYN-13 has a comment in this run already; say it all in one/,
+  );
+  assert.equal(
+    bindings.capture("jira.addComment", ["jira:SYN-19", "Here too."], null).op,
+    "addComment",
+  );
+  assert.throws(
+    () => bindings.capture("jira.addComment", ["jira:SYN-27", " "], null),
+    /body: expected 1 to 32767 characters/,
+  );
+  // A refused one doesn't count.
+  assert.equal(
+    bindings.capture("jira.addComment", ["jira:SYN-27", "Now with words."], null).op,
+    "addComment",
+  );
+  // A fresh run starts afresh.
+  assert.equal(
+    boarding().capture("jira.addComment", ["jira:SYN-13", "Again."], null).op,
+    "addComment",
+  );
+});
+
 test("writes outside the region, to unmade refs, or with bad arguments are refused", () => {
   const bindings = boarding();
   assert.throws(

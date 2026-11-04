@@ -75,8 +75,9 @@ export type OpSpecs = {
   updatedField: string;
   ops: Readonly<Record<string, OpSpec>>;
   // What stops a revert, in the source's own words, given the item's title
-  // where Oriel knows it. Without it, Oriel's words name the item by its key.
-  explain?(conflict: Conflict, title: string | null): string;
+  // where Oriel knows it. Without it, or where it gives null, Oriel's words
+  // name the item by its key.
+  explain?(conflict: Conflict, title: string | null): string | null;
 };
 
 // One op: its entry in the source's own catalogue (how to check its
