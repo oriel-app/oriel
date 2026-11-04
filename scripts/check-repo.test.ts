@@ -563,6 +563,15 @@ test("the page names no source outside its tests and the files still listed (dec
       webSourceNames(chip, text)[0] ?? "",
       /^packages\/web\/src\/chip\.ts: names a source/,
     );
+  // The folder step is a kind of step, named once as `folderStep`, and the
+  // folder picker it opens; not the folder's connector.
+  for (const text of [
+    `export const folderStep = "folder" as const;`,
+    `case folderStep:`,
+    `// A folder step: the folder picker, or a path typed.`,
+    `function FolderStep() {}`,
+  ])
+    assert.deepEqual(webSourceNames(chip, text), [], text);
   // Tests, and anything outside the page's src, may name them.
   assert.deepEqual(webSourceNames("packages/web/src/chip.test.ts", `"jira:SYN-1"`), []);
   assert.deepEqual(webSourceNames("packages/web/test/chip.test.ts", `"jira:SYN-1"`), []);

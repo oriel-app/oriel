@@ -1,9 +1,9 @@
 // The desktop app's first run (decision 0038): two steps, Your AI and then
 // Your work, then the first sync, then the overview. What the server knows,
 // the Claude Code and Codex rows and the first run's progress, comes from
-// one view, which Settings' CLI rows share. While a command runs, or Jira's
-// first sync reads, the page asks for it again each second. Which screen
-// shows is the page's own.
+// one view, which Settings' CLI rows share. While a command runs, or a
+// connection's first sync reads, the page asks for it again each second.
+// Which screen shows is the page's own.
 import { type Effect, errorOf, get, post, report, type Replied } from "./http.ts";
 import type { CliCommand, SetupView } from "./view.ts";
 
@@ -12,15 +12,17 @@ export type SetupScreen =
   | "ai"
   | "key"
   | "other-ways"
-  // Your work: the sources; Jira's details; its projects; the first sync.
+  // Your work: the sources; a connector's steps, by its kind; the first
+  // sync.
   | "work"
-  | "jira"
-  | "projects"
+  | "connect"
   | "reading";
 
 export type SetupModel = {
   view: SetupView | null;
   screen: SetupScreen;
+  // The connector whose steps the connect screen shows.
+  kind: string | null;
   // The setup opened at its second step, as when it was reopened halfway.
   resumed: boolean;
   // A command or the AI's choice sent and not yet answered.
@@ -36,7 +38,7 @@ export type SetupModel = {
   another: boolean;
   // Why the last request didn't work, for the page.
   problem: string | null;
-  // Jira is being connected, whose first sync the page shows as it reads.
+  // A connection is being made, whose first sync the page shows as it reads.
   watching: boolean;
   // A request for the view again is due.
   waiting: boolean;
@@ -44,7 +46,8 @@ export type SetupModel = {
   finishing: boolean;
 };
 
-export type DetailsOf = "install" | "sign-in" | "update" | "test" | "jira";
+// A command's details, or a connector's first sync that stopped, by its kind.
+export type DetailsOf = string;
 
 export type SetupMsg =
   // A command for Claude Code, or for Codex (decision 0048).
@@ -54,7 +57,7 @@ export type SetupMsg =
   | { type: "continueClicked"; anyway?: true; ai?: "codex" }
   | { type: "keyTyped"; text: string }
   | { type: "keySaved" }
-  | { type: "screenShown"; screen: SetupScreen }
+  | { type: "screenShown"; screen: SetupScreen; kind?: string }
   | { type: "skipClicked"; step: "ai" | "work" }
   | { type: "workDone" }
   | { type: "finished" }
@@ -65,7 +68,7 @@ export type SetupMsg =
   | { type: "lineCopied"; text: string }
   // The overview's one-time line, dismissed.
   | { type: "lineDismissed" }
-  // Jira's connect started, or answered.
+  // A connect started, or answered.
   | { type: "watched"; on: boolean }
   // Time to ask for the view again, while something runs.
   | { type: "polled" };
@@ -83,6 +86,7 @@ export function initSetup(): SetupModel {
   return {
     view: null,
     screen: "ai",
+    kind: null,
     resumed: false,
     sending: false,
     testing: false,
@@ -151,7 +155,16 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
       ];
     }
     case "screenShown":
-      return [{ ...model, screen: msg.screen, details: false, problem: null }, []];
+      return [
+        {
+          ...model,
+          screen: msg.screen,
+          kind: msg.kind ?? (msg.screen === "connect" ? model.kind : null),
+          details: false,
+          problem: null,
+        },
+        [],
+      ];
     case "skipClicked":
       return [model, [progress(msg.step === "ai" ? "skipped-ai" : "skipped-work")]];
     case "workDone":
@@ -175,7 +188,7 @@ export function updateSetup(model: SetupModel, msg: SetupMsg): [SetupModel, Effe
       return [model, [{ type: "copy", text: msg.text }]];
     case "lineDismissed":
       return [model, [progress("dismissed")]];
-    // Once Jira has answered, the view shows where its sync ended.
+    // Once a connect has answered, the view shows where its sync ended.
     case "watched":
       return polling({ ...model, watching: msg.on }, !msg.on && model.watching ? [loadSetup] : []);
     case "polled":

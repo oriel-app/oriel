@@ -32,7 +32,7 @@ import { SettingsPage } from "./settings-page.tsx";
 import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
-import { JiraNotices } from "./jira-connect.tsx";
+import { ConnectNotices } from "./connect-steps.tsx";
 import { WindowChat } from "./window-chat-view.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
@@ -217,7 +217,8 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
             model={model.overview}
             added={props.added}
             ending={model.ending}
-            jira={model.jira}
+            connections={model.connections}
+            connectors={model.connectors}
             browse={windowRoute(model.window)}
             chat={model.chat}
             ongoing={model.thread !== null}
@@ -226,7 +227,6 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
               questions: model.setup.view?.firstRun?.firstRun === true,
             }}
             noAi={noAi(model.settings)}
-            folderOnly={model.folder.view !== null && !model.jira.view?.connected}
             onNeedsYou={props.onNeedsYou}
             dispatch={dispatch}
           />
@@ -238,7 +238,13 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
           <WindowPage
             model={model.window}
             workstreams={model.workstreams}
-            connect={<JiraNotices jira={model.jira} dispatch={dispatch} />}
+            connect={
+              <ConnectNotices
+                connections={model.connections}
+                connectors={model.connectors}
+                dispatch={dispatch}
+              />
+            }
             dispatch={dispatch}
           />
         )
@@ -275,6 +281,8 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
       return (
         <SettingsPage
           model={model.settings}
+          connections={model.connections}
+          connectors={model.connectors}
           setup={model.setup}
           section={model.route.section}
           dispatch={dispatch}

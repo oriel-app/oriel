@@ -26,6 +26,8 @@ test("without a user token or a channel it isn't made, and no message carries a 
 
 test("a connection's options are its channels, one or more", () => {
   assert.equal(slackOptions({ channels: ["a"] }).ok, true);
+  assert.equal(slackOptions({ channels: ["a"], readOnly: true }).ok, true);
+  assert.equal(slackOptions({ channels: ["a"], readOnly: "yes" }).ok, false);
   for (const channels of [[], [""], "a", ["x".repeat(101)]])
     assert.equal(slackOptions({ channels }).ok, false);
 });

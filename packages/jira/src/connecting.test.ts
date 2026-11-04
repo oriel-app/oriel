@@ -51,11 +51,16 @@ test("a site is typed the ways people type it", () => {
     assert.equal(jiraSite(typed), null, typed);
 });
 
-test("a connection's options are a project key, and the check never quotes one", () => {
+test("a connection's options are a project key, and whether it's read-only, and the check never quotes one", () => {
   assert.deepEqual(jiraOptions({ project: "SYN", other: 1 }), {
     ok: true,
-    value: { project: "SYN" },
+    value: { project: "SYN", readOnly: undefined },
   });
+  assert.deepEqual(jiraOptions({ project: "SYN", readOnly: true }), {
+    ok: true,
+    value: { project: "SYN", readOnly: true },
+  });
+  assert.equal(jiraOptions({ project: "SYN", readOnly: "yes" }).ok, false);
   for (const project of ["syn", "", "SYN OR 1=1", "S".repeat(33), 12]) {
     const checked = jiraOptions({ project });
     assert.equal(checked.ok, false);

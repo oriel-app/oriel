@@ -972,7 +972,7 @@ button.nav-more {
   padding-left: var(--space-2);
 }
 
-.nav-sources .folder-form {
+.nav-sources .path-form {
   padding: var(--space-1) var(--space-2);
 }
 
@@ -1422,19 +1422,19 @@ button.nav-more {
 
 /* The folder's path, typed when the user adds a source. */
 
-.folder-form {
+.path-form {
   display: grid;
   gap: var(--space-2);
 }
 
-.folder-label {
+.path-label {
   display: grid;
   gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
-.folder-label input {
+.path-label input {
   padding: 0.3125rem var(--space-2);
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius);
@@ -1442,13 +1442,13 @@ button.nav-more {
   font: var(--text-sm) var(--font-mono);
 }
 
-.folder-actions {
+.path-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.folder-note {
+.path-note {
   color: var(--text-faint);
   font-size: var(--text-xs);
 }
@@ -1465,7 +1465,7 @@ button.nav-more {
 
 /* Connecting Jira: asked for first, until it is. */
 
-.connect-jira {
+.connect-card {
   display: grid;
   gap: var(--space-3);
   max-width: 40rem;
@@ -1476,7 +1476,7 @@ button.nav-more {
   background: var(--surface);
 }
 
-.connect-jira h2 {
+.connect-card h2 {
   margin: 0;
   font-size: var(--text-xl);
 }
@@ -1486,13 +1486,13 @@ button.nav-more {
   color: var(--text-muted);
 }
 
-.jira-fields {
+.connect-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: var(--space-3) var(--space-4);
 }
 
-.jira-field {
+.connect-field {
   display: grid;
   align-content: start;
   gap: var(--space-1);
@@ -1500,7 +1500,7 @@ button.nav-more {
   font-size: var(--text-sm);
 }
 
-.jira-field input {
+.connect-field input {
   padding: 0.4375rem var(--space-2);
   border: var(--border-thin) solid var(--line-strong);
   border-radius: var(--radius);
@@ -1510,7 +1510,7 @@ button.nav-more {
   font-size: var(--text-md);
 }
 
-.jira-hint {
+.connect-hint {
   color: var(--text-faint);
   font-size: var(--text-xs);
 }
@@ -1529,7 +1529,7 @@ button.nav-more {
 
 /* Jira connected to a project with no issues yet. */
 
-.empty-jira {
+.connected-empty {
   display: grid;
   gap: var(--space-2);
   max-width: 40rem;
@@ -1540,7 +1540,7 @@ button.nav-more {
   background: var(--surface);
 }
 
-.empty-jira h2 {
+.connected-empty h2 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -5469,6 +5469,54 @@ button.overview-title:hover {
   font-size: var(--text-sm);
 }
 
+/* A switch its source locks, as for a spreadsheet the person can only view. */
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Settings' Connections (decision 0049): what a person sets on each
+   connection, under it, and what its last sync left out. */
+.connection-options {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.connection-options .input {
+  max-width: 20rem;
+}
+
+.connection-row .provider-side {
+  align-self: flex-start;
+}
+
+/* A name, or what a connector's steps ask for, isn't a path. */
+.settings :is(.connection-options, .connect-details, .connect-pick) .input {
+  font-family: inherit;
+}
+
+.connection-report {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.connection-said,
+.connection-problem {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.connection-said {
+  color: var(--text-muted);
+}
+
+.connection-problem {
+  color: var(--danger);
+}
+
 .settings-field .select {
   justify-self: start;
   max-width: 100%;
@@ -5943,24 +5991,24 @@ button.overview-title:hover {
 }
 
 /* Connecting Jira, the same in the first run and the window. */
-.jira-details,
-.jira-projects {
+.connect-details,
+.connect-pick {
   display: grid;
   gap: var(--space-4);
 }
 
-.jira-details .jira-fields {
+.connect-details .connect-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
 
-.jira-label {
+.connect-label {
   font-weight: var(--weight-strong);
 }
 
-.jira-details .input,
-.jira-projects .input,
+.connect-details .input,
+.connect-pick .input,
 .setup-form .input {
   min-height: 2.25rem;
   padding: 0 var(--space-3);
@@ -5974,13 +6022,13 @@ button.overview-title:hover {
   border-color: var(--danger);
 }
 
-.jira-problem {
+.connect-problem {
   margin: 0;
   color: var(--danger);
   font-size: var(--text-sm);
 }
 
-.jira-help {
+.connect-help {
   padding: var(--space-3) var(--space-4);
   border: var(--border-thin) solid var(--line);
   border-radius: var(--radius-lg);
@@ -5990,27 +6038,27 @@ button.overview-title:hover {
   line-height: var(--leading-prose);
 }
 
-.jira-help p {
+.connect-help p {
   margin: 0 0 var(--space-2);
 }
 
-.jira-help ol {
+.connect-help ol {
   margin: 0;
   padding-left: var(--space-6);
 }
 
-.jira-actions {
+.connect-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.jira-actions > :last-child {
+.connect-actions > :last-child {
   margin-left: auto;
 }
 
-.jira-empty {
+.connect-none {
   margin: 0;
   color: var(--text-muted);
 }

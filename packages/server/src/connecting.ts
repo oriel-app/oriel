@@ -89,10 +89,14 @@ export function connecting(deps: {
     const { connect } = connector(kind);
     if (!connect || connect.replaces) return null;
     const existing = connections.first(kind);
-    if (existing) return existing.identity === identity ? null : connect.taken(existing.identity);
+    if (existing)
+      return existing.identity === identity ? null : connect.taken(existing.identity, true);
     const plan = connections.planned(kind, identity);
     const number = "revives" in plan ? plan.revives.number : "number" in plan ? plan.number : 1;
-    return number === 1 ? null : connect.taken(null);
+    if (number === 1) return null;
+    // Disconnected since: the kind's first is the one it opens.
+    const first = connections.list().find((each) => each.kind === kind && each.number === 1);
+    return connect.taken(first?.identity ?? identity, false);
   };
   // Why the window can't connect a kind now: it doesn't, or one is open
   // that a new one wouldn't replace.
@@ -109,8 +113,9 @@ export function connecting(deps: {
   let reading: (NonNullable<FirstRunView["reading"]> & { kind: SourceKind }) | null = null;
 
   return {
-    // Whether the window may connect a kind now.
+    // Whether the window may connect a kind now, and why not.
     connectable: (kind: SourceKind): boolean => refused(kind) === null,
+    why: (kind: SourceKind): string | null => refused(kind)?.problem ?? null,
 
     // How a kind's connections reach its source, for opening one.
     viaFor,
@@ -199,12 +204,31 @@ export function connecting(deps: {
       return connect.pick.list(given, identity, query, via);
     },
 
-    // The field a kind's folder step fills, for the system's folder picker;
-    // null when it has none, or the window doesn't connect it now.
-    folderField(kind: SourceKind): string | null {
+    // A pick step's list again, for a connection it made, from its own
+    // identity and secret, so Settings can pick again. The page names only
+    // the connection; its secret stays here.
+    async choices(
+      connection: Connection,
+      query: string,
+    ): Promise<{ choices: PickChoice[]; more: boolean } | ConnectRefusal> {
+      const declaration = declarationOf(connection.kind);
+      const pick = declaration?.connect?.pick;
+      if (!declaration || !pick?.from)
+        throw new ActionError("not-found", "it has no list to pick from");
+      const secret = await connections.secret(connection);
+      const given = pick.from({ ...connection, secret });
+      if (given === null)
+        return { problem: `Sign in to ${declaration.name} again first.`, fields: [] };
+      return pick.list(given, connection.identity, query, viaFor(connection.kind));
+    },
+
+    // A kind's folder step, for the system's folder picker: the field it
+    // fills and what the picker asks. Null when it has none, or the window
+    // doesn't connect it now.
+    folderStep(kind: SourceKind): { field: string; prompt: string } | null {
       const { connect } = connector(kind);
       const step = connect?.steps.find((each) => each.kind === "folder");
-      return step?.kind === "folder" ? step.field : null;
+      return step?.kind === "folder" ? { field: step.field, prompt: step.prompt } : null;
     },
 
     // Whether a kept connection opens at start, as its connector vets it.

@@ -3,7 +3,7 @@
 // the name made from its ID, and its items in the index under its prefix.
 // The server makes every connection's ID; the page only names one it has.
 import type { DatabaseSync } from "node:sqlite";
-import type { Instant, Log, SourceKind, Ulid } from "@oriel/core";
+import type { ConnectionSettings, Instant, Log, SourceKind, Ulid } from "@oriel/core";
 import { type Connection, connectionStore, type IndexStore } from "@oriel/db";
 import { secretName, type Secrets } from "./connection.ts";
 
@@ -30,6 +30,11 @@ export function connectionsOf(deps: {
     // Sets a live connection's options, which its next sync reads with.
     configure(connection: Connection, options: Record<string, unknown>): void {
       store.configure(workspaceId, connection.id, options);
+    },
+
+    // Sets a live connection's name and how often it syncs.
+    settle(connection: Connection, settings: ConnectionSettings): void {
+      store.settle(workspaceId, connection.id, settings);
     },
 
     // A kind's first live connection, the one each kind's source opens until

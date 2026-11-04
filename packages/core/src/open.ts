@@ -90,6 +90,14 @@ export type Opened<C = unknown, R = unknown, W = unknown> = {
   lagMs?: number;
   // A sync that failed, in the person's words.
   problem(error: unknown): string;
+  // What its last sync or read left out, and why, in the person's words, a
+  // line each, such as rows that share a key, by row number, or what a cap
+  // stopped. Settings shows them under the connection. None is empty.
+  report?(): readonly string[];
+  // Why it's read-only whatever its `readOnly` option says, from its
+  // records, as a spreadsheet the person can only view is: `all` when none
+  // of it can be written, so Settings shows its switch locked.
+  viewOnly?(records: readonly IndexRecord[]): { why: string; all: boolean } | null;
   // What its records name that isn't an item, such as Slack's channels and
   // authors, by ID, for what a change set wrote.
   names?(records: readonly IndexRecord[]): Iterable<readonly [string, string]>;

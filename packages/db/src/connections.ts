@@ -26,6 +26,7 @@ const connectionRow = object({
   identity: string,
   name: nullable(string),
   options: string,
+  sync_every: nullable(number),
   connected_at: refine(string, isInstant, "expected an instant"),
   disconnected_at: nullable(refine(string, isInstant, "expected an instant")),
 });
@@ -41,6 +42,9 @@ export type Connection = {
   // The person's name for it; null for its connector's.
   name: string | null;
   options: Record<string, unknown>;
+  // How often it syncs while Oriel is open, in minutes; null for when
+  // Oriel starts and when asked.
+  every: number | null;
   connectedAt: Instant;
   // When it was disconnected: a tombstone. Null while it's live.
   disconnectedAt: Instant | null;
@@ -50,7 +54,7 @@ export type ConnectionStore = ReturnType<typeof connectionStore>;
 
 export function connectionStore(db: DatabaseSync) {
   const columns =
-    "id, kind, number, identity, name, options, connected_at, disconnected_at from connections";
+    "id, kind, number, identity, name, options, sync_every, connected_at, disconnected_at from connections";
   const selectAll = db.prepare(`select ${columns} where workspace_id = ? order by kind, number`);
   const selectById = db.prepare(`select ${columns} where workspace_id = ? and id = ?`);
   const selectByIdentity = db.prepare(
@@ -72,14 +76,19 @@ export function connectionStore(db: DatabaseSync) {
   const updateIdentity = db.prepare(
     "update connections set identity = ? where workspace_id = ? and id = ? and disconnected_at is null",
   );
+  const updateSettings = db.prepare(`
+    update connections set name = ?, sync_every = ?
+    where workspace_id = ? and id = ? and disconnected_at is null`);
   const tombstone = db.prepare(`
-    update connections set options = '{}', name = null, disconnected_at = ?
+    update connections set options = '{}', name = null, sync_every = null,
+      disconnected_at = ?
     where workspace_id = ? and id = ? and disconnected_at is null`);
 
   const read = (raw: unknown): Connection => {
     const row = connectionRow(raw);
     if (!row.ok) throw new Error(`corrupt connections row: ${JSON.stringify(row.issues)}`);
-    const { id, kind, number, identity, name, connected_at, disconnected_at } = row.value;
+    const { id, kind, number, identity, name, sync_every, connected_at, disconnected_at } =
+      row.value;
     const options: unknown = JSON.parse(row.value.options);
     return {
       id,
@@ -89,6 +98,7 @@ export function connectionStore(db: DatabaseSync) {
       identity,
       name,
       options: options as Record<string, unknown>,
+      every: sync_every,
       connectedAt: connected_at,
       disconnectedAt: disconnected_at,
     };
@@ -166,6 +176,16 @@ export function connectionStore(db: DatabaseSync) {
       return updateOptions.run(JSON.stringify(options), workspaceId, id).changes > 0;
     },
 
+    // A live connection's name and how often it syncs, in place of the
+    // ones before.
+    settle(
+      workspaceId: Ulid,
+      id: Ulid,
+      settings: { name: string | null; every: number | null },
+    ): boolean {
+      return updateSettings.run(settings.name, settings.every, workspaceId, id).changes > 0;
+    },
+
     // A live connection that names another thing now, as a flag's does when
     // `.env` changes. Refused while another connection, a tombstone too,
     // has that thing.
@@ -178,8 +198,8 @@ export function connectionStore(db: DatabaseSync) {
       updateIdentity.run(identity, workspaceId, id);
     },
 
-    // Leaves a tombstone: its ID, kind, number and identity, with its options
-    // and name gone. False when it wasn't live.
+    // Leaves a tombstone: its ID, kind, number and identity, with its options,
+    // name and settings gone. False when it wasn't live.
     disconnect(workspaceId: Ulid, id: Ulid, now: Instant): boolean {
       return tombstone.run(now, workspaceId, id).changes > 0;
     },

@@ -11,6 +11,8 @@ import {
   type ChangeSet,
   type Cluster,
   clusterMembers,
+  connectionSettings,
+  type ConnectionSettings,
   type Draft,
   type FieldReader,
   type IndexRecord,
@@ -28,8 +30,11 @@ import {
   parseItemId,
   prefixOf,
   type Reader,
+  readOnlyOf,
+  record,
   type ReadResult,
   type Region,
+  settingNames,
   type Shown,
   type Sketch,
   type Sandbox,
@@ -145,6 +150,9 @@ export type AppOptions = {
   // Tells the desktop app's shell how many threads Oriel is working on, so
   // it asks before quitting (decision 0045).
   working?: Working;
+  // Calls `then` every `ms`, until the call it gives back stops it, for a
+  // connection that syncs every few minutes; setInterval when absent.
+  every?: (ms: number, then: () => void) => () => void;
   // The system's folder picker, through the desktop app's shell: the
   // folder picked, or null if the person cancelled.
   pickFolder?: (prompt: string) => Promise<string | null>;
@@ -190,6 +198,18 @@ export type App = {
 // How a change set reads a connection that is live but not open, as one its
 // source turned away at the start: it can't be shown until it's connected
 // again.
+// How a change set reads a connection the person made read-only since it was
+// proposed: it can't apply, so it isn't shown as if it could.
+const readOnly = (name: string): FieldReader => ({
+  current: async () => {
+    throw new ChangeSetError(
+      "read-only",
+      `${name} is read-only in Settings, so Oriel can't make this change. Let ${name} propose changes in Settings first.`,
+    );
+  },
+  name: async () => null,
+});
+
 const disconnected = (name: string): FieldReader => ({
   current: async () => {
     throw new ChangeSetError(
@@ -480,16 +500,21 @@ export async function createApp(options: AppOptions): Promise<App> {
   // A sync of an open connection: null, or what went wrong in the person's
   // words. One that fails leaves the index as it was, apart from pages it
   // had read, as they're what the source said.
+  // Why each connection's last sync didn't work, by its ID, until one does.
+  const problems = new Map<Ulid, string>();
   const syncOpen = async (each: Open, full: boolean): Promise<string | null> => {
     try {
       await syncInto(each.connection, each.opened, full, { items: lagging(each) });
+      problems.delete(each.connection.id);
       return null;
     } catch (error) {
       log("connections: a sync failed", {
         source: each.connection.prefix,
         error: error instanceof Error ? error.message : String(error),
       });
-      return each.opened.problem(error);
+      const problem = each.opened.problem(error);
+      problems.set(each.connection.id, problem);
+      return problem;
     }
   };
   // Each open connection syncs as the server starts; one that can't leaves
@@ -538,6 +563,34 @@ export async function createApp(options: AppOptions): Promise<App> {
       const each = openedOf(kind);
       return each ? syncOpen(each, !each.opened.incremental) : null;
     });
+  // A connection that syncs every few minutes while Oriel is open (decision
+  // 0049), in its kind's turn, as whatever is open then: one another took
+  // the place of, or disconnected, isn't synced. A frozen fixture isn't.
+  const every =
+    options.every ??
+    ((ms: number, then: () => void) => {
+      const timer = setInterval(then, ms);
+      timer.unref();
+      return () => clearInterval(timer);
+    });
+  const timers = new Map<Ulid, () => void>();
+  const unarm = (id: Ulid) => {
+    timers.get(id)?.();
+    timers.delete(id);
+  };
+  const arm = (connection: Connection) => {
+    unarm(connection.id);
+    if (connection.every === null || connection.disconnectedAt !== null) return;
+    const tick = () =>
+      void inTurn(connection.kind, async () => {
+        const each = byPrefix.get(connection.prefix);
+        if (each?.connection.id !== connection.id || each.opened.frozen) return;
+        await syncOpen(each, !each.opened.incremental);
+      });
+    timers.set(connection.id, every(connection.every * 60_000, tick));
+  };
+  for (const each of opens()) arm(each.connection);
+
   // Work done between syncs, as forgetting a connection's items must be: a
   // sync running then would take the snapshot version it takes.
   const betweenSyncs = <T>(work: () => Promise<T>): Promise<T> => {
@@ -586,12 +639,15 @@ export async function createApp(options: AppOptions): Promise<App> {
       const plan = connections.planned(kind, made.identity);
       const was = "live" in plan ? plan.live : "revives" in plan ? plan.revives : null;
       const number = was?.number ?? ("number" in plan ? plan.number : 1);
+      // Signed in again, it keeps what was set on it, such as read-only,
+      // under what its steps gave.
+      const options = "live" in plan ? { ...plan.live.options, ...made.options } : made.options;
       const toOpen: ToOpen = {
         id: was?.id ?? newId(),
         number,
         prefix: prefixOf(kind, number),
         identity: made.identity,
-        options: made.options,
+        options,
         secret: made.secret ?? null,
       };
       let opened: Opened;
@@ -618,15 +674,13 @@ export async function createApp(options: AppOptions): Promise<App> {
         const connection = await betweenSyncs(async () => {
           if (how.replaces && current) {
             await connections.disconnect(current.connection);
+            unarm(current.connection.id);
             byPrefix.delete(current.connection.prefix);
             current.opened.close?.();
           }
           if ("live" in plan) {
-            await connections.signIn(plan.live, {
-              options: made.options,
-              secret: made.secret ?? "",
-            });
-            return { ...plan.live, options: made.options };
+            await connections.signIn(plan.live, { options, secret: made.secret ?? "" });
+            return { ...plan.live, options };
           }
           const kept = await connections.connect({
             id: toOpen.id,
@@ -641,6 +695,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         byPrefix.set(connection.prefix, { connection, opened });
         shut.delete(connection.prefix);
         sets.rewire(wiring());
+        arm(connection);
         if (first) connected(connection);
         return { connection, signedIn: "live" in plan };
       } catch (error) {
@@ -664,12 +719,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       );
   };
   // Sets a live connection's options, merged over the ones it has, in its
-  // kind's turn. They apply at once, as Settings' do (decision 0049): the
-  // connection opens with them, and syncs in full, so what they no longer
-  // pick goes; a sync that fails says why, as any sync does. What changed is
-  // named, never its value; `replaced` is what its Undo puts back. One shut
-  // because its options no longer fit its source opens with new ones, and
-  // options that don't fit shut it so, waiting for others (decision 0051).
+  // kind's turn, with what every connection has beside them: its name and
+  // how often it syncs. They apply at once, as Settings' do (decision
+  // 0049): new options open the connection with them and sync it in full,
+  // so what they no longer pick goes, and a sync that fails says why, as any
+  // sync does; the rest needs no sync. What changed is named, never its
+  // value; `replaced` is what its Undo puts back. One shut because its
+  // options no longer fit its source opens with new ones, and options that
+  // don't fit shut it so, waiting for others (decision 0051).
   const configure = (
     id: Ulid,
     given: unknown,
@@ -685,13 +742,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     const connection = live(id);
     unflagged(connection, "set");
     const declaration = declared(connection.kind);
-    const decoded = declaration.options({ ...connection.options, ...(given as object) });
-    if (!decoded.ok)
-      throw new ActionError(
+    const invalid = (issues: readonly { path: string; message: string }[]) =>
+      new ActionError(
         "invalid",
-        decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+        issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
       );
-    const next = decoded.value;
+    const asRecord = record(unknown)(given);
+    if (!asRecord.ok) throw invalid(asRecord.issues);
+    const raw = asRecord.value;
+    const isSetting = (key: string) => (settingNames as readonly string[]).includes(key);
+    const setting = connectionSettings(
+      Object.fromEntries(Object.entries(raw).filter(([key]) => isSetting(key))),
+    );
+    if (!setting.ok) throw invalid(setting.issues);
     return inTurn(connection.kind, async () => {
       const waits = unfit.has(connection.prefix) ? shut.get(connection.prefix) : undefined;
       const current =
@@ -701,57 +764,107 @@ export async function createApp(options: AppOptions): Promise<App> {
           "conflict",
           `${declaration.name} is signed out. Connect it again in the window first.`,
         );
-      const before = current.connection.options;
-      const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(
-        (key) => JSON.stringify(before[key]) !== JSON.stringify(next[key]),
+      const before = current.connection;
+      // Merged over the options it has now, in its turn, so a change made
+      // just before isn't undone. A connector's option given as null goes,
+      // as an Undo takes away one that wasn't set before.
+      const decoded = declaration.options(
+        Object.fromEntries(
+          Object.entries({
+            ...before.options,
+            ...Object.fromEntries(Object.entries(raw).filter(([key]) => !isSetting(key))),
+          }).filter(([, value]) => value !== null),
+        ),
       );
-      if (changed.length === 0)
-        return { connection: current.connection, changed, replaced: before, problem: null };
-      const secret = await connections.secret(current.connection);
-      let opened: Opened;
-      try {
-        opened = await openOne(
-          connection.kind,
-          { ...current.connection, options: next, secret },
-          { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
-        );
-      } catch (error) {
-        log("connections: one couldn't open with its options", {
-          kind: connection.kind,
-          error: String(error),
-        });
-        if (!(error instanceof OptionsUnfit))
-          return { problem: `${declaration.name} couldn't be read that way. Nothing changed.` };
-        // Options that don't fit its source are still the person's, as an
-        // Undo puts back the ones a draft replaced: it keeps them, shut, and
-        // waits for options that fit (decision 0051).
-        const waits = await betweenSyncs(async () => {
-          connections.configure(current.connection, next);
-          written.delete(connection.prefix);
-          const updated = { ...current.connection, options: next };
-          byPrefix.delete(updated.prefix);
-          shut.set(updated.prefix, updated);
-          unfit.set(updated.prefix, error.message);
-          current.opened?.close?.();
-          sets.rewire(wiring());
-          return updated;
-        });
-        return { connection: waits, changed, replaced: before, problem: error.message };
+      if (!decoded.ok) throw invalid(decoded.issues);
+      const next = decoded.value;
+      const settled: ConnectionSettings = {
+        name: setting.value.name === undefined ? before.name : setting.value.name,
+        every: setting.value.every === undefined ? before.every : setting.value.every,
+      };
+      const differs = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
+      const options = [...new Set([...Object.keys(before.options), ...Object.keys(next)])].filter(
+        (key) => differs(before.options[key], next[key]),
+      );
+      const settings = settingNames.filter((name) => differs(before[name], settled[name]));
+      const changed = [...options, ...settings];
+      // Its options, with null for one it didn't have, and of the rest only
+      // what changed.
+      const replaced = {
+        ...before.options,
+        ...Object.fromEntries(
+          options.filter((key) => before.options[key] === undefined).map((key) => [key, null]),
+        ),
+        ...Object.fromEntries(settings.map((name) => [name, before[name]])),
+      };
+      if (changed.length === 0) return { connection: before, changed, replaced, problem: null };
+      let opened = current.opened;
+      if (options.length > 0) {
+        const secret = await connections.secret(before);
+        try {
+          opened = await openOne(
+            connection.kind,
+            { ...before, options: next, secret },
+            { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
+          );
+        } catch (error) {
+          log("connections: one couldn't open with its options", {
+            kind: connection.kind,
+            error: String(error),
+          });
+          if (!(error instanceof OptionsUnfit))
+            return { problem: `${declaration.name} couldn't be read that way. Nothing changed.` };
+          // Options that don't fit its source are still the person's, as an
+          // Undo puts back the ones a draft replaced: it keeps them, shut,
+          // and waits for options that fit (decision 0051).
+          const waits = await betweenSyncs(async () => {
+            connections.configure(before, next);
+            connections.settle(before, settled);
+            written.delete(connection.prefix);
+            const updated = { ...before, options: next, ...settled };
+            byPrefix.delete(updated.prefix);
+            shut.set(updated.prefix, updated);
+            unfit.set(updated.prefix, error.message);
+            unarm(updated.id);
+            current.opened?.close?.();
+            sets.rewire(wiring());
+            return updated;
+          });
+          return { connection: waits, changed, replaced, problem: error.message };
+        }
       }
+      // Waiting for options that fit, and given none: what else was set is
+      // kept, and it waits still.
+      if (opened === null) {
+        connections.settle(before, settled);
+        const updated = { ...before, ...settled };
+        shut.set(updated.prefix, updated);
+        return {
+          connection: updated,
+          changed,
+          replaced,
+          problem: unfit.get(updated.prefix) ?? null,
+        };
+      }
+      const reopened = opened;
       const kept = await betweenSyncs(async () => {
-        connections.configure(current.connection, next);
-        // What applies wrote lately was in what the old options read.
-        written.delete(connection.prefix);
-        const updated = { ...current.connection, options: next };
-        byPrefix.set(updated.prefix, { connection: updated, opened });
+        if (options.length > 0) {
+          connections.configure(before, next);
+          // What applies wrote lately was in what the old options read.
+          written.delete(connection.prefix);
+        }
+        connections.settle(before, settled);
+        const updated = { ...before, options: next, ...settled };
+        byPrefix.set(updated.prefix, { connection: updated, opened: reopened });
         shut.delete(updated.prefix);
         unfit.delete(updated.prefix);
-        current.opened?.close?.();
+        if (reopened !== current.opened) current.opened?.close?.();
         sets.rewire(wiring());
-        return { connection: updated, opened };
+        return { connection: updated, opened: reopened };
       });
-      const problem = await syncOpen(kept, true);
-      return { connection: kept.connection, changed, replaced: before, problem };
+      arm(kept.connection);
+      const problem = options.length > 0 ? await syncOpen(kept, true) : null;
+      return { connection: kept.connection, changed, replaced, problem };
     });
   };
   // Disconnects a live connection, open or shut, between syncs: its secret,
@@ -764,6 +877,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       betweenSyncs(async () => {
         const open = byPrefix.get(connection.prefix);
         await connections.disconnect(connection);
+        unarm(connection.id);
+        problems.delete(connection.id);
         byPrefix.delete(connection.prefix);
         shut.delete(connection.prefix);
         written.delete(connection.prefix);
@@ -877,9 +992,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) =>
     bindingsFor(region, {
       reader,
-      namespaces: namespacesOf(
-        records(),
-        opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })),
+      namespaces: readable(
+        namespacesOf(
+          records(),
+          opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })),
+        ),
       ),
       items: itemDocs,
       oriel: reads,
@@ -894,9 +1011,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     return { overview: windowOverview, ...(waiting ? { waiting } : {}) };
   };
 
+  // A kind whose open connections are all read-only offers no write in a
+  // region's module (decision 0049): what it can't apply, the agent can't
+  // propose.
+  const readable = (namespaces: ReturnType<typeof namespacesOf>) => {
+    const open = opens();
+    return Object.fromEntries(
+      Object.entries(namespaces).map(([kind, spec]) => {
+        const of = open.filter((each) => each.connection.kind === kind);
+        return of.length > 0 && of.every((each) => readOnlyOf(each.connection.options))
+          ? [kind, { ...spec, fns: (scope) => spec.fns(scope).filter((fn) => fn.kind === "read") }]
+          : [kind, spec];
+      }),
+    ) as ReturnType<typeof namespacesOf>;
+  };
+
   const wiring = () => {
+    // No writer is built for a read-only connection, so a write to it is
+    // unreachable, not merely unapproved (decision 0049).
     const writable = opens().flatMap(({ connection, opened }) =>
-      opened.writes === undefined
+      opened.writes === undefined || readOnlyOf(connection.options)
         ? []
         : [{ prefix: connection.prefix, kind: connection.kind, writes: opened.writes }],
     );
@@ -916,7 +1050,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...opens().flatMap(({ connection, opened }) =>
         opened.writes === undefined && opened.fields
           ? [[connection.prefix, opened.fields] as const]
-          : [],
+          : readOnlyOf(connection.options) && opened.writes !== undefined
+            ? [[connection.prefix, readOnly(declared(connection.kind).name)] as const]
+            : [],
       ),
     ]);
     return {
@@ -1028,7 +1164,9 @@ export async function createApp(options: AppOptions): Promise<App> {
     drafted,
     sketchBase: options.sketchBase,
     get writable() {
-      return opens().some((each) => each.opened.writes !== undefined);
+      return opens().some(
+        (each) => each.opened.writes !== undefined && !readOnlyOf(each.connection.options),
+      );
     },
   });
   // The desktop app notifies when a thread newly needs the person.
@@ -1268,10 +1406,21 @@ export async function createApp(options: AppOptions): Promise<App> {
       kind: kept.kind,
       number: kept.number,
       prefix: kept.prefix,
-      name: declared(kept.kind).name,
+      name: kept.name ?? declared(kept.kind).name,
+      named: kept.name !== null,
       about: open?.connection.id === connection.id ? open.opened.about : kept.identity,
+      reads: declared(kept.kind).connect?.reads(kept) ?? kept.identity,
       identity: kept.identity,
       options: kept.options,
+      readOnly: readOnlyOf(kept.options),
+      viewOnly:
+        open?.connection.id === connection.id
+          ? (open.opened.viewOnly?.(recordsOf(open)) ?? null)
+          : null,
+      every: kept.every,
+      // Waiting, why its options don't fit says more than an older sync's.
+      problem: unfit.get(kept.prefix) ?? problems.get(kept.id) ?? null,
+      report: open?.connection.id === connection.id ? [...(open.opened.report?.() ?? [])] : [],
       ...synced(kept.prefix),
       // What its last sync changed.
       lastSync: index.source(workspaceId, kept.prefix)?.lastSync ?? {
@@ -1279,7 +1428,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         changed: 0,
         removed: 0,
       },
-      state: open?.connection.id === connection.id ? "open" : "signed-out",
+      state:
+        open?.connection.id === connection.id
+          ? "open"
+          : unfit.has(kept.prefix)
+            ? "waiting"
+            : "signed-out",
       flagged: byFlag.has(kept.id),
     };
   };
@@ -1446,10 +1600,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       connections: () => ({
         connections: connectionsView(),
         connectable: sourceKinds.filter((kind) => windows.connectable(kind)),
+        refused: Object.fromEntries(
+          sourceKinds.flatMap((kind) => {
+            const why = windows.why(kind);
+            return why === null ? [] : [[kind, why]];
+          }),
+        ),
         picker: options.pickFolder !== undefined,
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
-      folderField: (kind) => windows.folderField(kind),
+      choices: (id, query) => windows.choices(live(id as Ulid), query),
+      folderStep: (kind) => windows.folderStep(kind),
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       setup,
       log,
@@ -1485,6 +1646,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       await guarding?.stop();
       setup.close();
       await setup.idle();
+      for (const stop of timers.values()) stop();
+      timers.clear();
       await Promise.all(waiting.values());
       await syncing.catch(() => {});
       for (const each of byPrefix.values()) each.opened.close?.();

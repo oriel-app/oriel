@@ -74,9 +74,21 @@ function each<T>(
 
 // How every connector shows in the window, in declared order, which the
 // server sends the page (decision 0049).
+// Its steps and offer are words and step kinds; their server halves stay
+// here.
 export const connectorViews: readonly ConnectorView[] = sourceKinds.map((kind) => {
-  const { name, inSentence, icon, keysReadAs, columns } = sources[kind];
-  return { kind, name, inSentence, icon, keysReadAs, columns };
+  const { name, inSentence, icon, keysReadAs, columns, specs, connect } = sources[kind];
+  return {
+    kind,
+    name,
+    inSentence,
+    icon,
+    keysReadAs,
+    columns,
+    writable: specs !== undefined,
+    connect: connect ? { steps: connect.steps, offer: connect.offer } : null,
+    options: sources[kind].optionFields ?? [],
+  };
 });
 
 // What each source's items are, as bindings' `items` takes them.

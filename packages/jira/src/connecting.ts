@@ -11,7 +11,10 @@ import {
   type ConnectRefusal,
   type Infer,
   type LiveOf,
+  boolean,
   object,
+  optional,
+  type OptionField,
   refine,
   string,
 } from "@oriel/core";
@@ -47,8 +50,14 @@ const given = object({ ...details, project: typed(32, "a project key") });
 const listing = object(details);
 type Details = { site: string; email: string; token: string };
 
-// What a person sets per connection: the project it reads.
+// What a person sets per connection: the project it reads, picked again in
+// Settings from Jira's list, and whether Oriel may propose changes to it.
+export const jiraOptionFields = [
+  { kind: "pick", name: "project", label: "Project" },
+  { kind: "read-only", name: "readOnly" },
+] as const satisfies readonly OptionField[];
 export const jiraOptions = object({
+  readOnly: optional(boolean),
   project: refine(
     string,
     (key) => key.length <= 32 && projectKey.test(key),
@@ -71,14 +80,77 @@ const transportTo = (
   send?: typeof fetch,
 ) => readTransport({ site, credential: basicAuth(email, token), ...(send ? { fetch: send } : {}) });
 
+// The window's words for connecting Jira, OA-191's: its address, the email
+// and an API token, with the three steps to make one on Atlassian's page,
+// its expiry included. That label is the one place the word "token" shows
+// (decision 0038). Then the project, from the list Jira returns.
 export const jiraConnect = {
   steps: [
     {
       kind: "fields",
-      fields: [{ name: "site" }, { name: "email" }, { name: "token", secret: true }],
+      label: "Your Jira account",
+      title: "Connect Jira",
+      lede: "Three things from your Jira account. Oriel keeps them encrypted on this Mac.",
+      fields: [
+        {
+          name: "site",
+          label: "Your Jira address",
+          input: "url",
+          placeholder: "yourteam.atlassian.net",
+          hint: "The start of the address in your browser when Jira is open.",
+        },
+        {
+          name: "email",
+          label: "The email you sign in to Jira with",
+          input: "email",
+          placeholder: "you@company.com",
+        },
+        { name: "token", label: "API token", secret: true, placeholder: "Paste it here" },
+      ],
+      help: {
+        intro:
+          "Atlassian lets you make these for apps like Oriel. One has your Jira access and no more, Oriel changes Jira only when you approve, and you can delete it on Atlassian's page any time.",
+        lines: [
+          "[Open Atlassian's page for them](https://id.atlassian.com/manage-profile/security/api-tokens) (it opens in your browser).",
+          "Click **Create**, name it **Oriel**, pick when it expires (a year is fine), and click **Create**.",
+          "Click **Copy**, then paste it above. Atlassian shows it only once.",
+        ],
+      },
     },
-    { kind: "pick", field: "project" },
+    {
+      kind: "pick",
+      field: "project",
+      label: "Jira projects",
+      title: "Which Jira project?",
+      lede: "Jira accepted your details. Pick the project you work in.",
+      list: "Projects",
+      find: "Find a project by its name or key",
+      findLabel: "Find a project",
+      none: "Jira accepted your details, but this account can't see any project. Ask your Jira admin for access, or use another account.",
+      noMatch: "No project matches that.",
+      counts: "issue",
+      use: "Use this project",
+    },
   ],
+  offer: {
+    firstRun: 1,
+    mark: "J",
+    title: "Jira",
+    about: "Epics, stories and their details",
+    counts: "issue",
+    empty: "This project has no issues yet.",
+    yours: "your Jira",
+    changes: "Jira",
+    follow: "an epic",
+    ready: "Jira is ready.",
+    catchUp: "Jira can catch up later.",
+    invite: {
+      note: "Your epics and stories show here. Oriel changes them only when you approve a change.",
+      readOnly:
+        "Oriel only reads folders. Ask about your notes now; to have Oriel draft changes for you to approve, connect Jira.",
+      connected: "has no issues yet. Epics and stories made there show here when Oriel syncs Jira.",
+    },
+  },
   given,
   identify: async (typed, via) => {
     const at = jiraSite(typed.site);
@@ -90,12 +162,16 @@ export const jiraConnect = {
       };
     return at;
   },
-  taken: (live): ConnectRefusal => ({
-    problem: live
-      ? `Oriel reads one Jira site for now, ${URL.parse(live)?.host ?? live}. Sign in to it again.`
-      : "Oriel reads one Jira site for now.",
-    fields: ["site"],
-  }),
+  taken: (first, live): ConnectRefusal => {
+    const host = URL.parse(first)?.host ?? first;
+    return {
+      problem: live
+        ? `Oriel reads one Jira site for now, ${host}. Sign in to it again.`
+        : `Oriel reads one Jira site for now: the first one connected, ${host}. Connect that one again.`,
+      fields: ["site"],
+    };
+  },
+  reads: ({ options }) => jiraProject(options),
   async make(typed, site, via) {
     const project = typed.project.trim().toUpperCase();
     const transport = transportTo(site, account(typed), via.fetch);
@@ -133,6 +209,10 @@ export const jiraConnect = {
   // requests.
   pick: {
     given: listing,
+    from(connection) {
+      const kept = connection.secret === null ? null : jiraAccount(connection.secret);
+      return kept && { site: connection.identity, ...kept };
+    },
     async list(typed, site, query, via) {
       const listed = await listProjects(transportTo(site, account(typed), via.fetch), query).catch(
         (error: unknown) => {

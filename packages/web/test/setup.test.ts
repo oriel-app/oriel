@@ -10,7 +10,8 @@ import { init, type Model, type Msg, update } from "../src/root.ts";
 import { noAi, initSettings } from "../src/settings.ts";
 import type { CliView, SetupView } from "../src/view.ts";
 import { questionsFrom } from "../src/window-chat.ts";
-import { connectionView, overviewView } from "../testing.ts";
+import { blankForm } from "../src/connections.ts";
+import { connectionView, connectorViews, overviewView } from "../testing.ts";
 
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   let effects: Effect[] = [];
@@ -141,10 +142,19 @@ test("while a command runs the page asks again each second, one ask at a time, a
 });
 
 test("the last screen ends on the overview once a source is read, unless one failed", () => {
-  const [model] = run(init({ page: "setup" })[0], replied("setup", view({}, { ai: "done" })), {
-    type: "setup",
-    msg: { type: "workDone" },
+  const connected = (of: string, connection: unknown): Msg => ({
+    type: "replied",
+    tag: { kind: "connected", of },
+    ok: true,
+    body: { connection },
   });
+  const [model] = run(
+    init({ page: "setup" })[0],
+    replied("setup", view({}, { ai: "done" })),
+    replied("connectors", { connectors: connectorViews }),
+    replied("connections", { connections: [], connectable: ["jira"], refused: {}, picker: true }),
+    { type: "setup", msg: { type: "workDone" } },
+  );
   assert.equal(model.setup.screen, "reading");
   const connection = connectionView({
     about: "PAY on acme.atlassian.net",
@@ -152,7 +162,7 @@ test("the last screen ends on the overview once a source is read, unless one fai
     options: { project: "PAY" },
     items: 120,
   });
-  const [read, effects] = run(model, replied("jiraConnected", { connection }));
+  const [read, effects] = run(model, connected("jira", connection));
   assert.deepEqual(posts(effects).at(-1), ["/api/setup/progress", { did: "finished" }]);
   assert.equal(read.setup.finishing, true);
   const [, navigate] = run(read, replied("setupProgress", view(), true, "finished"));
@@ -162,13 +172,25 @@ test("the last screen ends on the overview once a source is read, unless one fai
     replace: true,
   });
   // A Jira that stopped waits for the person.
-  const stopped = { ...model, jira: { ...model.jira, connecting: "PAY", problem: "Not now." } };
+  const stopped = {
+    ...model,
+    connections: {
+      ...model.connections,
+      forms: { jira: { ...blankForm, step: 1, tried: "PAY", problem: "Not now." } },
+    },
+  };
   const [, waits] = run(
     stopped,
-    replied("folderPicked", {
-      connection: connectionView({ kind: "folder", identity: "/notes", options: {}, items: 3 }),
-      picked: true,
-    }),
+    connected(
+      "folder",
+      connectionView({
+        id: "01JBZ0000000000000000000K2",
+        kind: "folder",
+        identity: "/notes",
+        options: {},
+        items: 3,
+      }),
+    ),
   );
   assert.ok(!posts(waits).some(([url]) => url === "/api/setup/progress"));
 });

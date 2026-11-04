@@ -55,6 +55,7 @@ test("a connection is numbered within its kind, and its prefix follows", () => {
     identity: acme,
     name: null,
     options: { project: "SYN" },
+    every: null,
     connectedAt: t0,
     disconnectedAt: null,
   });
@@ -151,4 +152,23 @@ test("a live connection's options change in place", () => {
   assert.deepEqual(connections.get(workspaceId, made.connection.id)?.options, {
     project: "ACME",
   });
+});
+
+test("a live connection's name and how often it syncs change in place, and a tombstone keeps neither", () => {
+  const { id, workspaceId, connections } = fresh();
+  const made = connections.connect(
+    workspaceId,
+    { id: id(), kind: "jira", identity: acme, options: { project: "SYN" } },
+    t0,
+  );
+  assert.ok("connection" in made);
+  const { connection } = made;
+  assert.equal(connections.settle(workspaceId, connection.id, { name: "Ours", every: 15 }), true);
+  const set = connections.get(workspaceId, connection.id);
+  assert.deepEqual([set?.name, set?.every, set?.options], ["Ours", 15, { project: "SYN" }]);
+  connections.disconnect(workspaceId, connection.id, later(1));
+  const gone = connections.get(workspaceId, connection.id);
+  assert.deepEqual([gone?.name, gone?.every], [null, null]);
+  // Only a live one is set.
+  assert.equal(connections.settle(workspaceId, connection.id, { name: "Ours", every: 5 }), false);
 });

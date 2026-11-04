@@ -1,7 +1,16 @@
 // What a person sets on a Slack connection, and the live one a flag makes
 // under `pnpm dev` (decision 0049). Slack has no steps to connect it in the
 // window yet: that waits for an app anyone can install.
-import { array, type LiveOf, object, refine, string } from "@oriel/core";
+import {
+  array,
+  boolean,
+  type LiveOf,
+  object,
+  optional,
+  type OptionField,
+  refine,
+  string,
+} from "@oriel/core";
 
 const channel = refine(
   string,
@@ -9,8 +18,19 @@ const channel = refine(
   "expected a channel's name or ID",
 );
 
-// The public channels it reads, by name or ID, the only ones written to.
+// The public channels it reads, by name or ID, the only ones written to,
+// typed in Settings; and whether Oriel may propose posts to them.
+export const slackOptionFields = [
+  {
+    kind: "list",
+    name: "channels",
+    label: "Channels",
+    about: "The public channels Oriel reads, by name, with commas between them.",
+  },
+  { kind: "read-only", name: "readOnly" },
+] as const satisfies readonly OptionField[];
 export const slackOptions = object({
+  readOnly: optional(boolean),
   channels: refine(
     array(channel),
     (list) => list.length > 0 && list.length <= 50,

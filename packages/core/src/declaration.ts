@@ -1,6 +1,6 @@
 import type { PreviewTable } from "./block.ts";
 import type { DeclaredFacets } from "./change-log.ts";
-import type { ConnectOf, LiveOf } from "./connect.ts";
+import type { ConnectOf, LiveOf, OptionField } from "./connect.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
@@ -66,6 +66,8 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // such as a workspace's channels and when each was last active. Without
   // it, the agent drafts none of its options.
   preview?: (connection: ToOpen, via: OpenVia) => Promise<PreviewTable[]>;
+  // How Settings draws them, those it can.
+  optionFields?: readonly OptionField[];
   // How a person makes a connection of it in the window: its steps and
   // their server halves. Without it, only a flag makes one.
   connect?: ConnectOf;

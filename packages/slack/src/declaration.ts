@@ -2,7 +2,7 @@
 // approved change sets (OA-28), so it has a namespace and op specs.
 import type { SourceDeclaration } from "@oriel/core";
 import { slackAttrsOf, slackKeyShape, slackPanel, slackPresentation } from "./attrs.ts";
-import { slackLive, slackOptions } from "./connecting.ts";
+import { slackLive, slackOptionFields, slackOptions } from "./connecting.ts";
 import { slackDeclaredFixture } from "./declared-fixture.ts";
 import { type SlackContext, slackItemDoc, slackNamespace } from "./namespace.ts";
 import { openSlack, type SlackWrites } from "./open-connection.ts";
@@ -28,6 +28,7 @@ export const slackDeclaration = {
   budget: 900,
   open: openSlack,
   options: slackOptions,
+  optionFields: slackOptionFields,
   // Its public channels, for the agent to draft which it reads (decision 0051).
   preview: slackPreview,
   live: slackLive,

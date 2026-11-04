@@ -6,6 +6,7 @@
 // under test/ as a test.
 import type { Connectors } from "./src/connectors.ts";
 import type {
+  ConnectOffer,
   ActionLineView,
   ChangeSetView,
   ClusterPageView,
@@ -28,8 +29,23 @@ import type {
 
 const at = "2026-10-29T09:00:00.000Z";
 
-// How every connector shows, as /api/connectors sends it; packages/server's
-// api test holds that to the declarations.
+// A connector's offer in the first run, as its declaration words it.
+const offer = (over: Partial<ConnectOffer>): ConnectOffer => ({
+  mark: "?",
+  title: "",
+  about: "",
+  counts: "item",
+  empty: "",
+  yours: "",
+  changes: "",
+  ready: "",
+  catchUp: "",
+  ...over,
+});
+
+// How every connector shows, as /api/connectors sends it, with steps in
+// short; packages/server's api test holds its own fields to the
+// declarations.
 export const connectorViews: ConnectorView[] = [
   {
     kind: "jira",
@@ -38,6 +54,50 @@ export const connectorViews: ConnectorView[] = [
     icon: "ticket",
     keysReadAs: null,
     columns: ["assignee", "estimate"],
+    writable: true,
+    connect: {
+      steps: [
+        {
+          kind: "fields",
+          label: "Your Jira account",
+          title: "Connect Jira",
+          lede: "Three things.",
+          fields: [
+            { name: "site", label: "Your Jira address", input: "url" },
+            { name: "email", label: "Email", input: "email" },
+            { name: "token", label: "API token", secret: true },
+          ],
+        },
+        {
+          kind: "pick",
+          field: "project",
+          label: "Jira projects",
+          title: "Which Jira project?",
+          lede: "Pick one.",
+          list: "Projects",
+          find: "Find a project",
+          findLabel: "Find a project",
+          none: "None.",
+          noMatch: "No match.",
+          counts: "issue",
+          use: "Use this project",
+        },
+      ],
+      offer: offer({
+        firstRun: 1,
+        mark: "J",
+        title: "Jira",
+        counts: "issue",
+        yours: "your Jira",
+        changes: "Jira",
+        follow: "an epic",
+        invite: { note: "Your epics.", readOnly: "Only reads.", connected: "has no issues yet." },
+      }),
+    },
+    options: [
+      { kind: "pick", name: "project", label: "Project" },
+      { kind: "read-only", name: "readOnly" },
+    ],
   },
   {
     kind: "folder",
@@ -46,6 +106,32 @@ export const connectorViews: ConnectorView[] = [
     icon: "page",
     keysReadAs: "File",
     columns: [],
+    writable: false,
+    connect: {
+      steps: [
+        {
+          kind: "folder",
+          field: "path",
+          prompt: "Choose a folder.",
+          what: "A folder.",
+          choose: "Choose a folder",
+          another: "Choose another",
+          waiting: "Waiting…",
+          label: "A folder, by its path",
+          placeholder: "~/notes",
+          note: "Read only.",
+        },
+      ],
+      offer: offer({
+        firstRun: 2,
+        mark: "F",
+        title: "A folder",
+        counts: "file",
+        yours: "your notes",
+        changes: "your files",
+      }),
+    },
+    options: [],
   },
   {
     kind: "slack",
@@ -54,6 +140,9 @@ export const connectorViews: ConnectorView[] = [
     icon: "message",
     keysReadAs: "Message",
     columns: ["replies"],
+    writable: true,
+    connect: null,
+    options: [],
   },
 ];
 export const connectors: Connectors = Object.fromEntries(
@@ -111,12 +200,19 @@ export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionVi
   number: 1,
   prefix: "jira",
   name: "Jira",
+  named: false,
   about: "SYN on oriel.atlassian.net",
+  reads: "SYN",
   identity: "https://oriel.atlassian.net",
   options: { project: "SYN" },
+  readOnly: false,
+  viewOnly: null,
+  every: null,
   items: 0,
   syncedAt: null,
   lastSync: { new: 0, changed: 0, removed: 0 },
+  problem: null,
+  report: [],
   state: "open",
   flagged: false,
   ...over,

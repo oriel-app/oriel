@@ -5,9 +5,16 @@
 // happening while it does, and a failure that keeps its help on screen.
 import type { ComponentChildren } from "preact";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
-import type { FolderMsg } from "./folder.ts";
-import { JiraDetails, JiraProjects } from "./jira-connect.tsx";
-import { type JiraMsg, pickedProject } from "./jira.ts";
+import { FieldsStep, PickStep, readingName } from "./connect-steps.tsx";
+import {
+  type ConnectionsMsg,
+  connectState,
+  folderStep,
+  formOf,
+  offered,
+  openOf,
+  stepOf,
+} from "./connections.ts";
 import { type Dispatch, Mark, plural } from "./parts.tsx";
 import type { Model } from "./root.ts";
 import type { SetupMsg, SetupScreen } from "./setup.ts";
@@ -16,7 +23,8 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
   const { model, dispatch } = props;
   const { setup } = model;
   const send = (msg: SetupMsg) => dispatch({ type: "setup", msg });
-  const show = (screen: SetupScreen) => send({ type: "screenShown", screen });
+  const show = (screen: SetupScreen, kind?: string) =>
+    send({ type: "screenShown", screen, ...(kind ? { kind } : {}) });
   const step = ["ai", "key", "other-ways"].includes(setup.screen) ? 1 : 2;
   return (
     <div class="setup-page">
@@ -36,8 +44,8 @@ export function SetupPage(props: { model: Model; dispatch: Dispatch }) {
           <ApiKey model={model} send={send} show={show} />
         ) : setup.screen === "other-ways" ? (
           <OtherWays model={model} send={send} show={show} dispatch={dispatch} />
-        ) : setup.screen === "jira" || setup.screen === "projects" ? (
-          <ConnectJira model={model} dispatch={dispatch} show={show} />
+        ) : setup.screen === "connect" ? (
+          <Connect model={model} dispatch={dispatch} show={show} />
         ) : setup.screen === "reading" ? (
           <Reading model={model} dispatch={dispatch} send={send} show={show} />
         ) : (
@@ -110,8 +118,7 @@ function YourAi(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
     <>
       <h1 class="setup-title">Set up the AI Oriel uses</h1>
       <p class="setup-lede">
-        Oriel answers your questions and drafts changes through Claude, on the Claude plan you
-        already pay for. Nothing changes in Jira or your files until you approve it.
+        {`Oriel answers your questions and drafts changes through Claude, on the Claude plan you already pay for. Nothing changes in ${changesIn(model)} until you approve it.`}
       </p>
       <ul class="provider-rows setup-rows">
         {claude && cli && (
@@ -204,8 +211,8 @@ function ApiKey(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
         question Oriel asks, and you can set a monthly limit there.
       </p>
       <div class="setup-card">
-        <label class="jira-field">
-          <span class="jira-label">API key</span>
+        <label class="connect-field">
+          <span class="connect-label">API key</span>
           <input
             class="input"
             type="password"
@@ -219,7 +226,7 @@ function ApiKey(props: { model: Model; send(msg: SetupMsg): void; show(s: SetupS
           />
         </label>
         {setup.keyProblem && (
-          <p class="jira-problem" role="alert">
+          <p class="connect-problem" role="alert">
             {setup.keyProblem}
           </p>
         )}
@@ -344,6 +351,13 @@ function OtherWays(props: {
   );
 }
 
+// Where nothing changes until the person approves it, as each source the
+// first run offers says it, joined with "or".
+const changesIn = (model: Model) =>
+  offered(model.connectors)
+    .map((connector) => connector.connect?.offer.changes)
+    .join(" or ");
+
 // A source as a row: its mark, name and what it brings, its state, and the
 // one thing to do next.
 function SourceRow(props: {
@@ -378,41 +392,45 @@ const connected = (text: string) => (
   </span>
 );
 
-const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-
-// What each source is doing, for Your work and Reading your work.
-function sourceStates(model: Model) {
-  const { jira, folder, setup } = model;
-  const reading = setup.view?.firstRun?.reading ?? null;
-  const project = pickedProject(jira);
-  const jiraState = jira.view?.connected
-    ? ("read" as const)
-    : jira.pending === "connecting"
-      ? ("reading" as const)
-      : jira.connecting !== null && jira.problem !== null
-        ? ("failed" as const)
-        : null;
-  const folderState = folder.view
-    ? ("read" as const)
-    : folder.pending
-      ? ("reading" as const)
-      : folder.problem !== null
-        ? ("failed" as const)
-        : null;
-  return { jiraState, folderState, reading, project };
+// One source the first run offers, as Your work and Reading your work draw
+// it: its connector, its words, its steps and its state.
+function sourceOf(model: Model, kind: string) {
+  const connector = model.connectors[kind];
+  const offer = connector?.connect?.offer;
+  const steps = connector?.connect?.steps ?? [];
+  if (!connector || !offer) return null;
+  const form = formOf(model.connections, kind);
+  return {
+    connector,
+    offer,
+    steps,
+    form,
+    // A folder step is its first; one with a pick step reads what it picked.
+    chooses: steps[0]?.kind === folderStep ? steps[0] : null,
+    picks: steps.some((step) => step.kind === "pick"),
+    open: openOf(model.connections, kind),
+    state: connectState(model.connections, kind),
+  };
 }
+type Source = NonNullable<ReturnType<typeof sourceOf>>;
+
+const sources = (model: Model): Source[] =>
+  offered(model.connectors).flatMap((connector) => sourceOf(model, connector.kind) ?? []);
 
 function YourWork(props: {
   model: Model;
   dispatch: Dispatch;
   send(msg: SetupMsg): void;
-  show(s: SetupScreen): void;
+  show(s: SetupScreen, kind?: string): void;
 }) {
   const { model, dispatch, send, show } = props;
-  const { jira, folder, setup } = model;
-  const sendFolder = (msg: FolderMsg) => dispatch({ type: "folder", msg });
-  const { jiraState, folderState, reading, project } = sourceStates(model);
-  const anything = jiraState === "read" || jiraState === "reading" || folderState === "read";
+  const { setup } = model;
+  const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
+  const reading = setup.view?.firstRun?.reading ?? null;
+  const all = sources(model);
+  const anything = all.some(
+    (source) => source.state === "read" || (source.state === "reading" && source.chooses === null),
+  );
   const ai = setup.view?.firstRun?.steps.ai;
   return (
     <>
@@ -422,75 +440,62 @@ function YourWork(props: {
       <p class="setup-lede">
         {setup.resumed
           ? `${ai === "done" ? "Your AI is set up. " : ""}Connect your work to finish; Oriel picked up where you left off.`
-          : "Oriel shows it all in one place and keeps it on this Mac. Only what a question needs goes to your AI. Nothing changes in Jira or your files until you approve it."}
+          : `Oriel shows it all in one place and keeps it on this Mac. Only what a question needs goes to your AI. Nothing changes in ${changesIn(model)} until you approve it.`}
       </p>
       <ul class="provider-rows setup-rows">
-        <SourceRow
-          mark="J"
-          name="Jira"
-          about="Epics, stories and their details"
-          state={
-            jiraState === "read" && jira.view?.connected ? (
-              connected(
-                `${jira.view.connected.project} · ${plural(jira.view.connected.items, "issue")}`,
-              )
-            ) : jiraState === "reading" ? (
-              <ReadingLine
-                text={`Reading ${project?.name ?? jira.connecting ?? "Jira"}`}
-                read={reading?.read ?? 0}
-                total={reading?.total ?? null}
-                noun="issue"
-              />
-            ) : null
-          }
-          side={
-            jiraState === null ? (
-              <button
-                type="button"
-                class="button"
-                onClick={() => show(jira.projects ? "projects" : "jira")}
-              >
-                Connect
-              </button>
-            ) : null
-          }
-        >
-          {jiraState === "failed" && (
-            <JiraFailed model={model} dispatch={dispatch} send={send} show={show} />
-          )}
-        </SourceRow>
-        <SourceRow
-          mark="F"
-          name="A folder"
-          about="Notes saved as files on this Mac, and its folders. Oriel only reads them."
-          state={
-            folder.view ? (
-              connected(`${folderName(folder.view.path)} · ${plural(folder.view.items, "file")}`)
-            ) : folderState === "reading" ? (
-              <span class="cli-line cli-waiting" role="status">
-                <span class="spinner" aria-hidden="true" />
-                Waiting for the folder you choose…
-              </span>
-            ) : null
-          }
-          side={
-            folderState !== "reading" && (
-              <button
-                type="button"
-                class="button"
-                onClick={() => sendFolder({ type: "pickClicked" })}
-              >
-                {folder.view ? "Choose another" : "Choose a folder"}
-              </button>
-            )
-          }
-        >
-          {folder.problem && (
-            <p class="jira-problem" role="alert">
-              {folder.problem}
-            </p>
-          )}
-        </SourceRow>
+        {all.map((source) => {
+          const { connector, offer, form, chooses, open, state } = source;
+          return (
+            <SourceRow
+              key={connector.kind}
+              mark={offer.mark}
+              name={offer.title}
+              about={offer.about}
+              state={
+                state === "read" && open ? (
+                  connected(`${open.reads} · ${plural(open.items, offer.counts)}`)
+                ) : state === "reading" && chooses ? (
+                  <span class="cli-line cli-waiting" role="status">
+                    <span class="spinner" aria-hidden="true" />
+                    {chooses.waiting}
+                  </span>
+                ) : state === "reading" ? (
+                  <ReadingLine
+                    text={`Reading ${readingName(form) ?? offer.title}`}
+                    read={reading?.read ?? 0}
+                    total={reading?.total ?? null}
+                    noun={offer.counts}
+                  />
+                ) : null
+              }
+              side={
+                chooses ? (
+                  state !== "reading" && (
+                    <button
+                      type="button"
+                      class="button"
+                      onClick={() =>
+                        sendConnections({ type: "chooseClicked", kind: connector.kind })
+                      }
+                    >
+                      {open ? chooses.another : chooses.choose}
+                    </button>
+                  )
+                ) : state === null ? (
+                  <button
+                    type="button"
+                    class="button"
+                    onClick={() => show("connect", connector.kind)}
+                  >
+                    Connect
+                  </button>
+                ) : null
+              }
+            >
+              <Failed source={source} model={model} dispatch={dispatch} send={send} show={show} />
+            </SourceRow>
+          );
+        })}
       </ul>
       <Foot
         links={!anything && link("Skip for now", () => send({ type: "skipClicked", step: "work" }))}
@@ -525,35 +530,44 @@ function ReadingLine(props: { text: string; read: number; total: number | null; 
   );
 }
 
-// Jira's first sync stopped: what's known, Try again, and Change, which goes
-// back to the details.
-function JiraFailed(props: {
+// Why a source didn't connect. One with a pick step stopped in its first
+// sync: what's known, Try again, Change, which goes back to its first step,
+// and Copy details. Another says why in a line.
+function Failed(props: {
+  source: Source;
   model: Model;
   dispatch: Dispatch;
   send(msg: SetupMsg): void;
-  show(s: SetupScreen): void;
+  show(s: SetupScreen, kind?: string): void;
 }) {
-  const { model, dispatch, send, show } = props;
-  const { jira } = model;
+  const { source, model, dispatch, send, show } = props;
+  const { connector, offer, form, steps } = source;
+  if (form.problem === null || source.state === "reading") return null;
+  if (!source.picks || source.state !== "failed")
+    return source.state === "read" || form.tried === null ? null : (
+      <p class="connect-problem" role="alert">
+        {form.problem}
+      </p>
+    );
   const reading = model.setup.view?.firstRun?.reading;
-  const sendJira = (msg: JiraMsg) => dispatch({ type: "jira", msg });
+  const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const stopped =
     reading?.stopped && reading.total !== null
-      ? `Stopped after ${reading.read} of ${plural(reading.total, "issue")}: `
+      ? `Stopped after ${reading.read} of ${plural(reading.total, offer.counts)}: `
       : "";
   return (
     <div class="cli-box" data-tone="danger" role="alert">
       <p>
         <strong>
           {stopped}
-          {jira.problem}
+          {form.problem}
         </strong>
       </p>
       <div class="cli-actions">
         <button
           type="button"
           class="button primary"
-          onClick={() => sendJira({ type: "connectClicked" })}
+          onClick={() => sendConnections({ type: "connectClicked", kind: connector.kind, steps })}
         >
           Try again
         </button>
@@ -561,8 +575,8 @@ function JiraFailed(props: {
           type="button"
           class="button"
           onClick={() => {
-            sendJira({ type: "changeClicked" });
-            show("jira");
+            sendConnections({ type: "backClicked", kind: connector.kind });
+            show("connect", connector.kind);
           }}
         >
           Change
@@ -573,10 +587,11 @@ function JiraFailed(props: {
           onClick={() =>
             send({
               type: "detailsCopied",
-              text: [`Jira · ${jira.connecting ?? ""}`, `${stopped}${jira.problem ?? ""}`].join(
-                "\n",
-              ),
-              what: "jira",
+              text: [
+                `${offer.title} · ${form.tried ?? ""}`,
+                `${stopped}${form.problem ?? ""}`,
+              ].join("\n"),
+              what: connector.kind,
             })
           }
         >
@@ -587,33 +602,43 @@ function JiraFailed(props: {
   );
 }
 
-function ConnectJira(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): void }) {
+// A connector's steps, one screen each: its fields, then its list to pick
+// from, in its own words.
+function Connect(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen): void }) {
   const { model, dispatch, show } = props;
-  const { jira } = model;
-  const sendJira = (msg: JiraMsg) => dispatch({ type: "jira", msg });
-  if (jira.projects === null)
+  const kind = model.setup.kind ?? "";
+  const connector = model.connectors[kind];
+  const steps = connector?.connect?.steps ?? [];
+  const form = formOf(model.connections, kind);
+  const step = stepOf(steps, form);
+  const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
+  if (!connector || !step || step.kind === folderStep) return null;
+  if (step.kind === "fields")
     return (
       <>
-        <h1 class="setup-title">Connect Jira</h1>
-        <p class="setup-lede">
-          Three things from your Jira account. Oriel keeps them encrypted on this Mac.
-        </p>
+        <h1 class="setup-title">{step.title}</h1>
+        <p class="setup-lede">{step.lede}</p>
         <div class="setup-card">
-          <JiraDetails jira={jira} send={sendJira} actions={link("Back", () => show("work"))} />
+          <FieldsStep
+            connector={connector}
+            step={step}
+            form={form}
+            send={send}
+            actions={link("Back", () => show("work"))}
+          />
         </div>
       </>
     );
   return (
     <>
-      <h1 class="setup-title">Which Jira project?</h1>
-      <p class="setup-lede">Jira accepted your details. Pick the project you work in.</p>
-      <JiraProjects
-        jira={jira}
-        send={sendJira}
-        actions={link("Back", () => {
-          sendJira({ type: "changeClicked" });
-          show("jira");
-        })}
+      <h1 class="setup-title">{step.title}</h1>
+      <p class="setup-lede">{step.lede}</p>
+      <PickStep
+        connector={connector}
+        step={step}
+        form={form}
+        send={send}
+        actions={link("Back", () => send({ type: "backClicked", kind }))}
       />
     </>
   );
@@ -625,13 +650,13 @@ function Reading(props: {
   model: Model;
   dispatch: Dispatch;
   send(msg: SetupMsg): void;
-  show(s: SetupScreen): void;
+  show(s: SetupScreen, kind?: string): void;
 }) {
   const { model, dispatch, send, show } = props;
-  const { jira, folder } = model;
-  const { jiraState, folderState, reading, project } = sourceStates(model);
-  const failed = jiraState === "failed" || folderState === "failed";
-  const ready = jiraState === "read" || folderState === "read";
+  const reading = model.setup.view?.firstRun?.reading ?? null;
+  const all = sources(model).filter((source) => source.state !== null);
+  const failed = all.filter((source) => source.state === "failed");
+  const ready = all.filter((source) => source.state === "read");
   const done = (
     <span class="provider-status" data-connected>
       <span class="provider-mark" aria-hidden="true" />
@@ -643,74 +668,59 @@ function Reading(props: {
       <h1 class="setup-title">Reading your work</h1>
       <p class="setup-lede">Usually under a minute. Oriel shows your work when it's done.</p>
       <ul class="provider-rows setup-rows">
-        {jiraState !== null && (
-          <SourceRow
-            mark="J"
-            name={`Jira · ${jira.view?.connected?.project ?? project?.name ?? jira.connecting ?? ""}`}
-            about={
-              jiraState === "read" && jira.view?.connected
-                ? plural(jira.view.connected.items, "issue")
-                : jiraState === "reading"
-                  ? reading?.total != null
-                    ? `${reading.read} of ${plural(reading.total, "issue")}`
-                    : plural(reading?.read ?? 0, "issue")
-                  : ""
-            }
-            state={
-              jiraState === "read" ? (
-                jira.view?.connected?.items === 0 ? (
-                  <span class="cli-line">This project has no issues yet.</span>
-                ) : (
-                  done
-                )
-              ) : jiraState === "reading" ? (
-                <progress
-                  class="setup-progress"
-                  max={reading?.total ?? undefined}
-                  value={reading?.total != null ? reading.read : undefined}
-                />
-              ) : null
-            }
-          >
-            {jiraState === "failed" && (
-              <JiraFailed model={model} dispatch={dispatch} send={send} show={show} />
-            )}
-          </SourceRow>
-        )}
-        {folderState !== null && (
-          <SourceRow
-            mark="F"
-            name={folder.view ? folderName(folder.view.path) : "A folder"}
-            about={folder.view ? plural(folder.view.items, "file") : ""}
-            state={
-              folder.view ? (
-                folder.view.items === 0 ? (
-                  <span class="cli-line">This folder has no notes Oriel reads.</span>
-                ) : (
-                  done
-                )
-              ) : null
-            }
-          >
-            {folder.problem && (
-              <p class="jira-problem" role="alert">
-                {folder.problem}
-              </p>
-            )}
-          </SourceRow>
-        )}
+        {all.map((source) => {
+          const { connector, offer, form, open, state, picks } = source;
+          // One that picks is named with what it picked; another, by what it
+          // reads once it's read.
+          const name = picks
+            ? `${offer.title} · ${open?.reads ?? readingName(form) ?? ""}`
+            : (open?.reads ?? offer.title);
+          return (
+            <SourceRow
+              key={connector.kind}
+              mark={offer.mark}
+              name={name}
+              about={
+                state === "read" && open
+                  ? plural(open.items, offer.counts)
+                  : state === "reading" && picks
+                    ? reading?.total != null
+                      ? `${reading.read} of ${plural(reading.total, offer.counts)}`
+                      : plural(reading?.read ?? 0, offer.counts)
+                    : ""
+              }
+              state={
+                state === "read" ? (
+                  open?.items === 0 ? (
+                    <span class="cli-line">{offer.empty}</span>
+                  ) : (
+                    done
+                  )
+                ) : state === "reading" && picks ? (
+                  <progress
+                    class="setup-progress"
+                    max={reading?.total ?? undefined}
+                    value={reading?.total != null ? reading.read : undefined}
+                  />
+                ) : null
+              }
+            >
+              <Failed source={source} model={model} dispatch={dispatch} send={send} show={show} />
+            </SourceRow>
+          );
+        })}
       </ul>
-      {failed && (
+      {failed.length > 0 && (
         <Foot
           links={
             <span class="setup-note">
-              {ready
-                ? `${folderState === "read" ? "Your notes are" : "Jira is"} ready. ${jiraState === "failed" ? "Jira" : "The folder"} can catch up later.`
+              {ready.length > 0
+                ? `${ready.map((source) => source.offer.ready).join(" ")} ${failed.map((source) => source.offer.catchUp).join(" ")}`
                 : "Try again, or change what you connected."}
             </span>
           }
         >
-          {ready ? (
+          {ready.length > 0 ? (
             <button
               type="button"
               class="button primary setup-next"

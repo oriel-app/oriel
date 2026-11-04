@@ -36,6 +36,7 @@ export type Page =
 
 export const settingsSections = [
   "providers",
+  "connections",
   "general",
   "appearance",
   "asking",
@@ -71,14 +72,9 @@ function parsePage(pathname: string, search: string): Page {
   if (pathname === "/threads/new") return { page: "new-thread" };
   if (pathname === "/setup") return { page: "setup" };
   if (pathname === "/settings") return { page: "settings", section: "providers" };
-  const section = /^\/settings\/(general|appearance|asking|notifications)$/.exec(pathname)?.[1];
-  if (
-    section === "general" ||
-    section === "appearance" ||
-    section === "asking" ||
-    section === "notifications"
-  )
-    return { page: "settings", section };
+  const section = /^\/settings\/([a-z]+)$/.exec(pathname)?.[1];
+  const known = settingsSections.find((each) => each !== "providers" && each === section);
+  if (known) return { page: "settings", section: known };
   if (pathname === "/done") {
     const number = Number(query.get("page"));
     return {

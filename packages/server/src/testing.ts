@@ -25,7 +25,7 @@ import type { JiraFixture } from "@oriel/jira";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "@oriel/jira";
 import type { Titler } from "@oriel/agent";
-import type { ConnectionsView, ConnectionView, JiraView } from "@oriel/web/view";
+import type { ConnectionsView, ConnectionView } from "@oriel/web/view";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import { type App, type AppOptions, createApp, limits, type SourceMode } from "./app.ts";
 import type { LegacyJira, Secrets } from "./connection.ts";
@@ -153,6 +153,8 @@ export type TestOptions = {
   setup?: SetupOptions;
   // Any Jira Cloud site may be connected, as on the desktop app.
   anySite?: boolean;
+  // What calls a connection's sync every few minutes, in place of a timer.
+  every?: AppOptions["every"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -194,6 +196,7 @@ export async function testApp(
     sources: { jira, ...(options.slack ? { slack: options.slack } : {}), ...options.sources },
     ...(options.connect?.legacy ? { legacyJira: options.connect.legacy } : {}),
     ...(options.anySite ? { anywhere: true } : {}),
+    ...(options.every ? { every: options.every } : {}),
     ...(options.connect?.secrets ? { secrets: options.connect.secrets } : {}),
     reviewBase: new URL(`${origin}/review/`),
     sketchBase: new URL(`${sketchOrigin}/sketches/`),
@@ -263,6 +266,12 @@ export async function testApp(
 
 // Jira as the window's form reads it from the connections, until one
 // component draws every connector's steps (OA-216).
+// Jira as its open connection has it, as the tests ask about it.
+export type JiraView = {
+  connected: { site: string; project: string; items: number; syncedAt: string | null } | null;
+  connectable: boolean;
+};
+
 export async function jiraOf(app: { connections(): Promise<ConnectionsView> }): Promise<JiraView> {
   const { connections, connectable } = await app.connections();
   const open = connections.find((each) => each.kind === "jira" && each.state === "open");

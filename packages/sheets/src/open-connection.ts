@@ -18,6 +18,7 @@ import {
   object,
   type Opened,
   type OpenVia,
+  readOnlyOf,
   optional,
   refine,
   string,
@@ -27,6 +28,7 @@ import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
 import { googleReads, SheetsError } from "./google.ts";
 import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
+import { reportLines } from "./report.ts";
 import { rowReader } from "./rows.ts";
 import { type SheetsSource, sheetsSource } from "./source.ts";
 
@@ -46,10 +48,9 @@ export type SheetsWrites = {
 
 export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { source: SheetsSource };
 
-// Whether the person set the connection read-only. Anything but off, or
-// no option at all, is read-only, so a malformed option can't open writes.
-export const readOnlyOf = (options: Readonly<Record<string, unknown>>): boolean =>
-  options.readOnly !== undefined && options.readOnly !== false;
+// Whether the person set the connection read-only, as core reads every
+// connector's `readOnly` option.
+export { readOnlyOf };
 
 // A token is printable ASCII, so a header can't refuse it and quote it.
 const token = refine(string, (text) => /^[\x21-\x7e]+$/.test(text), "expected a token");
@@ -100,13 +101,16 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
   const readOnly = readOnlyOf(connection.options);
   const context = sheetsContextOf(picks);
 
+  const source = sheetsSource({
+    google,
+    picks,
+    ...(connection.prefix === "sheets" ? {} : { prefix: connection.prefix }),
+    log: via.log,
+  });
+
   return {
-    source: sheetsSource({
-      google,
-      picks,
-      ...(connection.prefix === "sheets" ? {} : { prefix: connection.prefix }),
-      log: via.log,
-    }),
+    source,
+    report: () => reportLines(source.report()),
     attrs: sheetsAttrs,
     about: `${count} ${count === 1 ? "spreadsheet" : "spreadsheets"}`,
     scope: undefined,
@@ -127,6 +131,29 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     incremental: true,
     problem: sheetsProblem,
     names: sheetsNames,
+    viewOnly: viewOnlyOf,
+  };
+}
+
+// The spreadsheets the person can only view, by Drive's `canEdit`, which
+// are read-only whatever the connection's option says (decision 0050). A
+// title is the spreadsheet's own, shown as text.
+function viewOnlyOf(records: readonly IndexRecord[]): { why: string; all: boolean } | null {
+  const spreadsheets = records.flatMap((record) => {
+    const attrs = sheetsAttrsOf(record);
+    return attrs?.of === "spreadsheet" ? [attrs] : [];
+  });
+  const viewed = spreadsheets.filter((attrs) => !attrs.canEdit);
+  if (viewed.length === 0) return null;
+  if (viewed.length === spreadsheets.length)
+    return {
+      why: "You can only view these spreadsheets in Google Sheets, so Oriel only reads them.",
+      all: true,
+    };
+  const titles = viewed.map((attrs) => attrs.spreadsheet.title).join(", ");
+  return {
+    why: `You can only view ${titles} in Google Sheets, so Oriel only reads ${viewed.length === 1 ? "it" : "them"}.`,
+    all: false,
   };
 }
 

@@ -10,7 +10,8 @@ import { useContext } from "preact/hooks";
 import type { OverviewSection } from "@oriel/core/overview";
 import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
-import type { JiraModel } from "./jira.ts";
+import type { ConnectionsModel } from "./connections.ts";
+import type { Connectors } from "./connectors.ts";
 import type { OverviewModel, OverviewMsg } from "./overview.ts";
 import type { Route } from "./route.ts";
 import { shown } from "./overview.ts";
@@ -34,7 +35,8 @@ import type {
   PersonRowView,
   WorkstreamRowView,
 } from "./view.ts";
-import { ConnectJira } from "./jira-connect.tsx";
+import { ConnectCards } from "./connect-steps.tsx";
+import { openConnections } from "./connections.ts";
 import { StatusBar } from "./window-page.tsx";
 import { AskBar } from "./window-chat-view.tsx";
 import type { WindowChatModel } from "./window-chat.ts";
@@ -46,7 +48,8 @@ export function OverviewPage(props: {
   ending: EndingModel;
   // The panel's adds, whose Undos share it too.
   added: Undos;
-  jira: JiraModel;
+  connections: ConnectionsModel;
+  connectors: Connectors;
   // Browse as the user last left it.
   browse: Route;
   chat: WindowChatModel;
@@ -56,13 +59,11 @@ export function OverviewPage(props: {
   // top question an instruction; and whether any AI is set up.
   firstRun: { line: boolean; questions: boolean };
   noAi: boolean;
-  // Only a folder is connected, which Oriel only reads.
-  folderOnly: boolean;
   // Shows the sidebar's list of the threads waiting on the user.
   onNeedsYou(): void;
   dispatch: Dispatch;
 }) {
-  const { model, ending, added, jira, browse, dispatch } = props;
+  const { model, ending, added, connections, connectors, browse, dispatch } = props;
   const { view } = model;
   const send = (msg: OverviewMsg) => dispatch({ type: "overview", msg });
   return (
@@ -76,8 +77,8 @@ export function OverviewPage(props: {
       {view && model.opened.includes("changed") && <Changed view={view} dispatch={dispatch} />}
       {props.firstRun.line && (
         <FirstRunLine
-          jira={jira.view?.connected != null}
-          folder={props.folderOnly || jira.view?.connected == null}
+          connections={connections}
+          connectors={connectors}
           ask={!props.noAi}
           dispatch={dispatch}
         />
@@ -90,9 +91,7 @@ export function OverviewPage(props: {
         noAi={props.noAi}
         dispatch={dispatch}
       />
-      {jira.view?.connectable && (
-        <ConnectJira jira={jira} folderOnly={props.folderOnly} dispatch={dispatch} />
-      )}
+      <ConnectCards connections={connections} connectors={connectors} dispatch={dispatch} />
       {view === null ? (
         model.problem === null ? (
           <p class="overview-loading">Loading the overview…</p>
@@ -150,19 +149,31 @@ export function OverviewPage(props: {
 
 // The first run's one-time line (decision 0038): what the window and a
 // workstream are, until it's dismissed or the first workstream is made.
-function FirstRunLine(props: { jira: boolean; folder: boolean; ask: boolean; dispatch: Dispatch }) {
-  const what =
-    props.jira && props.folder
-      ? "your Jira and your notes"
-      : props.jira
-        ? "your Jira"
-        : "your notes";
+// It names what the connections that may propose changes hold, or, with
+// none, what the others do.
+function FirstRunLine(props: {
+  connections: ConnectionsModel;
+  connectors: Connectors;
+  ask: boolean;
+  dispatch: Dispatch;
+}) {
+  const open = openConnections(props.connections).flatMap((connection) => {
+    const connector = props.connectors[connection.kind];
+    const offer = connector?.connect?.offer;
+    return offer ? [{ offer, writable: connector.writable }] : [];
+  });
+  const writing = open.filter((each) => each.writable);
+  const named = (writing.length > 0 ? writing : open).map((each) => each.offer);
+  const what = [...new Set(named.map((offer) => offer.yours))].join(" and ") || "your work";
+  const follow = named.find((offer) => offer.follow)?.follow;
   return (
     <aside class="first-run-line" aria-label="About the window">
       <p>
-        <strong>This is your window:</strong> {what} in one place. To follow{" "}
-        {props.jira ? "an epic" : "something"}, make it a <strong>workstream</strong>: Oriel keeps
-        its items, your questions and its changes together.
+        {/* Its text nodes split where they always have, so it draws the same. */}
+        <strong>This is your window:</strong> {what}
+        {" in one place. To follow"} {follow ?? "something"}
+        {", make it a "}
+        <strong>workstream</strong>: Oriel keeps its items, your questions and its changes together.
         {props.ask && " Start with the first question below."}
       </p>
       <button

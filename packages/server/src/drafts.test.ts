@@ -92,7 +92,7 @@ async function waitingSlack(t: TestContext) {
 
 test("the agent drafts a waiting Slack connection's channels, and the user applies them", async (t) => {
   const it = await waitingSlack(t);
-  assert.equal((await it.connection("slack"))?.state, "signed-out");
+  assert.equal((await it.connection("slack"))?.state, "waiting");
   const id = await it.ask("Draft which Slack channels Oriel should read.");
   const view = await it.thread(id);
   // The preview it read shows as its own block, Oriel's.
@@ -162,7 +162,7 @@ test("the agent drafts a waiting Slack connection's channels, and the user appli
   const waits = await it.connection("slack");
   assert.deepEqual(
     [waits?.state, waits?.options],
-    ["signed-out", { channels: ["weather-disruptions", "launch-room"] }],
+    ["waiting", { channels: ["weather-disruptions", "launch-room"] }],
   );
 });
 
