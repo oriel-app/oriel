@@ -124,7 +124,14 @@ export function isJiraId(id: string): id is ItemId<"jira"> {
   return parsed?.kind === "jira" && jiraKeyShape.test(parsed.key);
 }
 
-export const jiraPresentation: Presentation = { name: "Jira", details: jiraDetails };
+export const jiraPresentation: Presentation = {
+  name: "Jira",
+  inSentence: "Jira",
+  icon: "ticket",
+  keysReadAs: null,
+  columns: ["assignee", "estimate"],
+  details: jiraDetails,
+};
 
 // Its facets beyond the common ones, which the change log records: its
 // estimate, in its board's points; null when not estimated yet, or on a board

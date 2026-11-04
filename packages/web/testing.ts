@@ -4,11 +4,13 @@
 // override every field it depends on, even one equal to its default.
 // This file sits beside test/, not in it: `node --test` runs every file
 // under test/ as a test.
+import type { Connectors } from "./src/connectors.ts";
 import type {
   ActionLineView,
   ChangeSetView,
   ClusterPageView,
   ClusterRow,
+  ConnectorView,
   DiffView,
   ItemRef,
   ItemRow,
@@ -24,6 +26,38 @@ import type {
 } from "./src/view.ts";
 
 const at = "2026-10-29T09:00:00.000Z";
+
+// How every connector shows, as /api/connectors sends it; packages/server's
+// api test holds that to the declarations.
+export const connectorViews: ConnectorView[] = [
+  {
+    kind: "jira",
+    name: "Jira",
+    inSentence: "Jira",
+    icon: "ticket",
+    keysReadAs: null,
+    columns: ["assignee", "estimate"],
+  },
+  {
+    kind: "folder",
+    name: "Folder",
+    inSentence: "the folder",
+    icon: "page",
+    keysReadAs: "File",
+    columns: [],
+  },
+  {
+    kind: "slack",
+    name: "Slack",
+    inSentence: "Slack",
+    icon: "message",
+    keysReadAs: "Message",
+    columns: ["replies"],
+  },
+];
+export const connectors: Connectors = Object.fromEntries(
+  connectorViews.map((view) => [view.kind, view]),
+);
 const threadId = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
 const changeSetId = "01JBZ0000000000000000000C1";

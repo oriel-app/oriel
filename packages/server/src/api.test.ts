@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type {
   ChangeSetView,
+  ConnectorView,
   DiffView,
   WorkstreamSummary,
   WorkstreamView,
@@ -656,4 +657,37 @@ test("a thread from nothing is made with its first message, and nothing without 
   ]);
   const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
   assert.equal(view.entries[0]?.kind, "user");
+});
+
+test("the page gets how every connector shows, connected or not, from its declaration", async (t) => {
+  // Started with Jira alone: the folder and Slack show all the same, for an
+  // item of theirs a workstream or a thread still names.
+  const app = await testApp(t);
+  const { connectors } = json<{ connectors: ConnectorView[] }>(await app.get("/api/connectors"));
+  assert.deepEqual(connectors, [
+    {
+      kind: "jira",
+      name: "Jira",
+      inSentence: "Jira",
+      icon: "ticket",
+      keysReadAs: null,
+      columns: ["assignee", "estimate"],
+    },
+    {
+      kind: "folder",
+      name: "Folder",
+      inSentence: "the folder",
+      icon: "page",
+      keysReadAs: "File",
+      columns: [],
+    },
+    {
+      kind: "slack",
+      name: "Slack",
+      inSentence: "Slack",
+      icon: "message",
+      keysReadAs: "Message",
+      columns: ["replies"],
+    },
+  ]);
 });

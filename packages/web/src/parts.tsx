@@ -11,6 +11,7 @@ import {
   keyLabel,
   stateNames,
 } from "./chip.ts";
+import { type Connectors, noConnectors } from "./connectors.ts";
 import { carries, type Dropped, readDrop } from "./drop.ts";
 import { type Inline, opens, parse, type Prose, quoteKey } from "./markdown.ts";
 import { clickTo } from "./nav.ts";
@@ -20,6 +21,7 @@ import { defaultTimeFormat, stamp, when } from "./time.ts";
 import type {
   Chips,
   ChipView,
+  ConnectorIcon,
   ItemRow,
   MemberView,
   Quotes,
@@ -72,8 +74,8 @@ export function Link(props: {
   );
 }
 
-// Where things dropped are added to a workstream: a Jira card dragged out of its
-// board, a link, an item's key, or a file from the connected folder. Only
+// Where things dropped are added to a workstream: a card dragged out of its
+// source, a link, an item's key, or a file Oriel reads. Only
 // drags from outside Oriel: one that starts in this page, like text moved
 // into the composer, is left to the browser. While one is over the zone, a
 // veil covers it, says where the drop goes and takes the drop, so leaving the
@@ -156,6 +158,10 @@ export const SendKeyContext = createContext<SendKey>("enter");
 // has no provider, so the default.
 export const TimeFormatContext = createContext<TimeFormat>(defaultTimeFormat);
 
+// How every connector shows, as the server sent it. A review link's page has
+// no provider, so none: its items show by their keys.
+export const ConnectorsContext = createContext<Connectors>(noConnectors);
+
 // An address as the browser writes it, so two ways of writing one match.
 export const addressOf = (url: string): string => URL.parse(url)?.href ?? url;
 
@@ -221,9 +227,10 @@ export function ItemKey({
 }: {
   item: { id: string | null; key: string; url: string | null };
 }) {
+  const connectors = useContext(ConnectorsContext);
   return (
     <ItemLink item={item} class="key source-link">
-      {keyLabel({ id: item.id ?? "", key: item.key })}
+      {keyLabel({ id: item.id ?? "", key: item.key }, connectors)}
     </ItemLink>
   );
 }
@@ -257,7 +264,7 @@ export function Markdown(props: { text: string; linksTo: Sites; answer?: boolean
 }
 
 // Blocks already read, from markdown or by a source's server side, such as
-// Jira's rich text, the same way.
+// a tracker's rich text, the same way.
 export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; linksTo: Sites }) {
   return <>{prose.map((each, i) => block(each, i, linksTo))}</>;
 }
@@ -436,9 +443,10 @@ function AnswerChip({ id }: { id: string }) {
 // review link's page, it is text: its name and where it stands.
 export function Chip({ id, view }: { id: string; view: ChipView }) {
   const links = useContext(ItemLinksContext);
-  const key = chipKey(view);
+  const connectors = useContext(ConnectorsContext);
+  const key = chipKey(view, connectors);
   const state = chipStateName(view);
-  const label = chipLabel(view);
+  const label = chipLabel(view, connectors);
   if (links === null)
     return (
       <span class="chip" data-kind={view.kind} data-plain="">
@@ -453,7 +461,7 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
   const body = (
     <>
       <span class="chip-lead">
-        <ChipIcon view={view} />
+        <ChipIcon view={view} connectors={connectors} />
         {key ? <span class="chip-key">{key}</span> : <span class="chip-name">{first}</span>}
       </span>
       {key && " "}
@@ -485,7 +493,30 @@ export function Chip({ id, view }: { id: string; view: ChipView }) {
   );
 }
 
-function ChipIcon({ view }: { view: ChipView }) {
+// An item's icon, from the fixed set a connector declares one of; a ticket
+// until the page has heard how its connector shows.
+const itemIcons: Record<ConnectorIcon, ComponentChildren> = {
+  ticket: (
+    // A ticket's tick.
+    <>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+      <path d="M5.5 8l1.8 1.8L10.5 6" />
+    </>
+  ),
+  // A page with its corner turned.
+  page: <path d="M4 2h5l3 3v9H4zM9 2v3h3" />,
+  // A message.
+  message: <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />,
+  // A table's rows.
+  row: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <path d="M2.5 6.5h11M2.5 9.5h11M6 3v10" />
+    </>
+  ),
+};
+
+function ChipIcon({ view, connectors }: { view: ChipView; connectors: Connectors }) {
   const shape =
     view.kind === "thread" ? (
       // A speech bubble: a chat.
@@ -499,18 +530,8 @@ function ChipIcon({ view }: { view: ChipView }) {
     ) : view.kind === "workstream" ? (
       // Lines of a list.
       <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
-    ) : view.source === "folder" ? (
-      // A page with its corner turned.
-      <path d="M4 2h5l3 3v9H4zM9 2v3h3" />
-    ) : view.source === "slack" ? (
-      // A message.
-      <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />
     ) : (
-      // A ticket's tick.
-      <>
-        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
-        <path d="M5.5 8l1.8 1.8L10.5 6" />
-      </>
+      itemIcons[connectors[view.source]?.icon ?? "ticket"]
     );
   return (
     <svg class="chip-icon" viewBox="0 0 16 16" aria-hidden="true">

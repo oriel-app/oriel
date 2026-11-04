@@ -198,7 +198,8 @@ function loaded(model: WorkstreamModel, msg: Replied): WorkstreamModel {
   };
 }
 
-export const nothingToAdd = "Nothing that was dropped names an item. Drop a Jira item or a file.";
+export const nothingToAdd =
+  "Nothing that was dropped names an item. Drop an item, or a link to one.";
 
 export function workstreamReplied(
   model: WorkstreamModel,

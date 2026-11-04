@@ -1,12 +1,12 @@
 // Closing a thread from a list of threads: its row's context menu, and the
 // one question deleting asks first.
 import type { ComponentChildren } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { type ClosingModel, type ClosingMsg, deletionWarning } from "./closing.ts";
 import { type CloseVia } from "./closing.ts";
 import { ContextMenu, type MenuItem } from "./menu.tsx";
 import { Swipeable } from "./swipe.tsx";
-import type { Dispatch } from "./parts.tsx";
+import { ConnectorsContext, type Dispatch } from "./parts.tsx";
 import type { ThreadSummaryView } from "./view.ts";
 
 // A thread's row with its menu: Mark done, unless it is done, and Delete.
@@ -51,6 +51,7 @@ export function ThreadMenu(props: {
 // close failed.
 export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Dispatch }) {
   const send = (msg: ClosingMsg) => dispatch({ type: "closing", msg });
+  const connectors = useContext(ConnectorsContext);
   const { asking } = model;
   const asked = asking !== null;
   const pending = asking !== null && model.pending.includes(asking.threadId);
@@ -60,7 +61,11 @@ export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Di
         open={asked}
         id="confirm"
         title={asking && <>Delete “{asking.title}”?</>}
-        body={asking?.deletion ? deletionWarning(asking.deletion) : "Checking what it changed…"}
+        body={
+          asking?.deletion
+            ? deletionWarning(asking.deletion, connectors)
+            : "Checking what it changed…"
+        }
         problem={model.problem}
         ready={asking?.deletion != null}
         pending={pending}

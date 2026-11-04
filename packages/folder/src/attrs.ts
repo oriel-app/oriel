@@ -57,7 +57,16 @@ export const folderDetails: DetailsOf = () => null;
 // path (decision 0019): a file's name is its title, never its key.
 export const folderKeyShape = /^[0-9a-f]{16}$/;
 
-export const folderPresentation: Presentation = { name: "Folder", details: folderDetails };
+// A file's key is a hash, which means nothing to anyone, so it reads as a
+// file; its title says which.
+export const folderPresentation: Presentation = {
+  name: "Folder",
+  inSentence: "the folder",
+  icon: "page",
+  keysReadAs: "File",
+  columns: [],
+  details: folderDetails,
+};
 
 // A file as the panel beside the page shows it, from a live read: its text,
 // read as markdown into the web's own blocks, and Oriel's note on how the

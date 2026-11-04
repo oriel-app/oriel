@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type IndexRecord, instant } from "@oriel/core";
+import { browseColumns, connectorIcons, type IndexRecord, instant } from "@oriel/core";
 import {
   byItemId,
+  connectorViews,
   itemDocs,
   namespacesFor,
   namespacesOf,
@@ -25,6 +26,39 @@ test("each source is listed under the kind it declares, a short lowercase word",
   for (const kind of sourceKinds) {
     assert.equal(sources[kind].kind, kind);
     assert.match(kind, /^[a-z]{2,16}$/);
+  }
+});
+
+test("the window gets how each connector shows, in declared order, with nothing else", () => {
+  assert.deepEqual(
+    connectorViews.map((view) => view.kind),
+    [...sourceKinds],
+  );
+  for (const view of connectorViews) {
+    assert.deepEqual(Object.keys(view).toSorted(), [
+      "columns",
+      "icon",
+      "inSentence",
+      "keysReadAs",
+      "kind",
+      "name",
+    ]);
+    assert.ok(view.inSentence.length > 0, view.kind);
+    assert.ok(connectorIcons.includes(view.icon), view.kind);
+    assert.ok(view.keysReadAs === null || view.keysReadAs.length > 0, view.kind);
+  }
+  // It goes to the page as JSON: nothing in it is lost on the way.
+  assert.deepEqual(JSON.parse(JSON.stringify(connectorViews)), connectorViews);
+});
+
+test("each Browse column a connector fills, but the assignee, is a facet it declares", () => {
+  for (const kind of sourceKinds) {
+    const { columns, facets } = sources[kind];
+    assert.equal(new Set(columns).size, columns.length, kind);
+    for (const column of columns) {
+      assert.ok(browseColumns.includes(column), `${kind}: ${column}`);
+      if (column !== "assignee") assert.ok(Object.hasOwn(facets, column), `${kind}: ${column}`);
+    }
   }
 });
 

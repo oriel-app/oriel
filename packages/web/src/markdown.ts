@@ -101,7 +101,7 @@ export function parse(text: string, { chips = false } = {}): Prose[] {
 }
 
 // What `[[…]]` holds to be a chip: an item's ID, qualified by its connection
-// (`jira:SYN-45`, `jira.2:ACME-4`), or one of Oriel's own, a ULID. Anything
+// (`kind:KEY-45`, or `kind.2:KEY-4` from a later connection), or one of Oriel's own, a ULID. Anything
 // else stays as typed. Loose, so an ID Oriel doesn't know gets its note, and
 // bounded, so the ID fits it.
 const chipId = /^(?:[a-z]{1,20}(?:\.[0-9]{1,4})?:[^\s[\]]{1,500}|[0-9A-HJKMNP-TV-Z]{26})$/;
@@ -150,7 +150,7 @@ export function quotesFrom(text: string): QuoteFrom[] {
 
 export const quoteKey = (quote: QuoteFrom): string => `${quote.id}\n${quote.text}`;
 
-// A quote's first line, alone, as a chip: `> [[jira:SYN-45]]`.
+// A quote's first line, alone, as a chip: `> [[kind:KEY-45]]`.
 const quotedChip = /^\s*\[\[\s*([^\][\s]+)\s*\]\]\s*$/;
 
 function blocks(lines: readonly string[], depth: number, chips: boolean): Prose[] {

@@ -4,6 +4,7 @@ import { parseRoute } from "./route.ts";
 import { DonePage, ReviewPage } from "./other-pages.tsx";
 import { doneTab, workstreamThreads, nav } from "./nav.ts";
 import {
+  ConnectorsContext,
   type Dispatch,
   ItemLinksContext,
   Link,
@@ -31,6 +32,7 @@ import { SettingsPage } from "./settings-page.tsx";
 import { SetupPage } from "./setup-page.tsx";
 import { windowRoute } from "./update.ts";
 import { WindowPage } from "./window-page.tsx";
+import { JiraNotices } from "./jira-connect.tsx";
 import { WindowChat } from "./window-chat-view.tsx";
 
 export function App({ program }: { program: Program<Model, Msg, Effect> }) {
@@ -125,52 +127,54 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   return (
     <SendKeyContext.Provider value={sendKey(model.settings)}>
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>
-        <div
-          class="shell"
-          data-folded={folded || undefined}
-          data-drawer={drawer || undefined}
-          data-panel={model.panel ? "" : undefined}
-          data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
-        >
-          <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
-          <button
-            type="button"
-            class="drawer-backdrop"
-            tabIndex={-1}
-            aria-hidden="true"
-            onClick={closeDrawer}
-          />
-          <div class="shell-main">
-            <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
-            <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-              <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
-            </ItemLinksContext.Provider>
+        <ConnectorsContext.Provider value={model.connectors}>
+          <div
+            class="shell"
+            data-folded={folded || undefined}
+            data-drawer={drawer || undefined}
+            data-panel={model.panel ? "" : undefined}
+            data-chat={model.route.page === "overview" && model.chat.open ? "" : undefined}
+          >
+            <Sidebar model={model} dispatch={dispatch} folded={folded} onFold={fold} />
+            <button
+              type="button"
+              class="drawer-backdrop"
+              tabIndex={-1}
+              aria-hidden="true"
+              onClick={closeDrawer}
+            />
+            <div class="shell-main">
+              <Bar model={model} dispatch={dispatch} open={drawer} onMenu={() => setDrawer(true)} />
+              <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                <Page model={model} added={added} onNeedsYou={showNeedsYou} dispatch={dispatch} />
+              </ItemLinksContext.Provider>
+            </div>
+            {model.route.page === "overview" && model.chat.open && !model.panel && (
+              <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
+            )}
+            {model.panel && (
+              <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
+                <ItemPanel
+                  model={model.panel}
+                  place={placeIn(model.panelList, model.panel.id)}
+                  workstream={currentWorkstream(model)}
+                  adds={model.panelAdds}
+                  dispatch={dispatch}
+                />
+              </ItemLinksContext.Provider>
+            )}
+            <Closing model={model.closing} dispatch={dispatch} />
+            <Endings
+              model={model.ending}
+              added={added}
+              shownByPage={
+                model.route.page === "workstream" ||
+                (model.route.page === "overview" && model.overview !== null)
+              }
+              dispatch={dispatch}
+            />
           </div>
-          {model.route.page === "overview" && model.chat.open && !model.panel && (
-            <WindowChat chat={model.chat} thread={model.thread} dispatch={dispatch} />
-          )}
-          {model.panel && (
-            <ItemLinksContext.Provider value={{ dispatch, items: noItems }}>
-              <ItemPanel
-                model={model.panel}
-                place={placeIn(model.panelList, model.panel.id)}
-                workstream={currentWorkstream(model)}
-                adds={model.panelAdds}
-                dispatch={dispatch}
-              />
-            </ItemLinksContext.Provider>
-          )}
-          <Closing model={model.closing} dispatch={dispatch} />
-          <Endings
-            model={model.ending}
-            added={added}
-            shownByPage={
-              model.route.page === "workstream" ||
-              (model.route.page === "overview" && model.overview !== null)
-            }
-            dispatch={dispatch}
-          />
-        </div>
+        </ConnectorsContext.Provider>
       </TimeFormatContext.Provider>
     </SendKeyContext.Provider>
   );
@@ -234,7 +238,7 @@ function Page(props: { model: Model; added: Undos; onNeedsYou(): void; dispatch:
           <WindowPage
             model={model.window}
             workstreams={model.workstreams}
-            jira={model.jira}
+            connect={<JiraNotices jira={model.jira} dispatch={dispatch} />}
             dispatch={dispatch}
           />
         )

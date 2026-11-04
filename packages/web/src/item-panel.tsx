@@ -4,11 +4,13 @@
 // written, line by line, or in the blocks its source's side read it into.
 // Nothing here sets HTML.
 import { Fragment } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useContext, useEffect, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
 import { behind, type CurrentWorkstream, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
 import { addedText, addOf, type PanelAddMsg, type PanelAdds, undoable } from "./panel-adds.ts";
+import type { Connectors } from "./connectors.ts";
 import {
+  ConnectorsContext,
   type Dispatch,
   initials,
   Inlines,
@@ -36,6 +38,7 @@ export function ItemPanel(props: {
 }) {
   const { model, place, dispatch } = props;
   const { view } = model;
+  const connectors = useContext(ConnectorsContext);
   const heading = useRef<HTMLHeadingElement>(null);
   const steps = useRef<HTMLElement>(null);
   // Closing gives focus back to what had it when the panel opened.
@@ -113,7 +116,9 @@ export function ItemPanel(props: {
       )}
       <Fragment key={model.id}>
         <header class="panel-head">
-          <p class="panel-source">{shown ? `${shown.source} · ${keyLabel(shown)}` : "Item"}</p>
+          <p class="panel-source">
+            {shown ? `${shown.source} · ${keyLabel(shown, connectors)}` : "Item"}
+          </p>
           <Tooltip text="Close (Esc)">
             <button
               type="button"
@@ -196,6 +201,7 @@ function AddTo(props: {
   dispatch: Dispatch;
 }) {
   const { view, workstream, dispatch } = props;
+  const connectors = useContext(ConnectorsContext);
   const send = (msg: PanelAddMsg) => dispatch({ type: "panelAdd", msg });
   const add = addOf(props.adds, { item: view.id, workstreamId: workstream.id });
   const said =
@@ -212,7 +218,7 @@ function AddTo(props: {
             onClick={() =>
               send({
                 type: "addClicked",
-                item: { id: view.id, key: itemName(view) },
+                item: { id: view.id, key: itemName(view, connectors) },
                 workstream: { id: workstream.id, name: workstream.name },
               })
             }
@@ -246,8 +252,8 @@ function AddTo(props: {
 
 // An item as the stack's note names it: by its key where it has one that
 // means something, or else by its title.
-const itemName = (view: ItemPanelView): string => {
-  const key = keyLabel(view);
+const itemName = (view: ItemPanelView, connectors: Connectors): string => {
+  const key = keyLabel(view, connectors);
   return key === view.key || view.title === null ? key : `“${view.title}”`;
 };
 

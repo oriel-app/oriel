@@ -36,7 +36,7 @@ import {
   startQuestions,
 } from "@oriel/core";
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
-import { parseDeclared, sources } from "@oriel/sources";
+import { connectorViews, parseDeclared, sources } from "@oriel/sources";
 import {
   type DeletedView,
   type DeletionView,
@@ -710,6 +710,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "GET",
       path: at("/sources"),
       run: async () => json(200, { sources: deps.sources() }),
+    },
+    {
+      // How every connector shows, connected or not, from its declaration:
+      // the page keeps no list of sources (decision 0049).
+      method: "GET",
+      path: at("/connectors"),
+      run: async () => json(200, { connectors: connectorViews }),
     },
     {
       // A full sweep of Slack's picked channels. Slack failing it is a 502.

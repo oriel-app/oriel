@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./connector-view": "./src/connector-view.ts",
     "./panel": "./src/panel.ts",
     "./oriel-reads": "./src/oriel-reads.ts",
     "./overview": "./src/overview.ts",

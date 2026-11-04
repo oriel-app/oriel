@@ -161,8 +161,14 @@ export function slackLinked(link: URL): string | null {
 // channel (decision 0021). Its text is its title and content, never its key.
 export const slackKeyShape = /^[CG][A-Z0-9]{6,20}-[0-9]{10}\.[0-9]{6}$/;
 
+// A message's key is a channel ID and a time, which mean nothing to anyone,
+// so it reads as a message; its title says which.
 export const slackPresentation: Presentation = {
   name: "Slack",
+  inSentence: "Slack",
+  icon: "message",
+  keysReadAs: "Message",
+  columns: ["replies"],
   details: slackDetails,
   linked: slackLinked,
 };

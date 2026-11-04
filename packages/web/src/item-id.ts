@@ -5,6 +5,6 @@ const itemIdShape = /^([a-z]{2,16})(?:\.(?:[2-9]|[1-9][0-9]{1,3}))?:[A-Za-z0-9._
 
 export const isItemId = (id: string): boolean => itemIdShape.test(id);
 
-// What an item is, such as `folder`, whichever connection it is from; null
+// What an item is, its connector's kind, whichever connection it is from; null
 // for anything else.
 export const kindOfItem = (id: string): string | null => itemIdShape.exec(id)?.[1] ?? null;

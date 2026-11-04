@@ -137,6 +137,43 @@ export function crossPackageImports(path: string, text: string): string[] {
   return [...found];
 }
 
+// The page keeps no list of sources: it draws each connector from what the
+// server sends of its declaration (decision 0049). So no file in
+// packages/web/src but a test names one, by its kind in any case, or Sheets,
+// the next, apart from the files below, each until what it holds is drawn
+// from declarations too. A listed file that names none comes off the list.
+const sourceWords = [...new Set([...sourceKinds, "sheets"])];
+const sourceWord = new RegExp(sourceWords.join("|"), "i");
+export const webNamingSources: Record<string, string> = {
+  "packages/web/src/app.tsx": "passes Jira's and the folder's models to their pages",
+  "packages/web/src/folder.ts": "connecting a folder",
+  "packages/web/src/http.ts": "the folder's and Jira's connect requests",
+  "packages/web/src/jira.ts": "connecting Jira",
+  "packages/web/src/jira-connect.tsx": "connecting Jira",
+  "packages/web/src/overview-page.tsx": "the first run's line, and Connect Jira",
+  "packages/web/src/root.ts": "the folder's and Jira's models and replies",
+  "packages/web/src/setup.ts": "the first run's Jira screens",
+  "packages/web/src/setup-page.tsx": "the first run's Jira and folder rows",
+  "packages/web/src/sidebar.tsx": "Add a source, which offers a folder",
+  "packages/web/src/view.ts": "the folder's and Jira's views",
+};
+
+// Whether a file of the page's names a source where it shouldn't, or is
+// listed and no longer does.
+export function webSourceNames(path: string, text: string): string[] {
+  if (!path.startsWith("packages/web/src/") || testFile.test(path)) return [];
+  const names = sourceWord.exec(text)?.[0];
+  if (path in webNamingSources)
+    return names === undefined
+      ? [`scripts/check-repo.ts: ${path} names no source now; take it off webNamingSources`]
+      : [];
+  return names === undefined
+    ? []
+    : [
+        `${path}: names a source ("${names}"); the page draws each connector from its declaration, as the server sends it (decision 0049)`,
+      ];
+}
+
 // POST routes that change none of Oriel's state, and why.
 export const exemptRoutes: Record<string, string> = {
   "/telemetry": "the window's own telemetry",
@@ -271,6 +308,7 @@ export function problems(repo: {
           );
       }
     for (const problem of chromeLaunchProblems(path, text)) found.add(problem);
+    for (const problem of webSourceNames(path, text)) found.add(problem);
     const changeset = path.startsWith("packages/changeset/");
     const core = path.startsWith("packages/core/");
     const ownWriter = ownWriterFile.test(path);
