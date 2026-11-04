@@ -28,6 +28,7 @@ import {
 } from "./fixture.ts";
 import { googleReads } from "./google.ts";
 import type { SheetsPicks, States, TabMapping } from "./mapping.ts";
+import { openSheets } from "./open-connection.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 import { type Grid, tableOf } from "./table.ts";
@@ -93,6 +94,22 @@ export function fixturePicks(fixture: SheetsFixture): SheetsPicks {
 
 export const sheetsDeclaredFixture: SourceFixture = {
   load: () => loaded(loadSheetsFixture()),
+  // The fixture's account, with its spreadsheets picked and mapped.
+  connection: () => {
+    const fixture = loadSheetsFixture();
+    return { identity: fixture.user.permissionId, options: fixturePicks(fixture) };
+  },
+  // Opened as Sheets is, through the stand-in for Google's APIs, as the
+  // spreadsheets first are, with a token that doesn't run out. A test may
+  // give its own stand-in, to edit the spreadsheets as a person would.
+  open: (connection, via) =>
+    openSheets(
+      {
+        ...connection,
+        secret: JSON.stringify({ access: standInToken, expiresAt: Number.MAX_SAFE_INTEGER }),
+      },
+      { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
+    ),
 };
 
 // Every later version, in the order it was made.

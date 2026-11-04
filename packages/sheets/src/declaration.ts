@@ -9,6 +9,7 @@ import {
   sheetsPresentation,
 } from "./attrs.ts";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
+import { openSheets } from "./open-connection.ts";
 import { sheetsOverview } from "./overview.ts";
 
 export const sheetsDeclaration = {
@@ -33,5 +34,6 @@ export const sheetsDeclaration = {
   overview: sheetsOverview,
   // Its item doc only.
   budget: 300,
+  open: openSheets,
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration;

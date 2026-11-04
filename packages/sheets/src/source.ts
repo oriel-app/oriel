@@ -449,6 +449,16 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         };
         yield page;
       }
+      // What it didn't read, in counts only: the report says which.
+      const tabs = [...reports.values()].flatMap((r) => r.tabs);
+      const unread = {
+        failed: [...reports.values()].filter((r) => r.problem === "failed").length,
+        stopped: tabs.filter((t) => t.stopped).length,
+        duplicates: tabs.reduce((n, t) => n + t.duplicates.length, 0),
+        keyless: tabs.reduce((n, t) => n + t.keyless.length, 0),
+        capped: tabs.filter((t) => t.capped).length,
+      };
+      if (Object.values(unread).some(Boolean)) log("sheets: some of it wasn't read", unread);
       // Spreadsheets no longer picked leave with their rows.
       const dropped = Object.keys(known).filter((id) => !picked.has(id));
       for (const id of dropped) {

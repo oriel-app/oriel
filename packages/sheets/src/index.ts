@@ -95,6 +95,7 @@ export {
   type TabMapping,
   tabMapping,
 } from "./mapping.ts";
+export { type OpenedSheets, openSheets, picksOf, sheetsProblem } from "./open-connection.ts";
 export { sheetsOverview } from "./overview.ts";
 export {
   maxRows,
