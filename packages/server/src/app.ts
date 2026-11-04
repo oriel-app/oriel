@@ -115,7 +115,7 @@ import type {
   SourceView,
   WindowView,
 } from "@oriel/web/view";
-import type { KeyCheck, Titler } from "@oriel/agent";
+import type { KeyCheck, Provider, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
@@ -153,6 +153,8 @@ import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
+import { noticedService } from "./noticed.ts";
+import { estimateKey } from "./signals.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
 
 // How change sets reach a Jira site to write: writer config, from which
@@ -233,6 +235,9 @@ export type AppOptions = {
   setup?: SetupOptions;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
+  // What Noticed's pass runs on, for tests and screenshots; Settings'
+  // choice, through `models`, when absent (docs/decisions/draft-noticed.md).
+  noticer?: () => Promise<{ provider: Provider; model: string } | null>;
   // Review links are this URL plus a token.
   reviewBase: URL;
   // Sketches are framed from this URL plus `<thread>/<sketch>`, on the
@@ -1366,6 +1371,36 @@ export async function createApp(options: AppOptions): Promise<App> {
     };
   };
 
+  // Noticed (docs/decisions/draft-noticed.md): the overview's strip of what
+  // Oriel found unasked, from the same index, change log and workstreams.
+  const noticed = noticedService({
+    db,
+    workspaceId,
+    input: async () => ({
+      records: records(),
+      changes: index.changes(workspaceId),
+      workstreams: openWorkstreams(),
+      threadActivity: new Map(
+        (await viewer.threads(workspaceId))
+          .toSorted((a, b) => a.activityAt.localeCompare(b.activityAt))
+          .map((thread) => [thread.workstream.id, thread.activityAt as Instant]),
+      ),
+      estimateKey,
+      now: asOf ?? now(),
+    }),
+    read: async (ids) =>
+      (await reader.read(ids)).flatMap((result) => {
+        if (result.status !== "ok") return [];
+        const { title, text } = result.content;
+        return [{ id: result.id, facts: {}, title, text }];
+      }),
+    noticer: options.noticer ?? (async () => (models ? models.noticer(store.get()) : null)),
+    block: viewer.block,
+    chips: (ids) => viewer.chips(ids, "" as Ulid),
+    now: () => asOf ?? now(),
+    log,
+  });
+
   const window = (grouping: GroupingId) =>
     windowView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null);
 
@@ -1444,6 +1479,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           ),
       },
       overview,
+      noticed,
       jira: jiraView,
       jiraProjects,
       folder: folderView,

@@ -65,6 +65,9 @@ export type Found =
 // one of its models.
 export type Running = { provider: ProviderSetting; model: string; cli: ClaudeCode | null };
 
+// Noticed's model where the provider offers Claude's.
+export const noticedModel = "claude-sonnet-5-5";
+
 export type Choice = { model: Running | null; title: Running | null; problem: string };
 
 export type ModelsOptions = {
@@ -108,6 +111,11 @@ export type Models = {
   // The agent and the titler, each choosing again at every turn and title.
   agent(settings: () => Settings, deps: ServerAgentDeps): Agent;
   titler(settings: () => Settings): Titler;
+  // What Noticed's pass runs on (docs/decisions/draft-noticed.md): the
+  // threads' provider, with Sonnet at low effort where it offers Claude's
+  // models, as the noticed-1 climb found best; null with no model, or a CLI
+  // that doesn't pass its trust check now.
+  noticer(settings: Settings): Promise<{ provider: Provider; model: string } | null>;
   // The models the default and Title model can be, from instances found
   // ready and turned on.
   options(settings: Settings): ModelOptionView[];
@@ -310,6 +318,25 @@ export function models(options: ModelsOptions): Models {
     },
     found: foundOf,
     choose,
+    async noticer(settings) {
+      const { model: chosen } = choose(settings);
+      if (!chosen) return null;
+      const model = chosen.provider.kind === "codex" ? chosen.model : noticedModel;
+      const run = { ...chosen, model };
+      if (options.provider) return { provider: options.provider(run, key), model };
+      const { cli } = run;
+      if (!cli)
+        return { provider: anthropicProvider({ apiKey: key ?? "", model, effort: "low" }), model };
+      if (options.trust && (await options.trust(cli.path))) return null;
+      const counted = (used: Usage, first: boolean) => counts.count(run.provider.id, used, first);
+      return {
+        provider:
+          run.provider.kind === "codex"
+            ? codexProvider({ cli, model, counted })
+            : claudeCodeProvider({ cli, model, effort: "low", counted }),
+        model,
+      };
+    },
     agent(settings, deps) {
       return {
         turn(input, turnOptions) {

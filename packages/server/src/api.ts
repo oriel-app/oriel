@@ -75,6 +75,7 @@ import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import type { NoticedService } from "./noticed.ts";
 import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
@@ -117,6 +118,8 @@ export type ApiDeps = {
   // The overview, as the page and the window chat's `window.overview()`
   // read it (decision 0027).
   overview(): Promise<OverviewView>;
+  // Noticed's strip and the pins (docs/decisions/draft-noticed.md).
+  noticed?: NoticedService;
   // The connected folder and Jira as they stand, and every connected source
   // as the sidebar lists them; connecting and syncing any is an action.
   folder(): FolderView | null;
@@ -266,6 +269,10 @@ const windowWorkstream = refine(
   "expected a cluster or picked items",
 );
 const tinyBody = 256;
+// A Noticed card's signal, by its ID.
+const signalBody = object({
+  signal: refine(string, (id) => id.length > 0 && id.length <= 200, "expected a signal's ID"),
+});
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
@@ -412,6 +419,10 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!workstream || workstream.workspaceId !== deps.workspaceId)
       throw new Refused(404, "no such workstream");
     return workstream;
+  };
+  const mustNoticed = () => {
+    if (!deps.noticed) throw new Refused(404, "Noticed isn't on here");
+    return deps.noticed;
   };
   const mustThread = (id: string) => {
     const thread = threads.get(id as Ulid, deps.now());
@@ -800,6 +811,44 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/overview"),
       async run() {
         return json(200, await deps.overview());
+      },
+    },
+    {
+      // Noticed's cards and the pins, computed now; a pass runs in the
+      // background when the signals on offer changed, and this never waits
+      // for it.
+      method: "GET",
+      path: at("/noticed"),
+      run: async () => json(200, await mustNoticed().view()),
+    },
+    {
+      // Dismiss a card: it stays away until its figures move on.
+      method: "POST",
+      path: at("/noticed/dismiss"),
+      async run(_, request) {
+        const { signal } = await readJson(request, tinyBody, signalBody);
+        if (!(await mustNoticed().dismiss(signal))) throw new Refused(404, "no such card");
+        return json(200, {});
+      },
+    },
+    {
+      // Pin a card's block to the overview, as its saved read (decision 0030).
+      method: "POST",
+      path: at("/noticed/pin"),
+      async run(_, request) {
+        const { signal } = await readJson(request, tinyBody, signalBody);
+        const pinned = await mustNoticed().pin(signal);
+        if ("refused" in pinned) throw new Refused(409, pinned.refused);
+        return json(201, pinned);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/pins/:id/remove"),
+      async run([id = ""], request) {
+        await readJson(request, tinyBody, emptyBody);
+        if (!mustNoticed().unpin(id as Ulid)) throw new Refused(404, "no such pin");
+        return json(200, {});
       },
     },
     {

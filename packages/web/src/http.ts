@@ -49,6 +49,9 @@ export type Tag =
   // The overview, and the user leaving it, which marks what it showed seen.
   | { kind: "overview" }
   | { kind: "overviewLeft" }
+  // Noticed's strip, and a card's or a pin's action.
+  | { kind: "noticed" }
+  | { kind: "noticedChanged" }
   // A workstream made from a candidate on the overview, by its key there,
   // and that undone.
   | { kind: "overviewMade"; key: string; grouping: GroupingId }

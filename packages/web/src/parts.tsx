@@ -411,7 +411,7 @@ function QuoteFrom(props: { quote: Extract<Prose, { kind: "quote-from" }>; to: S
 // A chip in an answer, by its ID. One the server hasn't resolved yet, named
 // while the turn runs, holds its place until the thread reloads as the turn
 // ends; one it couldn't resolve says so.
-function AnswerChip({ id }: { id: string }) {
+export function AnswerChip({ id }: { id: string }) {
   const chips = useContext(ChipsContext);
   if (!Object.hasOwn(chips, id))
     return (

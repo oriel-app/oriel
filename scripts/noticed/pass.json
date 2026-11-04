@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "contradicted",
+    "subject": "jira:SYN-47",
+    "why": "[[jira:SYN-47]] is marked done, but Chen says it isn't and the copy is still with ops. Check the real status and reopen it if needed.",
+    "quote": {
+      "item": "slack:C0FW1WEATHR-1790071200.000100",
+      "text": "Not done: copy is still with ops."
+    }
+  },
+  {
+    "kind": "contradicted",
+    "subject": "jira:SYN-29",
+    "why": "[[jira:SYN-29]] is marked done, but Greta handed over only a draft of the copy as she left. Confirm someone owns finishing it.",
+    "quote": {
+      "item": "slack:C0FW1WEATHR-1789902000.000100",
+      "text": "Handing over the compensation rules copy (SYN-29) before I leave. The draft is in the plans folder."
+    }
+  },
+  {
+    "kind": "overloaded",
+    "subject": "amara",
+    "why": "Amara has far more work in progress than the median, and [[jira:SYN-51]] has sat untouched longest. Consider moving or deferring some of it.",
+    "quote": null
+  }
+]

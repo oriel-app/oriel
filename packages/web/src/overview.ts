@@ -7,7 +7,7 @@ import { type Effect, errorOf, get, post, type Replied, report, undoing } from "
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import { type Held, type Hold, hold, notHeld, restart, runsOut } from "./undos.ts";
-import type { GroupingId, OverviewView, Undoable, WorkstreamSummary } from "./view.ts";
+import type { GroupingId, NoticedView, OverviewView, Undoable, WorkstreamSummary } from "./view.ts";
 
 export type OverviewModel = {
   view: OverviewView | null;
@@ -24,6 +24,12 @@ export type OverviewModel = {
   failed: string | null;
   held: Held;
   countdown: number;
+  // Noticed's strip and the pins (docs/decisions/draft-noticed.md), loaded
+  // beside the overview; the card or pin an action is on its way for, and
+  // what last went wrong with one.
+  noticed: NoticedView | null;
+  noticing: string | null;
+  noticedProblem: string | null;
 };
 
 export type Made = {
@@ -41,9 +47,19 @@ export type OverviewMsg =
   | { type: "undoClicked"; key: string }
   | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "undoExpired"; countdown: number }
-  | { type: "failedDismissed" };
+  | { type: "failedDismissed" }
+  // Noticed: a look again while a pass runs, and a card's or a pin's
+  // actions.
+  | { type: "noticedPoll" }
+  | { type: "dismissClicked"; signal: string }
+  | { type: "pinClicked"; signal: string }
+  | { type: "unpinClicked"; pin: string };
 
 export const loadOverview: Effect = get("/api/overview", { kind: "overview" });
+export const loadNoticed: Effect = get("/api/noticed", { kind: "noticed" });
+
+// How long the strip waits to look again while a pass runs.
+export const noticedPollMs = 2000;
 
 // How many rows a section shows until "more" is asked for.
 // `quiet`: how many workstreams gone quiet show past the first few.
@@ -61,8 +77,11 @@ export function initOverview(): [OverviewModel, Effect[]] {
       failed: null,
       held: notHeld,
       countdown: 0,
+      noticed: null,
+      noticing: null,
+      noticedProblem: null,
     },
-    [loadOverview, report({ name: "overview.opened" })],
+    [loadOverview, loadNoticed, report({ name: "overview.opened" })],
   ];
 }
 
@@ -109,7 +128,47 @@ export function updateOverview(model: OverviewModel, msg: OverviewMsg): [Overvie
       return [{ ...model, made: model.made.filter((each) => each.undoing) }, []];
     case "failedDismissed":
       return [{ ...model, failed: null }, []];
+    case "noticedPoll":
+      return [model, [loadNoticed]];
+    case "dismissClicked":
+    case "pinClicked": {
+      if (model.noticing !== null) return [model, []];
+      const action = msg.type === "pinClicked" ? "pin" : "dismiss";
+      return [
+        { ...model, noticing: msg.signal, noticedProblem: null },
+        [post(`/api/noticed/${action}`, { signal: msg.signal }, { kind: "noticedChanged" })],
+      ];
+    }
+    case "unpinClicked":
+      if (model.noticing !== null) return [model, []];
+      return [
+        { ...model, noticing: msg.pin, noticedProblem: null },
+        [post(`/api/pins/${msg.pin}/remove`, {}, { kind: "noticedChanged" })],
+      ];
   }
+}
+
+// The strip loaded: while a pass runs, it looks again shortly. An action
+// answered: the strip loads again, or says what went wrong.
+export function noticedReplied(model: OverviewModel, msg: Replied): [OverviewModel, Effect[]] {
+  if (msg.tag.kind === "noticedChanged") {
+    const done = { ...model, noticing: null };
+    if (!msg.ok) return [{ ...done, noticedProblem: errorOf(msg.body) }, []];
+    return [done, [loadNoticed]];
+  }
+  if (!msg.ok) return [model, []];
+  const noticed = msg.body as NoticedView;
+  const poll: Effect[] =
+    noticed.status === "running"
+      ? [
+          {
+            type: "after",
+            ms: noticedPollMs,
+            msg: { type: "overview", msg: { type: "noticedPoll" } },
+          },
+        ]
+      : [];
+  return [{ ...model, noticed }, poll];
 }
 
 const expired = (countdown: number): Msg => ({

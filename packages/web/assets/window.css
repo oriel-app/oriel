@@ -4733,6 +4733,132 @@ button.overview-title:hover {
 }
 
 /* The headlines: one computed line per standing question. */
+/* Noticed (docs/decisions/draft-noticed.md): cards Oriel found unasked.
+   Oriel's parts (kind, subject, headline, block) sit as the overview's own
+   do; the agent's line sits on a derived tint, captioned as the agent's. */
+.noticed-by {
+  margin-left: var(--space-2);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.noticed-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--space-3);
+}
+
+.noticed-card {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-3);
+  border: var(--list-frame);
+  border-radius: var(--radius-lg);
+  background: var(--list-bg);
+}
+
+.noticed-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.noticed-kind {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.noticed-rule-mark {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  cursor: help;
+}
+
+.noticed-subject {
+  min-width: 0;
+  font-weight: var(--weight-medium);
+}
+
+.noticed-headline {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.noticed-why {
+  padding: var(--space-2) var(--space-3);
+  border-left: var(--border-thin) solid var(--derived-line);
+  background: var(--derived-soft);
+  border-radius: var(--radius-sm);
+}
+
+.noticed-why p {
+  margin: 0;
+}
+
+.noticed-why .noticed-why-by {
+  margin-top: var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.noticed-card .quote-from {
+  margin: 0;
+}
+
+.noticed-card .answer-block {
+  padding: var(--space-2);
+}
+
+.noticed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.noticed-pinned {
+  padding: 0.125rem var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.noticed-none,
+.noticed-taught {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.pinned-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-3);
+}
+
+.pinned-block {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+  align-content: start;
+  min-width: 0;
+}
+
+.pinned-block .answer-block {
+  justify-self: stretch;
+}
+
 .overview-headlines {
   display: grid;
   /* Fit, not fill: one headline takes the whole row, not a third of it. */
