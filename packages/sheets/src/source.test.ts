@@ -470,3 +470,69 @@ test("caps: 20 mapped tabs and 50 spreadsheets a connection, and the report coun
   const { source } = connect({ picks: { spreadsheets } });
   assert.deepEqual(source.report().unread, { spreadsheets: 2, tabs: 10 });
 });
+
+test("a table that runs to the grid's end reads past blank rows a chunk ends on", async () => {
+  const sparse = structuredClone(fixture);
+  const tab = sparse.spreadsheets.find((s) => s.slug === "contacts")?.tabs[0];
+  assert.ok(tab);
+  // Far below the table, past the first chunk of rows.
+  while (tab.rows.length < 400) tab.rows.push([]);
+  tab.rows.push(["Kelport", "Ferry office", "+44 1632 960303", "08:00–18:00"]);
+  const mapping: TabMapping = { ...(fixtureMappings.contacts?.[0] as TabMapping), end: "grid" };
+  const { sync } = connect({ fixture: sparse, picks: only("contacts", [mapping]) });
+  const { records } = await sync();
+  assert.deepEqual(
+    rowsOf(records, 5100).map((r) => r.title),
+    ["Port Carrick", "Inchmore", "Kelport"],
+  );
+});
+
+test("a spreadsheet that didn't answer and is then unpicked goes, with its rows", async () => {
+  const google = fixtureGoogle(fixture);
+  let failing = true;
+  const flaky: typeof fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (failing && url.pathname.includes(contacts)) return new Response("{}", { status: 500 });
+    return google.fetch(input, init);
+  };
+  const reads = googleReads({
+    fetch: flaky,
+    credential: { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) },
+    wait: async () => {},
+    random: () => 0,
+  });
+  const sync = async (picks: SheetsPicks, cursor: string | null) => {
+    const pages = [];
+    for await (const page of sheetsSource({ google: reads, picks, log: () => {} }).sync(cursor))
+      pages.push(page);
+    return { swept: pages.flatMap((p) => p.swept ?? []), cursor: pages.at(-1)?.cursor ?? null };
+  };
+  const first = await sync(only("contacts"), null);
+  const failed = await sync(only("contacts"), first.cursor);
+  failing = false;
+  // Read again once it answers, though its version never moved.
+  const retried = await sync(only("contacts"), failed.cursor);
+  assert.deepEqual(retried.swept, [spreadsheetPart(contacts)]);
+  const unpicked = await sync({ spreadsheets: [] }, failed.cursor);
+  assert.deepEqual(unpicked.swept, [spreadsheetPart(contacts)]);
+});
+
+test("a spreadsheet's comments past 50,000 characters aren't read, and its read says so", async () => {
+  const chatty = structuredClone(fixture);
+  const sheet = chatty.spreadsheets.find((s) => s.slug === "contacts");
+  assert.ok(sheet);
+  sheet.comments = Array.from({ length: 30 }, (_, n) => ({
+    id: `AAAAlong${n}`,
+    author: "Amara Okafor",
+    content: "y".repeat(2_000),
+    createdTime: "2026-09-10T08:45:00.000Z",
+  }));
+  const { source, sync } = connect({ fixture: chatty, picks: only("contacts") });
+  await sync();
+  const [read] = await source.read([`sheets:${spreadsheetKey(contacts)}`]);
+  const content = read?.status === "ok" ? (read.content as SpreadsheetContent) : null;
+  assert.ok(content);
+  assert.ok(content.comments.length < 30);
+  assert.ok(content.comments.reduce((n, c) => n + c.text.length, 0) <= 50_000);
+  assert.match(content.note ?? "", /over 50,000 characters/);
+});

@@ -100,6 +100,9 @@ export type SpreadsheetContent = {
     quoted: string | null;
     replies: { author: string; at: string; text: string }[];
   }[];
+  // Oriel's words when its comments are too long to read whole; null
+  // otherwise.
+  note: string | null;
   title: string;
   text: string;
 };
@@ -129,6 +132,7 @@ export const sheetsContent: Validator<SheetsContent> = union(
         replies: array(object(said)),
       }),
     ),
+    note: nullable(string),
     title: string,
     text: string,
   }),
@@ -208,6 +212,7 @@ export const sheetsPanel: PanelOf = (content) => {
     return {
       title: null,
       blocks: [
+        ...(item.note === null ? [] : [{ kind: "note" as const, text: item.note }]),
         { kind: "facts", facts: [{ name: "Tabs", value: item.tabs.join(", ") }] },
         {
           kind: "messages",

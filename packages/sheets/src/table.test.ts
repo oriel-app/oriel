@@ -172,11 +172,21 @@ test("a mapping holds each spreadsheet, tab and column once, and states only wit
   const pick = (tabs: unknown[]) => sheetsPicks({ spreadsheets: [{ id: "1Abcdefghijk", tabs }] });
   assert.ok(pick([mapping]).ok);
   assert.ok(!pick([mapping, mapping]).ok);
-  assert.ok(!pick([{ ...mapping, title: "ID" }]).ok);
+  assert.ok(!pick([{ ...mapping, status: "ID" }]).ok);
   assert.ok(!pick([{ ...mapping, states: { todo: [], "in-progress": [], done: [] } }]).ok);
   assert.ok(!pick([{ ...mapping, key: " " }]).ok);
   assert.notEqual(
     mappingPrint({ id: "x", tabs: [mapping] }),
     mappingPrint({ id: "x", tabs: [{ ...mapping, hidden: true }] }),
+  );
+});
+
+test("a unique name may be both a tab's key and its title", () => {
+  const named = { ...mapping, key: "Name" };
+  assert.ok(sheetsPicks({ spreadsheets: [{ id: "1Abcdefghijk", tabs: [named] }] }).ok);
+  const rows = rowsOf(tableOf(grid([["Name"], ["Rebooking"]]), named));
+  assert.deepEqual(
+    rows.map((r) => [r.key, r.fields.title]),
+    [["Rebooking", "Rebooking"]],
   );
 });

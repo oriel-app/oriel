@@ -101,7 +101,10 @@ export const sheetsPicks: Validator<SheetsPicks> = refine(
       (s) =>
         new Set(s.tabs.map((t) => t.sheetId)).size === s.tabs.length &&
         s.tabs.every((tab) => {
-          const columns = mappedColumns(tab).map(([, column]) => column.trim());
+          // A unique name, such as a feature's, may be both key and title.
+          const columns = mappedColumns(tab).flatMap(([field, column]) =>
+            field === "key" && column.trim() === tab.title.trim() ? [] : [column.trim()],
+          );
           return new Set(columns).size === columns.length && (!tab.states || tab.status);
         }),
     ),

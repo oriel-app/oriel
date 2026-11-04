@@ -176,12 +176,13 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
       for (const c of part.hiddenColumns) (grid.hiddenColumns as Set<number>).add(c);
       for (const m of part.merges) merges.set(JSON.stringify(m), m);
       filled += rows.slice(from === start ? 1 : 0).filter((row) => row.some(Boolean)).length;
-      // Google leaves out the empty rows at a range's end: nothing follows.
-      if (rows.length < to - from) break;
       if (filled > maxRows) break;
+      // Google leaves out the empty rows at a range's end, so they count as
+      // blank here; a table that runs to the grid's end reads on past them.
+      const padded = Array.from({ length: to - from }, (_, r) => rows[r] ?? []);
       if (
         mapping.end === "blank" &&
-        endsIn(rows, from === start ? 1 : 0, from, [...merges.values()])
+        endsIn(padded, from === start ? 1 : 0, from, [...merges.values()])
       )
         break;
     }
@@ -228,6 +229,22 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         hidden: table.hidden,
         capped: table.capped,
       });
+    }
+    // Two key cells whose hashes match, which only someone set on it could
+    // make, are as two rows with one key: neither is an item.
+    const hashes = Map.groupBy(
+      [...tables].flatMap(([sheetId, t]) =>
+        "rows" in t ? t.rows.map((row) => ({ sheetId, row })) : [],
+      ),
+      ({ sheetId, row }) => rowKey(pick.id, sheetId, row.key),
+    );
+    for (const [, same] of hashes) {
+      if (same.length < 2) continue;
+      for (const { sheetId, row } of same) {
+        const table = tables.get(sheetId);
+        if (table && "rows" in table) table.rows = table.rows.filter((r) => r !== row);
+        report.find((r) => r.sheetId === sheetId)?.duplicates.push(row.number);
+      }
     }
     const comments = await google.comments(pick.id);
     return {
@@ -394,6 +411,9 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           log("sheets: a spreadsheet didn't read", {
             error: error instanceof Error ? error.message : String(error),
           });
+          // Kept with no version, so it is read again next time, and goes
+          // if it is no longer picked.
+          next[pick.id] = { version: "", print: "" };
           reports.set(pick.id, {
             id: pick.id,
             title: cache.get(pick.id)?.title ?? null,
@@ -484,12 +504,22 @@ function endsIn(rows: Grid["rows"], from: number, top: number, merges: Grid["mer
 
 function spreadsheetContentOf(read: Read): SpreadsheetContent {
   const tabs = read.tabs.map((t) => t.title);
-  const { text } = spreadsheetText({ tabs, comments: read.comments });
+  const { text, note } = spreadsheetText({ tabs, comments: read.comments });
+  // Past the cap, the comments the text cut aren't read either.
+  let used = 0;
+  const comments =
+    note === null
+      ? read.comments
+      : read.comments.filter((c) => {
+          used += [c.text, c.quoted ?? "", ...c.replies.map((r) => r.text)].join("").length;
+          return used <= maxItemChars;
+        });
   return {
     of: "spreadsheet",
     spreadsheet: { id: read.id, title: read.title },
     tabs,
-    comments: read.comments,
+    comments,
+    note,
     title: read.title,
     text,
   };
