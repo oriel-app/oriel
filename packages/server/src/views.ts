@@ -17,6 +17,8 @@ import {
   parseItemId,
   type Presentations,
   type Ulid,
+  type Draft,
+  type Thread,
 } from "@oriel/core";
 import { plainError } from "@oriel/changeset";
 import type { WorkstreamStore, Message, ThreadStore, ThreadSummary } from "@oriel/db";
@@ -58,10 +60,16 @@ export type ViewDeps = {
   now: () => Instant;
   running: (threadId: Ulid) => boolean;
   changeSets: Pick<ChangeSets, "get" | "ofThread" | "nextSteps" | "applying" | "stalled">;
+  // What a draft would replace now, and the name of what it sets; null when
+  // that's gone (decision 0051).
+  drafted: (draft: Draft) => { over: unknown; name: string } | null;
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 // What fits on one line of a list of threads beside a thread's workstream and time.
 const maxTitleChars = 60;
@@ -328,6 +336,15 @@ export function views(deps: ViewDeps) {
       })),
     );
 
+  // What's held in a working thread for the user: a message, a draft.
+  const heldIn = (thread: Thread) => {
+    const held = thread.state === "working" ? threads.held(thread.id) : [];
+    return {
+      held: held.some((each) => "from" in each),
+      drafted: held.some((each) => "draft" in each),
+    };
+  };
+
   const threadSummary = async ({
     thread,
     activityAt,
@@ -340,7 +357,7 @@ export function views(deps: ViewDeps) {
     waitingOn: waitingOn({
       state: thread.state,
       running: deps.running(thread.id),
-      held: thread.state === "working" && threads.held(thread.id).length > 0,
+      ...heldIn(thread),
       changeSets: thread.state === "working" ? await changeSetsOf(thread.id) : [],
       windowChat: threads.isWindowChat(thread.id),
     }),
@@ -410,6 +427,28 @@ export function views(deps: ViewDeps) {
     const workstreamId = own.workstream;
     const at = { seq: message.seq, at: message.at };
     if (message.role === "user") return { ...at, kind: "user", text: message.text };
+    if (message.role === "held" && "draft" in message) {
+      // Drawn from Oriel's own data: the connection by its name, and each
+      // option the draft changes, as it was drafted over and as drafted.
+      const { draft, over, outcome } = message;
+      const now = deps.drafted(draft);
+      const id = draft.input["connection"];
+      const options = draft.input["options"];
+      const was = isRecord(over) ? over : {};
+      const changes = isRecord(options)
+        ? Object.entries(options)
+            .filter(([option, value]) => JSON.stringify(was[option]) !== JSON.stringify(value))
+            .map(([option, value]) => ({ option, was: was[option] ?? null, drafted: value }))
+        : [];
+      return {
+        ...at,
+        kind: "draft",
+        connection: now && typeof id === "string" ? { id, name: now.name } : null,
+        changes,
+        stale: now === null || JSON.stringify(now.over) !== JSON.stringify(over),
+        outcome,
+      };
+    }
     if (message.role === "held") {
       const { from, text, outcome } = message;
       // Who it is from, as the user reads it: what each sender says of

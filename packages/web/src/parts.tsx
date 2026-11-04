@@ -571,6 +571,7 @@ export { keyLabel } from "./chip.ts";
 export const waitingNames: Record<WaitingOn, string> = {
   agent: "Agent working",
   held: "Message held",
+  draft: "Draft to apply",
   review: "Needs review",
   apply: "Applying…",
   stalled: "Apply stalled",

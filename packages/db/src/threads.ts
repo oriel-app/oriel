@@ -5,6 +5,8 @@
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import {
   type Actor,
+  actions,
+  type Draft,
   type HeldSender,
   heldSender,
   heldText,
@@ -18,16 +20,21 @@ import {
   number,
   object,
   parseItemId,
+  record,
   refine,
   string,
   type Thread,
   type Ulid,
   union,
+  unknown,
 } from "@oriel/core";
 import { transaction } from "./open.ts";
 import { dropWorkstream } from "./workstreams.ts";
 
 const ulidValue = refine(string, isUlid, "expected a ULID");
+const isDraftable = (name: string): name is Draft["action"] =>
+  Object.hasOwn(actions, name) &&
+  (actions as Record<string, { draftable?: true }>)[name]?.draftable === true;
 const instantValue = refine(string, isInstant, "expected an instant");
 const threadRow = object({
   id: ulidValue,
@@ -58,15 +65,27 @@ const messageRow = object({
 // Rows written before 0003 hold a user's text as a bare JSON string.
 const userContent = union(object({ text: string }), string);
 const markerContent = object({ from: number, to: number });
-// A held message, who it is from, and its text within that sender's limit.
-const heldContent = refine(
+// A held message, who it is from, and its text within that sender's limit;
+// or a draft of the agent's, of a draftable action, with what it was
+// drafted over (decision 0051).
+const heldContent = union(
+  refine(
+    object({
+      from: heldSender,
+      text: string,
+      outcome: nullable(union(literal("sent"), literal("discarded"))),
+    }),
+    (held) => heldText(held.from, held.text),
+    "expected a held message within its sender's limit",
+  ),
   object({
-    from: heldSender,
-    text: string,
-    outcome: nullable(union(literal("sent"), literal("discarded"))),
+    draft: object({
+      action: refine(string, isDraftable, "expected a draftable action"),
+      input: record(unknown),
+    }),
+    over: unknown,
+    outcome: nullable(union(literal("applied"), literal("discarded"))),
   }),
-  (held) => heldText(held.from, held.text),
-  "expected a held message within its sender's limit",
 );
 const workstreamMarkRow = object({ done_at: instantValue, done_by: string, threads: string });
 const wroteRow = object({
@@ -88,17 +107,19 @@ export type NewMessage =
   | { role: "agent"; event: unknown }
   | { role: "marker"; from: number; to: number }
   | { role: "note"; note: OrielNote }
-  | Omit<Held, "outcome">;
+  | { role: "held"; from: HeldSender; text: string }
+  | { role: "held"; draft: Draft; over: unknown };
 
 // A held message, who it is from, and what the user did with it: sent it to
-// the agent, as it was or edited, or discarded it. Null while it waits on
-// them.
-export type Held = {
-  role: "held";
-  from: HeldSender;
-  text: string;
-  outcome: "sent" | "discarded" | null;
-};
+// the agent, as it was or edited, or discarded it. Or a draft of the
+// agent's, with what it was drafted over, such as the options a connection
+// had, so one they've moved past shows as stale; and what the user did with
+// it: applied it, as it was or edited, or discarded it (decision 0051).
+// Null while it waits on them.
+export type Held = { role: "held" } & (
+  | { from: HeldSender; text: string; outcome: "sent" | "discarded" | null }
+  | { draft: Draft; over: unknown; outcome: "applied" | "discarded" | null }
+);
 
 // One entry in a thread's chat. `seq` orders the chat.
 export type Message = (Exclude<NewMessage, { role: "held" }> | Held) & {
@@ -209,7 +230,16 @@ export function threadStore(db: DatabaseSync) {
   const settleHeld = db.prepare(`
     update messages set content = json_set(content, '$.outcome', ?3)
     where thread_id = ?1 and seq = ?2 and role = 'held'
-      and json_extract(content, '$.outcome') is null`);
+      and json_extract(content, '$.outcome') is null
+      and (?3 = 'discarded' or (?3 = 'applied') = (json_extract(content, '$.draft') is not null))`);
+  // A draft applied, with the input it applied as, which the user may have
+  // edited (decision 0051).
+  const applyHeld = db.prepare(`
+    update messages
+    set content = json_set(content, '$.outcome', 'applied', '$.draft.input', json(?3))
+    where thread_id = ?1 and seq = ?2 and role = 'held'
+      and json_extract(content, '$.outcome') is null
+      and json_extract(content, '$.draft') is not null`);
   // Anything that happened in the thread, for the idle rule. A marker alone
   // isn't activity (decision 0018).
   const lastActivity = db.prepare(`
@@ -361,12 +391,16 @@ export function threadStore(db: DatabaseSync) {
         : message.role === "user"
           ? { text: message.text }
           : message.role === "held"
-            ? { from: message.from, text: message.text, outcome: null }
+            ? "draft" in message
+              ? { draft: message.draft, over: message.over, outcome: null }
+              : { from: message.from, text: message.text, outcome: null }
             : message.role === "note"
               ? message.note
               : { from: message.from, to: message.to };
     if (message.role === "held" && !heldContent(content).ok)
-      throw new RangeError("a held message's sender or text is past its limits");
+      throw new RangeError(
+        "a held message's sender or text is past its limits, or a draft isn't one",
+      );
     const json = JSON.stringify(content);
     if (json === undefined) throw new TypeError("a message's content must be JSON");
     insertMessage.run(id, thread.workspace_id, thread.id, next.value.next, message.role, json, now);
@@ -739,10 +773,17 @@ export function threadStore(db: DatabaseSync) {
       return Number(rewriteAgent.run(id, seq, json).changes) === 1;
     },
 
-    // The user sent or discarded the message held at `seq`. False, and
-    // nothing changed, if none waits on them there.
-    settle(id: Ulid, seq: number, outcome: "sent" | "discarded"): boolean {
+    // The user sent or discarded the message held at `seq`, or applied or
+    // discarded the draft. False, and nothing changed, if none waits on them
+    // there.
+    settle(id: Ulid, seq: number, outcome: "sent" | "discarded" | "applied"): boolean {
       return Number(settleHeld.run(id, seq, outcome).changes) === 1;
+    },
+
+    // The user applied the draft at `seq`, as `input`: the card says what
+    // applied. False, and nothing changed, if none waits on them there.
+    applied(id: Ulid, seq: number, input: Record<string, unknown>): boolean {
+      return Number(applyHeld.run(id, seq, JSON.stringify(input)).changes) === 1;
     },
   };
 }

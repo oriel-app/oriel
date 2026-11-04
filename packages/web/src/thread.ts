@@ -18,6 +18,7 @@ import type {
   RunView,
   StreamEvent,
   ThreadView,
+  UndoView,
 } from "./view.ts";
 
 export type ThreadModel = {
@@ -37,8 +38,12 @@ export type ThreadModel = {
   // Rejected change sets the user unfolded: the rest are one line each, so a
   // revised one isn't buried under them.
   unfolded: readonly string[];
-  // A held message being edited before it is sent, by its place in the chat.
+  // A held message being edited before it is sent, by its place in the chat;
+  // a draft's options, by its place and each option's name (`optionKey`).
   editing: Readonly<Record<string, string>>;
+  // Drafts applied from this page, by place, with the Undo the apply gave
+  // (decision 0051).
+  applied: Readonly<Record<string, UndoView>>;
   // Held messages with a send or discard in flight, by place.
   settling: readonly number[];
   // Lines under the agent's reply with an Undo or redo in flight, by their
@@ -90,6 +95,12 @@ export type ThreadMsg =
   | { type: "heldEdited"; seq: number; text: string }
   | { type: "heldEditCancelled"; seq: number }
   | { type: "heldDiscardClicked"; seq: number }
+  // A draft of the agent's (decision 0051): applied as it is, its options
+  // edited first, or discarded, as a held message is; once applied here, its
+  // Undo.
+  | { type: "heldApplyClicked"; seq: number }
+  | { type: "heldOptionEdited"; seq: number; option: string; text: string }
+  | { type: "heldUndoClicked"; seq: number }
   // What the agent did in Oriel, undone from the list under its reply, or
   // done again: the line at `index` in the list at `seq`.
   | { type: "lineUndoClicked"; seq: number; index: number }
@@ -116,6 +127,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       deciding: {},
       unfolded: [],
       editing: {},
+      applied: {},
       settling: [],
       undoing: [],
       problems: {},
@@ -142,12 +154,74 @@ const problemOf = (body: unknown): string | null =>
     ? body.problem
     : null;
 
+// The Undo an apply gave, from its reply.
+const undoOf = (body: unknown): UndoView | null =>
+  typeof body === "object" &&
+  body !== null &&
+  "undo" in body &&
+  typeof body.undo === "object" &&
+  body.undo !== null &&
+  "action" in body.undo &&
+  typeof body.undo.action === "string"
+    ? (body.undo as UndoView)
+    : null;
+
 // The message held at `seq` that waits on the user.
 const heldAt = (entries: readonly ChatEntry[], seq: number) =>
   entries.find(
     (entry): entry is Extract<ChatEntry, { kind: "held" }> =>
       entry.kind === "held" && entry.seq === seq && entry.outcome === null,
   ) ?? null;
+
+// The draft held at `seq` that waits on the user.
+const draftAt = (entries: readonly ChatEntry[], seq: number) =>
+  entries.find(
+    (entry): entry is Extract<ChatEntry, { kind: "draft" }> =>
+      entry.kind === "draft" && entry.seq === seq && entry.outcome === null,
+  ) ?? null;
+
+// A draft's option as it is edited, by the draft's place and its name.
+export const optionKey = (seq: number, option: string) => `${seq}:${option}`;
+
+// A drafted value as the user edits it: a list one entry a line, text as
+// it is, anything else as JSON; and back, shaped as the drafted value is.
+export const optionText = (value: unknown): string =>
+  Array.isArray(value) && value.every((each) => typeof each === "string")
+    ? value.join("\n")
+    : typeof value === "string"
+      ? value
+      : JSON.stringify(value);
+const optionValue = (text: string, like: unknown): unknown => {
+  if (Array.isArray(like))
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  if (typeof like === "string") return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+// What a draft's edit at `seq` gives, if it is being edited.
+const draftEdit = (model: ThreadModel, draft: Extract<ChatEntry, { kind: "draft" }>) => {
+  const keys = draft.changes.map((change) => optionKey(draft.seq, change.option));
+  if (!keys.some((key) => key in model.editing)) return null;
+  return Object.fromEntries(
+    draft.changes.map((change) => [
+      change.option,
+      optionValue(model.editing[optionKey(draft.seq, change.option)] ?? "", change.drafted),
+    ]),
+  );
+};
+
+// What's being edited at `seq`, a message or a draft's options, gone.
+const notEditing = (editing: Readonly<Record<string, string>>, seq: number) =>
+  Object.fromEntries(
+    Object.entries(editing).filter(([key]) => key !== `${seq}` && !key.startsWith(`${seq}:`)),
+  );
 
 export const lineKey = (seq: number, index: number) => `${seq}:${index}`;
 
@@ -307,7 +381,9 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     case "heldSendClicked":
     case "heldDiscardClicked": {
       const { seq } = msg;
-      if (model.settling.includes(seq) || heldAt(model.view?.entries ?? [], seq) === null)
+      const entries = model.view?.entries ?? [];
+      const discarding = msg.type === "heldDiscardClicked" && draftAt(entries, seq) !== null;
+      if (model.settling.includes(seq) || (heldAt(entries, seq) === null && !discarding))
         return [model, []];
       const sending = msg.type === "heldSendClicked";
       const edited = model.editing[seq]?.trim();
@@ -345,15 +421,57 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       ];
     }
     case "heldEditClicked": {
-      const held = heldAt(model.view?.entries ?? [], msg.seq);
+      const entries = model.view?.entries ?? [];
+      const draft = draftAt(entries, msg.seq);
+      if (draft !== null) {
+        if (draftEdit(model, draft) !== null) return [model, []];
+        const options = draft.changes.map((change) => [
+          optionKey(msg.seq, change.option),
+          optionText(change.drafted),
+        ]);
+        return [{ ...model, editing: { ...model.editing, ...Object.fromEntries(options) } }, []];
+      }
+      const held = heldAt(entries, msg.seq);
       if (held === null || msg.seq in model.editing) return [model, []];
       return [{ ...model, editing: { ...model.editing, [msg.seq]: held.text } }, []];
+    }
+    case "heldOptionEdited": {
+      const key = optionKey(msg.seq, msg.option);
+      if (!(key in model.editing)) return [model, []];
+      return [{ ...model, editing: { ...model.editing, [key]: msg.text } }, []];
+    }
+    // Applied as the user's own call of its action, edited or not; what its
+    // action refuses, it stays held, with why.
+    case "heldApplyClicked": {
+      const { seq } = msg;
+      const draft = draftAt(model.view?.entries ?? [], seq);
+      if (draft === null || draft.stale || model.settling.includes(seq)) return [model, []];
+      const options = draftEdit(model, draft);
+      return [
+        { ...model, settling: [...model.settling, seq], notice: null },
+        [
+          post(
+            `/api/threads/${model.id}/held/${seq}/apply`,
+            options === null ? {} : { edit: { options } },
+            { kind: "draftApplied", threadId: model.id, seq },
+          ),
+        ],
+      ];
+    }
+    case "heldUndoClicked": {
+      const { seq } = msg;
+      const undo = model.applied[seq];
+      if (!undo || model.settling.includes(seq)) return [model, []];
+      return [
+        { ...model, settling: [...model.settling, seq], notice: null },
+        [undoing(undo, { kind: "draftUndone", threadId: model.id, seq })],
+      ];
     }
     case "heldEdited":
       if (!(msg.seq in model.editing)) return [model, []];
       return [{ ...model, editing: { ...model.editing, [msg.seq]: msg.text } }, []];
     case "heldEditCancelled":
-      return [{ ...model, editing: without(model.editing, String(msg.seq)) }, []];
+      return [{ ...model, editing: notEditing(model.editing, msg.seq) }, []];
     case "dropped": {
       if (model.view === null) return [model, []];
       if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
@@ -536,8 +654,28 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
       const settling = model.settling.filter((seq) => seq !== tag.seq);
       return [
         msg.ok
-          ? { ...model, settling, editing: without(model.editing, String(tag.seq)) }
+          ? { ...model, settling, editing: notEditing(model.editing, tag.seq) }
           : { ...model, settling, notice: errorOf(msg.body) },
+        [refresh(model)],
+      ];
+    }
+    // Applied, the draft keeps its Undo here; refused, as when its
+    // connection couldn't be read that way, it stays held, with why.
+    case "draftApplied":
+    case "draftUndone": {
+      if (tag.threadId !== model.id) return [model, []];
+      const settling = model.settling.filter((seq) => seq !== tag.seq);
+      if (!msg.ok) return [{ ...model, settling, notice: errorOf(msg.body) }, [refresh(model)]];
+      const undo = undoOf(msg.body);
+      const applied =
+        tag.kind === "draftApplied" && undo
+          ? { ...model.applied, [tag.seq]: undo }
+          : without(model.applied, String(tag.seq));
+      // Kept, a connection whose options don't fit, or whose sync failed,
+      // says why.
+      const notice = problemOf(msg.body);
+      return [
+        { ...model, settling, applied, notice, editing: notEditing(model.editing, tag.seq) },
         [refresh(model)],
       ];
     }
@@ -735,6 +873,7 @@ export type Entry =
       text: string;
       outcome: "sent" | "discarded" | null;
     }
+  | Extract<ChatEntry, { kind: "draft" }>
   | { kind: "notice"; seq: number; tone: "limit" | "error"; text: string }
   | { kind: "note"; seq: number; note: NoteView };
 
@@ -788,6 +927,7 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
         out.push({ kind: "sketch", seq: entry.seq, sketch: entry.sketch });
         break;
       case "held":
+      case "draft":
         out.push(entry);
         break;
       case "change-set":

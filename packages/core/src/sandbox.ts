@@ -2,7 +2,7 @@ import type { ActionName } from "./actions.ts";
 import type { ItemId } from "./ids.ts";
 import type { Log, RunOutcome } from "./run.ts";
 import type { SearchHit } from "./source.ts";
-import type { ResultFields } from "./block.ts";
+import type { PreviewTable, ResultFields } from "./block.ts";
 import {
   array,
   type Infer,
@@ -35,6 +35,7 @@ export const guestMessage = union(
     ref: nullable(refine(string, isNewRef, "expected a new:N ref")),
   }),
   object({ kind: literal("intent"), fn: string, args: array(unknown) }),
+  object({ kind: literal("draft"), fn: string, args: array(unknown) }),
   object({ kind: literal("log"), text: string }),
   object({ kind: literal("done"), value: unknown }),
   object({ kind: literal("threw"), message: string }),
@@ -59,27 +60,42 @@ export type CapturedMutation = {
 // them.
 export type Intent = { action: ActionName; input: Record<string, unknown> };
 
+// One of the user's actions the agent wrote out for them (decision 0051),
+// its input checked as the composition root checks it: never applied in the
+// run, nor when the turn ends. The last finished run's drafts are held in
+// the thread, for the user to apply, edit or discard.
+export type Draft = { action: ActionName; input: Record<string, unknown> };
+
 // A region's bindings, built per run: the declarations the agent codes
 // against, the guest stubs generated from the same description, and the host
 // side. `read` proxies live. `capture` validates a write against the source's
 // op catalogue and throws if its target is outside the region. `intend`
 // checks one of Oriel's own actions against its declaration and throws if it
-// adds an item the run can't reach. What any of them throws names the
-// function, and the sandbox passes it on as it is.
+// adds an item the run can't reach. `draft` checks a draft of an action
+// closed to the agent (decision 0051) and throws if it doesn't fit. What any
+// of them throws names the function, and the sandbox passes it on as it is.
 export type Bindings = {
   dts: string;
   shim: string;
   // `found`: the items outside the region the read reached, as search()
   // and the window chat's window.overview() do: the escape-hatch block.
+  // `preview`: what a waiting connection's preview read showed, which Oriel
+  // shows unasked as its block (decision 0051).
   read(
     fn: string,
     args: readonly unknown[],
-  ): Promise<{ value: unknown; outsideRegion: boolean; found?: SearchHit[] }>;
+  ): Promise<{
+    value: unknown;
+    outsideRegion: boolean;
+    found?: SearchHit[];
+    preview?: PreviewTable[];
+  }>;
   // What a read declares of its result, for a block (decision 0030); null
   // for a read a block can't use.
   fields?(fn: string): ResultFields | null;
   capture(fn: string, args: readonly unknown[], ref: NewRef | null): CapturedMutation;
   intend(fn: string, args: readonly unknown[]): Intent;
+  draft(fn: string, args: readonly unknown[]): Draft;
 };
 
 export type RunLimits = {
@@ -87,6 +103,7 @@ export type RunLimits = {
   maxScriptBytes: number;
   maxReads: number;
   maxMutations: number;
+  // Oriel's actions a run may record: intents and drafts together.
   maxIntents: number;
   maxResultBytes: number;
   maxConsoleBytes: number;
@@ -126,6 +143,7 @@ export type RunResult = {
   reads: ProxiedRead[];
   mutations: CapturedMutation[];
   intents: Intent[];
+  drafts: Draft[];
   transcript: TranscriptEntry[];
   // A sandbox rejects with the reason when the run is aborted, so a result is
   // never "aborted"; the run record says that (`Run`).

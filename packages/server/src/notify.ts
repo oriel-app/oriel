@@ -19,6 +19,7 @@ const titles: Partial<Record<WaitingOn, string>> = {
   review: "A change set waits for your review",
   reply: "Oriel answered, and it's your turn",
   held: "A message waits for you",
+  draft: "The agent drafted something for you to apply",
   stalled: "A change set stopped while it was being applied",
 };
 

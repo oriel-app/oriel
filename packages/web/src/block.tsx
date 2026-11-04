@@ -1,5 +1,6 @@
 // A block under the agent's reply (decision 0030): a table, bars or rows of
-// items, which Oriel built from a read's result. One renderer, for a
+// items, or a waiting connection's preview (decision 0051), which Oriel
+// built from a read's result. One renderer, for a
 // thread's page and the window chat. It is typed data, so every text in it,
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
@@ -16,7 +17,11 @@ const cellText = (cell: string | number | boolean | null) =>
 export function BlockFigure({ block }: { block: BlockView }) {
   return (
     <figure class="answer-block" data-form={block.form} data-outside={block.outside || undefined}>
-      {block.outside && <p class="search-label">Outside this workstream · read-only</p>}
+      {block.form === "preview" ? (
+        <p class="search-label">Read live from the source · not items</p>
+      ) : (
+        block.outside && <p class="search-label">Outside this workstream · read-only</p>
+      )}
       <BlockBody block={block} />
       {block.more > 0 && <p class="block-more">and {number(block.more)} more</p>}
       <figcaption>{block.caption}</figcaption>
@@ -94,6 +99,36 @@ function BlockBody({ block }: { block: BlockView }) {
             ))}
           </tbody>
         </table>
+      );
+    // A waiting connection's preview (decision 0051): each table its source
+    // shows, its cells as text, so nothing in it is an item to cite.
+    case "preview":
+      return (
+        <div class="block-preview">
+          {block.tables.map((table, i) => (
+            <table class="block-table" key={i}>
+              <caption>{table.name}</caption>
+              <thead>
+                <tr>
+                  {table.columns.map((column, j) => (
+                    <th key={j} scope="col">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, j) => (
+                      <td key={j}>{cellText(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+        </div>
       );
     case "rows":
       return (

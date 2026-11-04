@@ -47,15 +47,20 @@ function agentShapes(name: ActionName): { kind: string | null; fields: Record<st
 }
 
 // An input type as the agent writes it: its own workstream or thread may be
-// left out, as may an optional field.
-function agentType(name: ActionName): { type: string; optional: boolean } {
+// left out, as may an optional field. `given`: type text for fields the
+// registry leaves open, as the composition root knows them, such as a
+// connection's options (decision 0051).
+export function agentType(
+  name: ActionName,
+  given: Readonly<Record<string, string>> = {},
+): { type: string; optional: boolean } {
   const owned = Object.assign({}, ...alternatives(name).map(ownedFields)) as Record<string, string>;
   const shapes = agentShapes(name);
   const types = shapes.map(({ fields }) => {
     const parts = Object.entries(fields).map(([key, field]) => {
       const inner = field.kind === "optional" ? field.inner : field;
       const leftOut = field.kind === "optional" || Object.hasOwn(owned, key);
-      return `${key}${leftOut ? "?" : ""}: ${typeText(inner)}`;
+      return `${key}${leftOut ? "?" : ""}: ${given[key] ?? typeText(inner)}`;
     });
     return { type: `{ ${parts.join("; ")} }`, empty: parts.every((part) => part.includes("?:")) };
   });
@@ -104,7 +109,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 // the action's own declaration, with the agent's workstream and thread where
 // it left them out, and every item a workstream gains within reach.
 export function intended(
-  fn: IntentFn,
+  fn: Pick<IntentFn, "action">,
   args: readonly unknown[],
   own: { workstream: Ulid; thread: Ulid | null; reaches(id: ItemId): boolean },
 ): Intent {

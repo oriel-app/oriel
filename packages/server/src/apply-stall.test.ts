@@ -69,6 +69,7 @@ function world() {
     applied: async () => {},
     sources: unreached("sources"),
     markSeen: () => assert.fail("the overview isn't left here"),
+    drafted: () => null,
     running: () => false,
     unsettled: async () => [],
     emit: () => {},

@@ -36,6 +36,9 @@ export type Tag =
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
   | { kind: "held"; threadId: string; seq: number }
+  // A draft applied, or that undone, by its place in the thread (decision 0051).
+  | { kind: "draftApplied"; threadId: string; seq: number }
+  | { kind: "draftUndone"; threadId: string; seq: number }
   // A line under the agent's reply was undone, or done again.
   | { kind: "lineUndone"; threadId: string; seq: number; index: number }
   | { kind: "reviewLink"; changeSetId: string }

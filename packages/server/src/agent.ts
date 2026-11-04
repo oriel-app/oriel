@@ -89,13 +89,14 @@ const actionName = refine(
   "expected one of Oriel's actions",
 );
 const intent: Validator<Intent> = object({ action: actionName, input: record(unknown) });
-// A run stored before its result had intents recorded none.
+// A run stored before its result had intents, or drafts, recorded none.
 const intents: Validator<Intent[]> = (input, path) =>
   input === undefined ? { ok: true, value: [] } : array(intent)(input, path);
 export const runResult: Validator<RunResult> = object({
   reads: array(proxiedRead),
   mutations: array(capturedMutation),
   intents,
+  drafts: intents,
   transcript: array(transcriptEntry),
   outcome: union(literal("ok"), literal("threw"), literal("timeout"), literal("limit")),
   wallMs: number,

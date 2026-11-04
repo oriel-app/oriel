@@ -1,9 +1,17 @@
 // A three-story region and hand-written bindings over it: a fixture for this
 // package's tests, not a model of what packages/bindings generates. Its shim
 // keeps the bindings' contract: the entry file is the shim alone, which
-// starts the script with the bindings `jira`, `workstream` and `search` as
+// starts the script with the bindings `jira`, `workstream`, `source` and
+// `search` as
 // parameters.
-import { type Bindings, type CapturedMutation, type Intent, isItemId, isNewRef } from "@oriel/core";
+import {
+  type Bindings,
+  type CapturedMutation,
+  type Draft,
+  type Intent,
+  isItemId,
+  isNewRef,
+} from "@oriel/core";
 import { runtime } from "./fake-runtime.ts";
 
 export const stories = [
@@ -34,8 +42,13 @@ const workstream = Object.freeze({
     __oriel.intend("workstream.add", [input]);
   },
 });
+const source = Object.freeze({
+  configure: (input: unknown): void => {
+    __oriel.draft("source.configure", [input]);
+  },
+});
 const search = (query: string) => __oriel.read("search", [query]);
-__oriel.start({ jira, workstream, search });
+__oriel.start({ jira, workstream, source, search });
 `;
 
 // What the typecheck holds scripts to, shaped like the real declarations.
@@ -51,6 +64,9 @@ const dts = `declare const jira: {
 };
 declare const workstream: {
   add(input: { items: string[] }): void;
+};
+declare const source: {
+  configure(input: { connection: string; options: { channels: string[] } }): void;
 };
 declare function search(query: string): Promise<unknown[]>;
 declare const console: {
@@ -121,6 +137,13 @@ export function fakeBindings(onHold: () => void = () => {}): Bindings {
       const stray = items.find((id) => !inRegion.has(String(id)));
       if (stray !== undefined) throw new Error(`${fn}: ${String(stray)} is not in this region`);
       return { action: fn, input: { workstream: "the region's", items } };
+    },
+    draft(fn, args): Draft {
+      if (fn !== "source.configure") throw new Error(`unknown draft: ${fn}`);
+      const input = args[0] as { connection?: unknown; options?: unknown } | undefined;
+      if (input?.connection !== "the waiting one")
+        throw new Error(`${fn}: $.connection: no connection waits for its options`);
+      return { action: fn, input: { connection: input.connection, options: input.options } };
     },
   };
 }

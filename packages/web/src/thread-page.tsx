@@ -34,6 +34,8 @@ import {
   expected,
   folded,
   type NewThreadModel,
+  optionKey,
+  optionText,
   removable,
   stepLabel,
   lineKey,
@@ -297,6 +299,12 @@ export function ChatEntryItem(props: {
           <HeldMessage block={entry} model={props.model} view={props.view} send={props.send} />
         </li>
       );
+    case "draft":
+      return (
+        <li class="held-block" data-outcome={entry.outcome ?? (entry.stale ? "stale" : "held")}>
+          <DraftCard block={entry} model={props.model} send={props.send} />
+        </li>
+      );
     case "note":
       return (
         <li class="oriel-note" role="note">
@@ -484,6 +492,137 @@ function HeldMessage(props: {
     </section>
   );
 }
+
+// A draft of the agent's (decision 0051): one of the user's own actions,
+// which only they apply, as it is or edited, or discard. Oriel draws it from
+// its own data: the connection it sets, by name, and each option it
+// changes, as it is and as drafted, never the agent's words.
+function DraftCard(props: {
+  block: Extract<Entry, { kind: "draft" }>;
+  model: ThreadModel;
+  send: (msg: ThreadMsg) => void;
+}) {
+  const { block, model, send } = props;
+  const { seq } = block;
+  const waits = block.outcome === null;
+  const editing =
+    waits && block.changes.some((change) => optionKey(seq, change.option) in model.editing);
+  const busy = model.settling.includes(seq);
+  const undo = model.applied[seq];
+  const name = block.connection?.name ?? "A connection that's gone";
+  return (
+    <section class="held-message draft-card" aria-busy={busy}>
+      <p class="held-by">
+        <strong>The agent drafted</strong> how {name} reads its source.
+        {waits && " Nothing changes until you apply it."}
+      </p>
+      <dl class="draft-changes">
+        {block.changes.map((change) => (
+          <div key={change.option}>
+            <dt>{change.option}</dt>
+            {editing ? (
+              <dd>
+                <textarea
+                  class="held-field"
+                  rows={Math.min(Math.max(optionText(change.drafted).split("\n").length, 2), 8)}
+                  value={model.editing[optionKey(seq, change.option)] ?? ""}
+                  aria-label={`Edit ${change.option}`}
+                  disabled={busy}
+                  onInput={(event) =>
+                    send({
+                      type: "heldOptionEdited",
+                      seq,
+                      option: change.option,
+                      text: event.currentTarget.value,
+                    })
+                  }
+                />
+              </dd>
+            ) : (
+              <dd>
+                <span class="draft-was">{shownValue(change.was)}</span>
+                <span aria-hidden="true"> → </span>
+                <span class="visually-hidden"> becomes </span>
+                <span class="draft-to">{shownValue(change.drafted)}</span>
+              </dd>
+            )}
+          </div>
+        ))}
+      </dl>
+      {waits && block.stale ? (
+        <div class="held-actions">
+          <span class="held-note">
+            {block.connection
+              ? `${name}'s options changed since this was drafted, so it can't apply.`
+              : "Its connection is gone, so it can't apply."}
+          </span>
+          <button
+            type="button"
+            class="quiet-action"
+            disabled={busy}
+            onClick={() => send({ type: "heldDiscardClicked", seq })}
+          >
+            Discard
+          </button>
+        </div>
+      ) : waits ? (
+        <div class="held-actions">
+          <span class="held-note">Only you can apply it.</span>
+          <button
+            type="button"
+            class="button primary"
+            disabled={busy}
+            onClick={() => send({ type: "heldApplyClicked", seq })}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            class="button"
+            disabled={busy}
+            onClick={() => send({ type: editing ? "heldEditCancelled" : "heldEditClicked", seq })}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </button>
+          <button
+            type="button"
+            class="quiet-action"
+            disabled={busy}
+            onClick={() => send({ type: "heldDiscardClicked", seq })}
+          >
+            Discard
+          </button>
+        </div>
+      ) : (
+        <div class="held-actions">
+          <span class="held-note">
+            {block.outcome === "applied" ? `Applied. ${name} reads this way now.` : "Discarded."}
+          </span>
+          {block.outcome === "applied" && undo && (
+            <button
+              type="button"
+              class="undo-action"
+              disabled={busy}
+              onClick={() => send({ type: "heldUndoClicked", seq })}
+            >
+              Undo
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// A drafted value as the card shows it: a list joined, nothing as a dash.
+const shownValue = (value: unknown): string =>
+  Array.isArray(value)
+    ? value.map(String).join(", ") || "—"
+    : value === null || value === undefined
+      ? "—"
+      : typeof value === "string"
+        ? value
+        : JSON.stringify(value);
 
 // Where the thread's items live: the only sites a reply's links open to.
 const sites = (view: ThreadView): ReadonlySet<string> =>

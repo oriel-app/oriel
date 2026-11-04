@@ -1,0 +1,28 @@
+{
+  "id": "draft-slack-channels",
+  "split": "train",
+  "kind": 2,
+  "window": {
+    "workstreams": [
+      { "name": "Boarding", "region": "boarding-epic" },
+      { "name": "Weather", "region": "weather-epic" }
+    ],
+    "at": "2026-10-01T12:00:00.000Z"
+  },
+  "unfit": { "slack": { "channels": ["weather-disruptions", "launch-room"] } },
+  "prompt": "Slack stopped syncing. Draft which channels Oriel should read so it works again.",
+  "expect": [
+    {
+      "grader": "drafts",
+      "calls": [
+        {
+          "action": "source.configure",
+          "kind": "slack",
+          "options": { "channels": ["weather-disruptions"] }
+        }
+      ]
+    },
+    { "grader": "blocks", "form": "preview", "read": "source.preview" },
+    { "grader": "avoids", "text": ["I've applied", "I have applied", "is now syncing"] }
+  ]
+}

@@ -177,7 +177,13 @@ async function* turn(
     const replaced = proposed.ran(runId, result);
     return {
       callId: call.id,
-      content: runResultText(result, replaced.mutations, replaced.intents, shown.said),
+      content: runResultText(
+        result,
+        replaced.mutations,
+        replaced.intents,
+        shown.said,
+        replaced.drafts,
+      ),
       isError: result.outcome !== "ok",
     };
   }

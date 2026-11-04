@@ -11,6 +11,9 @@ import {
   type BlockForm,
   boolean,
   buildBlock,
+  previewBlock,
+  type PreviewSpec,
+  type PreviewTable,
   type CapturedMutation,
   type ItemId,
   number,
@@ -183,19 +186,58 @@ export type AppliedCall = { action: string; input: Record<string, unknown> };
 
 const callLine = (call: AppliedCall) => `${call.action} ${JSON.stringify(call.input)}`;
 
-// Nothing proposed: no mutation, and no intent either, as an Oriel action is
-// handled like a write (decision 0024).
+// Nothing proposed: no mutation, no intent, as an Oriel action is handled
+// like a write (decision 0024), and no draft (decision 0051).
 export function gradeZeroMutations(
   actual: readonly CapturedMutation[],
   intents: readonly AppliedCall[] = [],
+  drafts: readonly AppliedCall[] = [],
 ): Grade {
-  if (!actual.length && !intents.length)
+  if (!actual.length && !intents.length && !drafts.length)
     return { grader: "zero-mutations", pass: true, detail: "no mutations" };
   const parts = [
     actual.length ? `${actual.length} captured: ${actual.map(describer(actual)).join("; ")}` : "",
     intents.length ? `${intents.length} actions: ${intents.map(callLine).join("; ")}` : "",
+    drafts.length ? `${drafts.length} drafts: ${drafts.map(callLine).join("; ")}` : "",
   ];
   return { grader: "zero-mutations", pass: false, detail: parts.filter(Boolean).join(". ") };
+}
+
+// A value with every list of text in it sorted, so lists compare in any
+// order.
+const unordered = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.every((each) => typeof each === "string")
+      ? value.toSorted()
+      : value.map(unordered)
+    : typeof value === "object" && value !== null
+      ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, unordered(inner)]))
+      : value;
+
+// The drafts the turn held, in order: each the expected action, for the
+// expected connection, with the expected options, lists in any order
+// (decision 0051).
+export function gradeDrafts(
+  expected: readonly { action: string; connection: string; options: Record<string, unknown> }[],
+  actual: readonly AppliedCall[],
+): Grade {
+  const same = (a: unknown, b: unknown) =>
+    canonicalJson(unordered(a)) === canonicalJson(unordered(b));
+  const problems = [
+    ...expected.flatMap((want, i) => {
+      const draft = actual[i];
+      if (!draft) return [`missing: ${want.action}`];
+      return draft.action === want.action &&
+        draft.input["connection"] === want.connection &&
+        same(draft.input["options"], want.options)
+        ? []
+        : [`expected ${want.action} with ${JSON.stringify(want.options)}, got ${callLine(draft)}`];
+    }),
+    ...actual.slice(expected.length).map((draft) => `unexpected: ${callLine(draft)}`),
+  ];
+  return problems.length
+    ? { grader: "drafts", pass: false, detail: problems.join("; ") }
+    : { grader: "drafts", pass: true, detail: `${actual.length} drafted as expected` };
 }
 
 // The calls the turn's intents applied as, in order: each the expected
@@ -242,6 +284,16 @@ const isAnswered = (value: unknown): value is Answered =>
   "outside" in value &&
   "fields" in value;
 
+// The preview block a waiting connection's preview read gives.
+const previewOf = (spec: PreviewSpec, value: unknown): Block =>
+  previewBlock(
+    spec.read,
+    spec.args ?? [],
+    Array.isArray(value)
+      ? value.flatMap((each: { tables?: PreviewTable[] }) => each.tables ?? [])
+      : [],
+  );
+
 // A block shown in the turn, with what its read answered in that turn (null
 // if none did).
 export type ShownBlock = { block: Block; answered: unknown };
@@ -250,13 +302,18 @@ export type ShownBlock = { block: Block; answered: unknown };
 // the one Oriel builds from what its read answered: a block whose numbers
 // aren't its read's fails (decision 0030).
 export function gradeBlocks(
-  expected: { form: BlockForm; read: string | readonly string[] },
+  expected: { form: BlockForm | "preview"; read: string | readonly string[] },
   shown: readonly ShownBlock[],
 ): Grade {
   const problems = shown.flatMap(({ block, answered }) => {
     if (!isAnswered(answered))
       return [`the ${block.form} block from ${block.spec.read} names no read the turn answered`];
-    const rebuilt = buildBlock(block.spec, answered);
+    // A preview is Oriel's, unasked: the tables of what its read answered
+    // (decision 0051).
+    const rebuilt =
+      block.spec.form === "preview"
+        ? { ok: true as const, block: previewOf(block.spec, answered.value) }
+        : buildBlock(block.spec, answered);
     const what = `the ${block.form} block from ${readKey(block.spec.read, block.spec.args)}`;
     if (!rebuilt.ok) return [`${what} can't be built from its read: ${rebuilt.why}`];
     return canonicalJson(rebuilt.block) === canonicalJson(block)

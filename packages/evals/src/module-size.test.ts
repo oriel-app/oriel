@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
-import { bindingsFor } from "@oriel/bindings";
+import { bindingsFor, waitingOf } from "@oriel/bindings";
 import { loadFixtures } from "./fixtures.ts";
 import { moduleOf, moduleSize, regionOf, shape } from "./module-size.ts";
 
@@ -91,4 +91,34 @@ test("the window chat's window namespace adds within its budget, in its module o
   }).dts;
   const added = shape(chat) - shape(plain);
   assert.ok(added > 0 && added <= window, `window adds ${added} bytes`);
+});
+
+test("a waiting connection's preview and draft add within their own budget, in the window chat only while it waits", async () => {
+  // source.preview() and source.configure()'s draft, with their types and
+  // Slack's options as its validator types them (decision 0051). Their own
+  // budget, not the window namespace's: 798 bytes in OA-218.
+  const drafting = 850;
+  const region = regionOf([]);
+  const reader = { read: async () => [], search: async () => [] };
+  const overview = async () => ({ view: null, items: [] });
+  const chat = bindingsFor(region, { reader, namespaces: {}, overview }).dts;
+  const slack = fixtures.get("slack")?.declaration;
+  assert.ok(slack);
+  const waiting = waitingOf([
+    {
+      id: "01JC0NNECT10N0000000000000",
+      kind: "slack",
+      source: slack.name,
+      why: "",
+      options: {},
+      validator: slack.options,
+      preview: async () => [],
+    },
+  ]);
+  assert.ok(waiting);
+  const drafted = bindingsFor(region, { reader, namespaces: {}, overview, waiting }).dts;
+  const added = shape(drafted) - shape(chat);
+  assert.ok(added > 0 && added <= drafting, `drafting adds ${added} bytes`);
+  // No waiting connection, no source namespace.
+  assert.doesNotMatch(chat, /declare const source/);
 });

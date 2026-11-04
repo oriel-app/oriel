@@ -30,6 +30,9 @@ export type Host = NamespaceHost &
     // The overview, in a window chat's module only (decision 0027). Its items
     // count as this run's search() hits.
     overview(): Promise<unknown>;
+    // The waiting connections' previews, in a window chat's module only
+    // while one waits (decision 0051).
+    preview(): Promise<unknown>;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
@@ -39,8 +42,9 @@ export type OrielSpace = (typeof orielSpaces)[number];
 
 // The namespace a function lives in: `items` for any item, one per source
 // that declares one, one of Oriel's own, or null for a global.
-// `window`: the window chat's own (decision 0027).
-export type Space = "items" | SourceKind | OrielSpace | "window" | null;
+// `window`: the window chat's own (decision 0027). `source`: a waiting
+// connection's preview and drafts, in the window chat only (decision 0051).
+export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;
@@ -66,7 +70,13 @@ export type IntentFn = {
   params: readonly Param<unknown>[];
 };
 
-export type Fn = ReadFn | WriteFn | IntentFn;
+// A draft of one of the user's actions, closed to the agent but declared
+// draftable (decision 0051), generated from the registry as an intent's
+// function is. A run only records it; when the turn ends it is held in the
+// thread for the user to apply, edit or discard.
+export type DraftFn = Omit<IntentFn, "kind" | "space"> & { kind: "draft"; space: "source" };
+
+export type Fn = ReadFn | WriteFn | IntentFn | DraftFn;
 
 export const pathOf = (fn: Fn): string => (fn.space ? `${fn.space}.${fn.name}` : fn.name);
 

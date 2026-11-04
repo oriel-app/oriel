@@ -74,6 +74,7 @@ function world() {
     markSeen: () => assert.fail("the overview isn't left here"),
     // No turn runs and no change set waits here; agent-actions.test.ts
     // holds the agent to both.
+    drafted: () => null,
     running: () => false,
     unsettled: async () => [],
     emit: (event) => events.push(event),

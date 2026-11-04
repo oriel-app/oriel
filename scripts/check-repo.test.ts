@@ -434,6 +434,40 @@ test("an action closed to a door, a person's, or one with no inverse must say wh
   );
 });
 
+test("a draftable action is direct and closed to the agent: never open to it, never a person's", () => {
+  const input = Object.assign(() => ({ ok: true as const, value: {} }), {
+    shape: { kind: "unknown" as const },
+  });
+  const why = "The user's (decision 0051).";
+  assert.deepEqual(
+    actionProblems({
+      "source.configure": {
+        doc: "Sets.",
+        input,
+        class: { kind: "direct", inverse: "source.configure" },
+        closed: { agent: why },
+        draftable: true,
+      },
+      "workstream.add": {
+        doc: "Adds.",
+        input,
+        class: { kind: "direct", inverse: "workstream.add" },
+        draftable: true,
+      },
+      "source.connect": {
+        doc: "Connects.",
+        input,
+        class: { kind: "person-only", why: "It holds credentials." },
+        draftable: true,
+      },
+    }),
+    [
+      "packages/core/src/actions.ts: workstream.add is draftable, so it must be direct and closed to the agent (decision 0051)",
+      "packages/core/src/actions.ts: source.connect is draftable, so it must be direct and closed to the agent (decision 0051)",
+    ],
+  );
+});
+
 test("a route whose action is known only at run time dispatches through the untyped door", () => {
   assert.deepEqual(
     postRoutes(`[{ method: "POST", path: at("/a"), run: () => deps.dispatch.untyped(n, x) }]`),

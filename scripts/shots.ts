@@ -37,7 +37,7 @@ import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { defaultTheme, themeNames } from "../packages/web/themes.ts";
 import { type TextSize, textSizes } from "../packages/web/src/view.ts";
-import { type Instant, instant } from "../packages/core/src/ids.ts";
+import { type Instant, instant, ulid } from "../packages/core/src/ids.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
   memorySite,
@@ -52,6 +52,10 @@ import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
+import { memorySecrets } from "../packages/server/src/connection.ts";
+import { connectionsOf } from "../packages/server/src/connections.ts";
+import { indexStore, open as openDb } from "../packages/db/src/index.ts";
+import { fixtureApi, loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import {
   fillJira as fillFirstRun,
@@ -1064,6 +1068,62 @@ const approveIt = async (page: Page) => {
   await page.getByRole("button", { name: "Approve and apply" }).click();
 };
 
+// A Slack connection kept from an earlier start whose picked channel is
+// gone, so it waits for its options; the window chat drafts which channels
+// it reads (decision 0051). Made afresh for each shot, as applying moves it.
+const draftScript = `const [waiting] = await source.preview();
+source.configure({ connection: waiting.connection, options: { channels: ["weather-disruptions"] } });
+return waiting.why;`;
+const waitingSlack = async (): Promise<Serving> => {
+  const db = join(mkdtempSync(join(tmpdir(), "oriel-shots-drafts-")), "window.db");
+  const secrets = memorySecrets();
+  const first = await serve(0, { db, secrets, sources: { jira: { mode: "fixture" } } });
+  const { workspaceId } = first.app;
+  await first.close();
+  const store = openDb(db);
+  await connectionsOf({
+    db: store,
+    index: indexStore(store),
+    secrets,
+    workspaceId,
+    now: () => instant(new Date()),
+    newId: () => ulid(Date.now()),
+    log: () => {},
+  }).connect({
+    kind: "slack",
+    identity: loadSlackFixture().team.url,
+    options: { channels: ["weather-disruptions", "launch-room"] },
+    secret: "xoxp-shots-only",
+  });
+  store.close();
+  return start(0, {
+    db,
+    secrets,
+    sources: {
+      jira: { mode: "fixture" },
+      slack: { mode: "window", fetch: fixtureApi(loadSlackFixture()).fetch },
+    },
+    agent: (deps) =>
+      scriptedAgent(deps, (input) =>
+        /\bdraft\b/i.test(input.text)
+          ? [
+              { run: draftScript },
+              {
+                text: "Slack can't find #launch-room any more. I drafted it reading only #weather-disruptions; apply it below if that's right.",
+              },
+            ]
+          : planning(input),
+      ),
+  });
+};
+const drafted = async (page: Page) => {
+  await overviewShown(page);
+  await page.locator(".ask-input").fill("Slack stopped syncing. Draft which channels it reads.");
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.locator(".window-chat .draft-card").waitFor();
+  await page.locator(".window-chat .working").waitFor({ state: "detached" });
+};
+
 // A server of its own for Make a workstream on the overview: each pass of
 // the scenes deletes what the last one made first.
 const suggesting = (await writing({ mode: "fixture" })).serving;
@@ -1180,6 +1240,20 @@ const scenes: Scene[] = [
       await page.locator(".window-chat .working").waitFor({ state: "detached" });
     },
   })),
+  // A waiting connection's draft (decision 0051): its preview read as a
+  // block, and the draft held under the answer, then applied.
+  { name: "draft-held", path: "/", make: waitingSlack, window: true, act: drafted },
+  {
+    name: "draft-applied",
+    path: "/",
+    make: waitingSlack,
+    window: true,
+    act: async (page) => {
+      await drafted(page);
+      await page.getByRole("button", { name: "Apply", exact: true }).click();
+      await page.locator('.window-chat .held-block[data-outcome="applied"]').waitFor();
+    },
+  },
   {
     // The chat closed with a conversation in it: the bar offers it back,
     // and still fits a phone at every text size (OA-205).

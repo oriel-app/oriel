@@ -60,10 +60,11 @@ import {
   gradeSurfaced,
   gradeNoSketch,
   gradeZeroMutations,
+  gradeDrafts,
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
-import { buildWorld, caseWorld, fixedId } from "./world.ts";
+import { buildWorld, caseWorld, fixedId, waitingConnectionId } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
@@ -89,6 +90,8 @@ export type SystemInput = {
 export const systemOutput = object({
   mutations: array(capturedMutation),
   intents: optional(array(object({ action: string, input: record(unknown) }))),
+  // The drafts the turn held for the user (decision 0051).
+  drafts: optional(array(object({ action: string, input: record(unknown) }))),
   // Each block the turn showed, with what its read answered.
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   // How many times the turn called sketch(), shown or refused.
@@ -98,8 +101,12 @@ export const systemOutput = object({
 });
 // A system may leave its intents, blocks and sketches out, as one that
 // never asks for any.
-export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks" | "sketches"> & {
+export type SystemOutput = Omit<
+  Infer<typeof systemOutput>,
+  "intents" | "drafts" | "blocks" | "sketches"
+> & {
   intents?: Infer<typeof systemOutput>["intents"];
+  drafts?: Infer<typeof systemOutput>["drafts"];
   blocks?: Infer<typeof systemOutput>["blocks"];
   sketches?: number;
 };
@@ -340,7 +347,17 @@ async function grade(
       grades.push(gradeExactDiff(loaded.golden, output.mutations));
     }
     if (expectation.grader === "zero-mutations")
-      grades.push(gradeZeroMutations(output.mutations, output.intents ?? []));
+      grades.push(gradeZeroMutations(output.mutations, output.intents ?? [], output.drafts ?? []));
+    if (expectation.grader === "drafts")
+      grades.push(
+        gradeDrafts(
+          expectation.calls.map(({ kind, ...call }) => ({
+            ...call,
+            connection: waitingConnectionId(kind),
+          })),
+          output.drafts ?? [],
+        ),
+      );
     if (expectation.grader === "intents") {
       const calls = expectation.calls.map(({ items, ...call }) =>
         items ? { ...call, items: items.map((item) => named(loaded, item)) } : call,

@@ -3,7 +3,14 @@
 // person Oriel reads Slack as, who posts. What identifies it is the
 // workspace that token is for, which opening finds. A channel it can't find
 // stops it opening.
-import type { Credential, IndexRecord, Opened, OpenVia, ToOpen } from "@oriel/core";
+import {
+  type Credential,
+  type IndexRecord,
+  type Opened,
+  type OpenVia,
+  OptionsUnfit,
+  type ToOpen,
+} from "@oriel/core";
 import { bearer, webApi } from "./api.ts";
 import { slackAttrs, slackAttrsOf } from "./attrs.ts";
 import { connectSlack, slackPerson } from "./connect.ts";
@@ -39,11 +46,13 @@ export async function openSlack(connection: ToOpen, via: OpenVia): Promise<Opene
   const send = via.fetch ? { fetch: via.fetch } : {};
   const api = webApi({ credential, ...send });
   const workspace = await connectSlack(api, pickedOf(connection.options));
+  // Channels it no longer finds don't fit its options: it waits for new
+  // ones (decision 0051).
   if (workspace.missing.length)
-    throw new Error(
+    throw new OptionsUnfit(
       `Slack has no public channel Oriel can see named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
     );
-  if (!workspace.channels.length) throw new Error("Pick at least one Slack channel to read");
+  if (!workspace.channels.length) throw new OptionsUnfit("Pick at least one Slack channel to read");
   const channels = workspace.channels.map((channel) => channel.id);
   const author = await slackPerson(api);
   return {

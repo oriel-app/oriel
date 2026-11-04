@@ -92,14 +92,15 @@ const newestFirst = (model: Model): ThreadSummaryView[] =>
 const labelOrder: Record<WaitingOn | ThreadStateId, number> = {
   review: 0,
   held: 1,
-  reply: 2,
-  stalled: 3,
-  agent: 4,
-  apply: 5,
-  working: 6,
-  "handed-off": 7,
-  done: 8,
-  dropped: 9,
+  draft: 2,
+  reply: 3,
+  stalled: 4,
+  agent: 5,
+  apply: 6,
+  working: 7,
+  "handed-off": 8,
+  done: 9,
+  dropped: 10,
 };
 const rank = (thread: ThreadSummaryView) => labelOrder[thread.waitingOn ?? thread.state];
 

@@ -4,8 +4,9 @@
 // the real sandbox. It reaches the model through the Anthropic provider over
 // the round's cassettes, so a live round records and CI replays.
 //
-// Runs, the change set and the intents are kept in memory: every intent
-// applies, as the calls the server's dispatcher would get. The change-set engine itself
+// Runs, the change set, the intents and the drafts are kept in memory: every
+// intent applies, as the calls the server's dispatcher would get, and every
+// draft is held, as the server holds it for the user. The change-set engine itself
 // needs the server's database (runs, workstreams and the index); the agent hands
 // it the same mutations either way.
 import {
@@ -20,6 +21,7 @@ import { bindingsFor } from "@oriel/bindings";
 import {
   type CapturedMutation,
   type ChangeSet,
+  type Draft,
   type Intent,
   type Instant,
   type MutationRecord,
@@ -108,6 +110,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         thread: threadId,
         ...(shown ? { shown } : {}),
         ...(world.overview ? { overview: world.overview } : {}),
+        ...(world.waiting ? { waiting: world.waiting } : {}),
       });
       // What each read answered, so the blocks grader can build each block
       // again from its read.
@@ -125,6 +128,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     runs: records.runs,
     changeSets: records.changeSets,
     actions: records.actions,
+    drafts: records.drafts,
     limits: options.limits ?? evalLimits,
     now: () => input.now,
     newId,
@@ -149,6 +153,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   return {
     mutations: records.captured(),
     intents: records.applied(),
+    drafts: records.held(),
     blocks: events.flatMap((event) =>
       event.kind === "block"
         ? [
@@ -199,7 +204,9 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
   const runs = new Set<Ulid>();
   const sets: CapturedMutation[][] = [];
   const calls: Intent[] = [];
-  const recorder: Pick<AgentDeps, "runs" | "changeSets" | "actions"> = {
+  const held: Draft[] = [];
+  const recorder: Pick<AgentDeps, "runs" | "changeSets" | "actions" | "drafts"> = {
+    drafts: { hold: (_thread, drafts) => void held.push(...drafts) },
     actions: {
       async apply(turn, intents) {
         const applied = planned(intents, { thread: turn.thread.id });
@@ -250,5 +257,10 @@ function memoryRecords(newId: () => Ulid, now: Instant) {
     },
   };
   // The turn's change set: a turn captures at most one.
-  return { ...recorder, captured: () => sets.at(-1) ?? [], applied: () => [...calls] };
+  return {
+    ...recorder,
+    captured: () => sets.at(-1) ?? [],
+    applied: () => [...calls],
+    held: () => [...held],
+  };
 }

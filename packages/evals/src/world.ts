@@ -8,7 +8,7 @@
 //
 // Everything the agent can see must be the same on every run and every disk,
 // or cassettes won't replay, and each fixture's connection is.
-import type { ItemDocs, Namespaces } from "@oriel/bindings";
+import { type ItemDocs, type Namespaces, type Waiting, waitingOf } from "@oriel/bindings";
 import {
   type ChangeLogEntry,
   type Cluster,
@@ -24,6 +24,7 @@ import {
   type SearchHit,
   findThreads,
   noThreads,
+  OptionsUnfit,
   type OrielReads,
   type Ulid,
   ulid,
@@ -51,6 +52,9 @@ export type WorldInput = {
   // A window chat's: the overview's workstreams, by fixture region, and the
   // eval clock the overview counts back from (decision 0027).
   window?: { workstreams: readonly { name: string; region: string }[]; now: Instant };
+  // A window chat's connections that wait for their options, by kind, with
+  // the options each has (decision 0051).
+  unfit?: Readonly<Record<string, Record<string, unknown>>>;
 };
 
 // A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
@@ -69,8 +73,13 @@ export function caseWorld(
     ...(evalCase.window
       ? { window: { workstreams: evalCase.window.workstreams, now: evalCase.window.at ?? now } }
       : {}),
+    ...(evalCase.unfit ? { unfit: evalCase.unfit } : {}),
   };
 }
+
+// The ID of a case's waiting connection of `kind`, fixed so its drafts replay.
+export const waitingConnectionId = (kind: string): Ulid =>
+  ulid(0, new Uint8Array(10).fill(kind.charCodeAt(0)));
 
 export type World = {
   // Version 1 of a workstream holding the fixture region's items, then the
@@ -84,6 +93,9 @@ export type World = {
   // A window chat's overview, as window.overview() reads it, with the items
   // it shows; absent for any other thread.
   overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
+  // A window chat's connections that wait for their options, as its module
+  // offers them; absent when none waits.
+  waiting?: Waiting;
   // Each region item as its source holds it, for the judge, with what its
   // fixture says of it, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -162,6 +174,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   };
 
   const window = input.window;
+  const waiting = window ? await waitingIn(fixtures, input.unfit ?? {}, window.now) : null;
   return {
     region,
     reader,
@@ -171,6 +184,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     ...(window
       ? { overview: async () => windowOverview(fixtures, connections, window, records) }
       : {}),
+    ...(waiting ? { waiting } : {}),
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
@@ -215,6 +229,50 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
     find: async (query, limit) =>
       findThreads(threads, (thread) => said.get(thread.id) ?? "", sets, query, limit),
   };
+}
+
+// The case's waiting connections, each its kind's fixture connection with
+// the options the case gives, as the server builds them (decision 0051):
+// why each waits is what opening it says, and its preview is read through
+// the fixture's stand-in.
+async function waitingIn(
+  fixtures: Fixtures,
+  unfit: Readonly<Record<string, Record<string, unknown>>>,
+  now: Instant,
+): Promise<Waiting | null> {
+  const via = { kept: true, log: () => {}, now: () => now };
+  const waiting = await Promise.all(
+    Object.entries(unfit).map(async ([kind, options]) => {
+      const declaration = fixtures.get(kind)?.declaration;
+      if (!declaration) throw new Error(`no ${kind} fixture waits for its options`);
+      const id = waitingConnectionId(kind);
+      const connection = {
+        ...declaration.fixture.connection(),
+        id,
+        number: 1,
+        prefix: kind,
+        secret: null,
+        options,
+      };
+      const why = await declaration.fixture.open(connection, via).then(
+        (opened) => {
+          opened.close?.();
+          throw new Error(`the ${kind} fixture opens with the case's options: they fit it`);
+        },
+        (error: unknown) => (error instanceof OptionsUnfit ? error.message : Promise.reject(error)),
+      );
+      return {
+        id,
+        kind,
+        source: declaration.name,
+        why,
+        options,
+        validator: declaration.options,
+        preview: async () => (await declaration.fixture.preview?.(connection, via)) ?? [],
+      };
+    }),
+  );
+  return waitingOf(waiting);
 }
 
 // The ID of a window chat case's `i`th workstream.

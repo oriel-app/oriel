@@ -106,8 +106,26 @@ export function declaredFields(read: string, fields: ResultFields): string {
 
 export type Cell = string | number | boolean | null;
 
+// A waiting connection's preview (decision 0051): what its connector reads
+// live from its source for the agent to draft its options, as tables of
+// text, such as a tab's cells under their column letters with its headers
+// as the first row, or a workspace's channels. Its rows aren't items, so
+// nothing in it can be cited or added to a workstream. Oriel shows it
+// unasked, as its own block, whenever a run reads it.
+export const maxPreviewRows = 30;
+export const maxPreviewTables = 10;
+export type PreviewTable = { name: string; columns: string[]; rows: (string | null)[][] };
+export const previewTable: Validator<PreviewTable> = object({
+  name: string,
+  columns: array(string),
+  rows: array(array(union(string, literal(null)))),
+});
+// The read a preview block came from, as a spec: never the agent's to ask
+// for, so `show()` takes none.
+export type PreviewSpec = { read: string; args?: unknown[]; form: "preview" };
+
 export type Block = {
-  spec: BlockSpec;
+  spec: BlockSpec | PreviewSpec;
   // Where it came from, in plain words: Oriel's, never the agent's.
   caption: string;
   // How many rows the read gave that the block doesn't show.
@@ -119,6 +137,7 @@ export type Block = {
   // `columns`: the declared labels of the fields it shows.
   | { form: "table"; columns: string[]; rows: Cell[][] }
   | { form: "rows"; items: ItemId[] }
+  | { form: "preview"; tables: PreviewTable[] }
 );
 
 // A block as Oriel built it, as it is stored and read back: its spec,
@@ -145,7 +164,41 @@ export const builtBlock: Validator<Block> = union(
     form: literal("rows"),
     items: array(refine(string, isItemId, "expected an item ID")),
   }),
+  object({
+    spec: object({ read: string, args: optional(array(unknown)), form: literal("preview") }),
+    caption: string,
+    more: number,
+    outside: boolean,
+    form: literal("preview"),
+    tables: array(previewTable),
+  }),
 );
+
+// A preview read's block, built from what the connector read: each table
+// with at most `maxPreviewRows` rows, its cells as text, and how many rows
+// it left out.
+export function previewBlock(
+  read: string,
+  args: readonly unknown[],
+  tables: readonly PreviewTable[],
+): Block {
+  const shown = tables.slice(0, maxPreviewTables);
+  const more =
+    tables.slice(maxPreviewTables).reduce((sum, table) => sum + table.rows.length, 0) +
+    shown.reduce((sum, table) => sum + Math.max(table.rows.length - maxPreviewRows, 0), 0);
+  return {
+    spec: { read, ...(args.length ? { args: [...args] } : {}), form: "preview" },
+    caption: "Read by Oriel from the source, for the agent to draft how Oriel reads it",
+    more,
+    outside: true,
+    form: "preview",
+    tables: shown.map((table) => ({
+      name: table.name,
+      columns: [...table.columns],
+      rows: table.rows.slice(0, maxPreviewRows).map((row) => [...row]),
+    })),
+  };
+}
 
 // A read's arguments as a key: trailing missing ones don't count, as the
 // guest drops them.
