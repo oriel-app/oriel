@@ -4,8 +4,9 @@
 // Browse, filtered to that slice. Leaving it marks what it showed as seen.
 import type { OverviewSection } from "@oriel/core/overview";
 import { type Effect, errorOf, get, post, type Replied, report, undoing } from "./http.ts";
+import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
-import { type Held, type Hold, holding, letGo, notHeld, undoMs } from "./undos.ts";
+import { type Held, type Hold, hold, notHeld, restart, runsOut } from "./undos.ts";
 import type { GroupingId, OverviewView, Undoable, WorkstreamSummary } from "./view.ts";
 
 export type OverviewModel = {
@@ -91,7 +92,7 @@ export function updateOverview(model: OverviewModel, msg: OverviewMsg): [Overvie
     case "undoClicked": {
       const made = model.made.find((each) => each.key === msg.key);
       if (!made?.workstream.undo || made.undoing) return [model, []];
-      const [released, restarts] = letGoOf(model, "focus");
+      const [released, restarts] = hold(model, "focus", false, again);
       return [
         {
           ...released,
@@ -102,30 +103,24 @@ export function updateOverview(model: OverviewModel, msg: OverviewMsg): [Overvie
       ];
     }
     case "undoHeld":
-      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
-      return letGoOf(model, msg.by);
+      return hold(model, msg.by, msg.held, again);
     case "undoExpired":
-      if (msg.countdown !== model.countdown || holding(model.held)) return [model, []];
+      if (!runsOut(model, msg.countdown)) return [model, []];
       return [{ ...model, made: model.made.filter((each) => each.undoing) }, []];
     case "failedDismissed":
       return [{ ...model, failed: null }, []];
   }
 }
 
-const expiry = (countdown: number): Effect => ({
-  type: "after",
-  ms: undoMs,
-  msg: { type: "overview", msg: { type: "undoExpired", countdown } },
+const expired = (countdown: number): Msg => ({
+  type: "overview",
+  msg: { type: "undoExpired", countdown },
 });
 
 // Once neither pointer nor keyboard holds the notes, they get their full
 // time again.
-function letGoOf(model: OverviewModel, by: Hold): [OverviewModel, Effect[]] {
-  const [held, restart] = letGo(model.held, by);
-  if (!restart || model.made.length === 0) return [{ ...model, held }, []];
-  const countdown = model.countdown + 1;
-  return [{ ...model, held, countdown }, [expiry(countdown)]];
-}
+const again = (model: OverviewModel): [OverviewModel, Effect[]] =>
+  model.made.length === 0 ? [model, []] : restart(model, expired);
 
 // Make a workstream answered: the workstream shows with its Undo, which
 // starts to run out, and the overview loads again, its counts with it. Its
@@ -135,8 +130,7 @@ export function madeReplied(model: OverviewModel, msg: Replied): [OverviewModel,
   if (tag.kind === "overviewMade") {
     if (!msg.ok) return [{ ...model, making: null, failed: errorOf(msg.body) }, []];
     const workstream = msg.body as Undoable<WorkstreamSummary>;
-    const countdown = model.countdown + 1;
-    return [
+    const [counted, expiry] = restart(
       {
         ...model,
         making: null,
@@ -144,8 +138,11 @@ export function madeReplied(model: OverviewModel, msg: Replied): [OverviewModel,
           ...model.made.filter((each) => each.key !== tag.key),
           { key: tag.key, workstream, undoing: false },
         ],
-        countdown,
       },
+      expired,
+    );
+    return [
+      counted,
       [
         loadOverview,
         report({
@@ -153,7 +150,7 @@ export function madeReplied(model: OverviewModel, msg: Replied): [OverviewModel,
           workstreamId: workstream.id,
           grouping: tag.grouping,
         }),
-        expiry(countdown),
+        ...expiry,
       ],
     ];
   }

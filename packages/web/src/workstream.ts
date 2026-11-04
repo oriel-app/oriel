@@ -3,7 +3,8 @@
 // removed here, each removal undoable for a few seconds.
 import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
-import { type Held, type Hold, holding, letGo as release, notHeld, undoMs } from "./undos.ts";
+import type { Msg } from "./root.ts";
+import { expiry, type Held, type Hold, hold, holding, notHeld, undoMs } from "./undos.ts";
 import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
 
 export { undoMs };
@@ -107,21 +108,15 @@ export function updateWorkstream(
       if (!undone?.undo) return [model, []];
       // Its Undo goes, and with it, maybe without a word, the focus that held
       // the rest: the keyboard lets go of them. A pointer still on them holds.
-      const [held, rest, restarts] = letGo(
-        model,
-        "focus",
-        model.removals.filter((each) => each !== undone),
-      );
+      const rest = model.removals.filter((each) => each !== undone);
+      const [released, restarts] = hold({ ...model, removals: rest }, "focus", false, again);
       return [
-        { ...model, held, removals: rest, notice: null },
+        { ...released, notice: null },
         [undoing(undone.undo, { kind: "restored", id: model.id }), ...restarts],
       ];
     }
-    case "undoHeld": {
-      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
-      const [held, removals, restarts] = letGo(model, msg.by, model.removals);
-      return [{ ...model, held, removals }, restarts];
-    }
+    case "undoHeld":
+      return hold(model, msg.by, msg.held, again);
     case "undoExpired": {
       if (msg.workstreamId !== model.id || holding(model.held)) return [model, []];
       const removals = model.removals.filter(
@@ -165,23 +160,16 @@ const removal = (workstreamId: string, id: string): Effect =>
     { kind: "workstreamChanged", id: workstreamId },
   );
 
-const expiry = (workstreamId: string, { version, countdown }: Removal): Effect => ({
-  type: "after",
-  ms: undoMs,
-  msg: { type: "workstream", msg: { type: "undoExpired", workstreamId, version, countdown } },
+const expired = (workstreamId: string, { version, countdown }: Removal): Msg => ({
+  type: "workstream",
+  msg: { type: "undoExpired", workstreamId, version, countdown },
 });
 
 // Once neither pointer nor keyboard holds them, every removal held gets its
 // full time again.
-function letGo(
-  model: WorkstreamModel,
-  by: Hold,
-  removals: readonly Removal[],
-): [Held, Removal[], Effect[]] {
-  const [held, restart] = release(model.held, by);
-  if (!restart) return [held, [...removals], []];
-  const restarted = removals.map((each) => ({ ...each, countdown: each.countdown + 1 }));
-  return [held, restarted, restarted.map((each) => expiry(model.id, each))];
+function again(model: WorkstreamModel): [WorkstreamModel, Effect[]] {
+  const removals = model.removals.map((each) => ({ ...each, countdown: each.countdown + 1 }));
+  return [{ ...model, removals }, removals.map((each) => expiry(expired(model.id, each)))];
 }
 
 // The server says what can be undone: only an item the window still has can
@@ -241,7 +229,7 @@ export function workstreamReplied(
           removing: rest,
           removals: undo ? [...model.removals, undo] : model.removals,
         },
-        [...next, ...(undo ? [expiry(model.id, undo)] : [])],
+        [...next, ...(undo ? [expiry(expired(model.id, undo))] : [])],
       ];
     }
     // The undo landed: the workstream, as it is now, loads again.

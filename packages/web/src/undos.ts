@@ -1,5 +1,7 @@
 // What every Undo note in the window's stack shares (OA-142): how long one
 // shows while the user isn't on the stack, and what holds it meanwhile.
+import type { Effect } from "./http.ts";
+import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 
 // A note in the stack (undo-stack.tsx): what was done, and its Undo.
@@ -35,12 +37,40 @@ export const notHeld: Held = { pointer: false, focus: false };
 
 export const holding = (held: Held): boolean => held.pointer || held.focus;
 
-// Letting go by `by`: the hold left, and whether the notes it held each get
-// their full time again, which they do once nothing holds them.
-export function letGo(held: Held, by: Hold): [Held, boolean] {
-  const left = { ...held, [by]: false };
-  return [left, holding(held) && !holding(left)];
+// The countdown every Undo note runs on: what holds the notes, and the times
+// their countdown started, of which only the latest one's end hides them.
+export type Counting = { held: Held; countdown: number };
+
+// A countdown's full time from now, ending with `msg`.
+export const expiry = (msg: Msg): Effect => ({ type: "after", ms: undoMs, msg });
+
+// The notes' countdown, started again with their full time: only the end of
+// this one, which `expired` says, hides them.
+export function restart<M extends Counting>(
+  model: M,
+  expired: (countdown: number) => Msg,
+): [M, Effect[]] {
+  const countdown = model.countdown + 1;
+  return [{ ...model, countdown }, [expiry(expired(countdown))]];
 }
+
+// The pointer or keyboard taking hold of the notes, by `by`, or letting go.
+// Once nothing holds them, `restarted` gives those still showing their full
+// time again.
+export function hold<M extends { held: Held }>(
+  model: M,
+  by: Hold,
+  held: boolean,
+  restarted: (model: M) => [M, Effect[]],
+): [M, Effect[]] {
+  const next = { ...model, held: { ...model.held, [by]: held } };
+  return holding(model.held) && !holding(next.held) ? restarted(next) : [next, []];
+}
+
+// Whether the countdown that ended hides the notes: only the latest does,
+// and only while nothing holds them.
+export const runsOut = (model: Counting, countdown: number): boolean =>
+  countdown === model.countdown && !holding(model.held);
 
 // The note ⌘Z or Ctrl+Z undoes: the newest, at the bottom, that can be undone.
 export const latestNote = <T extends { onUndo: unknown }>(notes: readonly T[]): T | null =>
