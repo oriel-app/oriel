@@ -157,6 +157,8 @@ export type TestOptions = {
   every?: AppOptions["every"];
   // Oriel's own clients of sources, such as Google's.
   clients?: AppOptions["clients"];
+  // What Noticed's pass runs on (decision 0052); nothing, when absent.
+  noticer?: AppOptions["noticer"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -216,6 +218,8 @@ export async function testApp(
     ...(options.setup ? { setup: options.setup } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
+    // No pass runs unless a test gives what it runs on.
+    noticer: options.noticer ?? (async () => null),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });
   t.after(() => app.close());

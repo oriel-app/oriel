@@ -1,0 +1,161 @@
+{
+  "id": "mixed-four",
+  "split": "train",
+  "group": "mixed",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    },
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    },
+    {
+      "name": "Localisation",
+      "epic": "jira:SYN-6"
+    },
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-4",
+      "daysAgo": 24
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-9",
+      "append": "Comment by Esme Whitlock: Blocked waiting on the port authority's deck-plan API. Nobody has chased them since early October, and the trailer pricing launch depends on it."
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-104",
+      "estimate": 3
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-21",
+      "from": 2,
+      "to": 5,
+      "daysAgo": 6
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-104",
+      "from": 3,
+      "to": 8,
+      "daysAgo": 4
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-92",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 3
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-57",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 2
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-104",
+      "append": "Comment by Greta Lindqvist: 3-D Secure turned out to need a whole new challenge flow from the bank's SDK. This is much bigger than we planned, and the checkout release date is at risk."
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-61",
+      "daysAgo": 6
+    },
+    {
+      "op": "message",
+      "author": "Ines Carvalho",
+      "text": "Passengers without the app still got no SMS when the 18:00 sailing was cancelled yesterday. SYN-61 doesn't seem to be working in production, support took forty calls.",
+      "names": ["jira:SYN-61"],
+      "daysAgo": 1
+    },
+    {
+      "op": "new",
+      "key": "SYN-200",
+      "title": "Board foot passengers by name when the scanner is down",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "Requested by the port operator last week: crew must be able to board foot passengers by name from the manifest when the handset scanner fails. New work, not in the original plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-201",
+      "title": "Boarding: audit log of manual overrides",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "The port operator also wants every manual boarding override logged for their safety audit. New requirement.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-202",
+      "title": "Boarding: second scanner model for the winter ferry",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "The winter ferry uses a different handset model; passes must scan on both. Not planned before.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-203",
+      "title": "Boarding: accessibility assistance flag on the pass",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "Show when a passenger booked assistance so crew can help at the ramp. Raised by the operator.",
+      "daysAgo": 3
+    },
+    {
+      "op": "join",
+      "items": ["jira:SYN-200", "jira:SYN-201", "jira:SYN-202", "jira:SYN-203"],
+      "epic": "jira:SYN-2",
+      "daysAgo": 2
+    },
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-6",
+      "daysAgo": 30
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-6",
+      "append": "Comment by Amara Okafor: Paused on purpose until the January planning. We agreed at the roadmap review to pick localisation up after the winter timetable ships; nothing to do here until then."
+    }
+  ],
+  "expect": {
+    "find": [
+      "stalled:@Vehicles",
+      "drift:@Checkout",
+      "contradicted:jira:SYN-61",
+      "scope:jira:SYN-2"
+    ],
+    "avoid": ["stalled:@Localisation"]
+  },
+  "about": "Four true insights of four kinds, and a decoy."
+}

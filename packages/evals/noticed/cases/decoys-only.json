@@ -1,0 +1,86 @@
+{
+  "id": "decoys-only",
+  "split": "train",
+  "group": "decoys",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    },
+    {
+      "name": "Localisation",
+      "epic": "jira:SYN-6"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-6",
+      "daysAgo": 30
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-6",
+      "append": "Comment by Amara Okafor: Paused on purpose until the January planning. We agreed at the roadmap review to pick localisation up after the winter timetable ships; nothing to do here until then."
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-19",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-52",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-59",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-19",
+      "append": "Comment by Bastian Holm: Re-pointed every Boarding story onto the team's new scale (one point is now half a day). Same work as before, no change in scope or dates."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-52",
+      "append": "Comment by Bastian Holm: Re-pointed onto the new scale, as agreed in the retro. No new work."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-59",
+      "append": "Comment by Bastian Holm: Re-pointed onto the new scale. No new work."
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-90",
+      "daysAgo": 4
+    },
+    {
+      "op": "message",
+      "author": "Bastian Holm",
+      "text": "Thanks everyone for shipping SYN-90! Crew say the wallet passes scan fine at the linkspan 🎉",
+      "names": ["jira:SYN-90"],
+      "daysAgo": 2
+    }
+  ],
+  "expect": {
+    "find": [],
+    "avoid": ["stalled:@Localisation", "drift:@Boarding", "contradicted:jira:SYN-90"]
+  },
+  "about": "Every planted signal is explained away by its own items."
+}

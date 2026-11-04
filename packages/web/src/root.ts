@@ -76,10 +76,12 @@ import {
 import {
   initOverview,
   leaving as left,
+  loadNoticed,
   loadOverview,
   type OverviewModel,
   type OverviewMsg,
   madeReplied,
+  noticedReplied,
   overviewReplied,
   updateOverview,
 } from "./overview.ts";
@@ -290,7 +292,7 @@ const workspaceChanged = (model: Model): Effect[] => [
   loadThreads,
   loadWorkstreams,
   ...(model.route.page === "workstream" ? reloadShown(model) : []),
-  ...(model.route.page === "overview" ? [loadOverview] : []),
+  ...(model.route.page === "overview" ? [loadOverview, loadNoticed] : []),
   // The first run's overview ends with the first workstream made.
   ...(model.setup.view?.firstRun?.firstRun ? [loadSetup] : []),
   // A thread shown whose chips name a thread, a change set or a workstream,
@@ -395,7 +397,9 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     case "overview": {
       const [overview, effects] = initOverview();
       // What it showed until now stays on screen while it loads again.
-      const kept = model.overview?.view ? { ...overview, view: model.overview.view } : overview;
+      const kept = model.overview?.view
+        ? { ...overview, view: model.overview.view, noticed: model.overview.noticed }
+        : overview;
       return [
         { ...base, overview: kept },
         [...leaving, ...effects, loadWindowChat, ...lists, ...watching],
@@ -785,6 +789,12 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "overview":
       if (model.overview === null) return [model, []];
       return [{ ...model, overview: overviewReplied(model.overview, msg) }, []];
+    case "noticed":
+    case "noticedChanged": {
+      if (model.overview === null) return [model, []];
+      const [overview, effects] = noticedReplied(model.overview, msg);
+      return [{ ...model, overview }, effects];
+    }
     // A workstream made from the overview, or that undone: the sidebar's
     // list shows it, or no longer does.
     case "overviewMade":

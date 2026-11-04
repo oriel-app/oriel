@@ -5,6 +5,7 @@
 // Source text (titles, content) is always text here, never HTML.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { ReviewTable } from "@oriel/core/connect";
+import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
@@ -466,6 +467,46 @@ export type BlockView = { caption: string; more: number; outside: boolean } & (
   // options (decision 0051): its source's cells as text, never items.
   | { form: "preview"; tables: { name: string; columns: string[]; rows: (string | null)[][] }[] }
 );
+
+// Noticed (decision 0052): what Oriel found in the window
+// unasked; its subject is core's `SignalSubject`. A card is Oriel's signal, its headline, rule and block Oriel's,
+// with one checked line from the model on why it may matter.
+export type NoticedSubjectView = SignalSubject;
+
+export type NoticedCardView = {
+  signal: string;
+  kind: SignalKind;
+  subject: NoticedSubjectView;
+  headline: string;
+  rule: string;
+  // The model's line, checked by Oriel; null when it had none that passed.
+  why: string | null;
+  // Words from one of the signal's items, found there word for word.
+  quote: { item: string; text: string } | null;
+  block: BlockView | null;
+  // Its pin's ID, once pinned.
+  pinned: string | null;
+};
+
+// A pin (decision 0030): a block's read, rerun on each look with no model.
+// Null when its read names nothing there now, as a workstream since deleted.
+export type PinView = { id: string; block: BlockView | null };
+
+export type NoticedView = {
+  // "running" while a pass is under way, with the last pass's cards that
+  // still hold; "quiet" when Oriel found nothing to look at, so no pass ran.
+  status: "ready" | "running" | "quiet" | "no-ai" | "failed";
+  cards: NoticedCardView[];
+  pins: PinView[];
+  chips: Chips;
+  // When the cards' pass ran, and on which model.
+  foundAt: string | null;
+  model: string | null;
+  // What dismissals taught, in Oriel's words, such as "Shown less: stalled
+  // workstreams, after 3 dismissals".
+  taught: string[];
+  problem: string | null;
+};
 
 // A sketch under the agent's reply (decision 0033): the agent's HTML, which
 // the page frames from `src` on the sketch origin, in a sandboxed frame

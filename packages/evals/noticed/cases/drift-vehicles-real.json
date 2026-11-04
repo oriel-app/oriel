@@ -1,0 +1,74 @@
+{
+  "id": "drift-vehicles-real",
+  "split": "test",
+  "group": "drift",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    },
+    {
+      "name": "Offline",
+      "epic": "jira:SYN-96"
+    }
+  ],
+  "plants": [
+    {
+      "op": "estimate",
+      "item": "jira:SYN-25",
+      "from": 8,
+      "to": 13,
+      "daysAgo": 5
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-42",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 4
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-89",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 3
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-25",
+      "append": "Comment by Yuting: Finance now wants a credit check on every account customer before they can book freight. That's a whole approval step we hadn't planned, and it pushes the freight launch."
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-100",
+      "from": 3,
+      "to": 8,
+      "daysAgo": 4
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-103",
+      "from": 3,
+      "to": 5,
+      "daysAgo": 4
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-100",
+      "append": "Comment by Esme Whitlock: Re-estimated in the team's calibration session; the work itself hasn't changed and the dates hold."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-103",
+      "append": "Comment by Esme Whitlock: Calibration re-estimate, same work."
+    }
+  ],
+  "expect": {
+    "find": ["drift:@Vehicles"],
+    "avoid": ["drift:@Offline"]
+  },
+  "about": "Estimates rose for a new requirement in one workstream, and by calibration in another."
+}

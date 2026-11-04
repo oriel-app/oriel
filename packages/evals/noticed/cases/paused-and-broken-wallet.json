@@ -1,0 +1,46 @@
+{
+  "id": "paused-and-broken-wallet",
+  "split": "train",
+  "group": "decoys",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Localisation",
+      "epic": "jira:SYN-6"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-6",
+      "daysAgo": 30
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-6",
+      "append": "Comment by Amara Okafor: Paused on purpose until the January planning. We agreed at the roadmap review to pick localisation up after the winter timetable ships; nothing to do here until then."
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-87",
+      "daysAgo": 5
+    },
+    {
+      "op": "message",
+      "author": "Dara Nikolaidis",
+      "text": "Phone wallet payments are failing on Android for everyone since this morning's release. SYN-87 is marked done but customers can't pay with a wallet at all.",
+      "names": ["jira:SYN-87"],
+      "daysAgo": 1
+    }
+  ],
+  "expect": {
+    "find": ["contradicted:jira:SYN-87"],
+    "avoid": ["stalled:@Localisation"]
+  },
+  "about": "A stall paused on purpose beside a done story chat says is broken."
+}

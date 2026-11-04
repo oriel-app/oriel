@@ -13,6 +13,8 @@ export * from "./ids.ts";
 export * from "./intents.ts";
 export * from "./namespace.ts";
 export * from "./open.ts";
+export * from "./noticed.ts";
+export * from "./quote.ts";
 export * from "./ops.ts";
 export * from "./oriel-reads.ts";
 export * from "./overview.ts";

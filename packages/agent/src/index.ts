@@ -64,3 +64,11 @@ export {
   type Titler,
   type TitlerOptions,
 } from "./title.ts";
+export {
+  type Evidence,
+  type NoticedOptions,
+  noticedPayload,
+  noticedPrompt,
+  type NoticedResult,
+  runNoticed,
+} from "./noticed.ts";

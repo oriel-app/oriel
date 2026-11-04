@@ -39,6 +39,7 @@ import { ConnectCards } from "./connect-steps.tsx";
 import { openConnections } from "./connections.ts";
 import { StatusBar } from "./window-page.tsx";
 import { AskBar } from "./window-chat-view.tsx";
+import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
 import type { WindowChatModel } from "./window-chat.ts";
 
 export function OverviewPage(props: {
@@ -92,6 +93,12 @@ export function OverviewPage(props: {
         dispatch={dispatch}
       />
       <ConnectCards connections={connections} connectors={connectors} dispatch={dispatch} />
+      <NoticedStrip
+        view={model.noticed}
+        busy={model.noticing}
+        problem={model.noticedProblem}
+        dispatch={dispatch}
+      />
       {view === null ? (
         model.problem === null ? (
           <p class="overview-loading">Loading the overview…</p>
@@ -112,7 +119,11 @@ export function OverviewPage(props: {
           <div class="overview-main">
             <Unopened view={view} dispatch={dispatch} />
             <Headlines view={view} dispatch={dispatch} />
-            <PinnedSlot />
+            <PinnedStrip
+              pins={model.noticed?.pins ?? []}
+              busy={model.noticing}
+              dispatch={dispatch}
+            />
             <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
           </div>
           <div class="overview-side">
@@ -189,10 +200,6 @@ function FirstRunLine(props: {
 
 // Where answers the user pinned go, under the headlines (decision 0030,
 // a later story). Empty until then.
-function PinnedSlot() {
-  return null;
-}
-
 // The window's two views, side by side at the top of each.
 export function ViewTabs(props: {
   current: "overview" | "browse";

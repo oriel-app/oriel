@@ -56,6 +56,7 @@ import { memorySecrets } from "../packages/server/src/connection.ts";
 import { connectionsOf } from "../packages/server/src/connections.ts";
 import { indexStore, open as openDb } from "../packages/db/src/index.ts";
 import { fixtureApi, loadSlackFixture } from "../packages/slack/src/fixture.ts";
+import { replayNoticer } from "./noticed/replay.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import {
   fillJira as fillFirstRun,
@@ -424,6 +425,29 @@ const fillJira = async (page: Page, token: string) => {
   await page.locator('input[name="token"]').fill(token);
 };
 const chatty = (await writing({ mode: "fixture" })).serving;
+// Noticed (decision 0052): SYN and its Slack with three epics as
+// workstreams. Its pass replays one Sonnet 5.5 wrote on this same
+// window (scripts/noticed/record-pass.ts), so no shot calls a model. `then`
+// acts on it once the pass is done, as pinning a card.
+const noticing = (then?: (on: Serving) => Promise<void>) => async (): Promise<Serving> => {
+  const on = await start(0, {
+    db: ":memory:",
+    sources: { jira: { mode: "fixture" }, slack: { mode: "fixture" } },
+    agent: (deps) => scriptedAgent(deps, planning),
+    noticer: async () => ({ provider: replayNoticer(), model: "claude-sonnet-5-5" }),
+  });
+  for (const cluster of ["10001", "10002", "10003"])
+    await call(on, "POST", "/api/workstreams", { kind: "cluster", grouping: "epic", cluster });
+  // The pass runs in the background, after the start's sync and each
+  // curation; a look never starts one.
+  await on.app.settled();
+  await then?.(on);
+  return on;
+};
+const noticedShown = async (page: Page) => {
+  await page.locator('main.overview[aria-busy="false"] .noticed-card').first().waitFor();
+};
+
 // A server whose threads are each rejected for real once, in a shot.
 const answering = (await writing()).serving;
 
@@ -1230,6 +1254,44 @@ const scenes: Scene[] = [
   // folder beside Jira; and with Slack beside Jira.
   { name: "overview", path: "/", act: overviewShown },
   { name: "overview-slack", path: "/", on: chatty, act: overviewShown },
+  // Noticed: cards Oriel found unasked; one pinned, as a saved read; one
+  // asked about, which opens the window chat on it by ID; one dismissed.
+  { name: "noticed", path: "/", make: noticing(), act: noticedShown },
+  {
+    name: "noticed-pinned",
+    path: "/",
+    make: noticing((on) =>
+      call(on, "POST", "/api/noticed/pin", { signal: "contradicted:jira:SYN-47" }).then(() => {}),
+    ),
+    act: async (page) => {
+      await noticedShown(page);
+      await page.locator(".pinned-block").first().waitFor();
+    },
+  },
+  {
+    name: "noticed-ask",
+    path: "/",
+    window: true,
+    make: noticing(),
+    act: async (page) => {
+      await noticedShown(page);
+      await page
+        .locator(".noticed-card")
+        .first()
+        .getByRole("button", { name: "Ask about this" })
+        .click();
+      // The question as sent, by ID; the dev agent's answer isn't the point.
+      await page.locator(".window-chat").getByText("Oriel noticed").first().waitFor();
+    },
+  },
+  {
+    name: "noticed-dismissed",
+    path: "/",
+    make: noticing((on) =>
+      call(on, "POST", "/api/noticed/dismiss", { signal: "overloaded:amara" }).then(() => {}),
+    ),
+    act: noticedShown,
+  },
   // The window chat (decision 0030): the ask bar with questions to start
   // from, then an answer with each form of block, beside the overview or,
   // on a narrow window, as a sheet. Each starts a fresh chat.

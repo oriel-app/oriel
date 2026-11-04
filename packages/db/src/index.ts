@@ -7,3 +7,4 @@ export * from "./runs.ts";
 export * from "./telemetry.ts";
 export * from "./threads.ts";
 export * from "./workspaces.ts";
+export * from "./noticed.ts";

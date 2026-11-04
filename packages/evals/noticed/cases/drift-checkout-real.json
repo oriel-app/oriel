@@ -1,0 +1,98 @@
+{
+  "id": "drift-checkout-real",
+  "split": "train",
+  "group": "drift",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "set",
+      "item": "jira:SYN-104",
+      "estimate": 3
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-21",
+      "from": 2,
+      "to": 5,
+      "daysAgo": 6
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-104",
+      "from": 3,
+      "to": 8,
+      "daysAgo": 4
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-92",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 3
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-57",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 2
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-104",
+      "append": "Comment by Greta Lindqvist: 3-D Secure turned out to need a whole new challenge flow from the bank's SDK. This is much bigger than we planned, and the checkout release date is at risk."
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-19",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-52",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-59",
+      "from": 5,
+      "to": 8,
+      "daysAgo": 5
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-19",
+      "append": "Comment by Bastian Holm: Re-pointed every Boarding story onto the team's new scale (one point is now half a day). Same work as before, no change in scope or dates."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-52",
+      "append": "Comment by Bastian Holm: Re-pointed onto the new scale, as agreed in the retro. No new work."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-59",
+      "append": "Comment by Bastian Holm: Re-pointed onto the new scale. No new work."
+    }
+  ],
+  "expect": {
+    "find": ["drift:@Checkout"],
+    "avoid": ["drift:@Boarding"]
+  },
+  "about": "Estimates rose for real in one workstream, and were re-pointed in another."
+}

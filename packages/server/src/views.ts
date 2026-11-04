@@ -615,6 +615,9 @@ export function views(deps: ViewDeps) {
   return {
     workstreamSummary,
     members,
+    // A block outside any thread, as the overview shows a Noticed card's or
+    // a pin's.
+    block: (built: Block) => blockView(built, new Set()),
 
     workstreams(workspaceId: Ulid): WorkstreamSummary[] {
       return workstreams
