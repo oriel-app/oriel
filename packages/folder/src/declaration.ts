@@ -1,6 +1,7 @@
 import type { SourceDeclaration } from "@oriel/core";
 import { folderItemDoc, folderKeyShape, folderPanel, folderPresentation } from "./attrs.ts";
 import { folderDeclaredFixture } from "./declared-fixture.ts";
+import { openFolder } from "./open-connection.ts";
 import { folderOverview } from "./overview.ts";
 
 // The folder as it declares itself to the composition root: read-only, so it
@@ -18,5 +19,6 @@ export const folderDeclaration = {
   overview: folderOverview,
   // Its item doc only.
   budget: 250,
+  open: openFolder,
   fixture: folderDeclaredFixture,
 } satisfies SourceDeclaration;

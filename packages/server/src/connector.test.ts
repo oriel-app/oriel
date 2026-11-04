@@ -91,9 +91,17 @@ const memo = {
   namespace: () => memoNamespace,
   specs: memoSpecs,
   budget: 300,
+  // Nothing here opens a connection of it.
+  open: async () => {
+    throw new Error("memo connections don't open here");
+  },
   // One memo, which nothing here reads: packages/evals tests a declared
   // fixture.
   fixture: {
+    connection: () => ({ identity: "https://memo.example", options: {} }),
+    open: async () => {
+      throw new Error("memo connections don't open here");
+    },
     load: () => ({
       edits: 0,
       firstEdit: null,
@@ -233,7 +241,7 @@ test("a connector declared only beside the others round-trips its IDs through th
   const events: TelemetryEvent[] = [];
   const sets = changeSets({
     db,
-    writerConfig: {},
+    writerConfig: [],
     readers: {
       memo: {
         current: async (memoId: ItemId, fields: readonly string[]) => {

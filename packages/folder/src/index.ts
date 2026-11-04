@@ -31,6 +31,7 @@ export {
   parseFolderFixture,
 } from "./fixture.ts";
 export { openChecked } from "./nofollow.ts";
+export { folderProblem, openFolder } from "./open-connection.ts";
 export {
   type FolderPrefix,
   type FolderSource,

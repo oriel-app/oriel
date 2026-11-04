@@ -27,6 +27,7 @@ export {
 export { connectSlack, slackPerson, type SlackWorkspace } from "./connect.ts";
 export { slackDeclaration } from "./declaration.ts";
 export { slackDeclaredFixture } from "./declared-fixture.ts";
+export { type OpenedSlack, openSlack, type SlackWrites } from "./open-connection.ts";
 export { type SlackScope, slackRecognizer } from "./references.ts";
 export { escapeText, isSlackOp, type SlackArgs, type SlackOp, slackOps } from "./ops.ts";
 export { type SlackContext, slackNamespace } from "./namespace.ts";

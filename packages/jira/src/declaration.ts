@@ -3,6 +3,7 @@ import type { SourceDeclaration } from "@oriel/core";
 import { jiraDeclaredFacets, jiraKeyShape, jiraPresentation } from "./attrs.ts";
 import { jiraDeclaredFixture } from "./declared-fixture.ts";
 import { type Estimates, jiraItemDoc, jiraNamespace } from "./namespace.ts";
+import { type JiraWrites, openJira } from "./open-connection.ts";
 import { jiraOverview } from "./overview.ts";
 import { jiraPanel } from "./panel.ts";
 import { type JiraScope, jiraRecognizer } from "./references.ts";
@@ -17,11 +18,17 @@ export const jiraDeclaration = {
   recognizer: jiraRecognizer,
   facets: jiraDeclaredFacets,
   overview: jiraOverview,
-  namespace: (records, estimates: Estimates) =>
-    jiraNamespace(new Map(records.map((record) => [record.id, record.facets.kind])), estimates),
+  // Unconnected, it has nowhere to create a story with no epic, and no
+  // board's estimates to go by.
+  namespace: (records, estimates: Estimates | undefined) =>
+    jiraNamespace(
+      new Map(records.map((record) => [record.id, record.facets.kind])),
+      estimates ?? { none: new Set(), home: null },
+    ),
   specs: jiraSpecs,
   // Its item doc and its namespace: the rules on estimates, epics and the
   // ops' arguments.
   budget: 3_200,
+  open: openJira,
   fixture: jiraDeclaredFixture,
-} satisfies SourceDeclaration<Estimates, JiraScope>;
+} satisfies SourceDeclaration<Estimates | undefined, JiraScope, JiraWrites>;

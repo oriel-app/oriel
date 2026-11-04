@@ -11,10 +11,24 @@ import {
 import type { SlackRecord } from "./attrs.ts";
 import { fixtureApi, loadSlackFixture, type SlackFixture } from "./fixture.ts";
 import type { SlackContext } from "./namespace.ts";
+import { openSlack, type SlackWrites } from "./open-connection.ts";
+import type { SlackScope } from "./references.ts";
 import { slackSource } from "./source.ts";
 
-export const slackDeclaredFixture: SourceFixture<SlackContext> = {
+export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, SlackWrites> = {
   load: () => loaded(loadSlackFixture()),
+  // The channel the user picked there.
+  connection: () => {
+    const fixture = loadSlackFixture();
+    return { identity: fixture.team.url, options: { channels: fixture.picked } };
+  },
+  // Opened as Slack is, through the fixture's Web API in memory, where
+  // change sets post. A test may give its own, to act in it as others do.
+  open: (connection, via) =>
+    openSlack(connection, {
+      ...via,
+      fetch: via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
+    }),
 };
 
 // What people posted in the fixture's picked channels: not replies, joins or

@@ -24,7 +24,9 @@ import {
   type FolderFixture,
   loadFolderFixture,
 } from "./fixture.ts";
-import { folderSource } from "./source.ts";
+import { folderAttrs } from "./attrs.ts";
+import { folderProblem } from "./open-connection.ts";
+import { type FolderPrefix, folderSource } from "./source.ts";
 import { canonicalPath, folderKey, resolveFolder } from "./walk.ts";
 
 // The folder's ID, as the workspace would have given it when the user picked
@@ -41,6 +43,35 @@ export const fixtureFileId = (path: string): ItemId<"folder"> =>
 export const folderDeclaredFixture: SourceFixture = {
   load: () => loaded(loadFolderFixture()),
   everyCase: true,
+  connection: () => ({ identity: fixtureFolderLocation, options: {} }),
+  // Built in a temporary directory after its edits, which closing removes,
+  // and read by the real folder source under the fixture's folder ID.
+  open: async (connection, via) => {
+    const fixture = loadFolderFixture();
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "oriel-fixture-folder-")));
+    const close = () => rmSync(dir, { recursive: true, force: true });
+    try {
+      const built = buildFolder(fixture, dir, fixture.edits.length);
+      const path = await resolveFolder(built.root);
+      return {
+        source: folderSource({
+          folderId: fixtureFolderId,
+          path,
+          prefix: connection.prefix as FolderPrefix,
+          log: via.log,
+        }),
+        attrs: folderAttrs,
+        about: "the folder fixture",
+        scope: undefined,
+        context: () => undefined,
+        problem: folderProblem,
+        close,
+      };
+    } catch (error) {
+      close();
+      throw error;
+    }
+  },
 };
 
 function loaded(fixture: FolderFixture): LoadedFixture {

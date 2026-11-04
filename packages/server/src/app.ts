@@ -1,25 +1,17 @@
-// The composition root: where the adapters' declarations meet the packages
-// that use them. It opens the database, syncs Jira, the connected folder and
-// Slack's picked channels into the index, connects Jira when the user does it
-// from the window, and wires groupings, change sets, bindings, the sandbox and
-// the agent into the JSON routes. Only this file builds change sets, which
-// hold the writers; thread code gets `capture` and nothing else.
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+// The composition root: where the connectors' declarations meet the packages
+// that use them. It opens the database and each connection, through its
+// connector's declaration, and syncs, reads, recognizes and builds
+// namespaces and writers for every one the same way, with no branch per
+// source (decision 0049). It wires groupings, change sets, bindings, the
+// sandbox and the agent into the JSON routes. Only this file builds change
+// sets, which hold the writers; thread code gets `capture` and nothing else.
 import { bindingsFor } from "@oriel/bindings";
+import { ChangeSetError, changeSets, explainConflicts } from "@oriel/changeset";
 import {
-  ChangeSetError,
-  changeSets,
-  explainConflicts,
-  type FieldReader,
-  type WriterConfig,
-} from "@oriel/changeset";
-import {
-  type ActionInput,
   type ChangeSet,
   type Cluster,
   clusterMembers,
-  type Credential,
+  type FieldReader,
   type IndexRecord,
   type Instant,
   instant,
@@ -27,6 +19,8 @@ import {
   type ItemId,
   type Log,
   maxItems,
+  type Opened,
+  type OpenVia,
   parseItemId,
   prefixOf,
   type Reader,
@@ -35,15 +29,14 @@ import {
   type Shown,
   type Sketch,
   type Sandbox,
-  type Source,
-  SourceRefused,
   type SourceKind,
   syncSource,
+  type ToOpen,
   type Ulid,
   ulid,
-  type Validator,
 } from "@oriel/core";
 import {
+  type Connection,
   ensureWorkspace,
   firstWorkspace,
   workstreamStore,
@@ -59,80 +52,27 @@ import {
   telemetryStore,
   threadStore,
 } from "@oriel/db";
-import {
-  basicAuth,
-  checkConnection,
-  fixtureFields,
-  fixtureSource,
-  issueCount,
-  jiraAttrs,
-  type JiraBoards,
-  jiraBoards,
-  JiraFailed,
-  type JiraProject,
-  jiraSource,
-  listProjects,
-  readTransport,
-  loadJiraFixture,
-} from "@oriel/jira";
-import {
-  folderAttrs,
-  type FolderPath,
-  type FolderPrefix,
-  folderSource,
-  resolveFolder,
-} from "@oriel/folder";
-import {
-  connectSlack,
-  fixtureApi,
-  type FixtureWorkspace,
-  slackAttrs,
-  type SlackContext,
-  type SlackScope,
-  slackPerson,
-  type SlackSource,
-  slackSource,
-  webApi,
-  loadSlackFixture,
-} from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
 import {
   byItemId,
   declarationOf,
   itemDocs,
-  namespacesFor,
-  recognizerFor,
+  namespacesOf,
+  recognizerOf,
   sourceKinds,
   sources,
   specs,
 } from "@oriel/sources";
-import type {
-  FolderView,
-  GroupingId,
-  JiraView,
-  OverviewView,
-  SlackView,
-  SourceView,
-  WindowView,
-} from "@oriel/web/view";
+import type { GroupingId, JiraView, OverviewView, SourceView, WindowView } from "@oriel/web/view";
 import type { KeyCheck, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api } from "./api.ts";
-import {
-  type JiraConnection,
-  jiraSite,
-  type LegacyJira,
-  memorySecrets,
-  parsedJiraSecret,
-  parsedLegacy,
-  type Secrets,
-} from "./connection.ts";
-import { type Connections, connectionsOf } from "./connections.ts";
-import { throwawaySite } from "./env.ts";
-import { fixtureIndex } from "./fixture.ts";
+import { memorySecrets, type Secrets } from "./connection.ts";
+import { connectionsOf } from "./connections.ts";
+import { flagged, type JiraMode, type SlackMode } from "./modes.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
@@ -154,41 +94,9 @@ import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
+import { type Opening, windowSources } from "./window-sources.ts";
 
-// How change sets reach a Jira site to write: writer config, from which
-// @oriel/changeset builds the writer. `fetch` is for tests, which answer
-// from memory; the global fetch is used without it.
-export type JiraWrites = {
-  site: string;
-  credential: Credential;
-  project: string;
-  fetch?: typeof fetch;
-};
-
-// Where Jira comes from. The fixture is SYN as `fixtures/jira/` freezes it,
-// read-only unless tests give it a site to write to that holds the same
-// items. Live is a site, read through the API and written to through
-// approved change sets. From the window is live too, once the user connects
-// it there; the connection is kept as connections are, so it's there again
-// the next time the server starts. `legacy` is where it was kept before
-// connections, from which the first start moves it. `anySite`: any Jira
-// Cloud site may be connected, as on the desktop app (decision 0038);
-// otherwise only the throwaway one. `fetch` is for tests, as above.
-export type JiraMode =
-  | { kind: "fixture"; writeTo?: JiraWrites }
-  | ({ kind: "live" } & JiraWrites)
-  | { kind: "window"; legacy?: LegacyJira; anySite?: boolean; fetch?: typeof fetch };
-
-// Where Slack comes from (decision 0021). The fixture is the synthetic
-// workspace in `fixtures/slack/`, with the channel picked there, which change
-// sets post to in memory. Live is the workspace a token is for, reading only
-// the public channels picked by name or ID; one it can't find stops the app
-// from starting. Change sets a person approves post there as the token's
-// person, only in those channels (OA-28).
-export type SlackMode =
-  // Tests may pass the fixture's workspace in, to act in it as others do.
-  | { kind: "fixture"; workspace?: FixtureWorkspace }
-  | { kind: "live"; credential: Credential; channels: string[]; fetch?: typeof fetch };
+export type { JiraMode, SlackMode } from "./modes.ts";
 
 export type AppOptions = {
   // A SQLite file, or ":memory:".
@@ -267,34 +175,18 @@ export type App = {
   close(): Promise<void>;
 };
 
-// Jira's fields while the window has it unconnected: a change set captured
-// before can't be shown until it's connected again.
-const disconnected: FieldReader<"jira"> = {
+// How a change set reads a connection that is live but not open, as one its
+// source turned away at the start: it can't be shown until it's connected
+// again.
+const disconnected = (name: string): FieldReader => ({
   current: async () => {
     throw new ChangeSetError(
       "read-only",
-      "Jira isn't connected now, so Oriel can't show this change. Connect Jira in the window.",
+      `${name} isn't connected now, so Oriel can't show this change. Connect ${name} in the window.`,
     );
   },
   name: async () => null,
-};
-
-// Jira refused the email and API token typed: the help to make a new one
-// stays on screen (OA-125, decision 0038).
-const refusedCredentials =
-  "Jira didn't accept these two together. Check the email is the one you sign in to Jira with. If it is, make a new one (step 2) and paste it here.";
-
-// Why a connection the user typed wasn't kept, in their words.
-const refusals: Record<
-  "refused" | "no-project" | "unexpected" | "unreachable",
-  (project: string) => string
-> = {
-  refused: () => refusedCredentials,
-  "no-project": (project) =>
-    `There's no project ${project} on that site that this account can see.`,
-  unexpected: () => "Jira gave an answer Oriel didn't expect. Try again in a minute.",
-  unreachable: () => "Oriel couldn't reach that address. Is it right?",
-};
+});
 
 export const limits: AgentLimits = {
   maxTurnsPerThread: 100,
@@ -310,13 +202,6 @@ export const limits: AgentLimits = {
   },
   maxMutationsPerChangeSet: 20,
 };
-
-const site = "https://oriel.atlassian.net";
-// How long Jira's search may take to find a write; it is usually seconds.
-const searchLagMs = 10 * 60 * 1000;
-// Whose an item is: each source here is its kind's first connection, whose
-// prefix is the kind.
-const isJira = (id: string): id is ItemId<"jira"> => parseItemId(id)?.prefix === "jira";
 
 export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => instant(new Date()));
@@ -347,152 +232,183 @@ export async function createApp(options: AppOptions): Promise<App> {
     log,
   });
 
-  const mode = options.jira;
-  const fixture = mode.kind === "fixture" ? loadJiraFixture() : null;
-  const transportTo = (to: JiraWrites) =>
-    readTransport({
-      site: to.site,
-      credential: to.credential,
-      ...(to.fetch ? { fetch: to.fetch } : {}),
-    });
-  // What each board estimates in, one answer per connection: the source
-  // refreshes it on each sync, and the writer and the agent's module read it.
-  // With the fixture as the index, nothing syncs the site, so its boards are
-  // found once, at the first write that needs a points field.
-  const boardsOf = (to: JiraWrites) =>
-    jiraBoards({ transport: transportTo(to), projects: [to.project], log });
-  const liveSource = (to: JiraWrites, boards: JiraBoards) =>
-    jiraSource({
-      transport: transportTo(to),
-      site: to.site,
-      projects: [to.project],
-      log,
-      boards,
-    });
-  // Where change sets write, and the source the index syncs. From the
-  // window, both are null until the user connects Jira.
-  const writesTo = (saved: JiraConnection, send?: typeof fetch): JiraWrites => ({
-    site: saved.site,
-    credential: basicAuth(saved.email, saved.token),
-    project: saved.project,
-    ...(send ? { fetch: send } : {}),
+  // Every open connection, by its prefix, with what its connector's `open`
+  // gave it. The server opens each kind's first live connection, for now:
+  // the one a flag makes at start, or one the window made (decision 0049).
+  type Open = { connection: Connection; opened: Opened };
+  const byPrefix = new Map<string, Open>();
+  // In declared order, as the window and a region's module list them.
+  const opens = (): Open[] =>
+    sourceKinds.flatMap((kind) =>
+      [...byPrefix.values()].filter((each) => each.connection.kind === kind),
+    );
+  const openedOf = (kind: SourceKind): Open | null =>
+    [...byPrefix.values()].find((each) => each.connection.kind === kind) ?? null;
+  const declared = (kind: SourceKind) => {
+    const declaration = declarationOf(kind);
+    if (!declaration) throw new Error(`no source declares ${kind}`);
+    return declaration;
+  };
+  // Opens a connection through its connector's declaration, or its
+  // fixture's. A source that keeps no prefix of its own reads its items under
+  // its kind, so it opens only its kind's first connection.
+  const openOne = async (
+    kind: SourceKind,
+    connection: ToOpen,
+    how: { fixture: boolean; kept: boolean; fetch?: typeof fetch | undefined },
+  ): Promise<Opened> => {
+    const declaration = declared(kind);
+    const via: OpenVia = { kept: how.kept, log, now, ...(how.fetch ? { fetch: how.fetch } : {}) };
+    const opened = await (how.fixture
+      ? declaration.fixture.open(connection, via)
+      : declaration.open(connection, via));
+    if ((opened.source.prefix ?? opened.source.kind) !== connection.prefix) {
+      opened.close?.();
+      throw new Error(`${kind} opens only its first connection for now`);
+    }
+    return opened;
+  };
+
+  const flags = flagged(options.jira, options.slack);
+  // The window's routes for each source, which reach connections through
+  // this loop, made below, once a person asks.
+  const windows = windowSources({
+    jira: options.jira,
+    opening: {
+      connections,
+      opened: (kind) => openedOf(kind),
+      synced: (prefix) => synced(prefix),
+      connect: (kind, made, how) => connect(kind, made, how),
+      sync: (kind) => syncAsked(kind),
+    },
+    log,
   });
-  // A connection a flag makes is its kind's first, made at every start; one
-  // made in the window, the first of its kind, with its secret.
-  if (mode.kind !== "window")
-    connections.flagged("jira", mode.kind === "live" ? mode.site : site, {
-      project: mode.kind === "live" ? mode.project : (fixture?.project.key ?? ""),
-    });
-  else if (mode.legacy) await moveLegacy(connections, mode.legacy, log);
-  const saved = mode.kind === "window" ? await savedJira(connections, log) : null;
-  // A site the window may connect: any Jira Cloud site on the desktop app,
-  // else only the throwaway one.
-  const siteAllowed = (at: string | null): at is string =>
-    at !== null && (mode.kind === "window" && mode.anySite === true ? true : at === throwawaySite);
-  let writes: JiraWrites | null =
-    mode.kind === "live"
-      ? { site: mode.site, credential: mode.credential, project: mode.project, fetch: mode.fetch }
-      : mode.kind === "fixture"
-        ? (mode.writeTo ?? null)
-        : saved && writesTo(saved, mode.fetch);
-  // A saved connection Jira no longer takes, as when its token was revoked,
-  // or to a site Oriel doesn't connect to, is dropped, so the window asks for
-  // Jira again. One that can't be reached now is kept.
-  if (mode.kind === "window" && writes) {
-    const check = !siteAllowed(jiraSite(writes.site))
-      ? ("refused" as const)
-      : await checkConnection(transportTo(writes), writes.project).catch(
-          () => "unreachable" as const,
-        );
-    if (check === "refused" || check === "no-project") {
-      log("jira: the saved connection was refused", { check });
-      writes = null;
+  await windows.beforeOpen();
+  for (const kind of sourceKinds) {
+    // A flag's connection is its kind's first, made at every start, and
+    // follows what the flag names. One that can't open stops the start.
+    const flag = flags.find((each) => each.kind === kind);
+    if (flag) {
+      const first = connections.first(kind);
+      const opened = await openOne(
+        kind,
+        {
+          id: first?.id ?? newId(),
+          number: 1,
+          prefix: kind,
+          identity: flag.identity,
+          options: flag.options,
+          secret: flag.secret,
+        },
+        { fixture: flag.fixture, kept: false, fetch: flag.fetch },
+      );
+      const connection = connections.flagged(kind, opened.identity ?? flag.identity, flag.options);
+      byPrefix.set(connection.prefix, { connection, opened });
+      continue;
+    }
+    // One the window made, with its secret, if the window connects its kind.
+    // One that can't open is left shut, so the window asks for it again.
+    const connection = windows.kept(kind) ? connections.first(kind) : null;
+    if (!connection) continue;
+    const secret = await connections.secret(connection);
+    if (!(await windows.vet(connection, secret))) continue;
+    try {
+      const opened = await openOne(
+        kind,
+        { ...connection, secret },
+        { fixture: false, kept: true, fetch: windows.fetch(kind) },
+      );
+      byPrefix.set(connection.prefix, { connection, opened });
+    } catch (error) {
+      log("connections: one couldn't open", {
+        kind,
+        number: connection.number,
+        error: error instanceof Error ? error.message : "",
+      });
     }
   }
-  let boards = writes && boardsOf(writes);
-  let source = fixture
-    ? fixtureSource(fixture, { site, edited: fixture.edits.length })
-    : writes && boards && liveSource(writes, boards);
-  // The fixture is frozen as of its last edit, so its window is built for
+  // A fixture is frozen as of its last change, so the window is built for
   // that instant: the "stuck" rules come out the same on every run.
-  const asOf = fixture ? fixtureIndex(fixture).now : null;
+  const asOf = opens().find((each) => each.opened.frozen)?.opened.frozen ?? null;
 
-  const slack = options.slack ? await slackFrom(options.slack, now, log) : null;
-  if (slack) connections.flagged("slack", slack.scope.workspaceUrl, {});
-  // The folder the user connected, read-only (decision 0019), as its
-  // connection keeps it: the real path its pick resolved to, which every walk
-  // checks again, and the ID every key hashes, so the same folder connected
-  // again gives the same IDs.
-  const folderFrom = (connection: { id: Ulid; number: number; identity: string }) => {
-    const prefix = prefixOf("folder", connection.number) as FolderPrefix;
-    const path = connection.identity as FolderPath;
+  const recordsOf = ({ connection, opened }: Open) =>
+    index.records(workspaceId, connection.prefix, opened.attrs);
+  // Only open connections' records: a server started without one keeps what
+  // an earlier one indexed, which nothing can read now.
+  const records = (): IndexRecord[] => opens().flatMap(recordsOf);
+  const synced = (prefix: string) => {
+    const each = byPrefix.get(prefix);
     return {
-      id: connection.id,
-      number: connection.number,
-      path,
-      prefix,
-      source: folderSource({ folderId: connection.id, path, prefix, log }),
+      items: each ? recordsOf(each).length : 0,
+      syncedAt: index.source(workspaceId, prefix)?.syncedAt ?? null,
     };
   };
-  const stored = connections.first("folder");
-  let folder = stored && folderFrom(stored);
-  const records = (): IndexRecord[] => [
-    ...index.records(workspaceId, "jira", jiraAttrs),
-    ...(folder ? index.records(workspaceId, folder.prefix, folderAttrs) : []),
-    // Slack's records only while it's connected: a server started without it
-    // keeps what an earlier one indexed, which nothing can read now.
-    ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
-  ];
 
-  // Every connected source's recognizer, for what each sync hands it: Jira's
-  // in the project it syncs, once there is one, and Slack's in its
-  // workspace. A message synced before Jira connects names nothing in Jira
+  // Every open connection's recognizer, in its scope, for what each sync
+  // hands it. A message synced before Jira connects names nothing in Jira
   // until Slack syncs again.
-  const recognize = () => {
-    const project = source ? (fixture?.project.key ?? writes?.project) : undefined;
-    return recognizerFor({
-      ...(project ? { jira: { projects: [project] } } : {}),
-      ...(slack ? { slack: slack.scope } : {}),
-    });
-  };
+  const recognize = () =>
+    recognizerOf(opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })));
 
-  // One sync at a time, of any source, through the generic sync worker. Once
-  // each ends, every page watching the workspace hears, as even one that
-  // failed may have kept pages it read; nobody is watching before the turns
-  // start.
+  // One sync at a time, of any connection, through the generic sync worker.
+  // Once each ends, every page watching the workspace hears, as even one
+  // that failed may have kept pages it read; nobody is watching before the
+  // turns start.
   let syncing: Promise<unknown> = Promise.resolve();
   let told = (): void => {};
   // Workstreams following their anchors, as a sync renames them through the
   // dispatcher, made below: the syncs before it catch up once it is.
   let follow = async (): Promise<void> => {};
-  const syncInto = <K extends SourceKind, A>(
-    from: Source<K, A>,
-    attrs: Validator<A>,
+  // The first sync of a connection into this workspace connects it,
+  // whenever that sync is. `announced` counts them, so connecting from the
+  // window can tell whether it was counted so.
+  let announced = 0;
+  const connected = (connection: Pick<Connection, "kind" | "number">) => {
+    announced += 1;
+    emit({
+      name: "source.connected",
+      at: now(),
+      workspaceId,
+      source: connection.kind,
+      later: connection.number > 1,
+    });
+  };
+  // Syncs a connection, and says whether it was its first. A first one
+  // that worked is announced, unless the caller does that once it keeps the
+  // connection.
+  const syncInto = (
+    connection: Pick<Connection, "kind" | "number" | "prefix">,
+    opened: Opened,
     full: boolean,
-    items: readonly { id: ItemId<K>; stableId: string }[] = [],
-  ): Promise<unknown> => {
-    const declared = declarationOf(from.kind);
-    if (!declared) throw new Error(`no source declares ${from.kind}`);
+    how: {
+      items?: readonly { id: ItemId; stableId: string }[];
+      source?: Opened["source"];
+      announce?: boolean;
+    } = {},
+  ): Promise<boolean> => {
+    const declaration = declared(connection.kind);
+    let first = false;
     const run = syncing
       .catch(() => {})
-      .then(() =>
-        syncSource({
-          source: from,
-          attrs,
-          facets: declared.facets,
-          key: declared.key,
+      .then(async () => {
+        first = index.source(workspaceId, connection.prefix) === null;
+        await syncSource({
+          source: how.source ?? opened.source,
+          attrs: opened.attrs,
+          facets: declaration.facets,
+          key: declaration.key,
           recognize: recognize(),
           index,
           workspaceId,
           full,
-          items,
+          items: how.items ?? [],
           clock: now,
           log,
-        }),
-      )
+        });
+      })
       .then(async () => {
-        // A workstream that can't follow its epic is no reason to call the sync
-        // failed.
+        // A workstream that can't follow its epic is no reason to call the
+        // sync failed.
         try {
           await follow();
         } catch (error) {
@@ -501,111 +417,77 @@ export async function createApp(options: AppOptions): Promise<App> {
       })
       .finally(() => told());
     syncing = run;
-    return run;
+    return run.then(() => {
+      if (first && how.announce !== false) connected(connection);
+      return first;
+    });
   };
-  // What applies wrote lately, by stable ID, read by key on every sync until
-  // Jira's search has surely caught up: until then it may list an item as it
-  // was before the write, or list one a revert deleted, and a listed record
-  // comes back to life in the index.
-  const written = new Map<string, { id: ItemId<"jira">; stableId: string; at: Instant }>();
-  // The first sync of a source into this workspace connects it, whenever
-  // that sync is. Jira's is announced once, though two syncs may both start
-  // as the first. `announced` counts them, so connecting from the window can
-  // tell whether it was counted so.
-  let announced = 0;
-  const connected = (kind: SourceKind, number = 1) => {
-    announced += 1;
-    emit({ name: "source.connected", at: now(), workspaceId, source: kind, later: number > 1 });
+  // What applies wrote lately to a connection whose listing lags, by its
+  // prefix and the item's stable ID, read by key on every sync until its
+  // listing has surely caught up: until then it may list an item as it was
+  // before the write, or list one a revert deleted, and a listed record comes
+  // back to life in the index.
+  const written = new Map<string, Map<string, { id: ItemId; stableId: string; at: Instant }>>();
+  const lagging = ({ connection, opened }: Open) => {
+    const kept = written.get(connection.prefix);
+    if (!kept || opened.lagMs === undefined) return [];
+    const since = Date.parse(now()) - opened.lagMs;
+    for (const [stableId, { at }] of kept) if (Date.parse(at) < since) kept.delete(stableId);
+    return [...kept.values()];
   };
-  let jiraAnnounced = false;
-  const jiraConnected = () => {
-    if (jiraAnnounced) return;
-    jiraAnnounced = true;
-    connected("jira");
-  };
-  const sync = async (full: boolean) => {
-    if (!source) return;
-    const first = index.source(workspaceId, "jira") === null;
-    const since = Date.parse(now()) - searchLagMs;
-    for (const [stableId, { at }] of written) if (Date.parse(at) < since) written.delete(stableId);
-    await syncInto(source, jiraAttrs, full || first, [...written.values()]);
-    if (first) jiraConnected();
-  };
-  // A connection made in the window that can't sync now leaves the index as
-  // it was, and the server starts anyway, as it does for a folder.
-  await sync(fixture !== null).catch((error: unknown) => {
-    if (mode.kind !== "window") throw error;
-    log("jira sync failed", { error: String(error) });
-  });
-  // What the user sees when Jira can't be synced. A sync that fails marks
-  // nothing gone; pages it had already read stay, as they're what Jira said.
-  const jiraProblem = (error: unknown) => {
-    if (
-      error instanceof SourceRefused ||
-      (error instanceof JiraFailed && [401, 403].includes(error.status))
-    )
-      // A connection made in the window is dropped at the next start if Jira
-      // still refuses the account, as it does a revoked token, and the window
-      // asks for Jira again. One refused only the project's search is kept.
-      return mode.kind === "window"
-        ? "Jira turned Oriel away, so the window may be behind it. Restart Oriel to connect Jira again."
-        : "Jira turned Oriel away, so the window may be behind it. Oriel's access to Jira may need renewing.";
-    // No answer, as fetch reports it, or one Jira gives while it's busy or down.
-    const unreachable =
-      (error instanceof TypeError && error.message === "fetch failed") ||
-      (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name)) ||
-      (error instanceof JiraFailed && (error.status === 429 || error.status >= 500));
-    if (unreachable)
-      return "Oriel couldn't reach Jira just now, so the window may be behind it. Try again in a moment.";
-    return error instanceof JiraFailed
-      ? "Jira answered in a way Oriel didn't expect, so the window may be behind it."
-      : "Oriel couldn't finish syncing Jira, so the window may be behind it.";
-  };
-  // The Sync the user asks for: a full sweep, as only one finds what was
-  // deleted in Jira. Syncs run one at a time; one asked for while another
-  // waits to start joins it, as it would list the same.
-  let waiting: Promise<string | null> | null = null;
-  const syncJira = (): Promise<string | null> =>
-    (waiting ??= syncing
-      .catch(() => {})
-      .then(() => {
-        waiting = null;
-        return sync(true);
-      })
-      .then(
-        () => null,
-        (error: unknown) => {
-          log("jira sync failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return jiraProblem(error);
-        },
-      ));
-  const caps = options.limits ?? limits;
-
-  // A folder that can't be read now (an unmounted drive) leaves its items as
-  // they were, and says so.
-  const syncFolder = async (which = folder): Promise<string | null> => {
-    if (!which) return "No folder is connected.";
+  // A sync of an open connection: null, or what went wrong in the person's
+  // words. One that fails leaves the index as it was, apart from pages it
+  // had read, as they're what the source said.
+  const syncOpen = async (each: Open, full: boolean): Promise<string | null> => {
     try {
-      await syncInto(which.source, folderAttrs, true);
+      await syncInto(each.connection, each.opened, full, { items: lagging(each) });
       return null;
     } catch (error) {
-      log("folder sync failed", { error: error instanceof Error ? error.message : String(error) });
-      return "Oriel couldn't read the folder just now. Is it still there?";
+      log("connections: a sync failed", {
+        source: each.connection.prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return each.opened.problem(error);
     }
   };
-  if (folder) await syncFolder();
-  // Connecting a folder and syncing the one connected take turns, so a sync
-  // asked for while another folder takes its place reads whichever is
-  // connected once that ends, never the one it replaced.
-  let folderTurn: Promise<unknown> = Promise.resolve();
-  const folderInTurn = <T>(work: () => Promise<T>): Promise<T> => {
-    const turn = folderTurn.then(work);
-    folderTurn = turn.catch(() => {});
+  // Each open connection syncs as the server starts; one that can't leaves
+  // the index as it was, and the server starts anyway.
+  for (const each of opens()) await syncOpen(each, !each.opened.incremental);
+
+  // A kind's connects and the syncs asked of it take turns, so a sync asked
+  // for while another connection takes a kind's place reads whichever is
+  // open once that ends, never the one it replaced.
+  const kindTurns = new Map<SourceKind, Promise<unknown>>();
+  const inTurn = <T>(kind: SourceKind, work: () => Promise<T>): Promise<T> => {
+    const turn = (kindTurns.get(kind) ?? Promise.resolve()).then(work);
+    kindTurns.set(
+      kind,
+      turn.catch(() => {}),
+    );
     return turn;
   };
-  const resyncFolder = () => folderInTurn(() => syncFolder());
+  // The Sync a person asks for: a full sweep, as only one finds what was
+  // deleted in the source. Syncs run one at a time; one asked for while
+  // another of its kind waits to start joins it, as it would list the same.
+  const waiting = new Map<SourceKind, Promise<string | null>>();
+  const syncAsked = (kind: SourceKind): Promise<string | null> => {
+    const joined = waiting.get(kind);
+    if (joined) return joined;
+    const run = inTurn(kind, async () => {
+      await syncing.catch(() => {});
+      waiting.delete(kind);
+      const each = openedOf(kind);
+      return each ? syncOpen(each, true) : `${declared(kind).name} isn't connected to this window.`;
+    });
+    waiting.set(kind, run);
+    return run;
+  };
+  // A sync between the Syncs a person asks for, in its kind's turn.
+  const syncKind = (kind: SourceKind): Promise<string | null> =>
+    inTurn(kind, async () => {
+      const each = openedOf(kind);
+      return each ? syncOpen(each, !each.opened.incremental) : null;
+    });
   // Work done between syncs, as forgetting a connection's items must be: a
   // sync running then would take the snapshot version it takes.
   const betweenSyncs = <T>(work: () => Promise<T>): Promise<T> => {
@@ -616,88 +498,103 @@ export async function createApp(options: AppOptions): Promise<App> {
     syncing = run;
     return run;
   };
-
-  // Slack's picked channels (decision 0021). A sync that fails
-  // leaves its items as they were, and says so.
-  const syncSlack = async (): Promise<string | null> => {
-    if (!slack) return null;
-    const first = index.source(workspaceId, "slack") === null;
-    try {
-      await syncInto(slack.source, slackAttrs, true);
-    } catch (error) {
-      log("slack sync failed", { error: error instanceof Error ? error.message : String(error) });
-      return "Slack didn't answer, so Oriel couldn't look for new messages.";
-    }
-    if (first) connected("slack");
-    return null;
-  };
-  await syncSlack();
-
-  const folderView = (): FolderView | null =>
-    folder && {
-      path: folder.path,
-      items: index.records(workspaceId, folder.prefix, folderAttrs).length,
-      syncedAt: index.source(workspaceId, folder.prefix)?.syncedAt ?? null,
-    };
-  const slackView = (): SlackView | null =>
-    slack && {
-      workspace: URL.parse(slack.scope.workspaceUrl)?.host ?? slack.scope.workspaceUrl,
-      items: index.records(workspaceId, "slack", slackAttrs).length,
-      syncedAt: index.source(workspaceId, "slack")?.syncedAt ?? null,
-    };
-  const connectFolder = async (
-    picked: string,
-  ): Promise<{ folder: FolderView } | { problem: string }> => {
-    const typed = picked.trim();
-    const path = typed === "~" || typed.startsWith("~/") ? join(homedir(), typed.slice(1)) : typed;
-    if (!isAbsolute(path)) return { problem: "Type the folder's full path, starting with / or ~." };
-    let real: FolderPath;
-    try {
-      real = await resolveFolder(path);
-    } catch (error) {
-      const file = error instanceof Error && error.message.includes("isn't a directory");
-      return {
-        problem: file
-          ? "That path is a file, not a folder."
-          : "There's no folder Oriel can read at that path.",
-      };
-    }
-    // One at a time, so what is connected is what it was when this started,
-    // and the number planned is the one it gets.
-    return folderInTurn(async (): Promise<{ folder: FolderView } | { problem: string }> => {
-      // The same folder again keeps its connection, so none of its items'
-      // IDs change.
-      if (folder?.path === real) {
-        const problem = await syncFolder();
-        const view = folderView();
-        return problem || !view
-          ? { problem: problem ?? "No folder is connected." }
-          : { folder: view };
+  // A source that tells `heard` how many records each page it lists holds.
+  const counting = (source: Opened["source"], heard: (records: number) => void) => ({
+    ...source,
+    async *sync(cursor: string | null) {
+      for await (const page of source.sync(cursor)) {
+        heard(page.records.length);
+        yield page;
       }
-      // Another takes its place: one connected before comes back under its
-      // ID and number, and any other is a new connection, with the next.
-      const plan = connections.planned("folder", real);
-      if ("live" in plan) return { problem: "That folder is connected already." };
-      const chosen = folderFrom(
-        "revives" in plan ? plan.revives : { id: newId(), number: plan.number, identity: real },
-      );
-      const first = index.source(workspaceId, chosen.prefix) === null;
-      // Only a folder that synced is kept; one that can't be listed leaves
-      // the one before as it was. A walk that fails throws before the index
-      // sees any of it.
-      const problem = await syncFolder(chosen);
-      if (problem) return { problem };
-      await betweenSyncs(async () => {
-        const before = connections.first("folder");
-        if (before) await connections.disconnect(before);
-        await connections.connect({ id: chosen.id, kind: "folder", identity: real, options: {} });
-        folder = chosen;
-      });
-      if (first) connected("folder", chosen.number);
-      const view = folderView();
-      return view ? { folder: view } : { problem: "No folder is connected." };
+    },
+  });
+
+  // Connects what a person made in the window, in its kind's turn: opened,
+  // synced in full, and kept only once both worked, so one that can't be
+  // read leaves the one before as it was. A walk or a listing that fails
+  // throws before the index sees any of it. Signing in to a live one again
+  // keeps it, its number and its items; one disconnected before comes back
+  // under its ID and number; anything else is new, with the next number.
+  const connect: Opening["connect"] = (kind, made, how = {}) =>
+    inTurn(kind, async () => {
+      const current = openedOf(kind);
+      // The same thing again keeps its connection, so none of its items' IDs
+      // change.
+      if (current?.connection.identity === made.identity) {
+        const problem = await syncOpen(current, true);
+        return problem
+          ? { failed: "sync" as const, error: new Error(problem) }
+          : { connection: current.connection };
+      }
+      const plan = connections.planned(kind, made.identity);
+      const was = "live" in plan ? plan.live : "revives" in plan ? plan.revives : null;
+      const number = was?.number ?? ("number" in plan ? plan.number : 1);
+      const toOpen: ToOpen = {
+        id: was?.id ?? newId(),
+        number,
+        prefix: prefixOf(kind, number),
+        identity: made.identity,
+        options: made.options,
+        secret: made.secret ?? null,
+      };
+      let opened: Opened;
+      try {
+        opened = await openOne(kind, toOpen, {
+          fixture: false,
+          kept: true,
+          fetch: windows.fetch(kind),
+        });
+      } catch (error) {
+        return { failed: "open" as const, error };
+      }
+      let first: boolean;
+      try {
+        first = await syncInto({ kind, number, prefix: toOpen.prefix }, opened, true, {
+          announce: false,
+          ...(how.counting ? { source: counting(opened.source, how.counting) } : {}),
+        });
+      } catch (error) {
+        opened.close?.();
+        return { failed: "sync" as const, error };
+      }
+      try {
+        const connection = await betweenSyncs(async () => {
+          if (how.replaces && current) {
+            await connections.disconnect(current.connection);
+            byPrefix.delete(current.connection.prefix);
+            current.opened.close?.();
+          }
+          if ("live" in plan) {
+            await connections.signIn(plan.live, {
+              options: made.options,
+              secret: made.secret ?? "",
+            });
+            return { ...plan.live, options: made.options };
+          }
+          const kept = await connections.connect({
+            id: toOpen.id,
+            kind,
+            identity: made.identity,
+            options: made.options,
+            ...(made.secret === undefined ? {} : { secret: made.secret }),
+          });
+          if ("taken" in kept) throw new Error(`that ${kind} connection is live already`);
+          return kept.connection;
+        });
+        byPrefix.set(connection.prefix, { connection, opened });
+        // The writers are built with the change sets: built again, into this
+        // same object, everything holding it writes through the connection
+        // from then on.
+        Object.assign(sets, buildSets());
+        if (first) connected(connection);
+        return { connection };
+      } catch (error) {
+        opened.close?.();
+        return { failed: "keep" as const, error };
+      }
     });
-  };
+  const caps = options.limits ?? limits;
+
   const people = () => {
     const names = new Map<string, string>();
     for (const record of records())
@@ -705,37 +602,22 @@ export async function createApp(options: AppOptions): Promise<App> {
     return names;
   };
 
-  // Reads go to each item's own source; search to the index (the escape hatch).
+  // Reads go to each item's own connection; search to the index (the escape
+  // hatch).
   const reader: Reader = {
     async read(ids) {
-      const jira = ids.filter(isJira);
-      const files = ids.filter(
-        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === folder?.prefix,
-      );
-      const messages = ids.filter(
-        (id): id is ItemId<"slack"> => parseItemId(id)?.prefix === "slack",
-      );
-      const results: ReadResult[] = [
-        ...(jira.length && source ? await source.read(jira) : []),
-        ...(files.length && folder ? await folder.source.read(files) : []),
-        ...(messages.length && slack ? await slack.source.read(messages) : []),
-      ];
-      const read = new Map<string, ReadResult>(results.map((result) => [result.id, result]));
+      const read = new Map<string, ReadResult>();
+      for (const [prefix, of] of Map.groupBy(ids, (id) => parseItemId(id)?.prefix ?? "")) {
+        const each = byPrefix.get(prefix);
+        if (each)
+          for (const result of await each.opened.source.read(of)) read.set(result.id, result);
+      }
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      // The connections open now, by their prefixes: Slack only while it's
-      // connected, and the folder by its connection's.
-      const sources = sourceKinds.flatMap((kind) =>
-        kind === "folder"
-          ? folder
-            ? [folder.prefix]
-            : []
-          : kind !== "slack" || slack
-            ? [kind]
-            : [],
-      );
-      return index.search(workspaceId, query, limit, sources).map((record) => ({
+      // The connections open now, by their prefixes.
+      const prefixes = opens().map((each) => each.connection.prefix);
+      return index.search(workspaceId, query, limit, prefixes).map((record) => ({
         id: record.id,
         title: record.title,
         location: record.location,
@@ -745,8 +627,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // Oriel's own data, read one way for the agent's namespaces and the
   // window's search (decision 0024, OA-108). What a change set wrote is named
-  // from the index: people by their facets, and Slack's channels and authors
-  // by the messages indexed from them.
+  // from the index: people by their facets, and what each connection's
+  // records name besides, such as Slack's channels and authors.
   const reads = orielReads({
     workspaceId,
     workstreams,
@@ -760,26 +642,19 @@ export async function createApp(options: AppOptions): Promise<App> {
       const all = records();
       const titles = new Map<string, string>(all.map((record) => [record.id, record.title]));
       const names = people();
-      if (slack)
-        for (const { attrs } of index.records(workspaceId, "slack", slackAttrs)) {
-          names.set(attrs.channel.id, attrs.channel.name);
-          if (attrs.author.id !== null) names.set(attrs.author.id, attrs.author.name);
-        }
+      for (const each of opens())
+        for (const [id, name] of each.opened.names?.(recordsOf(each)) ?? []) names.set(id, name);
       return { name: (id) => names.get(id) ?? null, title: (id) => titles.get(id) ?? null };
     },
     now,
   });
-  const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) => {
-    // Where a story with no epic is created: the project the writer writes to.
-    const home = writes?.project ?? fixture?.project.key ?? null;
-    // What the last sync found on the boards; nothing before one.
-    const none = boards?.unestimating() ?? new Set<string>();
-    return bindingsFor(region, {
+  const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) =>
+    bindingsFor(region, {
       reader,
-      namespaces: namespacesFor(records(), {
-        jira: { none, home },
-        slack: slack?.context,
-      }),
+      namespaces: namespacesOf(
+        records(),
+        opens().map(({ connection, opened }) => ({ kind: connection.kind, opened })),
+      ),
       items: itemDocs,
       oriel: reads,
       ...(thread ? { thread } : {}),
@@ -787,23 +662,39 @@ export async function createApp(options: AppOptions): Promise<App> {
       // The window chat reads the overview, as the page shows it.
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
     });
-  };
 
   const buildSets = () => {
-    const writerConfig: WriterConfig = {
-      ...(writes && boards ? { jira: { ...writes, boards } } : {}),
-      ...(slack ? { slack: slack.writes } : {}),
-    };
+    const writable = opens().flatMap(({ connection, opened }) =>
+      opened.writes === undefined
+        ? []
+        : [{ prefix: connection.prefix, kind: connection.kind, writes: opened.writes }],
+    );
+    // How change sets read a connection with no writer: its own fields, as
+    // a fixture's, or, for one live but not open, a refusal that says to
+    // connect it again.
+    const readers = Object.fromEntries([
+      ...connections
+        .list()
+        .filter(
+          (each) =>
+            each.disconnectedAt === null &&
+            !byPrefix.has(each.prefix) &&
+            declarationOf(each.kind)?.specs !== undefined,
+        )
+        .map((each) => [each.prefix, disconnected(declared(each.kind).name)] as const),
+      ...opens().flatMap(({ connection, opened }) =>
+        opened.writes === undefined && opened.fields
+          ? [[connection.prefix, opened.fields] as const]
+          : [],
+      ),
+    ]);
     return changeSets({
       db,
-      writerConfig,
-      readers:
-        fixture && !writes
-          ? { jira: fixtureFields(fixture, { site, edited: fixture.edits.length }) }
-          : mode.kind === "window" && !writes
-            ? { jira: disconnected }
-            : {},
-      names: { jira: async (id) => people().get(id) ?? null },
+      writerConfig: writable,
+      readers,
+      names: Object.fromEntries(
+        writable.map(({ prefix }) => [prefix, async (id: string) => people().get(id) ?? null]),
+      ),
       specs,
       reviewBase: options.reviewBase,
       now,
@@ -811,10 +702,10 @@ export async function createApp(options: AppOptions): Promise<App> {
       log,
     });
   };
-  // The writers are built with the change sets. Connecting Jira from the
-  // window builds them again, into this same object, so everything holding
-  // it writes to Jira from then on. Nothing can be applying then: with no
-  // writer, no change set can be approved.
+  // The writers are built with the change sets. Connecting from the window
+  // builds them again, into this same object, so everything holding it
+  // writes through the connection from then on. Nothing can be applying
+  // then: with no writer, no change set can be approved.
   const sets = buildSets();
 
   let deno: Sandbox | null = null;
@@ -891,7 +782,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     changeSets: sets,
     sketchBase: options.sketchBase,
     get writable() {
-      return writes !== null || slack !== null;
+      return opens().some((each) => each.opened.writes !== undefined);
     },
   });
   // The desktop app notifies when a thread newly needs the person.
@@ -965,32 +856,17 @@ export async function createApp(options: AppOptions): Promise<App> {
     sources: {
       connect: async (input) => {
         const before = announced;
-        const outcome = await (input.kind === "folder"
-          ? connectFolder(input.path)
-          : connectJira(input));
+        const outcome = await windows.connect(input);
         return { outcome, counted: announced > before };
       },
       sync: async (kind) => {
-        if (kind === "folder") {
-          if (!folder) throw new ActionError("conflict", "No folder is connected.");
-          const problem = await resyncFolder();
-          const view = folderView();
-          return problem || !view
-            ? { problem: problem ?? "No folder is connected." }
-            : { folder: view };
-        }
-        if (kind === "slack") {
-          if (!slack) throw new ActionError("conflict", "Slack isn't connected to this window.");
-          const problem = await syncSlack();
-          const view = slackView();
-          return problem || !view
-            ? { problem: problem ?? "Slack isn't connected to this window." }
-            : { slack: view };
-        }
-        if (!jiraView().connected)
-          throw new ActionError("conflict", "Jira isn't connected to this window yet.");
-        const problem = await syncJira();
-        return problem ? { problem } : { jira: jiraView() };
+        if (!openedOf(kind))
+          throw new ActionError(
+            "conflict",
+            `${declared(kind).name} isn't connected to this window.`,
+          );
+        const problem = await syncAsked(kind);
+        return problem ? { problem } : windows.synced(kind);
       },
     },
     running: conversation.running,
@@ -1065,9 +941,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // work on it (decision 0018); the workstream's working threads follow. A workstream
   // made for a thread from nothing takes the name of the first epic created
   // in it, unless the user has named it. Both are actions the change set
-  // takes. A live index syncs, reading what the change set wrote by key, as
-  // Jira's search finds a write only a while after it: what landed shows at
-  // once, and what it deleted goes.
+  // takes.
   const applied = async (set: ChangeSet) => {
     const thread = threads.get(set.threadId, now());
     if (thread) {
@@ -1086,207 +960,38 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (items.length)
         await dispatch("workstream.add", { workstream: thread.workstreamId, items }, by);
     }
-    // What it posted in Slack shows once Slack is listed again.
-    if (set.mutations.some((m) => m.applied && parseItemId(m.applied.item.id)?.prefix === "slack"))
-      await syncSlack();
-    if (mode.kind === "fixture") return;
-    for (const { applied: write } of set.mutations)
-      if (write && isJira(write.item.id))
-        written.set(write.item.stableId, {
-          id: write.item.id,
-          stableId: write.item.stableId,
-          at: write.at,
-        });
-    await sync(false).catch((error: unknown) => log("sync failed", { error: String(error) }));
-  };
-
-  const jiraView = (): JiraView => ({
-    connected:
-      source &&
-      (() => {
-        const synced = index.source(workspaceId, "jira");
-        return {
-          site: writes?.site ?? site,
-          project: writes?.project ?? fixture?.project.key ?? "",
-          items: index.records(workspaceId, "jira", jiraAttrs).length,
-          syncedAt: synced?.syncedAt ?? null,
-        };
-      })(),
-    connectable: mode.kind === "window" && source === null,
-  });
-  // Every connected source, in declared order, as the sidebar lists them.
-  const sourcesView = (): SourceView[] => {
-    const jira = jiraView().connected;
-    const files = folderView();
-    const messages = slackView();
-    const connected: Partial<Record<SourceKind, Omit<SourceView, "kind" | "name">>> = {
-      ...(jira && {
-        jira: { ...jira, about: `${jira.project} on ${URL.parse(jira.site)?.host ?? jira.site}` },
-      }),
-      ...(files && { folder: { ...files, about: files.path } }),
-      ...(messages && { slack: { ...messages, about: messages.workspace } }),
-    };
-    return sourceKinds.flatMap((kind) => {
-      const each = connected[kind];
-      return each
-        ? [
-            {
-              kind,
-              name: sources[kind].name,
-              about: each.about,
-              items: each.items,
-              syncedAt: each.syncedAt,
-            },
-          ]
-        : [];
-    });
-  };
-  // Connects Jira with the details the user typed: checked against the site
-  // first, then synced, and kept only once both worked. The token goes into
-  // a credential and the store, and nowhere else: not a log line, an event,
-  // a reply or a message.
-  let joining = false;
-  // Jira's first sync while it reads, and after it stopped, until the next
-  // connect or one that worked.
-  let jiraReading: {
-    project: string;
-    read: number;
-    total: number | null;
-    stopped: boolean;
-  } | null = null;
-  const notASite = "Type your Jira address, like yourteam.atlassian.net.";
-  const siteProblem = (at: string | null): string | null =>
-    at === null
-      ? notASite
-      : siteAllowed(at)
-        ? null
-        : `For now, Oriel connects only to ${new URL(throwawaySite).host}.`;
-  // The server opens a kind's first connection only, for now: a site other
-  // than the one Jira's connection has, signed out since, is refused, as is
-  // any after a first that was disconnected.
-  const anotherSite = (at: string): string | null => {
-    const existing = connections.first("jira");
-    if (existing)
-      return existing.identity === at
-        ? null
-        : `Oriel reads one Jira site for now, ${URL.parse(existing.identity)?.host ?? existing.identity}. Sign in to it again.`;
-    const plan = connections.planned("jira", at);
-    const number = "revives" in plan ? plan.revives.number : "number" in plan ? plan.number : 1;
-    return number === 1 ? null : "Oriel reads one Jira site for now.";
-  };
-  const connectJira = async (
-    typed: Extract<ActionInput<"source.connect">, { kind: "jira" }>,
-  ): Promise<{ jira: JiraView } | { problem: string }> => {
-    if (mode.kind !== "window" || source)
-      return { problem: "Jira is already connected to this window." };
-    if (joining) return { problem: "Oriel is connecting Jira already." };
-    const at = jiraSite(typed.site);
-    const refusedSite = siteProblem(at) ?? (at && anotherSite(at));
-    if (refusedSite || !at) return { problem: refusedSite ?? notASite };
-    const existing = connections.first("jira");
-    const email = typed.email.trim();
-    const project = typed.project.trim().toUpperCase();
-    const chosen = writesTo({ site: at, email, token: typed.token.trim(), project }, mode.fetch);
-    joining = true;
-    try {
-      const check = await checkConnection(transportTo(chosen), project).catch((error: unknown) => {
-        log("jira check failed", { site: at, error: String(error) });
-        return "unreachable" as const;
+    // Each open connection it wrote to syncs again, so what landed shows at
+    // once and what it deleted goes. One whose listing lags reads what was
+    // written by key until it has surely caught up. A frozen fixture doesn't.
+    const wrote = new Set<string>();
+    for (const { applied: write } of set.mutations) {
+      const prefix = write && parseItemId(write.item.id)?.prefix;
+      const each = prefix ? byPrefix.get(prefix) : undefined;
+      if (!write || !prefix || !each || each.opened.frozen) continue;
+      wrote.add(prefix);
+      if (each.opened.lagMs === undefined) continue;
+      const kept = written.get(prefix) ?? new Map();
+      written.set(prefix, kept);
+      kept.set(write.item.stableId, {
+        id: write.item.id,
+        stableId: write.item.stableId,
+        at: write.at,
       });
-      if (check !== "ok") {
-        log("jira connect refused", { site: at, project, check });
-        return { problem: refusals[check](project) };
-      }
-      const nextBoards = boardsOf(chosen);
-      const next = liveSource(chosen, nextBoards);
-      const first = index.source(workspaceId, "jira") === null;
-      // The first sync counts what it reads, of the total Jira reports, for
-      // the first run's progress (decision 0038).
-      const reading = {
-        project,
-        read: 0,
-        total: await issueCount(transportTo(chosen), project).catch(() => null),
-        stopped: false,
-      };
-      jiraReading = reading;
-      const counting: typeof next = {
-        ...next,
-        async *sync(cursor) {
-          for await (const page of next.sync(cursor)) {
-            reading.read += page.records.length;
-            yield page;
-          }
-        },
-      };
-      try {
-        await syncInto(counting, jiraAttrs, true);
-      } catch (error) {
-        reading.stopped = true;
-        log("jira connect failed", { site: at, project, error: String(error) });
-        return {
-          problem: "Jira answered, but Oriel couldn't read the project just now. Try again.",
-        };
-      }
-      // Kept as its connection: the site it identifies, the project it
-      // reads, and the account as its secret. Signing in to the same site
-      // again keeps the connection, its number and its items.
-      const secret = JSON.stringify({ email, token: typed.token.trim() });
-      try {
-        if (existing) await connections.signIn(existing, { options: { project }, secret });
-        else
-          await connections.connect({ kind: "jira", identity: at, options: { project }, secret });
-      } catch (error) {
-        log("jira connection not saved", { error: (error as NodeJS.ErrnoException).code ?? "" });
-        return { problem: "Oriel couldn't save the connection on this computer. Try again." };
-      }
-      source = next;
-      writes = chosen;
-      boards = nextBoards;
-      jiraReading = null;
-      Object.assign(sets, buildSets());
-      if (first) jiraConnected();
-      log("jira connected", { site: at, project });
-      return { jira: jiraView() };
-    } finally {
-      joining = false;
+    }
+    for (const prefix of wrote) {
+      const each = byPrefix.get(prefix);
+      if (each) await syncOpen(each, !each.opened.incremental);
     }
   };
 
-  // The projects the details typed can see, before any is connected, so the
-  // person picks one from Jira's own list (decision 0038). Nothing is kept,
-  // and the token goes only into the credential for these requests.
-  const jiraProjects = async (typed: {
-    site: string;
-    email: string;
-    token: string;
-    query: string;
-  }): Promise<
-    | { projects: JiraProject[]; more: boolean }
-    | { problem: string; fields: ("site" | "email" | "token")[] }
-  > => {
-    if (mode.kind !== "window" || source)
-      return { problem: "Jira is already connected to this window.", fields: [] };
-    const at = jiraSite(typed.site);
-    const refusedSite = siteProblem(at) ?? (at && anotherSite(at));
-    if (refusedSite || !at) return { problem: refusedSite ?? notASite, fields: ["site"] };
-    const transport = transportTo(
-      writesTo(
-        { site: at, email: typed.email.trim(), token: typed.token.trim(), project: "" },
-        mode.fetch,
-      ),
-    );
-    const listed = await listProjects(transport, typed.query).catch((error: unknown) => {
-      log("jira projects failed", { site: at, error: String(error) });
-      return { kind: "unreachable" as const };
-    });
-    if (listed.kind === "ok") return { projects: listed.projects, more: listed.more };
-    log("jira projects refused", { site: at, why: listed.kind });
-    if (listed.kind === "refused")
-      return { problem: refusedCredentials, fields: ["email", "token"] };
-    if (listed.kind === "unreachable")
-      return { problem: refusals.unreachable(""), fields: ["site"] };
-    return { problem: refusals.unexpected(""), fields: [] };
-  };
+  // Every open connection, in declared order, as the sidebar lists them.
+  const sourcesView = (): SourceView[] =>
+    opens().map(({ connection, opened }) => ({
+      kind: connection.kind,
+      name: declared(connection.kind).name,
+      about: opened.about,
+      ...synced(connection.prefix),
+    }));
 
   // The overview, computed now from the index, the change log, workstreams,
   // threads and review links: what the page shows and the window chat's
@@ -1367,7 +1072,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
 
   const window = (grouping: GroupingId) =>
-    windowView(grouping, groupings[grouping], records(), asOf ?? now(), fixture !== null);
+    windowView(grouping, groupings[grouping], records(), asOf ?? now(), asOf !== null);
 
   // The desktop app's first run, and the commands for the person's CLI that
   // Settings shares with it (decision 0038).
@@ -1377,7 +1082,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     settings,
     store,
     made: () => openWorkstreams().length > 0,
-    reading: () => jiraReading && { ...jiraReading },
+    reading: windows.reading,
     workspaceId,
     emit,
     now,
@@ -1388,7 +1093,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     workspaceId,
     window,
     setup,
-    jira: jiraView,
+    jira: windows.jira,
     settings,
     api: api({
       workspaceId,
@@ -1405,17 +1110,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: itemPanels({ reader, records, sources, now }),
       emit,
       now,
+      // A frozen fixture doesn't change outside Oriel.
       refresh: async () => {
         const problems: string[] = [];
-        if (mode.kind !== "fixture" && source)
-          await sync(false).catch((error: unknown) => {
-            log("sync failed", { error: String(error) });
-            problems.push("Jira didn't answer, so Oriel couldn't look for new items.");
-          });
-        const folderProblem = folder ? await resyncFolder() : null;
-        if (folderProblem) problems.push(folderProblem);
-        const slackProblem = await syncSlack();
-        if (slackProblem) problems.push(slackProblem);
+        for (const { connection, opened } of opens()) {
+          if (opened.frozen) continue;
+          const problem = await syncKind(connection.kind);
+          if (problem) problems.push(problem);
+        }
         return problems.length > 0 ? problems.join(" ") : null;
       },
       explain: (conflicts) => {
@@ -1429,7 +1131,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             groupings[grouping],
             records(),
             asOf ?? now(),
-            fixture !== null,
+            asOf !== null,
             keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
           ),
         page: (grouping, cluster, from, filter) =>
@@ -1444,9 +1146,9 @@ export async function createApp(options: AppOptions): Promise<App> {
           ),
       },
       overview,
-      jira: jiraView,
-      jiraProjects,
-      folder: folderView,
+      jira: windows.jira,
+      jiraProjects: windows.jiraProjects,
+      folder: windows.folder,
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       sources: sourcesView,
       setup,
@@ -1483,122 +1185,10 @@ export async function createApp(options: AppOptions): Promise<App> {
       await guarding?.stop();
       setup.close();
       await setup.idle();
-      await waiting;
+      await Promise.all(waiting.values());
       await syncing.catch(() => {});
+      for (const each of byPrefix.values()) each.opened.close?.();
       if (db.isOpen) db.close();
     },
-  };
-}
-
-// The Slack source a mode reads from, and what change sets write with: the
-// fixture's Web API, in memory, with its picked channel, or Slack's, with the
-// picked channels found by name or ID. Either posts as the person the token
-// is for, only in the channels it reads.
-async function slackFrom(
-  mode: SlackMode,
-  now: () => Instant,
-  log: Log,
-): Promise<{
-  source: SlackSource;
-  context: NonNullable<SlackContext>;
-  scope: SlackScope;
-  writes: NonNullable<WriterConfig["slack"]>;
-}> {
-  if (mode.kind === "fixture") {
-    const fixture = loadSlackFixture();
-    const workspace = mode.workspace ?? fixtureApi(fixture, { now });
-    return {
-      source: slackSource({
-        api: workspace.api,
-        workspaceUrl: fixture.team.url,
-        channels: fixture.picked,
-        log,
-      }),
-      context: { channels: fixture.picked, author: await slackPerson(workspace.api) },
-      scope: { workspaceUrl: fixture.team.url },
-      writes: {
-        credential: { headers: async () => ({}) },
-        channels: fixture.picked,
-        fetch: workspace.fetch,
-      },
-    };
-  }
-  const api = webApi({ credential: mode.credential, ...(mode.fetch ? { fetch: mode.fetch } : {}) });
-  const workspace = await connectSlack(api, mode.channels);
-  if (workspace.missing.length)
-    throw new Error(
-      `Slack has no public channel Oriel can see named ${workspace.missing.map((name) => `#${name}`).join(", ")}`,
-    );
-  if (!workspace.channels.length) throw new Error("Pick at least one Slack channel to read");
-  const channels = workspace.channels.map((channel) => channel.id);
-  return {
-    source: slackSource({ api, workspaceUrl: workspace.url, channels, log }),
-    context: { channels, author: await slackPerson(api) },
-    scope: { workspaceUrl: workspace.url },
-    writes: {
-      credential: mode.credential,
-      channels,
-      ...(mode.fetch ? { fetch: mode.fetch } : {}),
-    },
-  };
-}
-
-// Jira's saved connection from before connections (decision 0049) moves
-// into one, its kind's first, with its account as the secret, and the old one
-// is deleted. One that can't be read is left, and logged; a move that fails
-// leaves it for the next start. Never a value in a log line.
-async function moveLegacy(connections: Connections, legacy: LegacyJira, log: Log): Promise<void> {
-  let text: string | null;
-  try {
-    text = await legacy.load();
-  } catch {
-    log("jira: the saved connection couldn't be read", {});
-    return;
-  }
-  if (text === null) return;
-  const saved = parsedLegacy(text);
-  const site = saved && jiraSite(saved.site);
-  if (!saved || !site) {
-    log("jira: the saved connection isn't one Oriel can read", {});
-    return;
-  }
-  try {
-    // One a start before moved, and couldn't delete the old one after, is
-    // kept as it is.
-    if (!connections.first("jira"))
-      await connections.connect({
-        kind: "jira",
-        identity: site,
-        options: { project: saved.project },
-        secret: JSON.stringify({ email: saved.email, token: saved.token }),
-      });
-    await legacy.delete();
-    log("jira: the saved connection moved", {});
-  } catch {
-    log("jira: the saved connection couldn't move", {});
-  }
-}
-
-// The Jira connection made in the window, with its account, or null: none,
-// or one whose secret is gone or can't be read, so the window asks for Jira
-// again.
-async function savedJira(connections: Connections, log: Log): Promise<JiraConnection | null> {
-  const connection = connections.first("jira");
-  if (!connection) return null;
-  if (connection.number !== 1) {
-    log("jira: only a kind's first connection opens", { number: connection.number });
-    return null;
-  }
-  const text = await connections.secret(connection);
-  const account = text === null ? null : parsedJiraSecret(text);
-  if (!account) {
-    log("jira: the connection has no account Oriel can read", {});
-    return null;
-  }
-  const { project } = connection.options;
-  return {
-    site: connection.identity,
-    ...account,
-    project: typeof project === "string" ? project : "",
   };
 }

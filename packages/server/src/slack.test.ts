@@ -144,16 +144,16 @@ function fixtureFetch() {
 
 test("live Slack reads only the channels picked by name, through the Web API", async (t) => {
   const { send, calls } = fixtureFetch();
-  const credential = { headers: async () => ({ Authorization: "Bearer xoxp-test" }) };
+  const token = "xoxp-test";
   const app = await testApp(t, {
-    slack: { kind: "live", credential, channels: ["#weather-disruptions"], fetch: send },
+    slack: { kind: "live", token, channels: ["#weather-disruptions"], fetch: send },
   });
   assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
   assert.ok(
     calls.every((c) => c.params.channel === undefined || c.params.channel === "C0FW1WEATHR"),
   );
   await assert.rejects(
-    testApp(t, { slack: { kind: "live", credential, channels: ["weather"], fetch: send } }),
+    testApp(t, { slack: { kind: "live", token, channels: ["weather"], fetch: send } }),
     /Slack has no public channel Oriel can see named #weather/,
   );
 });
@@ -224,10 +224,8 @@ test("Slack syncs on demand, says so when it can't, and isn't there to sync unco
       kind: "fixture",
       workspace: {
         ...workspace,
-        api: (method, params) =>
-          down
-            ? Promise.reject(new SlackError(method, "fatal_error"))
-            : workspace.api(method, params),
+        fetch: async (input, init) =>
+          down ? Response.json({ ok: false, error: "fatal_error" }) : workspace.fetch(input, init),
       },
     },
   });

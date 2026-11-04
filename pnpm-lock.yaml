@@ -67,6 +67,10 @@ importers:
       '@oriel/slack':
         specifier: workspace:*
         version: link:../slack
+    devDependencies:
+      '@oriel/sources':
+        specifier: workspace:*
+        version: link:../sources
 
   packages/core: {}
 

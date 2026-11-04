@@ -71,7 +71,7 @@ export function memorySecrets(
 // project as one secret, `jira` in the OS's store and `secrets/jira.json`
 // under `pnpm dev`. The first start after decision 0049 moves it into a
 // connection and deletes it.
-export type JiraConnection = { site: string; email: string; token: string; project: string };
+type JiraConnection = { site: string; email: string; token: string; project: string };
 
 export type LegacyJira = {
   load(): Promise<string | null>;
@@ -99,7 +99,6 @@ export function legacySecret(secrets: Secrets): LegacyJira {
 }
 
 const legacyShape = object({ site: string, email: string, token: string, project: string });
-const jiraSecretShape = object({ email: string, token: string });
 
 // Text kept as JSON, or null. JSON.parse's own message quotes the text,
 // which holds the token, so it's never passed on.
@@ -113,12 +112,6 @@ const parsedJson = (text: string): unknown => {
 
 export function parsedLegacy(text: string): JiraConnection | null {
   const read = legacyShape(parsedJson(text));
-  return read.ok ? read.value : null;
-}
-
-// Jira's secret, as its connection keeps it: the account, one value.
-export function parsedJiraSecret(text: string): { email: string; token: string } | null {
-  const read = jiraSecretShape(parsedJson(text));
   return read.ok ? read.value : null;
 }
 

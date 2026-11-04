@@ -49,13 +49,16 @@ import {
   type JiraRequest,
   type JiraResponse,
   readOnly,
+  restTransport,
   type Transport,
   withinLimit,
 } from "./transport.ts";
+import type { JiraWrites } from "./open-connection.ts";
 
 // Only this entry hands out a transport that can write.
 export { restTransport, type Transport } from "./transport.ts";
 export type { JiraBoards } from "./boards.ts";
+export type { JiraWrites } from "./open-connection.ts";
 
 export type JiraWriterOptions = {
   transport: Transport;
@@ -462,4 +465,19 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       return found === "gone" ? "gone" : { stableId: found.stableId, values: found.values };
     },
   };
+}
+
+// A Jira connection's writer, from what its open gave it: the line
+// packages/changeset/src/writers.ts has for Jira (decision 0049).
+export function jiraWriterOf(writes: JiraWrites, log: Log): SourceWriter<"jira"> {
+  return jiraWriter({
+    transport: restTransport({
+      site: writes.site,
+      credential: writes.credential,
+      ...(writes.fetch ? { fetch: writes.fetch } : {}),
+    }),
+    project: writes.project,
+    ...(writes.boards ? { boards: writes.boards } : {}),
+    log,
+  });
 }

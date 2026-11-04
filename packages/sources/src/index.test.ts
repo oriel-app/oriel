@@ -5,6 +5,7 @@ import {
   byItemId,
   itemDocs,
   namespacesFor,
+  namespacesOf,
   parseDeclared,
   sourceKinds,
   sources,
@@ -90,7 +91,17 @@ test("a source's namespace reads the kinds of its items from the index it is giv
   assert.doesNotMatch(createStory(stories), /epics/);
 });
 
-test("a source with a namespace can't be left out of the contexts", () => {
-  // @ts-expect-error Jira's namespace needs its estimates and home project.
-  assert.ok(namespacesFor([], {}));
+test("a kind with no connection open keeps its namespace, as it was before one opened", () => {
+  const fns = (namespaces: ReturnType<typeof namespacesOf>) =>
+    namespaces.jira?.fns({ ids: [], anchor: null }).map((fn) => [fn.name, fn.doc]);
+  const unconnected = namespacesOf([], []);
+  assert.deepEqual(
+    Object.keys(unconnected),
+    sourceKinds.filter((kind) => sources[kind].namespace),
+  );
+  // Nowhere to create a story with no epic, and no board's estimates.
+  assert.deepEqual(
+    fns(unconnected),
+    fns(namespacesFor([], { jira: { none: new Set(), home: null } })),
+  );
 });

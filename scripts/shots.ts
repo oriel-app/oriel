@@ -277,12 +277,7 @@ const writing = async (slack?: SlackMode, now?: () => Instant) => {
     db: ":memory:",
     jira: {
       kind: "fixture",
-      writeTo: {
-        site: memorySiteOrigin,
-        credential: { headers: async () => ({}) },
-        project: "SYN",
-        fetch: site.fetch,
-      },
+      fetch: site.fetch,
     },
     ...(slack ? { slack } : {}),
     ...(now ? { now } : {}),
@@ -304,7 +299,7 @@ const live = async () => {
     jira: {
       kind: "live",
       site: memorySiteOrigin,
-      credential: { headers: async () => ({}) },
+      account: { email: "", token: "" },
       project: "SYN",
       fetch: site.fetch,
     },
@@ -328,7 +323,7 @@ const paged = await (async () => {
     jira: {
       kind: "live",
       site: memorySiteOrigin,
-      credential: { headers: async () => ({}) },
+      account: { email: "", token: "" },
       project: "SYN",
       fetch: memorySite({ ...syn, issues: [...syn.issues, ...more] }, instant(new Date())).fetch,
     },
@@ -352,7 +347,7 @@ const naming = await (async () => {
     jira: {
       kind: "live",
       site: memorySiteOrigin,
-      credential: { headers: async () => ({}) },
+      account: { email: "", token: "" },
       project: "SYN",
       fetch: memorySite({ ...syn, issues }, instant(new Date())).fetch,
     },
@@ -371,7 +366,7 @@ const unpointed = await start(0, {
   jira: {
     kind: "live",
     site: memorySiteOrigin,
-    credential: { headers: async () => ({}) },
+    account: { email: "", token: "" },
     project: "SYN",
     fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
   },

@@ -37,6 +37,7 @@ import {
   withinLimit,
 } from "./api.ts";
 import { slackTitle } from "./attrs.ts";
+import type { SlackWrites } from "./open-connection.ts";
 import {
   escapeText,
   isSlackOp,
@@ -381,4 +382,17 @@ function valid<O extends SlackOp>(op: O, args: unknown): SlackArgs<O> {
   if (result.ok) return result.value as SlackArgs<O>;
   const at = result.issues.map((i) => `${i.path}: ${i.message}`).join("; ");
   throw new Error(`${op}: bad arguments (${at})`);
+}
+
+// A Slack connection's writer, from what its open gave it: the line
+// packages/changeset/src/writers.ts has for Slack (decision 0049).
+export function slackWriterOf(writes: SlackWrites, log: Log): SourceWriter<"slack"> {
+  return slackWriter({
+    api: writeApi({
+      credential: writes.credential,
+      ...(writes.fetch ? { fetch: writes.fetch } : {}),
+    }),
+    channels: writes.channels,
+    log,
+  });
 }

@@ -2,6 +2,7 @@ import type { DeclaredFacets } from "./change-log.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
 import type { NamespaceSpec } from "./namespace.ts";
+import type { Opened, OpenVia, ToOpen } from "./open.ts";
 import type { OpSpecs } from "./ops.ts";
 import type { OverviewOf } from "./overview.ts";
 import type { PanelOf } from "./panel.ts";
@@ -16,8 +17,9 @@ import type { Presentation } from "./zoom.ts";
 // harness read them all from one list, by source kind. Something new a
 // source shows is one more field here, not another list. An adapter writes its
 // declaration `satisfies SourceDeclaration<C>`, so the list in
-// packages/sources sees its namespace and asks for its context.
-export type SourceDeclaration<C = never, R = never> = Presentation & {
+// packages/sources sees its namespace and asks for its context. `W` is what
+// its writer is built from, for a writable source.
+export type SourceDeclaration<C = never, R = never, W = never> = Presentation & {
   // Its name in item IDs and in the agent's module, such as `jira`: a short
   // lowercase word, never one of Oriel's own spaces (decision 0049).
   kind: SourceKind;
@@ -48,7 +50,16 @@ export type SourceDeclaration<C = never, R = never> = Presentation & {
   // to a region's module, without the region's ID lines (OA-26). A budget
   // rises only in a reviewed change that says why.
   budget: number;
-  // Its synthetic data, which tests and evals connect to. Its connection
-  // gives the context its namespace takes; one with no namespace, anything.
-  fixture: SourceFixture<[C] extends [never] ? unknown : C>;
+  // How it opens a connection: its source, its recognizer's scope, its
+  // namespace's context and what its writer is built from, from the
+  // connection's options and its secret (decision 0049). The writer itself
+  // is built only in packages/changeset (decision 0003).
+  open: (connection: ToOpen, via: OpenVia) => Promise<Opened<Given<C>, Given<R>, Given<W>>>;
+  // Its synthetic data, which tests, evals and the server's fixture mode
+  // connect to. Its connection gives the context its namespace takes; one
+  // with no namespace, anything.
+  fixture: SourceFixture<Given<C>, Given<R>, Given<W>>;
 };
+
+// What a declaration takes or gives where it declares nothing: anything.
+type Given<T> = [T] extends [never] ? unknown : T;
