@@ -10,7 +10,7 @@ import { nav, nextNeedingYou } from "./nav.ts";
 import type { Model, Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import { afterApprove } from "./settings.ts";
-import { type Held, type Hold, holding, letGo, notHeld, type Undos, undoMs } from "./undos.ts";
+import { type Held, type Hold, hold, notHeld, restart, runsOut, type Undos } from "./undos.ts";
 
 export type ApprovedNote = {
   changeSetId: string;
@@ -80,7 +80,6 @@ export function approvedIn(before: Model, next: Model, changeSetId: string): [Mo
   const left = before.thread;
   if (left === null || afterApprove(next.settings) === "stay") return [next, []];
   const to = nextNeedingYou(nav(before).waiting, left.id);
-  const countdown = next.approved.countdown + 1;
   const note: ApprovedNote = {
     changeSetId,
     left: { id: left.id, title: left.view?.title ?? null },
@@ -89,10 +88,8 @@ export function approvedIn(before: Model, next: Model, changeSetId: string): [Mo
     focused: false,
   };
   const going: Effect[] = to ? [{ type: "navigate", route: { page: "thread", id: to.id } }] : [];
-  return [
-    { ...next, approved: { ...next.approved, note, last: changeSetId, countdown } },
-    [...going, expiry(countdown)],
-  ];
+  const [approved, expiry] = restart({ ...next.approved, note, last: changeSetId }, expired);
+  return [{ ...next, approved }, [...going, ...expiry]];
 }
 
 // Going to `route`: the note goes with the page it was shown on, except on
@@ -119,24 +116,20 @@ export function focusing(model: Model): [Model, Effect[]] {
 
 export function updateApproved(model: ApprovedModel, msg: ApprovedMsg): [ApprovedModel, Effect[]] {
   switch (msg.type) {
-    case "undoHeld": {
-      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
+    case "undoHeld":
       // Once nothing holds it, the note gets its full time again.
-      const [held, restart] = letGo(model.held, msg.by);
-      if (!restart || model.note === null) return [{ ...model, held }, []];
-      const countdown = model.countdown + 1;
-      return [{ ...model, held, countdown }, [expiry(countdown)]];
-    }
+      return hold(model, msg.by, msg.held, (left) =>
+        left.note === null ? [left, []] : restart(left, expired),
+      );
     case "expired":
-      if (msg.countdown !== model.countdown || holding(model.held)) return [model, []];
+      if (!runsOut(model, msg.countdown)) return [model, []];
       return [{ ...model, note: null }, []];
   }
 }
 
-const expiry = (countdown: number): Effect => ({
-  type: "after",
-  ms: undoMs,
-  msg: { type: "approved", msg: { type: "expired", countdown } },
+const expired = (countdown: number): Msg => ({
+  type: "approved",
+  msg: { type: "expired", countdown },
 });
 
 const named = (title: string | null) => `“${title ?? "New thread"}”`;

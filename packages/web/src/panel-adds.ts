@@ -6,15 +6,7 @@
 // away and back finds it as it was. Leaving the page lets go of its Undo, as
 // of every note's; the add itself is still said beside the item.
 import { type Effect, errorOf, get, post, type Replied, undoing } from "./http.ts";
-import {
-  type Held,
-  type Hold,
-  holding,
-  letGo as release,
-  notHeld,
-  type Undos,
-  undoMs,
-} from "./undos.ts";
+import { expiry, type Held, type Hold, hold, holding, notHeld, type Undos } from "./undos.ts";
 import type { Undoable, UndoView, WorkstreamView } from "./view.ts";
 
 // One item's add to one workstream: the workstream by its name then, and the
@@ -131,30 +123,27 @@ function counted(adds: PanelAdds, add: PanelAdd): [PanelAdds, Effect[]] {
   const countdown = adds.countdowns + 1;
   const next = { ...add, countdown };
   const { item, workstreamId } = next;
-  const expiry: Effect = {
-    type: "after",
-    ms: undoMs,
-    msg: { type: "panelAdd", msg: { type: "undoExpired", item, workstreamId, countdown } },
-  };
-  return [put({ ...adds, countdowns: countdown }, next), undoable(next) ? [expiry] : []];
+  const ends = expiry({
+    type: "panelAdd",
+    msg: { type: "undoExpired", item, workstreamId, countdown },
+  });
+  return [put({ ...adds, countdowns: countdown }, next), undoable(next) ? [ends] : []];
 }
 
 // The pointer or keyboard on the stack holds every note in it; once neither
 // does, each Undo gets its full time again.
 export function holdAdds(adds: PanelAdds, by: Hold, held: boolean): [PanelAdds, Effect[]] {
-  if (held) return [{ ...adds, held: { ...adds.held, [by]: true } }, []];
-  const [left, restart] = release(adds.held, by);
-  const base = { ...adds, held: left };
-  if (!restart) return [base, []];
-  return adds.adds
-    .filter((add) => undoable(add) && !add.pending)
-    .reduce<[PanelAdds, Effect[]]>(
-      ([now, effects], add) => {
-        const [next, more] = counted(now, add);
-        return [next, [...effects, ...more]];
-      },
-      [base, []],
-    );
+  return hold(adds, by, held, (base) =>
+    base.adds
+      .filter((add) => undoable(add) && !add.pending)
+      .reduce<[PanelAdds, Effect[]]>(
+        ([now, effects], add) => {
+          const [next, more] = counted(now, add);
+          return [next, [...effects, ...more]];
+        },
+        [base, []],
+      ),
+  );
 }
 
 // The answer to an add or its Undo, whichever item the panel shows by then,

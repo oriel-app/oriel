@@ -6,7 +6,8 @@
 // takes, in the one stack of Undo notes, running out as the others do. What
 // else must reload once one ends is the app's to say (root.ts).
 import { type Effect, errorOf, post, type Replied, undoing } from "./http.ts";
-import { type Held, type Hold, holding, letGo as release, notHeld, undoMs } from "./undos.ts";
+import type { Msg } from "./root.ts";
+import { expiry, type Held, type Hold, hold, notHeld, restart, runsOut } from "./undos.ts";
 import type {
   Undoable,
   UndoView,
@@ -113,7 +114,7 @@ export function updateEnding(model: EndingModel, msg: EndingMsg): [EndingModel, 
       const { ended } = model;
       if (!ended?.undo || !model.shown || model.pending) return [model, []];
       // As a removal's Undo does, it lets go of the keyboard's hold.
-      const [released, restarts] = letGo(model, "focus");
+      const [released, restarts] = hold(model, "focus", false, again);
       return [
         {
           ...released,
@@ -123,12 +124,10 @@ export function updateEnding(model: EndingModel, msg: EndingMsg): [EndingModel, 
         [undoing(ended.undo, tag(ended.workstreamId, "undone", ended.name)), ...restarts],
       ];
     }
-    case "undoHeld": {
-      if (msg.held) return [{ ...model, held: { ...model.held, [msg.by]: true } }, []];
-      return letGo(model, msg.by);
-    }
+    case "undoHeld":
+      return hold(model, msg.by, msg.held, again);
     case "undoExpired": {
-      if (msg.countdown !== model.countdown || holding(model.held)) return [model, []];
+      if (!runsOut(model, msg.countdown)) return [model, []];
       return [{ ...model, shown: false }, []];
     }
     case "problemDismissed":
@@ -136,26 +135,21 @@ export function updateEnding(model: EndingModel, msg: EndingMsg): [EndingModel, 
   }
 }
 
-const expiry = (countdown: number): Effect => ({
-  type: "after",
-  ms: undoMs,
-  msg: { type: "ending", msg: { type: "undoExpired", countdown } },
+const expired = (countdown: number): Msg => ({
+  type: "ending",
+  msg: { type: "undoExpired", countdown },
 });
 
 // Once neither pointer nor keyboard holds it, what was done gets its full
 // time again.
-function letGo(model: EndingModel, by: Hold): [EndingModel, Effect[]] {
-  const [held, restart] = release(model.held, by);
-  if (!restart || !model.shown) return [{ ...model, held }, []];
-  const countdown = model.countdown + 1;
-  return [{ ...model, held, countdown }, [expiry(countdown)]];
-}
+const again = (model: EndingModel): [EndingModel, Effect[]] =>
+  model.shown ? restart(model, expired) : [model, []];
 
 // The server's answer, and what was done starting to run out once it shows.
 export function endingAnswered(model: EndingModel, msg: Replied): [EndingModel, Effect[]] {
   const next = endingReplied(model, msg);
   if (next.countdown === model.countdown) return [next, []];
-  return [next, [expiry(next.countdown)]];
+  return [next, [expiry(expired(next.countdown))]];
 }
 
 // The server's answer: what it did shows, with its Undo, and its countdown
