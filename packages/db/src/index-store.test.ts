@@ -69,7 +69,55 @@ test("a sync lands in the index as one snapshot version", () => {
       ["jira:SYN-2", "Banner", null],
     ],
   );
-  assert.deepEqual(index.source(workspaceId, "jira"), { cursor: "c", syncedAt: t1 });
+  assert.deepEqual(index.source(workspaceId, "jira"), {
+    cursor: "c",
+    syncedAt: t1,
+    lastSync: { new: 2, changed: 0, removed: 0 },
+  });
+});
+
+test("a sync keeps how many items it found new, changed and gone, and zeros when nothing changed", () => {
+  const { index, workspaceId, sync } = fresh();
+  const counts = () => index.source(workspaceId, "jira")?.lastSync;
+  sync([{ records: [record("10001", "SYN-1", "A"), record("10002", "SYN-2", "B")] }]);
+  sync([
+    { records: [record("10001", "SYN-1", "A, renamed"), record("10003", "SYN-3", "C")] },
+    // Listed twice, as a paging listing may, it is still one change.
+    { records: [record("10001", "SYN-1", "A, renamed again")], gone: ["10002"] },
+  ]);
+  assert.deepEqual(counts(), { new: 1, changed: 1, removed: 1 });
+  sync([{ records: [record("10001", "SYN-1", "A, renamed again")], gone: ["10002"] }]);
+  assert.deepEqual(counts(), { new: 0, changed: 0, removed: 0 });
+  // Back from gone is new again.
+  sync([{ records: [record("10002", "SYN-2", "B")] }]);
+  assert.deepEqual(counts(), { new: 1, changed: 0, removed: 0 });
+});
+
+test("an item new and gone in one sync counts as neither, and one that moves off a reused key is changed", () => {
+  const { index, workspaceId, sync } = fresh();
+  const counts = () => index.source(workspaceId, "jira")?.lastSync;
+  sync([{ records: [record("10001", "SYN-1", "A")] }]);
+  sync([{ records: [record("10002", "SYN-2", "B")], gone: ["10002"] }]);
+  assert.deepEqual(counts(), { new: 0, changed: 0, removed: 0 });
+  // SYN-1 moves to OA-7 and a new item takes SYN-1, listed first: the old
+  // holder is retired, then comes back under its new handle.
+  sync([
+    { records: [record("10003", "SYN-1", "New story")] },
+    { records: [record("10001", "OA-7", "A")] },
+  ]);
+  assert.deepEqual(counts(), { new: 1, changed: 1, removed: 0 });
+  // A key reused by an item that replaced one deleted in the source.
+  sync([{ records: [record("10004", "OA-7", "Another")] }]);
+  assert.deepEqual(counts(), { new: 1, changed: 0, removed: 1 });
+});
+
+test("a sync that crashed partway counts what it applied once the next one finishes", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("10001", "SYN-1", "A")] }]);
+  const crashed = index.beginSync(workspaceId, "jira", attrs, t1);
+  crashed.apply({ records: [record("10002", "SYN-2", "B")], gone: [], cursor: "c" });
+  sync([{ records: [record("10001", "SYN-1", "A"), record("10002", "SYN-2", "B")] }]);
+  assert.deepEqual(index.source(workspaceId, "jira")?.lastSync, { new: 1, changed: 0, removed: 0 });
 });
 
 test("a sync that changes nothing keeps the version", () => {
@@ -315,7 +363,11 @@ test("a first sync with no pages still counts as a sync", () => {
   const { index, workspaceId } = fresh();
   const run = index.beginSync(workspaceId, "jira", attrs, t1);
   assert.equal(run.finish(null, t1), 0);
-  assert.deepEqual(index.source(workspaceId, "jira"), { cursor: null, syncedAt: t1 });
+  assert.deepEqual(index.source(workspaceId, "jira"), {
+    cursor: null,
+    syncedAt: t1,
+    lastSync: { new: 0, changed: 0, removed: 0 },
+  });
   const next = index.beginSync(workspaceId, "jira", attrs, t1);
   next.finish("c2", t1);
   index.beginSync(workspaceId, "jira", attrs, t1).finish(null, t1);

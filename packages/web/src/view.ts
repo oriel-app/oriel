@@ -140,13 +140,15 @@ export type SlackView = { workspace: string; items: number; syncedAt: string | n
 // A connected source as the sidebar lists it, every one drawn the same way:
 // its kind, its declared name, what of it is connected (Jira's project and
 // site, the folder's path, Slack's workspace), how many items the index has
-// from it, and when it last synced.
+// from it, when it last synced, and how many items that sync found new,
+// changed and gone from the source.
 export type SourceView = {
   kind: string;
   name: string;
   about: string;
   items: number;
   syncedAt: string | null;
+  lastSync: { new: number; changed: number; removed: number };
 };
 
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;

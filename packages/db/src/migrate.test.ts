@@ -224,7 +224,11 @@ test("0002 rewrites the index's old Jira rows readably and starts every sync ove
       indexStore(db).records("w1" as Ulid, "jira", object({ status: object({ name: string }) })),
     /attrs don't match/,
   );
-  assert.deepEqual(indexStore(db).source("w1" as Ulid, "jira"), { cursor: null, syncedAt: now });
+  assert.deepEqual(indexStore(db).source("w1" as Ulid, "jira"), {
+    cursor: null,
+    syncedAt: now,
+    lastSync: { new: 0, changed: 0, removed: 0 },
+  });
 });
 
 test("groups made before names were attributed are the user's, unless the name is still Oriel's", () => {

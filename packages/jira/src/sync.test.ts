@@ -88,7 +88,11 @@ test("the first sync is a full sweep, and the index holds exactly the fixture's 
     .map((r) => r.updatedAt)
     .toSorted()
     .at(-1);
-  assert.deepEqual(index.source(workspaceId, "jira"), { cursor: latest, syncedAt: t1 });
+  assert.deepEqual(index.source(workspaceId, "jira"), {
+    cursor: latest,
+    syncedAt: t1,
+    lastSync: { new: expected.length, changed: 0, removed: 0 },
+  });
 });
 
 test("an incremental sync resumes from the stored cursor and picks up source edits", async () => {

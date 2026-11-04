@@ -12,6 +12,7 @@ import {
   loadSources,
   sourcesLine,
   sourcesReplied,
+  syncChanges,
   updateSources,
 } from "../src/sources.ts";
 import type { SourceView } from "../src/view.ts";
@@ -24,6 +25,7 @@ const source = (kind: string, name: string, syncedAt: string | null): SourceView
   about: `${name}'s details`,
   items: 3,
   syncedAt,
+  lastSync: { new: 0, changed: 0, removed: 0 },
 });
 const jira = source("jira", "Jira", "2026-10-30T09:00:00.000Z");
 const folder = source("folder", "Folder", "2026-10-30T08:00:00.000Z");
@@ -187,4 +189,11 @@ test("Browse fills the columns each item's connector declares", () => {
   });
   // A connector the page hasn't heard of fills none.
   assert.deepEqual(columns("sheets:1a2b-7"), { assignee: false, estimate: false, replies: false });
+});
+
+test("a source's row says what its last sync changed, only the counts that aren't zero", () => {
+  assert.equal(syncChanges({ new: 0, changed: 0, removed: 0 }), null);
+  assert.equal(syncChanges({ new: 3, changed: 1, removed: 0 }), "3 new · 1 changed");
+  assert.equal(syncChanges({ new: 0, changed: 0, removed: 2 }), "2 removed");
+  assert.equal(syncChanges({ new: 1, changed: 2, removed: 3 }), "1 new · 2 changed · 3 removed");
 });

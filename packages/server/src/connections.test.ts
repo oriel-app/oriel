@@ -76,7 +76,13 @@ test("a database from before connections moves in: Jira's saved connection, a fo
   );
   ensureWorkspace(today, { id: workspaceId, name: "Oriel" }, instant(new Date(t0)));
   today.exec(`attach database '${made}' as made`);
-  today.exec("insert into items select * from made.items");
+  // Only the columns items had then.
+  const columns = today
+    .prepare("select name from pragma_table_info('items')")
+    .all()
+    .map((row) => String(row.name))
+    .join(", ");
+  today.exec(`insert into items (${columns}) select ${columns} from made.items`);
   today.exec(
     "insert into sources (workspace_id, kind, cursor, synced_at) select workspace_id, source, cursor, synced_at from made.sources",
   );

@@ -947,6 +947,16 @@ button.nav-more {
   color: var(--accent);
 }
 
+.source-changes {
+  grid-column: 1;
+  justify-self: end;
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .source-row .source-problem {
   grid-column: 1 / -1;
   padding: 0 var(--space-2) var(--space-1);

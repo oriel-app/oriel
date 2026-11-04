@@ -66,6 +66,18 @@ export function sourcesReplied(
   return { model: { ...model, syncing }, synced: true };
 }
 
+// What a source's last sync changed, as its row says it: only the counts
+// that aren't zero, such as "3 new · 1 changed". Null when it changed
+// nothing.
+export function syncChanges(counts: SourceView["lastSync"]): string | null {
+  const said = [
+    counts.new && `${counts.new} new`,
+    counts.changed && `${counts.changed} changed`,
+    counts.removed && `${counts.removed} removed`,
+  ].filter(Boolean);
+  return said.length ? said.join(" · ") : null;
+}
+
 // The sources folded to one line: how many, when the longest ago of them
 // last synced, and whether any is syncing or has a problem.
 export function sourcesLine(model: SourcesModel): {
