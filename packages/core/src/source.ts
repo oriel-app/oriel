@@ -123,6 +123,9 @@ export type OpCatalogue = Readonly<
 // The read side of a source. It has no write methods; writing is `SourceWriter`.
 export interface Source<K extends SourceKind = SourceKind, A = unknown, C = unknown> {
   readonly kind: K;
+  // Whose its items are: its connection's prefix, such as `folder.2`, which
+  // its IDs carry and the index keeps them under. The kind when absent.
+  readonly prefix?: string;
   // Changed records since `cursor` (null = everything).
   sync(cursor: string | null): AsyncIterable<SyncPage<K, A>>;
   // Live, full content. A missing ID is a result, never a throw.

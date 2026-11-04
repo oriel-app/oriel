@@ -34,7 +34,7 @@ import {
   limits,
   type SlackMode,
 } from "./app.ts";
-import type { ConnectionStore } from "./connection.ts";
+import type { LegacyJira, Secrets } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
 
@@ -130,8 +130,10 @@ export type TestOptions = {
   live?: boolean;
   // A database file, so a second app can open what the first left.
   db?: string;
-  // Jira is connected from the window, and kept in `store`.
-  connect?: { store: ConnectionStore };
+  // Jira is connected from the window, and its connection's secret kept in
+  // `secrets`, in memory when absent; `legacy` is a connection saved before
+  // connections, which the start moves.
+  connect?: { secrets?: Secrets; legacy?: LegacyJira };
   // SYN's issues as its site in memory has them, with no edits; all of them
   // by default. Only that site serves them, so this needs `connect` or `live`.
   issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
@@ -182,7 +184,7 @@ export async function testApp(
   const jira: JiraMode = options.connect
     ? {
         kind: "window",
-        store: options.connect.store,
+        ...(options.connect.legacy ? { legacy: options.connect.legacy } : {}),
         ...(options.anySite ? { anySite: true } : {}),
         ...(site ? { fetch: site.fetch } : {}),
       }
@@ -195,6 +197,7 @@ export async function testApp(
   const app: App = await createApp({
     db: options.db ?? ":memory:",
     jira,
+    ...(options.connect?.secrets ? { secrets: options.connect.secrets } : {}),
     ...(options.slack ? { slack: options.slack } : {}),
     reviewBase: new URL(`${origin}/review/`),
     sketchBase: new URL(`${sketchOrigin}/sketches/`),

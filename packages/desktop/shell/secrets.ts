@@ -1,7 +1,7 @@
-// The secret store (OA-188, decision 0039). Each secret the server keeps, by
-// one of the fixed names it uses, is encrypted with Electron's safeStorage,
-// whose key the OS keeps under Oriel's own name (the Keychain on macOS), and
-// written to its own file in the data folder's `Secrets/`. Only ciphertext
+// The secret store (OA-188, decision 0039). Each secret the server keeps,
+// by a name of a shape it uses (rules.ts), is encrypted with Electron's
+// safeStorage, whose key the OS keeps under Oriel's own name (the Keychain
+// on macOS), and written to its own file in the data folder's `Secrets/`. Only ciphertext
 // is ever on disk, and no secret is ever logged. The encryption is a
 // parameter, so tests reach the files without Electron.
 //
@@ -10,7 +10,7 @@
 // the OS's key (rules.ts, secretsInMemory).
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { secretNames } from "./rules.ts";
+import { isSecretName } from "./rules.ts";
 
 export type Crypt = {
   // Why nothing can be kept now, or null.
@@ -27,7 +27,7 @@ export type SecretStore = {
 };
 
 const named = (name: string) => {
-  if (!secretNames.includes(name)) throw new Error("not a secret's name");
+  if (!isSecretName(name)) throw new Error("not a secret's name");
   return name;
 };
 

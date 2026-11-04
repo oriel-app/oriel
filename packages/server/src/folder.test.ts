@@ -22,6 +22,7 @@ import type {
   WindowView,
   WorkstreamView,
 } from "@oriel/web/view";
+import { memorySecrets } from "./connection.ts";
 import { host, json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
@@ -128,6 +129,149 @@ test("picking the same folder again keeps every item's ID", async (t) => {
   assert.equal(again.status, 200);
   const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
   assert.deepEqual(after, before);
+});
+
+// Every folder item's ID the window shows, from any folder's connection.
+const allFileIds = (view: WindowView) =>
+  view.clusters
+    .flatMap((c) => c.list.map((row) => row.id))
+    .filter((id) => /^folder(\.\d+)?:/.test(id))
+    .toSorted();
+
+test("another folder takes the place of the first as a later connection, and the first comes back under its IDs", async (t) => {
+  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-db-")));
+  t.after(() => rmSync(top, { recursive: true, force: true }));
+  const db = join(top, "oriel.db");
+  const app = await connected(t, { db });
+  const window = async (on: Pick<typeof app, "get"> = app) =>
+    allFileIds(json<WindowView>(await on.get("/api/window?grouping=epic")));
+  const first = await window();
+  assert.equal(first.length, 2);
+  const [held] = first;
+  assert.ok(held);
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Notes", items: [held] }),
+  );
+  const members = async (on: Pick<typeof app, "get"> = app) =>
+    json<WorkstreamView>(await on.get(`/api/workstreams/${workstreamId}`)).members.map((m) => [
+      m.ref.id,
+      m.row !== null,
+    ]);
+  assert.deepEqual(await members(), [[held, true]]);
+
+  // Another folder: a later connection, whose items carry its number. The
+  // first's go from the window, and its workstream holds its item as gone.
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  assert.equal((await app.post("/api/folder", { path: plans })).status, 200);
+  const second = await window();
+  assert.equal(second.length, 1);
+  assert.match(second[0] ?? "", /^folder\.2:[0-9a-f]{16}$/);
+  assert.deepEqual(await members(), [[held, false]]);
+  // The first again: the same connection, so the same IDs, and its workstream
+  // holds its item again. Restarting changes nothing.
+  assert.equal((await app.post("/api/folder", { path: app.dir.root })).status, 200);
+  assert.deepEqual(await window(), first);
+  assert.deepEqual(await members(), [[held, true]]);
+  // Each connect counted, the later one as later.
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .flatMap((e) => (e.name === "source.connected" ? [[e.data.source, e.data.later]] : [])),
+    [
+      ["jira", false],
+      ["folder", false],
+      ["folder", true],
+      ["folder", false],
+    ],
+  );
+  await app.app.close();
+  const again = await testApp(t, { db });
+  assert.deepEqual(await window(again), first);
+  assert.deepEqual(
+    json<{ folder: FolderView }>(await again.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+});
+
+test("a sync asked for while another folder takes the first's place reads the new one, and never brings the first back", async (t) => {
+  const app = await connected(t);
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  for (const wait of [0, 1, 2, 5, 10, 20]) {
+    const path = wait % 2 === 0 ? plans : app.dir.root;
+    const replacing = app.post("/api/folder", { path });
+    for (let i = 0; i < wait; i++) await new Promise((resolve) => setImmediate(resolve));
+    const synced = app.post("/api/folder/sync");
+    assert.equal((await replacing).status, 200);
+    assert.equal((await synced).status, 200);
+    const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+    const prefixes = [...new Set(ids.map((id) => id.split(":")[0]))];
+    assert.deepEqual(prefixes, [path === plans ? "folder.2" : "folder"], `after ${wait}`);
+  }
+});
+
+test("the first folder picked again while another takes its place comes back after it", async (t) => {
+  // The other folder's connect is held while it disconnects the first.
+  const deleting = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  const app = await connected(t, {
+    connect: {
+      secrets: {
+        ...memorySecrets(),
+        delete: async () => {
+          deleting.resolve();
+          await held.promise;
+        },
+      },
+    },
+  });
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  const replacing = app.post("/api/folder", { path: plans });
+  await deleting.promise;
+  const back = app.post("/api/folder", { path: app.dir.root });
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  held.resolve();
+  assert.equal((await replacing).status, 200);
+  assert.equal((await back).status, 200);
+  assert.equal(
+    json<{ folder: FolderView }>(await app.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+  const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  assert.deepEqual([...new Set(ids.map((id) => id.split(":")[0]))], ["folder"]);
+});
+
+test("a folder that can't be disconnected now is an error for its request, and the server goes on", async (t) => {
+  const secrets = memorySecrets();
+  const app = await connected(t, {
+    connect: {
+      secrets: {
+        ...secrets,
+        delete: async () => {
+          throw new Error("the shell is gone");
+        },
+      },
+    },
+  });
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  const refused = await app.post("/api/folder", { path: plans }).then(
+    (reply) => reply.status,
+    () => "threw",
+  );
+  assert.notEqual(refused, 200);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    json<{ folder: FolderView }>(await app.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+  assert.equal((await app.post("/api/folder/sync")).status, 200);
 });
 
 test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {

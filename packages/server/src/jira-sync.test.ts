@@ -10,7 +10,6 @@ import type {
   JiraView,
   ThreadView,
 } from "@oriel/web/view";
-import { memoryStore } from "./connection.ts";
 import { account, json, type Script, testApp } from "./testing.ts";
 
 type Synced = { jira: JiraView };
@@ -157,7 +156,7 @@ test("an unexpected answer from Jira isn't called an outage", async (t) => {
 });
 
 test("Jira connected from the window syncs on demand, and can't before it's connected", async (t) => {
-  const app = await testApp(t, { connect: { store: memoryStore() } });
+  const app = await testApp(t, { connect: {} });
   const { site } = app;
   assert.ok(site);
   const early = await app.post("/api/jira/sync");

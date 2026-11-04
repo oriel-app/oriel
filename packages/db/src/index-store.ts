@@ -186,8 +186,8 @@ export function indexStore(db: DatabaseSync) {
     "select exists (select 1 from items where workspace_id = ? and source = ? and snapshot = ?) as found",
   );
   const saveSource = db.prepare(`
-    insert into sources (workspace_id, kind, cursor, synced_at) values (?, ?, ?, ?)
-    on conflict (workspace_id, kind) do update set
+    insert into sources (workspace_id, source, cursor, synced_at) values (?, ?, ?, ?)
+    on conflict (workspace_id, source) do update set
       cursor = coalesce(excluded.cursor, sources.cursor), synced_at = excluded.synced_at`);
   const insertSnapshot = db.prepare(
     "insert into snapshots (workspace_id, version, source, taken_at) values (?, ?, ?, ?)",
@@ -205,8 +205,28 @@ export function indexStore(db: DatabaseSync) {
     "select stable_id from items where workspace_id = ? and source = ? and gone_at is not null order by stable_id",
   );
   const selectSource = db.prepare(
-    "select cursor, synced_at from sources where workspace_id = ? and kind = ?",
+    "select cursor, synced_at from sources where workspace_id = ? and source = ?",
   );
+
+  // A disconnected connection's items, as decision 0049 has them forgotten.
+  // References to them wait again by handle, from now, as one to an item the
+  // index never had does.
+  const forgetMade = db.prepare(
+    "delete from item_references where workspace_id = ? and source = ?",
+  );
+  const forgetUnheld = db.prepare(`
+    delete from item_references
+    where workspace_id = ?1 and to_source = ?2 and to_stable_id is not null
+      and not exists (select 1 from items i where i.workspace_id = ?1 and i.source = ?2
+        and i.stable_id = item_references.to_stable_id)`);
+  const waitAgain = db.prepare(`
+    update item_references set at = ?3, to_stable_id = null, to_handle = (
+      select substr(i.item_id, length(i.source) + 2) from items i
+      where i.workspace_id = ?1 and i.source = ?2 and i.stable_id = item_references.to_stable_id)
+    where workspace_id = ?1 and to_source = ?2 and to_stable_id is not null`);
+  const forgetChanges = db.prepare("delete from change_log where workspace_id = ? and source = ?");
+  const forgetState = db.prepare("delete from sources where workspace_id = ? and source = ?");
+  const forgetItems = db.prepare("delete from items where workspace_id = ? and source = ?");
 
   const snapshot = (workspaceId: Ulid) => {
     const row = versionRow(selectLatest.get(workspaceId));
@@ -501,11 +521,30 @@ export function indexStore(db: DatabaseSync) {
       return selectGoneIds.all(workspaceId, source).map((row) => String(row.stable_id));
     },
 
+    // Forgets everything the index keeps of one connection's items, by its
+    // prefix: the items, tombstones too, their change log, the references
+    // they made and its sync state. Takes a snapshot version when it held
+    // any item, and returns the version the index is at.
+    forget(workspaceId: Ulid, source: string, now: Instant): number {
+      written();
+      return transaction(db, () => {
+        forgetMade.run(workspaceId, source);
+        forgetUnheld.run(workspaceId, source);
+        waitAgain.run(workspaceId, source, now);
+        forgetChanges.run(workspaceId, source);
+        forgetState.run(workspaceId, source);
+        const version = snapshot(workspaceId);
+        if (forgetItems.run(workspaceId, source).changes === 0) return version;
+        insertSnapshot.run(workspaceId, version + 1, source, now);
+        return version + 1;
+      });
+    },
+
     source(
       workspaceId: Ulid,
-      kind: SourceKind,
+      source: string,
     ): { cursor: string | null; syncedAt: Instant | null } | null {
-      const raw = selectSource.get(workspaceId, kind);
+      const raw = selectSource.get(workspaceId, source);
       if (!raw) return null;
       const row = sourceRow(raw);
       if (!row.ok) throw new Error(`corrupt sources row: ${JSON.stringify(row.issues)}`);

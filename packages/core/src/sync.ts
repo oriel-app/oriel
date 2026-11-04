@@ -89,7 +89,9 @@ export async function syncSource<K extends SourceKind, A>(
 ): Promise<SyncReport> {
   const { source, attrs, index, workspaceId, log } = options;
   const recognize = options.recognize ?? (() => []);
-  const stored = index.source(workspaceId, source.kind)?.cursor ?? null;
+  // The index keeps its items under its connection's prefix.
+  const prefix = source.prefix ?? source.kind;
+  const stored = index.source(workspaceId, prefix)?.cursor ?? null;
   const cursor = options.full ? null : stored;
   const full = cursor === null;
   const items = options.items ?? [];
@@ -99,7 +101,7 @@ export async function syncSource<K extends SourceKind, A>(
     items.length && source.records
       ? await source.records(items.map((i) => i.id))
       : { records: [], gone: [], texts: {} };
-  const run = index.beginSync(workspaceId, source.kind, attrs, options.clock(), options.facets);
+  const run = index.beginSync(workspaceId, prefix, attrs, options.clock(), options.facets);
   // Every stable ID the source returned, skipped ones included: a record that
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
   const seen = new Set<string>();
@@ -110,11 +112,11 @@ export async function syncSource<K extends SourceKind, A>(
   const keep = (page: SyncPage<K, A>) => {
     const valid = page.records.filter((record) => {
       if (record.stableId) seen.add(record.stableId);
-      const problem = check(source.kind, options.key, attrs, record);
+      const problem = check(prefix, options.key, attrs, record);
       if (problem === null) return true;
       skipped++;
       log("sync: skipped a malformed record", {
-        source: source.kind,
+        source: prefix,
         stableId: record.stableId,
         problem,
       });
@@ -140,7 +142,7 @@ export async function syncSource<K extends SourceKind, A>(
   // return, as Jira's search lists a deleted issue for a while. A source that
   // can read by key is asked first, and only what it still has comes back; one
   // that can't is taken at its word. The items above are read already.
-  const tombstoned = new Set(source.records ? index.goneStableIds(workspaceId, source.kind) : []);
+  const tombstoned = new Set(source.records ? index.goneStableIds(workspaceId, prefix) : []);
   const ours = new Set(items.map((item) => item.stableId));
   const confirmed = async (page: SyncPage<K, A>): Promise<SyncPage<K, A>> => {
     const back = page.records.filter((r) => tombstoned.has(r.stableId) && !ours.has(r.stableId));
@@ -175,7 +177,7 @@ export async function syncSource<K extends SourceKind, A>(
   // A read the listing has since overtaken is left out. The cursor stays the
   // listing's: these reads say nothing of what else changed.
   if (items.length) {
-    const live = new Set(index.liveStableIds(workspaceId, source.kind));
+    const live = new Set(index.liveStableIds(workspaceId, prefix));
     keep({
       records: read.records.filter(
         (record) => !(record.updatedAt < (listed.get(record.stableId) ?? "")),
@@ -188,12 +190,12 @@ export async function syncSource<K extends SourceKind, A>(
     });
   }
   if (full) {
-    const missing = index.liveStableIds(workspaceId, source.kind).filter((id) => !seen.has(id));
+    const missing = index.liveStableIds(workspaceId, prefix).filter((id) => !seen.has(id));
     if (missing.length) run.apply({ records: [], gone: missing, cursor: last });
     gone += missing.length;
   }
   const version = run.finish(last, options.clock());
-  log("sync: finished", { source: source.kind, version, full, records, skipped, gone });
+  log("sync: finished", { source: prefix, version, full, records, skipped, gone });
   return { version, full, records, skipped, gone };
 }
 

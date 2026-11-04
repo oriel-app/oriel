@@ -31,6 +31,8 @@ import { type FileEntry, type FolderPath, walk } from "./walk.ts";
 
 export type FolderSource = Source<"folder", FolderAttrs, FolderContent>;
 
+export type FolderPrefix = "folder" | `folder.${number}`;
+
 export type FolderSourceOptions = {
   // The connected folder's own ID: the ULID the workspace gave it when the
   // user picked it. Every key hashes it, so another folder gets other IDs.
@@ -38,16 +40,21 @@ export type FolderSourceOptions = {
   // The folder's real path, from `resolveFolder` when the user picked it. A
   // walk refuses the folder if this path ever leads through a link.
   path: FolderPath;
+  // Its connection's prefix, which its IDs carry: `folder`, or a later
+  // folder's `folder.2` (decision 0049). `folder` when absent.
+  prefix?: FolderPrefix;
   log: Log;
 };
 
 export function folderSource(options: FolderSourceOptions): FolderSource {
   const { folderId, path, log } = options;
+  const prefix = options.prefix ?? "folder";
   if (!isUlid(folderId)) throw new RangeError("folder: expected the folder's ID, a ULID");
   if (!isAbsolute(path)) throw new RangeError("folder: expected an absolute path");
 
   return {
     kind: "folder",
+    prefix,
 
     // Every file, in one page: the caps keep a whole walk small enough for
     // one. Any cursor is ignored, and none is kept.
@@ -67,7 +74,7 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
         });
       const skipped = Object.entries(scope.skipped).filter(([, count]) => count > 0);
       if (skipped.length) log("folder: skipped files", Object.fromEntries(skipped));
-      yield { records: scope.files.map(recordOf), gone: [], cursor: null };
+      yield { records: scope.files.map((file) => recordOf(file, prefix)), gone: [], cursor: null };
     },
 
     // Each ID is looked up in a fresh walk and opened. A file that changed
@@ -94,7 +101,7 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
         const retry: typeof pending = [];
         for (const id of pending) {
           const parsed = parseItemId(id);
-          const key = parsed?.prefix === "folder" ? parsed.key : "";
+          const key = parsed?.prefix === prefix ? parsed.key : "";
           const entry = byKey.get(key);
           // A file the walk found but couldn't read is forbidden, not deleted.
           const missing = scope.forbidden.has(key) ? "forbidden" : "vanished";
@@ -119,9 +126,9 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
 }
 
 // A file as the index keeps it.
-export function recordOf(file: FileEntry): FolderRecord {
+export function recordOf(file: FileEntry, prefix: FolderPrefix = "folder"): FolderRecord {
   return {
-    id: itemId("folder", file.key),
+    id: itemId(prefix, file.key) as FolderRecord["id"],
     stableId: file.key,
     title: file.title,
     location: file.location,

@@ -1,4 +1,4 @@
-export * from "./folders.ts";
+export * from "./connections.ts";
 export * from "./workstreams.ts";
 export * from "./index-store.ts";
 export * from "./migrate.ts";

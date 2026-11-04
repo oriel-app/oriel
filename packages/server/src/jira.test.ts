@@ -2,12 +2,29 @@
 // them against the site, and its items join the window with no restart. The
 // site is SYN in memory; the token never comes back out.
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { JiraView, SetupView, ThreadView, WindowView } from "@oriel/web/view";
-import { fileStore, jiraSite, memoryStore, secretsStore } from "./connection.ts";
+import { connectionStore, open } from "@oriel/db";
+import {
+  fileSecrets,
+  jiraSite,
+  legacyFile,
+  legacySecret,
+  memorySecrets,
+  secretName,
+} from "./connection.ts";
 import { memorySetup } from "./setup/state.ts";
 import { account, json, type Script, t0, testApp } from "./testing.ts";
 
@@ -19,10 +36,20 @@ const details = {
 };
 
 async function unconnected(t: TestContext, options: Parameters<typeof testApp>[1] = {}) {
-  const store = memoryStore();
-  const app = await testApp(t, { connect: { store }, ...options });
-  return { ...app, store };
+  const secrets = memorySecrets();
+  const app = await testApp(t, { connect: { secrets }, ...options });
+  return { ...app, secrets };
 }
+
+// The secrets kept, by name, each a connection's: `connection.` and its ID.
+const kept = (secrets: { kept: Map<string, string> }) =>
+  [...secrets.kept].map(([name, value]) => {
+    assert.match(name, /^connection\.[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+    return JSON.parse(value) as unknown;
+  });
+
+// SYN's site as a connection the window made keeps it.
+const synSaved = { site: "https://oriel.atlassian.net", ...account, project: "SYN" };
 
 const epics = (view: WindowView) =>
   view.clusters.filter((c) => c.row.origin.kind === "source").map((c) => c.row.label);
@@ -62,12 +89,8 @@ test("connecting Jira from the window syncs its epics in, with no restart", asyn
     connects.map((e) => e.data.source),
     ["jira"],
   );
-  assert.deepEqual(app.store.saved(), {
-    site: "https://oriel.atlassian.net",
-    email: account.email,
-    token: account.token,
-    project: "SYN",
-  });
+  // Its account is its connection's secret, and nothing else is.
+  assert.deepEqual(kept(app.secrets), [account]);
   // Once connected, it stays as it is.
   const again = await app.post("/api/jira", details);
   assert.equal(again.status, 400);
@@ -127,7 +150,7 @@ test("details Jira won't take are refused in plain words, and nothing is kept", 
     "$.token: expected an API token",
   );
   assert.equal((await app.post("/api/jira", { ...details, token: "x".repeat(5000) })).status, 413);
-  assert.equal(app.store.saved(), null);
+  assert.deepEqual(kept(app.secrets), []);
   assert.deepEqual(json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected, null);
   assert.equal(json<WindowView>(await app.get("/api/window?grouping=epic")).items, 0);
   // It still connects with the right ones.
@@ -150,14 +173,35 @@ test("only this window can connect Jira, and the token never comes back out", as
 test("a connection made in the window is there again when the server starts", async (t) => {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-jira-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
-  const db = join(top, "live.db");
-  const store = fileStore(join(top, "secrets", "jira.json"));
-  const first = await testApp(t, { db, connect: { store } });
+  const db = join(top, "window.db");
+  const secrets = fileSecrets(join(top, "secrets", "window"));
+  const first = await testApp(t, { db, connect: { secrets } });
   assert.equal((await first.post("/api/jira", details)).status, 200);
   await first.app.close();
-  assert.equal(statSync(join(top, "secrets", "jira.json")).mode & 0o777, 0o600);
-  assert.equal(statSync(join(top, "secrets")).mode & 0o777, 0o700);
-  const again = await testApp(t, { db, connect: { store } });
+  const [connection] = connectionStore(open(db)).list(first.app.workspaceId);
+  assert.ok(connection);
+  assert.deepEqual(
+    { ...connection, id: "", connectedAt: "" },
+    {
+      id: "",
+      kind: "jira",
+      number: 1,
+      prefix: "jira",
+      identity: "https://oriel.atlassian.net",
+      name: null,
+      options: { project: "SYN" },
+      connectedAt: "",
+      disconnectedAt: null,
+    },
+  );
+  // One file, readable by its owner only, named for the connection; the
+  // database keeps no secret.
+  const file = join(top, "secrets", "window", secretName(connection.id));
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), account);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(statSync(join(top, "secrets", "window")).mode & 0o777, 0o700);
+  assert.doesNotMatch(readFileSync(db).toString("latin1"), new RegExp(account.token));
+  const again = await testApp(t, { db, connect: { secrets } });
   const { jira } = json<{ jira: JiraView }>(await again.get("/api/jira"));
   assert.deepEqual([jira.connected?.project, jira.connectable], ["SYN", false]);
   assert.ok((jira.connected?.items ?? 0) > 100);
@@ -165,21 +209,58 @@ test("a connection made in the window is there again when the server starts", as
   assert.equal(again.app.telemetry().filter((e) => e.name === "source.connected").length, 1);
 });
 
-test("a saved connection that can't be read stops the start without quoting it", async (t) => {
+test("the connection saved before connections moves into one at the first start, and the old one goes", async (t) => {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-jira-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
-  const path = join(top, "jira.json");
-  const store = fileStore(path);
-  assert.equal(await store.load(), null);
-  await store.save({ ...details, site: "https://oriel.atlassian.net", project: "SYN" });
-  assert.equal((await store.load())?.token, account.token);
-  // Half a file: JSON.parse's own message would quote it.
-  const broken = join(top, "broken.json");
-  writeFileSync(broken, readFileSync(path, "utf8").slice(0, -10));
-  await assert.rejects(
-    () => fileStore(broken).load(),
-    (error: Error) => !error.message.includes(account.token) && /can read/.test(error.message),
+  const db = join(top, "window.db");
+  // Under `pnpm dev`, a file; on the desktop app, the secret store's `jira`.
+  const old = join(top, "secrets", "jira.json");
+  mkdirSync(join(top, "secrets"));
+  writeFileSync(old, `${JSON.stringify(synSaved)}\n`, { mode: 0o600 });
+  const secrets = memorySecrets();
+  const first = await testApp(t, { db, connect: { secrets, legacy: legacyFile(old) } });
+  assert.equal(existsSync(old), false);
+  assert.deepEqual(kept(secrets), [account]);
+  const { jira } = json<{ jira: JiraView }>(await first.get("/api/jira"));
+  assert.deepEqual([jira.connected?.site, jira.connected?.project], [synSaved.site, "SYN"]);
+  assert.ok(first.logged.some((line) => line.message === "jira: the saved connection moved"));
+  await first.app.close();
+
+  const desktop = memorySecrets(new Map([["jira", JSON.stringify(synSaved)]]));
+  const app = await testApp(t, { connect: { secrets: desktop, legacy: legacySecret(desktop) } });
+  assert.deepEqual(
+    [...desktop.kept.keys()].filter((name) => name === "jira"),
+    [],
   );
+  assert.deepEqual(kept(desktop), [account]);
+  assert.ok(json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected);
+  assert.doesNotMatch(JSON.stringify([first.logged, app.logged]), new RegExp(account.token));
+});
+
+test("a saved connection that can't be read is left where it is, unquoted, and the window asks for Jira", async (t) => {
+  // Half of one: JSON.parse's own message would quote it.
+  const half = JSON.stringify(synSaved).slice(0, -10);
+  const secrets = memorySecrets(new Map([["jira", half]]));
+  const app = await testApp(t, { connect: { secrets, legacy: legacySecret(secrets) } });
+  assert.equal(secrets.kept.get("jira"), half);
+  assert.deepEqual(json<{ jira: JiraView }>(await app.get("/api/jira")).jira, {
+    connected: null,
+    connectable: true,
+  });
+  assert.ok(app.logged.some((line) => /isn't one Oriel can read/.test(line.message)));
+  assert.doesNotMatch(JSON.stringify(app.logged), new RegExp(account.token));
+  // A store that doesn't answer is the same.
+  const gone = await testApp(t, {
+    connect: {
+      legacy: {
+        load: async () => {
+          throw new Error("the shell is gone");
+        },
+        delete: async () => {},
+      },
+    },
+  });
+  assert.equal(json<{ jira: JiraView }>(await gone.get("/api/jira")).jira.connectable, true);
 });
 
 test("Jira set up when the server starts can't be connected from the window", async (t) => {
@@ -210,30 +291,45 @@ test("a site is typed the ways people type it", () => {
     assert.equal(jiraSite(typed), null, typed);
 });
 
-test("a saved connection Jira no longer takes is dropped, so the window asks again", async (t) => {
-  const store = memoryStore({
-    site: "https://oriel.atlassian.net",
-    email: account.email,
-    token: "revoked-since",
-    project: "SYN",
-  });
-  const app = await testApp(t, { connect: { store } });
+test("a connection Jira no longer takes is signed out, and signing in again keeps it", async (t) => {
+  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-jira-")));
+  t.after(() => rmSync(top, { recursive: true, force: true }));
+  const db = join(top, "window.db");
+  const secrets = memorySecrets();
+  const first = await testApp(t, { db, connect: { secrets } });
+  assert.equal((await first.post("/api/jira", details)).status, 200);
+  await first.app.close();
+  const [name] = [...secrets.kept.keys()];
+  assert.ok(name);
+  secrets.kept.set(name, JSON.stringify({ ...account, token: "revoked-since" }));
+  const app = await testApp(t, { db, connect: { secrets }, anySite: true });
   const { jira } = json<{ jira: JiraView }>(await app.get("/api/jira"));
   assert.deepEqual(jira, { connected: null, connectable: true });
   assert.ok(app.logged.some((line) => line.message === "jira: the saved connection was refused"));
+  // Another site is refused while this one waits for its account.
+  for (const path of ["/api/jira", "/api/jira/projects"]) {
+    const elsewhere = await app.post(path, { ...details, site: "acme" });
+    assert.equal(elsewhere.status, 400);
+    assert.match(
+      json<{ error: string }>(elsewhere).error,
+      /one Jira site for now, oriel\.atlassian\.net\. Sign in to it again\./,
+    );
+  }
   assert.equal((await app.post("/api/jira", details)).status, 200);
-  assert.equal(store.saved()?.token, account.token);
+  // The same connection, under the same name, with the account that works.
+  assert.deepEqual([...secrets.kept.keys()], [name]);
+  assert.deepEqual(kept(secrets), [account]);
 });
 
 test("after a dropped connection, a change set from before says to connect Jira again", async (t) => {
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-jira-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "window.db");
-  const store = memoryStore();
+  const secrets = memorySecrets();
   const estimate: Script = async () => ({ writes: [["jira.setEstimate", ["jira:SYN-99", 5]]] });
   const first = await testApp(t, {
     db,
-    connect: { store },
+    connect: { secrets },
     plan: () => [{ run: "estimate" }],
     scripts: { estimate },
   });
@@ -252,12 +348,9 @@ test("after a dropped connection, a change set from before says to connect Jira 
   const setId = json<ThreadView>(await first.get(`/api/threads/${id}`)).changeSets[0]?.id;
   assert.ok(setId);
   await first.app.close();
-  const saved = store.saved();
-  assert.ok(saved);
-  const again = await testApp(t, {
-    db,
-    connect: { store: memoryStore({ ...saved, token: "revoked-since" }) },
-  });
+  for (const name of secrets.kept.keys())
+    secrets.kept.set(name, JSON.stringify({ ...account, token: "revoked-since" }));
+  const again = await testApp(t, { db, connect: { secrets } });
   const diff = await again.post(`/api/change-sets/${setId}/diff`);
   assert.equal(diff.status, 409);
   assert.match(json<{ error: string }>(diff).error, /Connect Jira in the window/);
@@ -305,40 +398,6 @@ test("a Jira project whose issues are all done lists them, though nothing is stu
   );
 });
 
-test("a store for secrets keeps the connection under one name, and one it can't read or reach is none", async () => {
-  const kept = new Map<string, string>();
-  const logged: string[] = [];
-  const log = (message: string) => logged.push(message);
-  const store = secretsStore(
-    {
-      get: async (name) => kept.get(name) ?? null,
-      set: async (name, value) => void kept.set(name, value),
-      delete: async (name) => void kept.delete(name),
-    },
-    log,
-  );
-  assert.equal(await store.load(), null);
-  const saved = { ...details, site: "https://oriel.atlassian.net", project: "SYN" };
-  await store.save(saved);
-  assert.deepEqual([...kept.keys()], ["jira"]);
-  assert.deepEqual(await store.load(), saved);
-  kept.set("jira", (kept.get("jira") ?? "").slice(0, -10));
-  assert.equal(await store.load(), null);
-  const gone = secretsStore(
-    {
-      get: async () => {
-        throw new Error("the shell is gone");
-      },
-      set: async () => {},
-      delete: async () => {},
-    },
-    log,
-  );
-  assert.equal(await gone.load(), null);
-  assert.equal(logged.length, 2);
-  assert.ok(logged.every((line) => !line.includes(account.token)));
-});
-
 test("the details typed list the projects they can see, and keep nothing (decision 0038)", async (t) => {
   const app = await unconnected(t);
   const { project: _, ...typed } = details;
@@ -352,7 +411,7 @@ test("the details typed list the projects they can see, and keep nothing (decisi
   assert.ok((listed.projects[0]?.issues ?? 0) > 100);
   assert.equal(listed.more, false);
   assert.ok(!String(reply.body).includes(account.token));
-  assert.equal(app.store.saved(), null);
+  assert.deepEqual(kept(app.secrets), []);
   assert.equal(json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected, null);
 
   // A refusal names its fields, so the page marks them and keeps the help.

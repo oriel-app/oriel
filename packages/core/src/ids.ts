@@ -37,6 +37,11 @@ export function parseItemId(id: string): ParsedItemId | null {
 // The kind a connection's prefix is of: `jira` for `jira` and `jira.2` alike.
 export const kindOf = (prefix: string): SourceKind => prefix.split(".", 1)[0] ?? prefix;
 
+// A connection's prefix, from its kind and number: the bare kind for the
+// first, the kind and its number for a later one.
+export const prefixOf = (kind: SourceKind, number: number): string =>
+  number === 1 ? kind : `${kind}.${number}`;
+
 // Whether a value is a connection's prefix, as the index keeps its source.
 export const isPrefix = (value: string): boolean => parseItemId(`${value}:_`)?.prefix === value;
 

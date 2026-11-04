@@ -136,8 +136,17 @@ test("a request the protocol doesn't allow is never sent", async () => {
   input.write(`${secret}\n`);
   lines.ready("http://127.0.0.1:4320/");
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "../Jira" }), /isn't a request/);
-  // Only the names the server keeps: the Jira connection and the API key.
+  // Only the names the server keeps: the API key, each connection's by its
+  // ULID, and the Jira connection kept before connections.
   await assert.rejects(lines.shell.ask({ kind: "secret.get", name: "slack" }), /isn't a request/);
+  for (const name of [
+    "connection.01jc0nnect10nsst0red0000ab",
+    "connection.01JC0NNECT10NSST0RED0000AB.tmp",
+    "connection.01JC0NNECT10NSST0RED0000A",
+    "connection.../C0NNECT10NSST0RED0000AB",
+    "slack.01JC0NNECT10NSST0RED0000AB",
+  ])
+    await assert.rejects(lines.shell.ask({ kind: "secret.get", name }), /isn't a request/, name);
   await assert.rejects(
     lines.shell.ask({ kind: "secret.delete", name: "anthropic-key.old" }),
     /isn't a request/,
@@ -147,6 +156,10 @@ test("a request the protocol doesn't allow is never sent", async () => {
     /isn't a request/,
   );
   assert.equal(out.length, 1);
+  lines.shell
+    .ask({ kind: "secret.get", name: "connection.01JC0NNECT10NSST0RED0000AB" })
+    .catch(() => {});
+  assert.equal(out.length, 2);
 });
 
 test("when stdin ends, waiting requests and later ones reject as the shell gone", async () => {

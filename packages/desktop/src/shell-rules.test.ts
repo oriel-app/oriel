@@ -41,6 +41,13 @@ test("the shell answers the protocol's requests, as the server writes them", () 
       request: { kind: "secret.set", name: "anthropic-key", secret: "s3" },
     },
   );
+  assert.deepEqual(
+    parseRequest('{"id":5,"kind":"secret.get","name":"connection.01JC0NNECT10NSST0RED0000AB"}'),
+    {
+      id: 5,
+      request: { kind: "secret.get", name: "connection.01JC0NNECT10NSST0RED0000AB" },
+    },
+  );
   assert.deepEqual(parseRequest('{"id":4,"kind":"secret.delete","name":"jira"}'), {
     id: 4,
     request: { kind: "secret.delete", name: "jira" },
@@ -88,6 +95,23 @@ test("anything else is refused, with an answer when it has an id", () => {
   assert.equal(refused('{"id":12,"kind":"secret.get","name":"slack.token"}'), 12);
   assert.equal(refused('{"id":13,"kind":"secret.set","name":"login","secret":"s"}'), 13);
   assert.equal(refused('{"id":14,"kind":"secret.delete","name":"jira.tmp"}'), 14);
+  // A connection's secret, by its ULID alone: exactly 26 upper-case Crockford
+  // characters, the first of which a ULID keeps to 0-7.
+  for (const name of [
+    "connection.",
+    "connection.01jc0nnect10nsst0red0000ab",
+    "connection.01JC0NNECT10NSST0RED0000AB0",
+    "connection.01JC0NNECT10NSST0RED0000A",
+    "connection.01JC0NNECT10NSST0RED0000AI",
+    "connection.81JC0NNECT10NSST0RED0000AB",
+    "connection.01JC0NNECT10NSST0RED0000AB.tmp",
+    "connection./1JC0NNECT10NSST0RED0000AB",
+    "connection.01JC0NNECT10NSST0RED0000A\\u0000",
+    "connections.01JC0NNECT10NSST0RED0000AB",
+    "Connection.01JC0NNECT10NSST0RED0000AB",
+    "slack.01JC0NNECT10NSST0RED0000AB",
+  ])
+    assert.equal(refused(JSON.stringify({ id: 15, kind: "secret.get", name })), 15, name);
   assert.equal(refused(`{"id":9,"kind":"secret.get","name":"${"a".repeat(65)}"}`), 9);
   assert.equal(
     refused(`{"id":10,"kind":"secret.set","name":"jira","secret":"${"x".repeat(16_385)}"}`),

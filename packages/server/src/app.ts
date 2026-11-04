@@ -28,6 +28,7 @@ import {
   type Log,
   maxItems,
   parseItemId,
+  prefixOf,
   type Reader,
   type ReadResult,
   type Region,
@@ -45,7 +46,6 @@ import {
 import {
   ensureWorkspace,
   firstWorkspace,
-  folderStore,
   workstreamStore,
   indexStore,
   loadMigrations,
@@ -75,7 +75,13 @@ import {
   readTransport,
   loadJiraFixture,
 } from "@oriel/jira";
-import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
+import {
+  folderAttrs,
+  type FolderPath,
+  type FolderPrefix,
+  folderSource,
+  resolveFolder,
+} from "@oriel/folder";
 import {
   connectSlack,
   fixtureApi,
@@ -115,7 +121,16 @@ import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api } from "./api.ts";
-import { type ConnectionStore, type JiraConnection, jiraSite } from "./connection.ts";
+import {
+  type JiraConnection,
+  jiraSite,
+  type LegacyJira,
+  memorySecrets,
+  parsedJiraSecret,
+  parsedLegacy,
+  type Secrets,
+} from "./connection.ts";
+import { type Connections, connectionsOf } from "./connections.ts";
 import { throwawaySite } from "./env.ts";
 import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
@@ -154,14 +169,15 @@ export type JiraWrites = {
 // read-only unless tests give it a site to write to that holds the same
 // items. Live is a site, read through the API and written to through
 // approved change sets. From the window is live too, once the user connects
-// it there; the connection is kept in `store`, so it's there again the next
-// time the server starts. `anySite`: any Jira Cloud site may be connected,
-// as on the desktop app (decision 0038); otherwise only the throwaway one.
-// `fetch` is for tests, as above.
+// it there; the connection is kept as connections are, so it's there again
+// the next time the server starts. `legacy` is where it was kept before
+// connections, from which the first start moves it. `anySite`: any Jira
+// Cloud site may be connected, as on the desktop app (decision 0038);
+// otherwise only the throwaway one. `fetch` is for tests, as above.
 export type JiraMode =
   | { kind: "fixture"; writeTo?: JiraWrites }
   | ({ kind: "live" } & JiraWrites)
-  | { kind: "window"; store: ConnectionStore; anySite?: boolean; fetch?: typeof fetch };
+  | { kind: "window"; legacy?: LegacyJira; anySite?: boolean; fetch?: typeof fetch };
 
 // Where Slack comes from (decision 0021). The fixture is the synthetic
 // workspace in `fixtures/slack/`, with the channel picked there, which change
@@ -181,6 +197,9 @@ export type AppOptions = {
   // second server can open it (decision 0036).
   exclusive?: boolean;
   jira: JiraMode;
+  // Where connections keep their secrets, each under the name made from its
+  // ID (decision 0049); kept only while the server runs when absent.
+  secrets?: Secrets;
   // No Slack when absent.
   slack?: SlackMode;
   // Builds the agent from everything but a model provider: @oriel/agent's,
@@ -318,6 +337,15 @@ export async function createApp(options: AppOptions): Promise<App> {
   const runs = runStore(db);
   const telemetry = telemetryStore(db);
   const emit = (event: Parameters<typeof telemetry.record>[0]) => telemetry.record(event, newId());
+  const connections = connectionsOf({
+    db,
+    index,
+    secrets: options.secrets ?? memorySecrets(),
+    workspaceId,
+    now,
+    newId,
+    log,
+  });
 
   const mode = options.jira;
   const fixture = mode.kind === "fixture" ? loadJiraFixture() : null;
@@ -349,7 +377,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     project: saved.project,
     ...(send ? { fetch: send } : {}),
   });
-  const saved = mode.kind === "window" ? await mode.store.load() : null;
+  // A connection a flag makes is its kind's first, made at every start; one
+  // made in the window, the first of its kind, with its secret.
+  if (mode.kind !== "window")
+    connections.flagged("jira", mode.kind === "live" ? mode.site : site, {
+      project: mode.kind === "live" ? mode.project : (fixture?.project.key ?? ""),
+    });
+  else if (mode.legacy) await moveLegacy(connections, mode.legacy, log);
+  const saved = mode.kind === "window" ? await savedJira(connections, log) : null;
   // A site the window may connect: any Jira Cloud site on the desktop app,
   // else only the throwaway one.
   const siteAllowed = (at: string | null): at is string =>
@@ -383,9 +418,27 @@ export async function createApp(options: AppOptions): Promise<App> {
   const asOf = fixture ? fixtureIndex(fixture).now : null;
 
   const slack = options.slack ? await slackFrom(options.slack, now, log) : null;
+  if (slack) connections.flagged("slack", slack.scope.workspaceUrl, {});
+  // The folder the user connected, read-only (decision 0019), as its
+  // connection keeps it: the real path its pick resolved to, which every walk
+  // checks again, and the ID every key hashes, so the same folder connected
+  // again gives the same IDs.
+  const folderFrom = (connection: { id: Ulid; number: number; identity: string }) => {
+    const prefix = prefixOf("folder", connection.number) as FolderPrefix;
+    const path = connection.identity as FolderPath;
+    return {
+      id: connection.id,
+      number: connection.number,
+      path,
+      prefix,
+      source: folderSource({ folderId: connection.id, path, prefix, log }),
+    };
+  };
+  const stored = connections.first("folder");
+  let folder = stored && folderFrom(stored);
   const records = (): IndexRecord[] => [
     ...index.records(workspaceId, "jira", jiraAttrs),
-    ...index.records(workspaceId, "folder", folderAttrs),
+    ...(folder ? index.records(workspaceId, folder.prefix, folderAttrs) : []),
     // Slack's records only while it's connected: a server started without it
     // keeps what an earlier one indexed, which nothing can read now.
     ...(slack ? index.records(workspaceId, "slack", slackAttrs) : []),
@@ -460,9 +513,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // as the first. `announced` counts them, so connecting from the window can
   // tell whether it was counted so.
   let announced = 0;
-  const connected = (kind: SourceKind) => {
+  const connected = (kind: SourceKind, number = 1) => {
     announced += 1;
-    emit({ name: "source.connected", at: now(), workspaceId, source: kind });
+    emit({ name: "source.connected", at: now(), workspaceId, source: kind, later: number > 1 });
   };
   let jiraAnnounced = false;
   const jiraConnected = () => {
@@ -530,15 +583,6 @@ export async function createApp(options: AppOptions): Promise<App> {
       ));
   const caps = options.limits ?? limits;
 
-  // The folder the user connected, read-only (decision 0019). Its stored path
-  // is the real path its pick resolved to, which every walk checks again.
-  const folders = folderStore(db);
-  const folderFrom = (stored: { id: Ulid; path: string }) => ({
-    ...stored,
-    source: folderSource({ folderId: stored.id, path: stored.path as FolderPath, log }),
-  });
-  const stored = folders.get(workspaceId);
-  let folder = stored && folderFrom(stored);
   // A folder that can't be read now (an unmounted drive) leaves its items as
   // they were, and says so.
   const syncFolder = async (which = folder): Promise<string | null> => {
@@ -552,6 +596,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
   };
   if (folder) await syncFolder();
+  // Connecting a folder and syncing the one connected take turns, so a sync
+  // asked for while another folder takes its place reads whichever is
+  // connected once that ends, never the one it replaced.
+  let folderTurn: Promise<unknown> = Promise.resolve();
+  const folderInTurn = <T>(work: () => Promise<T>): Promise<T> => {
+    const turn = folderTurn.then(work);
+    folderTurn = turn.catch(() => {});
+    return turn;
+  };
+  const resyncFolder = () => folderInTurn(() => syncFolder());
+  // Work done between syncs, as forgetting a connection's items must be: a
+  // sync running then would take the snapshot version it takes.
+  const betweenSyncs = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = syncing
+      .catch(() => {})
+      .then(work)
+      .finally(() => told());
+    syncing = run;
+    return run;
+  };
 
   // Slack's picked channels (decision 0021). A sync that fails
   // leaves its items as they were, and says so.
@@ -572,8 +636,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   const folderView = (): FolderView | null =>
     folder && {
       path: folder.path,
-      items: index.records(workspaceId, "folder", folderAttrs).length,
-      syncedAt: index.source(workspaceId, "folder")?.syncedAt ?? null,
+      items: index.records(workspaceId, folder.prefix, folderAttrs).length,
+      syncedAt: index.source(workspaceId, folder.prefix)?.syncedAt ?? null,
     };
   const slackView = (): SlackView | null =>
     slack && {
@@ -598,20 +662,41 @@ export async function createApp(options: AppOptions): Promise<App> {
           : "There's no folder Oriel can read at that path.",
       };
     }
-    const first = index.source(workspaceId, "folder") === null;
-    // The same folder keeps its ID, so none of its items' keys change.
-    const id = folder && folder.path === real ? folder.id : newId();
-    const chosen = folderFrom({ id, path: real });
-    // Only a folder that synced is kept; one that can't be listed leaves the
-    // one before as it was. A walk that fails throws before the index sees
-    // any of it.
-    const problem = await syncFolder(chosen);
-    if (problem) return { problem };
-    folders.connect(workspaceId, { id, path: real }, now());
-    folder = chosen;
-    if (first) connected("folder");
-    const view = folderView();
-    return view ? { folder: view } : { problem: "No folder is connected." };
+    // One at a time, so what is connected is what it was when this started,
+    // and the number planned is the one it gets.
+    return folderInTurn(async (): Promise<{ folder: FolderView } | { problem: string }> => {
+      // The same folder again keeps its connection, so none of its items'
+      // IDs change.
+      if (folder?.path === real) {
+        const problem = await syncFolder();
+        const view = folderView();
+        return problem || !view
+          ? { problem: problem ?? "No folder is connected." }
+          : { folder: view };
+      }
+      // Another takes its place: one connected before comes back under its
+      // ID and number, and any other is a new connection, with the next.
+      const plan = connections.planned("folder", real);
+      if ("live" in plan) return { problem: "That folder is connected already." };
+      const chosen = folderFrom(
+        "revives" in plan ? plan.revives : { id: newId(), number: plan.number, identity: real },
+      );
+      const first = index.source(workspaceId, chosen.prefix) === null;
+      // Only a folder that synced is kept; one that can't be listed leaves
+      // the one before as it was. A walk that fails throws before the index
+      // sees any of it.
+      const problem = await syncFolder(chosen);
+      if (problem) return { problem };
+      await betweenSyncs(async () => {
+        const before = connections.first("folder");
+        if (before) await connections.disconnect(before);
+        await connections.connect({ id: chosen.id, kind: "folder", identity: real, options: {} });
+        folder = chosen;
+      });
+      if (first) connected("folder", chosen.number);
+      const view = folderView();
+      return view ? { folder: view } : { problem: "No folder is connected." };
+    });
   };
   const people = () => {
     const names = new Map<string, string>();
@@ -625,7 +710,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     async read(ids) {
       const jira = ids.filter(isJira);
       const files = ids.filter(
-        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === "folder",
+        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === folder?.prefix,
       );
       const messages = ids.filter(
         (id): id is ItemId<"slack"> => parseItemId(id)?.prefix === "slack",
@@ -639,9 +724,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      // Slack only while it's connected. Each kind's one connection, by its
-      // prefix, which is the kind.
-      const sources = sourceKinds.filter((kind) => kind !== "slack" || slack);
+      // The connections open now, by their prefixes: Slack only while it's
+      // connected, and the folder by its connection's.
+      const sources = sourceKinds.flatMap((kind) =>
+        kind === "folder"
+          ? folder
+            ? [folder.prefix]
+            : []
+          : kind !== "slack" || slack
+            ? [kind]
+            : [],
+      );
       return index.search(workspaceId, query, limit, sources).map((record) => ({
         id: record.id,
         title: record.title,
@@ -880,7 +973,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       sync: async (kind) => {
         if (kind === "folder") {
           if (!folder) throw new ActionError("conflict", "No folder is connected.");
-          const problem = await syncFolder();
+          const problem = await resyncFolder();
           const view = folderView();
           return problem || !view
             ? { problem: problem ?? "No folder is connected." }
@@ -1068,6 +1161,19 @@ export async function createApp(options: AppOptions): Promise<App> {
       : siteAllowed(at)
         ? null
         : `For now, Oriel connects only to ${new URL(throwawaySite).host}.`;
+  // The server opens a kind's first connection only, for now: a site other
+  // than the one Jira's connection has, signed out since, is refused, as is
+  // any after a first that was disconnected.
+  const anotherSite = (at: string): string | null => {
+    const existing = connections.first("jira");
+    if (existing)
+      return existing.identity === at
+        ? null
+        : `Oriel reads one Jira site for now, ${URL.parse(existing.identity)?.host ?? existing.identity}. Sign in to it again.`;
+    const plan = connections.planned("jira", at);
+    const number = "revives" in plan ? plan.revives.number : "number" in plan ? plan.number : 1;
+    return number === 1 ? null : "Oriel reads one Jira site for now.";
+  };
   const connectJira = async (
     typed: Extract<ActionInput<"source.connect">, { kind: "jira" }>,
   ): Promise<{ jira: JiraView } | { problem: string }> => {
@@ -1075,8 +1181,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       return { problem: "Jira is already connected to this window." };
     if (joining) return { problem: "Oriel is connecting Jira already." };
     const at = jiraSite(typed.site);
-    const refusedSite = siteProblem(at);
+    const refusedSite = siteProblem(at) ?? (at && anotherSite(at));
     if (refusedSite || !at) return { problem: refusedSite ?? notASite };
+    const existing = connections.first("jira");
     const email = typed.email.trim();
     const project = typed.project.trim().toUpperCase();
     const chosen = writesTo({ site: at, email, token: typed.token.trim(), project }, mode.fetch);
@@ -1120,8 +1227,14 @@ export async function createApp(options: AppOptions): Promise<App> {
           problem: "Jira answered, but Oriel couldn't read the project just now. Try again.",
         };
       }
+      // Kept as its connection: the site it identifies, the project it
+      // reads, and the account as its secret. Signing in to the same site
+      // again keeps the connection, its number and its items.
+      const secret = JSON.stringify({ email, token: typed.token.trim() });
       try {
-        await mode.store.save({ site: at, email, token: typed.token.trim(), project });
+        if (existing) await connections.signIn(existing, { options: { project }, secret });
+        else
+          await connections.connect({ kind: "jira", identity: at, options: { project }, secret });
       } catch (error) {
         log("jira connection not saved", { error: (error as NodeJS.ErrnoException).code ?? "" });
         return { problem: "Oriel couldn't save the connection on this computer. Try again." };
@@ -1154,7 +1267,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (mode.kind !== "window" || source)
       return { problem: "Jira is already connected to this window.", fields: [] };
     const at = jiraSite(typed.site);
-    const refusedSite = siteProblem(at);
+    const refusedSite = siteProblem(at) ?? (at && anotherSite(at));
     if (refusedSite || !at) return { problem: refusedSite ?? notASite, fields: ["site"] };
     const transport = transportTo(
       writesTo(
@@ -1299,7 +1412,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             log("sync failed", { error: String(error) });
             problems.push("Jira didn't answer, so Oriel couldn't look for new items.");
           });
-        const folderProblem = folder ? await syncFolder() : null;
+        const folderProblem = folder ? await resyncFolder() : null;
         if (folderProblem) problems.push(folderProblem);
         const slackProblem = await syncSlack();
         if (slackProblem) problems.push(slackProblem);
@@ -1427,5 +1540,65 @@ async function slackFrom(
       channels,
       ...(mode.fetch ? { fetch: mode.fetch } : {}),
     },
+  };
+}
+
+// Jira's saved connection from before connections (decision 0049) moves
+// into one, its kind's first, with its account as the secret, and the old one
+// is deleted. One that can't be read is left, and logged; a move that fails
+// leaves it for the next start. Never a value in a log line.
+async function moveLegacy(connections: Connections, legacy: LegacyJira, log: Log): Promise<void> {
+  let text: string | null;
+  try {
+    text = await legacy.load();
+  } catch {
+    log("jira: the saved connection couldn't be read", {});
+    return;
+  }
+  if (text === null) return;
+  const saved = parsedLegacy(text);
+  const site = saved && jiraSite(saved.site);
+  if (!saved || !site) {
+    log("jira: the saved connection isn't one Oriel can read", {});
+    return;
+  }
+  try {
+    // One a start before moved, and couldn't delete the old one after, is
+    // kept as it is.
+    if (!connections.first("jira"))
+      await connections.connect({
+        kind: "jira",
+        identity: site,
+        options: { project: saved.project },
+        secret: JSON.stringify({ email: saved.email, token: saved.token }),
+      });
+    await legacy.delete();
+    log("jira: the saved connection moved", {});
+  } catch {
+    log("jira: the saved connection couldn't move", {});
+  }
+}
+
+// The Jira connection made in the window, with its account, or null: none,
+// or one whose secret is gone or can't be read, so the window asks for Jira
+// again.
+async function savedJira(connections: Connections, log: Log): Promise<JiraConnection | null> {
+  const connection = connections.first("jira");
+  if (!connection) return null;
+  if (connection.number !== 1) {
+    log("jira: only a kind's first connection opens", { number: connection.number });
+    return null;
+  }
+  const text = await connections.secret(connection);
+  const account = text === null ? null : parsedJiraSecret(text);
+  if (!account) {
+    log("jira: the connection has no account Oriel can read", {});
+    return null;
+  }
+  const { project } = connection.options;
+  return {
+    site: connection.identity,
+    ...account,
+    project: typeof project === "string" ? project : "",
   };
 }

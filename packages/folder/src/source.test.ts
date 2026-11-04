@@ -228,6 +228,27 @@ test("another folder gives other IDs; the same folder ID and paths give the same
   );
 });
 
+test("a later folder's items carry its connection's prefix, and it reads only its own", async (t) => {
+  const folder = tempFolder(t);
+  folder.write("plan.md", "the plan");
+  const later = folderSource({
+    folderId: folderB,
+    path: folder.root,
+    prefix: "folder.2",
+    log: keptLog().log,
+  });
+  assert.equal(later.prefix, "folder.2");
+  const [page] = await syncPages(later, null);
+  const key = idOf("plan.md", folderB).slice("folder:".length);
+  assert.deepEqual(
+    page?.records.map((r) => [r.id, r.stableId]),
+    [[`folder.2:${key}`, key]],
+  );
+  const [own, first] = await later.read([`folder.2:${key}`, `folder:${key}`]);
+  assert.equal(own?.status, "ok");
+  assert.deepEqual(first, { id: `folder:${key}`, status: "gone", reason: "deleted" });
+});
+
 test("every sync lists every file and keeps no cursor; deleted and renamed files drop out", async (t) => {
   const folder = tempFolder(t);
   const plan = folder.write("plan.md", "plan", jan);
