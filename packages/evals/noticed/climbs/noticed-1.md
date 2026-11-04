@@ -60,4 +60,28 @@ Run the start state (B's settings, before C1) on test twice, then the final stat
 
 ## Deviations
 
-(none yet)
+- **T4 skipped.** No train case offers more than six signals, so "the eight heaviest" sends the same request as "all". The cap on signals offered is a scale decision, made on design grounds: the server offers the twelve heaviest.
+- **T5 not taken, though the rule kept it.** 300 characters saved about 1% of tokens (3,000 → 2,962 a run) and no time, and lost two trials, one of them an injection showing. The trim rule can't see a saving of zero; the plan's goal can.
+- **P not run.** Train was 120/120 from C2 on, with no failure left to read.
+- **The model-first reference's grounding grader** first counted item keys (`SYN-104`) as figures. It was fixed to leave out IDs, keys, clock times and names with digits, and M was graded again from its transcripts, at no cost. M is a reference, not a decision.
+
+## Log
+
+| round  | change                                         | train pass                                      | first card p50 / p90          | $ a run                                    | verdict                           |
+| ------ | ---------------------------------------------- | ----------------------------------------------- | ----------------------------- | ------------------------------------------ | --------------------------------- |
+| oriel  | Oriel alone, no model (all 17)                 | 3/17                                            | 0                             | 0                                          | the floor                         |
+| B1+B2  | start: Opus 5.5, medium                        | 74/120 62%                                      | 5.0 s / 11.7 s, 4.2 s / 7.8 s | $0.008                                     | baseline                          |
+| M      | model-first, Opus 5.5, raw window              | 0/60 (recall 98%, precision 100%, grounding 0%) | 18.8 s / 27.7 s               | $0.101 ($0.56 on 4,000 items, 530k tokens) | reference                         |
+| C1+C1b | a refused line keeps its pick                  | 86/120 72%                                      | 4.0 s / 7.3 s                 | $0.008                                     | fix kept, p = 0.0005              |
+| C2+C2b | a stall's and a drift's items include the epic | 120/120 100%                                    | 3.9 s / 7.1 s                 | $0.008                                     | fix kept, p < 0.0001              |
+| C3+C3b | a line may repeat a number its items hold      | 119/120 99%; lines kept 81% → 95%               | 4.0 s / 6.9 s                 | $0.007                                     | trim kept, ≥ −5.1                 |
+| T1+T1b | Sonnet 5.5                                     | 120/120                                         | 2.9 s / 4.0 s                 | $0.003                                     | trim kept, ≥ −3.4                 |
+| T2+T2b | Haiku 5.5                                      | 116/120                                         | 3.2 s / 5.5 s                 | $0.0004                                    | reverted: decoys worse, p = 0.054 |
+| T3+T3b | Sonnet 5.5, effort low                         | 120/120                                         | 2.6 s / 4.1 s                 | $0.003                                     | trim kept, ≥ −4.1                 |
+| T5+T5b | 300 characters a text                          | 118/120                                         | 2.8 s / 4.1 s                 | $0.003                                     | not taken (above)                 |
+
+**Final, on test** (start = Opus 5.5 at medium with none of C1–C3; final = Sonnet 5.5 at low with C1–C3): 57/84 (68%) → 84/84 (100%), better at p < 0.0001, lower bound +26.2 points; no group worse. Recall 95% → 100%, precision 73% → 100%. First card p50 5.5 s → 2.9 s, p90 10.8 s → 3.5 s. $0.009 → $0.003 a run, about 3,100 tokens. On all 17 cases the final state passed 102/102.
+
+**Spend:** $12.13 of the $40 cap, $6.08 of it the model-first reference.
+
+**What the method can't see here.** Test saturated at 100%, so this suite can no longer tell good from better. Its decoys say plainly why they're harmless; a real window's won't. The next climb needs murkier decoys, windows with more than six signals, and real-shaped text.

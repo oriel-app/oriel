@@ -16,3 +16,27 @@
 {"round":"01M6JG0P9WCTVJEBJJEFBBJA6M","label":"C2 epics as evidence","split":"train","trials":60,"usd":0.495818}
 {"round":"01M6JG2RJGYCZPMWFNP3SX77CK","label":"C2b epics, second round","split":"train","trials":60,"usd":1.249924216216216,"estimated":true}
 {"round":"01M6JG2RJGYCZPMWFNP3SX77CK","label":"C2b epics, second round","split":"train","trials":60,"usd":0.41884199999999994}
+{"round":"01M6JG58FH16JTBMV7EQ4TSX7A","label":"C3 known numbers","split":"train","trials":60,"usd":1.150985857142857,"estimated":true}
+{"round":"01M6JG58FH16JTBMV7EQ4TSX7A","label":"C3 known numbers","split":"train","trials":60,"usd":0.40712200000000004}
+{"round":"01M6JG6NRQEG2X1T9F9T4X2ZJ9","label":"C3b known numbers, second round","split":"train","trials":60,"usd":1.0718514042553189,"estimated":true}
+{"round":"01M6JG6NRQEG2X1T9F9T4X2ZJ9","label":"C3b known numbers, second round","split":"train","trials":60,"usd":0.405022}
+{"round":"01M6JG8HNJDFA6PYZ5SW49RDDG","label":"T1 sonnet","split":"train","trials":60,"usd":1.0077331923076922,"estimated":true}
+{"round":"01M6JG8HNJDFA6PYZ5SW49RDDG","label":"T1 sonnet","split":"train","trials":60,"usd":0.2328347}
+{"round":"01M6JG9J2GCQWK3SR059F42KJC","label":"T1b sonnet, second round","split":"train","trials":60,"usd":0.9397596403508771,"estimated":true}
+{"round":"01M6JG9J2GCQWK3SR059F42KJC","label":"T1b sonnet, second round","split":"train","trials":60,"usd":0.17577200000000004}
+{"round":"01M6JGAPHJ6RX21N9P26DDPMFZ","label":"T2 haiku","split":"train","trials":60,"usd":0.8781477338709677,"estimated":true}
+{"round":"01M6JGAPHJ6RX21N9P26DDPMFZ","label":"T2 haiku","split":"train","trials":60,"usd":0.025554295}
+{"round":"01M6JGC1CTKY697HE6ZM0ACGJ6","label":"T2b haiku, second round","split":"train","trials":60,"usd":0.8145213578358208,"estimated":true}
+{"round":"01M6JGC1CTKY697HE6ZM0ACGJ6","label":"T2b haiku, second round","split":"train","trials":60,"usd":0.0219296}
+{"round":"01M6JGDPEEV6S5EK09N5DQW8MZ","label":"T3 sonnet low","split":"train","trials":60,"usd":0.7594802635416665,"estimated":true}
+{"round":"01M6JGDPEEV6S5EK09N5DQW8MZ","label":"T3 sonnet low","split":"train","trials":60,"usd":0.22196350000000006}
+{"round":"01M6JGENEV8K9XYVDENX5RQGAC","label":"T3b sonnet low, second round","split":"train","trials":60,"usd":0.7245765775974025,"estimated":true}
+{"round":"01M6JGENEV8K9XYVDENX5RQGAC","label":"T3b sonnet low, second round","split":"train","trials":60,"usd":0.17352200000000007}
+{"round":"01M6JGG0G0ZNPD9EDJZSEFS13T","label":"T5 text 300","split":"train","trials":60,"usd":0.6909756887195121,"estimated":true}
+{"round":"01M6JGG0G0ZNPD9EDJZSEFS13T","label":"T5 text 300","split":"train","trials":60,"usd":0.1984801}
+{"round":"01M6JGGXVCF8G9658BMEA549B0","label":"T5b text 300, second round","split":"train","trials":60,"usd":0.6626713445402297,"estimated":true}
+{"round":"01M6JGGXVCF8G9658BMEA549B0","label":"T5b text 300, second round","split":"train","trials":60,"usd":0.1687416}
+{"round":"01M6JGK6D936Y1SGCK629A18GP","label":"F final on all","split":"all","trials":102,"usd":1.0809064723641302,"estimated":true}
+{"round":"01M6JGK6D936Y1SGCK629A18GP","label":"F final on all","split":"all","trials":102,"usd":0.3237696999999999}
+{"round":"01M6JGMMYDK4QDYW0R71DVC1TQ","label":"F2 final on test","split":"test","trials":42,"usd":0.4187111883830845,"estimated":true}
+{"round":"01M6JGMMYDK4QDYW0R71DVC1TQ","label":"F2 final on test","split":"test","trials":42,"usd":0.11183640000000002}
