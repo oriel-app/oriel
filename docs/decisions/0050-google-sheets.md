@@ -114,9 +114,9 @@ Quotes are from Google's pages as fetched on 2026-11-03. **Unsure** marks what t
 - The maintainer's setup comes before the first Sheets story, which checks each **Unsure** above against Google.
 - The build stories, in order, are in the pull request.
 
-**Amended by OA-219, 2026-11-03.** Pending the live run. `packages/sheets` signs in as Signing in says, and `pnpm sheets:live` runs it once against Google, as the maintainer's desktop client: it signs in, takes the picked spreadsheets back from the redirect, reads each one's Drive `version`, asks the reads below, refreshes, revokes the grant, and refreshes again. Each **Unsure**:
+**Amended by OA-219, 2026-11-03.** Partly settled by the live run of 2026-11-03; the rest is pending. `packages/sheets` signs in as Signing in says, and `pnpm sheets:live` runs it once against Google, as the maintainer's desktop client: it signs in, takes the picked spreadsheets back from the redirect, reads each one's Drive `version`, asks the reads below, refreshes, revokes the grant, and refreshes again. Each **Unsure**:
 
-- **The desktop Picker with PKCE and a loopback redirect:** pending.
+- **The desktop Picker with PKCE and a loopback redirect:** it works. Google took the `S256` challenge and the redirect to `http://127.0.0.1:<port>/`, showed the Picker after consent in the same tab, and sent the code back with `picked_file_ids`. One pick brought back four spreadsheets, so `allow_multiple` works, and Drive's `version` read for each under `drive.file`.
 - **Whether `drive.file` may read `about`** (Which account): pending.
 - **Whether `drive.file` may list a picked spreadsheet's comments** (Comments): pending.
 - **Formulas under `RAW`** (Writes): not settled by this story, which writes nothing. The first story that writes proves it live, as Writes says.
