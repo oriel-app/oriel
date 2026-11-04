@@ -73,6 +73,55 @@ test("a rename says the name it had, from its undo; each item is named once", ()
   );
 });
 
+test("a removal says which items no Undo can bring back, and why, naming their source", () => {
+  const removed = (
+    items: ItemId[],
+    back: ItemId[],
+    gone: ItemId[],
+  ): ActionLine & { applied: true } => ({
+    call: { action: "workstream.remove", input: { workstream: own.workstream, items } },
+    touched,
+    applied: true,
+    undo: back.length
+      ? { action: "workstream.add", input: { workstream: own.workstream, items: back } }
+      : null,
+    gone,
+  });
+  const one = actionLineView(removed(ids("OA-39"), [], ids("OA-39")), own);
+  assert.equal(
+    one.text,
+    "Removed OA-39 from this workstream. It's deleted in Jira, so it can't be added back.",
+  );
+  assert.equal(one.undo, null);
+  assert.equal(
+    actionLineView(removed(ids("OA-39", "OA-40"), [], ids("OA-39", "OA-40")), own).text,
+    "Removed OA-39 and OA-40 from this workstream. They're deleted in Jira, so they can't be added back.",
+  );
+  const some = actionLineView(removed(ids("OA-1", "OA-39"), ids("OA-1"), ids("OA-39")), own);
+  assert.equal(
+    some.text,
+    "Removed OA-1 and OA-39 from this workstream. OA-39 is deleted in Jira, so it can't be added back.",
+  );
+  assert.deepEqual(some.undo?.input, { workstream: own.workstream, items: ids("OA-1") });
+  // Undone, what came back was only what could.
+  assert.equal(
+    actionLineView(
+      {
+        ...removed(ids("OA-1", "OA-39"), ids("OA-1"), ids("OA-39")),
+        since: { undone: true, next: null },
+      },
+      own,
+    ).text,
+    "Removed OA-1 and OA-39 from this workstream, which you undid. OA-39 is deleted in Jira, so it can't be added back.",
+  );
+  // Each source by the name its declaration gives it.
+  const mixed = [...ids("OA-39"), "slack:C0FW1WEATHR-1788444000.000100" as ItemId];
+  assert.match(
+    actionLineView(removed(mixed, [], mixed), own).text,
+    /\. OA-39 is deleted in Jira, and \S+ is deleted in Slack, so they can't be added back\.$/,
+  );
+});
+
 test("names are quoted as the workstream has them, and a rename to the same name says so", () => {
   const rename = (name: string): ActionLine => ({
     call: { action: "workstream.rename", input: { workstream: own.workstream, name } },

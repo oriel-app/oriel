@@ -10,6 +10,7 @@ import {
   type Actor,
   type Call,
   type Intent,
+  type ItemId,
   planned,
   type Thread,
   type Touched,
@@ -87,8 +88,14 @@ export function intentsOf(deps: IntentDeps) {
         }
         try {
           const done = await deps.dispatch.untyped(call.action, call.input, actor);
-          const made = (done as { workstream?: unknown }).workstream;
-          lines.push({ call, touched: touched(call, made), applied: true, undo: done.undo });
+          const { workstream: made, gone } = done as { workstream?: unknown; gone?: ItemId[] };
+          lines.push({
+            call,
+            touched: touched(call, made),
+            applied: true,
+            undo: done.undo,
+            ...(gone?.length ? { gone } : {}),
+          });
         } catch (error) {
           // What didn't apply says why, and what did keeps its line.
           lines.push(

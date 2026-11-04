@@ -25,7 +25,7 @@ import { dispatcher } from "./actions.ts";
 import { intentsOf } from "./intents.ts";
 import { history } from "./turns.ts";
 import type { Step } from "./scripted-agent.ts";
-import { json, type Script, testApp, unreached } from "./testing.ts";
+import { json, type Script, testApp, type TestOptions, unreached } from "./testing.ts";
 
 const t0 = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 const checkout = { kind: "cluster", grouping: "epic", cluster: "10001" };
@@ -40,9 +40,11 @@ async function thread(
   t: TestContext,
   scripts: Record<string, Script>,
   plan: (text: string) => Step[] = () => [{ text: "Hello." }],
+  options: TestOptions = {},
 ) {
   let advance = (_ms: number) => {};
   const app = await testApp(t, {
+    ...options,
     scripts,
     plan: (input) => {
       advance(1000);
@@ -103,6 +105,31 @@ test("a removal the agent asked for applies at the turn's end, as the agent's, a
   // the agent's own change, for the list of what it did to fold in.
   const marker = view.entries.find((e) => e.kind === "marker");
   assert.ok(marker?.kind === "marker" && marker.ownAgent === true);
+});
+
+test("a removal of what was deleted in Jira says why it has no Undo for it", async (t) => {
+  const app = await thread(
+    t,
+    { remove: remove("jira:SYN-10", "jira:SYN-21") },
+    (text) => (text === "Tidy" ? [{ run: "remove" }, { text: "Done." }] : []),
+    { live: true },
+  );
+  app.site?.remove("SYN-21");
+  app.advance(60_000);
+  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  const view = await app.ask("Tidy");
+  assert.deepEqual(app.lines(view), [
+    {
+      text: "Removed SYN-10 and SYN-21 from this workstream. SYN-21 is deleted in Jira, so it can't be added back.",
+      applied: true,
+      why: null,
+      touched: { kind: "workstream", id: app.workstreamId },
+      undo: {
+        action: "workstream.add",
+        input: { workstream: app.workstreamId, items: ["jira:SYN-10"] },
+      },
+    },
+  ]);
 });
 
 test("the turn's last run that asked for actions gives them, adjacent calls merge, and marking its own thread done comes last", async (t) => {

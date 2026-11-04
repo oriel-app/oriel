@@ -3,8 +3,10 @@
 // with why, naming the workstream or thread it touched. Every action has its
 // words here, so one the registry gains can't show without them. An applied
 // one offers its Undo, through the one path every Undo takes; once the user
-// undid it, it says so and offers the call that does it again, if any.
+// undid it, it says so and offers the call that does it again, if any. What
+// no Undo gives back says why.
 import { type ActionLine, type ActionName, parseItemId, type Ulid } from "@oriel/core";
+import { declarationOf } from "@oriel/sources";
 import type { ActionLineView } from "@oriel/web/view";
 
 const keyOf = (id: string) => parseItemId(id)?.key ?? id;
@@ -98,6 +100,21 @@ const words: { [N in ActionName]: Words } = {
   "overview.leave": () => ["Left the overview", "leave the overview"],
 };
 
+// Why what a removal took out can't come back, by source, as its
+// declaration names it: "It's deleted in Jira, so it can't be added back."
+// The items are named only when some of what it took out can come back.
+function lost(gone: readonly string[], all: boolean): string {
+  const bySource = Map.groupBy(gone, (id) => parseItemId(id)?.kind ?? "");
+  const where = [...bySource].map(([kind, ids]) => {
+    const source = declarationOf(kind)?.name ?? "its source";
+    if (all && bySource.size === 1)
+      return ids.length === 1 ? `It's deleted in ${source}` : `They're deleted in ${source}`;
+    return `${listed(ids, true)} ${ids.length === 1 ? "is" : "are"} deleted in ${source}`;
+  });
+  const them = gone.length === 1 ? "it" : "they";
+  return ` ${where.join(", and ")}, so ${them} can't be added back.`;
+}
+
 // One line as the window shows it, in the thread `own` whose agent asked.
 export function actionLineView(
   line: ActionLine,
@@ -114,9 +131,10 @@ export function actionLineView(
   const [done, not] = words[call.action](call.input, place, undo);
   const undone = line.applied && line.since?.undone === true;
   const offer = line.applied ? (line.since ? line.since.next : line.undo) : null;
+  const gone = line.applied && line.gone?.length ? line.gone : null;
   return {
     text: line.applied
-      ? `${done}${undone ? ", which you undid" : ""}.`
+      ? `${done}${undone ? ", which you undid" : ""}.${gone ? lost(gone, !line.undo) : ""}`
       : `Didn't ${not}: ${line.why}.`,
     applied: line.applied,
     ...(undone ? { undone: true as const } : {}),

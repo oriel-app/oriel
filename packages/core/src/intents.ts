@@ -3,7 +3,7 @@
 // apply as, and the list the host shows under the agent's reply. All of it
 // is read from the registry's declarations, never written per action.
 import { type ActionName, actions, type Call } from "./actions.ts";
-import type { Ulid } from "./ids.ts";
+import type { ItemId, Ulid } from "./ids.ts";
 import type { Intent } from "./sandbox.ts";
 import { type Shape, shapeOf } from "./validate.ts";
 
@@ -82,8 +82,14 @@ export type Touched = { kind: Owned; id: Ulid | null; name: string | null };
 // with the call that undoes it, or one it refused, and why. The model's own
 // reply is never the record, and `undo` stays as the apply gave it. `since`:
 // what the user did with it from the Undo under the reply, undone or done
-// again, and the call the next click sends, if any.
+// again, and the call the next click sends, if any. `gone`: what it took out
+// that the index no longer has, which no Undo can give back.
 export type ActionLine = { call: Intent; touched: Touched } & (
-  | { applied: true; undo: Call | null; since?: { undone: boolean; next: Call | null } }
+  | {
+      applied: true;
+      undo: Call | null;
+      gone?: ItemId[];
+      since?: { undone: boolean; next: Call | null };
+    }
   | { applied: false; why: string }
 );
