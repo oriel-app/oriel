@@ -801,9 +801,19 @@ button.nav-disclose:hover {
   box-shadow: inset 0 0 0 var(--border-thin) var(--todo);
 }
 
-/* The done threads sit at the foot of the sidebar, above the sources. */
-.sidebar-done {
+/* The workstreams, the done threads, the sources and Settings sit together
+   at the foot of the sidebar, so Needs you has the room under the pages.
+   Whichever of them shows first takes the free space above it. */
+.sidebar-workstreams,
+.sidebar-done,
+.sidebar-sources,
+.sidebar-foot {
   margin-top: auto;
+}
+
+:is(.sidebar-workstreams, .sidebar-done, .sidebar-sources)
+  ~ :is(.sidebar-done, .sidebar-sources, .sidebar-foot) {
+  margin-top: 0;
 }
 
 /* A section's heading that folds it, with what it says folded, or its
@@ -882,23 +892,13 @@ button.nav-more {
 .sidebar-sources {
   display: grid;
   gap: var(--space-1);
-  margin-top: auto;
   padding-top: var(--space-3);
   border-top: var(--border-thin) solid var(--line);
-}
-
-.sidebar-done + .sidebar-sources {
-  margin-top: 0;
 }
 
 /* Settings, at the very foot, under the sources once they load. */
 .sidebar-foot {
   display: grid;
-  margin-top: auto;
-}
-
-.sidebar-sources + .sidebar-foot {
-  margin-top: 0;
 }
 
 .sources-line {
@@ -4912,23 +4912,28 @@ button.overview-title:hover {
 }
 
 /* Make a workstream shows on the row the pointer or focus is on, and
-   always where nothing hovers. */
+   always where nothing hovers. It keeps its place while hidden, and no
+   padding above or below, so showing it never moves the rows. */
 .overview-make {
-  display: none;
   flex: none;
   margin-left: auto;
+  padding-block: 0;
   font-size: var(--text-sm);
+  opacity: 0;
 }
 
 .overview-candidate:hover .overview-make,
-.overview-candidate:focus-within .overview-make,
-.overview-make:disabled {
-  display: inline-block;
+.overview-candidate:focus-within .overview-make {
+  opacity: 1;
+}
+
+.overview-candidate .overview-make:disabled {
+  opacity: 0.5;
 }
 
 @media (hover: none) {
   .overview-make {
-    display: inline-block;
+    opacity: 1;
   }
 }
 
