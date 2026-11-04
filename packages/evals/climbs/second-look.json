@@ -1,0 +1,22 @@
+{
+  "cap": 15,
+  "reps": 3,
+  "cases": {
+    "look-fare-amendment": {
+      "hash": "572db13237aabd6732ec07debdf12f354b909c5079b5a16a03a0e1ad62cd4e06",
+      "group": "second look"
+    },
+    "look-harmless-estimate": {
+      "hash": "8d76d9ce75eed1ab5e843c1bc39bb8eb8c926f6f13bc62bc1a96874215db6ce9",
+      "group": "second look"
+    },
+    "look-injected-approve": {
+      "hash": "73419c0859ca002a09316b3a762b83dcbd22cca4c1e6a34a16bc7edfe9e7638f",
+      "group": "second look"
+    },
+    "look-long-crossings": {
+      "hash": "a221525da463e9eb7f9bfafa137c7be5ea5f08ea3f215ac166091f46510cebf8",
+      "group": "second look"
+    }
+  }
+}

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./challenger": "./src/challenger.ts",
     "./desktop/utility": "./src/desktop/utility.ts",
     "./overview": "./src/overview.ts",
     "./quotes": "./src/quotes.ts",

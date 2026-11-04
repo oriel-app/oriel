@@ -39,13 +39,16 @@ import { type Fixtures, itemNamed, regionNamed } from "./fixtures.ts";
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
 // here can check, so no case may be one: binding correctness (1) and revert
 // conflict (5) are unit tests of bindings and change sets, and latency (6)
-// needs a timed, streaming test.
+// needs a timed, streaming test. Kind 9, a second look at a change set (the
+// challenger spike), is deterministic: what the look kept, from a diff the
+// case gives.
 export const evalKinds = {
   2: "change-set completeness",
   3: "prompt injection",
   4: "tombstones",
   7: "summary faithfulness",
   8: "scope discipline",
+  9: "second look",
 } as const;
 export type EvalKind = keyof typeof evalKinds;
 
@@ -55,6 +58,13 @@ const text = refine(string, (value) => value.trim() !== "", "expected non-empty 
 const whole = refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a whole number");
 const atLeastOne = <T>(item: Validator<T>) =>
   refine(array(item), (items) => items.length > 0, "expected at least one");
+
+const findingKind = union(
+  literal("conflict"),
+  literal("discussion"),
+  literal("companion"),
+  literal("related"),
+);
 
 export const split = union(literal("train"), literal("test"));
 export type Split = Infer<typeof split>;
@@ -69,7 +79,7 @@ const caseId = refine(
 const evalKind = refine(
   number,
   (kind): kind is EvalKind => Object.hasOwn(evalKinds, kind),
-  "expected an eval kind with a grader: 2, 3, 4, 7 or 8",
+  "expected an eval kind with a grader: 2, 3, 4, 7, 8 or 9",
 );
 
 const goldenPath = refine(
@@ -126,6 +136,16 @@ const expectations = {
   // sending the user to make a change by hand.
   avoids: object({ grader: literal("avoids"), text: atLeastOne(text) }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
+  // What a second look kept (kind 9): a finding resting on a quote from each
+  // item `cites` names, of one of its `kinds` when given, and at most
+  // `atMost` findings in all.
+  findings: object({
+    grader: literal("findings"),
+    cites: optional(
+      atLeastOne(object({ item: itemName, kinds: optional(atLeastOne(findingKind)) })),
+    ),
+    atMost: optional(whole),
+  }),
 };
 export type GraderName = keyof typeof expectations;
 export type Expectation = Infer<(typeof expectations)[GraderName]>;
@@ -241,7 +261,22 @@ const evalCaseShape = object({
   // it fails, and why. Failing that grader alone doesn't fail CI's replay;
   // failing any other, or passing, does.
   failing: optional(object({ grader: graderName, why: text })),
-  prompt: text,
+  // What the user asks; a second look has none, since Oriel asks.
+  prompt: optional(text),
+  // A second look at a change set (kind 9): its diff as Oriel computes it,
+  // one line per change, each item as its fixture names it. The look runs
+  // with no history, on Oriel's fixed ask.
+  challenge: optional(
+    object({
+      lines: atLeastOne(
+        object({
+          change: text,
+          item: nullable(itemName),
+          fields: array(object({ name: text, before: unknown, after: unknown })),
+        }),
+      ),
+    }),
+  ),
   expect: atLeastOne(expectation),
 });
 export type EvalCase = Infer<typeof evalCaseShape>;
@@ -294,6 +329,15 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "drafts and zero mutations contradict" });
   if (graders.includes("drafts") && evalCase.unfit === undefined)
     found.push({ path: "$.expect", message: "a draft needs a connection that waits (`unfit`)" });
+  const looks = evalCase.challenge !== undefined;
+  if (looks !== (evalCase.kind === 9))
+    found.push({ path: "$.kind", message: "a second look (`challenge`) is kind 9, and only it" });
+  if (looks === (evalCase.prompt !== undefined))
+    found.push({ path: "$.prompt", message: "a case asks a prompt, unless it is a second look" });
+  if (looks && !graders.includes("findings"))
+    found.push({ path: "$.expect", message: "a second look is graded by what it found" });
+  if (!looks && graders.includes("findings"))
+    found.push({ path: "$.expect", message: "only a second look has findings" });
   const judged = isJudged(evalCase.kind);
   if (judged && !graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });
@@ -412,7 +456,12 @@ export function holding(
   };
   const items = (evalCase.items ?? []).flatMap((item, i) => resolve(item, `$.items[${i}]`) ?? []);
   const held = new Set<string>([...(region?.items ?? []), ...items]);
+  evalCase.challenge?.lines.forEach((line, i) => {
+    if (line.item !== null) resolve(line.item, `$.challenge.lines[${i}].item`);
+  });
   evalCase.expect.forEach((e, i) => {
+    if (e.grader === "findings")
+      e.cites?.forEach((cite, c) => resolve(cite.item, `$.expect[${i}].cites[${c}].item`));
     if (e.grader === "intents")
       e.calls.forEach((call, c) =>
         call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),

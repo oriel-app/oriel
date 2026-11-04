@@ -20,7 +20,7 @@ import {
 } from "@oriel/core";
 import { intentFns } from "./actions.ts";
 import { checkedId, type Fn, orielSpaces } from "./fn.ts";
-import { itemFns, searchFn } from "./items.ts";
+import { challengeItemFns, itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
 import { showFn } from "./block.ts";
 import { sketchFn } from "./sketch.ts";
@@ -159,7 +159,7 @@ export function describe(
       return { ...fn, space: kind, spec: entry };
     }),
   );
-  if (options.challenge) return [...itemFns, ...namespaced, ...challengeFns, searchFn];
+  if (options.challenge) return [...challengeItemFns, ...namespaced, ...challengeFns, searchFn];
   const window = options.window ? windowFns : [];
   const waiting = options.waiting ? [previewFn, ...draftFns(options.waiting)] : [];
   return [

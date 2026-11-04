@@ -121,6 +121,90 @@ function shapeProblem(finding: FindingAsk, i: number, lines: number): string | n
   return null;
 }
 
+// What a second look's `record()` gets back, and the findings Oriel keeps
+// from it, if any: kept only when every finding's lines are in the diff, it
+// grades nothing, a companion names its changes, and every quote is in its
+// item word for word. `members`: the region's items; any other is outside.
+export async function checkRecord(
+  input: unknown,
+  context: { lines: number; members: ReadonlySet<string>; read: Reader["read"] },
+): Promise<{ answer: string; findings?: Finding[] }> {
+  const shaped = challengeAsk(input);
+  if (!shaped.ok)
+    return {
+      answer: `Oriel kept nothing: ${shaped.issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path}: ${issue.message}`)
+        .join("; ")}`,
+    };
+  const problems = shaped.value.flatMap((finding, i) => {
+    const problem = shapeProblem(finding, i, context.lines);
+    return problem ? [problem] : [];
+  });
+  const quoted = [...new Set(shaped.value.flatMap((f) => f.evidence.map((e) => e.id)))];
+  const texts = new Map<string, string>();
+  for (const result of quoted.length ? await context.read(quoted as ItemId[]) : [])
+    if (result.status === "ok")
+      texts.set(result.id, `${result.content.title}\n${result.content.text}`);
+  shaped.value.forEach((finding, i) =>
+    finding.evidence.forEach((evidence, j) => {
+      const text = texts.get(evidence.id);
+      if (text === undefined)
+        problems.push(`finding ${i + 1}, quote ${j + 1}: Oriel can't read ${evidence.id}`);
+      else if (!wordForWord(evidence.quote, text))
+        problems.push(
+          `finding ${i + 1}, quote ${j + 1}: not in ${evidence.id} word for word; copy its words exactly`,
+        );
+    }),
+  );
+  if (problems.length)
+    return {
+      answer: `Oriel kept nothing, and shows nothing yet: ${problems.slice(0, 8).join("; ")}. Fix these and record again.`,
+    };
+  const n = shaped.value.length;
+  return {
+    answer:
+      n === 0
+        ? "Oriel recorded that you raised nothing. The person still reviews the diff themselves."
+        : `Oriel kept ${n} finding${n === 1 ? "" : "s"} and shows them beside the diff as your reading, each quote checked. You're done.`,
+    findings: shaped.value.map((finding) => ({
+      kind: finding.kind,
+      lines: [...new Set(finding.lines)].sort((a, b) => a - b),
+      says: finding.says.trim(),
+      evidence: finding.evidence.map((evidence) => ({
+        id: evidence.id as ItemId,
+        quote: evidence.quote,
+        outside: !context.members.has(evidence.id),
+      })),
+      changes: finding.changes ?? [],
+    })),
+  };
+}
+
+// What a second look's turn keeps: the findings of the last run that
+// finished well and recorded any, or null. That run's writes are its
+// companions' changes; any a kept finding doesn't name are dropped, and so
+// is a companion whose changes the run didn't write.
+export function keep(
+  results: ReadonlyMap<Ulid, RunResult>,
+  recorded: ReadonlyMap<Ulid, Finding[]>,
+): { findings: Finding[]; companions: CapturedMutation[] } | null {
+  const kept = [...results.entries()]
+    .filter(([runId, result]) => result.outcome === "ok" && recorded.has(runId))
+    .at(-1);
+  if (!kept) return null;
+  const [runId, result] = kept;
+  const companions: CapturedMutation[] = [];
+  const findings = (recorded.get(runId) ?? []).flatMap((finding): Finding[] => {
+    if (finding.kind !== "companion") return [finding];
+    const wrote = finding.changes.map((n) => result.mutations[n - 1]);
+    if (wrote.some((m) => m === undefined)) return [];
+    const places = (wrote as CapturedMutation[]).map((m) => companions.push(m) - 1);
+    return [{ ...finding, changes: places }];
+  });
+  return { findings, companions };
+}
+
 export type ChallengeView = {
   id: Ulid;
   state: Challenge["state"];
@@ -172,52 +256,9 @@ export function challenger(deps: ChallengerDeps) {
       const results = new Map<Ulid, RunResult>();
 
       const record = async (runId: Ulid, input: unknown): Promise<string> => {
-        const shaped = challengeAsk(input);
-        if (!shaped.ok)
-          return `Oriel kept nothing: ${shaped.issues
-            .slice(0, 5)
-            .map((issue) => `${issue.path}: ${issue.message}`)
-            .join("; ")}`;
-        const problems = shaped.value.flatMap((finding, i) => {
-          const problem = shapeProblem(finding, i, lines.length);
-          return problem ? [problem] : [];
-        });
-        const quoted = [...new Set(shaped.value.flatMap((f) => f.evidence.map((e) => e.id)))];
-        const texts = new Map<string, string>();
-        for (const result of quoted.length ? await deps.read(quoted as ItemId[]) : [])
-          if (result.status === "ok")
-            texts.set(result.id, `${result.content.title}\n${result.content.text}`);
-        shaped.value.forEach((finding, i) =>
-          finding.evidence.forEach((evidence, j) => {
-            const text = texts.get(evidence.id);
-            if (text === undefined)
-              problems.push(`finding ${i + 1}, quote ${j + 1}: Oriel can't read ${evidence.id}`);
-            else if (!wordForWord(evidence.quote, text))
-              problems.push(
-                `finding ${i + 1}, quote ${j + 1}: not in ${evidence.id} word for word; copy its words exactly`,
-              );
-          }),
-        );
-        if (problems.length)
-          return `Oriel kept nothing, and shows nothing yet: ${problems.slice(0, 8).join("; ")}. Fix these and record again.`;
-        recorded.set(
-          runId,
-          shaped.value.map((finding) => ({
-            kind: finding.kind,
-            lines: [...new Set(finding.lines)].sort((a, b) => a - b),
-            says: finding.says.trim(),
-            evidence: finding.evidence.map((evidence) => ({
-              id: evidence.id as ItemId,
-              quote: evidence.quote,
-              outside: !members.has(evidence.id),
-            })),
-            changes: finding.changes ?? [],
-          })),
-        );
-        const n = shaped.value.length;
-        return n === 0
-          ? "Oriel recorded that you raised nothing. The person still reviews the diff themselves."
-          : `Oriel kept ${n} finding${n === 1 ? "" : "s"} and shows them beside the diff as your reading, each quote checked. You're done.`;
+        const checked = await checkRecord(input, { lines: lines.length, members, read: deps.read });
+        if (checked.findings) recorded.set(runId, checked.findings);
+        return checked.answer;
       };
 
       const turn = deps.agent.turn(
@@ -239,23 +280,10 @@ export function challenger(deps: ChallengerDeps) {
           usage.outputTokens = event.usage.outputTokens;
         }
       }
-      // The last run that finished well and recorded findings. Its writes
-      // are the companions' changes; any a kept finding doesn't name are
-      // dropped, and so is a companion whose changes the run didn't write.
-      const kept = [...results.entries()]
-        .filter(([runId, result]) => result.outcome === "ok" && recorded.has(runId))
-        .at(-1);
+      const kept = keep(results, recorded);
       if (!kept)
         return failed("The second look ended without findings Oriel could keep.", "no-record");
-      const [runId, result] = kept;
-      const companions: CapturedMutation[] = [];
-      const findings = (recorded.get(runId) ?? []).flatMap((finding): Finding[] => {
-        if (finding.kind !== "companion") return [finding];
-        const wrote = finding.changes.map((n) => result.mutations[n - 1]);
-        if (wrote.some((m) => m === undefined)) return [];
-        const places = (wrote as CapturedMutation[]).map((m) => companions.push(m) - 1);
-        return [{ ...finding, changes: places }];
-      });
+      const { findings, companions } = kept;
       const targets = lines.flatMap((line) =>
         line.item !== null && isItemId(line.item) ? [line.item] : [],
       );

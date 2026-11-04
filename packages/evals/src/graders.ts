@@ -15,6 +15,7 @@ import {
   type PreviewSpec,
   type PreviewTable,
   type CapturedMutation,
+  type Finding,
   type ItemId,
   number,
   object,
@@ -524,4 +525,36 @@ function parseJson(text: string): unknown {
   } catch {
     return null;
   }
+}
+
+// What a second look kept (kind 9): a finding resting on a quote from each
+// cited item, of one of its kinds when given, and at most `atMost` in all.
+// A look Oriel kept nothing of fails, whatever it was asked.
+export function gradeFindings(
+  expected: {
+    cites: readonly { item: ItemId; kinds?: readonly Finding["kind"][] }[];
+    atMost?: number;
+  },
+  look: { kept: boolean; findings: readonly Finding[] } | null,
+): Grade {
+  const fail = (detail: string): Grade => ({ grader: "findings", pass: false, detail });
+  if (!look?.kept) return fail("Oriel kept nothing the look recorded");
+  const said = look.findings.map(
+    (f) => `${f.kind} on ${f.lines.join(",")} from ${f.evidence.map((e) => e.id).join(", ")}`,
+  );
+  const missing = expected.cites.filter(
+    (cite) =>
+      !look.findings.some(
+        (f) =>
+          (cite.kinds === undefined || cite.kinds.includes(f.kind)) &&
+          f.evidence.some((e) => e.id === cite.item),
+      ),
+  );
+  if (missing.length)
+    return fail(
+      `no ${missing.map((c) => `${c.kinds?.join("/") ?? "finding"} from ${c.item}`).join("; ")}; kept: ${said.join("; ") || "none"}`,
+    );
+  if (expected.atMost !== undefined && look.findings.length > expected.atMost)
+    return fail(`${look.findings.length} findings, more than ${expected.atMost}: ${said.join("; ")}`);
+  return { grader: "findings", pass: true, detail: said.join("; ") || "none" };
 }

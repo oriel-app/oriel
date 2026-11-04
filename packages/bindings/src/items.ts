@@ -53,6 +53,27 @@ const listItems: Fn = {
 
 export const itemFns: readonly Fn[] = [readItem, listItems];
 
+// A second look's `items.read()` (the challenger spike) reads this run's
+// search() hits too, read-only, since what else a change touches is mostly
+// outside its workstream: the host refuses any other ID, and a read of one
+// outside the region is the escape hatch, as a namespace's is.
+const readAnyItem: Fn = {
+  space: "items",
+  outsideRegion: false,
+  ...read({
+    name: "read",
+    doc: "One item in this region, or one this run's search() found, read live.",
+    params: [param("id", "RegionId | FoundId", string)],
+    returns: "Item | Gone",
+    run: async ([id], host: Host) => {
+      const [view] = await host.read([id as ItemId], itemView);
+      return view;
+    },
+  }),
+};
+
+export const challengeItemFns: readonly Fn[] = [readAnyItem, listItems];
+
 export const searchFn: Fn = {
   space: null,
   outsideRegion: true,
