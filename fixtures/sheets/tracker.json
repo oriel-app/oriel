@@ -32,7 +32,7 @@
       "hiddenRows": [8],
       "hiddenColumns": ["I"],
       "filter": {
-        "range": "A1:I12",
+        "range": "C1:I12",
         "column": "D",
         "hiddenValues": ["Parked"]
       }

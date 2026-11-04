@@ -227,7 +227,9 @@ const tracker: FixtureSpreadsheet = {
       merges: ["B2:B5", "B6:B8", "B9:B10"],
       hiddenRows: [8],
       hiddenColumns: ["I"],
-      filter: { range: "A1:I12", column: "D", hiddenValues: ["Parked"] },
+      // Google refuses a filter over vertical merges, so it starts after
+      // the epics.
+      filter: { range: "C1:I12", column: "D", hiddenValues: ["Parked"] },
     },
     {
       sheetId: sprint41,

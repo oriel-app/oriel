@@ -91,7 +91,7 @@ test("a spreadsheet is filled tab by tab, cells in chunks, then merges, hiding a
               sheetId: 1100,
               startRowIndex: 0,
               endRowIndex: 12,
-              startColumnIndex: 0,
+              startColumnIndex: 2,
               endColumnIndex: 9,
             },
             filterSpecs: [{ columnIndex: 3, filterCriteria: { hiddenValues: ["Parked"] } }],

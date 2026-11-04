@@ -444,6 +444,9 @@ function tabProblems(tab: FixtureTab): string[] {
     const box = bounds && within(bounds, grid);
     if (!box || column === null || column < box.startColumn || column >= box.endColumn)
       problems.push("the filter's column isn't in its range");
+    // "You can't create a filter over a range containing vertical merges."
+    else if (boxes.some((merge) => merge.endRow - merge.startRow > 1 && meets(merge, box)))
+      problems.push("a filter can't cover a vertical merge");
   }
   if ((tab.frozenRows ?? 0) < 0 || (tab.frozenRows ?? 0) > grid.rows)
     problems.push("its frozen rows don't fit its grid");

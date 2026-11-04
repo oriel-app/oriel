@@ -195,6 +195,10 @@ test("Google's guarantees: unique IDs and tab names, merges, grids and newer ver
     },
     { ...first, tabs: [{ ...tracker, merges: ["B2:B5", "B4:B6"] }] },
     { ...first, tabs: [{ ...tracker, hiddenRows: [0] }] },
+    {
+      ...first,
+      tabs: [{ ...tracker, filter: { range: "A1:I12", column: "D", hiddenValues: [] } }],
+    },
     { ...first, tabs: [{ ...tracker, rows: [[{ formula: "SUM(A1:A2)", value: 1 }]] }] },
     {
       ...first,
