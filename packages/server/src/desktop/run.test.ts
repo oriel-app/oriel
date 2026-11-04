@@ -14,7 +14,7 @@ import type { SettingsView, ThreadView } from "@oriel/web/view";
 import { scriptedAgent } from "../scripted-agent.ts";
 import type { Serving } from "../serve.ts";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
-import { loadJiraFixture } from "../../../../scripts/fixtures/load.ts";
+import { loadJiraFixture } from "@oriel/jira";
 import { account, estimate, fakeSandbox, t0, testApp } from "../testing.ts";
 import { keyStore } from "../api-key.ts";
 import { models } from "../model.ts";

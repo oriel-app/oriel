@@ -3,7 +3,7 @@ import { lstatSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import { maxDepth, maxFileBytes } from "../../packages/folder/src/walk.ts";
+import { maxDepth, maxFileBytes } from "./walk.ts";
 import {
   buildFolder,
   diskDependent,
@@ -11,7 +11,7 @@ import {
   folderFixtureFile,
   loadFolderFixture,
   parseFolderFixture,
-} from "./folder.ts";
+} from "./fixture.ts";
 
 // Throws, failing every test here, if the committed manifest doesn't validate.
 const fixture = loadFolderFixture();

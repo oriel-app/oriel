@@ -5,23 +5,23 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { type TestContext, test } from "node:test";
 import { bindingsFor } from "@oriel/bindings";
 import type { ItemId } from "@oriel/core";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
-import { loadCases, parseEvalCase, slackMessages } from "./case.ts";
-import { loadJiraFixture } from "./repo.ts";
+import { sources } from "@oriel/sources";
+import { loadCases, parseEvalCase } from "./case.ts";
+import { loadFixtures, regionNamed } from "./fixtures.ts";
 import { tempDir } from "./testing.ts";
 import { buildWorld, type WorldInput } from "./world.ts";
 
-const fixture = loadJiraFixture();
-const slack = loadSlackFixture();
+// Jira's and Slack's: these cases hold no files.
+const fixtures = loadFixtures({ jira: sources.jira, slack: sources.slack });
 const decision: ItemId<"slack"> = "slack:C0FW1WEATHR-1788444000.000100";
 const injection: ItemId<"slack"> = "slack:C0FW1WEATHR-1789486200.000100";
-const weatherEpic = fixture.regions.find((r) => r.name === "weather-epic") ?? null;
+const weatherEpic = regionNamed(fixtures, "weather-epic") ?? null;
 
 const quoted = () => ({
   id: "quoted",
   split: "train",
   kind: 2,
-  messages: [decision],
+  items: [decision],
   prompt: "What did the team decide?",
   expect: [
     { grader: "zero-mutations" },
@@ -29,18 +29,18 @@ const quoted = () => ({
   ],
 });
 
-test("a region of messages alone, or beside a fixture region; each a Slack item ID, once", () => {
+test("a region of messages alone, or beside a fixture region; each named as the fixture names it, once", () => {
   assert.ok(parseEvalCase(quoted()).ok);
   assert.ok(parseEvalCase({ ...quoted(), region: "weather-epic" }).ok);
   const problems = (input: unknown) => {
     const result = parseEvalCase(input);
     return result.ok ? [] : result.issues.map((i) => `${i.path}: ${i.message}`);
   };
-  assert.deepEqual(problems({ ...quoted(), messages: ["jira:SYN-45"] }), [
-    "$.messages[0]: expected a Slack item ID like slack:C0123456789-1788444000.000100",
+  assert.deepEqual(problems({ ...quoted(), items: ["C0FW1WEATHR-1788444000.000100"] }), [
+    "$.items[0]: expected an item as its fixture names it, like jira:SYN-12 or folder:notes.md",
   ]);
-  assert.deepEqual(problems({ ...quoted(), messages: [decision, decision] }), [
-    "$.messages[1]: listed twice",
+  assert.deepEqual(problems({ ...quoted(), items: [decision, decision] }), [
+    "$.items[1]: listed twice",
   ]);
 });
 
@@ -51,11 +51,11 @@ test("messages load against the Slack fixture's picked channel: posts only, neve
   const write = (value: { id: string; [field: string]: unknown }) =>
     writeFileSync(new URL(`${value.id}.json`, dir), JSON.stringify(value));
   write(quoted());
-  const tombstone = (id: string, messages: string[]) => ({
+  const tombstone = (id: string, items: string[]) => ({
     ...quoted(),
     id,
     kind: 4,
-    messages,
+    items,
     expect: [{ grader: "zero-mutations" }],
   });
   // A reply, a deleted message's placeholder, and a channel nobody picked.
@@ -67,31 +67,21 @@ test("messages load against the Slack fixture's picked channel: posts only, neve
     id: "other-message",
     expect: [{ grader: "surfaced", item: injection, text: ["x"] }],
   });
-  const { cases, problems } = loadCases(dir, fixture, root, null, slack);
+  const { cases, problems } = loadCases(dir, fixtures, root);
   assert.deepEqual(
     cases.map((c) => c.case.id),
     ["quoted"],
   );
   assert.deepEqual(problems, [
-    "deleted.json: $.messages[0]: not a message in the Slack fixture's picked channel",
-    "elsewhere.json: $.messages[0]: not a message in the Slack fixture's picked channel",
-    "other-message.json: $.expect[0].item: not one of the case's messages",
-    "reply.json: $.messages[0]: not a message in the Slack fixture's picked channel",
+    "deleted.json: $.items[0]: not a message in the Slack fixture's picked channel",
+    "elsewhere.json: $.items[0]: not a message in the Slack fixture's picked channel",
+    "other-message.json: $.expect[0].item: not an item the case's region holds",
+    "reply.json: $.items[0]: not a message in the Slack fixture's picked channel",
   ]);
-  assert.equal(slackMessages(slack).length, 19);
 });
 
 async function world(t: TestContext, input: Partial<WorldInput>) {
-  const built = await buildWorld({
-    fixture,
-    folder: null,
-    region: null,
-    files: [],
-    edited: 0,
-    folderEdited: 0,
-    slack,
-    ...input,
-  });
+  const built = await buildWorld({ fixtures, region: null, items: [], edited: {}, ...input });
   t.after(() => built.close());
   return built;
 }
@@ -99,7 +89,7 @@ async function world(t: TestContext, input: Partial<WorldInput>) {
 test("a region with messages reads them, replies and all, through the Slack source", async (t) => {
   const { region, reader, namespaces, evidence } = await world(t, {
     region: weatherEpic,
-    messages: [decision, injection],
+    items: [decision, injection],
   });
   assert.deepEqual(region.items.slice(-2), [
     { id: decision, stableId: decision.slice("slack:".length) },
@@ -129,14 +119,11 @@ test("Slack is connected only for a region with messages, and they need the fixt
   assert.deepEqual(await reader.search("Inchmore timetable", 5), []);
   await assert.rejects(
     buildWorld({
-      fixture,
-      folder: null,
+      fixtures: loadFixtures({ jira: sources.jira }),
       region: null,
-      files: [],
-      messages: [decision],
-      edited: 0,
-      folderEdited: 0,
+      items: [decision],
+      edited: {},
     }),
-    /the region holds messages, but no Slack fixture/,
+    /the region holds slack items, but no slack fixture/,
   );
 });

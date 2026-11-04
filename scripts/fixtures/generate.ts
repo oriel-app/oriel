@@ -11,8 +11,8 @@ import {
   type FixtureIssue,
   jiraFixtureParts,
   parseJiraFixtureFile,
+  jiraFixtureDir,
 } from "../../packages/jira/src/fixture.ts";
-import { fixtureDir } from "./load.ts";
 
 const seed = 0x5f3759df;
 // Every time in the fixture is at or before this, except the edits after it.
@@ -991,7 +991,7 @@ if (import.meta.main) {
   // Only names shaped like its own parts are touched, joined as plain paths
   // (a URL would read a backslash as a separator), and never through a symlink.
   const files = generate();
-  const dir = fileURLToPath(fixtureDir);
+  const dir = fileURLToPath(jiraFixtureDir);
   mkdirSync(dir, { recursive: true });
   if (lstatSync(dir).isSymbolicLink())
     throw new Error(`${dir} is a symlink; refusing to write through it`);

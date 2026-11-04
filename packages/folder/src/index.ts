@@ -5,12 +5,31 @@ export {
   folderAttrs,
   type FolderContent,
   folderContent,
-  folderDeclaration,
   folderDetails,
   folderFacets,
   folderPresentation,
   type FolderRecord,
 } from "./attrs.ts";
+export { folderDeclaration } from "./declaration.ts";
+export {
+  fixtureFileId,
+  fixtureFolderId,
+  fixtureFolderLocation,
+  folderDeclaredFixture,
+} from "./declared-fixture.ts";
+export {
+  buildFolder,
+  type BuiltFolder,
+  diskDependent,
+  type FixtureFile,
+  fileTitle,
+  filesAfter,
+  type FolderEdit,
+  type FolderFixture,
+  folderFixtureFile,
+  loadFolderFixture,
+  parseFolderFixture,
+} from "./fixture.ts";
 export { openChecked } from "./nofollow.ts";
 export { type FolderSource, type FolderSourceOptions, folderSource } from "./source.ts";
 export {

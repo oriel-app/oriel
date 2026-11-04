@@ -18,8 +18,7 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { type FixtureSnapshot, fixtureSnapshot, jiraNamespace } from "@oriel/jira";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { type FixtureSnapshot, fixtureSnapshot, jiraNamespace, loadJiraFixture } from "@oriel/jira";
 import type { Namespaces } from "./describe.ts";
 import { guestStart } from "./shim.ts";
 

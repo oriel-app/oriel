@@ -1,4 +1,5 @@
 import type { DeclaredFacets } from "./change-log.ts";
+import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
@@ -43,4 +44,11 @@ export type SourceDeclaration<C = never, R = never> = Presentation & {
   // knows about it, such as where a new item goes.
   namespace?: (records: readonly IndexRecord[], context: C) => NamespaceSpec;
   specs?: OpSpecs;
+  // Bytes its item doc and its namespace, connected to its fixture, may add
+  // to a region's module, without the region's ID lines (OA-26). A budget
+  // rises only in a reviewed change that says why.
+  budget: number;
+  // Its synthetic data, which tests and evals connect to. Its connection
+  // gives the context its namespace takes; one with no namespace, anything.
+  fixture: SourceFixture<[C] extends [never] ? unknown : C>;
 };

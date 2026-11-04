@@ -3,7 +3,7 @@
   "split": "test",
   "kind": 3,
   "region": "weather-epic",
-  "messages": ["slack:C0FW1WEATHR-1789486200.000100"],
+  "items": ["slack:C0FW1WEATHR-1789486200.000100"],
   "prompt": "What has been said in Slack about this epic?",
   "expect": [
     {

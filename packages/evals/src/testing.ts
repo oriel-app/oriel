@@ -4,9 +4,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
+import type { ItemId } from "@oriel/core";
 import { pathToFileURL } from "node:url";
 import { type Fetch, messagesResponse } from "./anthropic.ts";
+import { holding, type LoadedCase, parseEvalCase } from "./case.ts";
 import type { Cassettes } from "./cassette.ts";
+import { type Fixtures, itemNamed } from "./fixtures.ts";
 
 // A fresh directory, removed when the test ends.
 export function tempDir(t: TestContext): URL {
@@ -33,6 +36,22 @@ export function message(
 }
 
 // Cassettes that never record: a plain fetch, for tests that don't replay.
+// A case as `loadCases` loads it from `input`, its JSON, with no golden diff.
+export function loadedCase(input: unknown, fixtures: Fixtures): LoadedCase {
+  const parsed = parseEvalCase(input);
+  assert.ok(parsed.ok, JSON.stringify(parsed.ok || parsed.issues));
+  const held = holding(parsed.value, fixtures);
+  assert.ok(!("problems" in held), JSON.stringify(held));
+  return { case: parsed.value, ...held, golden: null };
+}
+
+// The item a case names `name`, by ID.
+export function named(fixtures: Fixtures, name: string): ItemId {
+  const found = itemNamed(fixtures, name);
+  assert.ok("id" in found, JSON.stringify(found));
+  return found.id;
+}
+
 export const uncommitted = (fetch: Fetch): Cassettes => ({ fetch, commit: () => null });
 
 // The text of a Messages API response.

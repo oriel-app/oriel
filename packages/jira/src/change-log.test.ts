@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { instant, syncSource, ulid } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { loadJiraFixture } from "./fixture.ts";
 import { jiraAttrs, jiraKeyShape } from "./attrs.ts";
 import { jiraDeclaration } from "./declaration.ts";
 import { memorySite, memorySiteOrigin } from "./memory-site.ts";

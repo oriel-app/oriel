@@ -2,8 +2,7 @@
 // every source edit applied, as of the last thing that happened in it, so the
 // window and its "stuck" rules are the same on every run.
 import type { Instant } from "@oriel/core";
-import { fixtureSnapshot, type JiraFixture, type JiraRecord } from "@oriel/jira";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { fixtureSnapshot, type JiraFixture, type JiraRecord, loadJiraFixture } from "@oriel/jira";
 
 export function fixtureIndex(fixture: JiraFixture = loadJiraFixture()): {
   records: JiraRecord[];

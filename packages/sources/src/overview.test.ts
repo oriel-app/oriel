@@ -10,12 +10,9 @@ import {
   type SourceKind,
   ulid,
 } from "@oriel/core";
-import { folderSource } from "@oriel/folder";
-import { fixtureSnapshot } from "@oriel/jira";
-import { fixtureApi, slackSource } from "@oriel/slack";
-import { buildFolder, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
+import { folderSource, buildFolder, loadFolderFixture } from "@oriel/folder";
+import { fixtureSnapshot, loadJiraFixture } from "@oriel/jira";
+import { fixtureApi, slackSource, loadSlackFixture } from "@oriel/slack";
 import { candidatesFor } from "./index.ts";
 
 // The fixture window's instant: SYN's last edit, as the server builds it.

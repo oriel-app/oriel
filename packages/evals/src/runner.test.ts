@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { type TestContext, test } from "node:test";
 import { type CapturedMutation, instant } from "@oriel/core";
+import { sources } from "@oriel/sources";
 import { type Fetch, messagesUrl } from "./anthropic.ts";
-import { type LoadedCase, parseEvalCase } from "./case.ts";
+import type { LoadedCase } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
 import { readResults } from "./compare.ts";
-import { loadJiraFixture } from "./repo.ts";
+import { loadFixtures } from "./fixtures.ts";
 import {
   type CaseResult,
   caseHash,
@@ -17,20 +18,20 @@ import {
   type SystemOutput,
   type SystemUnderTest,
 } from "./runner.ts";
-import { message, tempDir, textOf, uncommitted, verdicts } from "./testing.ts";
+import { loadedCase, message, tempDir, textOf, uncommitted, verdicts } from "./testing.ts";
 
-const fixture = loadJiraFixture();
+// Jira's alone: these cases hold its items only.
+const fixtures = loadFixtures({ jira: sources.jira });
+const jiraEdits = fixtures.get("jira")?.loaded.edits ?? 0;
 const now = instant(new Date("2026-10-29T09:00:00.000Z"));
 
 function loaded(
   input: Record<string, unknown>,
   golden: CapturedMutation[] | null = null,
 ): LoadedCase {
-  const parsed = parseEvalCase(input);
-  assert.ok(parsed.ok, JSON.stringify(!parsed.ok && parsed.issues));
-  const region = fixture.regions.find((r) => r.name === parsed.value.region);
-  assert.ok(region);
-  return { case: parsed.value, region, golden };
+  const found = loadedCase(input, fixtures);
+  assert.ok(found.region);
+  return { ...found, golden };
 }
 
 const setEstimate: CapturedMutation = {
@@ -117,7 +118,7 @@ function options(t: TestContext, overrides: Partial<RoundOptions> = {}): RoundOp
   let ms = 0;
   return {
     cases,
-    fixture,
+    fixtures,
     system: scripted,
     model: "claude-opus-5-5",
     judgeModel: "claude-sonnet-5-5",
@@ -491,7 +492,7 @@ test("the system under test gets the case's world, and the judge its region as e
     split: "test",
     kind: 8,
     region: "picked",
-    edited: fixture.edits.length,
+    edited: { jira: jiraEdits },
     prompt: "What's the status of SYN-27?",
     expect: [{ grader: "judge", claims: ["The reply says SYN-27 no longer exists."] }],
   });

@@ -26,6 +26,7 @@ export {
 } from "./attrs.ts";
 export { connectSlack, slackPerson, type SlackWorkspace } from "./connect.ts";
 export { slackDeclaration } from "./declaration.ts";
+export { slackDeclaredFixture } from "./declared-fixture.ts";
 export { type SlackScope, slackRecognizer } from "./references.ts";
 export { escapeText, isSlackOp, type SlackArgs, type SlackOp, slackOps } from "./ops.ts";
 export { type SlackContext, slackNamespace } from "./namespace.ts";
@@ -37,8 +38,10 @@ export {
   type FixtureWorkspace,
   fixtureApi,
   fixtureApiOrigin,
+  loadSlackFixture,
   parseSlackFixture,
   type SlackFixture,
+  slackFixtureFile,
 } from "./fixture.ts";
 export { mentionedUsers, plainText } from "./mrkdwn.ts";
 export {

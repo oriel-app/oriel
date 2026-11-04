@@ -6,16 +6,14 @@ import { test } from "node:test";
 import type { AgentEvent } from "@oriel/agent";
 import { instant, type Sandbox } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
-import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
-import { parseEvalCase } from "./case.ts";
-import { loadJiraFixture } from "./repo.ts";
+import { sources } from "@oriel/sources";
+import { loadFixtures } from "./fixtures.ts";
 import type { SystemInput } from "./runner.ts";
 import { agentSystem, replyOf } from "./system.ts";
-import { scriptedModel, streamed } from "./testing.ts";
-import { fileId } from "./world.ts";
+import { loadedCase, named, scriptedModel, streamed } from "./testing.ts";
 
-const fixture = loadJiraFixture();
-const folder = loadFolderFixture();
+// Jira's and the folder's: these cases hold no messages.
+const fixtures = loadFixtures({ jira: sources.jira, folder: sources.folder });
 const now = instant(new Date("2026-10-29T09:00:00.000Z"));
 
 // Time is passed in: every sandbox duration comes out as 0.
@@ -24,30 +22,31 @@ const sandbox = () => (shared ??= createSandbox({ now: () => 0 }));
 const system = agentSystem({ sandbox });
 
 function input(fetch: SystemInput["fetch"], fields: Record<string, unknown> = {}): SystemInput {
-  const parsed = parseEvalCase({
-    id: "scripted",
-    split: "train",
-    kind: 2,
-    region: "weather-epic",
-    files: ["meeting-notes.md"],
-    prompt: "Estimate SYN-29 at 3.",
-    expect: [{ grader: "zero-mutations" }],
-    ...fields,
-  });
-  assert.ok(parsed.ok, JSON.stringify(!parsed.ok && parsed.issues));
-  const name = parsed.value.region;
+  const loaded = loadedCase(
+    {
+      id: "scripted",
+      split: "train",
+      kind: 2,
+      region: "weather-epic",
+      items: ["folder:meeting-notes.md"],
+      prompt: "Estimate SYN-29 at 3.",
+      expect: [{ grader: "zero-mutations" }],
+      ...fields,
+    },
+    fixtures,
+  );
   return {
-    case: parsed.value,
-    fixture,
-    folder,
-    region: fixture.regions.find((r) => r.name === name) ?? null,
+    case: loaded.case,
+    fixtures,
+    region: loaded.region,
+    items: loaded.items,
     now,
     model: "claude-opus-5-5",
     fetch,
   };
 }
 
-const notes = fileId("meeting-notes.md");
+const notes = named(fixtures, "folder:meeting-notes.md");
 
 test("the agent answers in the case's world, and its change set is the case's mutations", async () => {
   const script = [

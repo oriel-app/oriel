@@ -16,18 +16,15 @@ import {
   number,
   object,
   optional,
-  parseItemId,
+  type ItemId,
   record,
   string,
   union,
   unknown,
 } from "@oriel/core";
 import type { AgentEvent } from "@oriel/agent";
-import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 import { checkQuotes } from "@oriel/server/quotes";
-import type { SlackFixture } from "@oriel/slack";
 import { quotesFrom } from "@oriel/web/markdown";
-import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import {
   cost,
   type Fetch,
@@ -50,6 +47,7 @@ import {
   splits,
 } from "./case.ts";
 import type { Cassettes } from "./cassette.ts";
+import { fixtureOf, type Fixtures } from "./fixtures.ts";
 import {
   type Grade,
   gradeBlocks,
@@ -65,22 +63,19 @@ import {
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
-import { buildWorld, fileId, fixedId } from "./world.ts";
+import { buildWorld, caseWorld, fixedId } from "./world.ts";
 
 // What the system under test gets for one case. Everything it sends to the
 // model must follow from this and from earlier responses (no clock, no
 // randomness), or its cassettes won't replay.
 export type SystemInput = {
   case: EvalCase;
-  fixture: JiraFixture;
-  // The folder fixture; null when the round has none, and then no case holds
-  // files.
-  folder: FolderFixture | null;
-  // The Slack fixture; absent or null when the round has none, and then no
-  // case holds messages.
-  slack?: SlackFixture | null;
-  // The Jira fixture region the case names, if any; its files are the case's.
-  region: FixtureRegion | null;
+  // Every fixture the round loaded.
+  fixtures: Fixtures;
+  // The fixture region the case names, if any, and the items its region
+  // holds beside it.
+  region: LoadedCase["region"];
+  items: readonly ItemId[];
   // The eval clock: fixed, so prompts that depend on time still replay.
   now: Instant;
   model: string;
@@ -168,11 +163,8 @@ export type Round = { results: CaseResult[]; summary: Summary };
 
 export type RoundOptions = {
   cases: readonly LoadedCase[];
-  fixture: JiraFixture;
-  // Absent: none, so no case may hold files.
-  folder?: FolderFixture | null;
-  // Absent: none, so no case may hold messages.
-  slack?: SlackFixture | null;
+  // The fixtures the cases were loaded against.
+  fixtures: Fixtures;
   system: SystemUnderTest;
   model: string;
   judgeModel: string;
@@ -233,10 +225,9 @@ async function runCase(
   try {
     const raw: unknown = await options.system({
       case: evalCase,
-      fixture: options.fixture,
-      folder: options.folder ?? null,
-      slack: options.slack ?? null,
+      fixtures: options.fixtures,
       region: loaded.region,
+      items: loaded.items,
       now: options.now,
       model: options.model,
       fetch: tested.fetch,
@@ -323,16 +314,10 @@ async function grade(
   const seen = shown(
     output.reply,
     resolver({
-      fixture: options.fixture,
-      edited: loaded.case.edited ?? 0,
-      folder: options.folder ?? null,
-      slack: options.slack ?? null,
+      fixtures: options.fixtures,
+      edited: loaded.case.edited ?? {},
       oriel: loaded.case.oriel,
-      held: [
-        ...(loaded.region?.items ?? []),
-        ...(loaded.case.files ?? []).map(fileId),
-        ...(loaded.case.messages ?? []),
-      ],
+      held: [...(loaded.region?.items ?? []), ...loaded.items],
       window: loaded.case.window
         ? { workstreams: loaded.case.window.workstreams, now: loaded.case.window.at ?? options.now }
         : null,
@@ -356,16 +341,19 @@ async function grade(
     }
     if (expectation.grader === "zero-mutations")
       grades.push(gradeZeroMutations(output.mutations, output.intents ?? []));
-    if (expectation.grader === "intents")
-      grades.push(gradeIntents(expectation.calls, output.intents ?? [], output.mutations, fixedId));
+    if (expectation.grader === "intents") {
+      const calls = expectation.calls.map(({ items, ...call }) =>
+        items ? { ...call, items: items.map((item) => named(loaded, item)) } : call,
+      );
+      grades.push(gradeIntents(calls, output.intents ?? [], output.mutations, fixedId));
+    }
     if (expectation.grader === "surfaced") {
-      // A file is named by its title, and a Slack message by its author.
-      const named =
-        "item" in expectation
-          ? (slackAuthor(options.slack ?? null, expectation.item) ?? expectation.item)
-          : { title: fileTitle(expectation.file) };
-      const id = "item" in expectation ? expectation.item : fileId(expectation.file);
-      grades.push(gradeSurfaced(named, expectation.text, output.reply, under(id)));
+      // Named as its fixture says a reply calls it, such as a file by its
+      // title; otherwise by its key.
+      const id = named(loaded, expectation.item);
+      const called = fixtureOf(options.fixtures, id)?.called?.(id);
+      const item = called ? { title: called } : id;
+      grades.push(gradeSurfaced(item, expectation.text, output.reply, under(id)));
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
@@ -405,32 +393,20 @@ function searchesOf(transcript: readonly unknown[]): unknown[] {
   });
 }
 
-// The region's items as their sources hold them once the case's edits are
-// applied; an item that is gone says so.
+// An item the case names, by ID; loading the case resolved it.
+function named(loaded: LoadedCase, item: string): ItemId {
+  const id = loaded.named.get(item);
+  if (id === undefined) throw new Error(`${item} was not loaded`);
+  return id;
+}
+
 // The case's world, built for one look and closed after it.
 async function inWorld<T>(
   loaded: LoadedCase,
   options: RoundOptions,
   look: (world: Awaited<ReturnType<typeof buildWorld>>) => Promise<T>,
 ): Promise<T> {
-  const world = await buildWorld({
-    fixture: options.fixture,
-    folder: options.folder ?? null,
-    region: loaded.region,
-    files: loaded.case.files ?? [],
-    messages: loaded.case.messages ?? [],
-    ...(options.slack ? { slack: options.slack } : {}),
-    edited: loaded.case.edited ?? 0,
-    folderEdited: loaded.case.folderEdited ?? 0,
-    ...(loaded.case.window
-      ? {
-          window: {
-            workstreams: loaded.case.window.workstreams,
-            now: loaded.case.window.at ?? options.now,
-          },
-        }
-      : {}),
-  });
+  const world = await buildWorld(caseWorld(loaded, options.fixtures, options.now));
   try {
     return await look(world);
   } finally {
@@ -438,6 +414,8 @@ async function inWorld<T>(
   }
 }
 
+// The region's items as their sources hold them once the case's edits are
+// applied; an item that is gone says so.
 const evidence = (loaded: LoadedCase, options: RoundOptions): Promise<unknown[]> =>
   inWorld(loaded, options, (world) => world.evidence());
 
@@ -580,17 +558,4 @@ export function exitCode(
     return r.outcome === "fail" && !isJudged(r.kind);
   });
   return broken ? 1 : 0;
-}
-
-// A Slack message's author as the Slack source names them, a person or the
-// app that posted as itself, or null for an item from another source. Their
-// name is how a reply names the message.
-function slackAuthor(slack: SlackFixture | null, item: string): { title: string } | null {
-  const parsed = parseItemId(item);
-  if (!slack || parsed?.kind !== "slack") return null;
-  const [channel, ts] = parsed.key.split("-");
-  const message = slack.channels.find((c) => c.id === channel)?.messages.find((m) => m.ts === ts);
-  const person = slack.users.find((user) => user.id === message?.user);
-  if (person) return { title: person.real_name };
-  return message?.username ? { title: message.username } : null;
 }

@@ -3,9 +3,8 @@
   "split": "train",
   "kind": 4,
   "region": "picked",
-  "edited": 3,
-  "files": ["README.md", "plans/q3-launch.md", "plans/q3-launch-notes.md"],
-  "folderEdited": 3,
+  "edited": { "jira": 3, "folder": 3 },
+  "items": ["folder:README.md", "folder:plans/q3-launch.md", "folder:plans/q3-launch-notes.md"],
   "prompt": "Give me a one-line status for each item in this workstream.",
   "expect": [{ "grader": "zero-mutations" }]
 }

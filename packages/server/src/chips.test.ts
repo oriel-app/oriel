@@ -5,10 +5,10 @@
 // memory.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fixtureApi } from "@oriel/slack";
+import { fixtureApi, loadSlackFixture } from "@oriel/slack";
 import { parse, type Prose } from "@oriel/web/markdown";
 import type { DiffView, ItemPanelView, ThreadView } from "@oriel/web/view";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import type { ChatMessage } from "./agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 

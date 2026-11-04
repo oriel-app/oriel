@@ -53,7 +53,7 @@ import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import {
   fillJira as fillFirstRun,
   type FirstRunOptions,

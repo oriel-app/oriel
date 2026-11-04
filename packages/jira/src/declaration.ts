@@ -1,6 +1,7 @@
 // Jira as it declares itself to the composition root.
 import type { SourceDeclaration } from "@oriel/core";
-import { jiraKeyShape, jiraPresentation } from "./attrs.ts";
+import { jiraDeclaredFacets, jiraKeyShape, jiraPresentation } from "./attrs.ts";
+import { jiraDeclaredFixture } from "./declared-fixture.ts";
 import { type Estimates, jiraItemDoc, jiraNamespace } from "./namespace.ts";
 import { jiraOverview } from "./overview.ts";
 import { jiraPanel } from "./panel.ts";
@@ -13,12 +14,14 @@ export const jiraDeclaration = {
   ...jiraPresentation,
   itemDoc: jiraItemDoc,
   panel: jiraPanel,
-  // Its estimate, in its board's points; null when not estimated yet, or on
-  // a board that takes no estimates.
   recognizer: jiraRecognizer,
-  facets: { estimate: { label: "Estimate", of: (record) => record.facets.estimate ?? null } },
+  facets: jiraDeclaredFacets,
   overview: jiraOverview,
   namespace: (records, estimates: Estimates) =>
     jiraNamespace(new Map(records.map((record) => [record.id, record.facets.kind])), estimates),
   specs: jiraSpecs,
+  // Its item doc and its namespace: the rules on estimates, epics and the
+  // ops' arguments.
+  budget: 3_200,
+  fixture: jiraDeclaredFixture,
 } satisfies SourceDeclaration<Estimates, JiraScope>;

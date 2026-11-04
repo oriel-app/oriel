@@ -11,9 +11,8 @@ import {
   ulid,
 } from "@oriel/core";
 import { ensureWorkspace, indexStore, loadMigrations, migrate, open } from "@oriel/db";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { jiraAttrs, jiraKeyShape } from "./attrs.ts";
-import { fixtureSnapshot } from "./fixture.ts";
+import { fixtureSnapshot, loadJiraFixture } from "./fixture.ts";
 import { fixtureSource } from "./fixture-source.ts";
 
 const fixture = loadJiraFixture();

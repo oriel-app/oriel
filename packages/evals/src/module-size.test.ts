@@ -1,47 +1,22 @@
 // What every turn sends the model before the thread itself: the system prompt
 // and the region's module in the run tool. Each source adds to the module
-// only in a region holding its items, and within a budget, so connecting a
-// source can't silently grow every prompt (OA-26). A budget rises only in a
-// reviewed change that says why; at about 4 bytes a token, 1,000 bytes is
-// some 250 tokens on every request of every turn.
+// only in a region holding its items, and within the budget it declares, so
+// connecting a source can't silently grow every prompt (OA-26). A budget
+// rises only in a reviewed change that says why; at about 4 bytes a token,
+// 1,000 bytes is some 250 tokens on every request of every turn.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
-import { bindingsFor, type ItemDocs, type Namespaces } from "@oriel/bindings";
-import { type ItemId, parseItemId, type Region } from "@oriel/core";
-import { slackNamespace } from "@oriel/slack";
-import { type DeclaredKind, sourceKinds } from "@oriel/sources";
-import { loadJiraFixture } from "./repo.ts";
-import { buildWorld, fileId, itemDocs } from "./world.ts";
+import { bindingsFor } from "@oriel/bindings";
+import { loadFixtures } from "./fixtures.ts";
+import { moduleOf, moduleSize, regionOf, shape } from "./module-size.ts";
 
-const fixture = loadJiraFixture();
-const world = await buildWorld({
-  fixture,
-  folder: null,
-  region: fixture.regions.find((r) => r.name === "weather-epic") ?? null,
-  files: [],
-  edited: 0,
-  folderEdited: 0,
-});
-
-// One item of each source; the module never reads them.
-const one: Record<DeclaredKind, ItemId> = {
-  jira: "jira:SYN-3",
-  folder: fileId("meeting-notes.md"),
-  slack: "slack:C0FW1WEATHR-1788444000.000100",
-};
-
-const regionOf = (kinds: readonly DeclaredKind[]): Region => ({
-  ...world.region,
-  items: kinds.map((kind) => ({ id: one[kind], stableId: parseItemId(one[kind])?.key ?? "" })),
-  origin: { kind: "picked" },
-});
-
-const dts = (kinds: readonly DeclaredKind[], namespaces: Namespaces, items: ItemDocs) =>
-  bindingsFor(regionOf(kinds), { reader: world.reader, namespaces, items }).dts;
-
-// Bytes without the ID lines, which grow with the region, not the source.
-const shape = (text: string) => text.replace(/^ {2}\| ".*$\n?/gm, "").length;
+const fixtures = loadFixtures();
+const sizes = new Map(
+  await Promise.all(
+    [...fixtures].map(async ([kind, fixture]) => [kind, await moduleSize(kind, fixture)] as const),
+  ),
+);
 
 const budgets = {
   // Rose by 250 to steer the agent to Oriel's own threads (OA-108). Fell
@@ -61,10 +36,6 @@ const budgets = {
   // its bars sum by label: 4,668 to 4,829.
   tool: 600,
   base: 4_950,
-  // What each source adds: its item doc, its namespace if it has one.
-  jira: 3_200,
-  folder: 250,
-  slack: 400,
 };
 
 test("the system prompt and the run tool's own text stay within their budgets", () => {
@@ -73,48 +44,35 @@ test("the system prompt and the run tool's own text stay within their budgets", 
   assert.ok(own <= budgets.tool, `${own} bytes`);
 });
 
-test("each source adds to the module within its budget", () => {
-  for (const kind of sourceKinds) {
-    const base = shape(dts([kind], {}, {}));
-    assert.ok(base <= budgets.base, `${kind}: the base is ${base} bytes`);
-    const added = shape(dts([kind], world.namespaces, world.items)) - base;
-    assert.ok(added > 0, `${kind} says nothing about its items`);
-    assert.ok(added <= budgets[kind], `${kind} adds ${added} bytes`);
+test("each source adds to the module within the budget it declares", () => {
+  for (const [kind, size] of sizes) {
+    assert.ok(size.base <= budgets.base, `${kind}: the base is ${size.base} bytes`);
+    assert.ok(size.added > 0, `${kind} says nothing about its items`);
+    const { budget } = fixtures.get(kind)?.declaration ?? { budget: 0 };
+    assert.ok(size.added <= budget, `${kind} adds ${size.added} bytes, over its ${budget}`);
   }
 });
 
-test("Slack's writes, once it is connected, add within their budget", () => {
-  // The world above doesn't connect Slack, so its namespace declares nothing
-  // there; connected, it offers postMessage and reply (OA-28), in a region
-  // holding a Slack conversation only.
-  const writes = 500;
-  const connected = {
-    slack: slackNamespace({ channels: ["C0FW1WEATHR"], author: "U0FWAMARA1" }),
-  };
-  const added = shape(dts(["slack"], connected, {})) - shape(dts(["slack"], {}, {}));
-  assert.ok(added > 0 && added <= writes, `Slack's writes add ${added} bytes`);
-});
-
 test("a source adds nothing to the module of a region without its items", () => {
-  const slackOnly = dts(["slack"], world.namespaces, itemDocs);
-  assert.ok(slackOnly.includes(` * - ${itemDocs.slack}\n`));
-  assert.ok(!slackOnly.includes(itemDocs.jira ?? "") && !slackOnly.includes(itemDocs.folder ?? ""));
-  for (const kind of sourceKinds) {
-    const others = sourceKinds.filter((k) => k !== kind);
-    const { [kind]: _namespace, ...namespaces } = world.namespaces;
-    const { [kind]: _doc, ...items } = itemDocs;
-    assert.equal(
-      dts(others, world.namespaces, itemDocs),
-      dts(others, namespaces, items),
-      `${kind} shows in a region without its items`,
-    );
+  const all = [...sizes.values()];
+  const namespaces = Object.assign({}, ...all.map((size) => size.namespaces));
+  const items = Object.assign({}, ...all.map((size) => size.items));
+  for (const [kind, size] of sizes) {
+    const others = [...sizes].filter(([k]) => k !== kind).map(([, other]) => other.item);
+    const { [kind]: _namespace, ...withoutNamespace } = namespaces;
+    const { [kind]: _doc, ...withoutDoc } = items;
+    const module = moduleOf(others, namespaces, items);
+    assert.equal(module, moduleOf(others, withoutNamespace, withoutDoc), `${kind} shows`);
+    assert.ok(moduleOf([size.item], namespaces, items).includes(` * - ${items[kind]}\n`));
   }
 });
 
 test("an item doc is one line and can't close its comment", () => {
+  const [kind, size] = [...sizes][0] ?? [];
+  assert.ok(kind && size);
   for (const doc of ["", "two\nlines", "ends */ here"])
     assert.throws(
-      () => dts(["slack"], {}, { slack: doc }),
+      () => moduleOf([size.item], {}, { [kind]: doc }),
       /one line of plain text/,
       JSON.stringify(doc),
     );
@@ -124,9 +82,10 @@ test("the window chat's window namespace adds within its budget, in its module o
   // The overview's shape and window.overview(), in a window chat only (decision 0027).
   const window = 1_500;
   const region = regionOf([]);
-  const plain = bindingsFor(region, { reader: world.reader, namespaces: {} }).dts;
+  const reader = { read: async () => [], search: async () => [] };
+  const plain = bindingsFor(region, { reader, namespaces: {} }).dts;
   const chat = bindingsFor(region, {
-    reader: world.reader,
+    reader,
     namespaces: {},
     overview: async () => ({ view: null, items: [] }),
   }).dts;

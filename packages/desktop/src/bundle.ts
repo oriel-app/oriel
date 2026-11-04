@@ -8,8 +8,8 @@
 // and given the shell's code, compiled from `shell/`. The server runs on
 // Electron's own Node, so the app carries no other. Beside the shell go the
 // Deno that mise.toml pins, copied from mise's install; the server's source,
-// laid out as in the repo, with the packages it reaches, the fixtures it
-// imports and the built web app; and the third-party packages those declare,
+// laid out as in the repo, with the packages it reaches, the fixtures they
+// read and the built web app; and the third-party packages those declare,
 // the native TypeScript compiler among them. On macOS the whole app is then
 // signed: ad hoc, which Apple silicon requires, or, with
 // `ORIEL_SIGN_IDENTITY`, as that code-signing identity in the keychain. To
@@ -271,8 +271,7 @@ function addServer(root: string, resources: string) {
     mkdirSync(dirname(link), { recursive: true });
     symlinkSync(relative(dirname(link), join(server, "packages", dir)), link);
   }
-  // The server imports the fixture loaders, which read the fixtures.
-  clone(join(root, "scripts/fixtures"), join(server, "scripts/fixtures"), shipped);
+  // Each connector's fixture loader, in its package, reads its fixture.
   clone(join(root, "fixtures"), join(server, "fixtures"));
 
   // Third-party packages the server's packages declare, and theirs, each

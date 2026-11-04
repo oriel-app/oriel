@@ -2,6 +2,7 @@
 // approved change sets (OA-28), so it has a namespace and op specs.
 import type { SourceDeclaration } from "@oriel/core";
 import { slackAttrsOf, slackKeyShape, slackPanel, slackPresentation } from "./attrs.ts";
+import { slackDeclaredFixture } from "./declared-fixture.ts";
 import { type SlackContext, slackItemDoc, slackNamespace } from "./namespace.ts";
 import { slackOverview } from "./overview.ts";
 import { type SlackScope, slackRecognizer } from "./references.ts";
@@ -20,4 +21,7 @@ export const slackDeclaration = {
   overview: slackOverview,
   namespace: (_records, context: SlackContext) => slackNamespace(context),
   specs: slackSpecs,
+  // Its item doc, and, connected, postMessage and reply (OA-28).
+  budget: 900,
+  fixture: slackDeclaredFixture,
 } satisfies SourceDeclaration<SlackContext, SlackScope>;

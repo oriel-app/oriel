@@ -1,35 +1,32 @@
 // A reply as the user reads it, with each chip (decision 0032) drawn as the
-// window draws it, from the case's world: a Jira item by its key and title
-// as the index holds them once the case's edits are in, a file by its
-// title, a Slack message by its author, an item the region holds that is
-// gone from the index by its key, a thread or change set as a link to it in
-// the window and where it stands, a workstream by its name and whether it is
-// done. An item's status, which its chip also shows, is left out: it is the
-// source's fact, which the agent didn't state, and a judge would hold the
-// agent to it. Every grader reads what the user reads, so a reply that names
-// things by ID is graded as fairly as one that writes names.
+// window draws it, from the case's world: an item as its fixture draws its
+// chip once the case's edits are in, such as a Jira item by its key and
+// title, a file by its title or a Slack message by its author; an item the
+// region holds that is gone from the index by its key, if its source shows
+// keys; a thread or change set as a link to it in the window and where it
+// stands; a workstream by its name and whether it is done. An item's status,
+// which its chip also shows, is left out: it is the source's fact, which the
+// agent didn't state, and a judge would hold the agent to it. Every grader
+// reads what the user reads, so a reply that names things by ID is graded as
+// fairly as one that writes names.
 //
 // It also counts what didn't resolve: a chip nothing in the world has, which
 // the window draws as "unknown reference", and a link the agent wrote itself
 // to a thread or change set the workspace doesn't have (a miscopied,
 // look-alike ID). Either fails the `refs` grade.
-import { fixtureSnapshot, type JiraFixture } from "@oriel/jira";
-import type { SlackFixture } from "@oriel/slack";
 import { type Instant, parseItemId } from "@oriel/core";
 import { chipStateName } from "@oriel/web/chip";
 import { chipIds } from "@oriel/web/markdown";
 import type { ChipView } from "@oriel/web/view";
-import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
 import type { OrielWorkspace } from "./case.ts";
+import { fixtureOf, type Fixtures } from "./fixtures.ts";
 import type { Grade } from "./graders.ts";
-import { evalSite, fileId, windowWorkstreamId } from "./world.ts";
+import { windowWorkstreamId } from "./world.ts";
 
 export type World = {
-  fixture: JiraFixture;
-  // How many of the fixture's Jira edits the case's index has.
-  edited: number;
-  folder: FolderFixture | null;
-  slack: SlackFixture | null;
+  fixtures: Fixtures;
+  // How many of each fixture's edits the case's index has, by kind.
+  edited: Readonly<Partial<Record<string, number>>>;
   oriel: OrielWorkspace | undefined;
   // The items the case's region holds, by ID.
   held: readonly string[];
@@ -49,16 +46,8 @@ const standing = (name: string, chip: ChipView) => {
 // What each ID the world holds reads as, drawn.
 export function resolver(world: World): (id: string) => string | null {
   const names = new Map<string, string>();
-  for (const record of fixtureSnapshot(world.fixture, evalSite, world.edited).records)
-    names.set(record.id, `${parseItemId(record.id)?.key ?? record.id} ${plain(record.title)}`);
-  for (const file of world.folder?.files ?? [])
-    names.set(fileId(file.path), plain(fileTitle(file.path)));
-  for (const channel of world.slack?.channels ?? [])
-    for (const message of channel.messages) {
-      const person = world.slack?.users.find((user) => user.id === message.user);
-      const who = person?.real_name ?? message.username ?? "someone";
-      names.set(`slack:${channel.id}-${message.ts}`, `${who}'s message`);
-    }
+  for (const [kind, { loaded }] of world.fixtures)
+    for (const [id, chip] of loaded.chips(world.edited[kind] ?? 0)) names.set(id, plain(chip));
   const workstream = (name: string) => standing(name, { kind: "workstream", name, done: false });
   const { window } = world;
   window?.workstreams.forEach(({ name }, i) =>
@@ -79,10 +68,12 @@ export function resolver(world: World): (id: string) => string | null {
     const chip: ChipView = { kind: "change-set", thread: set.thread, name, state: set.state };
     names.set(set.id, standing(link, chip));
   }
+  // A source whose items a reply calls by their key shows the key.
   for (const id of world.held)
     if (!names.has(id)) {
-      const parsed = parseItemId(id);
-      names.set(id, `${parsed?.kind === "jira" ? `${parsed.key} ` : ""}Not in the index`);
+      const keyed = fixtureOf(world.fixtures, id)?.called === undefined;
+      const key = parseItemId(id)?.key;
+      names.set(id, `${keyed && key ? `${key} ` : ""}Not in the index`);
     }
   return (id) => names.get(id) ?? null;
 }

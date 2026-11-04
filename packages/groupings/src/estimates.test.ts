@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Cluster, type IndexRecord, instant, itemOrder } from "@oriel/core";
-import { fixtureSnapshot, jiraPresentation } from "@oriel/jira";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { fixtureSnapshot, jiraPresentation, loadJiraFixture } from "@oriel/jira";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
 import { clusterZoom, listZoom } from "./zoom.ts";
 

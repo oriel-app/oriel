@@ -93,21 +93,12 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
-      '@oriel/folder':
-        specifier: workspace:*
-        version: link:../folder
-      '@oriel/jira':
-        specifier: workspace:*
-        version: link:../jira
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
       '@oriel/server':
         specifier: workspace:*
         version: link:../server
-      '@oriel/slack':
-        specifier: workspace:*
-        version: link:../slack
       '@oriel/sources':
         specifier: workspace:*
         version: link:../sources

@@ -5,9 +5,10 @@ import {
   applySourceEdits,
   type FixtureIssue,
   fixtureSnapshot,
+  jiraFixtureDir,
+  loadJiraFixture,
 } from "../../packages/jira/src/fixture.ts";
 import { generate } from "./generate.ts";
-import { fixtureDir, loadJiraFixture } from "./load.ts";
 
 // Throws, failing every test here, if the committed fixtures don't validate.
 const fixture = loadJiraFixture();
@@ -21,10 +22,10 @@ const byKey = new Map(base.map((issue) => [issue.key, issue]));
 test("regenerating the fixtures is byte-identical", () => {
   const generated = generate();
   // Dotfiles such as Finder's .DS_Store aren't fixtures.
-  const committed = readdirSync(fixtureDir).filter((name) => !name.startsWith("."));
+  const committed = readdirSync(jiraFixtureDir).filter((name) => !name.startsWith("."));
   assert.deepEqual(committed.toSorted(), [...generated.keys()].toSorted());
   for (const [file, text] of generated) {
-    const committed = readFileSync(new URL(file, fixtureDir));
+    const committed = readFileSync(new URL(file, jiraFixtureDir));
     assert.ok(committed.equals(Buffer.from(text, "utf8")), `${file} differs from the generator`);
   }
 });

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseSlackFixture } from "../../packages/slack/src/fixture.ts";
-import { loadSlackFixture, slackFixture, slackFixtureFile } from "./slack.ts";
+import {
+  parseSlackFixture,
+  loadSlackFixture,
+  slackFixtureFile,
+} from "../../packages/slack/src/fixture.ts";
+import { slackFixture } from "./slack.ts";
 
 test("fixtures/slack/workspace.json is what the generator writes", () => {
   assert.equal(

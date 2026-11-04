@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { itemId } from "@oriel/core";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
-import { applySourceEdits } from "./fixture.ts";
+import { applySourceEdits, loadJiraFixture } from "./fixture.ts";
 import { fixtureFields } from "./fixture-source.ts";
 
 const fixture = loadJiraFixture();

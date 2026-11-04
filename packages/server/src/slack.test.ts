@@ -6,7 +6,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fixtureApi, type ReadMethod, SlackError } from "@oriel/slack";
+import { fixtureApi, type ReadMethod, SlackError, loadSlackFixture } from "@oriel/slack";
 import type {
   SlackView,
   SourceView,
@@ -14,7 +14,6 @@ import type {
   WindowView,
   WorkstreamView,
 } from "@oriel/web/view";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
 const fixture = loadSlackFixture();

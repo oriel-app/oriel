@@ -24,9 +24,8 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { fixtureSnapshot, jiraNamespace } from "@oriel/jira";
+import { fixtureSnapshot, jiraNamespace, loadJiraFixture } from "@oriel/jira";
 import { createSandbox } from "@oriel/sandbox";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { AgentDeps, AgentEvent, AgentLimits, TurnInput } from "./contract.ts";
 import { agent } from "./loop.ts";
 import {

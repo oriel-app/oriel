@@ -16,22 +16,14 @@
 // to an item whose label is an injection.
 //
 // Usage: node scripts/fixtures/slack.ts
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   type FixtureMessage,
   parseSlackFixture,
   type SlackFixture,
+  slackFixtureFile,
 } from "../../packages/slack/src/fixture.ts";
-
-export const slackFixtureFile = new URL("../../fixtures/slack/workspace.json", import.meta.url);
-
-export function loadSlackFixture(file: URL = slackFixtureFile): SlackFixture {
-  const result = parseSlackFixture(JSON.parse(readFileSync(file, "utf8")));
-  if (result.ok) return result.value;
-  const issues = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
-  throw new Error(`invalid Slack fixture:\n${issues.join("\n")}`);
-}
 
 // A `ts` in September 2026, UTC, before the SYN fixture's window, which is
 // frozen on 2 October. `n` tells apart messages in the same second.

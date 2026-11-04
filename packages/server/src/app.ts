@@ -73,6 +73,7 @@ import {
   jiraSource,
   listProjects,
   readTransport,
+  loadJiraFixture,
 } from "@oriel/jira";
 import { folderAttrs, type FolderPath, folderSource, resolveFolder } from "@oriel/folder";
 import {
@@ -86,6 +87,7 @@ import {
   type SlackSource,
   slackSource,
   webApi,
+  loadSlackFixture,
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
 import {
@@ -107,11 +109,9 @@ import type {
   SourceView,
   WindowView,
 } from "@oriel/web/view";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import type { KeyCheck, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api } from "./api.ts";

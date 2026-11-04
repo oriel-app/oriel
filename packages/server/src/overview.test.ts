@@ -14,7 +14,7 @@ import type {
   WindowView,
   WorkstreamSummary,
 } from "@oriel/web/view";
-import { buildFolder, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { buildFolder, loadFolderFixture } from "@oriel/folder";
 import type { Agent } from "./agent.ts";
 import { overviewView } from "./overview.ts";
 import { json, testApp } from "./testing.ts";

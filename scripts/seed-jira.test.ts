@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { adf, dryRun, jiraEnv, plan } from "./seed-jira.ts";
 
 const fixture = loadJiraFixture();

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import { connectSlack } from "./connect.ts";
-import { fixtureApi } from "./fixture.ts";
+import { fixtureApi, loadSlackFixture } from "./fixture.ts";
 
 const fixture = loadSlackFixture();
 
