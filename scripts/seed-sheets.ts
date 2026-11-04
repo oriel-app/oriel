@@ -211,6 +211,18 @@ export function changeRequests(
             fields: "title",
           },
         };
+      case "insert":
+      case "delete": {
+        const rows = {
+          sheetId: tab.sheetId,
+          dimension: "ROWS",
+          startIndex: change.row - 1,
+          endIndex: change.row,
+        };
+        return change.kind === "insert"
+          ? { insertDimension: { range: rows, inheritFromBefore: change.row > 1 } }
+          : { deleteDimension: { range: rows } };
+      }
     }
   });
 }

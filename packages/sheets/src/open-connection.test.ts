@@ -4,20 +4,21 @@ import { instant, ulid } from "@oriel/core";
 import { fixturePicks } from "./declared-fixture.ts";
 import { loadSheetsFixture } from "./fixture.ts";
 import { SheetsError } from "./google.ts";
+import { sheetsDeclaration } from "./declaration.ts";
 import { openSheets, sheetsProblem } from "./open-connection.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 
 const fixture = loadSheetsFixture();
 const now = instant(new Date(Date.UTC(2026, 10, 3, 9)));
 
-const opened = (secret: string | null) =>
+const opened = (secret: string | null, options: Record<string, unknown> = {}) =>
   openSheets(
     {
       id: ulid(1, new Uint8Array(10)),
       number: 1,
       prefix: "sheets",
       identity: fixture.user.permissionId,
-      options: fixturePicks(fixture),
+      options: { ...fixturePicks(fixture), ...options },
       secret,
     },
     { fetch: fixtureGoogle(fixture).fetch, kept: true, log: () => {}, now: () => now },
@@ -52,4 +53,52 @@ test("an expired or missing token fails the whole sync, read as signed out", asy
     assert.ok(failed instanceof SheetsError, String(secret));
     assert.match(sheetsProblem(failed), /signing in again/);
   }
+});
+
+const live = JSON.stringify({ access: standInToken, expiresAt: Date.parse(now) + 60_000 });
+
+test("a connection may propose changes unless it is set read-only, when no writer can be built", async () => {
+  const writable = await opened(live);
+  assert.deepEqual(Object.keys(writable.writes ?? {}).toSorted(), [
+    "credential",
+    "fetch",
+    "picks",
+    "prefix",
+  ]);
+  assert.equal(writable.writes?.prefix, "sheets");
+  const tracker = fixture.spreadsheets.find((s) => s.slug === "tracker")?.id;
+  assert.deepEqual(writable.context()?.tabs[`${tracker}/1100`], [
+    "key",
+    "title",
+    "status",
+    "assignee",
+    "estimate",
+    "link",
+  ]);
+  assert.equal(writable.fields, undefined);
+
+  const readOnly = await opened(live, { readOnly: true });
+  assert.equal(readOnly.writes, undefined);
+  assert.equal(readOnly.context(), undefined);
+  // Its change sets can still be shown.
+  assert.ok(readOnly.fields);
+  // Only off, or no option, may propose changes.
+  assert.equal((await opened(live, { readOnly: "no" })).writes, undefined);
+  assert.ok((await opened(live, { readOnly: false })).writes);
+});
+
+test("a connection names its spreadsheets and tabs for what a change set wrote", async () => {
+  const sheets = await opened(live);
+  const names = new Map(sheets.names?.(await drain(sheets.source)));
+  const tracker = fixture.spreadsheets.find((s) => s.slug === "tracker")?.id ?? "";
+  assert.equal(names.get(tracker), "Ferrowick delivery tracker");
+  assert.equal(names.get(`${tracker}/2142`), "Sprint 42");
+});
+
+test("the read-only switch is one of the options a person sets, which configuring keeps", () => {
+  const options = { ...fixturePicks(fixture), readOnly: true };
+  const kept = sheetsDeclaration.options(options);
+  assert.ok(kept.ok);
+  assert.equal(kept.value.readOnly, true);
+  assert.equal(sheetsDeclaration.options({ ...options, readOnly: "yes" }).ok, false);
 });

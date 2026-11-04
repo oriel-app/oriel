@@ -28,7 +28,8 @@ import {
 } from "./fixture.ts";
 import { googleReads } from "./google.ts";
 import type { SheetsPicks, States, TabMapping } from "./mapping.ts";
-import { openSheets } from "./open-connection.ts";
+import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
+import { openSheets, type SheetsWrites } from "./open-connection.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 import { type Grid, tableOf } from "./table.ts";
@@ -92,7 +93,7 @@ export function fixturePicks(fixture: SheetsFixture): SheetsPicks {
   };
 }
 
-export const sheetsDeclaredFixture: SourceFixture = {
+export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, SheetsWrites> = {
   load: () => loaded(loadSheetsFixture()),
   // The fixture's account, with its spreadsheets picked and mapped.
   connection: () => {
@@ -139,7 +140,7 @@ export function fixtureGrid(tab: FixtureTab): Grid {
   };
 }
 
-function loaded(fixture: SheetsFixture): LoadedFixture {
+function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
   const edits = editsOf(fixture);
   // The spreadsheets after the first `edited` edits.
   const after = (edited: number): FixtureSpreadsheet[] => {
@@ -206,7 +207,8 @@ function loaded(fixture: SheetsFixture): LoadedFixture {
       return {
         records,
         read: (ids) => source.read(ids as ItemId<"sheets">[]),
-        context: undefined,
+        // The fixture's connection may propose changes.
+        context: sheetsContextOf(fixturePicks(fixture)),
         changes: () => [],
         close: () => {},
       };

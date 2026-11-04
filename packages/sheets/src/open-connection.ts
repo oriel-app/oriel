@@ -1,13 +1,19 @@
 // A Google Sheets connection, opened (decision 0049): its options are the
-// spreadsheets the person picked and each one's mapped tabs, and its secret
-// is Google's tokens. What identifies it is the Google account, by Drive's
-// `permissionId`. It is read-only: it gives no writes.
+// spreadsheets the person picked and each one's mapped tabs, and whether it
+// is read-only, and its secret is Google's tokens. What identifies it is the
+// Google account, by Drive's `permissionId`.
+//
+// It may propose changes unless its `readOnly` option is on (decision 0049):
+// then it gives no writes, so no writer is built and a write is
+// unreachable, and its namespace offers nothing. A spreadsheet the person
+// can only view is read-only either way.
 //
 // Reading needs the access token while it lasts. Refreshing it needs Oriel's
 // Google client, which the stories that sign a person in pass to it; until
 // then a connection whose access token has run out reads as signed out.
 import {
   type Credential,
+  type IndexRecord,
   number,
   object,
   type Opened,
@@ -17,12 +23,33 @@ import {
   string,
   type ToOpen,
 } from "@oriel/core";
-import { sheetsAttrs } from "./attrs.ts";
+import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
 import { googleReads, SheetsError } from "./google.ts";
 import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
+import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
+import { rowReader } from "./rows.ts";
 import { type SheetsSource, sheetsSource } from "./source.ts";
 
-export type OpenedSheets = Opened & { source: SheetsSource };
+// What a Sheets connection's writer is built from, by its line in
+// packages/changeset/src/writers.ts.
+export type SheetsWrites = {
+  credential: Credential;
+  // The spreadsheets and mapped tabs the connection reads: the only ones
+  // written to.
+  picks: SheetsPicks;
+  // Its connection's prefix, which its items' IDs carry.
+  prefix: string;
+  // How requests reach Google: the global fetch unless given, as the
+  // fixture's stand-in gives one.
+  fetch?: typeof fetch;
+};
+
+export type OpenedSheets = Opened<SheetsContext, unknown, SheetsWrites> & { source: SheetsSource };
+
+// Whether the person set the connection read-only. Anything but off, or
+// no option at all, is read-only, so a malformed option can't open writes.
+export const readOnlyOf = (options: Readonly<Record<string, unknown>>): boolean =>
+  options.readOnly !== undefined && options.readOnly !== false;
 
 // A token is printable ASCII, so a header can't refuse it and quote it.
 const token = refine(string, (text) => /^[\x21-\x7e]+$/.test(text), "expected a token");
@@ -61,14 +88,18 @@ export function sheetsProblem(error: unknown): string {
 
 export async function openSheets(connection: ToOpen, via: OpenVia): Promise<OpenedSheets> {
   const picks = picksOf(connection.options);
+  const credential = credentialOf(connection.secret, () => Date.parse(via.now()));
   const google = googleReads({
     fetch: via.fetch ?? fetch,
-    credential: credentialOf(connection.secret, () => Date.parse(via.now())),
+    credential,
     wait: (ms) => new Promise((done) => setTimeout(done, ms)),
     random: Math.random,
     waiting: (ms) => via.log("sheets: Google asked Oriel to wait", { ms }),
   });
   const count = picks.spreadsheets.length;
+  const readOnly = readOnlyOf(connection.options);
+  const context = sheetsContextOf(picks);
+
   return {
     source: sheetsSource({
       google,
@@ -79,10 +110,33 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     attrs: sheetsAttrs,
     about: `${count} ${count === 1 ? "spreadsheet" : "spreadsheets"}`,
     scope: undefined,
-    context: () => undefined,
+    // Each mapped tab's fields, which its namespace offers to write.
+    context: () => (readOnly ? undefined : context),
+    ...(readOnly
+      ? { fields: rowReader(google, picks, connection.prefix) }
+      : {
+          writes: {
+            credential,
+            picks,
+            prefix: connection.prefix,
+            ...(via.fetch ? { fetch: via.fetch } : {}),
+          },
+        }),
     // Its cursor holds each spreadsheet's version: one that hasn't moved
     // costs one request and isn't read again.
     incremental: true,
     problem: sheetsProblem,
+    names: sheetsNames,
   };
+}
+
+// The spreadsheets and tabs its records name, by `<spreadsheet>` and
+// `<spreadsheet>/<sheetId>`, for what a change set wrote.
+function* sheetsNames(records: readonly IndexRecord[]): Iterable<readonly [string, string]> {
+  for (const record of records) {
+    const attrs = sheetsAttrsOf(record);
+    if (!attrs) continue;
+    yield [attrs.spreadsheet.id, attrs.spreadsheet.title];
+    if (attrs.of === "row") yield [`${attrs.spreadsheet.id}/${attrs.tab.sheetId}`, attrs.tab.title];
+  }
 }

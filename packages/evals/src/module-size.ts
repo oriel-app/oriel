@@ -26,7 +26,9 @@ export const moduleOf = (ids: readonly ItemId[], namespaces: Namespaces, items: 
 export const shape = (text: string) => text.replace(/^ {2}\| ".*$\n?/gm, "").length;
 
 export type ModuleSize = {
-  // One of its items, from its fixture.
+  // The one of its fixture's items whose region it adds most to, as a
+  // region of rows Oriel may change gets a namespace a spreadsheet's
+  // doesn't.
   item: ItemId;
   // The module of a region holding it, with no namespace or item doc.
   base: number;
@@ -42,19 +44,19 @@ export async function moduleSize(
 ): Promise<ModuleSize> {
   const connection = await loaded.connect(0);
   try {
-    const item = connection.records[0]?.id;
-    if (item === undefined) throw new Error(`the ${kind} fixture has no items`);
     const namespace = declaration.namespace?.(connection.records, connection.context as never);
     const namespaces: Namespaces = namespace ? { [kind]: namespace } : {};
     const items: ItemDocs = { [kind]: declaration.itemDoc };
-    const base = shape(moduleOf([item], {}, {}));
-    return {
-      item,
-      base,
-      added: shape(moduleOf([item], namespaces, items)) - base,
-      namespaces,
-      items,
-    };
+    const sizes = connection.records.map(({ id }) => {
+      const base = shape(moduleOf([id], {}, {}));
+      return { item: id, base, added: shape(moduleOf([id], namespaces, items)) - base };
+    });
+    const most = sizes.reduce<(typeof sizes)[number] | undefined>(
+      (best, size) => (best === undefined || size.added > best.added ? size : best),
+      undefined,
+    );
+    if (most === undefined) throw new Error(`the ${kind} fixture has no items`);
+    return { ...most, namespaces, items };
   } finally {
     connection.close();
   }

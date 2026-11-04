@@ -1,0 +1,19 @@
+{
+  "mutations": [
+    {
+      "op": "addRow",
+      "target": null,
+      "ref": null,
+      "args": {
+        "spreadsheet": "1FwTrackerFixture000000000000000000000000000",
+        "sheetId": 1100,
+        "values": {
+          "key": "FW-110",
+          "title": "Night-sailing alert sound",
+          "status": "To do",
+          "estimate": 2
+        }
+      }
+    }
+  ]
+}

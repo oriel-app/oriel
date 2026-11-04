@@ -24,13 +24,20 @@ import {
   union,
   type Validator,
 } from "@oriel/core";
-import { type Bounds, columnIndex, parseBounds, parseCell } from "./a1.ts";
+import { type Bounds, columnIndex, columnLetters, parseBounds, parseCell } from "./a1.ts";
 
 export type FixtureValue = string | number | boolean;
 export type FixtureCell =
   | FixtureValue
   | null
-  | { value?: FixtureValue; formula?: string; formatted?: string; note?: string };
+  | {
+      value?: FixtureValue;
+      formula?: string;
+      formatted?: string;
+      note?: string;
+      // A value an array formula elsewhere put here: nobody entered it.
+      spilled?: true;
+    };
 
 export type FixtureTab = {
   // Google's `sheetId`, which survives a rename.
@@ -79,7 +86,12 @@ export type FixtureChange =
   | { kind: "set"; sheetId: number; cell: string; value: FixtureCell }
   // Rows of `range` sorted by `column`, A to Z, as a person sorts a range.
   | { kind: "sort"; sheetId: number; range: string; column: string }
-  | { kind: "rename"; sheetId: number; title: string };
+  | { kind: "rename"; sheetId: number; title: string }
+  // An empty row inserted as row `row`, or row `row` deleted, as Google's
+  // `insertDimension` and `deleteDimension` do: the rows below move, and
+  // merges, hidden rows and the filter move with them.
+  | { kind: "insert"; sheetId: number; row: number }
+  | { kind: "delete"; sheetId: number; row: number };
 
 export type FixtureVersion = { version: string; modifiedTime: string; changes: FixtureChange[] };
 
@@ -116,6 +128,7 @@ const cell: Validator<FixtureCell> = union(
     value: optional(value),
     formula: optional(string),
     formatted: optional(string),
+    spilled: optional(literal(true)),
     note: optional(string),
   }),
 );
@@ -127,10 +140,13 @@ const time = refine(
 const version = refine(string, (text) => /^[1-9][0-9]{0,17}$/.test(text), "expected a version");
 const sheetId = refine(number, (n) => Number.isInteger(n) && n > 0, "expected a positive sheetId");
 
+const rowNumber = refine(number, (n) => Number.isInteger(n) && n >= 1, "expected a row number");
 const change: Validator<FixtureChange> = union(
   object({ kind: literal("set"), sheetId, cell: string, value: cell }),
   object({ kind: literal("sort"), sheetId, range: string, column: string }),
   object({ kind: literal("rename"), sheetId, title: string }),
+  object({ kind: literal("insert"), sheetId, row: rowNumber }),
+  object({ kind: literal("delete"), sheetId, row: rowNumber }),
 );
 
 const fixtureShape: Validator<SheetsFixture> = object({
@@ -282,6 +298,55 @@ export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChan
       row[at.column] = change.value;
       return null;
     }
+    case "insert":
+    case "delete": {
+      const at = change.row - 1;
+      const inserting = change.kind === "insert";
+      if (at > grid.rows || (!inserting && at === grid.rows))
+        return `row ${change.row} isn't in the grid`;
+      if (!inserting && grid.rows === 1) return "a tab keeps at least one row";
+      const by = inserting ? 1 : -1;
+      if (at < tab.rows.length) {
+        if (inserting) tab.rows.splice(at, 0, []);
+        else tab.rows.splice(at, 1);
+      }
+      while (tab.rows.length && (tab.rows.at(-1) ?? []).length === 0) tab.rows.pop();
+      tab.grid = { rows: grid.rows + by, columns: grid.columns };
+      // A row at or below it moves; a range across it grows or shrinks.
+      const moved = (row: number) => (row > at || (inserting && row === at) ? row + by : row);
+      const shift = (range: string): string | null => {
+        const box = parseBounds(range);
+        if (box?.startRow === undefined || box.endRow === undefined) return range;
+        const start = moved(box.startRow);
+        const end = box.endRow > at ? box.endRow + by : box.endRow;
+        if (end <= start) return null;
+        return rangeText({ ...box, startRow: start, endRow: end });
+      };
+      tab.merges = (tab.merges ?? []).flatMap((range) => {
+        const next = shift(range);
+        const box = next === null ? null : parseBounds(next);
+        // A merge left one cell isn't one.
+        return next === null ||
+          (box?.endRow ?? 0) -
+            (box?.startRow ?? 0) +
+            (box?.endColumn ?? 0) -
+            (box?.startColumn ?? 0) <=
+            2
+          ? []
+          : [next];
+      });
+      if (!tab.merges.length) delete tab.merges;
+      tab.hiddenRows = (tab.hiddenRows ?? []).flatMap((n) =>
+        !inserting && n - 1 === at ? [] : [moved(n - 1) + 1],
+      );
+      if (!tab.hiddenRows.length) delete tab.hiddenRows;
+      if (tab.filter) {
+        const range = shift(tab.filter.range);
+        if (range === null) delete tab.filter;
+        else tab.filter.range = range;
+      }
+      return null;
+    }
     case "sort": {
       const bounds = parseBounds(change.range);
       const by = columnIndex(change.column);
@@ -315,6 +380,10 @@ export function applyChange(spreadsheet: FixtureSpreadsheet, change: FixtureChan
     }
   }
 }
+
+// A range's text from bounds that have both ends.
+const rangeText = (box: Bounds) =>
+  `${columnLetters(box.startColumn ?? 0)}${(box.startRow ?? 0) + 1}:${box.endColumn === undefined ? "" : columnLetters(box.endColumn - 1)}${box.endRow ?? ""}`;
 
 const trimRow = (row: FixtureCell[]) => {
   const out = [...row];
@@ -409,6 +478,8 @@ function tabProblems(tab: FixtureTab): string[] {
       if (cell === null || typeof cell !== "object") continue;
       if (cell.formula !== undefined && (!cell.formula.startsWith("=") || cell.value === undefined))
         problems.push("a formula starts with = and has the value Google computed");
+      if (cell.spilled && (cell.value === undefined || cell.formula !== undefined))
+        problems.push("a spilled cell has a value and no formula of its own");
       if (cell.formatted !== undefined && typeof cell.value !== "number")
         problems.push("only a number is shown another way");
     }

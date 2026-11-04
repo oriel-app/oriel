@@ -67,23 +67,32 @@ test("Drive's files.get: the default fields, or those asked for, and 404 for an 
   assert.equal(at(bad.body, "error.message"), "Invalid field selection capabilities.canFly");
 });
 
-test("every request needs the access token, and the stand-in writes nothing", async () => {
+test("every request needs the access token, and the stand-in refuses a write it doesn't model", async () => {
   const { standIn, get } = google();
   const refused = await get(`${drive}/files/${trackerId}?fields=version`, "someone-else");
   assert.equal(refused.status, 401);
   assert.equal(at(refused.body, "error.errors.0.reason"), "authError");
   const unsigned = await get(`${sheets}/${trackerId}`, "");
   assert.equal(at(unsigned.body, "error.status"), "UNAUTHENTICATED");
-  const posted = await standIn.fetch(`${sheets}/${trackerId}:batchUpdate`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${standInToken}` },
-    body: "{}",
+  const send = (method: string, path: string, body: unknown) =>
+    standIn.fetch(`${sheets}/${trackerId}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${standInToken}` },
+      body: JSON.stringify(body),
+    });
+  assert.equal((await send("POST", ":batchUpdate", {})).status, 400);
+  const parsed = await send("POST", "/values:batchUpdate", {
+    valueInputOption: "USER_ENTERED",
+    data: [{ range: "Tracker!H2", values: [["=1+1"]] }],
   });
-  assert.equal(posted.status, 405);
+  assert.equal(parsed.status, 400);
+  assert.equal((await send("PUT", "", {})).status, 405);
   assert.deepEqual(
     standIn.calls.map((c) => c.method),
-    ["GET", "GET", "POST"],
+    ["GET", "GET", "POST", "POST", "PUT"],
   );
+  const before = fixture.spreadsheets.find((s) => s.id === trackerId);
+  assert.equal(standIn.spreadsheet(trackerId).version, before?.version);
 });
 
 test("Drive's about.get needs fields, and names the account", async () => {
@@ -240,4 +249,30 @@ test("each later version moves the Drive version: a key edited, a tab sorted, a 
   );
   // The fixture itself is never changed.
   assert.equal(fixture.spreadsheets[0]?.version, "48");
+});
+
+test("inserting and deleting a row moves the rows below, with their merges, hidden rows and filter", () => {
+  const { standIn } = google();
+  const tab = () => {
+    const found = standIn.spreadsheet(trackerId).tabs.find((t) => t.sheetId === 1100);
+    assert.ok(found);
+    return found;
+  };
+  const before = structuredClone(tab());
+  standIn.change(trackerId, { kind: "insert", sheetId: 1100, row: 3 });
+  assert.deepEqual(tab().merges, ["B2:B6", "B7:B9", "B10:B11"]);
+  assert.deepEqual(tab().hiddenRows, [9]);
+  assert.equal(tab().filter?.range, "C1:I13");
+  assert.deepEqual(tab().rows[2], []);
+  assert.deepEqual(tab().grid, { rows: 1001, columns: 26 });
+  standIn.change(trackerId, { kind: "delete", sheetId: 1100, row: 3 });
+  assert.deepEqual({ ...tab(), grid: undefined }, { ...before, grid: undefined });
+  // The hidden row itself, deleted: a merge loses a row, and one left a
+  // single cell is no merge.
+  standIn.change(trackerId, { kind: "delete", sheetId: 1100, row: 8 });
+  assert.equal(tab().hiddenRows, undefined);
+  assert.deepEqual(tab().merges, ["B2:B5", "B6:B7", "B8:B9"]);
+  standIn.change(trackerId, { kind: "delete", sheetId: 1100, row: 7 });
+  assert.deepEqual(tab().merges, ["B2:B5", "B7:B8"]);
+  assert.equal(tab().filter?.range, "C1:I10");
 });

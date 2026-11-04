@@ -85,31 +85,41 @@ export const tabMapping: Validator<TabMapping> = object({
   parent: optional(header),
 });
 
-// The picks, then what a mapping must hold: one mapping per tab, states only
-// with a status, and no column mapped to two fields.
-export const sheetsPicks: Described<SheetsPicks> = refine(
+const spreadsheets = array(
   object({
-    spreadsheets: array(
-      object({
-        id: refine(string, (s) => /^[A-Za-z0-9_-]{10,100}$/.test(s), "expected a Drive file ID"),
-        tabs: array(tabMapping),
-      }),
-    ),
+    id: refine(string, (s) => /^[A-Za-z0-9_-]{10,100}$/.test(s), "expected a Drive file ID"),
+    tabs: array(tabMapping),
   }),
-  (picks) =>
-    new Set(picks.spreadsheets.map((s) => s.id)).size === picks.spreadsheets.length &&
-    picks.spreadsheets.every(
-      (s) =>
-        new Set(s.tabs.map((t) => t.sheetId)).size === s.tabs.length &&
-        s.tabs.every((tab) => {
-          // A unique name, such as a feature's, may be both key and title.
-          const columns = mappedColumns(tab).flatMap(([field, column]) =>
-            field === "key" && column.trim() === tab.title.trim() ? [] : [column.trim()],
-          );
-          return new Set(columns).size === columns.length && (!tab.states || tab.status);
-        }),
-    ),
-  "expected each spreadsheet and tab once, states only with a status, and each column mapped once",
+);
+
+// What a mapping must hold: one mapping per tab, states only with a status,
+// and no column mapped to two fields.
+const fits = (picks: SheetsPicks) =>
+  new Set(picks.spreadsheets.map((s) => s.id)).size === picks.spreadsheets.length &&
+  picks.spreadsheets.every(
+    (s) =>
+      new Set(s.tabs.map((t) => t.sheetId)).size === s.tabs.length &&
+      s.tabs.every((tab) => {
+        // A unique name, such as a feature's, may be both key and title.
+        const columns = mappedColumns(tab).flatMap(([field, column]) =>
+          field === "key" && column.trim() === tab.title.trim() ? [] : [column.trim()],
+        );
+        return new Set(columns).size === columns.length && (!tab.states || tab.status);
+      }),
+  );
+const fitsSays =
+  "expected each spreadsheet and tab once, states only with a status, and each column mapped once";
+
+// The picks, then what a mapping must hold.
+export const sheetsPicks: Described<SheetsPicks> = refine(object({ spreadsheets }), fits, fitsSays);
+
+// What a person sets per connection (decision 0049): the picks, and
+// whether it may propose changes.
+export type SheetsOptions = SheetsPicks & { readOnly?: boolean };
+export const sheetsOptions: Described<SheetsOptions> = refine(
+  object({ spreadsheets, readOnly: optional(boolean) }),
+  fits,
+  fitsSays,
 );
 
 // Each field the tab maps, with its column's header.

@@ -12,6 +12,7 @@ import {
   array,
   boolean,
   type Credential,
+  type Infer,
   number,
   object,
   optional,
@@ -21,7 +22,7 @@ import {
 import { columnLetters, quoteTab } from "./a1.ts";
 import type { Fetch } from "./oauth.ts";
 import { driveOrigin, sheetsOrigin } from "./stand-in.ts";
-import type { Cell, Grid } from "./table.ts";
+import type { Cell, Entered, Grid } from "./table.ts";
 
 export type GoogleReads = {
   fetch: Fetch;
@@ -116,6 +117,13 @@ const range = object({
   endColumnIndex: optional(number),
 });
 const hiddenByUser = array(object({ hiddenByUser: optional(boolean) }));
+// Google's ExtendedValue: one of its fields is set. An error is a formula's.
+const enteredValue = object({
+  stringValue: optional(string),
+  numberValue: optional(number),
+  boolValue: optional(boolean),
+  formulaValue: optional(string),
+});
 const gridAnswer = object({
   sheets: optional(
     array(
@@ -134,6 +142,7 @@ const gridAnswer = object({
                         object({
                           formattedValue: optional(string),
                           effectiveValue: optional(object({ numberValue: optional(number) })),
+                          userEnteredValue: optional(enteredValue),
                           note: optional(string),
                         }),
                       ),
@@ -152,8 +161,15 @@ const gridAnswer = object({
   ),
 });
 
-const gridFields =
-  "sheets(properties(sheetId),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue(numberValue),note)),rowMetadata(hiddenByUser),columnMetadata(hiddenByUser)),merges)";
+const gridFields = (entered: boolean) =>
+  `sheets(properties(sheetId),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue(numberValue),${entered ? "userEnteredValue," : ""}note)),rowMetadata(hiddenByUser),columnMetadata(hiddenByUser)),merges)`;
+
+// What a cell holds as entered: a formula first, since only it is one.
+function enteredOf(value: Infer<typeof enteredValue> | undefined): Entered {
+  if (!value) return null;
+  if (value.formulaValue !== undefined) return { formula: value.formulaValue };
+  return value.stringValue ?? value.numberValue ?? value.boolValue ?? null;
+}
 
 export function googleReads(io: GoogleReads) {
   const get = async <T>(url: URL, shape: Validator<T>, what: string): Promise<T | "gone"> => {
@@ -270,13 +286,20 @@ export function googleReads(io: GoogleReads) {
 
     // Rows `start` to `end` (0-based, end exclusive) of one tab, every
     // column: its cells as shown, with notes, which rows and columns are
-    // hidden by hand, and the merges that meet it. Only the tab asked for
-    // is kept, whatever else comes back.
-    async rows(id: string, tab: TabInfo, start: number, end: number): Promise<Grid | "gone"> {
+    // hidden by hand, and the merges that meet it; with `entered`, what
+    // each cell holds as entered too, as a writer reads it. Only the tab
+    // asked for is kept, whatever else comes back.
+    async rows(
+      id: string,
+      tab: TabInfo,
+      start: number,
+      end: number,
+      entered = false,
+    ): Promise<Grid | "gone"> {
       const url = sheetUrl(id);
       const last = columnLetters(Math.max(tab.columns, 1) - 1);
       url.searchParams.set("ranges", `${quoteTab(tab.title)}!A${start + 1}:${last}${end}`);
-      url.searchParams.set("fields", gridFields);
+      url.searchParams.set("fields", gridFields(entered));
       const answer = await get(url, gridAnswer, "a tab's rows");
       if (answer === "gone") return answer;
       const sheet = answer.sheets?.find((s) => (s.properties.sheetId ?? 0) === tab.sheetId);
@@ -291,10 +314,11 @@ export function googleReads(io: GoogleReads) {
           (row.values ?? []).forEach((value, c) => {
             const shown = value.formattedValue ?? "";
             const note = value.note ?? null;
+            const held = entered ? { entered: enteredOf(value.userEnteredValue) } : {};
             cells[left + c] =
-              shown === "" && note === null
+              shown === "" && note === null && !held.entered
                 ? null
-                : { shown, number: value.effectiveValue?.numberValue ?? null, note };
+                : { shown, number: value.effectiveValue?.numberValue ?? null, note, ...held };
           });
         });
         (data.rowMetadata ?? []).forEach((m, r) => {

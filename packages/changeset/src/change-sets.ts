@@ -1520,6 +1520,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         target: plan.target,
         expectedStableId: plan.stableId,
         args: plan.args,
+        // What the diff showed it against, for a writer that checks the
+        // source still holds it before writing (decision 0050).
+        seen: approvedFrom(m.preview) ?? {},
       });
       const uncertain = mayHaveLanded(source);
       const notice = spec.idempotent
