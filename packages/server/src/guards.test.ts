@@ -101,25 +101,28 @@ test("the first sync connects the source; marking a thread done is recorded", as
   assert.deepEqual([done?.name, done?.data.threadId], ["thread.marked-done", app.id]);
 });
 
-test("the window reports grouping and zoom changes, and nothing else", async (t) => {
+test("the window reports grouping switches and clusters opened or closed, and nothing else", async (t) => {
   const app = await testApp(t);
   const send = (body: unknown, headers = {}) => app.post("/api/telemetry", body, headers);
   assert.equal((await send({ name: "grouping.switched", grouping: "stuck" })).status, 202);
-  assert.equal((await send({ name: "zoom.changed", from: "cluster", to: "list" })).status, 202);
+  assert.equal((await send({ name: "cluster.opened" })).status, 202);
+  assert.equal((await send({ name: "cluster.closed" })).status, 202);
   assert.deepEqual(
     app.app
       .telemetry()
-      .slice(-2)
+      .slice(-3)
       .map((e) => [e.name, e.data]),
     [
       ["grouping.switched", { grouping: "stuck" }],
-      ["zoom.changed", { from: "cluster", to: "list" }],
+      ["cluster.opened", {}],
+      ["cluster.closed", {}],
     ],
   );
   for (const bad of [
     { name: "changeset.decided", changeSetId: "x" },
     { name: "grouping.switched", grouping: "toString" },
-    { name: "zoom.changed", from: "cluster", to: "sideways" },
+    // The old name, which the window no longer sends.
+    { name: "zoom.changed", from: "cluster", to: "list" },
   ])
     assert.equal((await send(bad)).status, 400, JSON.stringify(bad));
   assert.equal(
@@ -146,7 +149,7 @@ test("the window reports grouping and zoom changes, and nothing else", async (t)
     ).status,
     403,
   );
-  assert.equal(app.app.telemetry().length, 3);
+  assert.equal(app.app.telemetry().length, 4);
 });
 
 test("an item that moved keeps its title in a workstream's history and a thread's markers", async () => {

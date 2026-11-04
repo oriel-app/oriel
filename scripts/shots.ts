@@ -1484,8 +1484,8 @@ const scenes: Scene[] = [
     on: handedBack.serving,
     act: (page) => page.locator(".change-set .change-set .diff").waitFor(),
   },
-  // The panel beside the page, one per source's view, and from the window at
-  // both zoom levels: a plain click opens it, an address can too.
+  // The panel beside the page, one per source's view, and from the window with
+  // a cluster open or closed: a plain click opens it, an address can too.
   {
     name: "panel-jira-list",
     window: true,

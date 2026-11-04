@@ -1,10 +1,10 @@
-// The view data the zoom levels build, for the web package to render. Types
-// only, and it imports nothing, so the web package can import it under its
+// The view data Browse's rows are built from, for the web package to render.
+// Types only, and it imports nothing, so the web package can import it under its
 // DOM-only config and the import is erased from the browser build.
 
 export type StatusCategory = "todo" | "in-progress" | "done";
 
-// One item, as the "list" zoom level shows it.
+// One item, as a cluster opened shows it.
 export type ItemRow = {
   // Source-qualified (`jira:SYN-12`); `key` is the part people read.
   id: string;
@@ -26,19 +26,7 @@ export type ItemRow = {
   replies?: { count: number; url: string };
 };
 
-// One item, as the "item" zoom level shows it: the fullscreen story. It holds
-// what the index keeps; the description and comments are read live.
-export type ItemView = ItemRow & {
-  // The source's name, such as "Jira", and the item's page there.
-  source: string;
-  url: string;
-  labels: string[];
-  // `title` is null when the epic isn't in the index.
-  epic: { id: string; key: string; title: string | null } | null;
-  updatedAt: string;
-};
-
-// One cluster, as the "cluster" zoom level shows it: an epic row.
+// One cluster as its row: an epic row.
 export type ClusterRow = {
   key: string;
   label: string;

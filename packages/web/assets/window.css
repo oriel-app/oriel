@@ -1706,7 +1706,7 @@ button.nav-more {
   opacity: 0.55;
 }
 
-/* A cluster at the "cluster" zoom level is its header row; at "list" its items follow. */
+/* A cluster closed is its header row; opened, its items follow. */
 
 .cluster + .cluster {
   border-top: var(--border-thin) solid var(--line);
@@ -1733,7 +1733,7 @@ button.nav-more {
 }
 
 .cluster-toggle:hover,
-.cluster[data-zoom="list"] .cluster-toggle {
+.cluster[data-open] .cluster-toggle {
   background: var(--surface-hover);
 }
 
@@ -1926,7 +1926,7 @@ button.nav-more {
   background: var(--todo);
 }
 
-/* The "list" zoom level: one row per item, each one pickable. */
+/* A cluster's items: one row per item, each one pickable. */
 
 .items {
   margin: 0;

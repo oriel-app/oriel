@@ -109,7 +109,7 @@ export function jiraAttrsOf(record: IndexRecord): JiraAttrs | null {
 
 // How a Jira item shows in the window beyond core's fields: its issue type,
 // status and labels as the site names them. The composition root passes this
-// to the zoom levels.
+// to Browse's rows.
 export const jiraDetails: DetailsOf = (record) => {
   const attrs = jiraAttrsOf(record);
   return attrs && { type: attrs.issueType, status: attrs.status, labels: [...attrs.labels] };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { init, type Model, type Msg, update, zoomOf } from "../src/update.ts";
+import { init, isOpen, type Model, type Msg, update } from "../src/update.ts";
 import type { ClusterView, GroupingId, WindowView } from "../src/view.ts";
 import { clusterRow, windowView } from "../testing.ts";
 
@@ -89,19 +89,19 @@ test("a failed load keeps the last window and can be retried", () => {
   assert.deepEqual(effects, [{ type: "loadWindow", request: retried.request, grouping: "epic" }]);
 });
 
-test("toggling a cluster moves it between the two zoom levels", () => {
+test("toggling a cluster opens it, and again closes it", () => {
   const [model] = init("epic");
   const shown = run(model, {
     type: "windowLoaded",
     request: model.request,
     window: view("epic", ["a", "b"]),
   });
-  assert.equal(zoomOf(shown, "a"), "cluster");
+  assert.equal(isOpen(shown, "a"), false);
   const opened = run(shown, { type: "clusterToggled", key: "a" });
-  assert.equal(zoomOf(opened, "a"), "list");
-  assert.equal(zoomOf(opened, "b"), "cluster");
+  assert.equal(isOpen(opened, "a"), true);
+  assert.equal(isOpen(opened, "b"), false);
   const closed = run(opened, { type: "clusterToggled", key: "a" });
-  assert.equal(zoomOf(closed, "a"), "cluster");
+  assert.equal(isOpen(closed, "a"), false);
 });
 
 test("each grouping keeps its own open clusters", () => {
@@ -117,17 +117,17 @@ test("each grouping keeps its own open clusters", () => {
     request: stuck.request,
     window: view("stuck", ["a"]),
   });
-  assert.equal(zoomOf(stuckShown, "a"), "cluster");
+  assert.equal(isOpen(stuckShown, "a"), false);
   const back = run(stuckShown, { type: "groupingPicked", grouping: "epic" });
   const epicShown = run(back, {
     type: "windowLoaded",
     request: back.request,
     window: view("epic", ["a"]),
   });
-  assert.equal(zoomOf(epicShown, "a"), "list");
+  assert.equal(isOpen(epicShown, "a"), true);
 });
 
-test("zoom acts on the window on screen while another grouping loads", () => {
+test("a toggle acts on the window on screen while another grouping loads", () => {
   const [model] = init("epic");
   const loading = run(
     model,
@@ -139,7 +139,7 @@ test("zoom acts on the window on screen while another grouping loads", () => {
   assert.deepEqual(loading.open.assignee, []);
 });
 
-test("zoom does nothing before a window has loaded", () => {
+test("a toggle does nothing before a window has loaded", () => {
   const [model] = init("epic");
   assert.equal(run(model, { type: "clusterToggled", key: "a" }), model);
 });

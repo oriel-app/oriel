@@ -59,7 +59,7 @@ const records = [
   record("SYN-4"),
 ];
 
-test("the cluster zoom level counts and sums the cluster's items", () => {
+test("a cluster's row counts and sums the cluster's items", () => {
   const view = windowView(
     "epic",
     fixed([
@@ -94,7 +94,7 @@ test("the cluster zoom level counts and sums the cluster's items", () => {
   );
 });
 
-test("the list zoom level shows each item's key, title, status, assignee and points", () => {
+test("a cluster opened shows each item's key, title, status, assignee and points", () => {
   const view = windowView(
     "epic",
     fixed([{ key: "k", label: "K", anchor: null, itemIds: ["jira:SYN-3"], origin: "source" }]),

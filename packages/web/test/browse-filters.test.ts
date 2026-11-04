@@ -197,7 +197,7 @@ test("the page's address follows a search, so an item opened beside it keeps the
   assert.equal(routeUrl(opened.route), "/browse?grouping=epic&q=sms&item=jira%3ASYN-61");
 });
 
-test("clusters a search opens as it loads aren't counted as the user zooming in", () => {
+test("clusters a search opens as it loads aren't counted as the user opening them", () => {
   const [model] = initRoot(parseRoute("/browse", "?grouping=epic&q=sms"));
   assert.ok(model.window);
   const [loaded, effects] = updateRoot(model, {

@@ -916,7 +916,7 @@ test("going back to a thread, or following its link again, watches it again", ()
   ]);
 });
 
-test("the window reports a grouping switch and a zoom in or out, and nothing else", () => {
+test("the window reports a grouping switch and a cluster opened or closed, and nothing else", () => {
   const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
   const shown = updateRoot(model, {
     type: "window",
@@ -930,7 +930,7 @@ test("the window reports a grouping switch and a zoom in or out, and nothing els
     { name: "grouping.switched", grouping: "stuck" },
   ]);
   assert.deepEqual(reported({ type: "clusterToggled", key: "10001" }), [
-    { name: "zoom.changed", from: "cluster", to: "list" },
+    { name: "cluster.opened" },
   ]);
   const opened = updateRoot(shown, {
     type: "window",
@@ -940,7 +940,7 @@ test("the window reports a grouping switch and a zoom in or out, and nothing els
     updateRoot(opened, { type: "window", msg: { type: "clusterToggled", key: "10001" } })[1].map(
       (e) => (e.type === "http" ? e.body : e.type),
     ),
-    [{ name: "zoom.changed", from: "list", to: "cluster" }],
+    [{ name: "cluster.closed" }],
   );
   assert.deepEqual(reported({ type: "itemToggled", id: "jira:SYN-10" }), []);
 });

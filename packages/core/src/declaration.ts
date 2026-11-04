@@ -1,4 +1,5 @@
 import type { DeclaredFacets } from "./change-log.ts";
+import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
 import type { NamespaceSpec } from "./namespace.ts";
@@ -8,7 +9,6 @@ import type { OverviewOf } from "./overview.ts";
 import type { PanelOf } from "./panel.ts";
 import type { Recognizer } from "./references.ts";
 import type { IndexRecord } from "./source.ts";
-import type { Presentation } from "./zoom.ts";
 
 // Everything a source declares about itself, in one place (decision 0019):
 // how it shows in the window, what its items are to the agent, and, for a
