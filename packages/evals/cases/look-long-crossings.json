@@ -18,6 +18,10 @@
       }
     ]
   },
+  "failing": {
+    "grader": "findings",
+    "why": "search() matches keys and titles only, and the open question is in the body of a file titled 'Q3 launch: open questions'; in 3 of 3 trials the look searched for long crossings, fare differences and rebooking policy and never reached it (round 01M6JXGH1TCVFKTBSHVM72BAPE)"
+  },
   "expect": [
     {
       "grader": "findings",

@@ -39,7 +39,7 @@ import {
   ulid,
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
-import { checkRecord, keep } from "@oriel/server/challenger";
+import { checkRecord, keep, written } from "@oriel/server/challenger";
 import { itemNamed } from "./fixtures.ts";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
 import { buildWorld, caseWorld, type World } from "./world.ts";
@@ -210,7 +210,7 @@ function secondLook(input: SystemInput, region: Region, world: World) {
     diff: async () => lines,
     record: async (runId, findings) => {
       const checked = await checkRecord(findings, {
-        lines: lines.length,
+        lines: lines.map(written),
         members,
         read: world.reader.read,
       });

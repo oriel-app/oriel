@@ -579,7 +579,12 @@ export type SecondLookView = {
     kind: "conflict" | "discussion" | "companion" | "related";
     lines: number[];
     says: string;
-    evidence: { id: string; quote: string; outside: boolean }[];
+    // A quote from an item (`id`), or of what a line of the diff would
+    // write (`line`).
+    evidence: (
+      | { id: string; line: null; quote: string; outside: boolean }
+      | { id: null; line: number; quote: string; outside: false }
+    )[];
     // A companion's suggested changes, by their place in `companions`.
     changes: number[];
   }[];

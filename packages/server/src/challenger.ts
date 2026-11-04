@@ -22,6 +22,7 @@ import {
   challengeAskText,
   type Coverage,
   type Diff,
+  evidenceItems,
   type Finding,
   type FindingAsk,
   type Instant,
@@ -77,6 +78,13 @@ const linesOf = (diff: Diff): ChangeLine[] =>
     fields: line.fields.map(({ name, before, after }) => ({ name, before, after })),
   }));
 
+// What a diff line would write, as text a quote is checked against: each
+// field's value after, as its text, or as JSON.
+export const written = (line: { fields: readonly { after: unknown }[] }): string =>
+  line.fields
+    .map(({ after }) => (typeof after === "string" ? after : (JSON.stringify(after) ?? "")))
+    .join("\n");
+
 // Every string in a read's arguments that names an item, nested or not.
 const idsIn = (value: unknown): string[] =>
   typeof value === "string"
@@ -127,7 +135,12 @@ function shapeProblem(finding: FindingAsk, i: number, lines: number): string | n
 // item word for word. `members`: the region's items; any other is outside.
 export async function checkRecord(
   input: unknown,
-  context: { lines: number; members: ReadonlySet<string>; read: Reader["read"] },
+  context: {
+    // What each line of the diff would write, as text, by line from 1.
+    lines: readonly string[];
+    members: ReadonlySet<string>;
+    read: Reader["read"];
+  },
 ): Promise<{ answer: string; findings?: Finding[] }> {
   const shaped = challengeAsk(input);
   if (!shaped.ok)
@@ -138,23 +151,24 @@ export async function checkRecord(
         .join("; ")}`,
     };
   const problems = shaped.value.flatMap((finding, i) => {
-    const problem = shapeProblem(finding, i, context.lines);
+    const problem = shapeProblem(finding, i, context.lines.length);
     return problem ? [problem] : [];
   });
-  const quoted = [...new Set(shaped.value.flatMap((f) => f.evidence.map((e) => e.id)))];
+  const quoted = [
+    ...new Set(shaped.value.flatMap((f) => f.evidence.flatMap((e) => ("id" in e ? [e.id] : [])))),
+  ];
   const texts = new Map<string, string>();
   for (const result of quoted.length ? await context.read(quoted as ItemId[]) : [])
     if (result.status === "ok")
       texts.set(result.id, `${result.content.title}\n${result.content.text}`);
   shaped.value.forEach((finding, i) =>
     finding.evidence.forEach((evidence, j) => {
-      const text = texts.get(evidence.id);
-      if (text === undefined)
-        problems.push(`finding ${i + 1}, quote ${j + 1}: Oriel can't read ${evidence.id}`);
+      const where = `finding ${i + 1}, quote ${j + 1}`;
+      const from = "id" in evidence ? evidence.id : `what line ${evidence.line} would write`;
+      const text = "id" in evidence ? texts.get(evidence.id) : context.lines[evidence.line - 1];
+      if (text === undefined) problems.push(`${where}: Oriel can't read ${from}`);
       else if (!wordForWord(evidence.quote, text))
-        problems.push(
-          `finding ${i + 1}, quote ${j + 1}: not in ${evidence.id} word for word; copy its words exactly`,
-        );
+        problems.push(`${where}: not in ${from} word for word; copy its words exactly`);
     }),
   );
   if (problems.length)
@@ -171,11 +185,16 @@ export async function checkRecord(
       kind: finding.kind,
       lines: [...new Set(finding.lines)].sort((a, b) => a - b),
       says: finding.says.trim(),
-      evidence: finding.evidence.map((evidence) => ({
-        id: evidence.id as ItemId,
-        quote: evidence.quote,
-        outside: !context.members.has(evidence.id),
-      })),
+      evidence: finding.evidence.map((evidence) =>
+        "id" in evidence
+          ? {
+              id: evidence.id as ItemId,
+              line: null,
+              quote: evidence.quote,
+              outside: !context.members.has(evidence.id),
+            }
+          : { id: null, line: evidence.line, quote: evidence.quote, outside: false as const },
+      ),
       changes: finding.changes ?? [],
     })),
   };
@@ -256,7 +275,11 @@ export function challenger(deps: ChallengerDeps) {
       const results = new Map<Ulid, RunResult>();
 
       const record = async (runId: Ulid, input: unknown): Promise<string> => {
-        const checked = await checkRecord(input, { lines: lines.length, members, read: deps.read });
+        const checked = await checkRecord(input, {
+          lines: lines.map(written),
+          members,
+          read: deps.read,
+        });
         if (checked.findings) recorded.set(runId, checked.findings);
         return checked.answer;
       };
@@ -287,9 +310,7 @@ export function challenger(deps: ChallengerDeps) {
       const targets = lines.flatMap((line) =>
         line.item !== null && isItemId(line.item) ? [line.item] : [],
       );
-      const rested = [
-        ...new Set([...targets, ...findings.flatMap((f) => f.evidence.map((e) => e.id))]),
-      ];
+      const rested = [...new Set([...targets, ...findings.flatMap(evidenceItems)])];
       const basis: Basis[] = rested.map((item) => ({ id: item, updatedAt: deps.updatedAt(item) }));
       challenges.ready(id, {
         findings,

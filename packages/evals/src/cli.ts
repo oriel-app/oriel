@@ -199,7 +199,7 @@ export type Io = {
   error: (line: string) => void;
 };
 
-const repoIo: Io = {
+export const repoIo: Io = {
   cases: casesDir,
   climbs: climbsDir,
   cassettes: cassettesDir,

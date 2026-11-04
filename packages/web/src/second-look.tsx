@@ -114,8 +114,14 @@ export function SecondLook(props: {
                           {finding.evidence.map((e, j) => (
                             <figure key={j} class="quote-from" data-found="true">
                               <figcaption>
-                                Word for word from <AnswerChip id={e.id} />
-                                {e.outside && " · outside this workstream"}
+                                {e.id === null ? (
+                                  `Word for word from what ${on(e.line)} would write`
+                                ) : (
+                                  <>
+                                    Word for word from <AnswerChip id={e.id} />
+                                    {e.outside && " · outside this workstream"}
+                                  </>
+                                )}
                               </figcaption>
                               <blockquote>
                                 <p>{e.quote}</p>

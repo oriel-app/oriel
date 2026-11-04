@@ -204,3 +204,34 @@ test("with no challenger, as with the scripted dev agent, no second look is take
   assert.ok(set);
   assert.equal(set.secondLook, undefined);
 });
+
+test("a finding may quote what a line of the diff would write, checked word for word against it", async (t) => {
+  answers.length = 0;
+  const written = {
+    kind: "conflict",
+    lines: [1],
+    says: "The new description drops next-day sailings, which a later reply extended the rule to.",
+    evidence: [
+      { line: 1, quote: "the same day only" },
+      { id: decision, quote: amendment },
+    ],
+  };
+  const { view } = await setUp(t, recording([written]));
+  const second = (await view()).changeSets[0]?.secondLook;
+  assert.equal(second?.state, "ready");
+  assert.deepEqual(
+    second?.findings[0]?.evidence.map((e) => [e.id, e.line]),
+    [
+      [null, 1],
+      [decision, null],
+    ],
+  );
+  // Words the line wouldn't write keep nothing.
+  answers.length = 0;
+  const { view: refused } = await setUp(
+    t,
+    recording([{ ...written, evidence: [{ line: 1, quote: "next-day sailings too" }] }]),
+  );
+  assert.equal((await refused()).changeSets[0]?.secondLook?.state, "failed");
+  assert.match(answers[0] ?? "", /not in what line 1 would write word for word/);
+});

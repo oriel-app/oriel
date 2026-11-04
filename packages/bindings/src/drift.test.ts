@@ -182,7 +182,9 @@ test("the stub check catches a missing, extra, renamed or mis-kinded stub", asyn
       fns.map((fn) => (fn.name === "getItem" ? { ...write, name: "getItem" } : fn)),
       [2322],
     ],
-    ["no global", fns.filter((fn) => fn.name !== "search"), [2304]],
+    // A parameter no function stands behind is handed over as nothing, which
+    // the declarations' function type refuses.
+    ["no global", fns.filter((fn) => fn.name !== "search"), [2322]],
   ];
   const { spaces } = scopeOf(region, namespaces);
   for (const [drift, list, codes] of drifted) {

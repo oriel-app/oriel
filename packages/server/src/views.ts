@@ -689,7 +689,7 @@ export function views(deps: ViewDeps) {
         if (look) looks.set(set.id, look);
       }
       const evidence = [...looks.values()].flatMap((look) =>
-        look.findings.flatMap((finding) => finding.evidence.map((e) => e.id)),
+        look.findings.flatMap((finding) => finding.evidence.flatMap((e) => e.id ?? [])),
       );
       return {
         id,

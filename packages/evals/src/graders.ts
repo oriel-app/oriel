@@ -540,7 +540,8 @@ export function gradeFindings(
   const fail = (detail: string): Grade => ({ grader: "findings", pass: false, detail });
   if (!look?.kept) return fail("Oriel kept nothing the look recorded");
   const said = look.findings.map(
-    (f) => `${f.kind} on ${f.lines.join(",")} from ${f.evidence.map((e) => e.id).join(", ")}`,
+    (f) =>
+      `${f.kind} on ${f.lines.join(",")} from ${f.evidence.map((e) => e.id ?? `line ${e.line}`).join(", ")}`,
   );
   const missing = expected.cites.filter(
     (cite) =>
@@ -555,6 +556,8 @@ export function gradeFindings(
       `no ${missing.map((c) => `${c.kinds?.join("/") ?? "finding"} from ${c.item}`).join("; ")}; kept: ${said.join("; ") || "none"}`,
     );
   if (expected.atMost !== undefined && look.findings.length > expected.atMost)
-    return fail(`${look.findings.length} findings, more than ${expected.atMost}: ${said.join("; ")}`);
+    return fail(
+      `${look.findings.length} findings, more than ${expected.atMost}: ${said.join("; ")}`,
+    );
   return { grader: "findings", pass: true, detail: said.join("; ") || "none" };
 }

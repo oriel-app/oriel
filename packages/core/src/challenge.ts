@@ -58,10 +58,14 @@ const lineNumber = refine(
 // What the agent hands `challenge.record()`, as it is checked first: its
 // shape. What the shape can't say (lines in the diff, quotes in their items,
 // changes the run captured) is the server's check.
-const evidenceAsk = object({
-  id: refine(string, isItemId, "expected an item's ID, such as jira:SYN-12"),
-  quote: text(maxEvidenceQuoteChars, `a quote of at most ${maxEvidenceQuoteChars} characters`),
-});
+// A quote is an item's own words (`id`), or the words a line of the diff
+// would write (`line`), as when a change retypes an instruction into a
+// ticket.
+const quote = text(maxEvidenceQuoteChars, `a quote of at most ${maxEvidenceQuoteChars} characters`);
+const evidenceAsk = union(
+  object({ id: refine(string, isItemId, "expected an item's ID, such as jira:SYN-12"), quote }),
+  object({ line: lineNumber, quote }),
+);
 const findingAsk = object({
   kind: union(literal("conflict"), literal("discussion"), literal("companion"), literal("related")),
   lines: refine(array(lineNumber), (lines) => lines.length > 0, "expected at least one line"),
@@ -98,10 +102,19 @@ export type Finding = {
   lines: number[];
   says: string;
   // `outside`: the item isn't in the change set's workstream; the agent
-  // reached it through search().
-  evidence: { id: ItemId; quote: string; outside: boolean }[];
+  // reached it through search(). A quote of what a diff line would write
+  // names its `line` and no item.
+  evidence: Evidence[];
   changes: number[];
 };
+
+export type Evidence =
+  | { id: ItemId; line: null; quote: string; outside: boolean }
+  | { id: null; line: number; quote: string; outside: false };
+
+// The items a finding's quotes are from.
+export const evidenceItems = (finding: Pick<Finding, "evidence">): ItemId[] =>
+  finding.evidence.flatMap((e) => (e.id === null ? [] : [e.id]));
 
 // What the second look read, from its runs' own records, not its words:
 // which of the workstream's items it read, of how many, and how many times it
@@ -156,11 +169,15 @@ export function staleness(
 export const isStale = (stale: Staleness): boolean => stale.diff || stale.items.length > 0;
 
 // A finding as stored, checked on the way out of the database.
-const storedEvidence = object({
-  id: refine(string, isItemId, "expected an item ID"),
-  quote: string,
-  outside: boolean,
-});
+const storedEvidence: Validator<Evidence> = union(
+  object({
+    id: refine(string, isItemId, "expected an item ID"),
+    line: literal(null),
+    quote: string,
+    outside: boolean,
+  }),
+  object({ id: literal(null), line: number, quote: string, outside: literal(false) }),
+);
 export const storedFinding: Validator<Finding> = object({
   kind: union(literal("conflict"), literal("discussion"), literal("companion"), literal("related")),
   lines: array(number),

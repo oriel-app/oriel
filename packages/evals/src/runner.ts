@@ -344,9 +344,11 @@ async function grade(
     ? await inWorld(loaded, options, (world) => checkQuotes([output.reply], world.reader.read))
     : [];
   output = { ...output, reply: seen.text };
-  const refs = gradeRefs(seen);
+  // A second look's reply is never shown (kind 9): only what Oriel kept is.
+  const shownReply = loaded.case.kind !== 9;
+  const refs = shownReply ? gradeRefs(seen) : null;
   if (refs) grades.push(refs);
-  const quotes = gradeQuotes(checked);
+  const quotes = shownReply ? gradeQuotes(checked) : null;
   if (quotes) grades.push(quotes);
   for (const expectation of loaded.case.expect) {
     if (expectation.grader === "exact-diff") {
