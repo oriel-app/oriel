@@ -349,6 +349,14 @@ test("a launch takes only the shell's own switches, each value where one belongs
     assert.deepEqual(refusedArguments(["--background", ...args]), args);
   // A value that is missing, or is another switch, isn't a value.
   assert.deepEqual(refusedArguments(["--data"]), ["--data"]);
+  // Finder's first open of a downloaded app can add a process serial number.
+  assert.deepEqual(refusedArguments(["-psn_0_1234567"]), []);
+  assert.deepEqual(refusedArguments(["--background", "-psn_0_1234567"]), []);
+  for (const args of [["-psn_0_1=x"], ["-psn_"], ["--psn_0_1"], ["-psn_0_1", "--inspect"]])
+    assert.deepEqual(
+      refusedArguments(args),
+      args.filter((arg) => arg !== "-psn_0_1"),
+    );
   assert.deepEqual(refusedArguments(["--data", "--inspect"]), ["--data", "--inspect"]);
 });
 

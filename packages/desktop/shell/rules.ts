@@ -372,12 +372,18 @@ const shellSwitches: Readonly<Record<string, boolean>> = {
   "--measure": true,
 };
 
+// macOS's process serial number, which Launch Services can still pass on
+// the first open from Finder of an app just downloaded: a pilot's first
+// launch. Chromium reads it as a switch that does nothing.
+const processSerialNumber = /^-psn_\d+_\d+$/;
+
 // The arguments after the executable that aren't the shell's own switches
 // and their values, `--` included: none, for a launch to go on.
 export function refusedArguments(args: readonly string[]): string[] {
   const refused: string[] = [];
   for (let at = 0; at < args.length; at++) {
     const arg = args[at]!;
+    if (processSerialNumber.test(arg)) continue;
     const takesValue = Object.hasOwn(shellSwitches, arg) ? shellSwitches[arg] : undefined;
     if (takesValue === undefined) refused.push(arg);
     else if (takesValue) {
