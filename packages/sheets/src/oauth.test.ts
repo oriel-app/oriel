@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { After } from "./loopback.ts";
-import { type Fetch, pickedFiles, refresh, scope, signIn, type SignInIo } from "./oauth.ts";
+import {
+  authorizeUrl,
+  type Fetch,
+  pickedFiles,
+  refresh,
+  scope,
+  signIn,
+  type SignInIo,
+} from "./oauth.ts";
 import { challengeOf } from "./pkce.ts";
 
 // Made-up values; none is a real client or token.
@@ -236,4 +244,13 @@ test("a refresh keeps the refresh token unless Google sends a newer one", async 
   const rotated = tokenEndpoint(200, { ...granted, refresh_token: "fake-refresh-2" });
   const result = await refresh(client, "fake-refresh-token", { fetch: rotated.fetch, now });
   assert.equal(result.status === "refreshed" && result.tokens.refresh, "fake-refresh-2");
+});
+
+test("signing in without the Picker asks for the same one scope and no pick", () => {
+  const asked = new URL(
+    authorizeUrl(client.id, "http://127.0.0.1:5000/", "challenge", "state", false),
+  );
+  assert.equal(asked.searchParams.get("scope"), "https://www.googleapis.com/auth/drive.file");
+  for (const name of ["trigger_onepick", "allow_multiple", "mimetypes"])
+    assert.equal(asked.searchParams.get(name), null);
 });

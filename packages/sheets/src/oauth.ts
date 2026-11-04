@@ -44,12 +44,14 @@ export type Refresh =
   | { status: "failed"; problem: string };
 
 // Signing in and picking spreadsheets are one request: `trigger_onepick`
-// opens Google's Picker after consent, in the same tab.
+// opens Google's Picker after consent, in the same tab. The seed script,
+// which only makes spreadsheets, signs in without it.
 export function authorizeUrl(
   clientId: string,
   redirectUri: string,
   challenge: string,
   state: string,
+  pick = true,
 ): string {
   const url = new URL(authorizeEndpoint);
   for (const [name, value] of Object.entries({
@@ -61,9 +63,9 @@ export function authorizeUrl(
     code_challenge_method: "S256",
     state,
     prompt: "consent",
-    trigger_onepick: "true",
-    allow_multiple: "true",
-    mimetypes: spreadsheetType,
+    ...(pick
+      ? { trigger_onepick: "true", allow_multiple: "true", mimetypes: spreadsheetType }
+      : {}),
   }))
     url.searchParams.set(name, value);
   return url.toString();
@@ -83,12 +85,16 @@ export function pickedFiles(query: URLSearchParams): string[] | null {
   return [...new Set(ids)];
 }
 
-export async function signIn(client: GoogleClient, io: SignInIo): Promise<SignIn> {
+export async function signIn(
+  client: GoogleClient,
+  io: SignInIo,
+  { pick = true }: { pick?: boolean } = {},
+): Promise<SignIn> {
   const { verifier, challenge } = pkce(io.random);
   const state = newState(io.random);
   const listener = await loopback(state, io.after ?? after);
   try {
-    await io.open(authorizeUrl(client.id, listener.redirectUri, challenge, state));
+    await io.open(authorizeUrl(client.id, listener.redirectUri, challenge, state, pick));
   } catch {
     listener.close();
     return { status: "failed", problem: "the browser didn't open" };

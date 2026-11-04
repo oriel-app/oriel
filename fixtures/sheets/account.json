@@ -1,0 +1,8 @@
+{
+  "user": {
+    "displayName": "Dara Nikolaidis",
+    "emailAddress": "dara@ferrowick.example",
+    "permissionId": "08422917415305372951"
+  },
+  "spreadsheets": ["tracker", "raid", "contacts", "archive"]
+}
