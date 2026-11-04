@@ -289,6 +289,9 @@ html {
    contained body's background doesn't fill the window below a short page. */
 html {
   background: var(--bg);
+  /* Every checkbox, radio and range takes the theme's accent, not the
+     browser's blue. */
+  accent-color: var(--accent);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -6443,7 +6446,10 @@ button.overview-title:hover {
   max-width: 20rem;
 }
 
-.connection-row .provider-side {
+/* A row that grows, with a warning or a connection's options under it,
+   keeps its action or its pick beside the name, not halfway down. */
+.connection-row .provider-side,
+.setup-rows .provider-side {
   align-self: flex-start;
 }
 
