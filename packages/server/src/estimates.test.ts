@@ -2,7 +2,7 @@
 // field: SYN in memory, synced live, with a board that counts issues.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ChangeSetView, DiffView, ThreadView, WindowView } from "@oriel/web/view";
+import type { ChangeSetView, DiffView, ThreadView } from "@oriel/web/view";
 import type { TurnInput } from "./agent.ts";
 import { devPlan, scriptedAgent, type Step } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
@@ -22,13 +22,13 @@ const estimate: Script = async (bindings) => {
 
 test("a board that takes no estimates shows no unestimated counts and no Unestimated cluster", async (t) => {
   const app = await testApp(t, { live: true, estimates: false });
-  const byEpic = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const byEpic = app.app.window("epic");
   assert.ok(byEpic.items > 0);
   const rows = byEpic.clusters.flatMap((c) => [...(c.row.anchor ? [c.row.anchor] : []), ...c.list]);
   assert.ok(rows.length > 0);
   assert.ok(byEpic.clusters.every((c) => c.row.unestimated === 0 && c.row.estimated === 0));
   assert.ok(rows.every((row) => row.noEstimates === true && row.points === null));
-  const stuck = json<WindowView>(await app.get("/api/window?grouping=stuck"));
+  const stuck = app.app.window("stuck");
   assert.deepEqual(
     stuck.clusters.map((c) => c.row.key),
     ["no-update-14-days"],
@@ -37,10 +37,10 @@ test("a board that takes no estimates shows no unestimated counts and no Unestim
 
 test("a board that estimates keeps its counts and its Unestimated cluster", async (t) => {
   const app = await testApp(t, { live: true });
-  const byEpic = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const byEpic = app.app.window("epic");
   assert.ok(byEpic.clusters.some((c) => c.row.unestimated > 0));
   assert.ok(byEpic.clusters.flatMap((c) => c.list).every((row) => row.noEstimates === undefined));
-  const stuck = json<WindowView>(await app.get("/api/window?grouping=stuck"));
+  const stuck = app.app.window("stuck");
   assert.deepEqual(
     stuck.clusters.map((c) => c.row.key),
     ["no-update-14-days", "unestimated"],

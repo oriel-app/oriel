@@ -4,7 +4,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import type { WindowView } from "@oriel/web/view";
 import { handler, type Look, type Request, within } from "./site.ts";
 
 const port = 4310;
@@ -25,13 +24,6 @@ function site(t: TestContext, look?: Look, sketches?: string) {
     entry: "main.js",
     assets: join(root, "assets"),
     vendor: new Map([["preact", join(root, "vendor", "preact.mjs")]]),
-    window: (grouping): WindowView => ({
-      grouping,
-      clusters: [],
-      items: 0,
-      asOf: "2026-10-29T09:00:00.000Z",
-      fixture: true,
-    }),
     ...(look ? { look: () => look } : {}),
     ...(sketches ? { sketches } : {}),
   });
@@ -101,14 +93,10 @@ test("within keeps paths inside their root", () => {
   assert.equal(within("/srv/dist", ""), null);
 });
 
-test("the window API returns view data for a known grouping only", async (t) => {
+test("the old whole-list window route is gone; Browse serves the view", async (t) => {
   const handle = site(t);
-  const reply = await handle(get("/api/window?grouping=stuck"));
-  assert.equal(reply.status, 200);
-  assert.equal(reply.headers["content-type"], "application/json");
-  assert.equal(JSON.parse(text(reply.body)).grouping, "stuck");
-  for (const url of ["/api/window", "/api/window?grouping=toString", "/api/window?grouping="]) {
-    assert.equal((await handle(get(url))).status, 400, url);
+  for (const url of ["/api/window", "/api/window?grouping=epic"]) {
+    assert.equal((await handle(get(url))).status, 404, url);
   }
 });
 
@@ -116,7 +104,7 @@ test("other hosts and origins are refused before any route runs", async (t) => {
   const handle = site(t);
   assert.equal((await handle(get("/", { host: "attacker.example:4310" }))).status, 403);
   const reply = await handle(
-    get("/api/window?grouping=epic", { host, origin: "https://attacker.example" }),
+    get("/api/browse?grouping=epic", { host, origin: "https://attacker.example" }),
   );
   assert.equal(reply.status, 403);
 });
@@ -156,7 +144,7 @@ test("the page's <html> carries the person's theme and text size, but a review l
 
 test("the window's pages may frame the sketch origin, and a review link's page frames nothing", async (t) => {
   const handle = site(t, undefined, "http://127.0.0.1:4311");
-  for (const path of ["/", "/threads/01J00000000000000000000000", "/api/window?grouping=epic"]) {
+  for (const path of ["/", "/threads/01J00000000000000000000000", "/api/browse?grouping=epic"]) {
     const csp = (await handle(get(path))).headers["content-security-policy"] ?? "";
     assert.match(csp, /; frame-src http:\/\/127\.0\.0\.1:4311;/, path);
   }

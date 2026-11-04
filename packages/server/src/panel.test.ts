@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { PanelBlock } from "@oriel/core";
-import type { ItemPanelView, ItemStampView, WindowView } from "@oriel/web/view";
+import type { ItemPanelView, ItemStampView } from "@oriel/web/view";
 import { textToAdf } from "@oriel/jira";
 import { richComment, richDescription } from "@oriel/jira/testing";
 import { json, t0, testApp } from "./testing.ts";
@@ -156,7 +156,7 @@ test("a Slack conversation is one item, named by its channel: its message, then 
 
 test("text that tells the agent what to do is shown as the message it is", async (t) => {
   const app = await testApp(t, { slack: { mode: "fixture" } });
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   const asking = window.clusters
     .flatMap((c) => c.list)
     .find((row) => row.title.includes("Status of SYN-47"));
@@ -180,7 +180,7 @@ test("a file shows its text as markdown, and opens only in the panel: it has no 
   const text = "# Launch plan\n\n<script>alert(1)</script> Ship the phone wallet first.";
   const root = folder(t, { "Launch plan.md": text });
   assert.equal((await app.connect("folder", { path: root })).status, 200);
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   const file = window.clusters.flatMap((c) => c.list).find((row) => row.id.startsWith("folder:"));
   assert.ok(file);
   assert.equal(window.locations?.[file.id], undefined);
@@ -192,7 +192,7 @@ test("a file shows its text as markdown, and opens only in the panel: it has no 
 
 test("the window says where each item it shows lives, for a link to its source", async (t) => {
   const app = await testApp(t);
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   assert.equal(window.locations?.["jira:SYN-88"], "https://oriel.atlassian.net/browse/SYN-88");
 });
 

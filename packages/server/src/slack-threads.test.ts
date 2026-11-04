@@ -3,7 +3,7 @@
 // a reply's link, dropped on a workstream, adds the conversation.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { WorkstreamView, WindowView } from "@oriel/web/view";
+import type { WorkstreamView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
 
 const message = "slack:C0FW1WEATHR-1788444000.000100";
@@ -12,8 +12,8 @@ const replies = { count: 4, url: `${archive}/p1788444000000100` };
 
 test("a message's row counts its replies and links to them, under every grouping that lists it; replies aren't rows", async (t) => {
   const app = await testApp(t, { slack: { mode: "fixture" } });
-  for (const grouping of ["epic", "assignee"]) {
-    const view = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
+  for (const grouping of ["epic", "assignee"] as const) {
+    const view = app.app.window(grouping);
     const rows = view.clusters.flatMap((c) => c.list).filter((row) => row.id.startsWith("slack:"));
     assert.deepEqual(rows.find((row) => row.id === message)?.replies, replies, grouping);
     // A message nobody replied to shows no count.

@@ -53,7 +53,7 @@ test("before Jira is connected the window is empty and offers to connect it", as
     connected: null,
     connectable: true,
   });
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   assert.equal(window.items, 0);
   assert.equal(window.fixture, false);
   assert.deepEqual(
@@ -72,8 +72,8 @@ test("connecting Jira from the window syncs its epics in, with no restart", asyn
   assert.equal(jira.connected?.project, "SYN");
   assert.ok((jira.connected?.items ?? 0) > 100);
   // The same epics and items as the fixture the window shows without Jira.
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
-  const fixture = json<WindowView>(await (await testApp(t)).get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
+  const fixture = (await testApp(t)).app.window("epic");
   assert.deepEqual(epics(window), epics(fixture));
   assert.equal(window.items, fixture.items);
   // The onboarding clock starts here.
@@ -145,7 +145,7 @@ test("details Jira won't take are refused in plain words, and nothing is kept", 
   assert.equal((await app.connect("jira", { ...details, token: "x".repeat(5000) })).status, 413);
   assert.deepEqual(kept(app.secrets), []);
   assert.deepEqual((await jiraOf(app)).connected, null);
-  assert.equal(json<WindowView>(await app.get("/api/window?grouping=epic")).items, 0);
+  assert.equal(app.app.window("epic").items, 0);
   // It still connects with the right ones.
   assert.equal((await app.connect("jira", details)).status, 200);
 });
@@ -347,8 +347,8 @@ test("a Jira project with no issues is connected, with none in the window", asyn
     connectable: false,
   };
   assert.deepEqual(await jiraOf(app), connected);
-  for (const grouping of ["epic", "assignee"])
-    assert.equal(json<WindowView>(await app.get(`/api/window?grouping=${grouping}`)).items, 0);
+  for (const grouping of ["epic", "assignee"] as const)
+    assert.equal(app.app.window(grouping).items, 0);
   // Connecting an empty project starts the onboarding clock all the same.
   assert.deepEqual(
     app.app.telemetry().flatMap((e) => (e.name === "source.connected" ? [e.data.source] : [])),
@@ -364,10 +364,10 @@ test("a Jira project whose issues are all done lists them, though nothing is stu
   await app.connect("jira", details);
   const items = (await jiraOf(app)).connected?.items ?? 0;
   assert.ok(items > 100);
-  const epic = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const epic = app.app.window("epic");
   assert.ok(epic.items > 0);
   assert.ok(epic.clusters.flatMap((c) => c.list).every((row) => row.status?.category === "done"));
-  const stuck = json<WindowView>(await app.get("/api/window?grouping=stuck"));
+  const stuck = app.app.window("stuck");
   assert.deepEqual(
     stuck.clusters.map((c) => [c.row.key, c.row.count]),
     [
