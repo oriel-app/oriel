@@ -27,7 +27,7 @@ import {
   type ToOpen,
 } from "@oriel/core";
 import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
-import { googleReads, SheetsError } from "./google.ts";
+import { googleReads, SecretRefused, SheetsError } from "./google.ts";
 import { googleClientOf, refresh, type Tokens } from "./oauth.ts";
 import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
@@ -106,6 +106,12 @@ function credentialOf(
       return;
     }
     if (refreshed.status === "failed") {
+      if (refreshed.needsSecret) {
+        via.log("sheets: Google refused the token's refresh without the client's secret", {
+          problem: refreshed.problem,
+        });
+        throw new SecretRefused();
+      }
       via.log("sheets: the token's refresh failed", { problem: refreshed.problem });
       throw new SheetsError("Google didn't answer a refresh", 0);
     }
@@ -131,6 +137,8 @@ function credentialOf(
 }
 
 export function sheetsProblem(error: unknown): string {
+  if (error instanceof SecretRefused)
+    return "Google refused to refresh the sign-in because this copy of Oriel has no client secret for Google, so Oriel couldn't read the spreadsheets.";
   if (error instanceof SheetsError && error.status === 401)
     return "Google Sheets needs signing in again before Oriel can read the spreadsheets.";
   return "Google didn't answer, so Oriel couldn't read the spreadsheets.";

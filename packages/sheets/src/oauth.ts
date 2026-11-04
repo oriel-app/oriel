@@ -12,18 +12,34 @@ export const tokenEndpoint = "https://oauth2.googleapis.com/token";
 export const scope = "https://www.googleapis.com/auth/drive.file";
 export const spreadsheetType = "application/vnd.google-apps.spreadsheet";
 
-// Oriel's desktop client: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, never in
-// the repo, as the composition root gives them by these names.
-export type GoogleClient = { id: string; secret: string };
-export const googleClientEnv = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const;
+// Oriel's desktop client: GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET if it
+// has one, never in the repo, as the composition root gives them by these
+// names. This is the one place the client is read.
+//
+// The client is Oriel's, written into a released app at release time
+// (decision 0050). Don't reuse it: a fork, or `pnpm dev`, registers its own
+// Desktop app client in Google's Cloud console and puts it in `.env`.
+//
+// Google treats a desktop client's secret as no secret, and PKCE does its
+// work, so a client with no secret leaves `client_secret` out of the
+// exchange and the refresh (OA-224).
+export type GoogleClient = { id: string; secret: string | null };
+export const googleClientEnv = ["GOOGLE_CLIENT_ID"] as const;
+export const googleClientOptional = ["GOOGLE_CLIENT_SECRET"] as const;
 
 export function googleClientOf(
   client: Readonly<Record<string, string>> | undefined,
 ): GoogleClient | null {
   const id = client?.GOOGLE_CLIENT_ID?.trim();
   const secret = client?.GOOGLE_CLIENT_SECRET?.trim();
-  return id && secret ? { id, secret } : null;
+  return id ? { id, secret: secret || null } : null;
 }
+
+// The client's part of a token request: its ID, and its secret if it has one.
+const clientForm = (client: GoogleClient): Record<string, string> => ({
+  client_id: client.id,
+  ...(client.secret === null ? {} : { client_secret: client.secret }),
+});
 
 // The connection's secret (decision 0049), kept in memory until connections
 // keep it. `expiresAt` is in milliseconds since the epoch.
@@ -41,16 +57,18 @@ export type SignInIo = {
   after?: After;
 };
 
+// `needsSecret`: Google refused a token request sent without the client's
+// secret, so this client needs one after all.
 export type SignIn =
   | { status: "signed-in"; tokens: Tokens; picked: string[] }
-  | { status: "failed"; problem: string };
+  | { status: "failed"; problem: string; needsSecret?: true };
 
 export type Refresh =
   | { status: "refreshed"; tokens: Tokens }
   // Google refused the refresh token: the connection is signed out, and
   // signing in again keeps it.
   | { status: "signed-out" }
-  | { status: "failed"; problem: string };
+  | { status: "failed"; problem: string; needsSecret?: true };
 
 // Signing in and picking spreadsheets are one request: `trigger_onepick`
 // opens Google's Picker after consent, in the same tab. The seed script,
@@ -121,12 +139,11 @@ export async function signIn(
       code: redirect.query.get("code") ?? "",
       code_verifier: verifier,
       redirect_uri: listener.redirectUri,
-      client_id: client.id,
-      client_secret: client.secret,
+      ...clientForm(client),
     },
     io,
   );
-  if (exchanged.status !== "ok") return { status: "failed", problem: exchanged.problem };
+  if (exchanged.status !== "ok") return failed(exchanged);
   const { body } = exchanged;
   if (body.refresh_token === undefined)
     return { status: "failed", problem: "Google sent no refresh token" };
@@ -152,14 +169,17 @@ export async function refresh(
     {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      client_id: client.id,
-      client_secret: client.secret,
+      ...clientForm(client),
     },
     io,
   );
-  if (refreshed.status === "refused" && refreshed.error === "invalid_grant")
+  if (
+    refreshed.status === "refused" &&
+    refreshed.error === "invalid_grant" &&
+    !refreshed.needsSecret
+  )
     return { status: "signed-out" };
-  if (refreshed.status !== "ok") return { status: "failed", problem: refreshed.problem };
+  if (refreshed.status !== "ok") return failed(refreshed);
   const { body } = refreshed;
   return {
     status: "refreshed",
@@ -179,12 +199,24 @@ const granted = object({
   scope: optional(string),
 });
 
-const refusal = object({ error: string });
+const refusal = object({ error: string, error_description: optional(string) });
 
 type Answer =
   | { status: "ok"; body: Infer<typeof granted> }
-  | { status: "refused"; error: string; problem: string }
+  | { status: "refused"; error: string; problem: string; needsSecret: boolean }
   | { status: "failed"; problem: string };
+
+const failed = (answer: Exclude<Answer, { status: "ok" }>) => ({
+  status: "failed" as const,
+  problem: answer.problem,
+  ...(answer.status === "refused" && answer.needsSecret ? { needsSecret: true as const } : {}),
+});
+
+// Google refused a request sent without the secret because of it: its
+// description names `client_secret`, or it doesn't know the client as sent.
+// The description is only tested, never quoted.
+const forSecret = (form: Record<string, string>, error: string, description = "") =>
+  !("client_secret" in form) && (error === "invalid_client" || /client_secret/.test(description));
 
 const requestMs = 30_000;
 
@@ -206,10 +238,19 @@ async function token(form: Record<string, string>, io: { fetch: Fetch }): Promis
     const refused = refusal(json);
     const error =
       refused.ok && /^[a-z_]{1,64}$/.test(refused.value.error) ? refused.value.error : "";
+    const needsSecret = forSecret(
+      form,
+      error,
+      refused.ok ? refused.value.error_description : undefined,
+    );
+    const status = `${response.status}${error ? ` ${error}` : ""}`;
     return {
       status: "refused",
       error,
-      problem: `Google refused the token request (${response.status}${error ? ` ${error}` : ""})`,
+      needsSecret,
+      problem: needsSecret
+        ? `Google refused the token request without the client's secret (${status})`
+        : `Google refused the token request (${status})`,
     };
   }
   const body = granted(json);

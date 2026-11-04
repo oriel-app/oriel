@@ -44,6 +44,15 @@ export class SheetsError extends Error {
   }
 }
 
+// Google refused to refresh the sign-in without the client's secret. Like
+// signed out, it is the whole account's, and no read can work around it.
+export class SecretRefused extends SheetsError {
+  constructor() {
+    super("Google refused to refresh the sign-in without Oriel's client secret", 0);
+    this.name = "SecretRefused";
+  }
+}
+
 // How many times a `429` goes again, and the longest wait between.
 export const maxRetries = 6;
 export const maxBackoffMs = 64_000;

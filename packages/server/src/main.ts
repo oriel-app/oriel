@@ -289,7 +289,11 @@ const clients = Object.fromEntries(
     return [
       [
         kind,
-        Object.fromEntries(needs.env.flatMap((name) => (env[name] ? [[name, env[name]]] : []))),
+        Object.fromEntries(
+          [...needs.env, ...(needs.optional ?? [])].flatMap((name) =>
+            env[name] ? [[name, env[name]]] : [],
+          ),
+        ),
       ],
     ];
   }),

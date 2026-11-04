@@ -45,6 +45,7 @@ import {
   type DriveFile,
   type Google,
   type SheetComment,
+  SecretRefused,
   SheetsError,
   type TabInfo,
 } from "./google.ts";
@@ -373,8 +374,13 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           got = await fresh(pick, known[pick.id]);
         } catch (error) {
           // Signed out is the whole account's: the sync fails, and the
-          // connection asks to sign in again.
-          if (error instanceof SheetsError && error.status === 401) throw error;
+          // connection asks to sign in again. So is a refresh Google refused
+          // for want of the client's secret.
+          if (
+            error instanceof SecretRefused ||
+            (error instanceof SheetsError && error.status === 401)
+          )
+            throw error;
           // It keeps what the index had, and is read again next time.
           log("sheets: a spreadsheet didn't read", {
             error: error instanceof Error ? error.message : String(error),
