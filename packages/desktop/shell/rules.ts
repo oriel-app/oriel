@@ -358,3 +358,39 @@ export function raises(why: Raise, background: boolean): boolean {
 export function secretsInMemory(argv: readonly string[]): boolean {
   return argv.includes("--background") || argv.includes("--launch-file");
 }
+
+// The shell's own switches, and whether each takes a value. Every other
+// argument is refused (main.ts): Chromium and Node read hundreds of
+// switches from the command line, and some open a debugger
+// (`--remote-debugging-port`, `--inspect`), write the launch cookie to a
+// file (`--log-net-log`) or send it through a proxy (`--proxy-server`).
+// Any program running as the person can launch the app with them.
+const shellSwitches: Readonly<Record<string, boolean>> = {
+  "--background": false,
+  "--launch-file": false,
+  "--data": true,
+  "--measure": true,
+};
+
+// The arguments after the executable that aren't the shell's own switches
+// and their values, `--` included: none, for a launch to go on.
+export function refusedArguments(args: readonly string[]): string[] {
+  const refused: string[] = [];
+  for (let at = 0; at < args.length; at++) {
+    const arg = args[at]!;
+    const takesValue = Object.hasOwn(shellSwitches, arg) ? shellSwitches[arg] : undefined;
+    if (takesValue === undefined) refused.push(arg);
+    else if (takesValue) {
+      const value = args[at + 1];
+      if (value === undefined || value.startsWith("-")) refused.push(arg);
+      else at++;
+    }
+  }
+  return refused;
+}
+
+// A refused argument's switch name, as Chromium's command line holds it.
+export function switchName(arg: string): string | null {
+  const match = /^--?([^=]+)/.exec(arg);
+  return match ? match[1]! : null;
+}

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts",
-    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell",
+    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell && tsc -p packages/desktop/probe",
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
     "github": "node scripts/github.ts",
@@ -20,6 +20,7 @@
     "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts",
     "desktop": "node packages/desktop/src/bundle.ts",
     "desktop:try": "node scripts/desktop-try.ts",
+    "desktop:debug-flags": "node scripts/desktop-debug-flags.ts",
     "sketch-frames": "pnpm --filter @oriel/web build && node scripts/sketch-frames.ts"
   },
   "devDependencies": {

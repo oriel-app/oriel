@@ -24,7 +24,34 @@ It prints the URL, the PID, and a `curl` line for the API. `-H @<folder>/headers
 
 The shell's flags behind it: `--background`, `--data <dir>`, and `--launch-file`, which writes `Shell/launch.json` (the URL, the cookie, the shell's PID) in the data folder. With `--background` or `--launch-file`, secrets stay in memory.
 
-## Before a pilot: a clean Mac in a VM
+## Before a pilot
+
+Each build that goes to a pilot passes all three, on the build itself, after any bump of Electron.
+
+1. `pnpm desktop:debug-flags`: no debugger. Any program running as the person can launch Oriel with any arguments and environment, and a debugger in it reads the secrets it has opened. The check launches the built app with each way in and tries to reach a debugger.
+2. `pnpm sketch-frames --desktop`: every sketch probe reaches nothing, in the app's own engine (decision 0033).
+3. A first run on a clean Mac in a VM, below.
+
+### No debugger
+
+Measured on Electron 45.0.0 (OA-209). Before: the fuses alone, without the shell's refusal. After: both. Any argument but the shell's own stops the app starting.
+
+| Way in                                         | Before                      | After                        |
+| ---------------------------------------------- | --------------------------- | ---------------------------- |
+| `--remote-debugging-port`, `-` or `--`         | DevTools on the port        | refused to start             |
+| `--remote-debugging-pipe`                      | DevTools answers on fd 3, 4 | refused to start             |
+| `--inspect`, `--inspect-brk`, `--inspect-wait` | ignored (fuse)              | refused to start             |
+| `--inspect-port` with SIGUSR1                  | the app ends (fuse)         | refused to start             |
+| SIGUSR1                                        | the app ends, no inspector  | the same                     |
+| `--log-net-log`, cookies included              | writes the net log          | refused to start             |
+| `ELECTRON_RUN_AS_NODE`, with `-e <code>`       | ignored (fuse): the app ran | refused to start             |
+| `NODE_OPTIONS`                                 | ignored (fuse)              | ignored (fuse): the app runs |
+
+Chromium's switches aren't behind a fuse, and some open a debugger after the shell's script runs, write the launch cookie to a file (`--log-net-log`) or send it through a proxy (`--proxy-server`). So the shell takes only its own switches (`--background`, `--data`, `--launch-file`, `--measure`): it strips any other from Chromium's own command line and quits before any setup (`refusedArguments` in `shell/rules.ts`). The app ending on SIGUSR1 opens nothing, and a program that can signal it can end it anyway. What this doesn't cover: until signing adds the hardened runtime (decisions 0036, 0039), stopping a native debugger attaching is the OS's call, not the app's.
+
+`pnpm sketch-frames --desktop` drives the engine through the very port the app refuses, so it runs a copy of the build with the probe build's main process (`probe/`) in place of the shell's. The copy's Electron framework is checked byte for byte against the build's, and its fuses printed; its windows take the shell's own preferences and session (`shell/window.ts`). It has none of the shell's guard on where a window goes, so the probes meet the sandbox and the page's policy alone.
+
+### A clean Mac in a VM
 
 [Tart](https://tart.run) runs macOS VMs on Apple silicon. Check its licence before using it at a company.
 

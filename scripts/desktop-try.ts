@@ -119,7 +119,7 @@ async function stop() {
 }
 
 // The app, built again if a source changed since its last build.
-function build(force: boolean): string {
+export function build(force: boolean): string {
   const app = join(
     root,
     "packages/desktop/build",

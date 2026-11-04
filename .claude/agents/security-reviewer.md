@@ -38,6 +38,7 @@ Who controls what:
 - The model, steered by that content, controls the script it writes and every word it says. Treat everything the sandbox guest prints and everything the model outputs as untrusted.
 - Any website open in the user's browser can send requests to the local server, which has no login. That includes a link inside attacker-edited Jira content. Under `pnpm dev`, only Host and Origin checks stop it; on the desktop app, the launch secret does too.
 - Every other user account on the machine shares loopback, and so can reach the server's port.
+- Any program running as the person can launch the desktop app with any arguments and environment, and signal it. A debugger in the app would read the secrets it has opened. The app refuses every argument but its own switches, and its fuses ignore Node's environment variables, measured by `pnpm desktop:debug-flags` (packages/desktop/README.md). Stopping a native debugger is the hardened runtime's job, which comes with signing.
 - The model also drives the user's own command-line agent (decision 0036). Any tool of that CLI's besides Oriel's `run` would turn prompt injection into code execution, or an unapproved write, on the user's machine. That covers its shell, files, web and hooks, and the tool servers, plugins, skills and subagents in the user's or managed configuration, such as the user's own tool server for Jira.
 - Link unfurlers in Slack and Teams, and email scanners, fetch every review link they see.
 - Anyone holding a review link can send requests to it, even after it is revoked. The relay's operator, or whoever breaks into it, holds every ciphertext and every sealed decision, and whoever controls the decrypting page's host can read the keys and seal any decision.
@@ -62,7 +63,7 @@ Who controls what:
   - an OAuth loopback listener that listens beyond 127.0.0.1, takes more than its one redirect, or takes a code without its PKCE verifier and `state` (decision 0050);
   - the secret in argv, an environment, a URL, a log or a non-constant-time compare;
   - the webview navigating away from the server's origin, or any bridge from the page to the shell;
-  - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); or an Electron zip or types file whose hash isn't the pinned one;
+  - a preload, Node integration or an unsandboxed renderer; a permission granted beyond writing text to the clipboard from the server's origin; a fuse turned back on (run-as-Node, `NODE_OPTIONS`, inspector arguments, `file://` privileges); a launch argument the shell lets through beyond its own switches (`refusedArguments` in `packages/desktop/shell/rules.ts`), or a way into a debugger from the shipped app, such as the probe build's main process in it; or an Electron zip or types file whose hash isn't the pinned one;
   - a state-changing request without an Origin or Host check;
   - a GET that changes state;
   - responses readable cross-origin, or through DNS rebinding.
