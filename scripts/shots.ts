@@ -29,7 +29,15 @@
 // shots/broadsheet/; with none, the default theme, to shots/. `--text-size
 // large` sets that Text size in each scene's settings too, and writes to a
 // folder of its name below the theme's.
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +45,7 @@ import { parseArgs } from "node:util";
 import { chromium, type Page, type Route } from "playwright-core";
 import { defaultTheme, themeNames } from "../packages/web/themes.ts";
 import { type TextSize, textSizes } from "../packages/web/src/view.ts";
-import { type Instant, instant, ulid } from "../packages/core/src/ids.ts";
+import { type Instant, instant, type Ulid, ulid } from "../packages/core/src/ids.ts";
 import { textToAdf } from "../packages/jira/src/adf.ts";
 import {
   memorySite,
@@ -45,7 +53,7 @@ import {
   richComment,
   richDescription,
 } from "../packages/jira/src/memory-site.ts";
-import type { TurnInput } from "../packages/server/src/agent.ts";
+import type { ServerAgentDeps, TurnInput } from "../packages/server/src/agent.ts";
 import type { SourceMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
@@ -283,35 +291,93 @@ const planning = (input: TurnInput): Step[] => {
   return devPlan(input);
 };
 
+// The scripted agent, each run's time fixed: the sandbox's own differs from
+// one shoot to the next, and a thread shows it.
+const scripted = (deps: ServerAgentDeps, plan: (input: TurnInput) => Step[]) =>
+  scriptedAgent(
+    {
+      ...deps,
+      sandbox: { run: async (...args) => ({ ...(await deps.sandbox.run(...args)), wallMs: 40 }) },
+    },
+    plan,
+  );
+
 // Every server the shots start, each closed once they're done, so none is
-// left listening to keep the process alive.
+// left listening to keep the process alive. One given neither an agent nor
+// models gets the scripted dev agent, as it would, its runs' time fixed.
 const started: Serving[] = [];
-const start = async (...args: Parameters<typeof serve>) => {
-  const serving = await serve(...args);
+const start = async (...[ports, options]: Parameters<typeof serve>) => {
+  const serving = await serve(
+    ports,
+    options && !options.agent && !options.models
+      ? { ...options, agent: (deps) => scripted(deps, devPlan) }
+      : options,
+  );
   started.push(serving);
   return serving;
 };
 
+// A folder of notes beside Jira, which three servers connect, and its
+// connection's ID, fixed: a file's ID hashes it and items sort by ID, so a
+// new one each shoot would reorder the files. Each of those servers starts
+// on a database where the folder was connected under this ID and then
+// disconnected, so connecting it in the window revives the ID. Settings
+// shows its path, so that's fixed too: in this checkout's shots/.
+const notesHome = fileURLToPath(new URL("../shots/.notes/", import.meta.url));
+rmSync(notesHome, { recursive: true, force: true });
+mkdirSync(notesHome, { recursive: true });
+const notes = join(realpathSync(notesHome), "Launch notes");
+const notesId: Ulid = ulid(Date.UTC(2026, 0, 1), new Uint8Array(10));
+const notesDb = async (): Promise<string> => {
+  const dir = mkdtempSync(join(tmpdir(), "oriel-shots-db-"));
+  keepUntilDone(dir);
+  const db = join(dir, "window.db");
+  const first = await serve(0, { db });
+  const { workspaceId } = first.app;
+  await first.close();
+  const store = openDb(db);
+  const connections = connectionsOf({
+    db: store,
+    index: indexStore(store),
+    secrets: memorySecrets(),
+    workspaceId,
+    now: () => instant(new Date()),
+    newId: () => notesId,
+    log: () => {},
+  });
+  const made = await connections.connect({
+    id: notesId,
+    kind: "folder",
+    identity: notes,
+    options: {},
+  });
+  if (!("connection" in made)) throw new Error("the notes folder was connected already");
+  await connections.disconnect(made.connection);
+  store.close();
+  return db;
+};
+
 // A server that writes to its own SYN site in memory, and reads Slack when
-// given it, on its own clock when given one.
-const writing = async (slack?: SourceMode, now?: () => Instant) => {
+// given it, on its own clock when given one; on a database ready for the
+// notes folder when it will connect it.
+const writing = async (slack?: SourceMode, now?: () => Instant, folder = false) => {
   // A workflow with a column for stories ready to pick up, which SYN's lacks.
   const site = memorySite(loadJiraFixture(), instant(new Date()), {
     statuses: [{ name: "Ready for Dev", category: "todo" }],
   });
   const serving = await start(0, {
-    db: ":memory:",
+    db: folder ? await notesDb() : ":memory:",
     sources: { jira: { mode: "fixture", fetch: site.fetch }, ...(slack ? { slack } : {}) },
     ...(now ? { now } : {}),
-    agent: (deps) => scriptedAgent(deps, planning),
+    agent: (deps) => scripted(deps, planning),
   });
   return { site, serving };
 };
-const server = (await writing()).serving;
+const server = (await writing(undefined, undefined, true)).serving;
 const refusing = await writing();
 const unanswered = await writing();
 const holding = await writing();
-const readOnly = await start(0);
+const readOnly = await start(0, { db: ":memory:", sources: { jira: { mode: "fixture" } } });
 // A server that syncs from a SYN site in memory as from a live one; this
 // one's site goes offline once it has started.
 const live = async () => {
@@ -400,7 +466,7 @@ const unpointed = await start(0, {
       fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
     },
   },
-  agent: (deps) => scriptedAgent(deps, planning),
+  agent: (deps) => scripted(deps, planning),
 });
 
 // Jira not connected yet; the window connects it to SYN in memory, which
@@ -412,7 +478,7 @@ const unconnected = (syn = loadJiraFixture()) =>
     sources: {
       jira: { mode: "window", fetch: memorySite(syn, instant(new Date()), { account }).fetch },
     },
-    agent: (deps) => scriptedAgent(deps, planning),
+    agent: (deps) => scripted(deps, planning),
   });
 const connecting = await unconnected();
 // Jira connected to a project with no issues yet.
@@ -518,8 +584,12 @@ const settingsLarge = await configured({ textSize: "large" });
 const settingsNext = await configured({ afterApprove: "next" });
 rmSync(codexBin, { recursive: true, force: true });
 
-// A request as the window sends it.
+// A request as the window sends it, each in a later millisecond than the
+// last one ended in, so what two make never shares one: the random half of
+// their ULIDs would order them differently each shoot.
+let lastCall = 0;
 async function call<T>(on: Serving, method: string, path: string, body?: unknown): Promise<T> {
+  while (Date.now() <= lastCall) await new Promise((tick) => setTimeout(tick, 1));
   const url = new URL(path, on.url);
   const reply = await on.app.api(
     {
@@ -534,6 +604,7 @@ async function call<T>(on: Serving, method: string, path: string, body?: unknown
     },
     url,
   );
+  lastCall = Date.now();
   if (!reply || reply.status >= 300)
     throw new Error(`${method} ${path}: ${reply?.status} ${String(reply?.body)}`);
   return JSON.parse(String(reply.body)) as T;
@@ -758,11 +829,15 @@ const toReject = await post<{ url: string }>(
 const readOnlyWorkstream = await post<{ id: string }>("/api/workstreams", checkout, readOnly);
 const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyWorkstream.id);
 
-// A folder of notes beside Jira, and a workstream that mixes both.
-const notes = join(realpathSync(mkdtempSync(join(tmpdir(), "oriel-shots-"))), "Launch notes");
+// The notes, and a workstream that mixes them with Jira.
+// Each note a minute older than the one before, so none ties with another
+// for the most recently changed.
+let notesWritten = 0;
 const note = (name: string, body: string) => {
   mkdirSync(dirname(join(notes, name)), { recursive: true });
   writeFileSync(join(notes, name), body);
+  const changed = new Date(Date.now() - ++notesWritten * 60_000);
+  utimesSync(join(notes, name), changed, changed);
 };
 note("Launch plan.md", "# Launch plan\n\nPhone wallets first, then saved cards.");
 note("Customer interviews.md", "Five PMs; three asked for saved cards before anything else.");
@@ -802,7 +877,7 @@ const faresThread = await ask("What's in here?", chatty, fares.id);
 // and approved then reverted, each on a server of its own, so each diff reads
 // its own Jira and Slack.
 const handOff = async (then: "propose" | "approve" | "revert") => {
-  const { serving } = await writing({ mode: "fixture" });
+  const { serving } = await writing({ mode: "fixture" }, undefined, true);
   const { id: workstreamId } = await post<{ id: string }>(
     "/api/workstreams",
     { kind: "picked", name: "SMS updates", items: ["jira:SYN-61", smsCopy] },
@@ -873,7 +948,7 @@ await post(`/api/workstreams/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 
 // Notes picked in the window and made a workstream, on a server of their own: each
 // pass of the scenes makes another workstream, which no other scene should show.
-const picking = (await writing()).serving;
+const picking = (await writing(undefined, undefined, true)).serving;
 await post("/api/connections", { kind: "folder", given: { path: notes } }, picking);
 // A workstream to remove items from, and undo that, on the same server: each pass
 // puts its items back first.
@@ -1077,6 +1152,41 @@ async function overviewShown(page: Page): Promise<void> {
 // epic, and with `others`, a plan proposed before it, which is next in
 // Needs you. The shot approves the latest (`approvingIn`).
 let approvingIn = "";
+// Searches threads from the sidebar until `found` shows. The page can clear
+// the field as it settles just after loading, so it types again if not.
+async function searchThreads(page: Page, text: string, found: string) {
+  const field = page.getByRole("combobox", { name: "Search threads" });
+  for (let tries = 1; ; tries++) {
+    await field.fill(text);
+    const shown = await page
+      .locator(found)
+      .first()
+      .waitFor({ timeout: 5_000 })
+      .then(
+        () => true,
+        () => tries === 3,
+      );
+    if (shown) break;
+  }
+  await page.locator(found).first().waitFor();
+  return field;
+}
+
+// Asks in a fresh window chat, and waits for the whole answer: the last
+// shot's chat gone first, until the page hears it's a new one, so its
+// blocks can't pass for this one's; then `answered`, with nothing working.
+async function askChat(page: Page, question: string, answered: string, on = server) {
+  await post("/api/window-chat/new", {}, on);
+  await page
+    .locator(".window-chat .answer-block, .window-chat .quote-from, .window-chat .run")
+    .first()
+    .waitFor({ state: "detached" });
+  await page.locator(".ask-input").fill(question);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.locator(answered).first().waitFor();
+  await page.locator(".working").first().waitFor({ state: "detached" });
+}
+
 const goingOn = (others: boolean) => async () => {
   const { serving } = await writing();
   await post("/api/settings", { afterApprove: "next" }, serving);
@@ -1126,7 +1236,7 @@ const waitingSlack = async (): Promise<Serving> => {
       slack: { mode: "window", fetch: fixtureApi(loadSlackFixture()).fetch },
     },
     agent: (deps) =>
-      scriptedAgent(deps, (input) =>
+      scripted(deps, (input) =>
         /\bdraft\b/i.test(input.text)
           ? [
               { run: draftScript },
@@ -1255,11 +1365,7 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await overviewShown(page);
-      await post("/api/window-chat/new", {});
-      await page.locator(".ask-input").fill(question);
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
-      await page.locator(`.window-chat .answer-block[data-form="${form}"]`).waitFor();
-      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+      await askChat(page, question, `.window-chat .answer-block[data-form="${form}"]`);
     },
   })),
   // A waiting connection's draft (decision 0051): its preview read as a
@@ -1284,11 +1390,11 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await overviewShown(page);
-      await post("/api/window-chat/new", {});
-      await page.locator(".ask-input").fill("Chart my workstreams by size");
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
-      await page.locator('.window-chat .answer-block[data-form="bars"]').waitFor();
-      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+      await askChat(
+        page,
+        "Chart my workstreams by size",
+        '.window-chat .answer-block[data-form="bars"]',
+      );
       await page.getByRole("button", { name: "Close the chat" }).click();
       await page.getByRole("button", { name: "Back to the chat" }).waitFor();
     },
@@ -1301,13 +1407,12 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await overviewShown(page);
-      await post("/api/window-chat/new", {}, quoted);
-      // The last shot's chat, until the page hears it's a new one.
-      await page.locator(".window-chat .quote-from").first().waitFor({ state: "detached" });
-      await page.locator(".ask-input").fill("What does SYN-45 say about itself?");
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
-      await page.locator('.window-chat .quote-from[data-found="false"]').waitFor();
-      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+      await askChat(
+        page,
+        "What does SYN-45 say about itself?",
+        '.window-chat .quote-from[data-found="false"]',
+        quoted,
+      );
     },
   },
   {
@@ -1432,6 +1537,7 @@ const scenes: Scene[] = [
       await page.locator(".item-panel .panel-facts").waitFor();
       await page.keyboard.press("ArrowDown");
       await page.locator(".panel-place", { hasText: "2 of" }).waitFor();
+      await page.locator(".item-panel .panel-facts").waitFor();
     },
   },
   {
@@ -1923,8 +2029,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await overviewShown(page);
       if ((page.viewportSize()?.width ?? 0) > 760) {
-        await page.getByRole("combobox", { name: "Search threads" }).fill("gift");
-        await page.locator(".search-results [role=status]:not(:empty)").waitFor();
+        await searchThreads(page, "gift", ".search-results [role=status]:not(:empty)");
       }
       await page.locator(".overview-stat", { hasText: "need you" }).click();
       await page.locator(".sidebar-needs[data-shown]").waitFor();
@@ -2102,7 +2207,20 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await leftBehind(page);
-      await page.locator(".sync-now").hover();
+      // A scroll hides a tooltip, and a narrow page may still scroll as the
+      // thread settles after the hover: hover again until one stays.
+      for (let tries = 1; ; tries++) {
+        await page.mouse.move(0, 0);
+        await page.locator(".sync-now").hover();
+        const shown = await page
+          .locator(".tooltip:popover-open")
+          .waitFor({ timeout: 2_000 })
+          .then(
+            () => true,
+            () => tries === 5,
+          );
+        if (shown) break;
+      }
       await page.locator(".tooltip:popover-open").waitFor();
     },
   },
@@ -2435,8 +2553,7 @@ const scenes: Scene[] = [
     on: handed.serving,
     act: async (page) => {
       await openSidebar(page);
-      await page.getByRole("combobox", { name: "Search threads" }).fill("ready to pick up");
-      await page.locator(".search-result").first().waitFor();
+      await searchThreads(page, "ready to pick up", ".search-result");
     },
   },
   {
@@ -2445,9 +2562,7 @@ const scenes: Scene[] = [
     on: handed.serving,
     act: async (page) => {
       await openSidebar(page);
-      const field = page.getByRole("combobox", { name: "Search threads" });
-      await field.fill("ready to pick up");
-      await page.locator(".search-result").first().waitFor();
+      const field = await searchThreads(page, "ready to pick up", ".search-result");
       await field.press("Enter");
       await page.locator(".change-set[data-opened] .diff").waitFor();
     },
@@ -2493,8 +2608,7 @@ const scenes: Scene[] = [
       const hide = page.getByRole("button", { name: "Hide sidebar" });
       if (await hide.count()) await hide.click();
       await page.getByRole("button", { name: "Search threads" }).click();
-      await page.getByRole("combobox", { name: "Search threads" }).fill("estimates");
-      await page.locator(".search-results [role=status]:not(:empty)").waitFor();
+      await searchThreads(page, "estimates", ".search-results [role=status]:not(:empty)");
     },
   },
 ];
@@ -2503,14 +2617,15 @@ const scenes: Scene[] = [
 // its own, made afresh for each scheme and width, since each shot moves it:
 // its stub Claude Code installed, signed in, or neither; Codex found or not;
 // SYN in memory as any Jira Cloud site; and the notes folder to pick.
+// One that connects the notes folder does so under its fixed ID.
 const firstRun =
   (options: FirstRunOptions = {}) =>
-  () =>
+  async () =>
     firstRunServer(
       start,
-      (deps) => scriptedAgent(deps, planning),
+      (deps) => scripted(deps, planning),
       async () => notes,
-      options,
+      options.folder === notes && !options.data ? { ...options, db: await notesDb() } : options,
     );
 const setupFinished = {
   openedAt: instant(new Date()),
@@ -2893,6 +3008,20 @@ for (const start of onlyOnboarding ? [] : picked)
     throw new Error(`No scene's name starts with ${start}`);
 const schemes = ["light", "dark"] as const;
 
+// Scrolls the page to the top until it stays there, as a page that scrolls
+// itself (a thread to its newest entry) may move it again. In the browser.
+const toTop = `(async () => {
+  for (let still = 0, frames = 0; still < 3 && frames < 120; frames++) {
+    if (scrollY === 0) still++;
+    else [still] = [0, scrollTo({ top: 0, behavior: "instant" })];
+    await new Promise((frame) => requestAnimationFrame(frame));
+  }
+})()`;
+
+const unnudged = `document.querySelectorAll(".sidebar").forEach((sidebar) => {
+  if (sidebar.scrollTop > 0 && sidebar.scrollTop < 4) sidebar.scrollTop = 0;
+})`;
+
 const browser = await chromium.launch({ channel: "chrome", chromiumSandbox: true });
 const problems: string[] = [];
 try {
@@ -2922,7 +3051,22 @@ try {
         if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
           await on.app.settings.change({ textSize: textSize as TextSize });
         await page.goto(new URL(scene.path, on.url).href);
-        await scene.act?.(page);
+        // A scene that fails leaves a shot of where it stopped, to see why.
+        await scene.act?.(page).catch(async (error: unknown) => {
+          const failed = new URL(`${scene?.name}-${scheme}-${width}.stopped.png`, out);
+          await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
+          throw error;
+        });
+        // These show an answer or a thread once it's done, never "Working…".
+        if (/^(ask-|panel-|search-opened)/.test(name))
+          await page.locator(".working").first().waitFor({ state: "detached" });
+        // A full page draws what's fixed or sticky where the window was
+        // scrolled to, which a scene's last step leaves to chance: shoot it
+        // from the top, once it has stayed there for three frames.
+        if (!scene.window) await page.evaluate(toTop);
+        // The sidebar scrolls on its own, and a focus sometimes leaves it a
+        // pixel or two down that no scene asked for.
+        await page.evaluate(unnudged);
         const path = fileURLToPath(new URL(`${scene.name}-${scheme}-${width}.png`, out));
         await page.screenshot({ path, fullPage: !scene.window, animations: "disabled" });
         // Leaving first cancels a held request quietly; aborting it logs.
@@ -3062,7 +3206,7 @@ async function firstRunPaths(): Promise<void> {
     const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
     const serving = await firstRunServer(
       start,
-      (deps) => scriptedAgent(deps, planning),
+      (deps) => scripted(deps, planning),
       async () => notes,
       { ...(path === "missing" ? {} : { cli: { signedIn: path === "ready" } }), data },
     );

@@ -2,9 +2,12 @@
 // this repo, over the REST and GraphQL APIs, as the fine-grained agent token
 // from .env. There is no gh, so no saved logins, aliases, extensions, file
 // reads, other hosts or pass-through flags. Usage: pnpm -s github <operation>
-import { existsSync, readFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseEnv } from "node:util";
+import { parseEnv, promisify } from "node:util";
 
 const repo = { owner: "oriel-app", name: "oriel" };
 const api = "https://api.github.com";
@@ -15,18 +18,29 @@ export const usage = `usage: pnpm -s github <operation>
   pr-create <branch> <title> <body>
   pr-edit <number> <body> [title]
   pr-enqueue <number>
+  pr-wait <number>
   runs [branch]
   next-decision
+  shots-push <branch> <png>...
 A title is one line, type(scope): summary (SPEC §10), and a body never is,
 so a title and body given the wrong way round are refused. While CI runs,
-pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.`;
+pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.
+pr-wait returns within 9 minutes with one line: MERGED <sha>; DROPPED, open
+but neither in the merge queue nor armed to enter it; FAILED <check>, then
+the check's annotations; or WAITING. Call it again on WAITING.
+shots-push commits the PNGs, at their paths from here, as the images-only
+branch shots/<branch>, from the git checkout you run it in, and prints each
+one's raw URL pinned to that commit. A later push to the same branch adds a
+commit on top, so earlier URLs keep working. It refuses a remote
+shots/<branch> it didn't make.`;
 
 export type Operation =
   | { op: "pr-list" | "next-decision" }
-  | { op: "pr-view" | "pr-enqueue"; number: number }
+  | { op: "pr-view" | "pr-enqueue" | "pr-wait"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
   | { op: "pr-edit"; number: number; body: string; title?: string }
-  | { op: "runs"; branch: string | null };
+  | { op: "runs"; branch: string | null }
+  | { op: "shots-push"; branch: string; pngs: string[] };
 
 // SPEC §10: branch names are at most three hyphenated words, no prefixes.
 const branchName = /^[a-z0-9]+(-[a-z0-9]+){0,2}$/;
@@ -44,7 +58,7 @@ const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") &&
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
   if ((op === "pr-list" || op === "next-decision") && rest.length === 0) return { op };
-  if ((op === "pr-view" || op === "pr-enqueue") && rest.length === 1) {
+  if ((op === "pr-view" || op === "pr-enqueue" || op === "pr-wait") && rest.length === 1) {
     const number = prNumber(rest[0]);
     if (number) return { op, number };
   }
@@ -63,6 +77,14 @@ export function parse(args: readonly string[]): Operation | { error: string } {
   if (op === "runs" && rest.length <= 1) {
     const branch = rest[0] ?? null;
     if (branch === null || branchName.test(branch)) return { op, branch };
+  }
+  if (op === "shots-push" && rest.length >= 2) {
+    const [branch = "", ...pngs] = rest;
+    if (
+      branchName.test(branch) &&
+      pngs.every((png) => png.endsWith(".png") && !png.startsWith("-"))
+    )
+      return { op, branch, pngs };
   }
   return { error: usage };
 }
@@ -217,6 +239,7 @@ const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) 
       id number title state headRefName headRefOid isCrossRepository
       headRepository { nameWithOwner }
       mergeable mergeStateStatus isInMergeQueue
+      mergeQueueEntry { headCommit { oid } }
       autoMergeRequest { enabledAt }
       mergeCommit { oid }
       commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
@@ -239,6 +262,155 @@ async function pullRequest(token: string, number: number) {
   const pr = data.repository.pullRequest;
   if (!pr) throw new Error(`no PR #${number} in ${repo.owner}/${repo.name}`);
   return pr;
+}
+
+// What pr-wait reads of a PR on each look.
+export type Watched = {
+  state: "OPEN" | "CLOSED" | "MERGED";
+  headRefOid: string;
+  isInMergeQueue: boolean;
+  mergeQueueEntry: { headCommit: { oid: string } | null } | null;
+  autoMergeRequest: unknown;
+  mergeCommit: { oid: string } | null;
+};
+export type CheckRun = { id: number; name: string; status: string; conclusion: string | null };
+export type Annotation = {
+  path: string;
+  start_line: number;
+  annotation_level: string;
+  title?: string | null;
+  message: string;
+};
+export type Reads = {
+  pullRequest(): Promise<Watched>;
+  checkRuns(sha: string): Promise<CheckRun[]>;
+  annotations(checkRunId: number): Promise<Annotation[]>;
+};
+
+// A run that ended this way won't merge the PR. A cancelled one isn't
+// counted: the queue cancels a group's runs when it rebuilds the group.
+const failing = (run: CheckRun) =>
+  run.status === "completed" &&
+  ["failure", "timed_out", "startup_failure", "action_required"].includes(run.conclusion ?? "");
+
+export const waitLimitMs = 9 * 60_000;
+const lookEveryMs = 20_000;
+
+// Looks at a PR until it merges, fails a check, leaves the queue or the
+// time is up, whichever comes first. The checks it reads are its head's and
+// its merge queue entry's, the last one seen, so a group the queue dropped
+// for a failure still says which check failed.
+export async function waitFor(
+  reads: Reads,
+  clock: () => number,
+  pause: (ms: number) => Promise<void>,
+): Promise<string> {
+  const deadline = clock() + waitLimitMs;
+  let queued: string | null = null;
+  for (;;) {
+    const pr = await reads.pullRequest();
+    if (pr.state === "MERGED") return `MERGED ${pr.mergeCommit?.oid ?? "(no merge commit)"}`;
+    queued = pr.mergeQueueEntry?.headCommit?.oid ?? queued;
+    for (const sha of new Set([pr.headRefOid, ...(queued ? [queued] : [])])) {
+      const failed = (await reads.checkRuns(sha)).find(failing);
+      if (!failed) continue;
+      const notes = (await reads.annotations(failed.id)).map(
+        (a) =>
+          `  ${a.annotation_level} ${a.path}:${a.start_line} ${a.title ? `${a.title}: ` : ""}${a.message.replaceAll("\n", "\n    ")}`,
+      );
+      return [`FAILED ${failed.name}`, ...notes].join("\n");
+    }
+    if (pr.state === "CLOSED") return "DROPPED: closed without merging";
+    if (!pr.isInMergeQueue && !pr.autoMergeRequest)
+      return "DROPPED: open, not in the merge queue, and no auto-merge armed";
+    if (clock() + lookEveryMs >= deadline) return "WAITING";
+    await pause(lookEveryMs);
+  }
+}
+
+// Runs git where the caller is, and returns its output trimmed.
+export type Git = (args: readonly string[], env?: Record<string, string>) => Promise<string>;
+const execGit = promisify(execFile);
+export const git: Git = async (args, env) =>
+  (
+    await execGit("git", [...args], {
+      env: env ? { ...process.env, ...env } : process.env,
+      maxBuffer: 16 * 1024 * 1024,
+    })
+  ).stdout.trim();
+
+const isSha = (value: string) => /^[0-9a-f]{40}$/.test(value);
+const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+// Each PNG's path in the commit: its path from `from`, which it must be
+// inside, so a push can't name a file outside the checkout's reach.
+export function shotPaths(from: string, pngs: readonly string[]): string[] | { error: string } {
+  const paths = pngs.map((png) => relative(from, resolve(from, png)).split(sep).join("/"));
+  // Two paths to one file, or one given twice, would be one entry.
+  const outside = paths.find((path) => path === "" || path.startsWith("../") || isAbsolute(path));
+  if (outside !== undefined) return { error: `refusing: a PNG outside ${from}: ${outside}` };
+  if (new Set(paths).size !== paths.length) return { error: "refusing: a PNG given twice" };
+  return paths;
+}
+
+// Commits the PNGs as an images-only commit on shots/<branch> and pushes it,
+// with plumbing, so no checkout, index or stash is touched. The branch is
+// made fresh, or grows by a commit when its tip is one of these, so a raw URL
+// given earlier still resolves. Anything else there is someone's: refused.
+export async function shotsPush(
+  run: Git,
+  from: string,
+  branch: string,
+  pngs: readonly string[],
+  remote = "origin",
+): Promise<string> {
+  const paths = shotPaths(from, pngs);
+  if ("error" in paths) throw new Error(paths.error);
+  for (const png of pngs) {
+    const head = readFileSync(resolve(from, png)).subarray(0, 8);
+    if (!head.equals(pngMagic)) throw new Error(`refusing: ${png} isn't a PNG`);
+  }
+  const ref = `refs/heads/shots/${branch}`;
+  const message = `shots: ${branch}`;
+  const listed = await run(["ls-remote", remote, ref]);
+  const tip =
+    listed
+      .split("\n")
+      .map((line) => line.split("\t"))
+      .find(([, name]) => name === ref)?.[0] ?? "";
+  if (tip !== "") {
+    if (!isSha(tip)) throw new Error(`refusing: can't read ${ref} on ${remote}: ${listed}`);
+    await run(["fetch", "--no-write-fetch-head", "--no-prune", "--quiet", remote, tip]);
+    const subject = await run(["log", "-1", "--format=%s", tip]);
+    const files = (await run(["ls-tree", "-r", "--name-only", tip])).split("\n");
+    if (subject !== message || !files.every((file) => file.endsWith(".png")))
+      throw new Error(
+        `refusing: ${ref} is someone else's (its tip ${tip.slice(0, 7)} isn't an images-only "${message}" commit). Pick another branch name.`,
+      );
+  }
+  const index = mkdtempSync(join(tmpdir(), "oriel-shots-push-"));
+  try {
+    const env = { GIT_INDEX_FILE: join(index, "index") };
+    for (const [i, png] of pngs.entries()) {
+      const blob = await run(["hash-object", "-w", "--", resolve(from, png)]);
+      if (!isSha(blob)) throw new Error(`refusing: git stored ${png} as "${blob}"`);
+      await run(["update-index", "--add", "--cacheinfo", `100644,${blob},${paths[i]}`], env);
+    }
+    const tree = await run(["write-tree"], env);
+    if (!isSha(tree)) throw new Error(`refusing: git wrote the tree as "${tree}"`);
+    const commit = await run(["commit-tree", tree, ...(tip ? ["-p", tip] : []), "-m", message]);
+    // An empty commit ID would make the push below delete the branch.
+    if (!isSha(commit)) throw new Error(`refusing: git made the commit as "${commit}"`);
+    await run(["push", "--quiet", remote, `${commit}:${ref}`]);
+    return paths
+      .map(
+        (path) =>
+          `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`,
+      )
+      .join("\n");
+  } finally {
+    rmSync(index, { recursive: true, force: true });
+  }
 }
 
 export async function run(token: string, operation: Operation): Promise<unknown> {
@@ -288,6 +460,36 @@ export async function run(token: string, operation: Operation): Promise<unknown>
         pr,
       );
     }
+    case "pr-wait": {
+      const { number } = operation;
+      const reads: Reads = {
+        pullRequest: async () => {
+          const data = (await graphql(token, pullRequestQuery, { ...repo, number })) as {
+            repository: { pullRequest: Watched | null };
+          };
+          const pr = data.repository.pullRequest;
+          if (!pr) throw new Error(`no PR #${number} in ${repo.owner}/${repo.name}`);
+          return pr;
+        },
+        checkRuns: async (sha) =>
+          (
+            (await call(
+              token,
+              "GET",
+              `${base}/commits/${sha}/check-runs?filter=latest&per_page=100`,
+            )) as { check_runs: CheckRun[] }
+          ).check_runs,
+        annotations: async (id) =>
+          (await call(
+            token,
+            "GET",
+            `${base}/check-runs/${id}/annotations?per_page=50`,
+          )) as Annotation[],
+      };
+      return waitFor(reads, Date.now, (ms) => new Promise((done) => setTimeout(done, ms)));
+    }
+    case "shots-push":
+      throw new Error("shots-push runs git, not the API");
     case "next-decision": {
       const onMain = (await call(token, "GET", `${base}/contents/docs/decisions?ref=main`)) as {
         path: string;
@@ -338,6 +540,16 @@ if (import.meta.main) {
   const envFile = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
   const token = agentToken(envFile);
   const operation = parse(process.argv.slice(2));
+  // Git pushes this with the checkout's own credentials: no token, no API.
+  if (!("error" in operation) && operation.op === "shots-push") {
+    try {
+      console.log(await shotsPush(git, process.cwd(), operation.branch, operation.pngs));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    process.exit();
+  }
   if (!("error" in operation) && leaksSecret(published(operation), envFile)) {
     console.error("refusing: the title or body contains a value from .env");
     process.exit(1);
