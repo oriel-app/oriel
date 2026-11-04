@@ -55,7 +55,7 @@ test("with a launch secret, every page and route needs its cookie, GET included"
   const handle = handler({
     ...files(t),
     port,
-    window: app.app.window,
+
     api: app.app.api,
     launch,
   });
@@ -66,7 +66,7 @@ test("with a launch secret, every page and route needs its cookie, GET included"
     "/threads/new",
     "/api/threads",
     "/api/workstreams",
-    "/api/window?grouping=epic",
+    "/api/browse?grouping=epic",
     "/api/threads/events",
     "/nowhere",
     "/review",
@@ -81,7 +81,7 @@ test("with a launch secret, every page and route needs its cookie, GET included"
     const planted = await handle(get(path, { cookie: "oriel-launch=planted" }));
     assert.equal(planted.status, 403, path);
   }
-  for (const path of ["/", "/browse", "/api/workstreams", "/api/window?grouping=epic"])
+  for (const path of ["/", "/browse", "/api/workstreams", "/api/browse?grouping=epic"])
     assert.equal((await handle(get(path, { cookie }))).status, 200, path);
   // Host and Origin are checked as before, cookie or not.
   assert.equal((await handle(get("/", { cookie, host: "attacker.example:4310" }))).status, 403);
@@ -103,7 +103,7 @@ test("with a launch secret, every page and route needs its cookie, GET included"
 
 test("the web app's static files need no cookie, and nothing outside them comes with them", async (t) => {
   const app = await testApp(t);
-  const handle = handler({ ...files(t), port, window: app.app.window, api: app.app.api, launch });
+  const handle = handler({ ...files(t), port, api: app.app.api, launch });
   for (const path of ["/app/main.js", "/assets/window.css", "/vendor/preact.js"]) {
     assert.equal((await handle(get(path))).status, 200, path);
     assert.equal((await handle({ ...get(path), method: "HEAD" })).status, 200, path);
@@ -127,7 +127,7 @@ test("the web app's static files need no cookie, and nothing outside them comes 
 
 test("a review link's page, opening and deciding need no cookie; making or revoking a link does", async (t) => {
   const app = await testApp(t, { scripts: { estimate }, plan: () => [{ run: "estimate" }] });
-  const handle = handler({ ...files(t), port, window: app.app.window, api: app.app.api, launch });
+  const handle = handler({ ...files(t), port, api: app.app.api, launch });
   const post = (url: string, value: unknown, headers: Request["headers"] = {}) =>
     handle({
       method: "POST",
@@ -187,7 +187,7 @@ test("a review link's page, opening and deciding need no cookie; making or revok
 
 test("without a launch secret, as `pnpm dev` runs, no request needs a cookie", async (t) => {
   const app = await testApp(t);
-  const handle = handler({ ...files(t), port, window: app.app.window, api: app.app.api });
+  const handle = handler({ ...files(t), port, api: app.app.api });
   for (const path of ["/", "/browse", "/api/workstreams", "/app/main.js"])
     assert.equal((await handle(get(path))).status, 200, path);
 });

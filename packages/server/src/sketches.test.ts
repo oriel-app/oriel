@@ -146,7 +146,7 @@ test("the sketch origin answers only its own Host, GET and HEAD, and its one rou
     `/sketches/nope/${sketch.id}`,
     `/sketches/${sketch.id}/${id}`,
     "/",
-    "/api/window",
+    "/api/browse?grouping=epic",
   ])
     assert.equal((await get(wrong)).status, 404, wrong);
 });

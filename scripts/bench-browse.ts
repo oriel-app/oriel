@@ -4,9 +4,9 @@
 // an in-memory database, as the tests' app does; no fixture file changes.
 // Each route is asked once cold (the first request a newly started server
 // answers) and then `--runs` times warm, timed through the server's own
-// handler, so no network is in the numbers. The whole list in one reply
-// (`/api/window`) is measured beside Browse's first reply (`/api/browse`)
-// and the first page of its largest cluster (`/api/browse/items`).
+// handler, so no network is in the numbers. Browse's first reply
+// (`/api/browse`) is measured beside the first page of its largest cluster
+// (`/api/browse/items`).
 import { parseArgs } from "node:util";
 import { json, testApp } from "../packages/server/src/testing.ts";
 import { bigWorld } from "./big-world.ts";
@@ -51,8 +51,6 @@ async function measure(route: string): Promise<Row | null> {
 const app = await start();
 const rows: Row[] = [];
 for (const grouping of ["epic", "assignee", "stuck", "linked"]) {
-  const whole = await measure(`/api/window?grouping=${grouping}`);
-  if (whole) rows.push(whole);
   const first = await measure(`/api/browse?grouping=${grouping}`);
   if (!first) continue;
   rows.push(first);
@@ -66,7 +64,7 @@ for (const grouping of ["epic", "assignee", "stuck", "linked"]) {
   if (page) rows.push({ ...page, route: `${page.route} (${largest.row.count} items)` });
 }
 
-const { items } = json<{ items: number }>(await app.get("/api/window?grouping=epic"));
+const { items } = app.app.window("epic");
 console.log(`${total} records, ${items} items in clusters; warm is the median of ${runs}`);
 console.log("route\tKB\tcold ms\twarm ms");
 for (const row of rows)

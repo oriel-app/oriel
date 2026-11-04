@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { defaultTheme } from "@oriel/web/themes";
-import { type GroupingId, isGroupingId, type TextSize, type WindowView } from "@oriel/web/view";
+import type { TextSize } from "@oriel/web/view";
 import { hasLaunchSecret, refusal } from "./guard.ts";
 
 // Everything the server serves. Paths are absolute.
@@ -16,7 +16,6 @@ export type Site = {
   // Bare specifier → ES module file, served at `vendorPath(specifier)` and
   // named in the page's import map. Only these files are served.
   vendor: ReadonlyMap<string, string>;
-  window(grouping: GroupingId): WindowView;
   // The person's theme and text size, which the page's <html> carries, so
   // its first paint is right with no script (decision 0034). The default
   // ones when absent.
@@ -243,12 +242,6 @@ export function handler(site: Site): (request: Request) => Promise<Reply> {
         ...reviewHeaders,
         "x-robots-tag": "noindex",
       });
-    if (path === "/api/window") {
-      const grouping = url.searchParams.get("grouping");
-      if (!isGroupingId(grouping))
-        return plain(400, "grouping must be epic, assignee, stuck or linked");
-      return reply(200, "application/json", JSON.stringify(site.window(grouping)));
-    }
     const vendorFile = vendorFiles.get(path);
     if (vendorFile !== undefined) return file(vendorFile);
     if (path.startsWith("/app/")) return file(within(site.dist, path.slice("/app/".length)));

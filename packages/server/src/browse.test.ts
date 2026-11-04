@@ -45,7 +45,7 @@ async function pages(app: Awaited<ReturnType<typeof bigger>>, grouping: string, 
 test("Browse's first reply has every cluster the whole list has, as rows, with no items", async (t) => {
   const app = await bigger(t);
   for (const grouping of groupings) {
-    const whole = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
+    const whole = app.app.window(grouping);
     const first = json<WindowView>(await app.get(`/api/browse?grouping=${grouping}`));
     assert.deepEqual(
       first.clusters.map(({ row }) => row),
@@ -66,7 +66,7 @@ test("Browse's first reply has every cluster the whole list has, as rows, with n
 test("a cluster's pages, 50 items each, are its whole list in order", async (t) => {
   const app = await bigger(t);
   for (const grouping of groupings) {
-    const whole = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
+    const whole = app.app.window(grouping);
     for (const { row, list } of whole.clusters) {
       const got = await pages(app, grouping, row.key);
       assert.ok(got.every((page) => page.items.length <= 50 && page.total === row.count));

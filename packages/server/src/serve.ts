@@ -155,7 +155,6 @@ export async function serve(
       handler({
         ...files,
         port: address.port,
-        window: app.window,
         look: app.settings.page,
         firstRun: () => setup.firstRun(),
         api: app.api,

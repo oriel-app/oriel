@@ -215,7 +215,6 @@ export async function testApp(
     entry: "main.js",
     assets: "/nonexistent/assets",
     vendor: new Map(),
-    window: app.window,
     api: app.api,
     firstRun: app.setup.firstRun,
   });

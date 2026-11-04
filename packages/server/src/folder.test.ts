@@ -66,7 +66,7 @@ test("connecting a folder by its path syncs its markdown files into the window",
       ["folder", "Folder", app.dir.root, 2],
     ],
   );
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   const own = window.clusters.find((c) => c.row.key === "no-epics-in-source");
   assert.deepEqual(own?.list.map((row) => row.title).toSorted(), ["Interviews", "Launch plan"]);
   assert.equal(own?.row.origin.kind, "derived");
@@ -121,12 +121,12 @@ const fileIds = (view: WindowView) =>
 
 test("picking the same folder again keeps every item's ID", async (t) => {
   const app = await connected(t);
-  const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const before = fileIds(app.app.window("epic"));
   assert.equal(before.length, 2);
   // Typed another way, it resolves to the same folder.
   const again = await app.connect("folder", { path: `${app.dir.root}/` });
   assert.equal(again.status, 200);
-  const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const after = fileIds(app.app.window("epic"));
   assert.deepEqual(after, before);
 });
 
@@ -142,8 +142,7 @@ test("another folder takes the place of the first as a later connection, and the
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "oriel.db");
   const app = await connected(t, { db });
-  const window = async (on: Pick<typeof app, "get"> = app) =>
-    allFileIds(json<WindowView>(await on.get("/api/window?grouping=epic")));
+  const window = async (on: Pick<typeof app, "app"> = app) => allFileIds(on.app.window("epic"));
   const first = await window();
   assert.equal(first.length, 2);
   const [held] = first;
@@ -205,7 +204,7 @@ test("a sync asked for while another folder takes the first's place never brings
     // It names the connection open when it was asked for: synced, or, once
     // another took its place, not connected now.
     assert.ok([200, 409].includes((await synced).status), `after ${wait}`);
-    const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+    const ids = allFileIds(app.app.window("epic"));
     const prefixes = [...new Set(ids.map((id) => id.split(":")[0]))];
     assert.deepEqual(prefixes, [path === plans ? "folder.2" : "folder"], `after ${wait}`);
   }
@@ -237,7 +236,7 @@ test("the first folder picked again while another takes its place comes back aft
   assert.equal((await replacing).status, 200);
   assert.equal((await back).status, 200);
   assert.equal((await app.connection("folder"))?.identity, app.dir.root);
-  const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const ids = allFileIds(app.app.window("epic"));
   assert.deepEqual([...new Set(ids.map((id) => id.split(":")[0]))], ["folder"]);
 });
 
@@ -268,7 +267,7 @@ test("a folder that can't be disconnected now is an error for its request, and t
 
 test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {
   const app = await connected(t);
-  const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const before = fileIds(app.app.window("epic"));
   const locked = join(app.dir.top, "locked");
   mkdirSync(locked);
   writeFileSync(join(locked, "Secret plan.md"), "Not for Oriel.");
@@ -292,7 +291,7 @@ test("a folder that can't be listed isn't kept; the one before stays as it was",
   assert.equal(refused.status, 400);
   assert.match(json<{ error: string }>(refused).error, /couldn't read the folder/);
   assert.deepEqual(await app.connection("folder"), app.folder);
-  const after = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  const after = fileIds(app.app.window("epic"));
   assert.deepEqual(after, before);
 });
 
@@ -369,7 +368,7 @@ test("a workstream mixes Jira and folder items; its thread's region binds items.
     value: { dts: bindings.dts, items: (await bindings.read("items.list", [])).value },
   });
   const app = await connected(t, { plan: () => [{ run: "inspect" }], scripts: { inspect } });
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   const file = window.clusters
     .flatMap((c) => c.list)
     .find((row) => row.title === "Launch plan" && row.id.startsWith("folder:"))?.id;
@@ -431,14 +430,14 @@ test("an epic picked beside a plan lets the agent create stories in it, and show
     ["assignee", 1],
     ["stuck", 0],
   ] as const) {
-    const window = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
+    const window = app.app.window(grouping);
     const shown = window.clusters.flatMap((c) => [
       ...(c.row.anchor ? [c.row.anchor.id] : []),
       ...c.list.map((row) => row.id),
     ]);
     assert.equal(shown.filter((id) => id === "jira:SYN-1").length, times, grouping);
   }
-  const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const window = app.app.window("epic");
   assert.ok(window.clusters.some((c) => c.row.anchor?.id === "jira:SYN-1"));
   const plan = window.clusters
     .flatMap((c) => c.list)

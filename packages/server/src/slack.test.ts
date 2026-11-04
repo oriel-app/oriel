@@ -16,7 +16,7 @@ const slackRows = (view: WindowView) =>
 
 test("the picked channel's messages are in the window, in clusters that say Slack has no epics or assignees", async (t) => {
   const app = await testApp(t, { slack: { mode: "fixture" } });
-  const byEpic = json<WindowView>(await app.get("/api/window?grouping=epic"));
+  const byEpic = app.app.window("epic");
   const own = byEpic.clusters.find((c) => c.row.key === "no-epics-in-source");
   assert.equal(own?.row.origin.kind, "derived");
   assert.equal(own?.list.length, 19);
@@ -37,12 +37,12 @@ test("the picked channel's messages are in the window, in clusters that say Slac
       url: "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788444000000100",
     },
   });
-  const byAssignee = json<WindowView>(await app.get("/api/window?grouping=assignee"));
+  const byAssignee = app.app.window("assignee");
   const none = byAssignee.clusters.find((c) => c.row.key === "no-assignees-in-source");
   assert.equal(none?.list.filter((r) => r.id.startsWith("slack:")).length, 19);
   assert.equal(slackRows(byAssignee).length, 19);
   // A message isn't work that can be stuck.
-  assert.deepEqual(slackRows(json<WindowView>(await app.get("/api/window?grouping=stuck"))), []);
+  assert.deepEqual(slackRows(app.app.window("stuck")), []);
   const connects = app.app.telemetry().filter((e) => e.name === "source.connected");
   assert.deepEqual(
     connects.map((e) => e.data.source),
@@ -109,10 +109,7 @@ test("Slack syncs each time the server starts, and connects once", async (t) => 
   const first = await testApp(t, { db, slack: { mode: "fixture" } });
   await first.app.close();
   const again = await testApp(t, { db, slack: { mode: "fixture" } });
-  assert.equal(
-    slackRows(json<WindowView>(await again.get("/api/window?grouping=epic"))).length,
-    19,
-  );
+  assert.equal(slackRows(again.app.window("epic")).length, 19);
   const connects = again.app.telemetry().filter((e) => e.name === "source.connected");
   assert.deepEqual(
     connects.map((e) => e.data.source),
@@ -148,7 +145,7 @@ test("live Slack reads only the channels picked by name, through the Web API", a
       fetch: send,
     },
   });
-  assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
+  assert.equal(slackRows(app.app.window("epic")).length, 19);
   assert.ok(
     calls.every((c) => c.params.channel === undefined || c.params.channel === "C0FW1WEATHR"),
   );
@@ -189,7 +186,7 @@ test("started without Slack, the window and search leave out what an earlier sta
     value: (await bindings.read("search", ["SMS"])).value,
   });
   const off = await testApp(t, { db, plan: () => [{ run: "found" }], scripts: { found } });
-  assert.deepEqual(slackRows(json<WindowView>(await off.get("/api/window?grouping=epic"))), []);
+  assert.deepEqual(slackRows(off.app.window("epic")), []);
   const { id: workstreamId } = json<{ id: string }>(
     await off.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );
@@ -249,7 +246,7 @@ test("Slack syncs on demand, says so when it can't, and isn't there to sync unco
     error: "Slack didn't answer, so Oriel couldn't look for new messages.",
   });
   // What it had stays.
-  assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
+  assert.equal(slackRows(app.app.window("epic")).length, 19);
   assert.deepEqual(
     app.app
       .telemetry()

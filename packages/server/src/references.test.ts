@@ -18,7 +18,7 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "oriel.db");
   const app = await testApp(t, { slack: { mode: "fixture" }, db });
-  const linked = json<WindowView>(await app.get("/api/window?grouping=linked"));
+  const linked = app.app.window("linked");
   const cluster = linked.clusters.find((c) => c.list[0]?.id === "jira:SYN-54");
   assert.ok(cluster, "SYN-54 heads a cluster");
   assert.equal(cluster.row.origin.kind, "derived");
@@ -92,7 +92,7 @@ test("a Jira item whose description names another shows under Linked, and so doe
           : issue,
       ),
   });
-  const linked = json<WindowView>(await app.get("/api/window?grouping=linked"));
+  const linked = app.app.window("linked");
   const headed = (id: string) => linked.clusters.find((c) => c.list[0]?.id === id);
   const wallet = headed("jira:SYN-23");
   assert.ok(wallet, "SYN-23 heads a cluster");
