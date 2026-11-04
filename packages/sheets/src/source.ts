@@ -41,7 +41,13 @@ import {
   spreadsheetText,
   tabPart,
 } from "./attrs.ts";
-import type { DriveFile, Google, SheetComment, TabInfo } from "./google.ts";
+import {
+  type DriveFile,
+  type Google,
+  type SheetComment,
+  SheetsError,
+  type TabInfo,
+} from "./google.ts";
 import {
   mappingPrint,
   type SheetsPicks,
@@ -409,6 +415,9 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
         try {
           got = await fresh(pick, known[pick.id]);
         } catch (error) {
+          // Signed out is the whole account's: the sync fails, and the
+          // connection asks to sign in again.
+          if (error instanceof SheetsError && error.status === 401) throw error;
           // It keeps what the index had, and is read again next time.
           log("sheets: a spreadsheet didn't read", {
             error: error instanceof Error ? error.message : String(error),
@@ -451,14 +460,16 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
       }
       // What it didn't read, in counts only: the report says which.
       const tabs = [...reports.values()].flatMap((r) => r.tabs);
-      const unread = {
+      const missed = {
         failed: [...reports.values()].filter((r) => r.problem === "failed").length,
         stopped: tabs.filter((t) => t.stopped).length,
         duplicates: tabs.reduce((n, t) => n + t.duplicates.length, 0),
         keyless: tabs.reduce((n, t) => n + t.keyless.length, 0),
         capped: tabs.filter((t) => t.capped).length,
+        spreadsheetsPastCap: unread.spreadsheets,
+        tabsPastCap: unread.tabs,
       };
-      if (Object.values(unread).some(Boolean)) log("sheets: some of it wasn't read", unread);
+      if (Object.values(missed).some(Boolean)) log("sheets: some of it wasn't read", missed);
       // Spreadsheets no longer picked leave with their rows.
       const dropped = Object.keys(known).filter((id) => !picked.has(id));
       for (const id of dropped) {

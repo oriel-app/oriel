@@ -553,3 +553,29 @@ test("a sparse tab read to the grid's end stops at the cap's rows, and says rows
   assert.equal(source.report().spreadsheets[0]?.tabs[0]?.capped, true);
   assert.ok(standIn.calls.length < 20);
 });
+
+test("what a sync didn't read is logged in counts, picks past the caps among them", async () => {
+  const spreadsheets = [
+    ...Array.from({ length: 50 }, () => ({ id: contacts, tabs: [] })).map((s, n) => ({
+      ...s,
+      id: n === 0 ? contacts : `1Gone${String(n).padStart(2, "0")}`.padEnd(44, "0"),
+    })),
+    { id: raid, tabs: [] },
+  ];
+  const google = fixtureGoogle(fixture);
+  const fields: Record<string, unknown>[] = [];
+  const source = sheetsSource({
+    google: googleReads({
+      fetch: google.fetch,
+      credential: { headers: async () => ({ Authorization: `Bearer ${standInToken}` }) },
+      wait: async () => {},
+      random: () => 0,
+    }),
+    picks: { spreadsheets },
+    log: (message, logged) => {
+      if (message === "sheets: some of it wasn't read" && logged) fields.push(logged);
+    },
+  });
+  for await (const page of source.sync(null)) assert.ok(page);
+  assert.equal(fields[0]?.spreadsheetsPastCap, 1);
+});
