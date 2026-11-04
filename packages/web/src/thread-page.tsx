@@ -358,8 +358,7 @@ function OrielNote({ note }: { note: NoteView }) {
   if (note.kind === "choice")
     return (
       <p>
-        {settledLine(note)}
-        {note.outcome !== "chosen" && ` in “${note.question}”`}.
+        {settledLine(note)} in the choice above.
         {note.outcome === "chosen" && " The agent proposes how to carry it into the work."}
       </p>
     );

@@ -112,8 +112,11 @@ const choiceNote = object({
   option: nullable(refine(number, (n) => Number.isInteger(n) && n >= 0, "expected an option")),
   // The agent's own words for the choice and the option, as stored with it,
   // so the agent knows which it was without the choice's ID.
-  question: refine(string, (text) => text.length <= maxQuestionChars, "expected a question"),
-  label: nullable(refine(string, (text) => text.length <= maxLabelChars, "expected an option")),
+  // Counted as the agent's input was, by code point.
+  question: refine(string, (text) => [...text].length <= maxQuestionChars, "expected a question"),
+  label: nullable(
+    refine(string, (text) => [...text].length <= maxLabelChars, "expected an option"),
+  ),
 });
 export const agentNote = union(rejectedNote, unknownChipsNote, choiceNote);
 export type AgentNote = Infer<typeof agentNote>;

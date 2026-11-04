@@ -114,10 +114,12 @@ function history(choice: ChoiceView, settled: (ChoiceNote & { at: string }) | nu
     .map(({ moment }) => moment);
 }
 
-export function settledLine(note: Pick<ChoiceNote, "outcome" | "option" | "label">): string {
+// Oriel's words for what the user did: an option by its letter, never the
+// agent's label, which synced text may have steered.
+export function settledLine(note: Pick<ChoiceNote, "outcome" | "option">): string {
   switch (note.outcome) {
     case "chosen":
-      return `You chose ${optionLetter(note.option ?? 0)}: ${note.label ?? ""}`;
+      return `You chose ${optionLetter(note.option ?? 0)}`;
     case "deferred":
       return "You deferred this choice";
     case "asked":

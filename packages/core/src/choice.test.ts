@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { choiceAsk, choiceItems } from "./choice.ts";
 import { recordedArgs } from "./sketch.ts";
+import { agentNote, orielNote } from "./thread.ts";
 
 const ask = {
   question: "Do fares hold on next-day sailings?",
@@ -38,6 +39,19 @@ test("each cited item once, in the order first cited", () => {
       { evidence: [{ id: "jira:SYN-45" }, { id: "slack:C1-1.1" }] },
       { evidence: [{ id: "jira:SYN-45" }] },
     ],
-  } as Parameters<typeof choiceItems>[0];
+  } as unknown as Parameters<typeof choiceItems>[0];
   assert.deepEqual(choiceItems(checked), ["jira:SYN-45", "slack:C1-1.1"]);
+});
+
+test("Oriel's note of a choice takes the question and label the agent could give, emoji and all", () => {
+  const note = {
+    kind: "choice",
+    choice: "01KD0000000000000000000001",
+    outcome: "chosen",
+    option: 0,
+    question: "🌊".repeat(200),
+    label: "𝐁".repeat(160),
+  };
+  assert.ok(orielNote(note).ok);
+  assert.ok(agentNote(note).ok);
 });
