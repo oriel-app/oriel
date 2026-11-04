@@ -505,12 +505,10 @@ function endsIn(rows: Grid["rows"], from: number, top: number, merges: Grid["mer
 }
 
 function spreadsheetContentOf(read: Read): SpreadsheetContent {
-  const tabs = read.tabs.map((t) => t.title);
   return {
     of: "spreadsheet",
     spreadsheet: { id: read.id, title: read.title },
-    tabs,
-    ...spreadsheetText({ tabs, comments: read.comments }),
+    ...spreadsheetText({ tabs: read.tabs.map((t) => t.title), comments: read.comments }),
     title: read.title,
   };
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { spreadsheetText } from "./attrs.ts";
 import { mappingPrint, sheetsPicks, type TabMapping } from "./mapping.ts";
 import { type Cell, type Grid, tableOf } from "./table.ts";
 
@@ -188,5 +189,19 @@ test("a unique name may be both a tab's key and its title", () => {
   assert.deepEqual(
     rows.map((r) => [r.key, r.fields.title]),
     [["Rebooking", "Rebooking"]],
+  );
+});
+
+test("a spreadsheet's text lists as many tab names as fit their share, and says how many it left out", () => {
+  const tabs = Array.from(
+    { length: 501 },
+    (_, n) => `${String(n).padStart(3, "0")} ${"t".repeat(96)}`,
+  );
+  const read = spreadsheetText({ tabs, comments: [] });
+  assert.ok(read.text.length < 11_000);
+  assert.ok(read.tabs.length < tabs.length);
+  assert.equal(
+    read.note,
+    `Its tabs' names are long, so only the first ${read.tabs.length} of 501 are listed.`,
   );
 });
