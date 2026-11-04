@@ -18,6 +18,7 @@ import { rowKey } from "./attrs.ts";
 import { fixturePicks } from "./declared-fixture.ts";
 import { type FixtureCell, loadSheetsFixture } from "./fixture.ts";
 import { googleReads } from "./google.ts";
+import { maxRows } from "./grid.ts";
 import type { SheetsPicks } from "./mapping.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, type StandInCall, standInToken } from "./stand-in.ts";
@@ -65,8 +66,8 @@ const request = (
     ...(seen ? { seen } : {}),
   });
 
-function setup(picks: SheetsPicks = fixturePicks(fixture)) {
-  const standIn = fixtureGoogle(fixture);
+function setup(picks: SheetsPicks = fixturePicks(fixture), spreadsheets = fixture) {
+  const standIn = fixtureGoogle(spreadsheets);
   const writer = sheetsWriter(
     {
       credential,
@@ -441,19 +442,25 @@ test("a key column that is the title too is never edited, and a new row's key an
   );
 });
 
-test("a tab past the rows Oriel reads takes no new row", async () => {
-  const { writer, writes } = setup();
-  await assert.rejects(
-    writer.apply(
-      request("addRow", null, {
-        spreadsheet: idOf("archive"),
-        sheetId: 6100,
-        values: { key: "FW-B0001", title: "x" },
-      }),
-    ),
-    refused(false, /past the rows Oriel reads/),
-  );
-  assert.deepEqual(writes(), []);
+test("a tab past the rows Oriel reads, or full to them, takes no new row", async () => {
+  // The archive's tab, past the cap, and cut to exactly the cap.
+  const full = structuredClone(fixture);
+  const tab = full.spreadsheets.find((s) => s.slug === "archive")?.tabs[0];
+  assert.ok(tab && tab.rows.length > maxRows + 1);
+  for (const spreadsheets of [fixture, (tab.rows.splice(maxRows + 1), full)]) {
+    const { writer, writes } = setup(fixturePicks(fixture), spreadsheets);
+    await assert.rejects(
+      writer.apply(
+        request("addRow", null, {
+          spreadsheet: idOf("archive"),
+          sheetId: 6100,
+          values: { key: "FW-B0001", title: "x" },
+        }),
+      ),
+      refused(false, /past the rows Oriel reads/),
+    );
+    assert.deepEqual(writes(), []);
+  }
 });
 
 test("a cell an array formula fills is never written, nor a new row under one", async () => {

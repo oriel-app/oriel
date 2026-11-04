@@ -32,6 +32,7 @@ import {
 } from "@oriel/core";
 import { rowKey } from "./attrs.ts";
 import { type Google, googleReads, maxBackoffMs, maxRetries } from "./google.ts";
+import { maxRows } from "./grid.ts";
 import type { FieldName } from "./mapping.ts";
 import type { Cell } from "./table.ts";
 import { isSheetsOp, type SheetsArgs, type SheetsOp, sheetsOps } from "./ops.ts";
@@ -252,7 +253,9 @@ export function sheetsWriter(
     if (read === "gone")
       throw new Error("Oriel doesn't read that tab now, so it won't add a row to it");
     if ("stopped" in read) throw new Error(`Oriel can't read the tab now: ${read.stopped}`);
-    if (read.capped) throw new Error("the tab is past the rows Oriel reads, so it won't add one");
+    // A row past the cap couldn't be read back, or reverted.
+    if (read.capped || read.last - (read.mapping.header - 1) >= maxRows)
+      throw new Error("the tab is past the rows Oriel reads, so it won't add one");
     const given = Object.entries(values).filter(([, v]) => v !== undefined) as [
       FieldName,
       CellValue,
