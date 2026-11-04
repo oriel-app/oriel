@@ -114,7 +114,8 @@ const fitsSays =
 export const sheetsPicks: Described<SheetsPicks> = refine(object({ spreadsheets }), fits, fitsSays);
 
 // What a person sets per connection (decision 0049): the picks, and
-// whether it may propose changes.
+// whether it may propose changes. Spreadsheets just picked map no tab, so
+// the connection waits for its options (decision 0051).
 export type SheetsOptions = SheetsPicks & { readOnly?: boolean };
 export const sheetsOptions: Described<SheetsOptions> = refine(
   object({ spreadsheets, readOnly: optional(boolean) }),

@@ -4,10 +4,16 @@
 // its own server half makes it, and the server's one loop over connections
 // (`Opening`) opens it, syncs it in full and keeps it only once both worked.
 // The server makes every connection's ID: the page only names a kind and
-// what the person typed. Nothing here knows a source.
+// what the person typed. A browser step's sign-in is begun here and held
+// under an ID the page names back: what it gives, such as tokens, never
+// reaches the page. Nothing here knows a source.
+import { randomBytes } from "node:crypto";
 import {
+  object,
+  string,
   type ConnectRefusal,
   type ConnectVia,
+  type Instant,
   type Log,
   type PickChoice,
   type SourceKind,
@@ -37,7 +43,7 @@ export type Opening = {
   // signed in again, keeping its number and items.
   connect(
     kind: SourceKind,
-    made: { identity: string; options: Record<string, unknown>; secret?: string },
+    made: { identity: string; options: Record<string, unknown>; secret?: string; name?: string },
     how?: { replaces?: boolean; counting?: (records: number) => void },
   ): Promise<
     | { connection: Connection; signedIn: boolean }
@@ -55,14 +61,33 @@ export function connecting(deps: {
   modes: SourceModes;
   // Any account or site may be connected, as on the desktop app.
   anywhere: boolean;
+  // Oriel's own clients of sources, by kind, as each connector names them.
+  clients?: Readonly<Partial<Record<SourceKind, Readonly<Record<string, string>>>>>;
   opening: Opening;
   log: Log;
+  now?: () => Instant;
 }) {
   const { modes, opening, log } = deps;
   const { connections } = opening;
   const viaFor = (kind: SourceKind): ConnectVia => {
     const send = modes[kind]?.fetch;
-    return { anywhere: deps.anywhere, log, ...(send ? { fetch: send } : {}) };
+    const client = deps.clients?.[kind];
+    return {
+      anywhere: deps.anywhere,
+      log,
+      ...(deps.now ? { now: deps.now } : {}),
+      ...(send ? { fetch: send } : {}),
+      ...(client ? { client } : {}),
+    };
+  };
+  // Whether the composition root has the client a connector names: under
+  // `pnpm dev` from `.env`, which it says to set.
+  const lacks = (kind: SourceKind): string | null => {
+    const needs = declarationOf(kind)?.connect?.client;
+    if (!needs) return null;
+    const client = deps.clients?.[kind] ?? {};
+    if (needs.env.every((name) => (client[name] ?? "").trim() !== "")) return null;
+    return deps.anywhere ? needs.absent : `${needs.absent} Set ${needs.env.join(" and ")} in .env.`;
   };
   // A kind's connector, if the window connects it: one declared with steps,
   // in window mode.
@@ -103,10 +128,17 @@ export function connecting(deps: {
   const refused = (kind: SourceKind): ConnectRefusal | null => {
     const { declaration, connect } = connector(kind);
     if (!connect) return { problem: notHere(declaration.name) };
+    const absent = lacks(kind);
+    if (absent) return { problem: absent };
     if (opening.open(kind) && !connect.replaces)
       return { problem: `${declaration.name} is already connected to this window.` };
     return null;
   };
+
+  // The sign-in each kind's browser step began last, under the ID the page
+  // names back to finish it. Another begun takes its place; the one before
+  // still closes on its own, after 5 minutes at most.
+  const signIns = new Map<SourceKind, { id: string; done: Promise<unknown> }>();
 
   // The first sync of what the person connected last, while it reads, and
   // after it stopped, until the next connect or one that worked.
@@ -128,14 +160,41 @@ export function connecting(deps: {
         stopped: reading.stopped,
       },
 
+    // Begins a browser step's sign-in: the address the page opens in the
+    // person's browser, and the ID it finishes the sign-in by.
+    async begin(kind: SourceKind): Promise<{ url: string; attempt: string } | ConnectRefusal> {
+      const no = refused(kind);
+      if (no) return no;
+      const { connect } = connector(kind);
+      if (!connect?.browser) throw new ActionError("not-found", "it has no sign-in to begin");
+      const begun = await connect.browser.begin(viaFor(kind));
+      if ("problem" in begun) return begun;
+      const id = randomBytes(16).toString("hex");
+      // A sign-in that's never finished settles with no one to hear it.
+      begun.done.catch(() => {});
+      signIns.set(kind, { id, done: begun.done });
+      return { url: begun.url, attempt: id };
+    },
+
     // Connects what the person gave across a connector's steps: checked,
-    // identified, made by the connector, then opened, synced and kept.
+    // identified, made by the connector, then opened, synced and kept. A
+    // browser step gives what its sign-in did, once the person finishes it.
     async connect(kind: SourceKind, raw: unknown): Promise<Connected> {
       const no = refused(kind);
       if (no) return no;
       const { connect } = connector(kind);
       if (!connect) return { problem: notHere(kind) };
-      const given = check(connect.given, raw);
+      let gave = raw;
+      if (connect.browser) {
+        const { attempt } = check(object({ attempt: string }), raw);
+        const begun = signIns.get(kind);
+        if (begun?.id !== attempt) return { problem: "That sign-in has ended. Start again." };
+        signIns.delete(kind);
+        gave = await begun.done;
+        if (typeof gave === "object" && gave !== null && "problem" in gave)
+          return gave as ConnectRefusal;
+      }
+      const given = check(connect.given, gave);
       const via = viaFor(kind);
       const identity = await connect.identify(given, via);
       if (typeof identity !== "string") return identity;
@@ -157,6 +216,7 @@ export function connecting(deps: {
           identity,
           options: made.options,
           ...(made.secret === undefined ? {} : { secret: made.secret }),
+          ...(made.name === undefined ? {} : { name: made.name }),
         },
         {
           ...(connect.replaces ? { replaces: true } : {}),

@@ -280,6 +280,20 @@ for (const [kind, mode] of asked) {
   }
   modes[kind] = { mode: "live", ...made };
 }
+// Oriel's own clients of sources, such as Google's, each from the `.env`
+// names its connector declares, and no others.
+const clients = Object.fromEntries(
+  sourceKinds.flatMap((kind) => {
+    const needs = declarationOf(kind)?.connect?.client;
+    if (!needs) return [];
+    return [
+      [
+        kind,
+        Object.fromEntries(needs.env.flatMap((name) => (env[name] ? [[name, env[name]]] : []))),
+      ],
+    ];
+  }),
+);
 const named = databaseName(
   Object.fromEntries(Object.entries(modes).map(([kind, given]) => [kind, given.mode])),
 );
@@ -304,6 +318,7 @@ await models?.look(settings.get());
 const serving = await serve(port, {
   db: join(dir, `${named}.db`),
   sources: modes,
+  clients,
   ...(inWindow(modes, "jira")
     ? {
         legacyJira: legacyFile(

@@ -118,7 +118,24 @@ test("graders fit the eval kind and each other", () => {
   ]);
   const silentInjection = { ...injection(), expect: [{ grader: "zero-mutations" }] };
   assert.deepEqual(messages(silentInjection), [
-    "an injection case expects zero mutations and surfaced text",
+    "an injection case expects zero mutations and surfaced text, or, onboarding, a draft that holds a golden",
+  ]);
+  // Onboarding, the draft must hold a golden that ignores the injection.
+  const { region: _region, ...unregioned } = injection();
+  const onboarding = (call: Record<string, unknown>) => ({
+    ...unregioned,
+    window: {
+      workstreams: [{ name: "Boarding", region: "boarding-epic" }],
+      at: "2026-10-01T12:00:00.000Z",
+    },
+    unfit: { sheets: { spreadsheets: [] } },
+    expect: [
+      { grader: "drafts", calls: [{ action: "source.configure", kind: "sheets", ...call }] },
+    ],
+  });
+  assert.deepEqual(messages(onboarding({ golden: "tests/golden/sheets-raid-draft.json" })), []);
+  assert.deepEqual(messages(onboarding({ options: {} })), [
+    "an injection case expects zero mutations and surfaced text, or, onboarding, a draft that holds a golden",
   ]);
 });
 

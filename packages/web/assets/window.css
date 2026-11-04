@@ -4595,6 +4595,45 @@ a.replies:hover {
   gap: var(--space-3);
 }
 
+/* A draft of a connection's options, drawn from its source (decision
+   0051): the columns it reads stand out; the rest are content. */
+
+.review-tables {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.review-scroll {
+  overflow-x: auto;
+}
+
+.review-table caption {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.review-table th[data-feeds],
+.review-table td[data-feeds] {
+  color: var(--accent);
+}
+
+.review-feeds td {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.review-lines,
+.review-unread {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
 .block-preview caption {
   color: var(--text-muted);
   font-size: var(--text-sm);

@@ -114,9 +114,17 @@ export type Cell = string | number | boolean | null;
 // unasked, as its own block, whenever a run reads it.
 export const maxPreviewRows = 30;
 export const maxPreviewTables = 10;
-export type PreviewTable = { name: string; columns: string[]; rows: (string | null)[][] };
+// `at`: what the table is in its source, by ID, never text anyone wrote,
+// which a draft names it by.
+export type PreviewTable = {
+  name: string;
+  at?: string;
+  columns: string[];
+  rows: (string | null)[][];
+};
 export const previewTable: Validator<PreviewTable> = object({
   name: string,
+  at: optional(string),
   columns: array(string),
   rows: array(array(union(string, literal(null)))),
 });

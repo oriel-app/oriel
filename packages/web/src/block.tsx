@@ -7,7 +7,7 @@
 // escape hatch), says so and is read-only.
 import { kindOfItem } from "./item-id.ts";
 import { Chip, ItemListContext } from "./parts.tsx";
-import type { BlockView, ChipView, MemberView, SketchView } from "./view.ts";
+import type { BlockView, ChipView, MemberView, ReviewTable, SketchView } from "./view.ts";
 
 const number = (value: number) => value.toLocaleString("en-US");
 
@@ -26,6 +26,69 @@ export function BlockFigure({ block }: { block: BlockView }) {
       {block.more > 0 && <p class="block-more">and {number(block.more)} more</p>}
       <figcaption>{block.caption}</figcaption>
     </figure>
+  );
+}
+
+// A draft of a connection's options as Oriel draws it from its source
+// (decision 0051): each table it reads, with each column's letter, the
+// header the source has there and the field it feeds, then its first rows
+// and what it reads and leaves out. Every word in it is the source's or
+// Oriel's, never the drafter's; what isn't read is named in one line.
+export function ReviewTables({ tables }: { tables: readonly ReviewTable[] }) {
+  const read = tables.filter((table) => table.columns.length > 0);
+  const unread = tables.filter((table) => table.columns.length === 0);
+  return (
+    <div class="review-tables">
+      {read.map((table, i) => (
+        <section key={i} class="review-table">
+          <div class="review-scroll">
+            <table class="block-table">
+              <caption>{table.name}</caption>
+              <thead>
+                <tr>
+                  {table.columns.map((column) => (
+                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
+                      {column.at}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {table.columns.map((column) => (
+                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
+                      {column.header ?? "—"}
+                    </th>
+                  ))}
+                </tr>
+                <tr class="review-feeds">
+                  {table.columns.map((column) => (
+                    <td key={column.at} data-feeds={column.feeds !== null || undefined}>
+                      {column.feeds ?? "Content"}
+                    </td>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, r) => (
+                  <tr key={r}>
+                    {table.columns.map((column, j) => (
+                      <td key={column.at}>{cellText(row[j] ?? null)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul class="review-lines">
+            {table.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {unread.length > 0 && (
+        <p class="review-unread">Not read: {unread.map((table) => table.name).join(", ")}.</p>
+      )}
+    </div>
   );
 }
 

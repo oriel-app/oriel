@@ -8,9 +8,11 @@
 // unreachable, and its namespace offers nothing. A spreadsheet the person
 // can only view is read-only either way.
 //
-// Reading needs the access token while it lasts. Refreshing it needs Oriel's
-// Google client, which the stories that sign a person in pass to it; until
-// then a connection whose access token has run out reads as signed out.
+// Reading needs the access token while it lasts. Then it is refreshed with
+// Oriel's Google client, as the composition root gives it, and kept anew;
+// one Google refuses to refresh, or with no client to refresh it with,
+// reads as signed out. A mapped column gone from a tab's header row stops
+// that tab, and the connection waits for options that fit (decision 0051).
 import {
   type Credential,
   type IndexRecord,
@@ -26,11 +28,12 @@ import {
 } from "@oriel/core";
 import { sheetsAttrs, sheetsAttrsOf } from "./attrs.ts";
 import { googleReads, SheetsError } from "./google.ts";
+import { googleClientOf, refresh, type Tokens } from "./oauth.ts";
 import { type SheetsPicks, sheetsPicks } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
 import { reportLines } from "./report.ts";
 import { rowReader } from "./rows.ts";
-import { type SheetsSource, sheetsSource } from "./source.ts";
+import { type SheetsReport, type SheetsSource, sheetsSource } from "./source.ts";
 
 // What a Sheets connection's writer is built from, by its line in
 // packages/changeset/src/writers.ts.
@@ -62,9 +65,11 @@ export function picksOf(options: Readonly<Record<string, unknown>>): SheetsPicks
   return read.ok ? read.value : { spreadsheets: [] };
 }
 
-// Its access token, while it lasts. JSON.parse's own message quotes the
-// text, which holds the tokens, so it's never passed on.
-function credentialOf(secret: string | null, now: () => number): Credential {
+// A connection's tokens, as its secret keeps them, or null when they aren't;
+// a fixture's has no refresh token, and lasts. JSON.parse's own message
+// quotes the text, which holds the tokens, so it's never passed on.
+export type KeptTokens = Omit<Tokens, "refresh"> & { refresh?: string };
+export function tokensOf(secret: string | null): KeptTokens | null {
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(secret ?? "null") as unknown;
@@ -72,13 +77,57 @@ function credentialOf(secret: string | null, now: () => number): Credential {
     parsed = null;
   }
   const tokens = tokensShape(parsed);
-  return {
+  if (!tokens.ok) return null;
+  const { access, refresh: refreshToken, expiresAt } = tokens.value;
+  return { access, expiresAt, ...(refreshToken === undefined ? {} : { refresh: refreshToken }) };
+}
+
+// Refreshed this long before Google says the access token ends, so a read
+// started just before then doesn't fail.
+const marginMs = 60_000;
+
+// Its access token, refreshed once it has run out, by one refresh at a time
+// however many reads ask. A refresh that worked is kept as the connection's
+// secret for its next start.
+function credentialOf(
+  secret: string | null,
+  via: OpenVia,
+): { credential: Credential; refused: () => boolean } {
+  let tokens = tokensOf(secret);
+  let refused = false;
+  const now = () => Date.parse(via.now());
+  const client = googleClientOf(via.client);
+  let refreshing: Promise<void> | null = null;
+  const renew = async (refreshToken: string, google: NonNullable<typeof client>) => {
+    const refreshed = await refresh(google, refreshToken, { fetch: via.fetch ?? fetch, now });
+    if (refreshed.status === "signed-out") {
+      tokens = null;
+      refused = true;
+      return;
+    }
+    if (refreshed.status === "failed") {
+      via.log("sheets: the token's refresh failed", { problem: refreshed.problem });
+      throw new SheetsError("Google didn't answer a refresh", 0);
+    }
+    tokens = refreshed.tokens;
+    await via
+      .keep?.(JSON.stringify(tokens))
+      .catch(() => via.log("sheets: the refreshed token couldn't be kept", {}));
+  };
+  const credential: Credential = {
     headers: async () => {
-      if (!tokens.ok || tokens.value.expiresAt <= now())
+      const held = tokens;
+      if (held?.refresh && client && held.expiresAt - marginMs <= now()) {
+        refreshing ??= renew(held.refresh, client).finally(() => (refreshing = null));
+        await refreshing;
+      }
+      const current = tokens;
+      if (!current || current.expiresAt <= now())
         throw new SheetsError("Google Sheets needs signing in again", 401);
-      return { Authorization: `Bearer ${tokens.value.access}` };
+      return { Authorization: `Bearer ${current.access}` };
     },
   };
+  return { credential, refused: () => refused };
 }
 
 export function sheetsProblem(error: unknown): string {
@@ -87,9 +136,9 @@ export function sheetsProblem(error: unknown): string {
   return "Google didn't answer, so Oriel couldn't read the spreadsheets.";
 }
 
-export async function openSheets(connection: ToOpen, via: OpenVia): Promise<OpenedSheets> {
-  const picks = picksOf(connection.options);
-  const credential = credentialOf(connection.secret, () => Date.parse(via.now()));
+// How a connection reads Google, with its credential.
+export function googleOf(connection: ToOpen, via: OpenVia) {
+  const { credential, refused } = credentialOf(connection.secret, via);
   const google = googleReads({
     fetch: via.fetch ?? fetch,
     credential,
@@ -97,6 +146,12 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     random: Math.random,
     waiting: (ms) => via.log("sheets: Google asked Oriel to wait", { ms }),
   });
+  return { credential, google, refused };
+}
+
+export async function openSheets(connection: ToOpen, via: OpenVia): Promise<OpenedSheets> {
+  const picks = picksOf(connection.options);
+  const { credential, google, refused } = googleOf(connection, via);
   const count = picks.spreadsheets.length;
   const readOnly = readOnlyOf(connection.options);
   const context = sheetsContextOf(picks);
@@ -130,9 +185,24 @@ export async function openSheets(connection: ToOpen, via: OpenVia): Promise<Open
     // costs one request and isn't read again.
     incremental: true,
     problem: sheetsProblem,
+    signedOut: refused,
+    unfit: () => unfitOf(source.report()),
     names: sheetsNames,
     viewOnly: viewOnlyOf,
   };
+}
+
+// Why the connection's options no longer fit its spreadsheets, from its last
+// sync: a mapped column gone from a tab's header row, or in it twice, or a
+// mapped tab gone. Titles and headers are the sheet's own, shown as text.
+function unfitOf(report: SheetsReport): string | null {
+  for (const spreadsheet of report.spreadsheets)
+    for (const tab of spreadsheet.tabs)
+      if (tab.stopped !== undefined) {
+        const where = [spreadsheet.title ?? "A spreadsheet", tab.title].filter(Boolean).join(", ");
+        return `${where}: not read, since ${tab.stopped}.`;
+      }
+  return null;
 }
 
 // The spreadsheets the person can only view, by Drive's `canEdit`, which

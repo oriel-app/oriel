@@ -5,7 +5,7 @@
 // happening while it does, and a failure that keeps its help on screen.
 import type { ComponentChildren } from "preact";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
-import { FieldsStep, PickStep, readingName } from "./connect-steps.tsx";
+import { BrowserStep, FieldsStep, PickStep, readingName, ReviewStep } from "./connect-steps.tsx";
 import {
   type ConnectionsMsg,
   connectState,
@@ -405,9 +405,13 @@ function sourceOf(model: Model, kind: string) {
     offer,
     steps,
     form,
-    // A folder step is its first; one with a pick step reads what it picked.
+    // A folder step is its first; one with a pick step reads what it picked;
+    // one that signs in on its source's page waits there first, and one with
+    // a review step shows it in its row once connected.
     chooses: steps[0]?.kind === folderStep ? steps[0] : null,
     picks: steps.some((step) => step.kind === "pick"),
+    signsIn: steps.find((step) => step.kind === "browser") ?? null,
+    reviews: steps.find((step) => step.kind === "review") ?? null,
     open: openOf(model.connections, kind),
     state: connectState(model.connections, kind),
   };
@@ -444,7 +448,8 @@ function YourWork(props: {
       </p>
       <ul class="provider-rows setup-rows">
         {all.map((source) => {
-          const { connector, offer, form, chooses, open, state } = source;
+          const { connector, offer, form, chooses, open, state, signsIn, reviews } = source;
+          const unavailable = model.connections.view?.refused[connector.kind];
           return (
             <SourceRow
               key={connector.kind}
@@ -454,11 +459,13 @@ function YourWork(props: {
               state={
                 state === "read" && open ? (
                   connected(`${open.reads} · ${plural(open.items, offer.counts)}`)
-                ) : state === "reading" && chooses ? (
+                ) : state === "reading" && (chooses || signsIn?.kind === "browser") ? (
                   <span class="cli-line cli-waiting" role="status">
                     <span class="spinner" aria-hidden="true" />
-                    {chooses.waiting}
+                    {chooses?.waiting ?? (signsIn?.kind === "browser" ? signsIn.waiting : "")}
                   </span>
+                ) : state === null && unavailable && !open ? (
+                  <span class="cli-line">{unavailable}</span>
                 ) : state === "reading" ? (
                   <ReadingLine
                     text={`Reading ${readingName(form) ?? offer.title}`}
@@ -481,7 +488,7 @@ function YourWork(props: {
                       {open ? chooses.another : chooses.choose}
                     </button>
                   )
-                ) : state === null ? (
+                ) : state === null && !(unavailable && !open) ? (
                   <button
                     type="button"
                     class="button"
@@ -492,6 +499,15 @@ function YourWork(props: {
                 ) : null
               }
             >
+              {state === "review" && reviews?.kind === "review" && (
+                <ReviewStep
+                  connector={connector}
+                  step={reviews}
+                  form={form}
+                  send={sendConnections}
+                  review={model.connections.reviews[form.made ?? ""] ?? null}
+                />
+              )}
               <Failed source={source} model={model} dispatch={dispatch} send={send} show={show} />
             </SourceRow>
           );
@@ -612,7 +628,23 @@ function Connect(props: { model: Model; dispatch: Dispatch; show(s: SetupScreen)
   const form = formOf(model.connections, kind);
   const step = stepOf(steps, form);
   const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
-  if (!connector || !step || step.kind === folderStep) return null;
+  if (!connector || !step || step.kind === folderStep || step.kind === "review") return null;
+  if (step.kind === "browser")
+    return (
+      <>
+        <h1 class="setup-title">{step.title}</h1>
+        <p class="setup-lede">{step.lede}</p>
+        <div class="setup-card">
+          <BrowserStep
+            connector={connector}
+            step={step}
+            form={form}
+            send={send}
+            actions={link("Back", () => show("work"))}
+          />
+        </div>
+      </>
+    );
   if (step.kind === "fields")
     return (
       <>

@@ -1,0 +1,19 @@
+{
+  "options": {
+    "tabs": [
+      {
+        "at": "1FwTrackerFixture000000000000000000000000000/1100",
+        "header": 1,
+        "end": "blank",
+        "hidden": false,
+        "key": "A",
+        "title": "C",
+        "status": "D",
+        "assignee": "E",
+        "estimate": "F",
+        "link": "G",
+        "parent": null
+      }
+    ]
+  }
+}

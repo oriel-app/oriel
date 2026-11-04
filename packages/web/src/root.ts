@@ -616,7 +616,7 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const kind = "kind" in msg.msg ? msg.msg.kind : null;
       const started =
         kind !== null &&
-        msg.msg.type === "connectClicked" &&
+        (msg.msg.type === "connectClicked" || msg.msg.type === "browserOpened") &&
         connections.forms[kind]?.pending === "connecting";
       if (!started) return [{ ...model, connections }, effects];
       const [setup, watching] = updateSetup(model.setup, { type: "watched", on: true });
@@ -854,12 +854,20 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "connectChoices":
     case "connectPicked":
     case "connected":
+    case "browserBegun":
+    case "onboarded":
+    case "reviewed":
+    case "reviewApplied":
     case "configured":
     case "configureUndone":
     case "connectionChoices":
     case "disconnected":
     case "sourceSynced": {
-      const { model: connections, synced } = connectionsReplied(model.connections, msg);
+      const {
+        model: connections,
+        synced,
+        effects = [],
+      } = connectionsReplied(model.connections, msg);
       // The first run stops watching a first sync once its connect has
       // answered.
       const [setup, watching] =
@@ -867,7 +875,9 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
           ? updateSetup(model.setup, { type: "watched", on: false })
           : [model.setup, []];
       const next = { ...model, connections, setup };
-      return synced ? sourceSynced(next, watching) : [next, watching];
+      return synced
+        ? sourceSynced(next, [...watching, ...effects])
+        : [next, [...watching, ...effects]];
     }
     case "connectors":
       return [{ ...model, connectors: connectorsReplied(model.connectors, msg) }, []];

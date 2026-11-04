@@ -24,6 +24,7 @@ import {
   type SearchHit,
   findThreads,
   noThreads,
+  noOptionsYet,
   OptionsUnfit,
   type OrielReads,
   type Ulid,
@@ -254,13 +255,20 @@ async function waitingIn(
         secret: null,
         options,
       };
-      const why = await declaration.fixture.open(connection, via).then(
-        (opened) => {
-          opened.close?.();
-          throw new Error(`the ${kind} fixture opens with the case's options: they fit it`);
-        },
-        (error: unknown) => (error instanceof OptionsUnfit ? error.message : Promise.reject(error)),
-      );
+      // A new connection with no options yet waits, as the server has it;
+      // otherwise opening it says why its options don't fit.
+      const why =
+        !declaration.options(options).ok || declaration.review?.waits(options)
+          ? noOptionsYet
+          : await declaration.fixture.open(connection, via).then(
+              (opened) => {
+                opened.close?.();
+                throw new Error(`the ${kind} fixture opens with the case's options: they fit it`);
+              },
+              (error: unknown) =>
+                error instanceof OptionsUnfit ? error.message : Promise.reject(error),
+            );
+      const { review } = declaration;
       return {
         id,
         kind,
@@ -268,6 +276,7 @@ async function waitingIn(
         why,
         options,
         validator: declaration.options,
+        ...(review ? { draft: { validator: review.draft, doc: review.doc } } : {}),
         preview: async () => (await declaration.fixture.preview?.(connection, via)) ?? [],
       };
     }),

@@ -734,11 +734,12 @@ test("the page gets how every connector shows, connected or not, from its declar
     );
     assert.deepEqual(connector.options, declared.optionFields ?? []);
   }
-  // The first run offers Jira, then a folder, as OA-191 has it.
+  // The first run offers Jira, then a folder, as OA-191 has it, then Google
+  // Sheets (decision 0051).
   assert.deepEqual(
     connectors
       .filter((connector) => connector.connect?.offer.firstRun !== undefined)
       .map((connector) => connector.kind),
-    ["jira", "folder"],
+    ["jira", "folder", "sheets"],
   );
 });

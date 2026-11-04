@@ -127,6 +127,10 @@ export type ActionDeps = {
   // to tell one the user can still apply from one they've moved past, and
   // the name of what it sets; null when that's gone (decision 0051).
   drafted(draft: Draft): { over: unknown; name: string } | null;
+  // A draft's input as its action takes it, such as columns by letter
+  // settled into the headers above them, read from the source now; it
+  // throws why the draft no longer fits. As drafted when absent.
+  settle?(draft: Draft): Promise<Record<string, unknown>>;
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
   // A thread's change sets still to apply, pending or approved: whether
@@ -716,7 +720,9 @@ const handlers = {
     const kept = Object.keys(edit ?? {}).find((key) => fixedFields(action).includes(key));
     if (kept !== undefined)
       throw new ActionError("invalid", `$.edit.${kept}: an edit keeps what the draft acts on`);
-    const input = checked(action, { ...held.draft.input, ...edit } as Fields<typeof action>);
+    const given = { ...held.draft, input: { ...held.draft.input, ...edit } };
+    const settled = deps.settle ? await deps.settle(given) : given.input;
+    const input = checked(action, settled as Fields<typeof action>);
     const handler = handlers[action] as Handler<typeof action>;
     const called = await handler(input, actor, deps, actor);
     const output = called.output as SourceOutcome;

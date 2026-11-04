@@ -51,6 +51,7 @@ import {
   type WorkstreamEndedView,
   isGroupingId,
   type PickChoiceView,
+  type OptionsReviewView,
   type OverviewView,
   type SearchView,
   type StreamEvent,
@@ -139,6 +140,15 @@ export type ApiDeps = {
   // A connector's folder step, or null when it has none or the window
   // doesn't connect it now: the field it fills and what the picker asks.
   folderStep(kind: string): { field: string; prompt: string } | null;
+  // A connector's browser step begun: the address the page opens in the
+  // person's browser, and the ID its connect names to finish it.
+  begin(kind: string): Promise<{ url: string; attempt: string } | { problem: string }>;
+  // A waiting connection's review step (decision 0051).
+  review(id: string, fresh: boolean): Promise<OptionsReviewView>;
+  // The words that start a waiting connection's onboarding turn, or null
+  // when no turn should start; and that its turn started in `thread`.
+  onboard(id: string): string | null;
+  onboarded(id: string, thread: string): void;
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   settings: SettingsService;
@@ -425,6 +435,21 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       throw new Refused(404, "no such thread");
     return thread;
   };
+  // The window chat a question goes to: the one open, or the first of a new
+  // one, on an empty workstream of its own.
+  const windowChatThread = async (): Promise<{ thread: Ulid; made: boolean }> => {
+    const open = deps.threads.windowChat(deps.workspaceId, deps.now());
+    if (open) return { thread: open.id, made: false };
+    const { workstream } = await deps.dispatch("workstream.create", { kind: "window" }, user);
+    const { thread } = await deps.dispatch("thread.open", { workstream }, user);
+    deps.emit({
+      name: "window-chat.opened",
+      at: deps.now(),
+      workspaceId: deps.workspaceId,
+      threadId: thread,
+    });
+    return { thread, made: true };
+  };
   // A workstream marked done or reopened, and how many threads came along.
   const ended = async (
     id: string,
@@ -703,6 +728,44 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
+      // A browser step's sign-in, begun: the address of the source's own
+      // page, which the window opens in the person's browser, and the ID
+      // the connect names once they finish there. Nothing it gives is sent.
+      method: "POST",
+      path: at("/connections/browser"),
+      async run(_, request) {
+        const { kind } = await readJson(request, smallBody, object({ kind: typedText(32) }));
+        const begun = await deps.begin(kind);
+        return "problem" in begun ? json(400, { error: begun.problem }) : json(200, begun);
+      },
+    },
+    {
+      // A waiting connection's review step: Oriel's guess and the agent's
+      // draft, each drawn from the source, never from the drafter's words.
+      method: "GET",
+      path: at("/connections/:id/review"),
+      // Try again reads the source afresh; the window's own polling doesn't.
+      run: async ([id = ""], _request, url) =>
+        json(200, await deps.review(id, url.searchParams.get("fresh") === "1")),
+    },
+    {
+      // The onboarding turn of a connection just made (decision 0051): one
+      // turn of the window chat, the person's, from the connector's own
+      // words, which name nothing synced. None when the agent can't draft,
+      // or one started already.
+      method: "POST",
+      path: at("/connections/:id/draft"),
+      async run([id = ""], request) {
+        await readJson(request, tinyBody, emptyBody);
+        const text = deps.onboard(id);
+        if (text === null) return json(200, { thread: null });
+        const { thread } = await windowChatThread();
+        deps.onboarded(id, thread);
+        await deps.dispatch("thread.say", { thread, text }, user);
+        return json(201, { thread });
+      },
+    },
+    {
       // On the desktop app, a folder step through the system's folder
       // picker, through the shell; then the connection is made as a typed
       // folder's is. Cancelling changes nothing.
@@ -749,11 +812,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       // Sets a connection's options, which apply at once: it syncs with
       // them, and a sync that fails says why beside it. Its Undo puts back
-      // the options it replaced.
+      // the options it replaced. A spreadsheet's mappings are longer than
+      // most.
       method: "POST",
       path: at("/connections/:id/options"),
       async run([id = ""], request) {
-        const { options } = await readJson(request, smallBody, object({ options: unknown }));
+        const { options } = await readJson(request, listBody, object({ options: unknown }));
         const input = checked("source.configure", { connection: id, options });
         const configured = await deps.dispatch("source.configure", input, user);
         if (!("connection" in configured)) throw new Refused(400, configured.problem);
@@ -1104,21 +1168,9 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/window-chat/messages"),
       async run(_, request) {
         const { text } = await readJson(request, messageBody, messageBodyValue);
-        const open = deps.threads.windowChat(deps.workspaceId, deps.now());
-        if (open) {
-          const { seq } = await deps.dispatch("thread.say", { thread: open.id, text }, user);
-          return json(202, { id: open.id, seq });
-        }
-        const { workstream } = await deps.dispatch("workstream.create", { kind: "window" }, user);
-        const { thread } = await deps.dispatch("thread.open", { workstream }, user);
-        deps.emit({
-          name: "window-chat.opened",
-          at: deps.now(),
-          workspaceId: deps.workspaceId,
-          threadId: thread,
-        });
+        const { thread, made } = await windowChatThread();
         const { seq } = await deps.dispatch("thread.say", { thread, text }, user);
-        return json(201, { id: thread, seq });
+        return json(made ? 201 : 202, { id: thread, seq });
       },
     },
     {

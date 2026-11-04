@@ -22,11 +22,13 @@ export function typeText(shape: Shape): string {
     }
     case "object":
       return `{ ${Object.entries(shape.fields)
-        .map(([key, field]) =>
-          field.kind === "optional"
+        .map(([name, field]) => {
+          // A key that isn't a name, such as `in-progress`, is quoted.
+          const key = /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
+          return field.kind === "optional"
             ? `${key}?: ${typeText(field.inner)}`
-            : `${key}: ${typeText(field)}`,
-        )
+            : `${key}: ${typeText(field)}`;
+        })
         .join("; ")} }`;
     case "record":
       return `Record<string, ${typeText(shape.value)}>`;

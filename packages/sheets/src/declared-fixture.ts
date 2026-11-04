@@ -30,6 +30,7 @@ import { googleReads } from "./google.ts";
 import type { SheetsPicks, States, TabMapping } from "./mapping.ts";
 import { type SheetsContext, sheetsContextOf } from "./namespace.ts";
 import { openSheets, type SheetsWrites } from "./open-connection.ts";
+import { sheetsPreview } from "./preview.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 import { type Grid, tableOf } from "./table.ts";
@@ -93,6 +94,9 @@ export function fixturePicks(fixture: SheetsFixture): SheetsPicks {
   };
 }
 
+// The fixture's secret: the stand-in's token, which doesn't run out.
+const fixtureSecret = JSON.stringify({ access: standInToken, expiresAt: Number.MAX_SAFE_INTEGER });
+
 export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, SheetsWrites> = {
   load: () => loaded(loadSheetsFixture()),
   // The fixture's account, with its spreadsheets picked and mapped.
@@ -105,10 +109,12 @@ export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, Sheets
   // give its own stand-in, to edit the spreadsheets as a person would.
   open: (connection, via) =>
     openSheets(
-      {
-        ...connection,
-        secret: JSON.stringify({ access: standInToken, expiresAt: Number.MAX_SAFE_INTEGER }),
-      },
+      { ...connection, secret: fixtureSecret },
+      { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
+    ),
+  preview: (connection, via) =>
+    sheetsPreview(
+      { ...connection, secret: fixtureSecret },
       { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
     ),
 };

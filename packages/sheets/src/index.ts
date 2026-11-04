@@ -37,6 +37,8 @@ export {
   authorizeUrl,
   type Fetch,
   type GoogleClient,
+  googleClientEnv,
+  googleClientOf,
   pickedFiles,
   refresh,
   type Refresh,
@@ -74,7 +76,9 @@ export {
   type SpreadsheetContent,
   spreadsheetKey,
 } from "./attrs.ts";
+export { type SignedIn, sheetsConnect } from "./connecting.ts";
 export { sheetsDeclaration } from "./declaration.ts";
+export { type SheetsDraft, sheetsDraft, sheetsPreview, sheetsReview } from "./preview.ts";
 export { type SheetsContext, sheetsContextOf, sheetsNamespace } from "./namespace.ts";
 export { editableFields, type SheetsArgs, type SheetsOp, sheetsOps } from "./ops.ts";
 export { addRowBody, type CellValue, deleteRowBody, editBody } from "./requests.ts";
@@ -105,8 +109,10 @@ export {
 } from "./mapping.ts";
 export {
   type OpenedSheets,
+  type KeptTokens,
   openSheets,
   picksOf,
+  tokensOf,
   readOnlyOf,
   sheetsProblem,
   type SheetsWrites,

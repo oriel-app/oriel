@@ -337,3 +337,147 @@ test("in Settings, options that don't fit their source say why beside the option
   ).model;
   assert.deepEqual([settingOf(undone, id).said, settingOf(undone, id).problem], [null, null]);
 });
+
+// A connector that signs in on its source's page, then reviews the options
+// Oriel or the agent drafts (decisions 0050 and 0051), as Google Sheets does.
+const signingIn: readonly ConnectStep[] = [
+  {
+    kind: "browser",
+    label: "Sign in",
+    title: "Connect it",
+    lede: "Sign in.",
+    consent: "Oriel reads only what you pick.",
+    go: "Continue",
+    waiting: "Finish there.",
+  },
+  {
+    kind: "review",
+    label: "Review",
+    title: "How Oriel reads it",
+    lede: "Apply it.",
+    reading: "Reading the headers",
+    ask: "Draft how Oriel should read it.",
+  },
+];
+const id = "01JBZ0000000000000000000S1";
+const get = (url: string, tag: Replied["tag"]): Effect => ({
+  type: "http",
+  method: "GET",
+  url,
+  tag,
+});
+
+test("a browser step begins its sign-in as it shows, and connects once the person finishes on the source's page", () => {
+  const model = loaded(["sheets"]);
+  const [starting, begin] = updateConnections(model, { type: "browserShown", kind: "sheets" });
+  assert.deepEqual(begin, [
+    post("/api/connections/browser", { kind: "sheets" }, { kind: "browserBegun", of: "sheets" }),
+  ]);
+  // Showing again while it begins asks nothing more.
+  assert.deepEqual(updateConnections(starting, { type: "browserShown", kind: "sheets" })[1], []);
+  const signIn = { url: "https://accounts.google.com/o/oauth2/v2/auth?state=s", attempt: "a1" };
+  const begun = connectionsReplied(
+    starting,
+    replied({ kind: "browserBegun", of: "sheets" }, true, signIn),
+  ).model;
+  assert.deepEqual(formOf(begun, "sheets").signIn, signIn);
+  // Following the link connects with the sign-in's ID, never what it gives.
+  const [waiting, connect] = updateConnections(begun, {
+    type: "browserOpened",
+    kind: "sheets",
+    steps: signingIn,
+  });
+  assert.deepEqual(connect, [
+    post(
+      "/api/connections",
+      { kind: "sheets", given: { attempt: "a1" } },
+      { kind: "connected", of: "sheets", review: 1 },
+    ),
+  ]);
+  assert.equal(connectState(waiting, "sheets"), "reading");
+  // One Google refused begins again on Try again.
+  const refused = connectionsReplied(
+    waiting,
+    replied({ kind: "connected", of: "sheets", review: 1 }, false, { error: "Try again." }),
+  ).model;
+  assert.deepEqual(
+    [formOf(refused, "sheets").signIn, formOf(refused, "sheets").problem],
+    [null, "Try again."],
+  );
+
+  // Connected and waiting for its options: its review step, and its
+  // onboarding turn.
+  const made = { ...connectionView(), id, kind: "sheets", state: "waiting" as const };
+  const { model: reviewing, effects } = connectionsReplied(
+    // A Sync asked for before failed: signing in again puts that behind it.
+    { ...waiting, problems: { [id]: "Google Sheets needs signing in again." } },
+    replied({ kind: "connected", of: "sheets", review: 1 }, true, { connection: made }),
+  );
+  assert.deepEqual([formOf(reviewing, "sheets").step, formOf(reviewing, "sheets").made], [1, id]);
+  assert.equal(connectState(reviewing, "sheets"), "review");
+  assert.deepEqual(reviewing.problems, {});
+  assert.deepEqual(effects, [
+    post(`/api/connections/${id}/draft`, {}, { kind: "onboarded", of: "sheets", connection: id }),
+  ]);
+  const onboarded = connectionsReplied(
+    reviewing,
+    replied({ kind: "onboarded", of: "sheets", connection: id }, true, { thread: "t" }),
+  );
+  assert.deepEqual(onboarded.effects, [
+    get(`/api/connections/${id}/review`, { kind: "reviewed", of: "sheets", connection: id }),
+  ]);
+});
+
+test("a review step asks again while the agent drafts, and applies its draft, or Oriel's guess, once", () => {
+  const steps = updateConnections(loaded(["sheets"]), { type: "opened", kind: "sheets" })[0];
+  const reviewing: ConnectionsModel = {
+    ...steps,
+    forms: { sheets: { ...blankForm, open: true, step: 1, made: id } },
+  };
+  const guess = { tables: [], options: { spreadsheets: [] } };
+  const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
+  const drafting = connectionsReplied(
+    reviewing,
+    replied(tag, true, { waits: true, guess, draft: null, drafting: { thread: "t" } }),
+  );
+  assert.deepEqual(drafting.effects, [
+    {
+      type: "after",
+      ms: 1500,
+      msg: { type: "connections", msg: { type: "reviewAsked", kind: "sheets", connection: id } },
+    },
+  ]);
+  const applied = { kind: "reviewApplied" as const, of: "sheets", connection: id };
+  // Oriel's guess applies as the person's own options.
+  assert.deepEqual(
+    updateConnections(drafting.model, { type: "reviewApplied", kind: "sheets", connection: id })[1],
+    [post(`/api/connections/${id}/options`, { options: guess.options }, applied)],
+  );
+  // The agent's draft applies as the held draft it is.
+  const drafted = connectionsReplied(
+    drafting.model,
+    replied(tag, true, {
+      waits: true,
+      guess,
+      draft: { thread: "t", seq: 4, tables: [] },
+      drafting: null,
+    }),
+  );
+  assert.deepEqual(drafted.effects, []);
+  const [applying, apply] = updateConnections(drafted.model, {
+    type: "reviewApplied",
+    kind: "sheets",
+    connection: id,
+  });
+  assert.deepEqual(apply, [post("/api/threads/t/held/4/apply", {}, applied)]);
+  assert.deepEqual(
+    updateConnections(applying, { type: "reviewApplied", kind: "sheets", connection: id })[1],
+    [],
+  );
+  const done = connectionsReplied(
+    applying,
+    replied(applied, true, { connection: { ...connectionView(), id, kind: "sheets" } }),
+  );
+  assert.equal(done.synced, true);
+  assert.deepEqual(formOf(done.model, "sheets"), blankForm);
+});

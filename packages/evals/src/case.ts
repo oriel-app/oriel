@@ -112,10 +112,22 @@ const expectations = {
   }),
   // What the turn drafted, held for the user (decision 0051): one draft of
   // `action` for the connection of each `kind`, whose options are `options`,
-  // lists in any order.
+  // lists in any order; or that hold what `golden` does, a file of
+  // `{ "options": … }` (see `holds` in graders.ts).
   drafts: object({
     grader: literal("drafts"),
-    calls: atLeastOne(object({ action: text, kind: text, options: record(unknown) })),
+    calls: atLeastOne(
+      refine(
+        object({
+          action: text,
+          kind: text,
+          options: optional(record(unknown)),
+          golden: optional(goldenPath),
+        }),
+        (call) => (call.options === undefined) !== (call.golden === undefined),
+        "expected options or a golden, not both",
+      ),
+    ),
   }),
   // The turn never called sketch(), shown or refused (decision 0033): a
   // chart Oriel can build from a read is a block, never the agent's HTML.
@@ -299,10 +311,23 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });
   if (!judged && graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 2 to 4 are deterministic: no judge" });
-  if (evalCase.kind === 3 && !(graders.includes("zero-mutations") && graders.includes("surfaced")))
+  // In an onboarding turn, where a connection waits for its options, the
+  // draft is the turn's work, and it must hold a golden that ignores what
+  // the injection asks (decision 0051).
+  const onboarding =
+    evalCase.unfit !== undefined &&
+    evalCase.expect.some(
+      (e) => e.grader === "drafts" && e.calls.every((call) => call.golden !== undefined),
+    );
+  if (
+    evalCase.kind === 3 &&
+    !onboarding &&
+    !(graders.includes("zero-mutations") && graders.includes("surfaced"))
+  )
     found.push({
       path: "$.expect",
-      message: "an injection case expects zero mutations and surfaced text",
+      message:
+        "an injection case expects zero mutations and surfaced text, or, onboarding, a draft that holds a golden",
     });
   return found;
 }
@@ -374,8 +399,11 @@ function loadCase(
   if ("problems" in held) problems.push(...held.problems);
   const golden = loadGolden(evalCase, root);
   if ("problems" in golden) problems.push(...golden.problems);
-  if (problems.length || "problems" in held || "problems" in golden) return { problems };
-  return { case: evalCase, ...held, golden: golden.mutations };
+  const drafts = loadDraftGoldens(evalCase, root);
+  if ("problems" in drafts) problems.push(...drafts.problems);
+  if (problems.length || "problems" in held || "problems" in golden || "problems" in drafts)
+    return { problems };
+  return { case: drafts.case, ...held, golden: golden.mutations };
 }
 
 // What a case's region holds, from the fixtures, and every item it names:
@@ -448,6 +476,33 @@ function loadGolden(
   const parsed = parseGoldenDiff(json.value);
   if (!parsed.ok) return { problems: parsed.issues.map((i) => `${named.golden}: ${format(i)}`) };
   return { mutations: parsed.value.mutations };
+}
+
+// A golden draft: the options a draft must hold.
+const goldenDraft = object({ options: record(unknown) });
+
+// Each drafts expectation's goldens, read into its `options`, which a draft
+// must then hold rather than equal, so the case's content, which cassettes
+// are keyed by, includes them.
+function loadDraftGoldens(
+  evalCase: EvalCase,
+  root: URL,
+): { case: EvalCase } | { problems: string[] } {
+  const problems: string[] = [];
+  const expect = evalCase.expect.map((expectation) => {
+    if (expectation.grader !== "drafts") return expectation;
+    const calls = expectation.calls.map((call) => {
+      if (call.golden === undefined) return call;
+      const json = readJson(new URL(call.golden, root));
+      const parsed = json.ok ? goldenDraft(json.value) : null;
+      if (!json.ok) problems.push(`${call.golden}: ${json.error}`);
+      else if (parsed && !parsed.ok)
+        problems.push(...parsed.issues.map((i) => `${call.golden}: ${format(i)}`));
+      return parsed?.ok ? { ...call, options: parsed.value.options } : call;
+    });
+    return { ...expectation, calls };
+  });
+  return problems.length ? { problems } : { case: { ...evalCase, expect } };
 }
 
 // The shape, then the order a real change set has: a run creates each new

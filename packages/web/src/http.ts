@@ -77,7 +77,13 @@ export type Tag =
   // the connection made, by the connector's kind.
   | { kind: "connectChoices"; of: string }
   | { kind: "connectPicked"; of: string }
-  | { kind: "connected"; of: string }
+  | { kind: "connected"; of: string; review?: number }
+  // A browser step's sign-in begun; a connection's onboarding turn started;
+  // its review step read, and its draft or Oriel's guess applied.
+  | { kind: "browserBegun"; of: string }
+  | { kind: "onboarded"; of: string; connection: string }
+  | { kind: "reviewed"; of: string; connection: string }
+  | { kind: "reviewApplied"; of: string; connection: string }
   // In Settings, by a connection's ID: its options set, or that undone; its
   // pick step's list again; and it disconnected.
   | { kind: "configured"; connection: string }

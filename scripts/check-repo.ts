@@ -187,6 +187,9 @@ export const exemptRoutes: Record<string, string> = {
   "/connections/pick": "a read of a list to pick from, for the details typed, which keeps nothing",
   "/connections/:id/pick":
     "a read of a list to pick from, for a connection's own account, which keeps nothing",
+  // Decision 0050: a browser step's sign-in, on the source's own page.
+  "/connections/browser":
+    "a sign-in begun on the source's page, which keeps nothing until the person's connect",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

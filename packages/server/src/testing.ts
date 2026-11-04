@@ -155,6 +155,8 @@ export type TestOptions = {
   anySite?: boolean;
   // What calls a connection's sync every few minutes, in place of a timer.
   every?: AppOptions["every"];
+  // Oriel's own clients of sources, such as Google's.
+  clients?: AppOptions["clients"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -196,6 +198,7 @@ export async function testApp(
     sources: { jira, ...(options.slack ? { slack: options.slack } : {}), ...options.sources },
     ...(options.connect?.legacy ? { legacyJira: options.connect.legacy } : {}),
     ...(options.anySite ? { anywhere: true } : {}),
+    ...(options.clients ? { clients: options.clients } : {}),
     ...(options.every ? { every: options.every } : {}),
     ...(options.connect?.secrets ? { secrets: options.connect.secrets } : {}),
     reviewBase: new URL(`${origin}/review/`),
