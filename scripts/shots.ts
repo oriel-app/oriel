@@ -3163,7 +3163,7 @@ async function sheetsPath(): Promise<void> {
   const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
   const serving = await firstRunServer(
     start,
-    (deps) => scriptedAgent(deps, planning),
+    (deps) => scripted(deps, planning),
     async () => notes,
     { cli: { signedIn: true }, data, sheets: true },
   );
