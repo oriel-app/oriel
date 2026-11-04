@@ -22,7 +22,7 @@ import {
   union,
   unknown,
 } from "@oriel/core";
-import type { AgentEvent } from "@oriel/agent";
+import type { AgentEvent, Provider, Usage as ModelUsage } from "@oriel/agent";
 import { checkQuotes } from "@oriel/server/quotes";
 import { quotesFrom } from "@oriel/web/markdown";
 import {
@@ -82,6 +82,10 @@ export type SystemInput = {
   model: string;
   // Its only way to the model: cassettes, recording or replaying.
   fetch: Fetch;
+  // In a round on the person's own command-line agent (`--harness`), the
+  // provider it runs on instead; nothing is recorded, and the judge still
+  // goes through `fetch`.
+  provider?: Provider;
 };
 
 // What it hands back: the mutations its change set captured, the calls its
@@ -164,6 +168,8 @@ export type Summary = {
   reps?: number;
   splits: Record<Split, Rate & { failed: number; errored: number }>;
   spend?: Spend;
+  // Under `--harness`, the tokens the person's plan served: no dollars.
+  plan?: Usage;
 };
 
 export type Round = { results: CaseResult[]; summary: Summary };
@@ -188,6 +194,10 @@ export type RoundOptions = {
   clock: () => number;
   now: Instant;
   concurrency?: number;
+  // A provider for each trial, on a command-line agent, told each
+  // response's tokens; absent, the system under test goes through
+  // `transport`.
+  harness?: (counted: (used: ModelUsage) => void) => Provider;
 };
 
 export async function runRound(options: RoundOptions): Promise<Round> {
@@ -204,7 +214,11 @@ export async function runRound(options: RoundOptions): Promise<Round> {
     runCase(loaded, rep, options),
   );
   const results = done.map((d) => d.result);
-  const summary = { ...summarize(results, options), spend: total(done.map((d) => d.spend)) };
+  const summary = {
+    ...summarize(results, options),
+    spend: total(done.map((d) => d.spend)),
+    ...(options.harness ? { plan: total(done.map((d) => d.plan)).tokens } : {}),
+  };
   writeFileSync(
     new URL("results.jsonl", options.out),
     results.map((r) => `${JSON.stringify(r)}\n`).join(""),
@@ -217,13 +231,26 @@ async function runCase(
   loaded: LoadedCase,
   rep: number,
   options: RoundOptions,
-): Promise<{ result: CaseResult; spend: Spend }> {
+): Promise<{ result: CaseResult; spend: Spend; plan: Spend }> {
   const evalCase = loaded.case;
   const tape = options.transport(evalCase.id, rep);
   // Models as requested and as each response reports itself, so an alias
   // can't hide that the judge and the system under test are one model.
   const tested = watched(tape.fetch);
   const judged = watched(tape.fetch);
+  // What a harness's responses used: tokens on the person's plan, no dollars.
+  const harnessed: Spend[] = [];
+  const provider = options.harness?.((used) =>
+    harnessed.push({
+      usd: 0,
+      tokens: {
+        input: used.inputTokens - used.cacheReadTokens - used.cacheWriteTokens,
+        output: used.outputTokens,
+        cacheRead: used.cacheReadTokens,
+        cacheWrite: used.cacheWriteTokens,
+      },
+    }),
+  );
   const started = options.clock();
   let output: SystemOutput | null = null;
   let grades: Grade[] = [];
@@ -238,6 +265,7 @@ async function runCase(
       now: options.now,
       model: options.model,
       fetch: tested.fetch,
+      ...(provider ? { provider } : {}),
     });
     const parsed = systemOutput(raw);
     if (!parsed.ok) {
@@ -274,6 +302,7 @@ async function runCase(
     ms,
   };
   const spend = total([await tested.spend(), await judged.spend()]);
+  const plan = total(harnessed);
   const transcript = {
     ...result,
     case: evalCase,
@@ -281,6 +310,7 @@ async function runCase(
     judgeModel: options.judgeModel,
     modelsCalled: await tested.models(),
     spend,
+    ...(options.harness ? { plan: plan.tokens } : {}),
     output,
   };
   const name = rep ? `${evalCase.id}.rep${rep}` : evalCase.id;
@@ -288,7 +318,7 @@ async function runCase(
     new URL(`transcripts/${name}.json`, options.out),
     `${JSON.stringify(transcript, null, 2)}\n`,
   );
-  return { result, spend };
+  return { result, spend, plan };
 }
 
 const none: Spend = { usd: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };

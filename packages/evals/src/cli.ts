@@ -3,9 +3,17 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { checkClaudeCode, claudeCodeProvider } from "@oriel/agent";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
 import { readEnv } from "../../../scripts/env.ts";
-import { anthropicFetch, anthropicKey, type Fetch, isPriced, sameModel } from "./anthropic.ts";
+import {
+  anthropicFetch,
+  anthropicKey,
+  cost,
+  type Fetch,
+  isPriced,
+  sameModel,
+} from "./anthropic.ts";
 import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
 import {
@@ -32,9 +40,11 @@ export const defaults = { model: "claude-opus-5-5", judge: "claude-sonnet-5-5" }
 export const evalNow: Instant = instant(new Date("2026-10-29T09:00:00.000Z"));
 
 export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baseline <round>] [--env <path>]
-           [--climb <name> [--split train|test|all] [--label <text>]]
+           [--climb <name> [--split train|test|all] [--label <text>]] [--harness claude-code]
          runs every case against the live model and records its cassettes;
          --env names the .env holding ANTHROPIC_API_KEY (default: the repo root's);
+         --harness runs the system under test on your own Claude Code instead,
+         records nothing, and keeps the judge on the key; not with --climb;
          --climb runs a climb's round: its frozen cases, each its trials a case,
          train alone unless --split says otherwise, refused past its cap
        pnpm evals compare <baseline rounds> <candidate rounds> [--trim]
@@ -58,6 +68,7 @@ export type Command =
       climb?: string;
       split?: RoundSplit;
       label?: string;
+      harness?: "claude-code";
     }
   | { command: "replay"; model: string; judge: string }
   | { command: "compare"; baseline: string; candidate: string; trim?: true }
@@ -81,6 +92,7 @@ function parse(args: readonly string[]) {
         trim: { type: "boolean" },
         cap: { type: "string" },
         reps: { type: "string" },
+        harness: { type: "string" },
       },
     });
   } catch {
@@ -108,7 +120,7 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   const judge = values.judge ?? defaults.judge;
   if (sameModel(judge, model))
     return { error: "the judge model must differ from the model under test" };
-  const { climb, split, label, trim, cap, reps } = values;
+  const { climb, split, label, trim, cap, reps, harness } = values;
   const climbFlags = climb ?? split ?? label;
   const planFlags = cap ?? reps;
   if (
@@ -119,7 +131,8 @@ export function parseCommand(args: readonly string[]): Command | { error: string
     (climb !== undefined || climbFlags === undefined) &&
     (climb === undefined || isClimbName(climb)) &&
     (split === undefined || roundSplit(split).ok) &&
-    (label === undefined || label.trim() !== "")
+    (label === undefined || label.trim() !== "") &&
+    (harness === undefined || (harness === "claude-code" && climb === undefined))
   ) {
     const live = {
       command: "live" as const,
@@ -129,12 +142,19 @@ export function parseCommand(args: readonly string[]): Command | { error: string
       ...(climb === undefined ? {} : { climb }),
       ...(split === undefined ? {} : { split: split as RoundSplit }),
       ...(label === undefined ? {} : { label }),
+      ...(harness === undefined ? {} : { harness: "claude-code" as const }),
     };
     if (values.env === undefined) return live;
     if (values.env.trim()) return { ...live, env: values.env };
   }
   const flags =
-    values.model ?? values.judge ?? values.baseline ?? values.env ?? climbFlags ?? planFlags;
+    values.model ??
+    values.judge ??
+    values.baseline ??
+    values.env ??
+    climbFlags ??
+    planFlags ??
+    harness;
   if (verb === "replay" && rest.length === 0 && flags === undefined && trim === undefined)
     return { command: "replay", model, judge };
   const [first = "", second = ""] = rest;
@@ -155,8 +175,13 @@ export function parseCommand(args: readonly string[]): Command | { error: string
     isClimbName(first) &&
     plan.cap !== null &&
     plan.reps !== null &&
-    (values.model ?? values.judge ?? values.baseline ?? values.env ?? climbFlags ?? trim) ===
-      undefined
+    (values.model ??
+      values.judge ??
+      values.baseline ??
+      values.env ??
+      climbFlags ??
+      trim ??
+      harness) === undefined
   )
     return { command: "freeze", climb: first, cap: plan.cap, reps: plan.reps };
   return { error: usage };
@@ -197,6 +222,10 @@ export type Io = {
   clock: () => number;
   log: (line: string) => void;
   error: (line: string) => void;
+  // Stand in for the person's Claude Code under `--harness`; tests pass
+  // their own, so none starts the CLI.
+  claudeCode?: () => ReturnType<typeof checkClaudeCode>;
+  harness?: typeof claudeCodeProvider;
 };
 
 const repoIo: Io = {
@@ -292,6 +321,15 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.error(key.problem);
     return 1;
   }
+  // The person's own Claude Code, checked as the server checks it.
+  const cli =
+    command.command === "live" && command.harness
+      ? await (io.claudeCode ?? checkClaudeCode)()
+      : null;
+  if (cli && !cli.ok) {
+    io.error(cli.problem.message);
+    return 1;
+  }
   // The key goes to the model client and nowhere else.
   const live = key ? anthropicFetch(key.key, io.network) : null;
   const id = ulid(io.now());
@@ -319,7 +357,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     // A case's first trial records its cassettes; the others only spend.
     transport: (caseId, rep) => {
       const dir = cassetteDir(io.cassettes, caseId, command.model, command.judge);
-      if (live && rep > 0) return { fetch: live, commit: () => null };
+      if (live && (rep > 0 || cli)) return { fetch: live, commit: () => null };
       return live ? cassettes({ mode: "record", dir, live }) : cassettes({ mode: "replay", dir });
     },
     reps,
@@ -330,6 +368,12 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     clock: io.clock,
     now: evalNow,
     concurrency: live ? 4 : 1,
+    ...(cli?.ok
+      ? {
+          harness: (counted) =>
+            (io.harness ?? claudeCodeProvider)({ cli: cli.cli, model: command.model, counted }),
+        }
+      : {}),
   });
   const failing = new Map(
     cases.flatMap((c) => (c.case.failing ? [[c.case.id, c.case.failing.grader] as const] : [])),
@@ -338,12 +382,20 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
   if (reps > 1) io.log(`${reps} trials a case; each split counts trials`);
   io.log(formatRound(ran, failing));
   io.log(`results: .evals/${id}/`);
-  const cost = ran.summary.spend?.usd ?? 0;
+  const spentUsd = ran.summary.spend?.usd ?? 0;
   if (plan && climb) {
-    writeLedger(climbs, climb, { ...entry, trials: ran.results.length, usd: cost });
-    const total = spent(plan.ledger) + cost;
-    io.log(`spent ${usd(cost)}; climb ${climb} has spent ${usd(total)} of ${usd(plan.climb.cap)}`);
-  } else if (live) io.log(`spent ${usd(cost)}`);
+    writeLedger(climbs, climb, { ...entry, trials: ran.results.length, usd: spentUsd });
+    const total = spent(plan.ledger) + spentUsd;
+    io.log(
+      `spent ${usd(spentUsd)}; climb ${climb} has spent ${usd(total)} of ${usd(plan.climb.cap)}`,
+    );
+  } else if (cli) {
+    // The judge's dollars, and what the plan's tokens would have cost on the key.
+    const priced = ran.summary.plan ? (cost(command.model, ran.summary.plan) ?? 0) : 0;
+    io.log(
+      `spent ${usd(spentUsd)} on the judge; on Claude Code, about ${usd(priced)} at API prices`,
+    );
+  } else if (live) io.log(`spent ${usd(spentUsd)}`);
   if (baseline) io.log(formatChange(compareChange(readResults(baseline), ran.results, "better")));
   return exitCode(ran.results, command.command, failing);
 }

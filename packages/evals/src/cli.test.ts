@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  existsSync,
   linkSync,
   mkdirSync,
   readdirSync,
@@ -232,4 +233,107 @@ test("a live round whose --env isn't a regular file stops before any model call"
   assert.deepEqual(lines, [
     `${fileURLToPath(dir)} is not a regular file with one link; it is refused`,
   ]);
+});
+
+test("--harness claude-code is a live round's, and never a climb's", () => {
+  assert.deepEqual(parseCommand(["--harness", "claude-code"]), {
+    command: "live",
+    model: defaults.model,
+    judge: defaults.judge,
+    baseline: null,
+    harness: "claude-code",
+  });
+  for (const args of [
+    ["--harness", "codex"],
+    ["--harness", "claude-code", "--climb", "oa-144"],
+    ["replay", "--harness", "claude-code"],
+    ["compare", a, b, "--harness", "claude-code"],
+  ])
+    assert.deepEqual(parseCommand(args), { error: usage }, args.join(" "));
+});
+
+test("a round on Claude Code runs the agent there, records nothing and counts its tokens", async (t) => {
+  const dir = realDir(t);
+  const env = writeEnv(dir);
+  const lines: string[] = [];
+  let tick = 0;
+  const models: string[] = [];
+  const io: Io = {
+    cases: writeCase(dir),
+    cassettes: new URL("cassettes/", dir),
+    rounds: new URL("rounds/", dir),
+    envFile: new URL("missing/.env", dir),
+    // The one case has no judge, so nothing reaches the key.
+    network: async () => assert.fail("no call on the key"),
+    now: () => Date.UTC(2026, 10, 1),
+    clock: () => tick++,
+    log: (line) => lines.push(line),
+    error: (line) => lines.push(line),
+    claudeCode: async () => ({ ok: true, cli: { path: "/stand-in/claude", version: "2.1.314" } }),
+    harness: ({ model, counted }) => {
+      models.push(model ?? "");
+      return {
+        converse: () => ({
+          async *next() {
+            const usage = {
+              inputTokens: 10_000,
+              outputTokens: 500,
+              cacheReadTokens: 6_000,
+              cacheWriteTokens: 3_000,
+            };
+            yield { kind: "text", text: "Approve it, then Revert it from the thread." };
+            counted?.(usage, true);
+            yield { kind: "end", stop: "done", detail: null, model: defaults.model, usage };
+          },
+        }),
+      };
+    },
+  };
+  const command = parseCommand(["--env", env, "--harness", "claude-code"]);
+  assert.ok(!("error" in command));
+  assert.equal(await main(command, io), 0, lines.join("\n"));
+  assert.deepEqual(models, [defaults.model]);
+  assert.match(lines.join("\n"), /^train {2}1\/1 100%/m);
+  assert.match(
+    lines.join("\n"),
+    /^spent \$0\.00 on the judge; on Claude Code, about \$0\.03 at API prices$/m,
+  );
+  assert.ok(!existsSync(io.cassettes), "no cassette is written");
+  const [round = ""] = readdirSync(io.rounds);
+  const summary = JSON.parse(readFileSync(new URL(`${round}/summary.json`, io.rounds), "utf8"));
+  assert.deepEqual(summary.spend, {
+    usd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.deepEqual(summary.plan, {
+    input: 1_000,
+    output: 500,
+    cacheRead: 6_000,
+    cacheWrite: 3_000,
+  });
+});
+
+test("a round on a Claude Code that isn't ready says why and stops before any model call", async (t) => {
+  const dir = realDir(t);
+  const lines: string[] = [];
+  const io: Io = {
+    cases: writeCase(dir),
+    cassettes: new URL("cassettes/", dir),
+    rounds: new URL("rounds/", dir),
+    envFile: new URL("missing/.env", dir),
+    network: async () => assert.fail("no model call"),
+    now: () => Date.UTC(2026, 10, 1),
+    clock: () => 0,
+    log: (line) => lines.push(line),
+    error: (line) => lines.push(line),
+    claudeCode: async () => ({
+      ok: false,
+      problem: { kind: "signed-out", message: "Claude Code is installed but not signed in." },
+    }),
+    harness: () => assert.fail("no provider"),
+  };
+  const command = parseCommand(["--env", writeEnv(dir), "--harness", "claude-code"]);
+  assert.ok(!("error" in command));
+  assert.equal(await main(command, io), 1);
+  assert.deepEqual(lines, ["Claude Code is installed but not signed in."]);
 });

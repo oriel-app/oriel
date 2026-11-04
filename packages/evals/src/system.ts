@@ -2,7 +2,8 @@
 // (`@oriel/agent`) answering the case's prompt as one turn of a new thread,
 // in the case's world (world.ts), with the real bindings over its region and
 // the real sandbox. It reaches the model through the Anthropic provider over
-// the round's cassettes, so a live round records and CI replays.
+// the round's cassettes, so a live round records and CI replays; a round with
+// `--harness` runs on the person's own Claude Code instead, and records none.
 //
 // Runs, the change set, the intents and the drafts are kept in memory: every
 // intent applies, as the calls the server's dispatcher would get, and every
@@ -99,7 +100,9 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     createdAt: input.now,
   };
   const deps: AgentDeps = {
-    provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
+    provider:
+      input.provider ??
+      anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
     bindingsFor: (r, threadId, shown) => {
       const bindings = bindingsFor(r, {
