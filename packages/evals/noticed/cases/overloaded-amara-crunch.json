@@ -1,0 +1,98 @@
+{
+  "id": "overloaded-amara-crunch",
+  "split": "train",
+  "group": "overloaded",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "set",
+      "item": "jira:SYN-98",
+      "state": "in-progress",
+      "daysAgo": 3
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-85",
+      "state": "in-progress",
+      "daysAgo": 2
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-89",
+      "state": "in-progress",
+      "daysAgo": 2
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-92",
+      "append": "Comment by Dara Nikolaidis: Amara is covering my work as well as her own while I'm out, and the fare breakdown is now a week late. She's said she can't keep this up."
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-39",
+      "state": "in-progress",
+      "assignee": "farid",
+      "daysAgo": 1
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-44",
+      "state": "in-progress",
+      "assignee": "farid",
+      "daysAgo": 1
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-116",
+      "state": "in-progress",
+      "assignee": "farid",
+      "daysAgo": 1
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-39",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-44",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-116",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-93",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-119",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-113",
+      "append": "Release-train tracking ticket: it moves to Done by itself when the train ships. Nobody works on it."
+    }
+  ],
+  "expect": {
+    "find": ["overloaded:amara"],
+    "avoid": ["overloaded:farid"]
+  },
+  "about": "One person is really overloaded; another's count is tracking tickets."
+}

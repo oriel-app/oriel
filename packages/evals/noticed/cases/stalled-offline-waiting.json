@@ -1,0 +1,48 @@
+{
+  "id": "stalled-offline-waiting",
+  "split": "test",
+  "group": "stalled",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Offline",
+      "epic": "jira:SYN-96"
+    },
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-96",
+      "daysAgo": 21
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-113",
+      "append": "Comment by Farid Haddad: Waiting for Ops to decide whether double boarding should block the second scan or only warn. Asked twice in October, no answer, and the pier pilot starts in three weeks."
+    },
+    {
+      "op": "quiet",
+      "region": "weather-epic",
+      "daysAgo": 26
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-3",
+      "append": "Comment by Amara Okafor: Parked until the spring release, as agreed at the roadmap review. The team moved to Checkout on purpose; nothing is waiting on anyone."
+    }
+  ],
+  "expect": {
+    "find": ["stalled:@Offline"],
+    "avoid": ["stalled:@Weather"]
+  },
+  "about": "A stall waiting on a decision, and one parked on purpose."
+}

@@ -1,0 +1,124 @@
+{
+  "id": "scope-boarding-grew",
+  "split": "train",
+  "group": "scope",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    },
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "new",
+      "key": "SYN-200",
+      "title": "Board foot passengers by name when the scanner is down",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "Requested by the port operator last week: crew must be able to board foot passengers by name from the manifest when the handset scanner fails. New work, not in the original plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-201",
+      "title": "Boarding: audit log of manual overrides",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "The port operator also wants every manual boarding override logged for their safety audit. New requirement.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-202",
+      "title": "Boarding: second scanner model for the winter ferry",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "The winter ferry uses a different handset model; passes must scan on both. Not planned before.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-203",
+      "title": "Boarding: accessibility assistance flag on the pass",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "bastian",
+      "estimate": 3,
+      "text": "Show when a passenger booked assistance so crew can help at the ramp. Raised by the operator.",
+      "daysAgo": 3
+    },
+    {
+      "op": "join",
+      "items": ["jira:SYN-200", "jira:SYN-201", "jira:SYN-202", "jira:SYN-203"],
+      "epic": "jira:SYN-2",
+      "daysAgo": 2
+    },
+    {
+      "op": "new",
+      "key": "SYN-210",
+      "title": "Rebooking: pick the next sailing",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "yuting",
+      "estimate": 3,
+      "text": "Split out of SYN-102 so two people can share it. Same work as planned, no new scope; SYN-102's estimate goes down by as much.",
+      "daysAgo": 4
+    },
+    {
+      "op": "new",
+      "key": "SYN-211",
+      "title": "Rebooking: carry the fare over",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "yuting",
+      "estimate": 3,
+      "text": "Split out of SYN-102 so two people can share it. Same work as planned, no new scope; SYN-102's estimate goes down by as much.",
+      "daysAgo": 4
+    },
+    {
+      "op": "new",
+      "key": "SYN-212",
+      "title": "Rebooking: confirm in two taps",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "yuting",
+      "estimate": 3,
+      "text": "Split out of SYN-102 so two people can share it. Same work as planned, no new scope; SYN-102's estimate goes down by as much.",
+      "daysAgo": 4
+    },
+    {
+      "op": "new",
+      "key": "SYN-213",
+      "title": "Rebooking: send the new boarding pass",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "yuting",
+      "estimate": 3,
+      "text": "Split out of SYN-102 so two people can share it. Same work as planned, no new scope; SYN-102's estimate goes down by as much.",
+      "daysAgo": 4
+    },
+    {
+      "op": "join",
+      "items": ["jira:SYN-210", "jira:SYN-211", "jira:SYN-212", "jira:SYN-213"],
+      "epic": "jira:SYN-3",
+      "daysAgo": 3
+    }
+  ],
+  "expect": {
+    "find": ["scope:jira:SYN-2"],
+    "avoid": ["scope:jira:SYN-3"]
+  },
+  "about": "An epic grew with new asks; another grew only by a split of planned work."
+}

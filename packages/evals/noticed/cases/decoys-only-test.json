@@ -1,0 +1,74 @@
+{
+  "id": "decoys-only-test",
+  "split": "test",
+  "group": "decoys",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    },
+    {
+      "name": "Offline",
+      "epic": "jira:SYN-96"
+    },
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "region": "weather-epic",
+      "daysAgo": 26
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-3",
+      "append": "Comment by Amara Okafor: Parked until the spring release, as agreed at the roadmap review. The team moved to Checkout on purpose; nothing is waiting on anyone."
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-100",
+      "from": 3,
+      "to": 8,
+      "daysAgo": 4
+    },
+    {
+      "op": "estimate",
+      "item": "jira:SYN-103",
+      "from": 3,
+      "to": 5,
+      "daysAgo": 4
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-100",
+      "append": "Comment by Esme Whitlock: Re-estimated in the team's calibration session; the work itself hasn't changed and the dates hold."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-103",
+      "append": "Comment by Esme Whitlock: Calibration re-estimate, same work."
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-41",
+      "daysAgo": 5
+    },
+    {
+      "op": "message",
+      "author": "Ines Carvalho",
+      "text": "Receipt emails from SYN-41 now show the vehicle registration, checked on three bookings this morning. Thanks team.",
+      "names": ["jira:SYN-41"],
+      "daysAgo": 1
+    }
+  ],
+  "expect": {
+    "find": [],
+    "avoid": ["stalled:@Weather", "drift:@Offline", "contradicted:jira:SYN-41"]
+  },
+  "about": "Every planted signal is explained away by its own items."
+}

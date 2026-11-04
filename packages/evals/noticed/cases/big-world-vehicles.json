@@ -1,0 +1,44 @@
+{
+  "id": "big-world-vehicles",
+  "split": "train",
+  "group": "big",
+  "base": "big",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-4",
+      "daysAgo": 24
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-9",
+      "append": "Comment by Esme Whitlock: Blocked waiting on the port authority's deck-plan API. Nobody has chased them since early October, and the trailer pricing launch depends on it."
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-104",
+      "estimate": 3
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-21",
+      "append": "Comment by Dara Nikolaidis: Re-pointed on the new scale, no new work."
+    }
+  ],
+  "expect": {
+    "find": ["stalled:@Vehicles"],
+    "avoid": []
+  },
+  "about": "SYN grown to 4,000 items, with one planted stall."
+}

@@ -130,7 +130,11 @@ export const jiraPresentation: Presentation = { name: "Jira", details: jiraDetai
 // estimate, in its board's points; null when not estimated yet, or on a board
 // that takes no estimates.
 export const jiraDeclaredFacets = {
-  estimate: { label: "Estimate", of: (record) => record.facets.estimate ?? null },
+  estimate: {
+    label: "Estimate",
+    of: (record) => record.facets.estimate ?? null,
+    measures: "estimate",
+  },
 } satisfies DeclaredFacets;
 
 // An issue type in core's words. The hierarchy decides where Jira gives one:

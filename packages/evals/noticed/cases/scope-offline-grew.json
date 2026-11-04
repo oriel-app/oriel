@@ -1,0 +1,100 @@
+{
+  "id": "scope-offline-grew",
+  "split": "test",
+  "group": "scope",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Offline",
+      "epic": "jira:SYN-96"
+    },
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    }
+  ],
+  "plants": [
+    {
+      "op": "new",
+      "key": "SYN-220",
+      "title": "Offline refunds at the pier",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "farid",
+      "estimate": 3,
+      "text": "New from the port operator this week, on top of the original offline plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-221",
+      "title": "Offline seat changes",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "farid",
+      "estimate": 3,
+      "text": "New from the port operator this week, on top of the original offline plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-222",
+      "title": "Offline sales of foot passenger tickets",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "farid",
+      "estimate": 3,
+      "text": "New from the port operator this week, on top of the original offline plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "new",
+      "key": "SYN-223",
+      "title": "Offline crew handover report",
+      "kind": "story",
+      "state": "todo",
+      "assignee": "farid",
+      "estimate": 3,
+      "text": "New from the port operator this week, on top of the original offline plan.",
+      "daysAgo": 3
+    },
+    {
+      "op": "join",
+      "items": ["jira:SYN-220", "jira:SYN-221", "jira:SYN-222", "jira:SYN-223"],
+      "epic": "jira:SYN-96",
+      "daysAgo": 2
+    },
+    {
+      "op": "join",
+      "items": ["jira:SYN-10", "jira:SYN-57", "jira:SYN-88", "jira:SYN-98"],
+      "epic": "jira:SYN-4",
+      "daysAgo": 3
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-10",
+      "append": "Comment by Esme Whitlock: Moved under Vehicles in the backlog tidy-up; it was filed under the wrong epic. No new work."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-57",
+      "append": "Comment by Esme Whitlock: Moved under Vehicles in the backlog tidy-up; it was filed under the wrong epic. No new work."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-88",
+      "append": "Comment by Esme Whitlock: Moved under Vehicles in the backlog tidy-up; it was filed under the wrong epic. No new work."
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-98",
+      "append": "Comment by Esme Whitlock: Moved under Vehicles in the backlog tidy-up; it was filed under the wrong epic. No new work."
+    }
+  ],
+  "expect": {
+    "find": ["scope:jira:SYN-96"],
+    "avoid": ["scope:jira:SYN-4"]
+  },
+  "about": "An epic grew with new asks; another only gained misfiled stories."
+}

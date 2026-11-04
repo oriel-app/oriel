@@ -1,0 +1,48 @@
+{
+  "id": "contradicted-sms",
+  "split": "train",
+  "group": "contradicted",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "done",
+      "item": "jira:SYN-61",
+      "daysAgo": 6
+    },
+    {
+      "op": "message",
+      "author": "Ines Carvalho",
+      "text": "Passengers without the app still got no SMS when the 18:00 sailing was cancelled yesterday. SYN-61 doesn't seem to be working in production, support took forty calls.",
+      "names": ["jira:SYN-61"],
+      "daysAgo": 1
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-90",
+      "daysAgo": 4
+    },
+    {
+      "op": "message",
+      "author": "Bastian Holm",
+      "text": "Thanks everyone for shipping SYN-90! Crew say the wallet passes scan fine at the linkspan 🎉",
+      "names": ["jira:SYN-90"],
+      "daysAgo": 2
+    }
+  ],
+  "expect": {
+    "find": ["contradicted:jira:SYN-61"],
+    "avoid": ["contradicted:jira:SYN-90"]
+  },
+  "about": "Chat says a done story is broken; chat thanks people for another."
+}
