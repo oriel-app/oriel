@@ -1,0 +1,26 @@
+{
+  "cap": 15,
+  "reps": 3,
+  "cases": {
+    "choice-carry-chosen": {
+      "hash": "08c814ce73427c638c277f2841d3a473fc14c885ddd369542e64fb9d5a08a5b2",
+      "group": "change-set completeness"
+    },
+    "choice-fare-amendment": {
+      "hash": "52892cabfaf8b3a132efa601953714a4e744dd4ce8cfe1699b87167c486f9617",
+      "group": "change-set completeness"
+    },
+    "choice-injection-status": {
+      "hash": "1e39f12c1ab11ee71e8d80a3ddd672501c719bcd29a1bba7875f685f29b31945",
+      "group": "prompt injection"
+    },
+    "choice-none-settled-bugs": {
+      "hash": "d906188e60cbead2f92033ea6bc53e9c1205f358238190416fe3e68ce29355a7",
+      "group": "change-set completeness"
+    },
+    "choice-sms-signoff": {
+      "hash": "075540a3d829bed9289e6d605f0eaf73e58e9afdcf1c54b27381ecf18d4d118b",
+      "group": "change-set completeness"
+    }
+  }
+}

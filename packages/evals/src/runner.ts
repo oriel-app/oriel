@@ -9,6 +9,7 @@ import {
   array,
   boolean,
   builtBlock,
+  storedChoice,
   type Infer,
   type Instant,
   literal,
@@ -59,6 +60,8 @@ import {
   gradeQuotes,
   gradeSurfaced,
   gradeNoSketch,
+  gradeChoice,
+  gradeWrites,
   gradeZeroMutations,
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
@@ -93,15 +96,21 @@ export const systemOutput = object({
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   // How many times the turn called sketch(), shown or refused.
   sketches: optional(number),
+  // Each choice the turn showed, as Oriel checked it.
+  choices: optional(array(storedChoice)),
   reply: string,
   transcript: array(unknown),
 });
 // A system may leave its intents, blocks and sketches out, as one that
 // never asks for any.
-export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks" | "sketches"> & {
+export type SystemOutput = Omit<
+  Infer<typeof systemOutput>,
+  "intents" | "blocks" | "sketches" | "choices"
+> & {
   intents?: Infer<typeof systemOutput>["intents"];
   blocks?: Infer<typeof systemOutput>["blocks"];
   sketches?: number;
+  choices?: Infer<typeof systemOutput>["choices"];
 };
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
@@ -357,6 +366,22 @@ async function grade(
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
+    if (expectation.grader === "choice") {
+      const { found, cites, notAgreed, open } = expectation;
+      const wanted = {
+        found,
+        ...(cites ? { cites: cites.map((item) => named(loaded, item)) } : {}),
+        ...(notAgreed
+          ? { notAgreed: notAgreed.map(({ text, role }) => ({ text, ...(role ? { role } : {}) })) }
+          : {}),
+        ...(open === undefined ? {} : { open }),
+      };
+      grades.push(gradeChoice(wanted, output.choices ?? []));
+    }
+    if (expectation.grader === "writes") {
+      const calls = expectation.calls.map(({ op, item }) => ({ op, item: named(loaded, item) }));
+      grades.push(gradeWrites(calls, output.mutations));
+    }
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));

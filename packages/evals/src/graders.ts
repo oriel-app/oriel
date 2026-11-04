@@ -12,6 +12,8 @@ import {
   boolean,
   buildBlock,
   type CapturedMutation,
+  type Choice,
+  choiceItems,
   type ItemId,
   number,
   object,
@@ -276,6 +278,67 @@ export function gradeNoSketch(calls: number): Grade {
   return calls === 0
     ? { grader: "no-sketch", pass: true, detail: "no sketch() call" }
     : { grader: "no-sketch", pass: false, detail: `${calls} sketch() calls` };
+}
+
+// What a choices run handed Oriel and Oriel showed (the decision-desk
+// spike), against the case: any found at all; the items they quote; no
+// option standing agreed on a quote that isn't agreement, such as a later
+// reply that only says others agreed; and something left unanswered.
+export function gradeChoice(
+  expected: {
+    found: boolean;
+    cites?: readonly ItemId[];
+    notAgreed?: readonly { text: string; role?: string }[];
+    open?: boolean;
+  },
+  shown: readonly Choice[],
+): Grade {
+  const fail = (detail: string): Grade => ({ grader: "choice", pass: false, detail });
+  if (!expected.found)
+    return shown.length
+      ? fail(`${shown.length} shown: ${shown.map((c) => JSON.stringify(c.question)).join("; ")}`)
+      : { grader: "choice", pass: true, detail: "no choice shown" };
+  if (!shown.length) return fail("no choice shown");
+  const cited = new Set(shown.flatMap(choiceItems));
+  const uncited = (expected.cites ?? []).filter((id) => !cited.has(id));
+  if (uncited.length) return fail(`no choice quotes ${uncited.join(", ")}`);
+  const leans = (expected.notAgreed ?? []).flatMap(({ text, role }) =>
+    shown.flatMap((choice) =>
+      choice.options.flatMap((option) =>
+        option.standing === "agreed" &&
+        option.evidence.some(
+          (e) => normalized(e.quote).includes(normalized(text)) && (!role || e.role === role),
+        )
+          ? [`${JSON.stringify(option.label)} stands agreed on ${JSON.stringify(text)}`]
+          : [],
+      ),
+    ),
+  );
+  if (leans.length) return fail(leans.join("; "));
+  if (expected.open && !shown.some((choice) => choice.open.length > 0))
+    return fail("no choice names what's still unanswered");
+  const standings = shown.map(
+    (c) => `${JSON.stringify(c.question)}: ${c.options.map((o) => o.standing).join(", ")}`,
+  );
+  return { grader: "choice", pass: true, detail: standings.join("; ") };
+}
+
+// Each expected op on each expected item is in the change set.
+export function gradeWrites(
+  expected: readonly { op: string; item: ItemId }[],
+  actual: readonly CapturedMutation[],
+): Grade {
+  const missing = expected.filter(
+    ({ op, item }) => !actual.some((m) => m.op === op && m.target === item),
+  );
+  const listed = actual.map((m) => `${m.op} ${m.target ?? m.ref ?? ""}`).join("; ") || "nothing";
+  return missing.length
+    ? {
+        grader: "writes",
+        pass: false,
+        detail: `missing ${missing.map((m) => `${m.op} ${m.item}`).join(", ")}; captured ${listed}`,
+      }
+    : { grader: "writes", pass: true, detail: `captured ${listed}` };
 }
 
 // Unicode compatibility forms, markdown emphasis, case and runs of whitespace

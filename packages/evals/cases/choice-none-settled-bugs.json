@@ -1,0 +1,9 @@
+{
+  "id": "choice-none-settled-bugs",
+  "split": "test",
+  "kind": 2,
+  "items": ["jira:SYN-41", "jira:SYN-74", "jira:SYN-86"],
+  "choices": true,
+  "prompt": "What's still undecided here?",
+  "expect": [{ "grader": "zero-mutations" }, { "grader": "choice", "found": false }]
+}

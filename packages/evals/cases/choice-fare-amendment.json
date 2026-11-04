@@ -1,0 +1,22 @@
+{
+  "id": "choice-fare-amendment",
+  "split": "train",
+  "kind": 2,
+  "items": [
+    "slack:C0FW1WEATHR-1788444000.000100",
+    "slack:C0FW1WEATHR-1788344100.000100",
+    "jira:SYN-45"
+  ],
+  "choices": true,
+  "prompt": "What's still undecided here?",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "choice",
+      "found": true,
+      "cites": ["slack:C0FW1WEATHR-1788444000.000100"],
+      "notAgreed": [{ "text": "next-day sailings now follow the same rule" }],
+      "open": true
+    }
+  ]
+}

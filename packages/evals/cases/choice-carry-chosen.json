@@ -1,0 +1,43 @@
+{
+  "id": "choice-carry-chosen",
+  "split": "test",
+  "kind": 2,
+  "items": ["slack:C0FW1WEATHR-1788444000.000100", "jira:SYN-45"],
+  "before": [
+    {
+      "role": "user",
+      "text": "What's still undecided here?"
+    },
+    {
+      "role": "assistant",
+      "text": "One choice is still open: whether passengers keep their fare on next-day sailings after a weather cancellation. Option 1, same day only with next day case by case, is what the decision in [[slack:C0FW1WEATHR-1788444000.000100]] says. Option 2, next day too, is only proposed: the later reply says ops agreed, but nobody from ops says so, and [[jira:SYN-45]] hasn't changed since June."
+    },
+    {
+      "role": "note",
+      "note": {
+        "kind": "choice",
+        "choice": "01KD0000000000000000000001",
+        "outcome": "chosen",
+        "option": 1,
+        "question": "Do passengers keep their fare on next-day sailings after a weather cancellation?",
+        "label": "Next day too: the fare holds on the next day's sailings"
+      }
+    }
+  ],
+  "prompt": "Carry my choice into the work: propose the changes to the items, and a reply in the conversation saying what was decided.",
+  "expect": [
+    {
+      "grader": "writes",
+      "calls": [
+        {
+          "op": "setDescription",
+          "item": "jira:SYN-45"
+        },
+        {
+          "op": "reply",
+          "item": "slack:C0FW1WEATHR-1788444000.000100"
+        }
+      ]
+    }
+  ]
+}

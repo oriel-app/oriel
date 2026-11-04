@@ -5,6 +5,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   array,
+  boolean,
+  choiceWords,
   type CapturedMutation,
   type ChangeSetState,
   changeSetStates,
@@ -119,6 +121,24 @@ const expectations = {
   // sending the user to make a change by hand.
   avoids: object({ grader: literal("avoids"), text: atLeastOne(text) }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
+  // The decision-desk spike: what a choices run handed Oriel. `found`:
+  // whether it showed any choice. `cites`: items some shown choice quotes.
+  // `notAgreed`: quotes no option may stand agreed on, by text the quote
+  // contains, and as `role` where given, such as a later reply read as
+  // agreement. `open`: some shown choice names what's still unanswered.
+  choice: object({
+    grader: literal("choice"),
+    found: boolean,
+    cites: optional(atLeastOne(itemName)),
+    notAgreed: optional(atLeastOne(object({ text, role: optional(text) }))),
+    open: optional(boolean),
+  }),
+  // The change set writes to each of these items with each op, at least,
+  // where no golden diff can say all of it.
+  writes: object({
+    grader: literal("writes"),
+    calls: atLeastOne(object({ op: text, item: itemName })),
+  }),
 };
 export type GraderName = keyof typeof expectations;
 export type Expectation = Infer<(typeof expectations)[GraderName]>;
@@ -197,6 +217,10 @@ const evalCaseShape = object({
   items: optional(atLeastOne(itemName)),
   // Oriel's own threads and change sets in the workspace. Absent: none.
   oriel: optional(orielWorkspace),
+  // The case is a run Oriel starts to find the workstream's open choices
+  // (the decision-desk spike): its module has `choices`, and its prompt is
+  // Oriel's fixed question.
+  choices: optional(literal(true)),
   // The case asks in the window chat (decision 0027): its region is empty,
   // its agent reads window.overview(), and the overview's workstreams hold
   // these fixture regions. Every fixture is connected, as in a window with
@@ -281,6 +305,15 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });
   if (!judged && graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 2 to 4 are deterministic: no judge" });
+  if (evalCase.choices && evalCase.prompt !== choiceWords.find)
+    found.push({
+      path: "$.prompt",
+      message: `a choices run asks ${JSON.stringify(choiceWords.find)}`,
+    });
+  if (graders.includes("choice") && !evalCase.choices)
+    found.push({ path: "$.expect", message: "only a choices run hands Oriel choices" });
+  if (graders.includes("writes") && graders.includes("zero-mutations"))
+    found.push({ path: "$.expect", message: "writes and zero mutations contradict" });
   if (evalCase.kind === 3 && !(graders.includes("zero-mutations") && graders.includes("surfaced")))
     found.push({
       path: "$.expect",
@@ -399,6 +432,10 @@ export function holding(
       e.calls.forEach((call, c) =>
         call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),
       );
+    if (e.grader === "choice")
+      e.cites?.forEach((item, n) => resolve(item, `$.expect[${i}].cites[${n}]`));
+    if (e.grader === "writes")
+      e.calls.forEach((call, c) => resolve(call.item, `$.expect[${i}].calls[${c}].item`));
     if (e.grader !== "surfaced") return;
     const id = resolve(e.item, `$.expect[${i}].item`);
     // The window chat's overview shows what no workstream holds yet. A

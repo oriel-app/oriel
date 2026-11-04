@@ -1,0 +1,18 @@
+{
+  "id": "choice-sms-signoff",
+  "split": "train",
+  "kind": 2,
+  "items": ["slack:C0FW1WEATHR-1788782400.000100", "jira:SYN-61"],
+  "choices": true,
+  "prompt": "What's still undecided here?",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "choice",
+      "found": true,
+      "cites": ["slack:C0FW1WEATHR-1788782400.000100"],
+      "notAgreed": [{ "text": "Support is happy with it", "role": "agrees" }],
+      "open": true
+    }
+  ]
+}

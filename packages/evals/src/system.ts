@@ -33,6 +33,7 @@ import {
   ulid,
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
+import { choiceChecker } from "@oriel/server/choices";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
 import { buildWorld, caseWorld, type World } from "./world.ts";
 
@@ -99,8 +100,9 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r, threadId, shown) => {
+    bindingsFor: (r, threadId, shown, choose) => {
       const bindings = bindingsFor(r, {
+        ...(choose?.choices ? { choices: true } : {}),
         reader: world.reader,
         namespaces: world.namespaces,
         items: world.items,
@@ -116,13 +118,21 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         read: async (fn, args) => {
           const answer = await bindings.read(fn, args);
           if (fn === "sketch") sketches += 1;
-          if (fn !== "show" && fn !== "sketch")
+          if (fn !== "show" && fn !== "sketch" && fn !== "choices.add")
             answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
           return answer;
         },
       };
     },
     runs: records.runs,
+    choices: {
+      check: choiceChecker({
+        reader: world.reader,
+        records: () => world.records,
+        sources: world.panels,
+        now: () => input.now,
+      }),
+    },
     changeSets: records.changeSets,
     actions: records.actions,
     limits: options.limits ?? evalLimits,
@@ -138,6 +148,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
       text: input.case.prompt,
       snapshot: 1,
       spent: { inputTokens: 0, outputTokens: 0 },
+      ...(input.case.choices ? { choices: true as const } : {}),
     },
     { signal: new AbortController().signal, log: () => {} },
   ))
@@ -160,6 +171,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         : [],
     ),
     sketches,
+    choices: events.flatMap((event) => (event.kind === "choice" ? [event.choice] : [])),
     reply: replyOf(events),
     transcript: events,
   };

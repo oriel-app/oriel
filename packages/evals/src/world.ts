@@ -15,6 +15,7 @@ import {
   type FixtureConnection,
   type FixtureRegion,
   type IndexRecord,
+  type SourceDeclaration,
   type Instant,
   type ItemId,
   parseItemId,
@@ -87,6 +88,10 @@ export type World = {
   // Each region item as its source holds it, for the judge, with what its
   // fixture says of it, and anything gone saying so.
   evidence(): Promise<unknown[]>;
+  // The index's records, and each source's view of an item, which a choice
+  // is checked and dated against (the decision-desk spike).
+  records: readonly IndexRecord[];
+  panels: Readonly<Record<string, Pick<SourceDeclaration, "panel">>>;
   // Removes what the fixtures' connections made.
   close(): void;
 };
@@ -165,6 +170,8 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   return {
     region,
     reader,
+    records,
+    panels: Object.fromEntries([...fixtures].map(([kind, { declaration }]) => [kind, declaration])),
     namespaces,
     items,
     oriel: orielOf(input.oriel),
