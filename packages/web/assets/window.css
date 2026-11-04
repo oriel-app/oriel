@@ -285,7 +285,10 @@ html {
   box-sizing: border-box;
 }
 
+/* The page's colour is the root's own: the body is a container, and a
+   contained body's background doesn't fill the window below a short page. */
 html {
+  background: var(--bg);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -1786,7 +1789,9 @@ button.nav-more {
 
 .cluster-toggle {
   display: grid;
-  grid-template-columns: 1rem minmax(0, 1fr) auto auto;
+  /* An Oriel rule takes at most a third of the row and wraps, so the cluster's
+     name keeps its first words. */
+  grid-template-columns: 1rem minmax(0, 1fr) fit-content(32%) auto;
   align-items: center;
   gap: var(--space-3);
   width: 100%;
@@ -7142,16 +7147,19 @@ a.button.primary {
 
 .plan-windows {
   display: grid;
-  gap: var(--space-1);
+  grid-template-columns: 10rem minmax(4rem, 10rem) max-content;
+  gap: var(--space-1) var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* The rows share the list's columns, so every meter is as long as the
+   others, whatever its label says. */
 .plan-window {
   display: grid;
-  grid-template-columns: 10rem minmax(4rem, 10rem) max-content;
-  gap: var(--space-2);
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
 }
 
@@ -7187,6 +7195,9 @@ a.button.primary {
 }
 
 @media (max-width: 600px) {
+  .plan-windows {
+    grid-template-columns: 1fr;
+  }
   .plan-window {
     grid-template-columns: 1fr;
     gap: 2px;
