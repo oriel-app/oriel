@@ -294,6 +294,12 @@ export function signalsOf(input: SignalInput): Signal[] {
     const open = members.filter(
       (record) => record.facets.state !== "done" && record.facets.kind !== "epic",
     );
+    // The workstream's epics, at most one, as the items behind a stall or a
+    // drift: the place its reason is often written.
+    const epics = members
+      .filter((record) => record.facets.kind === "epic")
+      .slice(0, 1)
+      .map((record) => record.id);
     const lastActivity = latest([
       ...members.map((record) => record.updatedAt),
       ...[input.threadActivity.get(workstream.id) ?? []].flat(),
@@ -308,10 +314,11 @@ export function signalsOf(input: SignalInput): Signal[] {
         rule: signalRules.stalled,
         weight: weights.stalled * Math.min(open.length, 4),
         fingerprint: `idle≥${doubling(idle, stuckDays)}`,
-        items: open
-          .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-          .slice(0, maxEvidence)
-          .map((record) => record.id),
+        // Its epic first, where a stall's reason is often written down.
+        items: [
+          ...epics,
+          ...open.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((r) => r.id),
+        ].slice(0, maxEvidence),
         block: { read: "signals.open", args: [workstream.id], from: undefined, form: "rows" },
       });
 
@@ -328,10 +335,12 @@ export function signalsOf(input: SignalInput): Signal[] {
         rule: signalRules.drift,
         weight: weights.moved * changes.length + 1,
         fingerprint: `after=${after}`,
-        items: changes
-          .toSorted((a, b) => b.after - b.before - (a.after - a.before))
-          .slice(0, maxEvidence)
-          .map(({ record }) => record.id),
+        items: [
+          ...epics,
+          ...changes
+            .toSorted((a, b) => b.after - b.before - (a.after - a.before))
+            .map(({ record }) => record.id),
+        ].slice(0, maxEvidence),
         block: {
           read: "signals.estimates",
           args: [workstream.id, 14],

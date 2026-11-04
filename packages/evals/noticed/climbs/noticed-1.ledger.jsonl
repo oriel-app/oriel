@@ -8,3 +8,7 @@
 {"round":"01M6JFJ8HCVRYATEK91VMBJT4M","label":"T0b start on test","split":"test","trials":42,"usd":0.3266139999999999}
 {"round":"01M6JFKS4S0C1JSK10JD2MYHE4","label":"M model-first","split":"train","trials":60,"usd":0.5028157647058823,"estimated":true}
 {"round":"01M6JFKS4S0C1JSK10JD2MYHE4","label":"M model-first","split":"train","trials":60,"usd":6.0772396}
+{"round":"01M6JFWXRG6FXJ8EER00V6PQNQ","label":"C1 keep the pick","split":"train","trials":60,"usd":1.7697302727272728,"estimated":true}
+{"round":"01M6JFWXRG6FXJ8EER00V6PQNQ","label":"C1 keep the pick","split":"train","trials":60,"usd":0.5292960000000002}
+{"round":"01M6JFZ7PWAKX2AEX35XY61E9Q","label":"C1b keep the pick, second round","split":"train","trials":60,"usd":1.5400202222222221,"estimated":true}
+{"round":"01M6JFZ7PWAKX2AEX35XY61E9Q","label":"C1b keep the pick, second round","split":"train","trials":60,"usd":0.43751200000000007}
