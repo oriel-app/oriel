@@ -205,6 +205,6 @@ test("a sync renaming a workstream after its epic does it through the dispatcher
     [{ action: "workstream.rename", by: { kind: "sync", source: "jira" } }],
   );
   // A sync that finds the name as it is renames nothing more.
-  await app.post("/api/jira/sync");
+  await app.sync("jira");
   assert.equal(renames().length, 1);
 });

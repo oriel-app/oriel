@@ -24,6 +24,14 @@ export function connectionsOf(deps: {
   return {
     list: () => store.list(workspaceId),
 
+    // One by its ID, live or a tombstone; null when this workspace has none.
+    get: (id: Ulid): Connection | null => store.get(workspaceId, id),
+
+    // Sets a live connection's options, which its next sync reads with.
+    configure(connection: Connection, options: Record<string, unknown>): void {
+      store.configure(workspaceId, connection.id, options);
+    },
+
     // A kind's first live connection, the one each kind's source opens until
     // a kind can have several.
     first(kind: SourceKind): Connection | null {

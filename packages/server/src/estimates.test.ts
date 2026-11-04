@@ -196,7 +196,7 @@ test("a board that stops taking estimates is followed from the next sync, withou
   assert.equal(app.site?.issue("SYN-23")?.points, 3);
 
   app.site?.estimation(false);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   // The writer: approving an estimate proposed before writes nothing.
   const refused = await approve(second);
   assert.notEqual(refused.status, "applied");

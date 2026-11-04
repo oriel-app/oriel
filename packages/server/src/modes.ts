@@ -1,45 +1,40 @@
-// The connections `pnpm dev`'s flags make at start, and tests' options as
-// they make them, until `--source <kind>=<mode>` replaces `--jira` and
-// `--slack` (decision 0049, OA-214). Each is its kind's first connection,
-// opened through its declaration's `open`, or its fixture's over the
-// fixture's stand-in. It keeps no secret: `.env` holds that, and a fixture
-// needs none.
+// How each connector's connections are made (decision 0049): by a flag at
+// start, as its fixture or live, or by the person in the window. `pnpm dev`'s
+// `--source <kind>=<mode>` gives each kind its mode, and tests give the same.
+// A flag's connection is its kind's first, opened through its declaration's
+// `open`, or its fixture's over the fixture's stand-in, and made again at
+// every start. It keeps no secret: `.env` holds that, and a fixture needs
+// none.
 import type { SourceKind } from "@oriel/core";
-import type { FixtureWorkspace } from "@oriel/slack";
 import { declarationOf } from "@oriel/sources";
-import type { LegacyJira } from "./connection.ts";
 
-// Where Jira comes from. The fixture is SYN as `fixtures/jira/` freezes it,
-// read-only unless tests give it a stand-in site to write to (`fetch`) that
-// holds the same items. Live is a site, read through the API and written to
-// through approved change sets, as the account given. From the window is
-// live too, once the person connects it there; the connection is kept as
-// connections are, so it's there again the next time the server starts.
-// `legacy` is where it was kept before connections, from which the first
-// start moves it. `anySite`: any Jira Cloud site may be connected, as on the
-// desktop app (decision 0038); otherwise only the throwaway one. `fetch` is
-// for tests, which answer from memory; the global fetch is used without it.
-export type JiraMode =
-  | { kind: "fixture"; fetch?: typeof fetch }
+// A kind's mode. The fixture is its synthetic data, as its declaration
+// loads it. Live is the source itself, as a flag names it: what it
+// identifies, its options and its secret, such as Jira's throwaway site,
+// project and account from `.env`. From the window is live too, once the
+// person connects it there; the connection is kept, so it's there again
+// the next time the server starts. `fetch` is for tests, which answer from
+// memory, and a fixture's stand-in they made, so they can act in the
+// source as others do; the global fetch is used without it.
+export type SourceMode =
+  | { mode: "fixture"; fetch?: typeof fetch }
   | {
-      kind: "live";
-      site: string;
-      account: { email: string; token: string };
-      project: string;
+      mode: "live";
+      identity: string;
+      options: Record<string, unknown>;
+      secret: string | null;
       fetch?: typeof fetch;
     }
-  | { kind: "window"; legacy?: LegacyJira; anySite?: boolean; fetch?: typeof fetch };
+  | { mode: "window"; fetch?: typeof fetch };
 
-// Where Slack comes from (decision 0021). The fixture is the synthetic
-// workspace in `fixtures/slack/`, with the channel picked there, which change
-// sets post to in memory. Live is the workspace a token is for, reading only
-// the public channels picked by name or ID; one it can't find stops the app
-// from starting. Change sets a person approves post there as the token's
-// person, only in those channels (OA-28).
-export type SlackMode =
-  // Tests may pass the fixture's workspace in, to act in it as others do.
-  | { kind: "fixture"; workspace?: FixtureWorkspace }
-  | { kind: "live"; token: string; channels: string[]; fetch?: typeof fetch };
+export type SourceModes = Readonly<Partial<Record<SourceKind, SourceMode>>>;
+
+// Whether the window makes a kind's connections: when its mode says so, or
+// when it has none and its connector declares how.
+export const inWindow = (modes: SourceModes, kind: SourceKind): boolean =>
+  modes[kind] === undefined
+    ? declarationOf(kind)?.connect !== undefined
+    : modes[kind].mode === "window";
 
 // A connection a flag makes: its kind, whether it's the kind's fixture, what
 // it identifies, its options and its secret, and how requests reach it.
@@ -53,41 +48,35 @@ export type Flagged = {
   fetch?: typeof fetch;
 };
 
-const fixtureOf = (kind: SourceKind, send?: typeof fetch): Flagged => ({
-  kind,
-  fixture: true,
-  ...(declarationOf(kind)?.fixture.connection() ?? { identity: "", options: {} }),
-  secret: null,
-  ...(send ? { fetch: send } : {}),
-});
+export function flagged(modes: SourceModes): Flagged[] {
+  return Object.entries(modes).flatMap(([kind, given]): Flagged[] => {
+    if (!given || given.mode === "window") return [];
+    const send = given.fetch ? { fetch: given.fetch } : {};
+    if (given.mode === "live")
+      return [
+        {
+          kind,
+          fixture: false,
+          identity: given.identity,
+          options: given.options,
+          secret: given.secret,
+          ...send,
+        },
+      ];
+    const declaration = declarationOf(kind);
+    if (!declaration) throw new Error(`no source declares ${kind}`);
+    return [{ kind, fixture: true, ...declaration.fixture.connection(), secret: null, ...send }];
+  });
+}
 
-export function flagged(jira: JiraMode, slack: SlackMode | undefined): Flagged[] {
-  return [
-    ...(jira.kind === "fixture" ? [fixtureOf("jira", jira.fetch)] : []),
-    ...(jira.kind === "live"
-      ? [
-          {
-            kind: "jira",
-            fixture: false,
-            identity: jira.site,
-            options: { project: jira.project },
-            secret: JSON.stringify(jira.account),
-            ...(jira.fetch ? { fetch: jira.fetch } : {}),
-          },
-        ]
-      : []),
-    ...(slack?.kind === "fixture" ? [fixtureOf("slack", slack.workspace?.fetch)] : []),
-    ...(slack?.kind === "live"
-      ? [
-          {
-            kind: "slack",
-            fixture: false,
-            identity: "",
-            options: { channels: slack.channels },
-            secret: slack.token,
-            ...(slack.fetch ? { fetch: slack.fetch } : {}),
-          },
-        ]
-      : []),
-  ];
+// `pnpm dev`'s database for a set of modes, by its name: one per set, so
+// fixture, `.env` and window connections never share one. A set whose modes
+// are all one, as `--source jira=live` alone or with `--source slack=live`,
+// keeps the file it had before decision 0049; any other is named for each
+// kind's mode.
+export function databaseName(modes: Readonly<Record<SourceKind, string>>): string {
+  const set = Object.entries(modes).toSorted(([a], [b]) => a.localeCompare(b));
+  const [first] = new Set(set.map(([, mode]) => mode));
+  if (set.length > 0 && set.every(([, mode]) => mode === first)) return first ?? "";
+  return set.map(([kind, mode]) => `${kind}-${mode}`).join("+");
 }

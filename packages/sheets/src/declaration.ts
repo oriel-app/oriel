@@ -10,6 +10,7 @@ import {
 } from "./attrs.ts";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
 import { openSheets } from "./open-connection.ts";
+import { sheetsPicks } from "./mapping.ts";
 import { sheetsOverview } from "./overview.ts";
 
 export const sheetsDeclaration = {
@@ -36,5 +37,7 @@ export const sheetsDeclaration = {
   // Its item doc only.
   budget: 300,
   open: openSheets,
+  // The spreadsheets the person picked, and each tab's mapping.
+  options: sheetsPicks,
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration;

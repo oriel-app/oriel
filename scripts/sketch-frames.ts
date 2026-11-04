@@ -204,7 +204,7 @@ const silent = new Set([
 const sketchOf = new Map<string, string>();
 const serving = await serve(0, {
   db: ":memory:",
-  jira: { kind: "fixture" },
+  sources: { jira: { mode: "fixture" } },
   agent: (deps) =>
     scriptedAgent(deps, (input) => [
       { run: `return await sketch(${JSON.stringify(sketchOf.get(input.text) ?? "")}, 240);` },

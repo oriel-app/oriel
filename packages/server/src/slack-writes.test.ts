@@ -34,7 +34,7 @@ async function proposed(t: TestContext, script: Script) {
   const workspace: FixtureWorkspace = fixtureApi(loadSlackFixture());
   const app = await testApp(t, {
     writes: true,
-    slack: { kind: "fixture", workspace },
+    slack: { mode: "fixture", fetch: workspace.fetch },
     plan: () => [{ run: "script" }],
     scripts: { script },
   });
@@ -204,7 +204,7 @@ test("the dev server's scripted agent posts or replies when asked, beside the wo
   const { createSandbox } = await import("@oriel/sandbox");
   const sandbox = createSandbox();
   const app = await testApp(t, {
-    slack: { kind: "fixture" },
+    slack: { mode: "fixture" },
     agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan),
   });
   const { id: workstreamId } = json<{ id: string }>(

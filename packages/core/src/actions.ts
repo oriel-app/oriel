@@ -5,7 +5,7 @@
 // any door is closed to it. The server holds the handlers and the one
 // dispatcher every door calls. Source writes stay in their source's
 // catalogue (decision 0019); they aren't declared again here.
-import { isInstant, isItemId, isUlid, type SourceKind, type Ulid } from "./ids.ts";
+import { isInstant, isItemId, isPrefix, isUlid, type SourceKind, type Ulid } from "./ids.ts";
 import {
   array,
   type Described,
@@ -17,6 +17,7 @@ import {
   refine,
   string,
   union,
+  unknown,
 } from "./validate.ts";
 
 // Who acted, recorded with every call: the user, in the window; the agent in
@@ -101,9 +102,19 @@ export const holderReason = refine(
   (text) => text.trim() !== "" && text.length <= maxReasonChars,
   `expected a reason of 1 to ${maxReasonChars} characters`,
 );
-// What the user types to connect a source. Its checks never quote a value.
-const typed = (max: number, what: string) =>
-  refine(string, (text) => text.trim() !== "" && text.length <= max, `expected ${what}`);
+// A connection, by the ID the server made for it: the page only names one
+// the server has.
+const connectionId = refine(string, isUlid, "expected a connection ID", { type: "ConnectionId" });
+// A connector, by its kind: a short lowercase word, as core's ID shape has it.
+const sourceKind = refine(
+  string,
+  (kind) => isPrefix(kind) && !kind.includes("."),
+  "expected a kind",
+);
+// What configuring a connection is to the agent and outside tools: they may
+// draft it, but only the user applies it (decisions 0049, 0051).
+const configures =
+  "How a connection reads its source is the user's to set: the agent may draft it, but only the user applies it (decision 0049).";
 // A review link's token, which its holder presents.
 const token = optional(string);
 // Approval is a person's (decision 0003): what each change set action says.
@@ -367,37 +378,31 @@ export const actions = {
       why: "It takes back approval a link handed out (decision 0024).",
     },
   },
-  // Connecting a source: Jira with the details the user typed, checked
-  // against the site first, or the folder at the path they typed.
+  // A connection's steps, by its connector (decision 0049): what the user
+  // gave across them, which the connector's own validator checks, as the
+  // composition root supplies it, since core keeps no connector's types.
   "source.connect": {
     doc: "Connects a source, which then syncs into the window.",
-    input: union(
-      object({
-        kind: literal("folder"),
-        path: refine(
-          string,
-          (path) => path.trim() !== "" && path.length <= 1024 && !path.includes("\0"),
-          "expected a folder path",
-        ),
-      }),
-      object({
-        kind: literal("jira"),
-        site: typed(200, "a site"),
-        email: typed(254, "an email address"),
-        token: typed(1024, "an API token"),
-        project: typed(32, "a project key"),
-      }),
-    ),
+    input: object({ kind: sourceKind, given: unknown }),
     class: {
       kind: "person-only",
       why: "It holds credentials and decides what Oriel reads (decision 0024).",
     },
   },
+  // A connection's options, merged over the ones it has, which its
+  // connector's validator checks, as for `source.connect`. Its Undo puts back
+  // the ones it replaced.
+  "source.configure": {
+    doc: "Sets a connection's options, which its next sync reads with.",
+    input: object({ connection: connectionId, options: unknown }),
+    class: { kind: "direct", inverse: "source.configure" },
+    closed: { agent: configures, tool: configures },
+  },
   // What the user asks for: a full sweep, as only one finds what was
   // deleted in the source.
   "source.sync": {
-    doc: "Syncs a source into the window.",
-    input: object({ source: union(literal("folder"), literal("jira"), literal("slack")) }),
+    doc: "Syncs a connection into the window.",
+    input: object({ connection: connectionId }),
     class: {
       kind: "direct",
       inverse: null,
@@ -406,6 +411,14 @@ export const actions = {
     closed: {
       agent:
         "The agent's reads are live already, and an intent applies only as its turn ends, after the run that would read what the sync found.",
+    },
+  },
+  "source.disconnect": {
+    doc: "Disconnects a connection: its secret, its options and its items go.",
+    input: object({ connection: connectionId }),
+    class: {
+      kind: "person-only",
+      why: "It erases what Oriel read, and the connection's credentials (decision 0049).",
     },
   },
   // The last-seen stamp moves when the user leaves the overview, not when

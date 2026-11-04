@@ -3,6 +3,7 @@ export * from "./block.ts";
 export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./connector-view.ts";
+export * from "./connect.ts";
 export * from "./declaration.ts";
 export * from "./find.ts";
 export * from "./fixture.ts";

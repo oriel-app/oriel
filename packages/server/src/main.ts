@@ -1,25 +1,31 @@
 // `pnpm dev` runs this after building the web app. `--port 0` picks a free
-// port. Jira is the frozen SYN fixture, read-only, unless `--jira live`,
-// which syncs the throwaway site and writes to it through approved change
-// sets. Its credentials come from `.env` if it has them; otherwise the user
-// connects Jira from the window, and the connection is kept for the next
-// start: its options in the database, and its secret in a file of its own,
-// in the gitignored `secrets/` folder named for the database, such as
-// `secrets/window/` (decision 0049). One kept in `secrets/jira.json` before
-// connections moves there at the first start. The database is a file
-// under the gitignored `.oriel/`, one per Jira mode, so fixture items, those
-// of the site `.env` names and those of the one connected in the window
-// never mix. `--jira window` ignores `.env`'s Jira credentials, so the user
-// connects from the window as a new user does. `--fresh <name>` keeps the
-// run's database under `.oriel/fresh/<name>/` and its connections' secrets
-// under `secrets/fresh/<name>/`, so a timed first run starts from nothing and
-// leaves the usual ones alone.
+// port. `--source <kind>=fixture|live|window`, once per connector, says how
+// its connections are made (decision 0049). The fixture is its synthetic
+// data, as its declaration loads it. Live reads the `.env` names its
+// connector declares, and `--option <kind>.<name>=<value>` sets its options,
+// such as Jira's project; one `.env` can't make is made in the window
+// instead, if its connector can be. Window is the person connecting it in
+// the window, and the connection is kept for the next start: its options in
+// the database, and its secret in a file of its own, in the gitignored
+// `secrets/` folder named for the database, such as `secrets/window/`. One
+// kept in `secrets/jira.json` before connections moves there at the first
+// start. Jira is its SYN fixture, read-only, unless a flag says otherwise;
+// a connector no flag names is made in the window if it can be, as the
+// folder is, and is off otherwise, as Slack is. Live writes go through
+// approved change sets, as `.env`'s account, to the throwaway Jira site and
+// only the Slack channels picked.
 //
-// Slack is off unless `--slack fixture`, the synthetic workspace, or
-// `--slack live --channels a,b`, which reads those public channels, by name
-// or ID, as the first person in `.env`'s SLACK_USER_TOKENS. Change sets a
-// person approves post as that person, only in those channels: in memory for
-// the fixture, and in Slack for live, which needs the chat:write scope.
+// `--jira`, `--slack`, `--project` and `--channels` are aliases, until the
+// scripts that use them move: `--jira live --project OA` is `--source
+// jira=live --option jira.project=OA`, and `--slack live --channels a,b` is
+// `--source slack=live --option slack.channels=a,b`.
+//
+// The database is a file under the gitignored `.oriel/`, one per set of
+// modes, so fixture items, those of what `.env` names and those connected in
+// the window never mix. `--fresh <name>` keeps the run's database under
+// `.oriel/fresh/<name>/` and its connections' secrets under
+// `secrets/fresh/<name>/`, so a timed first run starts from nothing and
+// leaves the usual ones alone.
 //
 // The agent runs on the model key in `.env` when there is one. Without one, it
 // runs on the person's own Claude Code, found on the PATH or at
@@ -42,15 +48,17 @@
 // goes to stdout.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, parseEnv } from "node:util";
 import { findDeno } from "@oriel/sandbox";
 import { webFiles, serve } from "./serve.ts";
 import { isAbsolute, join } from "node:path";
-import type { JiraMode, SlackMode } from "./app.ts";
+import { anthropicKey } from "@oriel/agent";
+import type { Log } from "@oriel/core";
+import { declarationOf, sourceKinds } from "@oriel/sources";
+import type { SourceMode } from "./app.ts";
 import { keyStore } from "./api-key.ts";
 import { fileSecrets, legacyFile } from "./connection.ts";
-import { serverEnv, slackEnv } from "./env.ts";
-import type { Log } from "@oriel/core";
+import { databaseName, inWindow } from "./modes.ts";
 import { models as findModels } from "./model.ts";
 import { settingsFile } from "./settings.ts";
 import { usageFile } from "./usage.ts";
@@ -64,8 +72,10 @@ import { homedir } from "node:os";
 const { values, tokens } = parseArgs({
   options: {
     port: { type: "string", default: "4310" },
-    jira: { type: "string", default: "fixture" },
-    project: { type: "string", default: "SYN" },
+    source: { type: "string", multiple: true },
+    option: { type: "string", multiple: true },
+    jira: { type: "string" },
+    project: { type: "string" },
     slack: { type: "string" },
     channels: { type: "string" },
     fresh: { type: "string" },
@@ -101,27 +111,65 @@ if (!Number.isInteger(port) || port < 0 || port > 65_535) {
   console.error(`--port must be a port number, got ${JSON.stringify(values.port)}`);
   process.exit(2);
 }
-if (values.jira !== "fixture" && values.jira !== "live" && values.jira !== "window") {
-  console.error("--jira must be fixture, live or window");
-  process.exit(2);
-}
 const fresh = values.fresh;
 if (fresh !== undefined && !/^[a-z0-9-]+$/.test(fresh)) {
   console.error("--fresh names a run in lowercase letters, digits and dashes");
   process.exit(2);
 }
-if (values.slack !== undefined && values.slack !== "fixture" && values.slack !== "live") {
-  console.error("--slack must be fixture or live");
-  process.exit(2);
+// Each connector's mode, from `--source` and its aliases; Jira's fixture
+// unless one names Jira.
+const asked = new Map<string, "fixture" | "live" | "window">();
+const ask = (kind: string, mode: string, flag: string) => {
+  const declaration = declarationOf(kind);
+  if (!declaration) {
+    console.error(`${flag}: no connector is called ${kind}; there are ${sourceKinds.join(", ")}`);
+    process.exit(2);
+  }
+  if (asked.has(kind)) {
+    console.error(`${flag}: ${kind}'s mode is given twice`);
+    process.exit(2);
+  }
+  if (
+    !(mode === "fixture" || mode === "live" || mode === "window") ||
+    (mode === "live" && !declaration.live) ||
+    (mode === "window" && !declaration.connect)
+  ) {
+    console.error(`${flag}: ${declaration.name} can't be ${mode}`);
+    process.exit(2);
+  }
+  asked.set(kind, mode);
+};
+for (const each of values.source ?? []) {
+  const [, kind = "", mode = ""] = /^([a-z][a-z0-9]*)=([a-z]+)$/.exec(each) ?? [];
+  if (!kind) {
+    console.error(`--source takes <kind>=fixture|live|window, got ${JSON.stringify(each)}`);
+    process.exit(2);
+  }
+  ask(kind, mode, "--source");
 }
-const channels = (values.channels ?? "")
-  .split(",")
-  .map((name) => name.trim())
-  .filter(Boolean);
-if ((values.slack === "live") !== channels.length > 0) {
-  console.error("--channels names the channels --slack live reads, and only then");
-  process.exit(2);
+if (values.jira !== undefined) ask("jira", values.jira, "--jira");
+if (values.slack !== undefined) ask("slack", values.slack, "--slack");
+if (!asked.has("jira")) asked.set("jira", "fixture");
+// Each live connection's options, by kind, as text its connector reads.
+const optionsOf = new Map<string, Record<string, string>>();
+const option = (kind: string, name: string, value: string, flag: string) => {
+  if (asked.get(kind) !== "live") {
+    console.error(`${flag} sets a live connection's options: give --source ${kind}=live too`);
+    process.exit(2);
+  }
+  optionsOf.set(kind, { ...optionsOf.get(kind), [name]: value });
+};
+for (const each of values.option ?? []) {
+  const [, kind = "", name = "", value = ""] =
+    /^([a-z][a-z0-9]*)\.([a-z][A-Za-z0-9]*)=(.*)$/s.exec(each) ?? [];
+  if (!kind) {
+    console.error(`--option takes <kind>.<name>=<value>, got ${JSON.stringify(each)}`);
+    process.exit(2);
+  }
+  option(kind, name, value, "--option");
 }
+if (values.project !== undefined) option("jira", "project", values.project, "--project");
+if (values.channels !== undefined) option("slack", "channels", values.channels, "--channels");
 
 if (values.agent !== "auto" && values.agent !== "scripted") {
   console.error("--agent must be auto or scripted");
@@ -200,34 +248,41 @@ if (pipes && values.data) {
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const envPath = join(root, ".env");
-const env = serverEnv(existsSync(envPath) ? readFileSync(envPath, "utf8") : null);
-const fromEnv = values.jira === "live" && !("problem" in env.jira) ? env.jira : null;
-const jira: JiraMode =
-  values.jira === "fixture"
-    ? { kind: "fixture" }
-    : fromEnv
-      ? {
-          kind: "live",
-          site: fromEnv.site,
-          account: { email: fromEnv.email, token: fromEnv.token },
-          project: values.project,
-        }
-      : {
-          kind: "window",
-          legacy: legacyFile(
-            join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json"),
-          ),
-        };
-
-let slack: SlackMode | null = values.slack === "fixture" ? { kind: "fixture" } : null;
-if (values.slack === "live") {
-  const found = slackEnv(existsSync(envPath) ? readFileSync(envPath, "utf8") : null);
-  if ("problem" in found) {
-    console.error(found.problem);
-    process.exit(1);
+const envFile = existsSync(envPath) ? readFileSync(envPath, "utf8") : null;
+const env = envFile ? parseEnv(envFile) : {};
+// Each connector's mode as asked. A live one `.env` can't make is made in
+// the window, if its connector can be, and stops the start otherwise.
+const modes: Record<string, SourceMode> = {};
+const notFromEnv = new Map<string, string>();
+for (const [kind, mode] of asked) {
+  if (mode !== "live") {
+    modes[kind] = { mode };
+    continue;
   }
-  slack = { kind: "live", token: found.token, channels };
+  const declaration = declarationOf(kind);
+  if (!declaration?.live) throw new Error(`${kind} can't be live`);
+  // Only the names it declares.
+  const given = Object.fromEntries(
+    declaration.live.env.flatMap((name) => {
+      const value = env[name];
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
+  const made = declaration.live.connection(given, optionsOf.get(kind) ?? {});
+  if ("problem" in made) {
+    if (!declaration.connect) {
+      console.error(made.problem);
+      process.exit(1);
+    }
+    notFromEnv.set(kind, made.problem);
+    modes[kind] = { mode: "window" };
+    continue;
+  }
+  modes[kind] = { mode: "live", ...made };
 }
+const named = databaseName(
+  Object.fromEntries(Object.entries(modes).map(([kind, given]) => [kind, given.mode])),
+);
 
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));
 mkdirSync(dir, { recursive: true });
@@ -241,42 +296,48 @@ const models =
   values.agent === "scripted"
     ? null
     : findModels({
-        key: env.modelKey,
+        key: anthropicKey(envFile),
         ...(claudeCodePath ? { claudeCodePath } : {}),
         counts: usageFile(join(dir, "usage.json"), log),
       });
 await models?.look(settings.get());
 const serving = await serve(port, {
-  db: join(dir, `${jira.kind}.db`),
-  jira,
+  db: join(dir, `${named}.db`),
+  sources: modes,
+  ...(inWindow(modes, "jira")
+    ? {
+        legacyJira: legacyFile(
+          join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json"),
+        ),
+      }
+    : {}),
   // Each database's connections keep their secrets in a folder named for it
   // (decision 0049).
-  secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), jira.kind)),
-  ...(slack ? { slack } : {}),
+  secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), named)),
   ...(models ? { models } : {}),
   settings,
   log,
 });
 console.log(`Oriel is running at ${serving.url}`);
-const shown = serving.app.jira();
-console.log(
-  jira.kind === "fixture"
-    ? "Jira: the SYN fixture, read-only. Change sets can be reviewed; approving says writing isn't configured."
-    : shown.connected
-      ? `Jira: ${shown.connected.site}, project ${shown.connected.project}. Change sets you approve are written there.`
-      : `Jira: not connected. Connect it from the window${values.jira === "live" && "problem" in env.jira ? ` (not from .env: ${env.jira.problem})` : ""}.`,
-);
-console.log(
-  slack === null
-    ? "Slack: off. --slack fixture reads the synthetic channel."
-    : slack.kind === "fixture"
-      ? "Slack: the synthetic channel. Change sets you approve post there, in memory."
-      : `Slack: ${channels.map((name) => `#${name.replace(/^#/, "")}`).join(", ")}. Change sets you approve post there as the person Oriel reads Slack as.`,
-);
+// Each connector, as this start made it.
+const shown = serving.app.connections();
+for (const kind of sourceKinds) {
+  const declaration = declarationOf(kind);
+  if (!declaration) continue;
+  const open = shown.filter((each) => each.kind === kind && each.state === "open");
+  const mode = modes[kind]?.mode ?? (inWindow(modes, kind) ? "window" : null);
+  const why = notFromEnv.get(kind);
+  console.log(
+    mode === null
+      ? `${declaration.name}: off. --source ${kind}=fixture reads its fixture.`
+      : open.length > 0
+        ? `${declaration.name}: ${open.map((each) => each.about).join(", ")}${mode === "fixture" ? ", its fixture" : ""}.`
+        : `${declaration.name}: not connected. Connect it from the window${why ? ` (not from .env: ${why})` : ""}.`,
+  );
+}
 console.log(
   models?.describe(settings.get()) ?? "Agent: the scripted agent, as --agent scripted asked.",
 );
-
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {
     serving.close().then(

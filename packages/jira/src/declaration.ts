@@ -1,6 +1,7 @@
 // Jira as it declares itself to the composition root.
 import type { SourceDeclaration } from "@oriel/core";
 import { jiraDeclaredFacets, jiraKeyShape, jiraPresentation } from "./attrs.ts";
+import { jiraConnect, jiraLive, jiraOptions } from "./connecting.ts";
 import { jiraDeclaredFixture } from "./declared-fixture.ts";
 import { type Estimates, jiraItemDoc, jiraNamespace } from "./namespace.ts";
 import { type JiraWrites, openJira } from "./open-connection.ts";
@@ -30,5 +31,8 @@ export const jiraDeclaration = {
   // ops' arguments.
   budget: 3_200,
   open: openJira,
+  options: jiraOptions,
+  connect: jiraConnect,
+  live: jiraLive,
   fixture: jiraDeclaredFixture,
 } satisfies SourceDeclaration<Estimates | undefined, JiraScope, JiraWrites>;

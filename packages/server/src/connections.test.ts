@@ -15,10 +15,10 @@ import {
   migrate,
   open,
 } from "@oriel/db";
-import type { JiraView, WorkstreamView } from "@oriel/web/view";
+import type { WorkstreamView } from "@oriel/web/view";
 import { fileSecrets, legacySecret, memorySecrets, secretName } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
-import { account, json, t0, testApp } from "./testing.ts";
+import { account, jiraOf, json, t0, testApp } from "./testing.ts";
 
 const details = {
   site: "oriel.atlassian.net",
@@ -57,9 +57,9 @@ test("a database from before connections moves in: Jira's saved connection, a fo
   // Today's items, as the adapters made them: synced into a database of
   // this code's own, and copied into one at today's schema.
   const made = join(top, "made.db");
-  const maker = await testApp(t, { db: made, connect: {}, slack: { kind: "fixture" } });
-  assert.equal((await maker.post("/api/jira", details)).status, 200);
-  assert.equal((await maker.post("/api/folder", { path: notes })).status, 200);
+  const maker = await testApp(t, { db: made, connect: {}, slack: { mode: "fixture" } });
+  assert.equal((await maker.connect("jira", details)).status, 200);
+  assert.equal((await maker.connect("folder", { path: notes })).status, 200);
   const workspaceId = maker.app.workspaceId;
   const [folderConnection] = connectionStore(open(made))
     .list(workspaceId)
@@ -111,7 +111,7 @@ test("a database from before connections moves in: Jira's saved connection, a fo
   const app = await testApp(t, {
     db: path,
     connect: { secrets, legacy: legacySecret(secrets) },
-    slack: { kind: "fixture" },
+    slack: { mode: "fixture" },
   });
   const { id: workstreamId } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Mixed", items: held }),
@@ -168,7 +168,7 @@ test("Jira disconnected and connected again comes back under its ID and number, 
   const path = join(top, "window.db");
   const secrets = memorySecrets();
   const first = await testApp(t, { db: path, connect: { secrets } });
-  assert.equal((await first.post("/api/jira", details)).status, 200);
+  assert.equal((await first.connect("jira", details)).status, 200);
   const { id: workstreamId } = json<{ id: string }>(
     await first.post("/api/workstreams", {
       kind: "picked",
@@ -206,7 +206,7 @@ test("Jira disconnected and connected again comes back under its ID and number, 
   db.close();
 
   const again = await testApp(t, { db: path, connect: { secrets } });
-  assert.deepEqual(json<{ jira: JiraView }>(await again.get("/api/jira")).jira, {
+  assert.deepEqual(await jiraOf(again), {
     connected: null,
     connectable: true,
   });
@@ -215,7 +215,7 @@ test("Jira disconnected and connected again comes back under its ID and number, 
     gone.members.map((m) => [m.ref.id, m.row !== null]),
     [["jira:SYN-1", false]],
   );
-  assert.equal((await again.post("/api/jira", details)).status, 200);
+  assert.equal((await again.connect("jira", details)).status, 200);
   const back = connectionStore(open(path)).list(again.app.workspaceId);
   assert.deepEqual(
     back.map((c) => [c.id, c.prefix, c.options, c.disconnectedAt]),

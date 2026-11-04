@@ -7,13 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fixtureApi, type ReadMethod, SlackError, loadSlackFixture } from "@oriel/slack";
-import type {
-  SlackView,
-  SourceView,
-  ThreadView,
-  WindowView,
-  WorkstreamView,
-} from "@oriel/web/view";
+import type { ConnectionView, ThreadView, WindowView, WorkstreamView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 const fixture = loadSlackFixture();
@@ -21,7 +15,7 @@ const slackRows = (view: WindowView) =>
   view.clusters.flatMap((c) => c.list).filter((row) => row.id.startsWith("slack:"));
 
 test("the picked channel's messages are in the window, in clusters that say Slack has no epics or assignees", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const byEpic = json<WindowView>(await app.get("/api/window?grouping=epic"));
   const own = byEpic.clusters.find((c) => c.row.key === "no-epics-in-source");
   assert.equal(own?.row.origin.kind, "derived");
@@ -61,7 +55,7 @@ test("a workstream holds Jira items and Slack messages; its thread reads both, a
     value: { dts: bindings.dts, items: (await bindings.read("items.list", [])).value },
   });
   const app = await testApp(t, {
-    slack: { kind: "fixture" },
+    slack: { mode: "fixture" },
     plan: () => [{ run: "inspect" }],
     scripts: { inspect },
   });
@@ -112,9 +106,9 @@ test("Slack syncs each time the server starts, and connects once", async (t) => 
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-slack-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "oriel.db");
-  const first = await testApp(t, { db, slack: { kind: "fixture" } });
+  const first = await testApp(t, { db, slack: { mode: "fixture" } });
   await first.app.close();
-  const again = await testApp(t, { db, slack: { kind: "fixture" } });
+  const again = await testApp(t, { db, slack: { mode: "fixture" } });
   assert.equal(
     slackRows(json<WindowView>(await again.get("/api/window?grouping=epic"))).length,
     19,
@@ -146,20 +140,34 @@ test("live Slack reads only the channels picked by name, through the Web API", a
   const { send, calls } = fixtureFetch();
   const token = "xoxp-test";
   const app = await testApp(t, {
-    slack: { kind: "live", token, channels: ["#weather-disruptions"], fetch: send },
+    slack: {
+      mode: "live",
+      identity: "",
+      options: { channels: ["#weather-disruptions"] },
+      secret: token,
+      fetch: send,
+    },
   });
   assert.equal(slackRows(json<WindowView>(await app.get("/api/window?grouping=epic"))).length, 19);
   assert.ok(
     calls.every((c) => c.params.channel === undefined || c.params.channel === "C0FW1WEATHR"),
   );
   await assert.rejects(
-    testApp(t, { slack: { kind: "live", token, channels: ["weather"], fetch: send } }),
+    testApp(t, {
+      slack: {
+        mode: "live",
+        identity: "",
+        options: { channels: ["weather"] },
+        secret: token,
+        fetch: send,
+      },
+    }),
     /Slack has no public channel Oriel can see named #weather/,
   );
 });
 
 test("a Slack message's link dropped on a workstream adds it", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const { id } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );
@@ -175,7 +183,7 @@ test("started without Slack, the window and search leave out what an earlier sta
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-slack-off-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "oriel.db");
-  const first = await testApp(t, { db, slack: { kind: "fixture" } });
+  const first = await testApp(t, { db, slack: { mode: "fixture" } });
   await first.app.close();
   const found: Script = async (bindings) => ({
     value: (await bindings.read("search", ["SMS"])).value,
@@ -198,8 +206,8 @@ test("started without Slack, the window and search leave out what an earlier sta
 });
 
 test("the sidebar lists every connected source the same way, Slack among them", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
-  const { sources } = json<{ sources: SourceView[] }>(await app.get("/api/sources"));
+  const app = await testApp(t, { slack: { mode: "fixture" } });
+  const sources = (await app.connections()).connections;
   assert.deepEqual(
     sources.map(({ kind, name, about, items }) => ({ kind, name, about, items })),
     [
@@ -211,7 +219,7 @@ test("the sidebar lists every connected source the same way, Slack among them", 
   // Started without Slack, it isn't listed.
   const alone = await testApp(t);
   assert.deepEqual(
-    json<{ sources: SourceView[] }>(await alone.get("/api/sources")).sources.map((s) => s.kind),
+    (await alone.connections()).connections.map((s) => s.kind),
     ["jira"],
   );
 });
@@ -221,22 +229,21 @@ test("Slack syncs on demand, says so when it can't, and isn't there to sync unco
   let down = false;
   const app = await testApp(t, {
     slack: {
-      kind: "fixture",
-      workspace: {
-        ...workspace,
-        fetch: async (input, init) =>
-          down ? Response.json({ ok: false, error: "fatal_error" }) : workspace.fetch(input, init),
-      },
+      mode: "fixture",
+      fetch: async (input, init) =>
+        down ? Response.json({ ok: false, error: "fatal_error" }) : workspace.fetch(input, init),
     },
   });
-  const synced = await app.post("/api/slack/sync");
+  const synced = await app.sync("slack");
   assert.equal(synced.status, 200);
   assert.deepEqual(
-    (({ workspace: at, items }) => ({ at, items }))(json<{ slack: SlackView }>(synced).slack),
-    { at: "ferrowick-example.slack.com", items: 19 },
+    (({ about, items }) => ({ about, items }))(
+      json<{ connection: ConnectionView }>(synced).connection,
+    ),
+    { about: "ferrowick-example.slack.com", items: 19 },
   );
   down = true;
-  const failed = await app.post("/api/slack/sync");
+  const failed = await app.sync("slack");
   assert.equal(failed.status, 502);
   assert.deepEqual(json(failed), {
     error: "Slack didn't answer, so Oriel couldn't look for new messages.",
@@ -253,6 +260,9 @@ test("Slack syncs on demand, says so when it can't, and isn't there to sync unco
       { source: "slack", ok: false },
     ],
   );
+  // Unconnected, there's no connection to sync: the page names only one the
+  // server has.
   const alone = await testApp(t);
-  assert.equal((await alone.post("/api/slack/sync")).status, 409);
+  assert.equal((await alone.sync("slack")).status, 404);
+  assert.equal((await alone.post(`/api/connections/${"0".repeat(26)}/sync`)).status, 404);
 });

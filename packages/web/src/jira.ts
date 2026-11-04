@@ -5,7 +5,13 @@
 // is, nothing typed stays in the page. Syncing it is the sidebar's, as for
 // every source.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { JiraProjectView, JiraView } from "./view.ts";
+import type {
+  ConnectionsView,
+  ConnectionView,
+  JiraProjectView,
+  JiraView,
+  PickChoiceView,
+} from "./view.ts";
 
 export const jiraFields = ["site", "email", "token"] as const;
 export type JiraField = (typeof jiraFields)[number];
@@ -39,7 +45,25 @@ export type JiraMsg =
   // Back from the list to the details, which stay as typed.
   | { type: "changeClicked" };
 
-export const loadJira: Effect = get("/api/jira", { kind: "jira" });
+export const loadJira: Effect = get("/api/connections", { kind: "jira" });
+
+// Jira as its open connection has it, until one component draws every
+// connector's steps (OA-216).
+const connectedOf = (connection: ConnectionView | undefined): JiraView["connected"] =>
+  connection
+    ? {
+        site: connection.identity,
+        project: typeof connection.options.project === "string" ? connection.options.project : "",
+        items: connection.items,
+        syncedAt: connection.syncedAt,
+      }
+    : null;
+const jiraOf = (view: ConnectionsView): JiraView => ({
+  connected: connectedOf(
+    view.connections.find((each) => each.kind === "jira" && each.state === "open"),
+  ),
+  connectable: view.connectable.includes("jira"),
+});
 
 const blank = { site: "", email: "", token: "" };
 
@@ -63,7 +87,13 @@ export const jiraReady = (model: JiraModel) =>
 
 const listing = (model: JiraModel): [JiraModel, Effect[]] => [
   { ...model, pending: "listing", problem: null, fields: [] },
-  [post("/api/jira/projects", { ...model.typed, query: model.query }, { kind: "jiraProjects" })],
+  [
+    post(
+      "/api/connections/pick",
+      { kind: "jira", given: model.typed, query: model.query },
+      { kind: "jiraProjects" },
+    ),
+  ],
 ];
 
 export function updateJira(model: JiraModel, msg: JiraMsg): [JiraModel, Effect[]] {
@@ -88,7 +118,13 @@ export function updateJira(model: JiraModel, msg: JiraMsg): [JiraModel, Effect[]
       if (model.pending || model.picked === null) return [model, []];
       return [
         { ...model, pending: "connecting", connecting: model.picked, problem: null },
-        [post("/api/jira", { ...model.typed, project: model.picked }, { kind: "jiraConnected" })],
+        [
+          post(
+            "/api/connections",
+            { kind: "jira", given: { ...model.typed, project: model.picked } },
+            { kind: "jiraConnected" },
+          ),
+        ],
       ];
     }
     case "changeClicked":
@@ -102,7 +138,7 @@ export function jiraReplied(model: JiraModel, msg: Replied): { model: JiraModel;
   const { tag } = msg;
   if (tag.kind === "jira")
     return {
-      model: msg.ok ? { ...model, view: (msg.body as { jira: JiraView }).jira } : model,
+      model: msg.ok ? { ...model, view: jiraOf(msg.body as ConnectionsView) } : model,
       synced: false,
     };
   if (tag.kind === "jiraProjects") {
@@ -113,7 +149,13 @@ export function jiraReplied(model: JiraModel, msg: Replied): { model: JiraModel;
         synced: false,
       };
     }
-    const { projects, more } = msg.body as { projects: JiraProjectView[]; more: boolean };
+    const { choices, more } = msg.body as { choices: PickChoiceView[]; more: boolean };
+    const projects = choices.map((choice): JiraProjectView => ({
+      key: choice.value,
+      name: choice.name,
+      issues: choice.count,
+      updatedAt: choice.updatedAt,
+    }));
     // The likeliest is the one changed last, which the list puts first.
     const picked = projects.some((p) => p.key === model.picked)
       ? model.picked
@@ -123,8 +165,11 @@ export function jiraReplied(model: JiraModel, msg: Replied): { model: JiraModel;
   if (tag.kind !== "jiraConnected") return { model, synced: false };
   if (!msg.ok)
     return { model: { ...model, pending: null, problem: errorOf(msg.body) }, synced: false };
-  const { jira } = msg.body as { jira: JiraView };
-  return { model: { ...initJira(), view: jira }, synced: true };
+  const { connection } = msg.body as { connection: ConnectionView };
+  return {
+    model: { ...initJira(), view: { connected: connectedOf(connection), connectable: false } },
+    synced: true,
+  };
 }
 
 // Jira connected to a project with no issues, which the window says, so an

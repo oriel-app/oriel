@@ -1,42 +1,44 @@
-// The sources, at the foot of the sidebar: every connected one, each drawn
+// The sources, at the foot of the sidebar: every open connection, each drawn
 // the same way from what the server lists, and syncing any of them, or all,
 // on demand. A sync that fails keeps what the window had, and says why on
-// its source until its next sync works.
+// its connection until its next sync works.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { SourceView } from "./view.ts";
+import type { ConnectionsView, ConnectionView } from "./view.ts";
 
 export type SourcesModel = {
-  // Every connected source, as the server has them; null before they load.
-  view: SourceView[] | null;
-  // The sources syncing now, by kind.
+  // Every open connection, as the server has them; null before they load.
+  view: ConnectionView[] | null;
+  // The connections syncing now, by ID.
   syncing: readonly string[];
-  // Why a source's last sync didn't work, by kind, until one does.
+  // Why a connection's last sync didn't work, by ID, until one does.
   problems: Readonly<Record<string, string>>;
 };
 
-export type SourcesMsg = { type: "syncClicked"; source: string } | { type: "syncAllClicked" };
+export type SourcesMsg = { type: "syncClicked"; connection: string } | { type: "syncAllClicked" };
 
-export const loadSources: Effect = get("/api/sources", { kind: "sources" });
+export const loadSources: Effect = get("/api/connections", { kind: "sources" });
 
 export function initSources(): SourcesModel {
   return { view: null, syncing: [], problems: {} };
 }
 
 export function updateSources(model: SourcesModel, msg: SourcesMsg): [SourcesModel, Effect[]] {
-  const kinds =
+  const ids =
     msg.type === "syncAllClicked"
-      ? (model.view ?? []).map((source) => source.kind)
-      : model.view?.some((source) => source.kind === msg.source)
-        ? [msg.source]
+      ? (model.view ?? []).map((connection) => connection.id)
+      : model.view?.some((connection) => connection.id === msg.connection)
+        ? [msg.connection]
         : [];
-  const asked = kinds.filter((kind) => !model.syncing.includes(kind));
+  const asked = ids.filter((id) => !model.syncing.includes(id));
   if (asked.length === 0) return [model, []];
   const problems = Object.fromEntries(
-    Object.entries(model.problems).filter(([kind]) => !asked.includes(kind)),
+    Object.entries(model.problems).filter(([id]) => !asked.includes(id)),
   );
   return [
     { ...model, syncing: [...model.syncing, ...asked], problems },
-    asked.map((kind) => post(`/api/${kind}/sync`, {}, { kind: "sourceSynced", source: kind })),
+    asked.map((id) =>
+      post(`/api/connections/${id}/sync`, {}, { kind: "sourceSynced", connection: id }),
+    ),
   ];
 }
 
@@ -49,17 +51,24 @@ export function sourcesReplied(
   const { tag } = msg;
   if (tag.kind === "sources")
     return {
-      model: msg.ok ? { ...model, view: (msg.body as { sources: SourceView[] }).sources } : model,
+      model: msg.ok
+        ? {
+            ...model,
+            view: (msg.body as ConnectionsView).connections.filter(
+              (connection) => connection.state === "open",
+            ),
+          }
+        : model,
       synced: false,
     };
   if (tag.kind !== "sourceSynced") return { model, synced: false };
-  const syncing = model.syncing.filter((kind) => kind !== tag.source);
+  const syncing = model.syncing.filter((id) => id !== tag.connection);
   if (!msg.ok)
     return {
       model: {
         ...model,
         syncing,
-        problems: { ...model.problems, [tag.source]: errorOf(msg.body) },
+        problems: { ...model.problems, [tag.connection]: errorOf(msg.body) },
       },
       synced: false,
     };
@@ -69,7 +78,7 @@ export function sourcesReplied(
 // What a source's last sync changed, as its row says it: only the counts
 // that aren't zero, such as "3 new · 1 changed". Null when it changed
 // nothing.
-export function syncChanges(counts: SourceView["lastSync"]): string | null {
+export function syncChanges(counts: ConnectionView["lastSync"]): string | null {
   const said = [
     counts.new && `${counts.new} new`,
     counts.changed && `${counts.changed} changed`,
@@ -87,12 +96,12 @@ export function sourcesLine(model: SourcesModel): {
   problem: boolean;
 } {
   const view = model.view ?? [];
-  const times = view.map((source) => source.syncedAt);
+  const times = view.map((connection) => connection.syncedAt);
   return {
     count: view.length,
     // A source never synced makes the whole line "not synced yet".
     syncedAt: times.some((at) => at === null) ? null : (times.toSorted()[0] ?? null),
     syncing: model.syncing.length > 0,
-    problem: view.some((source) => model.problems[source.kind] !== undefined),
+    problem: view.some((connection) => model.problems[connection.id] !== undefined),
   };
 }

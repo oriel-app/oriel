@@ -120,11 +120,14 @@ export type WindowView = {
 
 export type Choice = { id: string; name: string };
 
-// The folder of markdown files the user connected, read-only: its real path,
-// how many files the index has from it, and when it last synced.
+// The folder of markdown files the user connected, read-only, as the window
+// reads it from its connection until one component draws every connector's
+// steps (OA-216): its real path, how many files the index has from it, and
+// when it last synced.
 export type FolderView = { path: string; items: number; syncedAt: string | null };
 
-// Jira: the site and project the index syncs, if any, with how many items
+// Jira, as the window reads it from its connection until OA-216: the site
+// and project the index syncs, if any, with how many items
 // it has from them and when it last synced; and whether the user can
 // connect it from the window, which they can only while it isn't connected
 // and the server doesn't set it up itself.
@@ -133,22 +136,49 @@ export type JiraView = {
   connectable: boolean;
 };
 
-// Slack: the workspace whose picked channels the index reads, how many
-// conversations it has from them, and when it last synced.
-export type SlackView = { workspace: string; items: number; syncedAt: string | null };
-
-// A connected source as the sidebar lists it, every one drawn the same way:
-// its kind, its declared name, what of it is connected (Jira's project and
-// site, the folder's path, Slack's workspace), how many items the index has
-// from it, when it last synced, and how many items that sync found new,
-// changed and gone from the source.
-export type SourceView = {
+// A connection as the window shows it (decision 0049), every one drawn the
+// same way: the ID the page names it by, which the server made; its
+// connector's kind and declared name; its number, and its prefix, whose its
+// items are; what it reads, as the sidebar says it (Jira's project and site,
+// the folder's path, Slack's workspace); what it identifies in its source
+// and its options, never its secret; how many items the index has from it,
+// and when it last synced; whether it's open, or signed out since its
+// source turned it away; and whether a flag of `pnpm dev` makes it, so the
+// window can't set or disconnect it.
+export type ConnectionView = {
+  id: string;
   kind: string;
+  number: number;
+  prefix: string;
   name: string;
   about: string;
+  identity: string;
+  options: Record<string, unknown>;
   items: number;
   syncedAt: string | null;
+  // What its last sync changed: how many items it found new, changed and
+  // gone from the source.
   lastSync: { new: number; changed: number; removed: number };
+  state: "open" | "signed-out";
+  flagged: boolean;
+};
+
+// Every connection, which kinds the window may connect now, and whether the
+// server offers the system's folder picker, for a connector's folder step.
+export type ConnectionsView = {
+  connections: ConnectionView[];
+  connectable: string[];
+  picker: boolean;
+};
+
+// One of a connector's pick step's list, such as a Jira project: what is
+// picked, its name, how many items it holds and when it last changed, when
+// the source says.
+export type PickChoiceView = {
+  value: string;
+  name: string;
+  count: number | null;
+  updatedAt: string | null;
 };
 
 export const threadStates = ["working", "done", "handed-off", "dropped"] as const;

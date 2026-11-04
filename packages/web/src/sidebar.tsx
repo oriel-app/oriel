@@ -638,19 +638,19 @@ function Sources(props: {
       {open && (
         <ul id="nav-sources" class="nav-sources">
           {sources.view.map((source) => {
-            const syncing = sources.syncing.includes(source.kind);
-            const problem = sources.problems[source.kind];
+            const syncing = sources.syncing.includes(source.id);
+            const problem = sources.problems[source.id];
             // Said under its last sync's time, unless a sync runs now or
             // the last one didn't work.
             const changes = syncing || problem ? null : syncChanges(source.lastSync);
             return (
-              <li key={source.kind} class="source-row" data-syncing={syncing || undefined}>
+              <li key={source.id} class="source-row" data-syncing={syncing || undefined}>
                 <Link
                   route={{
                     page: "window",
                     grouping: props.browse.grouping,
                     addTo: null,
-                    source: source.kind,
+                    source: source.prefix,
                   }}
                   dispatch={dispatch}
                   class="nav-link nav-source"
@@ -674,7 +674,7 @@ function Sources(props: {
                   class="quiet-action source-sync"
                   disabled={syncing}
                   aria-label={`Sync ${source.name}`}
-                  onClick={() => send({ type: "syncClicked", source: source.kind })}
+                  onClick={() => send({ type: "syncClicked", connection: source.id })}
                 >
                   Sync
                 </button>

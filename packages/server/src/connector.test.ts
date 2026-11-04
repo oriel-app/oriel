@@ -99,6 +99,7 @@ const memo = {
   open: async () => {
     throw new Error("memo connections don't open here");
   },
+  options: object({}),
   // One memo, which nothing here reads: packages/evals tests a declared
   // fixture.
   fixture: {

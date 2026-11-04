@@ -281,7 +281,9 @@ export async function firstRunServer(
   const serving = await start(0, {
     db: options.data ? join(options.data, "oriel.db") : ":memory:",
     secrets,
-    jira: { kind: "window", legacy: legacySecret(secrets), anySite: true, fetch: fetchJira },
+    sources: { jira: { mode: "window", fetch: fetchJira } },
+    anywhere: true,
+    legacyJira: legacySecret(secrets),
     models: chooser,
     settings,
     agent,
@@ -308,7 +310,7 @@ export async function firstRunServer(
     },
   });
   if (options.folder) {
-    const url = new URL("/api/folder", serving.url);
+    const url = new URL("/api/connections", serving.url);
     const reply = await serving.app.api(
       {
         method: "POST",
@@ -318,7 +320,7 @@ export async function firstRunServer(
           origin: serving.url.replace(/\/$/, ""),
           "content-type": "application/json",
         },
-        body: async () => JSON.stringify({ path: options.folder }),
+        body: async () => JSON.stringify({ kind: "folder", given: { path: options.folder } }),
       },
       url,
     );

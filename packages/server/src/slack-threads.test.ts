@@ -11,7 +11,7 @@ const archive = "https://ferrowick-example.slack.com/archives/C0FW1WEATHR";
 const replies = { count: 4, url: `${archive}/p1788444000000100` };
 
 test("a message's row counts its replies and links to them, under every grouping that lists it; replies aren't rows", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   for (const grouping of ["epic", "assignee"]) {
     const view = json<WindowView>(await app.get(`/api/window?grouping=${grouping}`));
     const rows = view.clusters.flatMap((c) => c.list).filter((row) => row.id.startsWith("slack:"));
@@ -26,7 +26,7 @@ test("a message's row counts its replies and links to them, under every grouping
 });
 
 test("a workstream's member shows its message's replies", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const { id } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: [message] }),
   );
@@ -38,7 +38,7 @@ test("a workstream's member shows its message's replies", async (t) => {
 });
 
 test("a dropped reply link, as Slack copies it, adds its conversation", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const { id } = json<{ id: string }>(
     await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
   );

@@ -55,12 +55,14 @@ const start = async (): Promise<{ serving: Serving; ms: number }> => {
   const at = performance.now();
   const serving = await serve(0, {
     db,
-    jira: {
-      kind: "live",
-      site: memorySiteOrigin,
-      account: { email: "", token: "" },
-      project: "SYN",
-      fetch: site.fetch,
+    sources: {
+      jira: {
+        mode: "live",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        secret: JSON.stringify({ email: "", token: "" }),
+        fetch: site.fetch,
+      },
     },
   });
   return { serving, ms: performance.now() - at };
@@ -202,6 +204,10 @@ try {
   const browse = (await (await fetch(new URL("/api/browse?grouping=epic", base))).json()) as {
     clusters: { row: { key: string; count: number } }[];
   };
+  const { connections } = (await (await fetch(new URL("/api/connections", base))).json()) as {
+    connections: { id: string; kind: string }[];
+  };
+  const jiraId = connections.find((each) => each.kind === "jira")?.id ?? "";
   const largest = browse.clusters
     .toSorted((a, b) => b.row.count - a.row.count)
     .slice(0, Number(values.workstreams));
@@ -224,7 +230,7 @@ try {
       const key = keys[(round * 7919 + n * 104_729) % keys.length];
       if (key) site.edit(key, { status: moves[(round + n) % 3], points: (n % 8) + 1 });
     }
-    await post("/api/jira/sync", {});
+    await post(`/api/connections/${jiraId}/sync`, {});
   }
   await first.serving.close();
   started.pop();

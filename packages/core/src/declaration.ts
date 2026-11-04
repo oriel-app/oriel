@@ -1,4 +1,5 @@
 import type { DeclaredFacets } from "./change-log.ts";
+import type { ConnectOf, LiveOf } from "./connect.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
@@ -9,6 +10,7 @@ import type { OverviewOf } from "./overview.ts";
 import type { PanelOf } from "./panel.ts";
 import type { Recognizer } from "./references.ts";
 import type { IndexRecord } from "./source.ts";
+import type { Described } from "./validate.ts";
 
 // Everything a source declares about itself, in one place (decision 0019):
 // how it shows in the window, what its items are to the agent, and, for a
@@ -55,6 +57,14 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // connection's options and its secret (decision 0049). The writer itself
   // is built only in packages/changeset (decision 0003).
   open: (connection: ToOpen, via: OpenVia) => Promise<Opened<Given<C>, Given<R>, Given<W>>>;
+  // What a person sets per connection, which `source.configure` checks
+  // with it: the options its `open` reads. Its checks never quote a value.
+  options: Described<Record<string, unknown>>;
+  // How a person makes a connection of it in the window: its steps and
+  // their server halves. Without it, only a flag makes one.
+  connect?: ConnectOf;
+  // How a flag makes a live connection of it under `pnpm dev`, from `.env`.
+  live?: LiveOf;
   // Its synthetic data, which tests, evals and the server's fixture mode
   // connect to. Its connection gives the context its namespace takes; one
   // with no namespace, anything.

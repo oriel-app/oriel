@@ -43,16 +43,14 @@ import {
   browseFilter,
   type BrowseFilter,
   type ClusterPageView,
-  type FolderView,
-  type SourceView,
+  type ConnectionsView,
   type GroupingId,
   type Undoable,
   type WorkstreamSummary,
   type WorkstreamDeletedView,
   type WorkstreamEndedView,
   isGroupingId,
-  type JiraProjectView,
-  type JiraView,
+  type PickChoiceView,
   type OverviewView,
   type SearchView,
   type StreamEvent,
@@ -117,23 +115,24 @@ export type ApiDeps = {
   // The overview, as the page and the window chat's `window.overview()`
   // read it (decision 0027).
   overview(): Promise<OverviewView>;
-  // The connected folder and Jira as they stand, and every connected source
-  // as the sidebar lists them; connecting and syncing any is an action.
-  folder(): FolderView | null;
+  // Every connection as the window shows them, which kinds it may connect
+  // now, and whether there's a folder picker. Connecting, configuring,
+  // syncing and disconnecting one are actions (decision 0049).
+  connections(): ConnectionsView;
+  // A connector's pick step's list, from what its steps before it gave,
+  // before anything is connected: a read, which keeps nothing.
+  pick(
+    kind: string,
+    given: unknown,
+    query: string,
+  ): Promise<
+    { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
+  >;
+  // The field a connector's folder step fills, or null when it has none or
+  // the window doesn't connect it now.
+  folderField(kind: string): string | null;
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
-  jira(): JiraView;
-  // The projects the Jira details typed can see, before any is connected.
-  jiraProjects(typed: {
-    site: string;
-    email: string;
-    token: string;
-    query: string;
-  }): Promise<
-    | { projects: JiraProjectView[]; more: boolean }
-    | { problem: string; fields: ("site" | "email" | "token")[] }
-  >;
-  sources(): SourceView[];
   settings: SettingsService;
   // The desktop app's first run and its commands for the person's CLI.
   setup: Setup;
@@ -248,12 +247,10 @@ const setupProgress = object({
   ),
 });
 const typedText = (max: number) => refine(string, (text) => text.length <= max, `at most ${max}`);
-const jiraDetails = object({
-  site: typedText(300),
-  email: typedText(300),
-  token: typedText(4096),
-  query: optional(typedText(100)),
-});
+// What the person gave a connector's steps, which its own validator checks.
+const connectBody = object({ kind: unknown, given: unknown });
+const pickBody = object({ kind: string, given: unknown, query: optional(typedText(100)) });
+const pickerBody = object({ kind: string, given: optional(unknown) });
 // The window makes a workstream from a cluster or from picked items; a workstream from
 // nothing comes only with its thread.
 const windowWorkstream = refine(
@@ -655,63 +652,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       },
     },
     {
-      method: "GET",
-      path: at("/folder"),
-      run: async () => json(200, { folder: deps.folder(), picker: deps.pickFolder !== undefined }),
-    },
-    {
-      // On the desktop app, the system's folder picker, through the shell,
-      // then the folder picked is connected as a typed one is. Cancelling
-      // changes nothing.
-      method: "POST",
-      path: at("/folder/pick"),
-      async run(_, request) {
-        await readJson(request, smallBody, emptyBody);
-        if (!deps.pickFolder)
-          throw new Refused(409, "Type the folder's path: there's no picker here.");
-        let picked: string | null;
-        try {
-          picked = await deps.pickFolder("Choose a folder of markdown files for Oriel to read.");
-        } catch {
-          throw new Refused(409, "The folder picker didn't open. Try again.");
-        }
-        if (picked === null) return json(200, { folder: deps.folder(), picked: false });
-        const input = checked("source.connect", { kind: "folder", path: picked });
-        const connected = await deps.dispatch("source.connect", input, user);
-        if ("problem" in connected) throw new Refused(400, connected.problem);
-        return json(200, { ...connected, picked: true });
-      },
-    },
-    {
-      // Connects the folder whose path the user typed, under `pnpm dev`,
-      // which has no picker. Only a directory is taken; its items sync into
-      // the index at once.
-      method: "POST",
-      path: at("/folder"),
-      async run(_, request) {
-        const { path } = await readJson(request, smallBody, object({ path: unknown }));
-        const input = checked("source.connect", { kind: "folder", path });
-        const connected = await deps.dispatch("source.connect", input, user);
-        if ("problem" in connected) throw new Refused(400, connected.problem);
-        return json(200, connected);
-      },
-    },
-    {
-      method: "POST",
-      path: at("/folder/sync"),
-      async run(_, request) {
-        await readJson(request, smallBody, emptyBody);
-        const synced = await deps.dispatch("source.sync", { source: "folder" }, user);
-        if ("problem" in synced) throw new Refused(409, synced.problem);
-        return json(200, synced);
-      },
-    },
-    {
-      method: "GET",
-      path: at("/sources"),
-      run: async () => json(200, { sources: deps.sources() }),
-    },
-    {
       // How every connector shows, connected or not, from its declaration:
       // the page keeps no list of sources (decision 0049).
       method: "GET",
@@ -719,14 +659,103 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       run: async () => json(200, { connectors: connectorViews }),
     },
     {
-      // A full sweep of Slack's picked channels. Slack failing it is a 502.
+      method: "GET",
+      path: at("/connections"),
+      run: async () => json(200, deps.connections()),
+    },
+    {
+      // Connects what the person gave across a connector's steps: checked
+      // with its source before anything is kept, then synced into the index
+      // at once. Nothing secret is sent back. A refusal names the fields
+      // it's about.
       method: "POST",
-      path: at("/slack/sync"),
+      path: at("/connections"),
       async run(_, request) {
+        const { kind, given } = await readJson(request, smallBody, connectBody);
+        const input = checked("source.connect", { kind, given });
+        const connected = await deps.dispatch("source.connect", input, user);
+        return "problem" in connected
+          ? json(400, { error: connected.problem, fields: connected.fields ?? [] })
+          : json(200, connected);
+      },
+    },
+    {
+      // A pick step's list, such as the projects Jira's details typed can
+      // see, so the person picks one from the source's own list. A read:
+      // nothing is kept, and nothing typed is sent back.
+      method: "POST",
+      path: at("/connections/pick"),
+      async run(_, request) {
+        const { kind, given, query } = await readJson(request, smallBody, pickBody);
+        const listed = await deps.pick(kind, given, query ?? "");
+        return "problem" in listed
+          ? json(400, { error: listed.problem, fields: listed.fields ?? [] })
+          : json(200, listed);
+      },
+    },
+    {
+      // On the desktop app, a folder step through the system's folder
+      // picker, through the shell; then the connection is made as a typed
+      // folder's is. Cancelling changes nothing.
+      method: "POST",
+      path: at("/connections/picker"),
+      async run(_, request) {
+        const body = await readJson(request, smallBody, pickerBody);
+        const field = deps.folderField(body.kind);
+        if (!deps.pickFolder || field === null)
+          throw new Refused(409, "Type the folder's path: there's no picker here.");
+        let picked: string | null;
+        try {
+          picked = await deps.pickFolder("Choose a folder of markdown files for Oriel to read.");
+        } catch {
+          throw new Refused(409, "The folder picker didn't open. Try again.");
+        }
+        if (picked === null) return json(200, { picked: false });
+        const given = { ...(body.given as object | undefined), [field]: picked };
+        const input = checked("source.connect", { kind: body.kind, given });
+        const connected = await deps.dispatch("source.connect", input, user);
+        if ("problem" in connected) throw new Refused(400, connected.problem);
+        return json(200, { ...connected, picked: true });
+      },
+    },
+    {
+      // Sets a connection's options, which apply at once: it syncs with
+      // them, and a sync that fails says why beside it. Its Undo puts back
+      // the options it replaced.
+      method: "POST",
+      path: at("/connections/:id/options"),
+      async run([id = ""], request) {
+        const { options } = await readJson(request, smallBody, object({ options: unknown }));
+        const input = checked("source.configure", { connection: id, options });
+        const configured = await deps.dispatch("source.configure", input, user);
+        if (!("connection" in configured)) throw new Refused(400, configured.problem);
+        return json(200, configured);
+      },
+    },
+    {
+      // A full sweep of a connection, so what was made or deleted in its
+      // source since the last sync shows. Its source failing it is a 502:
+      // the request was fine.
+      method: "POST",
+      path: at("/connections/:id/sync"),
+      async run([id = ""], request) {
         await readJson(request, smallBody, emptyBody);
-        const synced = await deps.dispatch("source.sync", { source: "slack" }, user);
+        const input = checked("source.sync", { connection: id });
+        const synced = await deps.dispatch("source.sync", input, user);
         if ("problem" in synced) throw new Refused(502, synced.problem);
         return json(200, synced);
+      },
+    },
+    {
+      // Disconnects a connection: its secret, its options and its items go,
+      // and workstreams that held them keep them as items the index no
+      // longer has. The window asks first.
+      method: "POST",
+      path: at("/connections/:id/disconnect"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("source.disconnect", { connection: id });
+        return json(200, await deps.dispatch("source.disconnect", input, user));
       },
     },
     {
@@ -750,55 +779,6 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         );
         if (!page) throw new Refused(404, "no such cluster");
         return json(200, page);
-      },
-    },
-    {
-      method: "GET",
-      path: at("/jira"),
-      run: async () => json(200, { jira: deps.jira() }),
-    },
-    {
-      // The projects the details typed can see, so the person picks one from
-      // Jira's own list. A read: nothing is kept, and the token is never sent
-      // back. A refusal names the fields it's about.
-      method: "POST",
-      path: at("/jira/projects"),
-      async run(_, request) {
-        const typed = await readJson(request, smallBody, jiraDetails);
-        const listed = await deps.jiraProjects({ ...typed, query: typed.query ?? "" });
-        return "problem" in listed
-          ? json(400, { error: listed.problem, fields: listed.fields })
-          : json(200, listed);
-      },
-    },
-    {
-      // Connects Jira with the details the user typed. They're checked
-      // against the site before anything is kept, and its items sync into
-      // the index at once. The token is never sent back.
-      method: "POST",
-      path: at("/jira"),
-      async run(_, request) {
-        const typed = await readJson(
-          request,
-          smallBody,
-          object({ site: unknown, email: unknown, token: unknown, project: unknown }),
-        );
-        const input = checked("source.connect", { kind: "jira", ...typed });
-        const connected = await deps.dispatch("source.connect", input, user);
-        if ("problem" in connected) throw new Refused(400, connected.problem);
-        return json(200, connected);
-      },
-    },
-    {
-      // A full sweep of Jira, so what was made or deleted there since the
-      // last sync shows. Jira failing it is a 502: the request was fine.
-      method: "POST",
-      path: at("/jira/sync"),
-      async run(_, request) {
-        await readJson(request, smallBody, emptyBody);
-        const synced = await deps.dispatch("source.sync", { source: "jira" }, user);
-        if ("problem" in synced) throw new Refused(502, synced.problem);
-        return json(200, synced);
       },
     },
     {

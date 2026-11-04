@@ -7,12 +7,12 @@ import type {
   DiffView,
   WorkstreamSummary,
   WorkstreamView,
-  JiraView,
+  ConnectionView,
   ThreadView,
 } from "@oriel/web/view";
-import { account, json, type Script, testApp } from "./testing.ts";
+import { account, jiraOf, json, type Script, testApp } from "./testing.ts";
 
-type Synced = { jira: JiraView };
+type Synced = { connection: ConnectionView };
 
 const keys = (app: Awaited<ReturnType<typeof testApp>>) =>
   new Set(
@@ -31,7 +31,7 @@ test("Sync shows the epics and stories made in Jira, and what was deleted there 
     items: ["jira:SYN-10", "jira:SYN-21"],
   });
   const { id: workstreamId, version } = json<WorkstreamSummary>(created);
-  const before = json<{ jira: JiraView }>(await app.get("/api/jira")).jira.connected;
+  const before = (await jiraOf(app)).connected;
   assert.ok(before);
 
   // A teammate works in Jira directly.
@@ -41,11 +41,11 @@ test("Sync shows the epics and stories made in Jira, and what was deleted there 
   assert.ok(!keys(app).has(epic), "nothing shows before a sync");
 
   app.advance(60_000);
-  const reply = await app.post("/api/jira/sync");
+  const reply = await app.sync("jira");
   assert.equal(reply.status, 200);
-  const after = json<Synced>(reply).jira.connected;
+  const after = json<Synced>(reply).connection;
   assert.deepEqual(
-    [after?.project, after?.items, after?.syncedAt],
+    [after.options.project, after.items, after.syncedAt],
     ["SYN", before.items + 1, "2026-10-29T09:01:00.000Z"],
   );
   const cluster = app.app.window("epic").clusters.find((c) => c.row.anchor?.key === epic);
@@ -81,18 +81,18 @@ test("a Sync that fails says why in plain words, and the window keeps what it ha
   site.remove("SYN-21");
 
   site.outage("offline");
-  const offline = await app.post("/api/jira/sync");
+  const offline = await app.sync("jira");
   assert.equal(offline.status, 502);
   assert.match(json<{ error: string }>(offline).error, /couldn't reach Jira just now/);
   site.outage("signed-out");
-  const refused = await app.post("/api/jira/sync");
+  const refused = await app.sync("jira");
   assert.equal(refused.status, 502);
   assert.match(json<{ error: string }>(refused).error, /Jira turned Oriel away/);
   assert.doesNotMatch(json<{ error: string }>(refused).error, /401|token/);
   assert.deepEqual(keys(app), shown);
 
   site.outage(null);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.ok(!keys(app).has("SYN-21"));
   assert.deepEqual(
     app.app
@@ -111,9 +111,9 @@ test("Syncs asked for while one runs wait for it, and run as one sweep after it"
     app.logged.filter((l) => l.message === "sync: finished" && l.fields.full === true).length;
   const startup = sweeps();
   const search = site.hold("search");
-  const first = app.post("/api/jira/sync");
+  const first = app.sync("jira");
   await search.reached;
-  const later = [app.post("/api/jira/sync"), app.post("/api/jira/sync")];
+  const later = [app.sync("jira"), app.sync("jira")];
   search.release();
   const replies = await Promise.all([first, ...later]);
   assert.deepEqual(
@@ -131,14 +131,14 @@ test("a Sync that fails partway marks nothing gone, and the next one does", asyn
   site.remove("SYN-21");
   // The first page of the listing arrives; then the network goes.
   const search = site.hold("search");
-  const reply = app.post("/api/jira/sync");
+  const reply = app.sync("jira");
   await search.reached;
   site.outage("offline");
   search.release();
   assert.match(json<{ error: string }>(await reply).error, /couldn't reach Jira just now/);
   assert.ok(keys(app).has("SYN-21"), "a sweep that didn't finish can't say what's gone");
   site.outage(null);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.ok(!keys(app).has("SYN-21"));
 });
 
@@ -149,7 +149,7 @@ test("an unexpected answer from Jira isn't called an outage", async (t) => {
   site.remove("SYN-21");
   const shown = keys(app);
   site.outage("unexpected");
-  const reply = await app.post("/api/jira/sync");
+  const reply = await app.sync("jira");
   assert.equal(reply.status, 502);
   assert.match(json<{ error: string }>(reply).error, /in a way Oriel didn't expect/);
   assert.deepEqual(keys(app), shown);
@@ -159,21 +159,20 @@ test("Jira connected from the window syncs on demand, and can't before it's conn
   const app = await testApp(t, { connect: {} });
   const { site } = app;
   assert.ok(site);
-  const early = await app.post("/api/jira/sync");
-  assert.equal(early.status, 409);
-  assert.match(json<{ error: string }>(early).error, /isn't connected/);
+  // There's no connection yet to name.
+  assert.equal((await app.sync("jira")).status, 404);
   const details = { site: "oriel.atlassian.net", ...account, project: "SYN" };
-  assert.equal((await app.post("/api/jira", details)).status, 200);
+  assert.equal((await app.connect("jira", details)).status, 200);
 
   const epic = site.add({ issueType: "Epic", summary: "Kiosk wallets" });
   site.remove("SYN-21");
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.ok(keys(app).has(epic));
   assert.ok(!keys(app).has("SYN-21"));
 
   // Its token revoked: only a restart drops the connection, so it says so.
   site.outage("signed-out");
-  const refused = await app.post("/api/jira/sync");
+  const refused = await app.sync("jira");
   assert.equal(refused.status, 502);
   assert.match(json<{ error: string }>(refused).error, /Restart Oriel to connect Jira again/);
   assert.deepEqual(
@@ -234,7 +233,7 @@ test("what a revert deleted stays gone while Jira's search lags, however long", 
   });
   assert.equal(drop.status, 200);
   assert.ok(!keys(app).has("SYN-900"), "an incremental sync doesn't bring it back");
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.ok(!keys(app).has("SYN-900"), "nor does a full sweep");
   const members = json<WorkstreamView>(await app.get(`/api/workstreams/${workstreamId}`)).members;
   assert.deepEqual(

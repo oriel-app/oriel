@@ -11,6 +11,7 @@ import type {
   ClusterPageView,
   ClusterRow,
   ConnectorView,
+  ConnectionView,
   DiffView,
   ItemRef,
   ItemRow,
@@ -100,6 +101,24 @@ export const clusterRow = (over: Partial<ClusterRow> = {}): ClusterRow => ({
   estimated: 0,
   unestimated: 0,
   status: { todo: 0, "in-progress": 0, done: 0 },
+  ...over,
+});
+
+// A connection, open: Jira's first, reading SYN, unless overridden.
+export const connectionView = (over: Partial<ConnectionView> = {}): ConnectionView => ({
+  id: "01JBZ0000000000000000000K1",
+  kind: "jira",
+  number: 1,
+  prefix: "jira",
+  name: "Jira",
+  about: "SYN on oriel.atlassian.net",
+  identity: "https://oriel.atlassian.net",
+  options: { project: "SYN" },
+  items: 0,
+  syncedAt: null,
+  lastSync: { new: 0, changed: 0, removed: 0 },
+  state: "open",
+  flagged: false,
   ...over,
 });
 

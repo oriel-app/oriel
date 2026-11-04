@@ -14,6 +14,7 @@ import {
   refine,
   string,
   union,
+  type Described,
   type Validator,
 } from "@oriel/core";
 import type { State } from "@oriel/core";
@@ -86,7 +87,7 @@ export const tabMapping: Validator<TabMapping> = object({
 
 // The picks, then what a mapping must hold: one mapping per tab, states only
 // with a status, and no column mapped to two fields.
-export const sheetsPicks: Validator<SheetsPicks> = refine(
+export const sheetsPicks: Described<SheetsPicks> = refine(
   object({
     spreadsheets: array(
       object({

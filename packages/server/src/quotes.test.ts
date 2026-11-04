@@ -63,7 +63,7 @@ test("each quote from an item is checked as the turn ends: found there word for 
   // Checked once, as the turn ended: SYN-45 edited since doesn't change it.
   app.site?.describe("SYN-45", textToAdf("Nothing to see here."));
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.deepEqual((await view()).quotes, expected);
 
   // The agent's next turn never reads Oriel's check: of its notes, only

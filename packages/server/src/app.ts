@@ -17,6 +17,7 @@ import {
   instant,
   isItemId,
   type ItemId,
+  kindOf,
   type Log,
   maxItems,
   type Opened,
@@ -64,16 +65,17 @@ import {
   sources,
   specs,
 } from "@oriel/sources";
-import type { GroupingId, JiraView, OverviewView, SourceView, WindowView } from "@oriel/web/view";
+import type { ConnectionView, GroupingId, OverviewView, WindowView } from "@oriel/web/view";
 import type { KeyCheck, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
 import { api } from "./api.ts";
-import { memorySecrets, type Secrets } from "./connection.ts";
+import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
-import { flagged, type JiraMode, type SlackMode } from "./modes.ts";
+import { connecting, moveLegacy } from "./connecting.ts";
+import { flagged, inWindow, type SourceModes } from "./modes.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
@@ -95,9 +97,8 @@ import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
-import { type Opening, windowSources } from "./window-sources.ts";
 
-export type { JiraMode, SlackMode } from "./modes.ts";
+export type { SourceMode, SourceModes } from "./modes.ts";
 
 export type AppOptions = {
   // A SQLite file, or ":memory:".
@@ -105,12 +106,19 @@ export type AppOptions = {
   // Holds SQLite's exclusive lock on the file while the app runs, so no
   // second server can open it (decision 0036).
   exclusive?: boolean;
-  jira: JiraMode;
+  // How each connector's connections are made: by a flag at start, as its
+  // fixture or live, or in the window (decision 0049). A kind left out is
+  // made in the window when its connector declares how, and not otherwise.
+  sources?: SourceModes;
+  // Any account or site may be connected in the window, as on the desktop
+  // app (decision 0038); otherwise only those Oriel's own tests use.
+  anywhere?: boolean;
+  // Jira's saved connection from before connections, which the first start
+  // moves into one (decision 0049).
+  legacyJira?: LegacyJira;
   // Where connections keep their secrets, each under the name made from its
   // ID (decision 0049); kept only while the server runs when absent.
   secrets?: Secrets;
-  // No Slack when absent.
-  slack?: SlackMode;
   // Builds the agent from everything but a model provider: @oriel/agent's,
   // with one, or the scripted dev agent, which is the default.
   agent?: (deps: ServerAgentDeps) => Agent;
@@ -161,8 +169,8 @@ export type App = {
   // A sketch as its thread stored it, for the sketch origin to serve; null
   // when the thread is gone or never showed it (decision 0033).
   sketch(threadId: Ulid, sketchId: Ulid): Sketch | null;
-  // Jira as the window shows it: what's connected, and whether it can be.
-  jira(): JiraView;
+  // Every connection, as the window shows them.
+  connections(): ConnectionView[];
   api(request: Request, url: URL): Promise<Reply | null>;
   settings: SettingsService;
   workspaceId: Ulid;
@@ -270,21 +278,27 @@ export async function createApp(options: AppOptions): Promise<App> {
     return opened;
   };
 
-  const flags = flagged(options.jira, options.slack);
-  // The window's routes for each source, which reach connections through
-  // this loop, made below, once a person asks.
-  const windows = windowSources({
-    jira: options.jira,
+  const modes = options.sources ?? {};
+  const flags = flagged(modes);
+  // The connections flags make, by ID: made again at every start, so the
+  // window neither configures nor disconnects them.
+  const byFlag = new Set<Ulid>();
+  // What the person connects in the window, through each connector's steps,
+  // which reach connections through this loop, made below, once they ask.
+  const windows = connecting({
+    modes,
+    anywhere: options.anywhere ?? false,
     opening: {
       connections,
-      opened: (kind) => openedOf(kind),
-      synced: (prefix) => synced(prefix),
+      open: (kind) => openedOf(kind) !== null,
       connect: (kind, made, how) => connect(kind, made, how),
-      sync: (kind) => syncAsked(kind),
     },
     log,
   });
-  await windows.beforeOpen();
+  // Before any connection opens: Jira's saved connection from before
+  // connections moves into one.
+  if (options.legacyJira && inWindow(modes, "jira"))
+    await moveLegacy(connections, options.legacyJira, log);
   // Kept connections that didn't open, as one whose account its source
   // turned away: what the index has of them still shows, but nothing reads
   // or writes them until a person signs in again.
@@ -309,11 +323,12 @@ export async function createApp(options: AppOptions): Promise<App> {
       );
       const connection = connections.flagged(kind, opened.identity ?? flag.identity, flag.options);
       byPrefix.set(connection.prefix, { connection, opened });
+      byFlag.add(connection.id);
       continue;
     }
     // One the window made, with its secret, if the window connects its kind.
     // One that can't open is left shut, so the window asks for it again.
-    const connection = windows.kept(kind) ? connections.first(kind) : null;
+    const connection = inWindow(modes, kind) ? connections.first(kind) : null;
     if (!connection) continue;
     const secret = await connections.secret(connection);
     if (!(await windows.vet(connection, secret))) {
@@ -324,7 +339,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       const opened = await openOne(
         kind,
         { ...connection, secret },
-        { fixture: false, kept: true, fetch: windows.fetch(kind) },
+        { fixture: false, kept: true, fetch: windows.viaFor(kind).fetch },
       );
       byPrefix.set(connection.prefix, { connection, opened });
     } catch (error) {
@@ -359,7 +374,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const synced = (prefix: string) => {
     const each = byPrefix.get(prefix);
     return {
-      items: each ? recordsOf(each).length : 0,
+      items: (each ? recordsOf(each) : index.records(workspaceId, prefix, unknown)).length,
       syncedAt: index.source(workspaceId, prefix)?.syncedAt ?? null,
     };
   };
@@ -486,20 +501,28 @@ export async function createApp(options: AppOptions): Promise<App> {
     );
     return turn;
   };
-  // The Sync a person asks for: a full sweep, as only one finds what was
-  // deleted in the source. Syncs run one at a time; one asked for while
-  // another of its kind waits to start joins it, as it would list the same.
-  const waiting = new Map<SourceKind, Promise<string | null>>();
-  const syncAsked = (kind: SourceKind): Promise<string | null> => {
-    const joined = waiting.get(kind);
+  // The Sync a person asks for of a connection: a full sweep, as only one
+  // finds what was deleted in the source. Syncs run one at a time; one asked
+  // for while another of it waits to start joins it, as it would list the
+  // same.
+  const waiting = new Map<Ulid, Promise<string | null>>();
+  const syncAsked = (connection: Connection): Promise<string | null> => {
+    const joined = waiting.get(connection.id);
     if (joined) return joined;
-    const run = inTurn(kind, async () => {
+    const run = inTurn(connection.kind, async () => {
       await syncing.catch(() => {});
-      waiting.delete(kind);
-      const each = openedOf(kind);
-      return each ? syncOpen(each, true) : `${declared(kind).name} isn't connected to this window.`;
+      waiting.delete(connection.id);
+      // One another took the place of since it was asked for isn't synced:
+      // the window shows the one open now.
+      const each = byPrefix.get(connection.prefix);
+      if (each?.connection.id !== connection.id)
+        throw new ActionError(
+          "conflict",
+          `${declared(connection.kind).name} isn't connected to this window.`,
+        );
+      return syncOpen(each, true);
     });
-    waiting.set(kind, run);
+    waiting.set(connection.id, run);
     return run;
   };
   // A sync between the Syncs a person asks for, in its kind's turn.
@@ -535,7 +558,14 @@ export async function createApp(options: AppOptions): Promise<App> {
   // throws before the index sees any of it. Signing in to a live one again
   // keeps it, its number and its items; one disconnected before comes back
   // under its ID and number; anything else is new, with the next number.
-  const connect: Opening["connect"] = (kind, made, how = {}) =>
+  const connect = (
+    kind: SourceKind,
+    made: { identity: string; options: Record<string, unknown>; secret?: string },
+    how: { replaces?: boolean; counting?: (records: number) => void } = {},
+  ): Promise<
+    | { connection: Connection; signedIn: boolean }
+    | { failed: "open" | "sync" | "keep"; error: unknown }
+  > =>
     inTurn(kind, async () => {
       const current = openedOf(kind);
       // The same thing again keeps its connection, so none of its items' IDs
@@ -544,7 +574,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         const problem = await syncOpen(current, true);
         return problem
           ? { failed: "sync" as const, error: new Error(problem) }
-          : { connection: current.connection };
+          : { connection: current.connection, signedIn: false };
       }
       const plan = connections.planned(kind, made.identity);
       const was = "live" in plan ? plan.live : "revives" in plan ? plan.revives : null;
@@ -562,7 +592,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         opened = await openOne(kind, toOpen, {
           fixture: false,
           kept: true,
-          fetch: windows.fetch(kind),
+          fetch: windows.viaFor(kind).fetch,
         });
       } catch (error) {
         return { failed: "open" as const, error };
@@ -605,12 +635,115 @@ export async function createApp(options: AppOptions): Promise<App> {
         shut.delete(connection.prefix);
         sets.rewire(wiring());
         if (first) connected(connection);
-        return { connection };
+        return { connection, signedIn: "live" in plan };
       } catch (error) {
         opened.close?.();
         return { failed: "keep" as const, error };
       }
     });
+  // A connection by its ID, live, open or shut: one the page names.
+  const live = (id: Ulid): Connection => {
+    const found = connections.get(id);
+    if (!found || found.disconnectedAt !== null)
+      throw new ActionError("not-found", "no such connection");
+    return found;
+  };
+  // One a flag makes is made again at every start, from its flag.
+  const unflagged = (connection: Connection, what: string) => {
+    if (byFlag.has(connection.id))
+      throw new ActionError(
+        "conflict",
+        `A flag of pnpm dev makes this connection at every start, so the window can't ${what} it.`,
+      );
+  };
+  // Sets a live connection's options, merged over the ones it has, in its
+  // kind's turn. They apply at once, as Settings' do (decision 0049): the
+  // connection opens with them, and syncs in full, so what they no longer
+  // pick goes; a sync that fails says why, as any sync does. What changed is
+  // named, never its value; `replaced` is what its Undo puts back.
+  const configure = (
+    id: Ulid,
+    given: unknown,
+  ): Promise<
+    | {
+        connection: Connection;
+        changed: string[];
+        replaced: Record<string, unknown>;
+        problem: string | null;
+      }
+    | { problem: string }
+  > => {
+    const connection = live(id);
+    unflagged(connection, "set");
+    const declaration = declared(connection.kind);
+    const decoded = declaration.options({ ...connection.options, ...(given as object) });
+    if (!decoded.ok)
+      throw new ActionError(
+        "invalid",
+        decoded.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+      );
+    const next = decoded.value;
+    return inTurn(connection.kind, async () => {
+      const current = byPrefix.get(connection.prefix);
+      if (!current || current.connection.id !== id)
+        throw new ActionError(
+          "conflict",
+          `${declaration.name} is signed out. Connect it again in the window first.`,
+        );
+      const before = current.connection.options;
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(
+        (key) => JSON.stringify(before[key]) !== JSON.stringify(next[key]),
+      );
+      if (changed.length === 0)
+        return { connection: current.connection, changed, replaced: before, problem: null };
+      const secret = await connections.secret(current.connection);
+      let opened: Opened;
+      try {
+        opened = await openOne(
+          connection.kind,
+          { ...current.connection, options: next, secret },
+          { fixture: false, kept: true, fetch: windows.viaFor(connection.kind).fetch },
+        );
+      } catch (error) {
+        log("connections: one couldn't open with its options", {
+          kind: connection.kind,
+          error: String(error),
+        });
+        return { problem: `${declaration.name} couldn't be read that way. Nothing changed.` };
+      }
+      const kept = await betweenSyncs(async () => {
+        connections.configure(current.connection, next);
+        // What applies wrote lately was in what the old options read.
+        written.delete(connection.prefix);
+        const updated = { ...current.connection, options: next };
+        byPrefix.set(updated.prefix, { connection: updated, opened });
+        current.opened.close?.();
+        sets.rewire(wiring());
+        return { connection: updated, opened };
+      });
+      const problem = await syncOpen(kept, true);
+      return { connection: kept.connection, changed, replaced: before, problem };
+    });
+  };
+  // Disconnects a live connection, open or shut, between syncs: its secret,
+  // its options, its items, their change log and the references they made
+  // go, and a tombstone stays, so connecting the same thing again revives it.
+  const disconnect = (id: Ulid) => {
+    const connection = live(id);
+    unflagged(connection, "disconnect");
+    return inTurn(connection.kind, () =>
+      betweenSyncs(async () => {
+        const open = byPrefix.get(connection.prefix);
+        await connections.disconnect(connection);
+        byPrefix.delete(connection.prefix);
+        shut.delete(connection.prefix);
+        written.delete(connection.prefix);
+        open?.opened.close?.();
+        sets.rewire(wiring());
+        return connection;
+      }),
+    );
+  };
   const caps = options.limits ?? limits;
 
   const people = () => {
@@ -873,20 +1006,44 @@ export async function createApp(options: AppOptions): Promise<App> {
     changeSets: sets,
     applied: (set) => applied(set),
     sources: {
-      connect: async (input) => {
+      connect: async ({ kind, given }) => {
         const before = announced;
-        const outcome = await windows.connect(input);
-        return { outcome, counted: announced > before };
+        const made = await windows.connect(kind, given);
+        return "problem" in made
+          ? { outcome: made, counted: false, signedIn: false }
+          : {
+              outcome: { connection: connectionView(made.connection) },
+              counted: announced > before,
+              signedIn: made.signedIn,
+            };
       },
-      sync: async (kind) => {
-        if (!openedOf(kind))
+      configure: async ({ connection: id, options: given }) => {
+        const done = await configure(id as Ulid, given);
+        return "connection" in done
+          ? {
+              outcome: {
+                connection: connectionView(done.connection),
+                ...(done.problem ? { problem: done.problem } : {}),
+              },
+              changed: done.changed,
+              replaced: done.replaced,
+            }
+          : { outcome: done, changed: [], replaced: {} };
+      },
+      sync: async ({ connection: id }) => {
+        const connection = live(id as Ulid);
+        if (byPrefix.get(connection.prefix)?.connection.id !== id)
           throw new ActionError(
             "conflict",
-            `${declared(kind).name} isn't connected to this window.`,
+            `${declared(connection.kind).name} is signed out. Connect it again in the window first.`,
           );
-        const problem = await syncAsked(kind);
-        return problem ? { problem } : windows.synced(kind);
+        const problem = await syncAsked(connection);
+        return {
+          outcome: problem ? { problem } : { connection: connectionView(connection) },
+          of: connection,
+        };
       },
+      disconnect: ({ connection: id }) => disconnect(id as Ulid),
     },
     running: conversation.running,
     unsettled: async (threadId) =>
@@ -997,26 +1154,46 @@ export async function createApp(options: AppOptions): Promise<App> {
         at: write.at,
       });
     }
-    for (const prefix of wrote) {
-      const each = byPrefix.get(prefix);
-      if (each) await syncOpen(each, !each.opened.incremental);
-    }
+    // Each in its kind's turn, as whatever is open then: one disconnected
+    // since isn't read back in.
+    for (const prefix of wrote)
+      await inTurn(kindOf(prefix), async () => {
+        const each = byPrefix.get(prefix);
+        if (each) await syncOpen(each, !each.opened.incremental);
+      });
   };
 
-  // Every open connection, in declared order, as the sidebar lists them,
-  // with what its last sync changed.
-  const sourcesView = (): SourceView[] =>
-    opens().map(({ connection, opened }) => ({
-      kind: connection.kind,
-      name: declared(connection.kind).name,
-      about: opened.about,
-      ...synced(connection.prefix),
-      lastSync: index.source(workspaceId, connection.prefix)?.lastSync ?? {
+  // A live connection as the window shows it: open, or shut since its
+  // source turned it away at the start.
+  const connectionView = (connection: Connection): ConnectionView => {
+    const open = byPrefix.get(connection.prefix);
+    const kept = open?.connection.id === connection.id ? open.connection : connection;
+    return {
+      id: kept.id,
+      kind: kept.kind,
+      number: kept.number,
+      prefix: kept.prefix,
+      name: declared(kept.kind).name,
+      about: open?.connection.id === connection.id ? open.opened.about : kept.identity,
+      identity: kept.identity,
+      options: kept.options,
+      ...synced(kept.prefix),
+      // What its last sync changed.
+      lastSync: index.source(workspaceId, kept.prefix)?.lastSync ?? {
         new: 0,
         changed: 0,
         removed: 0,
       },
-    }));
+      state: open?.connection.id === connection.id ? "open" : "signed-out",
+      flagged: byFlag.has(kept.id),
+    };
+  };
+  // Every connection open or shut, in declared order, then by number.
+  const kinds: readonly string[] = sourceKinds;
+  const connectionsView = (): ConnectionView[] =>
+    [...opens().map((each) => each.connection), ...shut.values()]
+      .toSorted((a, b) => kinds.indexOf(a.kind) - kinds.indexOf(b.kind) || a.number - b.number)
+      .map(connectionView);
 
   // The overview, computed now from the index, the change log, workstreams,
   // threads and review links: what the page shows and the window chat's
@@ -1118,7 +1295,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     workspaceId,
     window,
     setup,
-    jira: windows.jira,
+    connections: connectionsView,
     settings,
     api: api({
       workspaceId,
@@ -1171,11 +1348,14 @@ export async function createApp(options: AppOptions): Promise<App> {
           ),
       },
       overview,
-      jira: windows.jira,
-      jiraProjects: windows.jiraProjects,
-      folder: windows.folder,
+      connections: () => ({
+        connections: connectionsView(),
+        connectable: sourceKinds.filter((kind) => windows.connectable(kind)),
+        picker: options.pickFolder !== undefined,
+      }),
+      pick: (kind, given, query) => windows.pick(kind, given, query),
+      folderField: (kind) => windows.folderField(kind),
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
-      sources: sourcesView,
       setup,
       log,
     }),

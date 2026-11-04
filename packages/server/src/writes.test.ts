@@ -476,7 +476,7 @@ test("a folder connected while a change set applies leaves it applying, with its
   const held = app.site.hold("SYN-99");
   const approving = app.approve();
   await held.reached;
-  assert.equal((await app.post("/api/folder", { path: notes })).status, 200);
+  assert.equal((await app.connect("folder", { path: notes })).status, 200);
   const set = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
   assert.equal(set?.status, "applying");
   assert.equal((await app.act("dismiss")).status, 409);
