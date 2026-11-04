@@ -76,8 +76,8 @@ export type Tag =
   | { kind: "sources" }
   // How every connector shows, from its declaration.
   | { kind: "connectors" }
-  // A source synced on demand, by its kind.
-  | { kind: "sourceSynced"; source: string }
+  // A connection synced on demand, by its ID.
+  | { kind: "sourceSynced"; connection: string }
   // Settings, loaded, changed, or looked for again (OA-181).
   | { kind: "settings" }
   | { kind: "settingsChanged" }

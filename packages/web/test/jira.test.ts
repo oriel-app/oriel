@@ -11,6 +11,7 @@ import {
 } from "../src/jira.ts";
 import { init as initRoot, update as updateRoot } from "../src/root.ts";
 import type { JiraView } from "../src/view.ts";
+import { connectionView } from "../testing.ts";
 
 const typed = {
   site: "oriel.atlassian.net",
@@ -22,6 +23,13 @@ const connected: JiraView = {
   connected: { site: "https://oriel.atlassian.net", project: "OA", items: 42, syncedAt: null },
   connectable: false,
 };
+// Jira's connection as the server sends it, and the list it is in.
+const connection = connectionView({ options: { project: "OA" }, items: 42 });
+const listedWith = (connections: unknown[], connectable: string[]) => ({
+  connections,
+  connectable,
+  picker: false,
+});
 const replied = (
   kind: "jira" | "jiraConnected" | "jiraProjects",
   ok: boolean,
@@ -51,8 +59,8 @@ test("Jira lists its projects once every detail is filled, and connects the one 
     {
       type: "http",
       method: "POST",
-      url: "/api/jira/projects",
-      body: { ...typed, query: "" },
+      url: "/api/connections/pick",
+      body: { kind: "jira", given: typed, query: "" },
       tag: { kind: "jiraProjects" },
     },
   ]);
@@ -71,7 +79,14 @@ test("Jira lists its projects once every detail is filled, and connects the one 
     { key: "OA", name: "Oriel", issues: 42, updatedAt: "2026-11-01T09:00:00.000Z" },
     { key: "SYN", name: "Synthetic", issues: 130, updatedAt: "2026-10-01T09:00:00.000Z" },
   ];
-  const listed = jiraReplied(listing, replied("jiraProjects", true, { projects, more: false }));
+  const choices = projects.map((p) => ({
+    value: p.key,
+    name: p.name,
+    count: p.issues,
+    updatedAt: p.updatedAt,
+  }));
+  const listed = jiraReplied(listing, replied("jiraProjects", true, { choices, more: false }));
+  assert.deepEqual(listed.model.projects, projects);
   assert.equal(listed.model.picked, "OA");
   const [picked] = updateJira(listed.model, { type: "projectPicked", key: "SYN" });
   const [connecting, connects] = updateJira(picked, { type: "connectClicked" });
@@ -79,8 +94,8 @@ test("Jira lists its projects once every detail is filled, and connects the one 
     {
       type: "http",
       method: "POST",
-      url: "/api/jira",
-      body: { ...typed, project: "SYN" },
+      url: "/api/connections",
+      body: { kind: "jira", given: { ...typed, project: "SYN" } },
       tag: { kind: "jiraConnected" },
     },
   ]);
@@ -98,18 +113,18 @@ test("Jira lists its projects once every detail is filled, and connects the one 
 test("once connected, nothing typed is kept and the window and the sources load again", () => {
   const [model, effects] = initRoot({ page: "window", grouping: "epic", addTo: null });
   assert.ok(effects.includes(loadJira));
-  const [shown] = updateRoot(model, replied("jira", true, { jira: connectable }));
+  const [shown] = updateRoot(model, replied("jira", true, listedWith([], ["jira"])));
   assert.equal(shown.jira.view?.connectable, true);
   const [typing] = updateRoot(shown, {
     type: "jira",
     msg: { type: "fieldChanged", field: "token", value: "pasted" },
   });
-  const [after, loads] = updateRoot(typing, replied("jiraConnected", true, { jira: connected }));
+  const [after, loads] = updateRoot(typing, replied("jiraConnected", true, { connection }));
   assert.deepEqual(after.jira.view, connected);
   assert.equal(after.jira.typed.token, "");
   assert.deepEqual(
     loads.map((e) => (e.type === "http" ? e.url : e.type)),
-    ["loadWindow", "/api/sources"],
+    ["loadWindow", "/api/connections"],
   );
 });
 
@@ -123,7 +138,18 @@ test("Jira connected to a project with no issues is said to be, until it has som
   const [model] = initRoot({ page: "window", grouping: "epic", addTo: null });
   const [shown] = updateRoot(
     model,
-    replied("jira", true, { jira: { connected: empty, connectable: false } }),
+    replied(
+      "jira",
+      true,
+      listedWith(
+        [
+          connectionView({ options: { project: "OA" }, items: 0, syncedAt: empty.syncedAt }),
+          // One signed out isn't the one connected.
+          connectionView({ id: "01JBZ0000000000000000000K2", state: "signed-out" }),
+        ],
+        [],
+      ),
+    ),
   );
   assert.deepEqual(emptyJira(shown.jira.view), empty);
   // Not before Jira loads, while it can be connected, or once it has items.

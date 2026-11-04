@@ -118,7 +118,7 @@ export async function serve(
   ports: number | readonly number[],
   options: Omit<AppOptions, "reviewBase" | "sketchBase"> = {
     db: ":memory:",
-    jira: { kind: "fixture" },
+    sources: { jira: { mode: "fixture" } },
   },
   serving: ServeOptions = {},
 ): Promise<Serving> {

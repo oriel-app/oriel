@@ -34,7 +34,7 @@ const throwing: Agent = {
 
 async function fixtureWindow(t: TestContext) {
   const app = await testApp(t, {
-    slack: { kind: "fixture" },
+    slack: { mode: "fixture" },
     agent: () => throwing,
     titler: () => {
       throw new Error("the overview called a model");
@@ -43,7 +43,7 @@ async function fixtureWindow(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), "oriel-server-overview-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const folder = buildFolder(loadFolderFixture(), dir);
-  assert.equal((await app.post("/api/folder", { path: folder.root })).status, 200);
+  assert.equal((await app.connect("folder", { path: folder.root })).status, 200);
   return app;
 }
 
@@ -159,7 +159,7 @@ test("what changed since the user left the overview, up to what it showed", asyn
   const made = json<WorkstreamSummary>(await app.post("/api/workstreams", weather));
   app.site.edit("SYN-45", { status: "Done" });
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   const shown = await overview(app);
   assert.deepEqual(shown.counts, {
     changed: 1,
@@ -180,7 +180,7 @@ test("what changed since the user left the overview, up to what it showed", asyn
   // A change that commits after the page rendered stays unseen once it's left.
   app.site.edit("SYN-61", { status: "Done" });
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   const left = await app.post("/api/overview/leave", { seq: shown.seq });
   assert.equal(left.status, 200);
   const after = await overview(app);
@@ -227,7 +227,7 @@ test("in progress by person shows the top 10 of everyone, an epic not counting a
 });
 
 test("Make a workstream on the SYN-54 Linked cluster, then its Undo: the section follows", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const before = await overview(app);
   assert.ok(before.candidates.rows.length <= 8);
   for (const row of before.candidates.rows) assert.ok(row.rule.length > 0);

@@ -95,7 +95,7 @@ test("a sync reaches every page, and an open thread's hears its workstream may h
   };
   while ((await event())?.type !== "status");
   const { stream } = await watch(app);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   assert.equal((await stream.next()).value, changed);
   assert.deepEqual(await event(), { type: "workstream" });
   assert.deepEqual(await event(), { type: "threads" });

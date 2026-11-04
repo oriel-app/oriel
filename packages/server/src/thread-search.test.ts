@@ -37,7 +37,7 @@ const lookUp: Script = async (bindings) => {
 async function posted(t: TestContext) {
   const app = await testApp(t, {
     writes: true,
-    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    slack: { mode: "fixture", fetch: fixtureApi(loadSlackFixture()).fetch },
     plan: (input) => [{ run: input.text.startsWith("Where") ? "lookUp" : "post" }],
     scripts: { post, lookUp },
   });
@@ -161,7 +161,7 @@ test("the dev server's scripted agent answers where something happened with chip
   const sandbox = createSandbox();
   const asking = await testApp(t, {
     writes: true,
-    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    slack: { mode: "fixture", fetch: fixtureApi(loadSlackFixture()).fetch },
     agent: (deps) => scriptedAgent({ ...deps, sandbox }, devPlan),
   });
   // A post proposed through the dev plan, then a question about it.
@@ -202,7 +202,7 @@ test("the dev server's scripted agent answers where something happened with chip
 test("a reason held from a review link's holder is never found, since it hasn't reached the agent", async (t) => {
   const app = await testApp(t, {
     writes: true,
-    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    slack: { mode: "fixture", fetch: fixtureApi(loadSlackFixture()).fetch },
     plan: () => [{ run: "post" }],
     scripts: { post },
   });

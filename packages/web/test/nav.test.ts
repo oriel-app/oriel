@@ -96,7 +96,7 @@ test("every page but a review link loads what the sidebar shows, the folder incl
     { page: "thread", id: "01JBZ0000000000000000000T1" },
     { page: "done" },
   ] as const)
-    for (const url of ["/api/workstreams", "/api/threads", "/api/folder"])
+    for (const url of ["/api/workstreams", "/api/threads", "/api/connections"])
       assert.ok(urls(route).includes(url), `${route.page} loads ${url}`);
   assert.deepEqual(
     urls({ page: "review", token: "abc_DEF-123" }).filter((url) => !url.startsWith("/api/review")),

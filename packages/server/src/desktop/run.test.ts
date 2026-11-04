@@ -346,8 +346,8 @@ test("the folder picker, notifications and how many threads Oriel works on go to
   t.after(() => void shell.input.end());
   const { serving, exited } = await shell.running;
   // This fake shell answers every pick as cancelled.
-  const picked = await send(serving.url, "/api/folder/pick", {});
-  assert.deepEqual(await picked.json(), { folder: null, picked: false });
+  const picked = await send(serving.url, "/api/connections/picker", { kind: "folder" });
+  assert.deepEqual(await picked.json(), { picked: false });
   assert.ok(shell.out.some((line) => "id" in line && line.kind === "folder.pick"));
 
   const workstream = (await (

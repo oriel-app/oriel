@@ -46,7 +46,7 @@ import {
   richDescription,
 } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
-import type { SlackMode } from "../packages/server/src/app.ts";
+import type { SourceMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
@@ -268,18 +268,14 @@ const start = async (...args: Parameters<typeof serve>) => {
 
 // A server that writes to its own SYN site in memory, and reads Slack when
 // given it, on its own clock when given one.
-const writing = async (slack?: SlackMode, now?: () => Instant) => {
+const writing = async (slack?: SourceMode, now?: () => Instant) => {
   // A workflow with a column for stories ready to pick up, which SYN's lacks.
   const site = memorySite(loadJiraFixture(), instant(new Date()), {
     statuses: [{ name: "Ready for Dev", category: "todo" }],
   });
   const serving = await start(0, {
     db: ":memory:",
-    jira: {
-      kind: "fixture",
-      fetch: site.fetch,
-    },
-    ...(slack ? { slack } : {}),
+    sources: { jira: { mode: "fixture", fetch: site.fetch }, ...(slack ? { slack } : {}) },
     ...(now ? { now } : {}),
     agent: (deps) => scriptedAgent(deps, planning),
   });
@@ -296,12 +292,14 @@ const live = async () => {
   const site = memorySite(loadJiraFixture(), instant(new Date()));
   const serving = await start(0, {
     db: ":memory:",
-    jira: {
-      kind: "live",
-      site: memorySiteOrigin,
-      account: { email: "", token: "" },
-      project: "SYN",
-      fetch: site.fetch,
+    sources: {
+      jira: {
+        mode: "live",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        secret: JSON.stringify({ email: "", token: "" }),
+        fetch: site.fetch,
+      },
     },
   });
   return { site, serving };
@@ -320,12 +318,14 @@ const paged = await (async () => {
   }));
   return start(0, {
     db: ":memory:",
-    jira: {
-      kind: "live",
-      site: memorySiteOrigin,
-      account: { email: "", token: "" },
-      project: "SYN",
-      fetch: memorySite({ ...syn, issues: [...syn.issues, ...more] }, instant(new Date())).fetch,
+    sources: {
+      jira: {
+        mode: "live",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        secret: JSON.stringify({ email: "", token: "" }),
+        fetch: memorySite({ ...syn, issues: [...syn.issues, ...more] }, instant(new Date())).fetch,
+      },
     },
   });
 })();
@@ -344,12 +344,14 @@ const naming = await (async () => {
   );
   return start(0, {
     db: ":memory:",
-    jira: {
-      kind: "live",
-      site: memorySiteOrigin,
-      account: { email: "", token: "" },
-      project: "SYN",
-      fetch: memorySite({ ...syn, issues }, instant(new Date())).fetch,
+    sources: {
+      jira: {
+        mode: "live",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        secret: JSON.stringify({ email: "", token: "" }),
+        fetch: memorySite({ ...syn, issues }, instant(new Date())).fetch,
+      },
     },
   });
 })();
@@ -363,12 +365,14 @@ described.site.comment("SYN-23", "esme", richComment);
 // team-managed board with no points field does.
 const unpointed = await start(0, {
   db: ":memory:",
-  jira: {
-    kind: "live",
-    site: memorySiteOrigin,
-    account: { email: "", token: "" },
-    project: "SYN",
-    fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
+  sources: {
+    jira: {
+      mode: "live",
+      identity: memorySiteOrigin,
+      options: { project: "SYN" },
+      secret: JSON.stringify({ email: "", token: "" }),
+      fetch: memorySite(loadJiraFixture(), instant(new Date()), { estimates: false }).fetch,
+    },
   },
   agent: (deps) => scriptedAgent(deps, planning),
 });
@@ -379,9 +383,8 @@ const account = { email: "pm@example.com", token: "shots-only-value" };
 const unconnected = (syn = loadJiraFixture()) =>
   start(0, {
     db: ":memory:",
-    jira: {
-      kind: "window",
-      fetch: memorySite(syn, instant(new Date()), { account }).fetch,
+    sources: {
+      jira: { mode: "window", fetch: memorySite(syn, instant(new Date()), { account }).fetch },
     },
     agent: (deps) => scriptedAgent(deps, planning),
   });
@@ -394,7 +397,7 @@ const fillJira = async (page: Page, token: string) => {
   await page.locator('input[name="email"]').fill(account.email);
   await page.locator('input[name="token"]').fill(token);
 };
-const chatty = (await writing({ kind: "fixture" })).serving;
+const chatty = (await writing({ mode: "fixture" })).serving;
 // A server whose threads are each rejected for real once, in a shot.
 const answering = (await writing()).serving;
 
@@ -473,7 +476,7 @@ const configured = async (settings: Partial<Settings> = {}) => {
   await chooser.look(kept.get());
   return start(0, {
     db: ":memory:",
-    jira: { kind: "fixture" },
+    sources: { jira: { mode: "fixture" } },
     models: chooser,
     settings: kept,
     // As the desktop app has it, so the path and key fields show.
@@ -511,7 +514,22 @@ async function call<T>(on: Serving, method: string, path: string, body?: unknown
 }
 const post = <T>(path: string, body: unknown, on: Serving = server) =>
   call<T>(on, "POST", path, body);
-await post("/api/jira", { site: "oriel.atlassian.net", project: "SYN", ...account }, empty);
+await post(
+  "/api/connections",
+  { kind: "jira", given: { site: "oriel.atlassian.net", project: "SYN", ...account } },
+  empty,
+);
+// Syncs a kind's connection, as the sidebar's Sync does.
+const syncKind = async (kind: string, on: Serving) => {
+  const { connections } = await call<{ connections: { id: string; kind: string }[] }>(
+    on,
+    "GET",
+    "/api/connections",
+  );
+  const connection = connections.find((each) => each.kind === kind);
+  if (!connection) throw new Error(`no ${kind} connection to sync`);
+  await post(`/api/connections/${connection.id}/sync`, {}, on);
+};
 const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
   const view = await call<{ changeSets: { id: string }[] }>(on, "GET", `/api/threads/${threadId}`);
   const id = view.changeSets[0]?.id;
@@ -579,7 +597,7 @@ const deleting = await live();
 const pruned = await (async () => {
   const { id } = await post<{ id: string }>("/api/workstreams", checkout, deleting.serving);
   deleting.site.remove("SYN-21");
-  await post("/api/jira/sync", {}, deleting.serving);
+  await syncKind("jira", deleting.serving);
   return ask("Take the deleted stories out of this workstream", deleting.serving, id);
 })();
 // Asked for estimates where the board takes none.
@@ -723,7 +741,7 @@ const note = (name: string, body: string) => {
 note("Launch plan.md", "# Launch plan\n\nPhone wallets first, then saved cards.");
 note("Customer interviews.md", "Five PMs; three asked for saved cards before anything else.");
 note("research/Competitor checkout teardown.md", "How three checkouts handle a declined card.");
-await post("/api/folder", { path: notes });
+await post("/api/connections", { kind: "folder", given: { path: notes } });
 const files = server.app
   .window("epic")
   .clusters.flatMap((c) => c.list)
@@ -758,7 +776,7 @@ const faresThread = await ask("What's in here?", chatty, fares.id);
 // and approved then reverted, each on a server of its own, so each diff reads
 // its own Jira and Slack.
 const handOff = async (then: "propose" | "approve" | "revert") => {
-  const { serving } = await writing({ kind: "fixture" });
+  const { serving } = await writing({ mode: "fixture" });
   const { id: workstreamId } = await post<{ id: string }>(
     "/api/workstreams",
     { kind: "picked", name: "SMS updates", items: ["jira:SYN-61", smsCopy] },
@@ -797,7 +815,7 @@ const askedWhere = await ask(
 );
 // A third asks which threads touched SYN-61; the agent names each thing as
 // a chip, a file from a folder beside Jira among them.
-await post("/api/folder", { path: notes }, handed.serving);
+await post("/api/connections", { kind: "folder", given: { path: notes } }, handed.serving);
 const plan = handed.serving.app
   .window("epic")
   .clusters.flatMap((c) => c.list)
@@ -830,7 +848,7 @@ await post(`/api/workstreams/${emptied.id}/remove`, { items: ["jira:SYN-99"] });
 // Notes picked in the window and made a workstream, on a server of their own: each
 // pass of the scenes makes another workstream, which no other scene should show.
 const picking = (await writing()).serving;
-await post("/api/folder", { path: notes }, picking);
+await post("/api/connections", { kind: "folder", given: { path: notes } }, picking);
 // A workstream to remove items from, and undo that, on the same server: each pass
 // puts its items back first.
 const trimmed = await post<{ id: string }>(
@@ -1048,7 +1066,7 @@ const approveIt = async (page: Page) => {
 
 // A server of its own for Make a workstream on the overview: each pass of
 // the scenes deletes what the last one made first.
-const suggesting = (await writing({ kind: "fixture" })).serving;
+const suggesting = (await writing({ mode: "fixture" })).serving;
 
 const scenes: Scene[] = [
   // Settings (OA-181): its sections, each a page; Providers first.
@@ -1895,7 +1913,7 @@ const scenes: Scene[] = [
     path: "/?grouping=epic",
     act: async (page) => {
       await shown(page, "epic");
-      await page.route("**/api/jira/sync", () => {});
+      await page.route("**/api/connections/*/sync", () => {});
       await openSources(page);
       await page.getByRole("button", { name: "Sync Jira" }).click();
       await page

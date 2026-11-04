@@ -114,14 +114,3 @@ export function parsedLegacy(text: string): JiraConnection | null {
   const read = legacyShape(parsedJson(text));
   return read.ok ? read.value : null;
 }
-
-// A Jira Cloud site as the user might type it: "acme", "acme.atlassian.net",
-// or a link to any page on it. Its https origin, or null.
-export function jiraSite(typed: string): string | null {
-  const text = typed.trim().toLowerCase();
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//.test(text) ? text : `https://${text}`;
-  const url = URL.parse(withScheme);
-  if (!url || url.protocol !== "https:" || url.username || url.password || url.port) return null;
-  const host = url.hostname.includes(".") ? url.hostname : `${url.hostname}.atlassian.net`;
-  return /^[a-z0-9][a-z0-9-]*\.atlassian\.net$/.test(host) ? `https://${host}` : null;
-}

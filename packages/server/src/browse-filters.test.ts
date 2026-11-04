@@ -26,7 +26,7 @@ async function shown(app: App, query: string): Promise<{ view: WindowView; items
 }
 
 test("/browse?q=sms&source=slack shows Slack's messages about SMS, in their cluster", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const { view, items } = await shown(app, "grouping=epic&q=sms&source=slack");
   assert.deepEqual(
     view.clusters.map(({ row, matched }) => [row.key, matched]),
@@ -59,7 +59,7 @@ test("the search matches as search() does: any case, every term, a full item ID"
 });
 
 test("status and assignee keep only their items, and the choices are what the index has", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const done = await shown(app, "grouping=epic&status=done");
   assert.ok(done.items.length > 0);
   assert.ok(done.items.every((item) => item.status?.category === "done"));

@@ -25,15 +25,9 @@ import type { JiraFixture } from "@oriel/jira";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
 import { loadJiraFixture } from "@oriel/jira";
 import type { Titler } from "@oriel/agent";
+import type { ConnectionsView, ConnectionView, JiraView } from "@oriel/web/view";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
-import {
-  type App,
-  type AppOptions,
-  createApp,
-  type JiraMode,
-  limits,
-  type SlackMode,
-} from "./app.ts";
+import { type App, type AppOptions, createApp, limits, type SourceMode } from "./app.ts";
 import type { LegacyJira, Secrets } from "./connection.ts";
 import { scriptedAgent, type Step } from "./scripted-agent.ts";
 import { handler, type Reply, type Request } from "./site.ts";
@@ -138,7 +132,9 @@ export type TestOptions = {
   // by default. Only that site serves them, so this needs `connect` or `live`.
   issues?: (syn: JiraFixture["issues"]) => JiraFixture["issues"];
   // Slack, off when absent.
-  slack?: SlackMode;
+  slack?: SourceMode;
+  // Any other connector's mode, as `--source` gives it.
+  sources?: AppOptions["sources"];
   // SYN's board in memory takes no estimates: it has no points field.
   estimates?: false;
   // The providers Settings picks among, in place of `agent` and `titler`.
@@ -175,30 +171,26 @@ export async function testApp(
     : options.writes || options.live
       ? memorySite(served, now(), board)
       : null;
-  const jira: JiraMode = options.connect
-    ? {
-        kind: "window",
-        ...(options.connect.legacy ? { legacy: options.connect.legacy } : {}),
-        ...(options.anySite ? { anySite: true } : {}),
-        ...(site ? { fetch: site.fetch } : {}),
-      }
+  const jira: SourceMode = options.connect
+    ? { mode: "window", ...(site ? { fetch: site.fetch } : {}) }
     : site
       ? options.live
         ? {
-            kind: "live",
-            site: memorySiteOrigin,
-            account: { email: "", token: "" },
-            project: "SYN",
+            mode: "live",
+            identity: memorySiteOrigin,
+            options: { project: "SYN" },
+            secret: JSON.stringify({ email: "", token: "" }),
             fetch: site.fetch,
           }
-        : { kind: "fixture", fetch: site.fetch }
-      : { kind: "fixture" };
+        : { mode: "fixture", fetch: site.fetch }
+      : { mode: "fixture" };
   const logged: Logged[] = [];
   const app: App = await createApp({
     db: options.db ?? ":memory:",
-    jira,
+    sources: { jira, ...(options.slack ? { slack: options.slack } : {}), ...options.sources },
+    ...(options.connect?.legacy ? { legacyJira: options.connect.legacy } : {}),
+    ...(options.anySite ? { anywhere: true } : {}),
     ...(options.connect?.secrets ? { secrets: options.connect.secrets } : {}),
-    ...(options.slack ? { slack: options.slack } : {}),
     reviewBase: new URL(`${origin}/review/`),
     sketchBase: new URL(`${sketchOrigin}/sketches/`),
     limits: { ...limits, ...options.limits },
@@ -238,6 +230,11 @@ export async function testApp(
       headers: { host, origin, "content-type": "application/json", ...headers },
       body: body(JSON.stringify(value)),
     });
+  // Every connection as the window lists them, and a kind's first (decision
+  // 0049).
+  const connections = async () => json<ConnectionsView>(await get("/api/connections"));
+  const connection = async (kind: string): Promise<ConnectionView | null> =>
+    (await connections()).connections.find((each) => each.kind === kind) ?? null;
   return {
     app,
     site,
@@ -246,9 +243,36 @@ export async function testApp(
     body,
     get,
     post,
+    connections,
+    connection,
+    // Connects a kind through its steps, with what the person gave them, as
+    // the window does.
+    connect: (kind: string, given: unknown) => post("/api/connections", { kind, given }),
+    // A Sync of a kind's connection, as the sidebar's; a 404 when it has none.
+    async sync(kind: string) {
+      return post(`/api/connections/${(await connection(kind))?.id ?? "0".repeat(26)}/sync`);
+    },
     advance(ms: number) {
       clock += ms;
     },
+  };
+}
+
+// Jira as the window's form reads it from the connections, until one
+// component draws every connector's steps (OA-216).
+export async function jiraOf(app: { connections(): Promise<ConnectionsView> }): Promise<JiraView> {
+  const { connections, connectable } = await app.connections();
+  const open = connections.find((each) => each.kind === "jira" && each.state === "open");
+  return {
+    connected: open
+      ? {
+          site: open.identity,
+          project: String(open.options.project),
+          items: open.items,
+          syncedAt: open.syncedAt,
+        }
+      : null,
+    connectable: connectable.includes("jira"),
   };
 }
 

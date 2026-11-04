@@ -15,6 +15,7 @@ export {
   type JiraRecord,
   jiraText,
 } from "./attrs.ts";
+export { jiraConnect, jiraLive, jiraOptions, jiraSite, throwawaySite } from "./connecting.ts";
 export { jiraDeclaration } from "./declaration.ts";
 export { frozenAt, jiraDeclaredFixture, jiraFixtureSite } from "./declared-fixture.ts";
 export {

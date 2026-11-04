@@ -30,13 +30,7 @@ import {
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
 import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
-import {
-  type FolderView,
-  type GroupingId,
-  isGroupingId,
-  type JiraView,
-  type SlackView,
-} from "@oriel/web/view";
+import { type ConnectionView, type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
@@ -72,13 +66,12 @@ export type Changed =
   | { thread: Ulid; deleted: true }
   | { thread: Ulid; changeSet: Ulid; applying: boolean };
 
-// A source the user connects or syncs from the window, as it stands then; or
-// what went wrong, in plain words.
+// A connection the user connects, configures or syncs from the window, as it
+// stands then; or what went wrong, in plain words, with the fields of its
+// connector's steps it is about.
 export type SourceOutcome =
-  | { folder: FolderView }
-  | { jira: JiraView }
-  | { slack: SlackView }
-  | { problem: string };
+  | { connection: ConnectionView }
+  | { problem: string; fields?: readonly string[] };
 
 // A change-set refusal (`ChangeSetError`, by its name and code), which the
 // window's routes map by its code.
@@ -102,15 +95,31 @@ export type ActionDeps = {
   // After a change set applied, partly or in full: what it created joins
   // the workstream, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
-  // Connecting a source, and the sync the user asks for. A source not
-  // connected yet can't sync: an ActionError.
+  // Connections (decision 0049): connecting one through its connector's
+  // steps, setting its options, the sync the user asks for, and
+  // disconnecting it. Each checks what its connector declares, as the
+  // composition root supplies it. One the workspace doesn't have, or a
+  // flag makes, or that isn't open, is an ActionError.
   sources: {
-    // `counted`: it emitted `source.connected`, as a source's first sync
-    // into the workspace does.
+    // `counted`: it emitted `source.connected`, as a connection's first sync
+    // into the workspace does. `signedIn`: a live one signed in again.
     connect(
       input: ActionInput<"source.connect">,
-    ): Promise<{ outcome: SourceOutcome; counted: boolean }>;
-    sync(source: ActionInput<"source.sync">["source"]): Promise<SourceOutcome>;
+    ): Promise<{ outcome: SourceOutcome; counted: boolean; signedIn: boolean }>;
+    // `changed`: the options whose values changed, by name; `replaced`: the
+    // options it had before, which its Undo puts back. Set, its sync's
+    // problem, if that failed, comes with it.
+    configure(input: ActionInput<"source.configure">): Promise<{
+      outcome: SourceOutcome | { connection: ConnectionView; problem?: string };
+      changed: readonly string[];
+      replaced: Record<string, unknown>;
+    }>;
+    sync(
+      input: ActionInput<"source.sync">,
+    ): Promise<{ outcome: SourceOutcome; of: Pick<ConnectionView, "kind" | "number"> }>;
+    disconnect(
+      input: ActionInput<"source.disconnect">,
+    ): Promise<Pick<ConnectionView, "id" | "kind" | "number">>;
   };
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
@@ -874,22 +883,64 @@ const handlers = {
     return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  // Counted as `source.connected` when the source first syncs into the
-  // workspace, and otherwise, failed or connected again, as itself.
+  // Counted as `source.connected` when the connection first syncs into the
+  // workspace, as `source.signed-in-again` when it was live already, and
+  // otherwise, failed or connected again, as itself.
   "source.connect": async (input, _actor, deps) => {
-    const { outcome, counted } = await deps.sources.connect(input);
-    return { output: outcome, undo: null, changed: null, events: counted ? "counted" : [] };
+    const { outcome, counted, signedIn } = await deps.sources.connect(input);
+    const again =
+      signedIn && "connection" in outcome
+        ? [
+            {
+              name: "source.signed-in-again" as const,
+              source: outcome.connection.kind,
+              later: outcome.connection.number > 1,
+            },
+          ]
+        : [];
+    return { output: outcome, undo: null, changed: null, events: counted ? "counted" : again };
+  },
+
+  // Its Undo puts back the options it replaced. Which options changed is
+  // counted, never their values.
+  "source.configure": async (input, _actor, deps) => {
+    const { outcome, changed, replaced } = await deps.sources.configure(input);
+    if (!("connection" in outcome) || changed.length === 0)
+      return { output: outcome, undo: null, changed: null, events: [] };
+    const { kind, number } = outcome.connection;
+    return {
+      output: outcome,
+      undo: {
+        action: "source.configure",
+        input: { connection: input.connection, options: replaced },
+      },
+      changed: null,
+      events: [
+        { name: "source.configured", source: kind, later: number > 1, options: [...changed] },
+      ],
+    };
   },
 
   // How often the user asks says whether Oriel should sync on its own. What
   // a sync changed, every page watching hears from the sync itself.
-  "source.sync": async ({ source }, _actor, deps) => {
-    const synced = await deps.sources.sync(source);
+  "source.sync": async (input, _actor, deps) => {
+    const { outcome, of } = await deps.sources.sync(input);
     return {
-      output: synced,
+      output: outcome,
       undo: null,
       changed: null,
-      events: [{ name: "source.synced", source, ok: !("problem" in synced) }],
+      events: [{ name: "source.synced", source: of.kind, ok: !("problem" in outcome) }],
+    };
+  },
+
+  // Every page watching hears from the index, as after a sync.
+  "source.disconnect": async (input, _actor, deps) => {
+    const gone = await deps.sources.disconnect(input);
+    return {
+      output: { disconnected: gone.id },
+      undo: null,
+      changed: null,
+      events: [{ name: "source.disconnected", source: gone.kind, later: gone.number > 1 }],
     };
   },
 

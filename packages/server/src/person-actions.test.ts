@@ -127,10 +127,20 @@ test("a review link's holder may decide or dismiss a change set and nothing else
   for (const action of [
     "changeset.approve",
     "source.connect",
+    "source.disconnect",
     "thread.delete",
     "review-link.revoke",
   ] as const)
     assert.match(refusal(action, agent) ?? "", /is the user's/);
+  // Connecting and disconnecting are a person's whatever door, and setting
+  // a connection's options is closed to outside tools as well as the agent
+  // (decision 0049).
+  const tool: Actor = { kind: "tool", name: "a coding agent" };
+  for (const action of ["source.connect", "source.disconnect"] as const)
+    assert.match(refusal(action, tool) ?? "", /is the user's/);
+  assert.match(refusal("source.configure", agent) ?? "", /is closed to agents: .*draft/);
+  assert.match(refusal("source.configure", tool) ?? "", /is closed to tools: .*draft/);
+  assert.equal(refusal("source.configure", { kind: "user" }), null);
   // Direct, but closed to the agent, each saying why.
   for (const action of [
     "thread.open",
@@ -175,11 +185,11 @@ test("the window's routes count what they do: a stop as the call it is, and a sy
   });
   // No folder is connected, so there's nothing to sync, and nothing counted.
   const before = app.app.telemetry().length;
-  assert.equal((await app.post("/api/folder/sync")).status, 409);
+  assert.equal((await app.sync("folder")).status, 404);
   assert.equal(app.app.telemetry().length, before);
   assert.equal(json<ThreadView>(await app.get(`/api/threads/${threadId}`)).state, "working");
   // A connect that fails emits no source.connected, so it counts as itself.
-  assert.equal((await app.post("/api/folder", { path: "/nonexistent/oriel" })).status, 400);
+  assert.equal((await app.connect("folder", { path: "/nonexistent/oriel" })).status, 400);
   assert.deepEqual(app.app.telemetry().at(-1)?.data, {
     action: "source.connect",
     by: { kind: "user" },

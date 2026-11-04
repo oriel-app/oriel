@@ -10,7 +10,7 @@ import { init, type Model, type Msg, update } from "../src/root.ts";
 import { noAi, initSettings } from "../src/settings.ts";
 import type { CliView, SetupView } from "../src/view.ts";
 import { questionsFrom } from "../src/window-chat.ts";
-import { overviewView } from "../testing.ts";
+import { connectionView, overviewView } from "../testing.ts";
 
 function run(model: Model, ...msgs: Msg[]): [Model, Effect[]] {
   let effects: Effect[] = [];
@@ -146,11 +146,13 @@ test("the last screen ends on the overview once a source is read, unless one fai
     msg: { type: "workDone" },
   });
   assert.equal(model.setup.screen, "reading");
-  const connected = {
-    connected: { site: "https://acme.atlassian.net", project: "PAY", items: 120, syncedAt: null },
-    connectable: false,
-  };
-  const [read, effects] = run(model, replied("jiraConnected", { jira: connected }));
+  const connection = connectionView({
+    about: "PAY on acme.atlassian.net",
+    identity: "https://acme.atlassian.net",
+    options: { project: "PAY" },
+    items: 120,
+  });
+  const [read, effects] = run(model, replied("jiraConnected", { connection }));
   assert.deepEqual(posts(effects).at(-1), ["/api/setup/progress", { did: "finished" }]);
   assert.equal(read.setup.finishing, true);
   const [, navigate] = run(read, replied("setupProgress", view(), true, "finished"));
@@ -164,7 +166,7 @@ test("the last screen ends on the overview once a source is read, unless one fai
   const [, waits] = run(
     stopped,
     replied("folderPicked", {
-      folder: { path: "/notes", items: 3, syncedAt: null },
+      connection: connectionView({ kind: "folder", identity: "/notes", options: {}, items: 3 }),
       picked: true,
     }),
   );

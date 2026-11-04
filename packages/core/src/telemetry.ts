@@ -31,6 +31,11 @@ export type CloseVia = "page" | "menu" | "swipe" | "new-chat";
 // connection of its kind than the first (decision 0049).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "source.connected"; source: SourceKind; later: boolean }
+  // A connection's options changed, by name, never their values; signed in
+  // again, keeping its number and items; or disconnected (decision 0049).
+  | { name: "source.configured"; source: SourceKind; later: boolean; options: string[] }
+  | { name: "source.signed-in-again"; source: SourceKind; later: boolean }
+  | { name: "source.disconnected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
   // `size` is how many items it started with.

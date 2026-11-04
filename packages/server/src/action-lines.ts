@@ -96,7 +96,12 @@ const words: { [N in ActionName]: Words } = {
   "review-link.create": () => ["Made a review link", "make a review link"],
   "review-link.revoke": () => ["Revoked a review link", "revoke a review link"],
   "source.connect": () => ["Connected a source", "connect a source"],
-  "source.sync": (input) => [`Synced ${input["source"]}`, `sync ${input["source"]}`],
+  "source.configure": () => [
+    "Set how a connection reads its source",
+    "set how a connection reads its source",
+  ],
+  "source.sync": () => ["Synced a connection", "sync a connection"],
+  "source.disconnect": () => ["Disconnected a connection", "disconnect a connection"],
   "overview.leave": () => ["Left the overview", "leave the overview"],
 };
 

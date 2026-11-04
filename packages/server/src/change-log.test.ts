@@ -23,7 +23,7 @@ test("a sync logs Jira's state and estimate as a teammate changed them", async (
   assert.ok(app.site);
   app.site.edit("SYN-45", { status: "Done", points: 5 });
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   await app.app.close();
   const changes = indexStore(open(db)).changes(app.app.workspaceId);
   assert.deepEqual(

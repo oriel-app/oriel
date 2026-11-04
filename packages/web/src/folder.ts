@@ -3,7 +3,7 @@
 // (OA-184), or by its typed path under `pnpm dev`, which has none. Syncing
 // it is the sidebar's, as for every source.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
-import type { FolderView } from "./view.ts";
+import type { ConnectionsView, ConnectionView, FolderView } from "./view.ts";
 
 export type FolderModel = {
   // The connected folder, null before one is, or before it has loaded.
@@ -24,7 +24,15 @@ export type FolderMsg =
   | { type: "connectClicked" }
   | { type: "pickClicked" };
 
-export const loadFolder: Effect = get("/api/folder", { kind: "folder" });
+export const loadFolder: Effect = get("/api/connections", { kind: "folder" });
+
+// The folder as its connection has it, until one component draws every
+// connector's steps (OA-216).
+const folderOf = (connection: ConnectionView): FolderView => ({
+  path: connection.identity,
+  items: connection.items,
+  syncedAt: connection.syncedAt,
+});
 
 export function initFolder(): FolderModel {
   return { view: null, open: false, picker: false, path: "", pending: false, problem: null };
@@ -43,14 +51,20 @@ export function updateFolder(model: FolderModel, msg: FolderMsg): [FolderModel, 
       if (path === "" || model.pending) return [model, []];
       return [
         { ...model, pending: true, problem: null },
-        [post("/api/folder", { path }, { kind: "folderConnected" })],
+        [
+          post(
+            "/api/connections",
+            { kind: "folder", given: { path } },
+            { kind: "folderConnected" },
+          ),
+        ],
       ];
     }
     case "pickClicked":
       if (model.pending) return [model, []];
       return [
         { ...model, pending: true, problem: null },
-        [post("/api/folder/pick", {}, { kind: "folderPicked" })],
+        [post("/api/connections/picker", { kind: "folder" }, { kind: "folderPicked" })],
       ];
   }
 }
@@ -64,18 +78,29 @@ export function folderReplied(
   const { tag } = msg;
   if (tag.kind === "folder") {
     if (!msg.ok) return { model, synced: false };
-    const body = msg.body as { folder: FolderView | null; picker?: boolean };
-    return { model: { ...model, view: body.folder, picker: body.picker === true }, synced: false };
+    const body = msg.body as ConnectionsView;
+    const open = body.connections.find((each) => each.kind === "folder" && each.state === "open");
+    return {
+      model: { ...model, view: open ? folderOf(open) : null, picker: body.picker },
+      synced: false,
+    };
   }
   if (tag.kind !== "folderConnected" && tag.kind !== "folderPicked")
     return { model, synced: false };
   if (!msg.ok)
     return { model: { ...model, pending: false, problem: errorOf(msg.body) }, synced: false };
-  const { folder, picked } = msg.body as { folder: FolderView; picked?: boolean };
+  const body = msg.body as { connection: ConnectionView; picked?: true } | { picked: false };
   // Cancelled in the picker: nothing changed.
-  if (picked === false) return { model: { ...model, pending: false }, synced: false };
+  if (!("connection" in body)) return { model: { ...model, pending: false }, synced: false };
   return {
-    model: { ...model, view: folder, pending: false, open: false, path: "", problem: null },
+    model: {
+      ...model,
+      view: folderOf(body.connection),
+      pending: false,
+      open: false,
+      path: "",
+      problem: null,
+    },
     synced: true,
   };
 }

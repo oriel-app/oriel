@@ -23,7 +23,7 @@ test("an answer's chips are what Oriel knows of each: an item, a thread, a chang
   let named = "";
   const app = await testApp(t, {
     writes: true,
-    slack: { kind: "fixture", workspace: fixtureApi(loadSlackFixture()) },
+    slack: { mode: "fixture", fetch: fixtureApi(loadSlackFixture()).fetch },
     plan: (input) =>
       input.text === "Try a Slack post"
         ? [{ run: "post" }]
@@ -196,7 +196,7 @@ test("an item the workstream holds, deleted from its source since, is its key, n
   );
   app.site?.remove("SYN-23");
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   const { id: threadId } = json<{ id: string }>(
     await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "What happened?" }),
   );

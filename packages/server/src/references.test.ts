@@ -17,7 +17,7 @@ test("Browse's Linked grouping shows SYN-54 with the messages that name it", asy
   const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-references-")));
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const db = join(top, "oriel.db");
-  const app = await testApp(t, { slack: { kind: "fixture" }, db });
+  const app = await testApp(t, { slack: { mode: "fixture" }, db });
   const linked = json<WindowView>(await app.get("/api/window?grouping=linked"));
   const cluster = linked.clusters.find((c) => c.list[0]?.id === "jira:SYN-54");
   assert.ok(cluster, "SYN-54 heads a cluster");
@@ -81,7 +81,7 @@ test("a Jira item whose description names another shows under Linked, and so doe
   const standupLink = "https://ferrowick-example.slack.com/archives/C0FW1WEATHR/p1788684000000100";
   const app = await testApp(t, {
     live: true,
-    slack: { kind: "fixture" },
+    slack: { mode: "fixture" },
     issues: (syn) =>
       syn.map((issue) =>
         issue.key === "SYN-61"

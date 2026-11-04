@@ -126,6 +126,7 @@ const memo = {
   open: async () => {
     throw new Error("memo connections don't open here");
   },
+  options: object({}),
   fixture: memoFixture,
 } satisfies SourceDeclaration<MemoContext>;
 

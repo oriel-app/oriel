@@ -1,5 +1,6 @@
 import type { SourceDeclaration } from "@oriel/core";
 import { folderItemDoc, folderKeyShape, folderPanel, folderPresentation } from "./attrs.ts";
+import { folderConnect, folderOptions } from "./connecting.ts";
 import { folderDeclaredFixture } from "./declared-fixture.ts";
 import { openFolder } from "./open-connection.ts";
 import { folderOverview } from "./overview.ts";
@@ -20,5 +21,7 @@ export const folderDeclaration = {
   // Its item doc only.
   budget: 250,
   open: openFolder,
+  options: folderOptions,
+  connect: folderConnect,
   fixture: folderDeclaredFixture,
 } satisfies SourceDeclaration;

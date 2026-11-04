@@ -116,7 +116,7 @@ test("a removal of what was deleted in Jira says why it has no Undo for it", asy
   );
   app.site?.remove("SYN-21");
   app.advance(60_000);
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   const view = await app.ask("Tidy");
   assert.deepEqual(app.lines(view), [
     {

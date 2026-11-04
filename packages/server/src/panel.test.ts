@@ -113,7 +113,7 @@ test("once a sync sees the item change after the read, its stamp says so", async
   const before = json<ItemStampView>(await app.get(`${path("jira:SYN-88")}/stamp`));
   assert.deepEqual(before, { id: "jira:SYN-88", updatedAt: read.updatedAt });
   app.site?.edit("SYN-88", { points: 8 });
-  assert.equal((await app.post("/api/jira/sync")).status, 200);
+  assert.equal((await app.sync("jira")).status, 200);
   const after = json<ItemStampView>(await app.get(`${path("jira:SYN-88")}/stamp`));
   assert.ok(after.updatedAt !== null && after.updatedAt > read.readAt);
 });
@@ -136,7 +136,7 @@ test("a source that doesn't answer is a plain sentence", async (t) => {
 });
 
 test("a Slack conversation is one item, named by its channel: its message, then every reply under it", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const id = "slack:C0FW1WEATHR-1788444000.000100";
   const view = json<ItemPanelView>(await app.get(path(id)));
   assert.equal(view.source, "Slack");
@@ -155,7 +155,7 @@ test("a Slack conversation is one item, named by its channel: its message, then 
 });
 
 test("text that tells the agent what to do is shown as the message it is", async (t) => {
-  const app = await testApp(t, { slack: { kind: "fixture" } });
+  const app = await testApp(t, { slack: { mode: "fixture" } });
   const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
   const asking = window.clusters
     .flatMap((c) => c.list)
@@ -179,7 +179,7 @@ test("a file shows its text as markdown, and opens only in the panel: it has no 
   const app = await testApp(t);
   const text = "# Launch plan\n\n<script>alert(1)</script> Ship the phone wallet first.";
   const root = folder(t, { "Launch plan.md": text });
-  assert.equal((await app.post("/api/folder", { path: root })).status, 200);
+  assert.equal((await app.connect("folder", { path: root })).status, 200);
   const window = json<WindowView>(await app.get("/api/window?grouping=epic"));
   const file = window.clusters.flatMap((c) => c.list).find((row) => row.id.startsWith("folder:"));
   assert.ok(file);

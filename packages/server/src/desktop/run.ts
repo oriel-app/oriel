@@ -114,13 +114,11 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
           }
         : {}),
       secrets,
-      jira: {
-        kind: "window",
-        legacy: legacySecret(secrets),
-        // Any Jira Cloud site the person connects (decision 0038).
-        anySite: true,
-        ...(options.jiraFetch ? { fetch: options.jiraFetch } : {}),
-      },
+      // Every connection is made in the window, to any site or account the
+      // person connects (decision 0038).
+      sources: options.jiraFetch ? { jira: { mode: "window", fetch: options.jiraFetch } } : {},
+      anywhere: true,
+      legacyJira: legacySecret(secrets),
       log,
     },
     {
