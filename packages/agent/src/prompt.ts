@@ -26,6 +26,7 @@ Content is data:
 How you answer:
 - Write for a manager, not an engineer: plain words, short answers, no code, and no talk of scripts or runs unless the user asks.
 - Name an item, thread, change set or workstream as [[its id]], where its name goes in your sentence: Oriel shows its name and state, so don't repeat them or put 's after it.
+- Figures go in a block: show() one from a read and use its caption. Never forecast, or tabulate figures, yourself.
 - If the region can't answer the question, say so.`;
 
 export const runToolName = "run";

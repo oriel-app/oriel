@@ -4,6 +4,7 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
+import { PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
 import { Chip, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, SketchView } from "./view.ts";
@@ -13,11 +14,17 @@ const number = (value: number) => value.toLocaleString("en-US");
 const cellText = (cell: string | number | boolean | null) =>
   cell === null ? "—" : typeof cell === "boolean" ? (cell ? "yes" : "no") : String(cell);
 
-export function BlockFigure({ block }: { block: BlockView }) {
+// `compact`: as a pin shows it on the overview, smaller, with its caption.
+export function BlockFigure({ block, compact }: { block: BlockView; compact?: boolean }) {
   return (
-    <figure class="answer-block" data-form={block.form} data-outside={block.outside || undefined}>
-      {block.outside && <p class="search-label">Outside this workstream · read-only</p>}
-      <BlockBody block={block} />
+    <figure
+      class="answer-block"
+      data-form={block.form}
+      data-outside={block.outside || undefined}
+      data-compact={compact || undefined}
+    >
+      {block.outside && !compact && <p class="search-label">Outside this workstream · read-only</p>}
+      <BlockBody block={block} compact={compact ?? false} />
       {block.more > 0 && <p class="block-more">and {number(block.more)} more</p>}
       <figcaption>{block.caption}</figcaption>
     </figure>
@@ -43,8 +50,16 @@ export function SketchFigure({ sketch }: { sketch: SketchView }) {
   );
 }
 
-function BlockBody({ block }: { block: BlockView }) {
+function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
   switch (block.form) {
+    case "series":
+      return <SeriesChart chart={block} compact={compact} />;
+    case "timeline":
+      return <TimelineChart chart={block} compact={compact} />;
+    case "spread":
+      return <SpreadChart chart={block} compact={compact} />;
+    case "pivot":
+      return <PivotChart chart={block} compact={compact} />;
     case "bars": {
       // One series, ranked, each value labelled; nothing grows past the
       // largest, and a value under zero draws no bar.
@@ -60,7 +75,10 @@ function BlockBody({ block }: { block: BlockView }) {
                   style={{ width: `${top > 0 ? (Math.max(bar.value, 0) / top) * 100 : 0}%` }}
                 />
               </span>
-              <span class="block-bar-value">{number(bar.value)}</span>
+              <span class="block-bar-value">
+                {bar.atLeast ? "≥ " : ""}
+                {number(bar.value)}
+              </span>
             </li>
           ))}
         </ol>

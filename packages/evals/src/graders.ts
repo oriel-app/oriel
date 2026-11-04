@@ -250,7 +250,7 @@ export type ShownBlock = { block: Block; answered: unknown };
 // the one Oriel builds from what its read answered: a block whose numbers
 // aren't its read's fails (decision 0030).
 export function gradeBlocks(
-  expected: { form: BlockForm; read: string | readonly string[] },
+  expected: { form: BlockForm | readonly BlockForm[]; read: string | readonly string[] },
   shown: readonly ShownBlock[],
 ): Grade {
   const problems = shown.flatMap(({ block, answered }) => {
@@ -264,8 +264,10 @@ export function gradeBlocks(
       : [`${what} doesn't match what its read answered`];
   });
   const reads = typeof expected.read === "string" ? [expected.read] : expected.read;
-  if (!shown.some(({ block }) => block.form === expected.form && reads.includes(block.spec.read)))
-    problems.push(`no ${expected.form} block from ${reads.join(" or ")} was shown`);
+  const forms: readonly BlockForm[] =
+    typeof expected.form === "string" ? [expected.form] : expected.form;
+  if (!shown.some(({ block }) => forms.includes(block.form) && reads.includes(block.spec.read)))
+    problems.push(`no ${forms.join(" or ")} block from ${reads.join(" or ")} was shown`);
   return problems.length
     ? { grader: "blocks", pass: false, detail: problems.join("; ") }
     : { grader: "blocks", pass: true, detail: `${shown.length} shown, each its read's` };
@@ -417,6 +419,8 @@ export type JudgeInput = {
   region: unknown;
   // Each run that searched: its queries and what they found.
   searches: unknown[];
+  // The captions of the blocks Oriel showed under the reply, its own words.
+  captions?: readonly string[];
   reply: string;
   model: string;
   fetch: Fetch;
@@ -426,7 +430,15 @@ export type JudgeInput = {
 // refusal, a truncated or malformed answer. That is an error, not a failure.
 export async function gradeJudge(input: JudgeInput): Promise<Grade> {
   const document = JSON.stringify(
-    { question: input.prompt, region: input.region, searches: input.searches, reply: input.reply },
+    {
+      question: input.prompt,
+      region: input.region,
+      searches: input.searches,
+      // Only when there are any, so a judged reply with no blocks asks the
+      // judge what it asked before.
+      ...(input.captions?.length ? { blocksOrielShowed: input.captions } : {}),
+      reply: input.reply,
+    },
     null,
     2,
   );

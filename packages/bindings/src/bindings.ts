@@ -57,6 +57,8 @@ export function bindingsFor(
     // an action in the run may take, as Make a workstream does, though the
     // read shows none of them, so none can be read (decision 0044).
     overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
+    // Items with what the change log saw of them, from the index alone.
+    history?: (of: string | null) => Promise<unknown>;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
@@ -96,6 +98,10 @@ export function bindingsFor(
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");
+    },
+    history: async (of) => {
+      if (!options.history) throw new Error("Oriel keeps no change log here");
+      return options.history(of);
     },
   };
   // The ref the next create must carry. Every correctly numbered create uses

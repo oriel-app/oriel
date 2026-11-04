@@ -4,6 +4,7 @@
 // from the window, and wires groupings, change sets, bindings, the sandbox and
 // the agent into the JSON routes. Only this file builds change sets, which
 // hold the writers; thread code gets `capture` and nothing else.
+import { historyRead } from "./history.ts";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { bindingsFor } from "@oriel/bindings";
@@ -786,6 +787,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(shown ? { shown } : {}),
       // The window chat reads the overview, as the page shows it.
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
+      history: historyRead({
+        records,
+        changes: () => index.changes(workspaceId),
+        workstream: (id) => {
+          const found = workstreams.get(id);
+          return found
+            ? { workstream: found, region: workstreams.region(id, found.version) }
+            : null;
+        },
+        asOf: () => asOf ?? now(),
+      }),
     });
   };
 

@@ -16,6 +16,7 @@ import {
   type FixtureRegion,
   type IndexRecord,
   type Instant,
+  instant,
   type ItemId,
   parseItemId,
   type Reader,
@@ -29,6 +30,8 @@ import {
   ulid,
   type WorkstreamMember,
 } from "@oriel/core";
+import { historyRead } from "@oriel/server/history";
+import { pastOf, pastWeeks } from "./past-weeks.ts";
 import { overviewItems, overviewView } from "@oriel/server/overview";
 import { groupings } from "@oriel/server/window";
 import { byItemId } from "@oriel/sources";
@@ -51,6 +54,10 @@ export type WorldInput = {
   // A window chat's: the overview's workstreams, by fixture region, and the
   // eval clock the overview counts back from (decision 0027).
   window?: { workstreams: readonly { name: string; region: string }[]; now: Instant };
+  // The eval clock, which history() counts back from, and whether the
+  // change log holds eight weeks of past (past-weeks.ts).
+  now?: Instant;
+  past?: true;
 };
 
 // A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
@@ -65,6 +72,8 @@ export function caseWorld(
     region: loaded.region,
     items: loaded.items,
     edited: evalCase.edited ?? {},
+    now,
+    ...(evalCase.past ? { past: true as const } : {}),
     ...(evalCase.oriel ? { oriel: evalCase.oriel } : {}),
     ...(evalCase.window
       ? { window: { workstreams: evalCase.window.workstreams, now: evalCase.window.at ?? now } }
@@ -84,6 +93,8 @@ export type World = {
   // A window chat's overview, as window.overview() reads it, with the items
   // it shows; absent for any other thread.
   overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
+  // history(), from the fixtures' index and change log.
+  history: (of: string | null) => Promise<unknown>;
   // Each region item as its source holds it, for the judge, with what its
   // fixture says of it, and anything gone saying so.
   evidence(): Promise<unknown[]>;
@@ -168,6 +179,19 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     namespaces,
     items,
     oriel: orielOf(input.oriel),
+    history: (of) => {
+      const now = input.window?.now ?? input.now ?? instant(new Date(0));
+      return historyRead({
+        records: () => records,
+        changes: () =>
+          [
+            ...(input.past ? pastChanges(records, now) : []),
+            ...[...connections.values()].flatMap((connection) => connection.changes(now)),
+          ].map((entry, i) => ({ ...entry, seq: i + 1 })),
+        workstream: () => null,
+        asOf: () => now,
+      })(of);
+    },
     ...(window
       ? { overview: async () => windowOverview(fixtures, connections, window, records) }
       : {}),
@@ -283,4 +307,43 @@ function lastLooked(fixtures: Fixtures): Instant | null {
     .flatMap(({ loaded }) => (loaded.firstEdit ? [loaded.firstEdit] : []))
     .toSorted()[0];
   return first ? (new Date(Date.parse(first) - 1).toISOString() as Instant) : null;
+}
+
+// Eight weeks of past as change log entries, each week's synced a week apart
+// up to the day before `now`: what a team's change log would hold, ending
+// with the items as their fixture has them.
+function pastChanges(records: readonly IndexRecord[], now: Instant): Omit<ChangeLogEntry, "seq">[] {
+  const byKey = new Map(
+    records.flatMap((r) => (r.facets.state ? [[parseItemId(r.id)?.key ?? "", r]] : [])),
+  );
+  const { start, moves } = pastOf(
+    [...byKey].map(([key, r]) => ({
+      key,
+      kind: r.facets.kind ?? null,
+      state: r.facets.state ?? "todo",
+      epic: r.facets.container ? (parseItemId(r.facets.container.id)?.key ?? null) : null,
+    })),
+  );
+  const state = new Map(start);
+  const week = 7 * 86_400_000;
+  return [...moves]
+    .toSorted(([a], [b]) => a - b)
+    .flatMap(([k, list]) =>
+      list.flatMap(([key, after]) => {
+        const record = byKey.get(key);
+        const before = state.get(key);
+        state.set(key, after);
+        if (!record || before === undefined || before === after) return [];
+        return [
+          {
+            source: parseItemId(record.id)?.prefix ?? "",
+            stableId: record.stableId,
+            version: k + 1,
+            at: instant(new Date(Date.parse(now) - (pastWeeks - k) * week - 86_400_000)),
+            facets: { state: { before, after } },
+            gone: false,
+          },
+        ];
+      }),
+    );
 }

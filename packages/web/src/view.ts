@@ -3,6 +3,7 @@
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
+import type { ChartBlock } from "@oriel/core/block-charts";
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
@@ -397,9 +398,12 @@ export type RunView = {
 // `outside`: from a read outside the workstream, the escape hatch, which
 // is read-only; a row the workstream holds too says so (`inRegion`).
 export type BlockView = { caption: string; more: number; outside: boolean } & (
-  | { form: "bars"; bars: { label: string; value: number }[] }
+  | { form: "bars"; bars: { label: string; value: number; atLeast?: true }[] }
   | { form: "table"; columns: string[]; rows: (string | number | boolean | null)[][] }
   | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
+  // A chart: a series over time, a timeline, a spread or a pivot, every
+  // figure in it Oriel's.
+  | ChartBlock
 );
 
 // A sketch under the agent's reply (decision 0033): the agent's HTML, which
@@ -617,6 +621,8 @@ export type ErrorReply = { error: string };
 export type OverviewView = {
   // The instant it was built for. Day counts count back from it.
   asOf: string;
+  // The user's pins (decision 0030), each rerun as the overview is built.
+  pins?: BlockView[];
   // The last change log entry it counts, which leaving the overview marks
   // seen, so an entry that commits after it was built stays unseen.
   seq: number;

@@ -33,9 +33,10 @@ const budgets = {
   // cut 295 bytes of repeats and moved Revert's 157 here from the system
   // prompt, for 4,594, with about 200 bytes of room for OA-89 and OA-121.
   // Rose by 150 for sketch(), one line (decision 0033), and show() saying
-  // its bars sum by label: 4,668 to 4,829.
+  // its bars sum by label: 4,668 to 4,829. Rose by about 590 for history()
+  // and the chart forms (the chart-blocks spike, draft decision): 5,419.
   tool: 600,
-  base: 4_950,
+  base: 5_450,
 };
 
 test("the system prompt and the run tool's own text stay within their budgets", () => {

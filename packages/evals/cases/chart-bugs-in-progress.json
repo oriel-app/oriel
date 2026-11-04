@@ -1,0 +1,37 @@
+{
+  "id": "chart-bugs-in-progress",
+  "split": "train",
+  "kind": 2,
+  "past": true,
+  "window": {
+    "workstreams": [
+      {
+        "name": "Boarding",
+        "region": "boarding-epic"
+      },
+      {
+        "name": "Checkout",
+        "region": "checkout-epic"
+      },
+      {
+        "name": "Weather",
+        "region": "weather-epic"
+      }
+    ],
+    "at": "2026-10-29T09:00:00.000Z"
+  },
+  "prompt": "How long have bugs been sitting in progress?",
+  "expect": [
+    {
+      "grader": "blocks",
+      "form": ["spread", "bars"],
+      "read": "history"
+    },
+    {
+      "grader": "no-sketch"
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ]
+}

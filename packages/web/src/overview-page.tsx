@@ -7,6 +7,7 @@
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
 import type { OverviewSection } from "@oriel/core/overview";
+import { BlockFigure } from "./block.tsx";
 import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
 import type { JiraModel } from "./jira.ts";
@@ -110,7 +111,7 @@ export function OverviewPage(props: {
           <div class="overview-main">
             <Unopened view={view} dispatch={dispatch} />
             <Headlines view={view} dispatch={dispatch} />
-            <PinnedSlot />
+            <PinnedSlot view={view} />
             <Workstreams view={view} model={model} browse={browse} dispatch={dispatch} />
           </div>
           <div class="overview-side">
@@ -173,10 +174,25 @@ function FirstRunLine(props: { jira: boolean; folder: boolean; ask: boolean; dis
   );
 }
 
-// Where answers the user pinned go, under the headlines (decision 0030,
-// a later story). Empty until then.
-function PinnedSlot() {
-  return null;
+// Where answers the user pinned go, under the headlines (decision 0030):
+// each block in its form, as a pin shows it, rerun each time the overview
+// is built. Storing them is a later story; until then the server sends
+// none, and this draws whatever it sends.
+function PinnedSlot({ view }: { view: OverviewView }) {
+  if (!view.pins?.length) return null;
+  return (
+    <section class="overview-section pinned" data-section="pinned" aria-label="Pinned">
+      <h2 class="overview-head">
+        <span>Pinned</span>
+        <span class="overview-head-more">rerun each time you look</span>
+      </h2>
+      <div class="pinned-strip">
+        {view.pins.map((pin, i) => (
+          <BlockFigure key={i} block={pin} compact />
+        ))}
+      </div>
+    </section>
+  );
 }
 
 // The window's two views, side by side at the top of each.
