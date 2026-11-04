@@ -22,6 +22,7 @@ import type {
   WindowView,
   WorkstreamView,
 } from "@oriel/web/view";
+import { memorySecrets } from "./connection.ts";
 import { host, json, type Script, testApp } from "./testing.ts";
 
 // A fresh folder for each test, removed when it ends.
@@ -210,6 +211,67 @@ test("a sync asked for while another folder takes the first's place reads the ne
     const prefixes = [...new Set(ids.map((id) => id.split(":")[0]))];
     assert.deepEqual(prefixes, [path === plans ? "folder.2" : "folder"], `after ${wait}`);
   }
+});
+
+test("the first folder picked again while another takes its place comes back after it", async (t) => {
+  // The other folder's connect is held while it disconnects the first.
+  const deleting = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  const app = await connected(t, {
+    connect: {
+      secrets: {
+        ...memorySecrets(),
+        delete: async () => {
+          deleting.resolve();
+          await held.promise;
+        },
+      },
+    },
+  });
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  const replacing = app.post("/api/folder", { path: plans });
+  await deleting.promise;
+  const back = app.post("/api/folder", { path: app.dir.root });
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  held.resolve();
+  assert.equal((await replacing).status, 200);
+  assert.equal((await back).status, 200);
+  assert.equal(
+    json<{ folder: FolderView }>(await app.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+  const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+  assert.deepEqual([...new Set(ids.map((id) => id.split(":")[0]))], ["folder"]);
+});
+
+test("a folder that can't be disconnected now is an error for its request, and the server goes on", async (t) => {
+  const secrets = memorySecrets();
+  const app = await connected(t, {
+    connect: {
+      secrets: {
+        ...secrets,
+        delete: async () => {
+          throw new Error("the shell is gone");
+        },
+      },
+    },
+  });
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  const refused = await app.post("/api/folder", { path: plans }).then(
+    (reply) => reply.status,
+    () => "threw",
+  );
+  assert.notEqual(refused, 200);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    json<{ folder: FolderView }>(await app.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+  assert.equal((await app.post("/api/folder/sync")).status, 200);
 });
 
 test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {

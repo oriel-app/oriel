@@ -609,8 +609,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Work done between syncs, as forgetting a connection's items must be: a
   // sync running then would take the snapshot version it takes.
   const betweenSyncs = <T>(work: () => Promise<T>): Promise<T> => {
-    const run = syncing.catch(() => {}).then(work);
-    syncing = run.finally(() => told());
+    const run = syncing
+      .catch(() => {})
+      .then(work)
+      .finally(() => told());
+    syncing = run;
     return run;
   };
 
@@ -659,19 +662,20 @@ export async function createApp(options: AppOptions): Promise<App> {
           : "There's no folder Oriel can read at that path.",
       };
     }
-    // The same folder again keeps its connection, so none of its items' IDs
-    // change.
-    if (folder?.path === real) {
-      const problem = await resyncFolder();
-      const view = folderView();
-      return problem || !view
-        ? { problem: problem ?? "No folder is connected." }
-        : { folder: view };
-    }
-    // Another takes its place: one connected before comes back under its ID
-    // and number, and any other is a new connection, with the next. One at
-    // a time, so the number planned is the one it gets.
+    // One at a time, so what is connected is what it was when this started,
+    // and the number planned is the one it gets.
     return folderInTurn(async (): Promise<{ folder: FolderView } | { problem: string }> => {
+      // The same folder again keeps its connection, so none of its items'
+      // IDs change.
+      if (folder?.path === real) {
+        const problem = await syncFolder();
+        const view = folderView();
+        return problem || !view
+          ? { problem: problem ?? "No folder is connected." }
+          : { folder: view };
+      }
+      // Another takes its place: one connected before comes back under its
+      // ID and number, and any other is a new connection, with the next.
       const plan = connections.planned("folder", real);
       if ("live" in plan) return { problem: "That folder is connected already." };
       const chosen = folderFrom(
