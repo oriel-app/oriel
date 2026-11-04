@@ -1161,6 +1161,23 @@ const scenes: Scene[] = [
     },
   })),
   {
+    // The chat closed with a conversation in it: the bar offers it back,
+    // and still fits a phone at every text size (OA-205).
+    name: "ask-back",
+    path: "/",
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await post("/api/window-chat/new", {});
+      await page.locator(".ask-input").fill("Chart my workstreams by size");
+      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.locator('.window-chat .answer-block[data-form="bars"]').waitFor();
+      await page.locator(".window-chat .working").waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Close the chat" }).click();
+      await page.getByRole("button", { name: "Back to the chat" }).waitFor();
+    },
+  },
+  {
     // An answer in the window chat quotes from an item as a thread's does.
     name: "ask-quotes",
     path: "/",
