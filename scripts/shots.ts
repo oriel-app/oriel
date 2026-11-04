@@ -580,6 +580,15 @@ const untidied = await ask(
     })
   ).id,
 );
+// A story deleted in Jira since the workstream was made, then taken out of it
+// (OA-121).
+const deleting = await live();
+const pruned = await (async () => {
+  const { id } = await post<{ id: string }>("/api/workstreams", checkout, deleting.serving);
+  deleting.site.remove("SYN-21");
+  await post("/api/jira/sync", {}, deleting.serving);
+  return ask("Take the deleted stories out of this workstream", deleting.serving, id);
+})();
 // Asked for estimates where the board takes none.
 const unpointedThread = await ask(
   "Estimate the unestimated ones",
@@ -1934,6 +1943,12 @@ const scenes: Scene[] = [
   {
     name: "thread-actions",
     path: `/threads/${tidied}`,
+    act: (page) => page.locator(".actions-block").waitFor(),
+  },
+  {
+    name: "thread-actions-gone",
+    path: `/threads/${pruned}`,
+    on: deleting.serving,
     act: (page) => page.locator(".actions-block").waitFor(),
   },
   {

@@ -140,6 +140,12 @@ const unestimated = stories.flatMap((story) =>
 for (const id of unestimated.slice(0, 3)) jira.setEstimate(id, 3);
 return unestimated.slice(0, 3);`;
 
+// Takes out of the workstream what Jira no longer has.
+const prune = `const stories = await jira.listItems();
+const gone = stories.flatMap((story) => (story.gone ? [story.id] : []));
+if (gone.length) workstream.remove({ items: gone });
+return gone;`;
+
 // Takes the finished stories out of the workstream, and closes the thread
 // when asked to: Oriel's own actions, applied as the turn ends.
 const tidyScript = (close: boolean) => `const stories = await jira.listItems();
@@ -238,6 +244,8 @@ export function devPlan(input: TurnInput): Step[] {
       { search: query },
       { text: "Those come from outside this workstream, so they're read-only here." },
     ];
+  if (/\b(take|remove)\b.*\bdeleted\b/i.test(input.text))
+    return [{ text: "I'll take what was deleted in Jira out of this workstream." }, { run: prune }];
   if (/\b(take|remove)\b.*\bfinished\b/i.test(input.text)) {
     const jira = input.region.items.some((item) => parseItemId(item.id)?.kind === "jira");
     if (!jira) return [{ text: "Nothing in this workstream is a story that can be finished." }];
