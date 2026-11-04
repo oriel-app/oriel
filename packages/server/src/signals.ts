@@ -58,6 +58,11 @@ type Lookups = {
   doneAt: ReadonlyMap<string, Instant>;
   // Chat messages by the stable ID of each item they name.
   named: ReadonlyMap<string, readonly IndexRecord[]>;
+  // Change log entries by item, and those that moved an item into a
+  // container by the container's stable ID, each in the order they
+  // committed, so no signal scans the whole log.
+  changesOf: ReadonlyMap<string, readonly ChangeLogEntry[]>;
+  joinedTo: ReadonlyMap<string, readonly ChangeLogEntry[]>;
 };
 
 function lookups(input: SignalInput): Lookups {
@@ -66,7 +71,14 @@ function lookups(input: SignalInput): Lookups {
   for (const entry of input.changes)
     if (entry.facets.state?.after === "done")
       doneAt.set(identity(entry.source, entry.stableId), entry.at);
+  const changesOf = Map.groupBy(input.changes, (entry) => identity(entry.source, entry.stableId));
+  const joinedTo = Map.groupBy(
+    input.changes.filter((entry) => entry.facets.container?.after),
+    (entry) => entry.facets.container?.after?.stableId ?? "",
+  );
   return {
+    changesOf,
+    joinedTo,
     byIdentity,
     byId: new Map(input.records.map((record) => [record.id as string, record])),
     members: (workstream) =>
@@ -122,21 +134,25 @@ function estimateChanges(
   input: SignalInput,
   records: readonly IndexRecord[],
   within: number,
+  at: Lookups,
 ): { record: IndexRecord; before: number; after: number }[] {
-  const wanted = new Map(records.map((record) => [identityOf(record), record]));
-  const found = new Map<string, { record: IndexRecord; before: number; after: number }>();
-  for (const entry of input.changes) {
-    if (daysSince(entry.at, input.now) >= within) continue;
-    const key = input.estimateKey(entry.source)?.key;
-    const change = key ? entry.facets.declared?.[key] : undefined;
-    const record = wanted.get(identity(entry.source, entry.stableId));
-    if (!change || !record) continue;
-    const { before, after } = change;
-    if (typeof before !== "number" || typeof after !== "number") continue;
-    const seen = found.get(identityOf(record));
-    found.set(identityOf(record), { record, before: seen?.before ?? before, after });
-  }
-  return [...found.values()].filter((change) => change.after !== change.before);
+  return [...new Map(records.map((record) => [identityOf(record), record])).values()].flatMap(
+    (record) => {
+      let first: number | null = null;
+      let last: number | null = null;
+      for (const entry of at.changesOf.get(identityOf(record)) ?? []) {
+        if (daysSince(entry.at, input.now) >= within) continue;
+        const key = input.estimateKey(entry.source)?.key;
+        const change = key ? entry.facets.declared?.[key] : undefined;
+        if (typeof change?.before !== "number" || typeof change.after !== "number") continue;
+        first ??= change.before;
+        last = change.after;
+      }
+      return first !== null && last !== null && first !== last
+        ? [{ record, before: first, after: last }]
+        : [];
+    },
+  );
 }
 
 // What a workstream's summed facet is called, by the source of its first
@@ -156,10 +172,8 @@ function joined(
   at: Lookups,
 ): { record: IndexRecord; at: Instant }[] {
   const found = new Map<string, { record: IndexRecord; at: Instant }>();
-  for (const entry of input.changes) {
+  for (const entry of at.joinedTo.get(container.stableId) ?? []) {
     if (daysSince(entry.at, input.now) >= within) continue;
-    const after = entry.facets.container?.after;
-    if (!after || after.stableId !== container.stableId) continue;
     const record = at.byIdentity.get(identity(entry.source, entry.stableId));
     // Still there: one that left again isn't growth.
     if (record && record.facets.container?.stableId === container.stableId)
@@ -230,7 +244,7 @@ export const signalReads: Readonly<Record<string, SignalRead>> = {
       const workstream = workstreamNamed(input, id);
       const span = days(within);
       if (!workstream || span === null) return null;
-      return estimateChanges(input, at.members(workstream), span)
+      return estimateChanges(input, at.members(workstream), span, at)
         .map(({ record, before, after }) => ({
           id: record.id,
           key: keyOf(record),
@@ -346,7 +360,7 @@ export function signalsOf(input: SignalInput): Signal[] {
         block: { read: "signals.open", args: [workstream.id], from: undefined, form: "rows" },
       });
 
-    const changes = estimateChanges(input, members, 14);
+    const changes = estimateChanges(input, members, 14, at);
     const before = changes.reduce((sum, change) => sum + change.before, 0);
     const after = changes.reduce((sum, change) => sum + change.after, 0);
     const rise = after - before;
