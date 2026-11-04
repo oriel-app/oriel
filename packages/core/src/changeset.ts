@@ -166,7 +166,8 @@ export interface ChangeSets {
   // applied, as a person adds a second look's suggestion: checked as a
   // capture is, against the region its run used. Its hash changes, so the
   // person reviews the new diff before approving.
-  extend(id: Ulid, mutations: readonly CapturedMutation[]): Promise<ChangeSet>;
+  // `max`: the most changes a change set may hold (SPEC §9).
+  extend(id: Ulid, mutations: readonly CapturedMutation[], max: number): Promise<ChangeSet>;
   // What it made or proposes, one line per change, in its diff's own words,
   // read from its rows and `known`, never from a source (`changesOf`).
   changes(set: ChangeSet, known: Known): Promise<ChangeRead[]>;

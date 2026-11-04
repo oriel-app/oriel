@@ -37,6 +37,9 @@ export type Host = NamespaceHost &
     // A second look's diff and record, in its module only (the challenger
     // spike).
     challenge?: ChallengeRun;
+    // Whether this run may read an item: it is in the region, or this run's
+    // search() found it.
+    reaches(id: string): boolean;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named

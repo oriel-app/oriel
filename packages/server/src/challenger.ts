@@ -53,6 +53,11 @@ export type ChallengerDeps = {
   updatedAt: (id: ItemId) => Instant | null;
   known: () => Known;
   snapshot: () => number;
+  // What the thread has spent, its looks included, which a look's turn
+  // counts from, under the thread's cap (SPEC §9).
+  spent: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
+  // The most changes a change set may hold, which adding a suggestion keeps.
+  maxMutations: number;
   // The thread's pages hear that its change set's second look changed.
   changed: (threadId: Ulid, changeSetId: Ulid) => void;
   emit: (event: TelemetryEvent) => void;
@@ -291,7 +296,7 @@ export function challenger(deps: ChallengerDeps) {
           history: [],
           text: challengeAskText,
           snapshot: deps.snapshot(),
-          spent: { inputTokens: 0, outputTokens: 0 },
+          spent: deps.spent(thread.id),
           challenge: { diff: async () => lines, record },
         },
         { signal: closing.signal, log },
@@ -443,7 +448,7 @@ export function challenger(deps: ChallengerDeps) {
       const change = look.companions[place];
       if (!change) throw new RangeError("no such suggested change");
       if (look.added.includes(place)) throw new RangeError("that change was already added");
-      const set = await deps.changeSets.extend(changeSetId, [change]);
+      const set = await deps.changeSets.extend(changeSetId, [change], deps.maxMutations);
       challenges.added(challengeId, place);
       deps.emit({
         name: "challenge.companion-added",

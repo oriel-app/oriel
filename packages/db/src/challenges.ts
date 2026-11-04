@@ -95,6 +95,9 @@ export function challengeStore(db: DatabaseSync) {
     "select * from challenges where change_set_id = ? order by rowid desc limit 1",
   );
   const selectOne = db.prepare("select * from challenges where id = ?");
+  const selectUsage = db.prepare(`
+    select coalesce(sum(input_tokens), 0) as input, coalesce(sum(output_tokens), 0) as output
+    from challenges where thread_id = ?`);
   // A look left running when Oriel stopped never finishes.
   const abandon = db.prepare(`
     update challenges set state = 'failed', error = ?, finished_at = ?
@@ -180,6 +183,12 @@ export function challengeStore(db: DatabaseSync) {
     },
 
     get: (id: Ulid): Challenge | null => load(selectOne.get(id)),
+
+    // What the thread's second looks have spent, in tokens.
+    usage(threadId: Ulid): { inputTokens: number; outputTokens: number } {
+      const row = selectUsage.get(threadId) as { input: number; output: number } | undefined;
+      return { inputTokens: row?.input ?? 0, outputTokens: row?.output ?? 0 };
+    },
 
     // The change set's latest second look, or null.
     latest: (changeSetId: Ulid): Challenge | null => load(selectLatest.get(changeSetId)),

@@ -64,3 +64,19 @@ return { lines: lines.length, show: typeof show, sketch: typeof sketch };`,
   });
   assert.equal(run.mutations.length, 1);
 });
+
+test("record() refuses a quote from an item the run can't read, so Oriel's check tests no guesses", async () => {
+  const bindings = bindingsFor(region, { reader, namespaces, challenge });
+  const outside = [
+    { kind: "related", lines: [1], says: "A.", evidence: [{ id: "jira:SYN-1", quote: "x" }] },
+  ];
+  const before = recorded.length;
+  const refused = (await bindings.read("challenge.record", [outside])).value;
+  assert.match(
+    String(refused),
+    /jira:SYN-1 isn't in this workstream, and this run's search\(\) didn't find it/,
+  );
+  assert.equal(recorded.length, before);
+  await bindings.read("search", ["checkout"]);
+  assert.equal((await bindings.read("challenge.record", [outside])).value, "kept");
+});

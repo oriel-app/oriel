@@ -105,7 +105,7 @@ import { type Notify, notifier } from "./notify.ts";
 import { quitGuard, type Working, workingThreads } from "./working.ts";
 import { type Setup, type SetupOptions, setupService } from "./setup/setup.ts";
 import type { Reply, Request } from "./site.ts";
-import { turns } from "./turns.ts";
+import { spent, turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
@@ -1182,6 +1182,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     newId,
     log,
+    alsoSpent: (threadId) => looks.usage(threadId),
   });
   told = () => conversation.synced();
   // Second looks (the challenger spike), with an agent of their own, or the
@@ -1207,6 +1208,15 @@ export async function createApp(options: AppOptions): Promise<App> {
       updatedAt,
       known,
       snapshot: () => index.snapshot(workspaceId),
+      spent: (threadId) => {
+        const said = spent(threads.messages(threadId));
+        const looked = looks.usage(threadId);
+        return {
+          inputTokens: said.inputTokens + looked.inputTokens,
+          outputTokens: said.outputTokens + looked.outputTokens,
+        };
+      },
+      maxMutations: caps.maxMutationsPerChangeSet,
       changed: (threadId, changeSetId) =>
         conversation.changeSet(threadId, changeSetId, sets.applying(changeSetId)),
       emit,

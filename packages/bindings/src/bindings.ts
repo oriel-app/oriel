@@ -109,6 +109,7 @@ export function bindingsFor(
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
     ...(options.challenge ? { challenge: options.challenge } : {}),
+    reaches: (id) => members.has(id) || found.has(id),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

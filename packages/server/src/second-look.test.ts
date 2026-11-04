@@ -235,3 +235,31 @@ test("a finding may quote what a line of the diff would write, checked word for 
   assert.equal((await refused()).changeSets[0]?.secondLook?.state, "failed");
   assert.match(answers[0] ?? "", /not in what line 1 would write word for word/);
 });
+
+test("what a thread's second looks spend counts toward the thread's token cap", async (t) => {
+  const app = await testApp(t, {
+    slack: { mode: "fixture" },
+    scripts: { propose },
+    plan: () => [{ run: "propose" }],
+    limits: { maxTokensPerThread: 50_000 },
+    // A look that spends the thread's budget and records nothing.
+    challenger: () => ({
+      async *turn() {
+        yield { kind: "done", usage: { inputTokens: 40_000, outputTokens: 10_000 } };
+      },
+    }),
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Same day only" }),
+  );
+  await app.app.settled();
+  const look = json<ThreadView>(await app.get(`/api/threads/${threadId}`)).changeSets[0]
+    ?.secondLook;
+  assert.equal(look?.state, "failed");
+  const next = await app.post(`/api/threads/${threadId}/messages`, { text: "And?" });
+  assert.equal(next.status, 409);
+  assert.match(String(next.body), /used its 50,000 tokens/);
+});

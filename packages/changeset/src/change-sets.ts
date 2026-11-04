@@ -1687,7 +1687,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return (await render(mustLoad(id))).diff;
     },
 
-    async extend(id, additions) {
+    async extend(id, additions, max) {
       const parsed = array(capturedMutation)(additions, "$.mutations");
       if (!parsed.ok) throw invalid("mutations", parsed.issues);
       if (parsed.value.length === 0) throw new ChangeSetError("invalid", "there's nothing to add");
@@ -1703,6 +1703,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
           throw new ChangeSetError("refused", "only a change set nobody has decided on takes more");
         if (current.mutations.some((m) => m.status !== "pending"))
           throw new ChangeSetError("refused", "this change set has started applying");
+        if (current.mutations.length + parsed.value.length > max)
+          throw new ChangeSetError("refused", `a change set holds at most ${max} changes`);
         const all = check(specs, [...current.mutations, ...parsed.value]);
         const added = all
           .slice(current.mutations.length)

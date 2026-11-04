@@ -108,13 +108,19 @@ const hidden = new RegExp(
 // asked as many as a thread may; or its last turn ended on a cap, which the
 // agent decides; or, as a backstop whatever agent is plugged in, it has
 // spent all its tokens.
-export function capReached(messages: readonly Message[], caps: Caps): string | null {
+export function capReached(
+  messages: readonly Message[],
+  caps: Caps,
+  // Tokens spent on the thread outside its chat, as its second looks spend.
+  also: { inputTokens: number; outputTokens: number } = { inputTokens: 0, outputTokens: 0 },
+): string | null {
   const next = "Start a new thread on this workstream to keep going.";
   const asked = messages.filter((m) => m.role === "user").length;
   if (asked >= caps.maxTurnsPerThread)
     return `This thread has had all ${caps.maxTurnsPerThread} of its questions. ${next}`;
   const used = spent(messages);
-  if (endedOnLimit(messages) || used.inputTokens + used.outputTokens >= caps.maxTokensPerThread)
+  const total = used.inputTokens + used.outputTokens + also.inputTokens + also.outputTokens;
+  if (endedOnLimit(messages) || total >= caps.maxTokensPerThread)
     return `This thread has used its ${caps.maxTokensPerThread.toLocaleString("en-US")} tokens. ${next}`;
   return null;
 }
@@ -139,6 +145,9 @@ export type TurnDeps = {
   now: () => Instant;
   newId: () => Ulid;
   log: Log;
+  // Tokens spent on a thread outside its chat: its second looks' (the
+  // challenger spike), which the per-thread cap counts too (SPEC §9).
+  alsoSpent?: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
 };
 
 const maxSummaryChars = 2_000;
@@ -170,6 +179,14 @@ const actionsText = (lines: readonly ActionLine[]): string =>
       return `applied ${call}${line.since?.undone ? ", which the user then undid" : ""}`;
     })
     .join("\n");
+
+const plus = (
+  a: { inputTokens: number; outputTokens: number },
+  b: { inputTokens: number; outputTokens: number } = { inputTokens: 0, outputTokens: 0 },
+) => ({
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+});
 
 // Tokens the turns in `messages` spent, from their `done` events.
 export function spent(messages: readonly Message[]): { inputTokens: number; outputTokens: number } {
@@ -372,7 +389,7 @@ export function turns(deps: TurnDeps) {
         history: history(before, markerText(thread.workstreamId)),
         text,
         snapshot: deps.snapshot(),
-        spent: spent(before),
+        spent: plus(spent(before), deps.alsoSpent?.(thread.id)),
       };
       for await (const event of deps.agent.turn(input, { signal, log })) {
         record(thread.id, event);
@@ -442,7 +459,7 @@ export function turns(deps: TurnDeps) {
     if (running.has(threadId)) throw new ThreadBusy();
     // The per-thread caps hold whatever agent is plugged in (SPEC §9).
     const earlier = threads.messages(threadId);
-    const reason = capReached(earlier, deps.caps);
+    const reason = capReached(earlier, deps.caps, deps.alsoSpent?.(threadId));
     if (reason !== null) {
       const last = earlier.at(-1);
       const said = last?.role === "agent" && agentEvent(last.event);
