@@ -5,6 +5,7 @@
 // words for them, for the window.
 import {
   array,
+  type DeclaredFacets,
   type DetailsOf,
   type Facets,
   type IndexRecord,
@@ -124,6 +125,13 @@ export function isJiraId(id: string): id is ItemId<"jira"> {
 }
 
 export const jiraPresentation: Presentation = { name: "Jira", details: jiraDetails };
+
+// Its facets beyond the common ones, which the change log records: its
+// estimate, in its board's points; null when not estimated yet, or on a board
+// that takes no estimates.
+export const jiraDeclaredFacets = {
+  estimate: { label: "Estimate", of: (record) => record.facets.estimate ?? null },
+} satisfies DeclaredFacets;
 
 // An issue type in core's words. The hierarchy decides where Jira gives one:
 // an epic-level type is an epic whatever the site calls it, and a sub-task

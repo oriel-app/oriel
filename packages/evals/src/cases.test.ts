@@ -2,17 +2,18 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { loadFolderFixture } from "@oriel/folder";
 import { loadCases } from "./case.ts";
-import { cassettesDir, casesDir, loadJiraFixture, repoRoot } from "./repo.ts";
+import { loadFixtures } from "./fixtures.ts";
+import { cassettesDir, casesDir, repoRoot } from "./repo.ts";
 
-test("every committed case loads against both fixtures", () => {
-  const { cases, problems } = loadCases(casesDir, loadJiraFixture(), repoRoot, loadFolderFixture());
+test("every committed case loads against the declared fixtures", () => {
+  const { cases, problems } = loadCases(casesDir, loadFixtures(), repoRoot);
   assert.deepEqual(problems, []);
-  // SPEC §8's kinds 2, 3, 4 and 8, with a region from each fixture and a mix.
+  // SPEC §8's kinds 2, 3, 4 and 8, with a region from a fixture, items, and a mix.
   assert.deepEqual([...new Set(cases.map((c) => c.case.kind))].toSorted(), [2, 3, 4, 8]);
-  assert.ok(cases.some((c) => c.region && c.case.files));
-  assert.ok(cases.some((c) => c.region && !c.case.files));
+  assert.ok(cases.some((c) => c.region && c.items.length));
+  assert.ok(cases.some((c) => c.region && !c.items.length));
+  assert.ok(cases.some((c) => !c.region && c.items.length));
 });
 
 test("no committed cassette holds an API key or a header", () => {

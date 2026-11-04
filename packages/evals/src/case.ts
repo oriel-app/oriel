@@ -10,6 +10,7 @@ import {
   changeSetStates,
   type Infer,
   type Issue,
+  type FixtureRegion,
   isInstant,
   isItemId,
   isNewRef,
@@ -22,7 +23,7 @@ import {
   object,
   optional,
   agentNote,
-  parseItemId,
+  record,
   refine,
   type Result,
   string,
@@ -32,10 +33,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import type { FixtureRegion, JiraFixture } from "@oriel/jira";
-import type { SlackFixture } from "@oriel/slack";
-import { diskDependent, type FolderFixture } from "@oriel/folder";
-import { loadSlackFixture } from "@oriel/slack";
+import { type Fixtures, itemNamed, regionNamed } from "./fixtures.ts";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader
@@ -80,21 +78,20 @@ const goldenPath = refine(
   "expected tests/golden/<name>.json",
 );
 
+// An item as its fixture names it, `<kind>:<name>` (fixtures.ts), such as
+// `jira:SYN-12` or `folder:meeting-notes.md`.
+const itemName = refine(
+  string,
+  (name) => /^[a-z]{2,16}:./su.test(name),
+  "expected an item as its fixture names it, like jira:SYN-12 or folder:notes.md",
+);
+
 // Each grader's expectation. `text` is quoted to the user as the content of
-// `item`, an item ID, or of `file`, a file from the folder fixture by its
-// path, and the reply names it: an item by its key, a file by its title, a
-// Slack message by its author's name.
-// `mentions` is text the reply contains, such as the name of a control in
-// Oriel; `avoids`, text it doesn't. `claims` are a rubric for the judge, each one checkable on its own.
-const itemIdText = refine(string, isItemId, "expected an item ID like jira:SYN-12");
-const surfacedItem = object({
-  grader: literal("surfaced"),
-  item: refine(string, isItemId, "expected an item ID like jira:SYN-12"),
-  text: atLeastOne(text),
-});
-const surfacedFile = object({ grader: literal("surfaced"), file: text, text: atLeastOne(text) });
-const has = (input: unknown, key: string) =>
-  typeof input === "object" && input !== null && key in input;
+// `item`, and the reply names it as its fixture says a reply calls it, such
+// as an issue by its key, a file by its title, or a Slack message by its
+// author's name. `mentions` is text the reply contains, such as the name of
+// a control in Oriel; `avoids`, text it doesn't. `claims` are a rubric for
+// the judge, each one checkable on its own.
 
 const expectations = {
   "exact-diff": object({ grader: literal("exact-diff"), golden: goldenPath }),
@@ -103,7 +100,7 @@ const expectations = {
   // workstream: an action and, for one that takes items, which.
   intents: object({
     grader: literal("intents"),
-    calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemIdText)) })),
+    calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemName)) })),
   }),
   // A block of `form` from `read`, or from one of them, was shown, and every
   // block shown is the one Oriel builds from what its read answered
@@ -116,12 +113,7 @@ const expectations = {
   // The turn never called sketch(), shown or refused (decision 0033): a
   // chart Oriel can build from a read is a block, never the agent's HTML.
   "no-sketch": object({ grader: literal("no-sketch") }),
-  // An item, unless it names only a file.
-  surfaced: ((input, path = "$") => {
-    if (has(input, "item") && has(input, "file"))
-      return { ok: false, issues: [{ path, message: "expected an item or a file, not both" }] };
-    return has(input, "file") ? surfacedFile(input, path) : surfacedItem(input, path);
-  }) satisfies Validator<Infer<typeof surfacedItem> | Infer<typeof surfacedFile>>,
+  surfaced: object({ grader: literal("surfaced"), item: itemName, text: atLeastOne(text) }),
   mentions: object({ grader: literal("mentions"), text: atLeastOne(text) }),
   // Text the reply never contains, such as disowning Oriel's own line, or
   // sending the user to make a change by hand.
@@ -192,32 +184,23 @@ const orielWorkspace = object({
 });
 export type OrielWorkspace = Infer<typeof orielWorkspace>;
 
-// The region holds a Jira fixture region's items, files from the folder
-// fixture, messages from the Slack fixture, or any mix of them.
+// The region holds a fixture region's items, items any fixture names, or
+// both.
 const evalCaseShape = object({
   id: caseId,
   split,
   kind: evalKind,
-  // A region name from fixtures/jira/regions.json.
+  // A fixture's region by its name, such as one in fixtures/jira/regions.json.
   region: optional(text),
-  // Paths from fixtures/folder/tree.json: a file before any edit, or the
-  // name an edit renames one to.
-  files: optional(atLeastOne(text)),
-  // Item IDs of messages in the Slack fixture's picked channel.
-  messages: optional(
-    atLeastOne(
-      refine(
-        string,
-        (id): id is ItemId<"slack"> => parseItemId(id)?.kind === "slack",
-        "expected a Slack item ID like slack:C0123456789-1788444000.000100",
-      ),
-    ),
-  ),
+  // Items from any fixture, as it names them, such as a file before any
+  // edit, or the name an edit renames one to.
+  items: optional(atLeastOne(itemName)),
   // Oriel's own threads and change sets in the workspace. Absent: none.
   oriel: optional(orielWorkspace),
   // The case asks in the window chat (decision 0027): its region is empty,
   // its agent reads window.overview(), and the overview's workstreams hold
-  // these fixture regions. Slack is connected, as in a window with it.
+  // these fixture regions. Every fixture is connected, as in a window with
+  // every source.
   // `at`: when the user looks, if not at the eval clock.
   window: optional(
     object({
@@ -236,11 +219,9 @@ const evalCaseShape = object({
       ),
     ),
   ),
-  // How many of the Jira fixture's source edits are applied before the case
-  // runs. Absent means none.
-  edited: optional(whole),
-  // How many of the folder fixture's edits are applied. Absent means none.
-  folderEdited: optional(whole),
+  // How many of each fixture's source edits are applied before the case
+  // runs, by kind, such as `{ "jira": 3 }`. Absent means none.
+  edited: optional(record(whole)),
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
   // approved. It is checked and listed, never run.
   waiting: optional(text),
@@ -263,18 +244,15 @@ export function parseEvalCase(input: unknown): Result<EvalCase> {
 
 function rules(evalCase: EvalCase): Issue[] {
   const found: Issue[] = [];
-  const held = [evalCase.region, evalCase.files, evalCase.messages].some((x) => x !== undefined);
+  const held = evalCase.region !== undefined || evalCase.items !== undefined;
   if (!held && evalCase.window === undefined)
-    found.push({ path: "$", message: "a case's region needs a fixture region, files, or both" });
+    found.push({ path: "$", message: "a case's region needs a fixture region, items, or both" });
   if (held && evalCase.window !== undefined)
     found.push({ path: "$.window", message: "the window chat's region is empty" });
-  for (const key of ["files", "messages"] as const) {
-    const listed: readonly string[] = evalCase[key] ?? [];
-    listed.forEach((entry, i) => {
-      if (listed.indexOf(entry) !== i)
-        found.push({ path: `$.${key}[${i}]`, message: "listed twice" });
-    });
-  }
+  const listed = evalCase.items ?? [];
+  listed.forEach((entry, i) => {
+    if (listed.indexOf(entry) !== i) found.push({ path: `$.items[${i}]`, message: "listed twice" });
+  });
   // A note names a change set the workspace has.
   const sets = new Set(evalCase.oriel?.changeSets.map((set) => set.id));
   evalCase.before?.forEach((said, i) => {
@@ -327,23 +305,24 @@ export const goldenDiff = object({ mutations: array(capturedMutation) });
 
 export type LoadedCase = {
   case: EvalCase;
-  // The Jira fixture region the case names, if any.
+  // The fixture region the case names, if any.
   region: FixtureRegion | null;
+  // The items its region holds beside the fixture region's, by ID.
+  items: ItemId[];
+  // Each item the case names, by its name.
+  named: ReadonlyMap<string, ItemId>;
   // The golden diff's mutations, when an expectation names one and the case
   // isn't waiting for it.
   golden: CapturedMutation[] | null;
 };
 
 // Reads every `*.json` in `dir` as a case, in file-name order, resolving each
-// region against the fixtures and each golden diff against `root`. A missing
-// `dir` holds no cases. Without `folder`, a case that uses it is refused.
-// Messages are checked against `slack`, the repo's Slack fixture by default.
+// region and item against the fixtures and each golden diff against `root`.
+// A missing `dir` holds no cases.
 export function loadCases(
   dir: URL,
-  fixture: JiraFixture,
+  fixtures: Fixtures,
   root: URL,
-  folder: FolderFixture | null = null,
-  slack: SlackFixture = loadSlackFixture(),
 ): { cases: LoadedCase[]; problems: string[] } {
   const cases: LoadedCase[] = [];
   const problems: string[] = [];
@@ -352,7 +331,7 @@ export function loadCases(
     .filter((name) => name.endsWith(".json"))
     .sort();
   for (const name of files) {
-    const found = loadCase(new URL(name, dir), name, fixture, root, folder, slack);
+    const found = loadCase(new URL(name, dir), name, fixtures, root);
     if ("problems" in found) problems.push(...found.problems.map((p) => `${name}: ${p}`));
     else cases.push(found);
   }
@@ -362,10 +341,8 @@ export function loadCases(
 function loadCase(
   file: URL,
   name: string,
-  fixture: JiraFixture,
+  fixtures: Fixtures,
   root: URL,
-  folder: FolderFixture | null,
-  slack: SlackFixture,
 ): LoadedCase | { problems: string[] } {
   const json = readJson(file);
   if (!json.ok) return { problems: [json.error] };
@@ -375,79 +352,62 @@ function loadCase(
   const problems: string[] = [];
   if (name !== `${evalCase.id}.json`)
     problems.push(`$.id: expected the file to be ${evalCase.id}.json`);
-  const named = evalCase.region;
-  const region = named === undefined ? null : fixture.regions.find((r) => r.name === named);
-  if (region === undefined)
-    problems.push(`$.region: no fixture region named ${JSON.stringify(named)}`);
-  evalCase.window?.workstreams.forEach((workstream, i) => {
-    if (!fixture.regions.some((r) => r.name === workstream.region))
-      problems.push(`$.window.workstreams[${i}].region: no fixture region by that name`);
-  });
-  if ((evalCase.edited ?? 0) > fixture.edits.length)
-    problems.push(`$.edited: the fixture has ${fixture.edits.length} source edits`);
-  problems.push(...fileProblems(evalCase, folder));
-  const messages: readonly string[] = evalCase.messages ?? [];
-  const posted = new Set(slackMessages(slack));
-  messages.forEach((id, i) => {
-    if (!posted.has(id))
-      problems.push(`$.messages[${i}]: not a message in the Slack fixture's picked channel`);
-  });
-  evalCase.expect.forEach((e, i) => {
-    if (e.grader !== "surfaced") return;
-    if ("file" in e) {
-      if (!evalCase.files?.includes(e.file))
-        problems.push(`$.expect[${i}].file: not one of the case's files`);
-      return;
-    }
-    if (parseItemId(e.item)?.kind === "slack") {
-      // The window chat's overview shows the picked channel's messages.
-      if (!(evalCase.window ? posted.has(e.item) : messages.includes(e.item)))
-        problems.push(`$.expect[${i}].item: not one of the case's messages`);
-    } else if (region !== undefined && !region?.items.some((id) => id === e.item))
-      problems.push(`$.expect[${i}].item: not in region ${region?.name ?? "(none)"}`);
-  });
+  const held = holding(evalCase, fixtures);
+  if ("problems" in held) problems.push(...held.problems);
   const golden = loadGolden(evalCase, root);
   if ("problems" in golden) problems.push(...golden.problems);
-  if (problems.length || region === undefined || "problems" in golden) return { problems };
-  return { case: evalCase, region, golden: golden.mutations };
+  if (problems.length || "problems" in held || "problems" in golden) return { problems };
+  return { case: evalCase, ...held, golden: golden.mutations };
 }
 
-// The item IDs of the messages people posted in the Slack fixture's picked
-// channels: not replies, joins or the placeholder a deleted message leaves.
-export function slackMessages(slack: SlackFixture): string[] {
-  const posts = new Set([undefined, "bot_message", "file_share", "me_message"]);
-  return slack.channels
-    .filter((channel) => slack.picked.includes(channel.id))
-    .flatMap((channel) =>
-      channel.messages
-        .filter((m) => posts.has(m.subtype))
-        .map((m) => `slack:${channel.id}-${m.ts}`),
-    );
-}
-
-// A case's files are in the folder fixture, before its edits or under a name
-// an edit gives one, and are the same on every disk.
-function fileProblems(evalCase: EvalCase, folder: FolderFixture | null): string[] {
-  const files = evalCase.files ?? [];
-  const edited = evalCase.folderEdited ?? 0;
-  if (!folder) return files.length || edited ? ["$.files: no folder fixture was loaded"] : [];
+// What a case's region holds, from the fixtures, and every item it names:
+// each one its fixture can hold.
+export function holding(
+  evalCase: EvalCase,
+  fixtures: Fixtures,
+): Pick<LoadedCase, "region" | "items" | "named"> | { problems: string[] } {
   const problems: string[] = [];
-  if (edited > folder.edits.length)
-    problems.push(`$.folderEdited: the folder fixture has ${folder.edits.length} edits`);
-  const known = new Set([
-    ...folder.files.map((f) => f.path),
-    ...folder.edits.flatMap((e) => (e.kind === "rename" ? [e.to] : [])),
-  ]);
-  const dependent = diskDependent(folder);
-  files.forEach((path, i) => {
-    if (!known.has(path))
-      problems.push(`$.files[${i}]: ${JSON.stringify(path)} isn't in the folder fixture`);
-    if (dependent.has(path))
-      problems.push(
-        `$.files[${i}]: ${JSON.stringify(path)} exists or not depending on the disk, so the case wouldn't replay everywhere`,
-      );
+  const regionName = evalCase.region;
+  const region = regionName === undefined ? null : regionNamed(fixtures, regionName);
+  if (region === undefined)
+    problems.push(`$.region: no fixture region named ${JSON.stringify(regionName)}`);
+  evalCase.window?.workstreams.forEach((workstream, i) => {
+    if (!regionNamed(fixtures, workstream.region))
+      problems.push(`$.window.workstreams[${i}].region: no fixture region by that name`);
   });
-  return problems;
+  for (const [kind, edited] of Object.entries(evalCase.edited ?? {})) {
+    const fixture = fixtures.get(kind);
+    const at = `$.edited[${JSON.stringify(kind)}]`;
+    if (!fixture) problems.push(`${at}: no ${kind} fixture is loaded`);
+    else if (edited > fixture.loaded.edits)
+      problems.push(`${at}: the ${kind} fixture has ${fixture.loaded.edits} edits`);
+  }
+  const named = new Map<string, ItemId>();
+  const resolve = (item: string, path: string): ItemId | null => {
+    const found = itemNamed(fixtures, item);
+    if ("problem" in found) {
+      problems.push(`${path}: ${found.problem}`);
+      return null;
+    }
+    named.set(item, found.id);
+    return found.id;
+  };
+  const items = (evalCase.items ?? []).flatMap((item, i) => resolve(item, `$.items[${i}]`) ?? []);
+  const held = new Set<string>([...(region?.items ?? []), ...items]);
+  evalCase.expect.forEach((e, i) => {
+    if (e.grader === "intents")
+      e.calls.forEach((call, c) =>
+        call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),
+      );
+    if (e.grader !== "surfaced") return;
+    const id = resolve(e.item, `$.expect[${i}].item`);
+    // The window chat's overview shows what no workstream holds yet. A
+    // region that isn't there holds nothing to check against.
+    if (id && region !== undefined && !evalCase.window && !held.has(id))
+      problems.push(`$.expect[${i}].item: not an item the case's region holds`);
+  });
+  if (problems.length || region === undefined) return { problems };
+  return { region, items, named };
 }
 
 // A waiting case's golden diff may be missing. Once it is there the case can

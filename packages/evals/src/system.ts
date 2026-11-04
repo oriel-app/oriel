@@ -34,7 +34,7 @@ import {
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
-import { buildWorld, type World } from "./world.ts";
+import { buildWorld, caseWorld, type World } from "./world.ts";
 
 // The thread's caps (SPEC §9). Generous enough for any case to finish, small
 // enough that a case that loops can't run up a large bill.
@@ -69,25 +69,7 @@ const processSandbox = () => (shared ??= createSandbox());
 
 export function agentSystem(options: AgentSystemOptions = {}): SystemUnderTest {
   return async (input) => {
-    const world = await buildWorld({
-      fixture: input.fixture,
-      folder: input.folder,
-      region: input.region,
-      files: input.case.files ?? [],
-      messages: input.case.messages ?? [],
-      ...(input.slack ? { slack: input.slack } : {}),
-      edited: input.case.edited ?? 0,
-      folderEdited: input.case.folderEdited ?? 0,
-      ...(input.case.oriel ? { oriel: input.case.oriel } : {}),
-      ...(input.case.window
-        ? {
-            window: {
-              workstreams: input.case.window.workstreams,
-              now: input.case.window.at ?? input.now,
-            },
-          }
-        : {}),
-    });
+    const world = await buildWorld(caseWorld(input, input.fixtures, input.now));
     try {
       return await turn(world, input, options);
     } finally {

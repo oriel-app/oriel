@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type Instant, instant, isUlid, ulid } from "@oriel/core";
 import { readEnv } from "../../../scripts/env.ts";
-import { loadFolderFixture } from "@oriel/folder";
-import { loadSlackFixture } from "@oriel/slack";
 import { anthropicFetch, anthropicKey, type Fetch, isPriced, sameModel } from "./anthropic.ts";
 import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
@@ -22,22 +20,15 @@ import {
   writeLedger,
 } from "./climb.ts";
 import { compareChange, formatChange, noChange, readResults } from "./compare.ts";
-import {
-  cassettesDir,
-  casesDir,
-  climbsDir,
-  envFile,
-  loadJiraFixture,
-  repoRoot,
-  roundsDir,
-} from "./repo.ts";
+import { loadFixtures } from "./fixtures.ts";
+import { cassettesDir, casesDir, climbsDir, envFile, repoRoot, roundsDir } from "./repo.ts";
 import { exitCode, formatRound, runRound } from "./runner.ts";
 import { system } from "./system.ts";
 
 // Recording and replaying use the same models, or replays miss.
 export const defaults = { model: "claude-opus-5-5", judge: "claude-sonnet-5-5" };
 
-// The eval clock: fixed, after the fixture's last source edit.
+// The eval clock: fixed, after the fixtures' last source edit.
 export const evalNow: Instant = instant(new Date("2026-10-29T09:00:00.000Z"));
 
 export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baseline <round>] [--env <path>]
@@ -242,10 +233,8 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     io.log(`  a group flagged worse (false guard): ${share(aa.guarded)}`);
     return 0;
   }
-  const fixture = loadJiraFixture();
-  const folder = loadFolderFixture();
-  const slack = loadSlackFixture();
-  const { cases: loaded, problems } = loadCases(io.cases, fixture, repoRoot, folder, slack);
+  const fixtures = loadFixtures();
+  const { cases: loaded, problems } = loadCases(io.cases, fixtures, repoRoot);
   for (const problem of problems) io.error(problem);
   if (problems.length) return 1;
   for (const { case: c } of loaded)
@@ -323,9 +312,7 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     });
   const ran = await runRound({
     cases,
-    fixture,
-    folder,
-    slack,
+    fixtures,
     system,
     model: command.model,
     judgeModel: command.judge,

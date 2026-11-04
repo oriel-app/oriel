@@ -5,12 +5,18 @@ export {
   folderAttrs,
   type FolderContent,
   folderContent,
-  folderDeclaration,
   folderDetails,
   folderFacets,
   folderPresentation,
   type FolderRecord,
 } from "./attrs.ts";
+export { folderDeclaration } from "./declaration.ts";
+export {
+  fixtureFileId,
+  fixtureFolderId,
+  fixtureFolderLocation,
+  folderDeclaredFixture,
+} from "./declared-fixture.ts";
 export {
   buildFolder,
   type BuiltFolder,

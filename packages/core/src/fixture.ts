@@ -1,0 +1,63 @@
+// A connector's synthetic data, as its declaration offers it (decision 0049):
+// loaded once, then connected as often as a test or an eval case asks, with
+// no network. Everything a connection gives is the same on every run and
+// every disk, so evals that read it replay.
+import type { ChangeLogEntry } from "./change-log.ts";
+import type { Instant, ItemId } from "./ids.ts";
+import type { IndexRecord, ReadResult } from "./source.ts";
+import type { WorkstreamOrigin } from "./workstream.ts";
+
+export type SourceFixture<C = unknown> = {
+  // Reads its data, such as `fixtures/jira/`, and checks it.
+  load: () => LoadedFixture<C>;
+  // Whether every eval case connects it, as every case recorded before
+  // decision 0049 did Jira and the folder. Otherwise a case connects it when
+  // its region holds its items, or when it asks in the window chat, so a new
+  // connector changes no other case's recording.
+  everyCase?: true;
+};
+
+// A named set of a fixture's items, which an eval case's region or a window
+// chat's workstream may hold, such as one of Jira's epics.
+export type FixtureRegion = { name: string; origin: WorkstreamOrigin; items: ItemId[] };
+
+export type LoadedFixture<C = unknown> = {
+  // How many source edits it has: changes made in the source after the user
+  // first looked, such as a renamed file, applied in order.
+  edits: number;
+  // When its first edit was made, if its edits are timed. The window chat's
+  // user last looked just before.
+  firstEdit: Instant | null;
+  // Its named sets of items; none is `[]`.
+  regions: readonly FixtureRegion[];
+  // The item an eval case names `name`, such as a Jira key or a file's path,
+  // or why a case can't hold it.
+  item: (name: string) => { id: ItemId } | { problem: string };
+  // An item's stable ID, as a workstream member keeps it. Absent: its key.
+  stableId?: (id: ItemId) => string;
+  // What a reply calls an item, such as a file's title or a message's
+  // author, when not by its key; null when by its key.
+  called?: (id: ItemId) => string | null;
+  // Each item's chip as the window draws it, after the first `edited` edits:
+  // its key or what it reads as, and its title.
+  chips: (edited: number) => Iterable<readonly [ItemId, string]>;
+  // What a judge is told of an item beyond what a read of it gives, such as
+  // a file's path, which a deleted file's read can't give.
+  about?: (id: ItemId) => Record<string, string>;
+  // Connected, after the first `edited` edits.
+  connect: (edited: number) => Promise<FixtureConnection<C>>;
+};
+
+export type FixtureConnection<C = unknown> = {
+  // The index, as its sync leaves it.
+  records: readonly IndexRecord[];
+  // Reads its own items; any it doesn't have is gone.
+  read: (ids: readonly ItemId[]) => Promise<ReadResult[]>;
+  // What its namespace takes, as the composition root would give it.
+  context: C;
+  // What its edits changed, as a sync logs it, in no order; one whose time
+  // the fixture doesn't keep was made at `now`.
+  changes: (now: Instant) => Omit<ChangeLogEntry, "seq">[];
+  // Removes anything it made, such as a temporary directory.
+  close: () => void;
+};

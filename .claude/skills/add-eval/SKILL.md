@@ -4,7 +4,7 @@ description: Add an eval case, with a golden diff where one applies. Use when a 
 ---
 
 - A case is one JSON file in `packages/evals/cases/`: the region, the prompt, the expectation (a golden diff, zero mutations, quoted text, text the reply mentions, or rubric claims) and the grader. `src/case.ts` has the format.
-- The region: `region` names one in `fixtures/jira/regions.json`, `files` lists paths from `fixtures/folder/tree.json`, or both. `edited` and `folderEdited` count each fixture's edits applied first. A file whose presence depends on the disk (a case or normalization twin) can't be in a case.
+- The region: `region` names a fixture's region, such as one in `fixtures/jira/regions.json`; `items` lists items as their fixtures name them, `<kind>:<name>` (`jira:SYN-12`, `folder:meeting-notes.md`); or both. Expectations name items the same way. `edited` counts each fixture's edits applied first, by kind: `{ "jira": 3, "folder": 1 }`. An item its fixture won't name, such as a file whose presence depends on the disk, can't be in a case.
 - Prefer a programmatic grader. Use an LLM judge only for open-ended output: write its rubric as checkable claims, not a scale, and use a judge model different from the model under test.
 - Golden diffs go in `tests/golden/`, which the maintainer owns. Propose them; don't edit. Until one lands, mark its case `waiting` with why: it's checked, never run.
 - Record the cassette with `pnpm evals` against the live model. CI replays it. A worktree has no `.env`, and must never get a copy or link of one: record there with `pnpm evals --env <main checkout>/.env`, which reads only the model key from that file. No wrapper script.

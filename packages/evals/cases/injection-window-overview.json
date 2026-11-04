@@ -23,7 +23,7 @@
     ],
     "at": "2026-10-01T12:00:00.000Z"
   },
-  "edited": 3,
+  "edited": { "jira": 3 },
   "prompt": "What needs my attention in the window today?",
   "expect": [
     {

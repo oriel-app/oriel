@@ -1,32 +1,22 @@
 // A case's world: its sources as the case finds them, its region, and how a
-// run reads them. Jira is the SYN fixture after the case's source edits. The
-// folder is the folder fixture, built in a temporary directory after its own
-// edits and read by the real folder source. Both are connected whatever the
-// region holds, so search() reaches every indexed item, as in a workspace
-// with both sources. Slack is the Slack fixture's picked channel, read by the
-// real Slack source through the fixture's Web API, and is connected only for
-// a case whose region holds messages, so cases recorded before Slack was a
+// run reads them. Each is a declared connector's fixture (decision 0049),
+// connected after the case's edits to it: in every case for a fixture that
+// says so, as Jira's and the folder's do, so search() reaches their items as
+// in a workspace with both; otherwise only in a case whose region holds its
+// items, or that asks in the window chat, so cases recorded before it was a
 // source see the index they were recorded with.
 //
 // Everything the agent can see must be the same on every run and every disk,
-// or cassettes won't replay: so the folder has a fixed ID, its files a fixed
-// location instead of the temporary path, and the files whose presence
-// depends on the disk (case and normalization twins) are left out of the
-// index, and no case may hold them.
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+// or cassettes won't replay, and each fixture's connection is.
 import type { ItemDocs, Namespaces } from "@oriel/bindings";
 import {
   type ChangeLogEntry,
   type Cluster,
-  facetChanges,
+  type FixtureConnection,
+  type FixtureRegion,
   type IndexRecord,
   type Instant,
-  type WorkstreamMember,
   type ItemId,
-  itemId,
   parseItemId,
   type Reader,
   type ReadResult,
@@ -37,57 +27,25 @@ import {
   type OrielReads,
   type Ulid,
   ulid,
+  type WorkstreamMember,
 } from "@oriel/core";
-import {
-  canonicalPath,
-  folderKey,
-  folderSource,
-  resolveFolder,
-  buildFolder,
-  diskDependent,
-  type FolderFixture,
-} from "@oriel/folder";
-import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
-import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import { overviewItems, overviewView } from "@oriel/server/overview";
 import { groupings } from "@oriel/server/window";
-import { byItemId, itemDocs, namespacesFor, sources } from "@oriel/sources";
-import type { OrielWorkspace } from "./case.ts";
-
-// What each source's items are: the same docs the server hands to bindings.
-export { itemDocs };
-
-// Item URLs point here, as they do in the index.
-export const evalSite = "https://oriel.atlassian.net";
-// The connected folder's ID, as the workspace would have given it when the
-// user picked it. Every file's ID hashes it.
-export const evalFolderId: Ulid = ulid(Date.UTC(2026, 8, 1), new Uint8Array(10).fill(0xf0));
-// Where the folder's files say they are: not the temporary directory, which
-// differs on every run.
-export const evalFolderLocation = "file:///eval/folder/";
+import { byItemId } from "@oriel/sources";
+import type { EvalCase, OrielWorkspace } from "./case.ts";
+import { fixtureOf, type Fixtures, regionNamed } from "./fixtures.ts";
 
 // Every case's workspace and workstream.
 export const fixedId: Ulid = ulid(0, new Uint8Array(10));
 
-// A file's item ID, from its path in the folder fixture.
-export const fileId = (path: string): ItemId<"folder"> =>
-  itemId("folder", folderKey(evalFolderId, canonicalPath(path.split("/"))));
-
 export type WorldInput = {
-  fixture: JiraFixture;
-  // Null: no folder is connected, and the region holds no files.
-  folder: FolderFixture | null;
-  // The Jira fixture region the region holds, if any.
+  fixtures: Fixtures;
+  // The fixture region the region holds, if any.
   region: FixtureRegion | null;
-  // Files from the folder fixture, by path, that the region also holds.
-  files: readonly string[];
-  // Messages from the Slack fixture, by item ID, that the region also holds,
-  // and the fixture they come from.
-  messages?: readonly ItemId<"slack">[];
-  slack?: SlackFixture;
-  // How many of each fixture's edits are applied.
-  edited: number;
-  folderEdited: number;
+  // The items it also holds, by ID.
+  items: readonly ItemId[];
+  // How many of each fixture's edits are applied, by kind; absent, none.
+  edited: Readonly<Partial<Record<string, number>>>;
   // Oriel's own threads and change sets in the workspace, if any.
   oriel?: OrielWorkspace;
   // A window chat's: the overview's workstreams, by fixture region, and the
@@ -95,9 +53,28 @@ export type WorldInput = {
   window?: { workstreams: readonly { name: string; region: string }[]; now: Instant };
 };
 
+// A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
+export function caseWorld(
+  loaded: { case: EvalCase; region: FixtureRegion | null; items: readonly ItemId[] },
+  fixtures: Fixtures,
+  now: Instant,
+): WorldInput {
+  const { case: evalCase } = loaded;
+  return {
+    fixtures,
+    region: loaded.region,
+    items: loaded.items,
+    edited: evalCase.edited ?? {},
+    ...(evalCase.oriel ? { oriel: evalCase.oriel } : {}),
+    ...(evalCase.window
+      ? { window: { workstreams: evalCase.window.workstreams, now: evalCase.window.at ?? now } }
+      : {}),
+  };
+}
+
 export type World = {
-  // Version 1 of a workstream holding the Jira region's items, then the files,
-  // then the messages.
+  // Version 1 of a workstream holding the fixture region's items, then the
+  // case's own.
   region: Region;
   reader: Reader;
   namespaces: Namespaces;
@@ -107,24 +84,24 @@ export type World = {
   // A window chat's overview, as window.overview() reads it, with the items
   // it shows; absent for any other thread.
   overview?: () => Promise<{ view: unknown; items: SearchHit[] }>;
-  // Each region item as its source holds it, for the judge: a file with its
-  // path and title, and anything gone saying so.
+  // Each region item as its source holds it, for the judge, with what its
+  // fixture says of it, and anything gone saying so.
   evidence(): Promise<unknown[]>;
-  // Removes the folder's temporary directory.
+  // Removes what the fixtures' connections made.
   close(): void;
 };
 
+// A workstream member, with its stable ID as its fixture keeps it.
+const member = (fixtures: Fixtures, id: ItemId): WorkstreamMember => ({
+  id,
+  stableId: fixtureOf(fixtures, id)?.stableId?.(id) ?? parseItemId(id)?.key ?? "",
+});
+
 export async function buildWorld(input: WorldInput): Promise<World> {
-  if (input.files.length && !input.folder) throw new Error("the region holds files, but no folder");
-  const snapshot = fixtureSnapshot(input.fixture, evalSite, input.edited);
-  const stableIds = new Map(input.fixture.issues.map((i) => [`jira:${i.key}`, i.id]));
-  const files = input.files.map((path) => ({ id: fileId(path), path }));
-  const paths = new Map<string, string>(files.map(({ id, path }) => [id, path]));
-  const members: WorkstreamMember[] = [
-    ...(input.region?.items ?? []).map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
-    ...files.map(({ id }) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
-    ...(input.messages ?? []).map((id) => ({ id, stableId: parseItemId(id)?.key ?? "" })),
-  ];
+  const { fixtures } = input;
+  const members = [...(input.region?.items ?? []), ...input.items].map((id) =>
+    member(fixtures, id),
+  );
   const region: Region = {
     workstreamId: fixedId,
     version: 1,
@@ -132,24 +109,31 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     items: members,
     origin: input.window ? { kind: "window" } : (input.region?.origin ?? { kind: "picked" }),
   };
-  const folder = input.folder ? await connect(input.folder, input.folderEdited) : null;
-  if (input.messages?.length && !input.slack)
-    throw new Error("the region holds messages, but no Slack fixture");
-  const slack =
-    (input.messages?.length || input.window) && input.slack
-      ? await connectSlack(input.slack)
-      : null;
-  // As the app has them: Slack posts as the fixture's first person, in its
-  // picked channel, while it is connected.
-  const namespaces = namespacesFor([...snapshot.records, ...(slack?.index ?? [])], {
-    jira: { none: new Set(), home: input.fixture.project.key },
-    slack: slack?.context,
-  });
-  const index: SearchHit[] = [
-    ...snapshot.records,
-    ...(folder?.index ?? []),
-    ...(slack?.index ?? []),
-  ].map((r) => ({
+  const held = new Set(members.map((m) => parseItemId(m.id)?.kind));
+  for (const kind of held)
+    if (kind === undefined || !fixtures.has(kind))
+      throw new Error(`the region holds ${kind ?? "unknown"} items, but no ${kind} fixture`);
+  const connections = new Map<string, FixtureConnection>();
+  try {
+    for (const [kind, { loaded, declaration }] of fixtures)
+      if (declaration.fixture.everyCase || held.has(kind) || input.window)
+        connections.set(kind, await loaded.connect(input.edited[kind] ?? 0));
+  } catch (error) {
+    for (const connection of connections.values()) connection.close();
+    throw error;
+  }
+  const records = [...connections.values()].flatMap((c) => c.records);
+  // As the app has them, each with what only the composition root knows.
+  const namespaces: Namespaces = Object.fromEntries(
+    [...connections].flatMap(([kind, connection]) => {
+      const namespace = fixtures.get(kind)?.declaration.namespace;
+      return namespace ? [[kind, namespace(records, connection.context as never)]] : [];
+    }),
+  );
+  const items: ItemDocs = Object.fromEntries(
+    [...fixtures].map(([kind, { declaration }]) => [kind, declaration.itemDoc]),
+  );
+  const index: SearchHit[] = records.map((r) => ({
     id: r.id,
     title: r.title,
     location: r.location,
@@ -158,23 +142,13 @@ export async function buildWorld(input: WorldInput): Promise<World> {
 
   const reader: Reader = {
     async read(ids) {
-      const files = ids.filter(
-        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === "folder",
-      );
-      const messages = ids.filter(
-        (id): id is ItemId<"slack"> => parseItemId(id)?.prefix === "slack",
-      );
-      const read = [
-        ...(folder && files.length ? await folder.source.read(files) : []),
-        ...(slack && messages.length ? await slack.source.read(messages) : []),
-      ];
+      const read: ReadResult[] = [];
+      for (const [kind, connection] of connections) {
+        const own = ids.filter((id) => parseItemId(id)?.prefix === kind);
+        if (own.length) read.push(...(await connection.read(own)));
+      }
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
-      const gone = (id: ItemId): ReadResult => ({ id, status: "gone", reason: "deleted" });
-      return ids.map((id): ReadResult => {
-        if (parseItemId(id)?.prefix !== "jira") return byId.get(id) ?? gone(id);
-        const content = snapshot.content.get(id as ItemId<"jira">);
-        return content ? { id, status: "ok", content } : gone(id);
-      });
+      return ids.map((id): ReadResult => byId.get(id) ?? { id, status: "gone", reason: "deleted" });
     },
     // Every term must appear in the item's ID or title.
     async search(query, limit) {
@@ -187,83 +161,35 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     },
   };
 
-  const records = [...snapshot.records, ...(folder?.index ?? []), ...(slack?.index ?? [])];
   const window = input.window;
   return {
     region,
     reader,
     namespaces,
-    items: itemDocs,
+    items,
     oriel: orielOf(input.oriel),
-    ...(window ? { overview: async () => windowOverview(input, window, records) } : {}),
+    ...(window
+      ? { overview: async () => windowOverview(fixtures, connections, window, records) }
+      : {}),
     async evidence() {
       const results = await reader.read(members.map((m) => m.id));
       return results.map((result) => {
-        const path = paths.get(result.id);
-        // A file read gives its title; a gone one has only the path it had.
-        const named = path === undefined ? {} : { path };
-        if (result.status === "ok") return { id: result.id, ...named, ...result.content };
+        // What a read can't give, such as a gone file's path.
+        const about = fixtureOf(fixtures, result.id)?.about?.(result.id) ?? {};
+        if (result.status === "ok") return { id: result.id, ...about, ...result.content };
         if (result.status === "gone" && result.reason === "deleted")
-          return { id: result.id, ...named, deleted: true };
+          return { id: result.id, ...about, deleted: true };
         return {
           id: result.id,
-          ...named,
+          ...about,
           gone: result.status === "moved" ? "moved" : result.reason,
         };
       });
     },
-    close: () => folder?.close(),
+    close: () => {
+      for (const connection of connections.values()) connection.close();
+    },
   };
-}
-
-// The folder fixture, built and synced: the source a run reads through, and
-// the index records search() finds, relocated and without the disk's twins.
-async function connect(fixture: FolderFixture, edited: number) {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "oriel-evals-folder-")));
-  const close = () => rmSync(dir, { recursive: true, force: true });
-  try {
-    const built = buildFolder(fixture, dir, edited);
-    const source = folderSource({
-      folderId: evalFolderId,
-      path: await resolveFolder(built.root),
-      // What the source skipped is the fixture's business, not the agent's.
-      log: () => {},
-    });
-    const twins = new Set([...diskDependent(fixture)].map(fileId));
-    const prefix = pathToFileURL(`${built.root}/`).href;
-    const index = [];
-    for await (const page of source.sync(null)) {
-      for (const record of page.records) {
-        if (twins.has(record.id)) continue;
-        if (!record.location.startsWith(prefix))
-          throw new Error(`a file outside the fixture's folder: ${record.location}`);
-        index.push({
-          ...record,
-          location: `${evalFolderLocation}${record.location.slice(prefix.length)}`,
-        });
-      }
-    }
-    return { source, index, close };
-  } catch (error) {
-    close();
-    throw error;
-  }
-}
-
-// The Slack fixture's picked channel, synced: the source a run reads through,
-// and the index records search() finds.
-async function connectSlack(fixture: SlackFixture) {
-  const source = slackSource({
-    api: fixtureApi(fixture).api,
-    workspaceUrl: fixture.team.url,
-    channels: fixture.picked,
-    log: () => {},
-  });
-  const index: SlackRecord[] = [];
-  for await (const page of source.sync(null)) index.push(...page.records);
-  const author = fixture.users[0]?.id;
-  if (!author) throw new Error("the Slack fixture has no people");
-  return { source, index, context: { channels: fixture.picked, author } };
 }
 
 // A case's workspace as the agent's namespaces read it, searched by the same
@@ -297,56 +223,33 @@ export const windowWorkstreamId = (now: Instant, i: number): Ulid =>
 
 // The window chat's overview over the case's world, built by the server's
 // own `overviewView` (decision 0027), so it is the page's. What changed
-// since the user last looked is what the case's Jira edits changed, logged
-// as a sync would log them; they last looked before the first edit.
+// since the user last looked is what the case's edits changed, logged as a
+// sync would log them; they last looked before any fixture's first edit.
 function windowOverview(
-  input: WorldInput,
+  fixtures: Fixtures,
+  connections: ReadonlyMap<string, FixtureConnection>,
   window: NonNullable<WorldInput["window"]>,
   records: readonly IndexRecord[],
 ): { view: unknown; items: SearchHit[] } {
   const { now } = window;
-  const before = fixtureSnapshot(input.fixture, evalSite, 0).records;
-  const after = new Map(
-    fixtureSnapshot(input.fixture, evalSite, input.edited).records.map((r) => [r.stableId, r]),
-  );
-  const editedAt = new Map(
-    input.fixture.edits.slice(0, input.edited).map((edit) => [`jira:${edit.key}`, edit.at]),
-  );
-  const changes: ChangeLogEntry[] = before
-    .flatMap((was) => {
-      const is = after.get(was.stableId);
-      const facets = is ? facetChanges(sources.jira.facets, was, is) : null;
-      if (is && !facets) return [];
-      const at = (editedAt.get(was.id) ?? now) as Instant;
-      return [
-        {
-          seq: 0,
-          source: "jira" as const,
-          stableId: was.stableId,
-          version: 2,
-          at,
-          facets: facets ?? {},
-          gone: !is,
-        },
-      ];
-    })
-    .map((entry, i) => ({ ...entry, seq: i + 1 }));
-  const stableIds = new Map(input.fixture.issues.map((i) => [`jira:${i.key}`, i.id]));
+  const changes: ChangeLogEntry[] = [...connections.values()]
+    .flatMap((connection) => connection.changes(now))
+    .map((entry, i) => ({ seq: i + 1, ...entry }));
   const workstreams = window.workstreams.map((workstream, i) => {
-    const region = input.fixture.regions.find((r) => r.name === workstream.region);
+    const region = regionNamed(fixtures, workstream.region);
     if (!region) throw new Error(`no fixture region named ${workstream.region}`);
     return {
       id: windowWorkstreamId(now, i),
       name: workstream.name,
       createdAt: now,
-      members: region.items.map((id) => ({ id, stableId: stableIds.get(id) ?? "" })),
+      members: region.items.map((id) => member(fixtures, id)),
     };
   });
   const clustered = new Map<string, Cluster[]>();
   const view = overviewView({
     records,
     changes,
-    seen: { at: firstEdit(input.fixture) ?? now, seq: 0 },
+    seen: { at: lastLooked(fixtures) ?? now, seq: 0 },
     workstreams,
     threads: [],
     unopened: [],
@@ -374,8 +277,10 @@ function windowOverview(
   return { view, items };
 }
 
-// Just before the fixture's first edit: when the user last looked.
-const firstEdit = (fixture: JiraFixture): Instant | null => {
-  const first = fixture.edits.map((edit) => edit.at).toSorted()[0];
+// Just before any fixture's first edit: when the user last looked.
+function lastLooked(fixtures: Fixtures): Instant | null {
+  const first = [...fixtures.values()]
+    .flatMap(({ loaded }) => (loaded.firstEdit ? [loaded.firstEdit] : []))
+    .toSorted()[0];
   return first ? (new Date(Date.parse(first) - 1).toISOString() as Instant) : null;
-};
+}

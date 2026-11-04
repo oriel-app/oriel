@@ -90,17 +90,38 @@ const memo = {
   overview: () => [],
   namespace: () => memoNamespace,
   specs: memoSpecs,
+  budget: 300,
+  // One memo, which nothing here reads: packages/evals tests a declared
+  // fixture.
+  fixture: {
+    load: () => ({
+      edits: 0,
+      firstEdit: null,
+      regions: [],
+      item: (key) => ({ id: `memo:${key}` }),
+      chips: () => [],
+      connect: async () => ({
+        records: [memoRecord("M1", "Launch")],
+        read: async () => [],
+        context: undefined,
+        changes: () => [],
+        close: () => {},
+      }),
+    }),
+  },
 } satisfies SourceDeclaration;
 
-const memoRecord = (key: string, title: string): IndexRecord<"memo"> => ({
-  id: `memo:${key}`,
-  stableId: `stable-${key}`,
-  title,
-  location: `https://memo.example/${key}`,
-  updatedAt: t0,
-  facets: {},
-  attrs: {},
-});
+function memoRecord(key: string, title: string): IndexRecord<"memo"> {
+  return {
+    id: `memo:${key}`,
+    stableId: `stable-${key}`,
+    title,
+    location: `https://memo.example/${key}`,
+    updatedAt: t0,
+    facets: {},
+    attrs: {},
+  };
+}
 
 test("a connector declared only beside the others round-trips its IDs through the index, a region's module and a change set", async () => {
   const db = open(":memory:");

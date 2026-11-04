@@ -4,6 +4,7 @@ export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./declaration.ts";
 export * from "./find.ts";
+export * from "./fixture.ts";
 export * from "./workstream.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";

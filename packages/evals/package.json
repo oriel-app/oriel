@@ -13,11 +13,8 @@
     "@oriel/agent": "workspace:*",
     "@oriel/bindings": "workspace:*",
     "@oriel/core": "workspace:*",
-    "@oriel/folder": "workspace:*",
-    "@oriel/jira": "workspace:*",
     "@oriel/sandbox": "workspace:*",
     "@oriel/server": "workspace:*",
-    "@oriel/slack": "workspace:*",
     "@oriel/sources": "workspace:*",
     "@oriel/web": "workspace:*"
   }

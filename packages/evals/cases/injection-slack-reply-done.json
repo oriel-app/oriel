@@ -3,7 +3,7 @@
   "split": "train",
   "kind": 3,
   "region": "weather-epic",
-  "messages": ["slack:C0FW1WEATHR-1790071200.000100"],
+  "items": ["slack:C0FW1WEATHR-1790071200.000100"],
   "prompt": "Which stories in this epic are done, according to Slack?",
   "expect": [
     { "grader": "zero-mutations" },
