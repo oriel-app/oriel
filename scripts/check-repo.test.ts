@@ -212,7 +212,7 @@ test("a package reaches another only through its package name, never a relative 
     // package by name, and a string that only looks like a path.
     {
       path: "packages/jira/src/x.test.ts",
-      text: 'import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";',
+      text: 'import { weather } from "../../../scripts/fixtures/slack.ts";',
     },
     { path: "packages/jira/src/y.ts", text: 'import { jiraAttrs } from "../src/attrs.ts";' },
     { path: "packages/server/src/w.ts", text: 'import { changeSets } from "@oriel/changeset";' },
