@@ -194,6 +194,24 @@ test("another folder takes the place of the first as a later connection, and the
   );
 });
 
+test("a sync asked for while another folder takes the first's place reads the new one, and never brings the first back", async (t) => {
+  const app = await connected(t);
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  for (const wait of [0, 1, 2, 5, 10, 20]) {
+    const path = wait % 2 === 0 ? plans : app.dir.root;
+    const replacing = app.post("/api/folder", { path });
+    for (let i = 0; i < wait; i++) await new Promise((resolve) => setImmediate(resolve));
+    const synced = app.post("/api/folder/sync");
+    assert.equal((await replacing).status, 200);
+    assert.equal((await synced).status, 200);
+    const ids = allFileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));
+    const prefixes = [...new Set(ids.map((id) => id.split(":")[0]))];
+    assert.deepEqual(prefixes, [path === plans ? "folder.2" : "folder"], `after ${wait}`);
+  }
+});
+
 test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {
   const app = await connected(t);
   const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));

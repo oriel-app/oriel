@@ -596,6 +596,23 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
   };
   if (folder) await syncFolder();
+  // Connecting a folder and syncing the one connected take turns, so a sync
+  // asked for while another folder takes its place reads whichever is
+  // connected once that ends, never the one it replaced.
+  let folderTurn: Promise<unknown> = Promise.resolve();
+  const folderInTurn = <T>(work: () => Promise<T>): Promise<T> => {
+    const turn = folderTurn.then(work);
+    folderTurn = turn.catch(() => {});
+    return turn;
+  };
+  const resyncFolder = () => folderInTurn(() => syncFolder());
+  // Work done between syncs, as forgetting a connection's items must be: a
+  // sync running then would take the snapshot version it takes.
+  const betweenSyncs = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = syncing.catch(() => {}).then(work);
+    syncing = run.finally(() => told());
+    return run;
+  };
 
   // Slack's picked channels (decision 0021). A sync that fails
   // leaves its items as they were, and says so.
@@ -625,7 +642,6 @@ export async function createApp(options: AppOptions): Promise<App> {
       items: index.records(workspaceId, "slack", slackAttrs).length,
       syncedAt: index.source(workspaceId, "slack")?.syncedAt ?? null,
     };
-  let folderTurn: Promise<unknown> = Promise.resolve();
   const connectFolder = async (
     picked: string,
   ): Promise<{ folder: FolderView } | { problem: string }> => {
@@ -646,7 +662,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // The same folder again keeps its connection, so none of its items' IDs
     // change.
     if (folder?.path === real) {
-      const problem = await syncFolder();
+      const problem = await resyncFolder();
       const view = folderView();
       return problem || !view
         ? { problem: problem ?? "No folder is connected." }
@@ -655,30 +671,28 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Another takes its place: one connected before comes back under its ID
     // and number, and any other is a new connection, with the next. One at
     // a time, so the number planned is the one it gets.
-    const turn = folderTurn.then(
-      async (): Promise<{ folder: FolderView } | { problem: string }> => {
-        const plan = connections.planned("folder", real);
-        if ("live" in plan) return { problem: "That folder is connected already." };
-        const chosen = folderFrom(
-          "revives" in plan ? plan.revives : { id: newId(), number: plan.number, identity: real },
-        );
-        const first = index.source(workspaceId, chosen.prefix) === null;
-        // Only a folder that synced is kept; one that can't be listed leaves
-        // the one before as it was. A walk that fails throws before the index
-        // sees any of it.
-        const problem = await syncFolder(chosen);
-        if (problem) return { problem };
+    return folderInTurn(async (): Promise<{ folder: FolderView } | { problem: string }> => {
+      const plan = connections.planned("folder", real);
+      if ("live" in plan) return { problem: "That folder is connected already." };
+      const chosen = folderFrom(
+        "revives" in plan ? plan.revives : { id: newId(), number: plan.number, identity: real },
+      );
+      const first = index.source(workspaceId, chosen.prefix) === null;
+      // Only a folder that synced is kept; one that can't be listed leaves
+      // the one before as it was. A walk that fails throws before the index
+      // sees any of it.
+      const problem = await syncFolder(chosen);
+      if (problem) return { problem };
+      await betweenSyncs(async () => {
         const before = connections.first("folder");
         if (before) await connections.disconnect(before);
         await connections.connect({ id: chosen.id, kind: "folder", identity: real, options: {} });
         folder = chosen;
-        if (first) connected("folder", chosen.number);
-        const view = folderView();
-        return view ? { folder: view } : { problem: "No folder is connected." };
-      },
-    );
-    folderTurn = turn.catch(() => {});
-    return turn;
+      });
+      if (first) connected("folder", chosen.number);
+      const view = folderView();
+      return view ? { folder: view } : { problem: "No folder is connected." };
+    });
   };
   const people = () => {
     const names = new Map<string, string>();
@@ -955,7 +969,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       sync: async (kind) => {
         if (kind === "folder") {
           if (!folder) throw new ActionError("conflict", "No folder is connected.");
-          const problem = await syncFolder();
+          const problem = await resyncFolder();
           const view = folderView();
           return problem || !view
             ? { problem: problem ?? "No folder is connected." }
@@ -1394,7 +1408,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             log("sync failed", { error: String(error) });
             problems.push("Jira didn't answer, so Oriel couldn't look for new items.");
           });
-        const folderProblem = folder ? await syncFolder() : null;
+        const folderProblem = folder ? await resyncFolder() : null;
         if (folderProblem) problems.push(folderProblem);
         const slackProblem = await syncSlack();
         if (slackProblem) problems.push(slackProblem);
