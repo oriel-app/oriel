@@ -3,6 +3,7 @@
 // namespace; this adds where each function lives and what the host knows.
 import {
   type ActionName,
+  type ChallengeRun,
   type ItemId,
   type NamespaceHost,
   type NamespaceRead,
@@ -33,6 +34,9 @@ export type Host = NamespaceHost &
     // The waiting connections' previews, in a window chat's module only
     // while one waits (decision 0051).
     preview(): Promise<unknown>;
+    // A second look's diff and record, in its module only (the challenger
+    // spike).
+    challenge?: ChallengeRun;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
@@ -44,7 +48,8 @@ export type OrielSpace = (typeof orielSpaces)[number];
 // that declares one, one of Oriel's own, or null for a global.
 // `window`: the window chat's own (decision 0027). `source`: a waiting
 // connection's preview and drafts, in the window chat only (decision 0051).
-export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | null;
+// `challenge`: a second look's, in a run Oriel starts for one only.
+export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | "challenge" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;

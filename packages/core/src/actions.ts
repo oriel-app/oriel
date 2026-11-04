@@ -125,6 +125,9 @@ const configures =
 const token = optional(string);
 // Approval is a person's (decision 0003): what each change set action says.
 const approval = "Approval is a person's, in the thread or through a review link (decision 0003).";
+// Who starts a second look at a change set.
+const secondLook =
+  "A second look is Oriel's check on what an agent proposed, made once per diff: an agent doesn't ask for one of its own work, and an outside tool's words start no model call.";
 // Opening a thread and saying something in one, which the agent may not yet.
 const unsaid =
   "Text the agent writes must show where it came from before it reaches a thread, or it would read as the user's words (decision 0024).";
@@ -378,6 +381,28 @@ export const actions = {
     doc: "Reverts an applied change set, unless its source changed since.",
     input: object({ changeSet: changeSetId }),
     class: { kind: "person-only", why: `It writes to a source. ${approval}` },
+  },
+  // A second look at a change set (the challenger spike): Oriel's own run,
+  // which the person asks for again once the last one went stale or
+  // failed; and a change it suggested, which the person adds.
+  "changeset.look-again": {
+    doc: "Takes a second look at a change set again.",
+    input: object({ changeSet: changeSetId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "A second look changes nothing a person approves: it informs.",
+    },
+    closed: { agent: secondLook, tool: secondLook },
+  },
+  "changeset.add-suggestion": {
+    doc: "Adds a change a second look suggested to a change set.",
+    input: object({
+      changeSet: changeSetId,
+      look: refine(string, isUlid, "expected a second look's ID"),
+      place: refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a suggestion's place"),
+    }),
+    class: { kind: "person-only", why: `It changes what a person approves. ${approval}` },
   },
   "review-link.create": {
     doc: "Makes a change set's review link, revoking any before it.",

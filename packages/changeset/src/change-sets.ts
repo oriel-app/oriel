@@ -1683,6 +1683,64 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return diff(mustLoad(id));
     },
 
+    async look(id) {
+      return (await render(mustLoad(id))).diff;
+    },
+
+    async extend(id, additions) {
+      const parsed = array(capturedMutation)(additions, "$.mutations");
+      if (!parsed.ok) throw invalid("mutations", parsed.issues);
+      if (parsed.value.length === 0) throw new ChangeSetError("invalid", "there's nothing to add");
+      // A suggestion's refs were numbered in another run: only a change to
+      // an item that exists can join.
+      if (parsed.value.some((m) => m.ref !== null || (m.target !== null && isNewRef(m.target))))
+        throw new ChangeSetError("refused", "only a change to an item that exists can be added");
+      const set = transaction(db, () => {
+        const current = mustLoad(id);
+        const pre = busy(current) ?? decided(current);
+        if (pre) refuse(pre);
+        if (current.decision !== null || current.revertOf !== null)
+          throw new ChangeSetError("refused", "only a change set nobody has decided on takes more");
+        if (current.mutations.some((m) => m.status !== "pending"))
+          throw new ChangeSetError("refused", "this change set has started applying");
+        const all = check(specs, [...current.mutations, ...parsed.value]);
+        const added = all
+          .slice(current.mutations.length)
+          .map((m, i) => ({ m, seq: current.mutations.length + i + 1 }));
+        const revertOnly = added.find(({ m }) => m.spec.revertOnly);
+        if (revertOnly)
+          throw new ChangeSetError(
+            "invalid",
+            `mutation ${revertOnly.seq} (${revertOnly.m.op}): exists only to revert a change`,
+          );
+        const region = rows.region(current.runId, current.workspaceId);
+        const outside = outsideRegion(added, (handle) => region.has(handle), true);
+        if (outside) throw new ChangeSetError("refused", outside);
+        const last = Math.max(0, ...current.mutations.map((m) => m.seq));
+        added.forEach(({ m }, i) =>
+          rows.insertMutation(current.workspaceId, current.id, {
+            id: ulid(at().ms),
+            seq: last + i + 1,
+            op: m.op,
+            target: m.target,
+            ref: null,
+            args: m.args,
+            reverts: null,
+          }),
+        );
+        // The diff shown before no longer stands for these rows.
+        rows.clearPreviews(current.id);
+        return current;
+      });
+      deps.emit({
+        name: "changeset.edited",
+        at: deps.now(),
+        workspaceId: set.workspaceId,
+        changeSetId: set.id,
+      });
+      return mustLoad(id);
+    },
+
     changes: (set, known) => changesOf(set, specs, known),
 
     async edit(id, patch) {

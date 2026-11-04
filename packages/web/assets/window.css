@@ -3101,6 +3101,114 @@ a.replies:hover {
   border-bottom: 0;
 }
 
+/* A change set's second look (the challenger spike): set apart from the
+   diff on a sunk surface, in neutral tones only. It never wears the done,
+   accent or danger colours, so nothing in it reads as a pass or a block. */
+.second-look {
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: var(--border-thin) dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+}
+
+.second-look-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.second-look-head h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}
+
+.second-look-by,
+.second-look-read,
+.second-look-note {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.second-look-read,
+.second-look-note,
+.second-look-none,
+.second-look-stale {
+  margin: var(--space-2) 0 0;
+}
+
+.second-look-none {
+  color: var(--text-muted);
+}
+
+.second-look-stale {
+  padding: var(--space-1) var(--space-2);
+  border-left: var(--border-thick) solid var(--line-strong);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.second-look-kind h4 {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.second-look-kind > ul,
+.second-look .suggested {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.second-look .finding + .finding {
+  margin-top: var(--space-3);
+}
+
+.finding-says {
+  margin: 0 0 var(--space-2);
+}
+
+.finding-on {
+  color: var(--text-muted);
+  font-weight: var(--weight-strong);
+}
+
+.second-look .quote-from {
+  margin: 0 0 var(--space-2);
+}
+
+.second-look .quote-from blockquote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: var(--border-thick) solid var(--line-strong);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.second-look .quote-from blockquote p {
+  margin: 0;
+}
+
+.second-look .suggested li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.suggested-added {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
 .change-set-count {
   color: var(--text-faint);
   font-size: var(--text-sm);

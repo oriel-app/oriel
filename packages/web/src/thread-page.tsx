@@ -27,6 +27,7 @@ import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { sends } from "./settings.ts";
 import { Tooltip } from "./tooltip.tsx";
+import { SecondLook } from "./second-look.tsx";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Entry,
@@ -769,6 +770,24 @@ function ChangeSet(props: {
             </ul>
           )}
         </>
+      )}
+      {set.secondLook && (
+        <SecondLook
+          look={set.secondLook}
+          diff={diff}
+          view={view}
+          busy={busy}
+          onAgain={() => send({ type: "lookAgainClicked", changeSetId: set.id })}
+          onAdd={(place) =>
+            set.secondLook &&
+            send({
+              type: "suggestionAdded",
+              changeSetId: set.id,
+              look: set.secondLook.id,
+              place,
+            })
+          }
+        />
       )}
       {/* Nothing can be done with it until its source answers or the
           writer gives up: a send may yet land (OA-82). */}

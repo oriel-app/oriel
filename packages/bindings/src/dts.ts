@@ -9,6 +9,7 @@ import { orielTypes } from "./oriel.ts";
 import { windowTypes } from "./window.ts";
 import { actionTypes } from "./actions.ts";
 import { draftTypes, type Waiting } from "./drafts.ts";
+import { challengeTypes } from "./challenge.ts";
 
 const header = [
   "// This region's module.",
@@ -45,15 +46,17 @@ function namespace(name: string, fns: readonly Fn[]): string[] {
 }
 
 export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting): string {
+  // A second look's module has none of Oriel's own namespaces.
+  const hasOriel = fns.some((fn) => fn.space === "workstream" || fn.space === "thread");
   return [
-    ...header,
+    ...(hasOriel ? header : header.filter((line) => !line.includes("`workstream`"))),
     "/** The items in this region. */",
     ...idUnion("RegionId", scope.ids),
     ...itemTypes(scope.docs),
     ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
-    ...orielTypes,
-    ...actionTypes,
+    ...(hasOriel ? [...orielTypes, ...actionTypes] : []),
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
+    ...(fns.some((fn) => fn.space === "challenge") ? challengeTypes : []),
     ...(waiting ? draftTypes(waiting) : []),
     "",
     ...scope.spaces.flatMap((name) => namespace(name, fns)),

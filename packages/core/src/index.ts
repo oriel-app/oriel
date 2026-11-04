@@ -1,5 +1,6 @@
 export * from "./actions.ts";
 export * from "./block.ts";
+export * from "./challenge.ts";
 export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./connector-view.ts";

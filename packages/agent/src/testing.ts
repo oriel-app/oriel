@@ -335,7 +335,12 @@ export function harness(
   const deps: AgentDeps = {
     provider: model.provider,
     sandbox: sandbox(),
-    bindingsFor: options.bindings ?? regionBindings,
+    bindingsFor:
+      options.bindings ??
+      ((region, threadId, shown, run) =>
+        run?.challenge
+          ? bindingsFor(region, { reader, namespaces, thread: threadId, challenge: run.challenge })
+          : regionBindings(region, threadId, shown)),
     ...records.deps,
     limits: { ...limits, ...options.limits },
     now: (): Instant => t0,

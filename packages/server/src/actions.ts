@@ -94,6 +94,13 @@ export type ActionDeps = {
   // turn; a message held in it, whoever it is from; and its running turn.
   turns: Pick<Turns, "say" | "rejected" | "stop" | "sendHeld" | "discardHeld">;
   changeSets: ChangeSets;
+  // Second looks at change sets (the challenger spike): another, for one
+  // gone stale or failed, and a change one suggested, added. Absent where
+  // second looks are off.
+  secondLook?: {
+    again(changeSetId: Ulid): Promise<void>;
+    add(changeSetId: Ulid, look: Ulid, place: number): Promise<ChangeSet>;
+  };
   // After a change set applied, partly or in full: what it created joins
   // the workstream, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
@@ -834,6 +841,34 @@ const handlers = {
       changed: { thread: set.threadId, changeSet: set.id, applying: false },
       // The engine counts an edit that changed something.
       events: edited.hash === set.hash ? [] : "counted",
+    };
+  },
+
+  "changeset.look-again": async ({ changeSet: id }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    if (!deps.secondLook) throw new ActionError("refused", "second looks are off here");
+    await deps.secondLook.again(set.id);
+    return {
+      output: {},
+      undo: null,
+      changed: { thread: set.threadId, changeSet: set.id, applying: false },
+      events: [],
+    };
+  },
+
+  "changeset.add-suggestion": async ({ changeSet: id, look, place }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    if (!deps.secondLook) throw new ActionError("refused", "second looks are off here");
+    const added = await deps.secondLook.add(set.id, look as Ulid, place).catch((error: unknown) => {
+      if (error instanceof RangeError) throw new ActionError("not-found", error.message);
+      throw error;
+    });
+    return {
+      output: {},
+      undo: null,
+      changed: { thread: added.threadId, changeSet: added.id, applying: false },
+      // The engine counts the edit, and the second look its suggestion.
+      events: "counted",
     };
   },
 

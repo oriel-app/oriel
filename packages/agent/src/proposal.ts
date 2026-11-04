@@ -7,8 +7,30 @@
 // applies and holds nothing. When the turn ends, the change set is captured
 // first, then the intents apply, so the host can refuse one that would
 // break it, then the drafts are held.
-import type { CapturedMutation, Draft, Intent, Log, RunResult, Thread, Ulid } from "@oriel/core";
-import type { AgentDeps, AgentEvent } from "./contract.ts";
+import type {
+  CapturedMutation,
+  ChallengeRun,
+  Draft,
+  Intent,
+  Log,
+  RunResult,
+  Thread,
+  Ulid,
+} from "@oriel/core";
+import type { AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
+
+// What a run's bindings get in a second look (the challenger spike): its
+// `challenge`, which records under the run's ID. Any other turn's get none.
+// A second look's turn proposes nothing: its writes are suggestions the
+// server keeps, so it never settles a proposal.
+export const challengeOf = (
+  input: Pick<TurnInput, "challenge">,
+  runId: Ulid,
+): { challenge: ChallengeRun } | undefined => {
+  const { challenge } = input;
+  if (!challenge) return undefined;
+  return { challenge: { diff: challenge.diff, record: (f) => challenge.record(runId, f) } };
+};
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 

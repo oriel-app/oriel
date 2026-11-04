@@ -1243,6 +1243,32 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return changeSetReply(input.changeSet);
       },
     },
+    // A second look again, once the last went stale or failed; and a change
+    // one suggested, added (the challenger spike).
+    {
+      method: "POST",
+      path: at("/change-sets/:id/look-again"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("changeset.look-again", { changeSet: id });
+        await deps.dispatch("changeset.look-again", input, user);
+        return changeSetReply(input.changeSet);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/change-sets/:id/suggestions"),
+      async run([id = ""], request) {
+        const { look, place } = await readJson(
+          request,
+          smallBody,
+          object({ look: unknown, place: unknown }),
+        );
+        const input = checked("changeset.add-suggestion", { changeSet: id, look, place });
+        await deps.dispatch("changeset.add-suggestion", input, user);
+        return changeSetReply(input.changeSet);
+      },
+    },
     {
       method: "POST",
       path: at("/change-sets/:id/approve"),

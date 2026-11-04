@@ -1,7 +1,7 @@
 export * from "./contract.ts";
 export { agent, systemPromptHash } from "./loop.ts";
 export { answerOf, turnShown } from "./blocks.ts";
-export { proposal, type Replaced } from "./proposal.ts";
+export { challengeOf, proposal, type Replaced } from "./proposal.ts";
 export { capturedRules, runTool, runToolName, systemPrompt } from "./prompt.ts";
 export * from "./provider.ts";
 export {

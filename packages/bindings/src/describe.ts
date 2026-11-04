@@ -26,6 +26,7 @@ import { showFn } from "./block.ts";
 import { sketchFn } from "./sketch.ts";
 import { windowFns } from "./window.ts";
 import { draftFns, previewFn, type Waiting } from "./drafts.ts";
+import { challengeFns } from "./challenge.ts";
 
 export type { Fn } from "./fn.ts";
 export { pathOf } from "./fn.ts";
@@ -51,6 +52,7 @@ export const orielNames: readonly string[] = [
   ...orielSpaces,
   "window",
   "source",
+  "challenge",
   ...parameters,
 ];
 
@@ -68,6 +70,7 @@ export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
   ...orielSpaces,
   "window",
   "source",
+  "challenge",
 ];
 export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ...parameters];
 
@@ -139,9 +142,13 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 // the order of the declarations, so it is part of the byte-stable output. A
 // namespace's write must name an op in its catalogue that a run may capture;
 // revert-only ops are never offered.
+// A second look's module (`challenge`) is the region's reads and writes, its
+// own two functions and the escape hatch: none of Oriel's own namespaces,
+// no blocks and no sketches, since nothing it says is shown as an answer
+// and it may not act on Oriel's data.
 export function describe(
   scope: Scope,
-  options: { window?: boolean; waiting?: Waiting } = {},
+  options: { window?: boolean; waiting?: Waiting; challenge?: boolean } = {},
 ): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
@@ -152,6 +159,7 @@ export function describe(
       return { ...fn, space: kind, spec: entry };
     }),
   );
+  if (options.challenge) return [...itemFns, ...namespaced, ...challengeFns, searchFn];
   const window = options.window ? windowFns : [];
   const waiting = options.waiting ? [previewFn, ...draftFns(options.waiting)] : [];
   return [

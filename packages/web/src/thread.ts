@@ -86,6 +86,10 @@ export type ThreadMsg =
   // A rejected change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
+  // A change set's second look (the challenger spike): taken again, once
+  // stale or failed; or a change it suggested, added to the change set.
+  | { type: "lookAgainClicked"; changeSetId: string }
+  | { type: "suggestionAdded"; changeSetId: string; look: string; place: number }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
   // A held message, from anyone but the user: sent to the agent as it is, edited
@@ -357,6 +361,29 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
             { remove: [mutationId] },
             { kind: "changeSet", threadId: model.id, changeSetId },
           ),
+        ],
+      ];
+    }
+    case "lookAgainClicked":
+    case "suggestionAdded": {
+      const { changeSetId } = msg;
+      if (model.busy.includes(changeSetId)) return [model, []];
+      const [path, body] =
+        msg.type === "lookAgainClicked"
+          ? (["look-again", {}] as const)
+          : (["suggestions", { look: msg.look, place: msg.place }] as const);
+      return [
+        {
+          ...model,
+          busy: [...model.busy, changeSetId],
+          problems: without(model.problems, changeSetId),
+        },
+        [
+          post(`/api/change-sets/${changeSetId}/${path}`, body, {
+            kind: "changeSet",
+            threadId: model.id,
+            changeSetId,
+          }),
         ],
       ];
     }
