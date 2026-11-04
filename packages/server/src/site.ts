@@ -112,7 +112,7 @@ const pagePaths = [
   /^\/$/,
   /^\/browse$/,
   /^\/done$/,
-  /^\/settings(?:\/(?:general|appearance|asking|notifications))?$/,
+  /^\/settings(?:\/(?:connections|general|appearance|asking|notifications))?$/,
   /^\/setup$/,
   new RegExp(`^/workstreams/${ulidPath}$`),
   new RegExp(`^/threads/${ulidPath}$`),

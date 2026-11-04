@@ -46,5 +46,6 @@ export const sheetsDeclaration = {
   // The spreadsheets the person picked, each tab's mapping, and whether
   // it is read-only.
   options: sheetsOptions,
+  optionFields: [{ kind: "read-only", name: "readOnly" }],
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration<SheetsContext, never, SheetsWrites>;

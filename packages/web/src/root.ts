@@ -21,14 +21,6 @@ import {
   updateClosing,
 } from "./closing.ts";
 import {
-  type FolderModel,
-  type FolderMsg,
-  folderReplied,
-  initFolder,
-  loadFolder,
-  updateFolder,
-} from "./folder.ts";
-import {
   type WorkstreamModel,
   type WorkstreamMsg,
   workstreamReplied,
@@ -46,23 +38,17 @@ import {
 } from "./ending.ts";
 import { type Connectors, connectorsReplied, loadConnectors, noConnectors } from "./connectors.ts";
 import { type Effect, get, type Replied, report, type Tag } from "./http.ts";
-import {
-  initJira,
-  type JiraModel,
-  type JiraMsg,
-  jiraReplied,
-  loadJira,
-  updateJira,
-} from "./jira.ts";
 import { samePage, withItem } from "./nav.ts";
 import {
-  initSources,
-  loadSources,
-  type SourcesModel,
-  type SourcesMsg,
-  sourcesReplied,
-  updateSources,
-} from "./sources.ts";
+  type ConnectionsModel,
+  type ConnectionsMsg,
+  connectionsReplied,
+  connectState,
+  initConnections,
+  loadConnections,
+  offered,
+  updateConnections,
+} from "./connections.ts";
 import type { Hold } from "./undos.ts";
 import {
   checkPanel,
@@ -185,12 +171,9 @@ export type Model = {
   newThread: NewThreadModel | null;
   drafts: number;
   review: ReviewModel | null;
-  // The connected folder, beside the workstreams.
-  folder: FolderModel;
-  // Jira, which the window offers to connect until it is.
-  jira: JiraModel;
-  // Every connected source, at the foot of the sidebar, to sync.
-  sources: SourcesModel;
+  // Every connection: at the foot of the sidebar, to sync; in the first run
+  // and on the overview, to make; and in Settings, to set.
+  connections: ConnectionsModel;
   // How every connector shows, connected or not.
   connectors: Connectors;
   // For the chrome: the workspace's workstreams and threads.
@@ -231,9 +214,7 @@ export type Msg =
   | { type: "thread"; msg: ThreadMsg }
   | { type: "newThread"; msg: NewThreadMsg }
   | { type: "review"; msg: ReviewMsg }
-  | { type: "folder"; msg: FolderMsg }
-  | { type: "jira"; msg: JiraMsg }
-  | { type: "sources"; msg: SourcesMsg }
+  | { type: "connections"; msg: ConnectionsMsg }
   | { type: "closing"; msg: ClosingMsg }
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
@@ -272,7 +253,7 @@ export type Msg =
 // page that moved them.
 const loadWorkstreams: Effect = get("/api/workstreams", { kind: "workstreams" });
 const loadThreads: Effect = get("/api/threads", { kind: "threads" });
-const lists: Effect[] = [loadWorkstreams, loadThreads, loadFolder, loadJira, loadSources];
+const lists: Effect[] = [loadWorkstreams, loadThreads, loadConnections];
 
 // The workstream or thread on screen, loaded again.
 const reloadShown = (model: Model): Effect[] => {
@@ -297,7 +278,7 @@ function sourceSynced(model: Model, reload: Effect[]): [Model, Effect[]] {
   const overview = model.route.page === "overview" ? [loadOverview] : [];
   return [
     { ...model, window },
-    [...effects, ...reloadShown(model), ...overview, ...reload, loadSources],
+    [...effects, ...reloadShown(model), ...overview, ...reload, loadConnections],
   ];
 }
 
@@ -334,9 +315,7 @@ export function init(route: Route): [Model, Effect[]] {
     newThread: null,
     drafts: 0,
     review: null,
-    folder: initFolder(),
-    jira: initJira(),
-    sources: initSources(),
+    connections: initConnections(),
     connectors: noConnectors,
     workstreams: null,
     threads: null,
@@ -465,7 +444,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     // The first run stands alone: what Oriel has found so far, then Claude
     // Code looked for again, and the sources.
     case "setup":
-      return [base, [...leaving, loadSetup, openSetup, loadSettings, loadFolder, loadJira]];
+      return [base, [...leaving, loadSetup, openSetup, loadSettings, loadConnections]];
     case "review": {
       const [review, effects] = initReview(route.token);
       return [{ ...base, review }, [...leaving, ...effects]];
@@ -507,13 +486,12 @@ function focused(model: Model, effects: Effect[]): [Model, Effect[]] {
 // The first run's last screen opens the overview as soon as one source is
 // read, unless one failed, which waits for the person (decision 0038).
 function readingDone(model: Model, effects: Effect[]): [Model, Effect[]] {
-  const { setup, jira, folder } = model;
+  const { setup, connections } = model;
   if (model.route.page !== "setup" || setup.screen !== "reading" || setup.finishing)
     return [model, effects];
-  const read = jira.view?.connected != null || folder.view !== null;
-  const failed =
-    (jira.pending === null && jira.connecting !== null && jira.problem !== null) ||
-    folder.problem !== null;
+  const states = offered(model.connectors).map(({ kind }) => connectState(connections, kind));
+  const read = states.includes("read");
+  const failed = states.includes("failed");
   if (!read || failed) return [model, effects];
   const [finished, finishing] = updateSetup(setup, { type: "finished" });
   return [{ ...model, setup: finished }, [...effects, ...finishing]];
@@ -631,26 +609,22 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [review, effects] = updateReview(model.review, msg.msg);
       return [{ ...model, review }, effects];
     }
-    case "folder": {
-      const [folder, effects] = updateFolder(model.folder, msg.msg);
-      return [{ ...model, folder }, effects];
-    }
-    case "jira": {
-      const [jira, effects] = updateJira(model.jira, msg.msg);
-      // The first run shows Jira's first sync as it reads, back among the
-      // sources, where another can be connected meanwhile.
-      if (msg.msg.type !== "connectClicked" || jira.pending !== "connecting")
-        return [{ ...model, jira }, effects];
+    case "connections": {
+      const [connections, effects] = updateConnections(model.connections, msg.msg);
+      // The first run shows a connection's first sync as it reads, back
+      // among the sources, where another can be connected meanwhile.
+      const kind = "kind" in msg.msg ? msg.msg.kind : null;
+      const started =
+        kind !== null &&
+        msg.msg.type === "connectClicked" &&
+        connections.forms[kind]?.pending === "connecting";
+      if (!started) return [{ ...model, connections }, effects];
       const [setup, watching] = updateSetup(model.setup, { type: "watched", on: true });
       const [back, shown] =
-        model.route.page === "setup" && setup.screen === "projects"
+        model.route.page === "setup" && setup.screen === "connect"
           ? updateSetup(setup, { type: "screenShown", screen: "work" })
           : [setup, []];
-      return [{ ...model, jira, setup: back }, [...effects, ...watching, ...shown]];
-    }
-    case "sources": {
-      const [sources, effects] = updateSources(model.sources, msg.msg);
-      return [{ ...model, sources }, effects];
+      return [{ ...model, connections, setup: back }, [...effects, ...watching, ...shown]];
     }
     case "closing": {
       const [closing, effects] = updateClosing(model.closing, msg.msg);
@@ -876,38 +850,27 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const [newThread, effects] = newThreadReplied(model.newThread, msg);
       return [{ ...model, newThread }, effects];
     }
-    case "folder":
-    case "folderConnected":
-    case "folderPicked": {
-      const { model: folder, synced } = folderReplied(model.folder, msg);
-      return synced ? sourceSynced({ ...model, folder }, []) : [{ ...model, folder }, []];
-    }
-    case "jira":
-    case "jiraProjects":
-    case "jiraConnected": {
-      const { model: jira, synced } = jiraReplied(model.jira, msg);
-      // The first run stops watching Jira's first sync once it has answered.
+    case "connections":
+    case "connectChoices":
+    case "connectPicked":
+    case "connected":
+    case "configured":
+    case "configureUndone":
+    case "connectionChoices":
+    case "disconnected":
+    case "sourceSynced": {
+      const { model: connections, synced } = connectionsReplied(model.connections, msg);
+      // The first run stops watching a first sync once its connect has
+      // answered.
       const [setup, watching] =
-        msg.tag.kind === "jiraConnected"
+        msg.tag.kind === "connected"
           ? updateSetup(model.setup, { type: "watched", on: false })
           : [model.setup, []];
-      // A project listed goes to the first run's next screen.
-      const [listed, shown] =
-        msg.tag.kind === "jiraProjects" && msg.ok && model.route.page === "setup"
-          ? updateSetup(setup, { type: "screenShown", screen: "projects" })
-          : [setup, []];
-      const next = { ...model, jira, setup: listed };
-      const effects = [...watching, ...shown];
-      return synced ? sourceSynced(next, effects) : [next, effects];
+      const next = { ...model, connections, setup };
+      return synced ? sourceSynced(next, watching) : [next, watching];
     }
     case "connectors":
       return [{ ...model, connectors: connectorsReplied(model.connectors, msg) }, []];
-    case "sources":
-    case "sourceSynced": {
-      const { model: sources, synced } = sourcesReplied(model.sources, msg);
-      // Jira's count says whether its project is empty.
-      return synced ? sourceSynced({ ...model, sources }, [loadJira]) : [{ ...model, sources }, []];
-    }
     case "createWorkstream":
     case "addToWorkstream": {
       if (model.window === null) return [model, []];

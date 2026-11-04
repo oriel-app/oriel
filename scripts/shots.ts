@@ -396,7 +396,7 @@ const connecting = await unconnected();
 // Jira connected to a project with no issues yet.
 const empty = await unconnected({ ...loadJiraFixture(), issues: [], edits: [] });
 const fillJira = async (page: Page, token: string) => {
-  await page.locator(".connect-jira").waitFor();
+  await page.locator(".connect-card").waitFor();
   await page.locator('input[name="site"]').fill("oriel.atlassian.net");
   await page.locator('input[name="email"]').fill(account.email);
   await page.locator('input[name="token"]').fill(token);
@@ -1324,7 +1324,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await fillJira(page, account.token);
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".jira-projects").waitFor();
+      await page.locator(".connect-pick").waitFor();
     },
   },
   {
@@ -1335,21 +1335,21 @@ const scenes: Scene[] = [
     act: async (page) => {
       await fillJira(page, "not-the-one");
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".jira-problem").waitFor();
+      await page.locator(".connect-problem").waitFor();
     },
   },
   {
     name: "jira-empty",
     path: "/?grouping=epic",
     on: empty,
-    act: (page) => page.locator(".empty-jira").waitFor(),
+    act: (page) => page.locator(".connected-empty").waitFor(),
   },
   {
     name: "jira-empty-stuck",
     path: "/?grouping=stuck",
     on: empty,
     act: async (page) => {
-      await page.locator(".empty-jira").waitFor();
+      await page.locator(".connected-empty").waitFor();
       await page.locator(".cluster").first().waitFor();
     },
   },
@@ -1970,14 +1970,19 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Adding a source: a folder, by its path, in the place of the one there.
+    // Adding a source: a folder, by its path, in Settings' Add a connection,
+    // which the sidebar's Add a source opens, under `pnpm dev`.
     name: "folder-add",
     path: "/?grouping=epic",
+    on: connecting,
     act: async (page) => {
-      await shown(page, "epic");
       await openSources(page);
-      await page.getByRole("button", { name: "Add a source" }).click();
-      await page.locator(".folder-form input").fill("~/notes/launch");
+      await page.getByRole("link", { name: "Add a source" }).click();
+      await page
+        .locator("#settings-add-connection ~ .provider-rows .provider-row", { hasText: "Folder" })
+        .getByRole("button", { name: "Connect" })
+        .click();
+      await page.locator(".path-form input").fill("~/notes/launch");
     },
   },
   {
@@ -2681,7 +2686,7 @@ scenes.push(
     act: async (page) => {
       await toJira(page, "not-the-one");
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await page.locator(".jira-problem").waitFor();
+      await page.locator(".connect-problem").waitFor();
     },
   },
   {
@@ -2754,7 +2759,7 @@ scenes.push(
     name: "first-run-folder-only",
     path: "/",
     make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
-    act: (page) => page.locator(".connect-jira").waitFor(),
+    act: (page) => page.locator(".connect-card").waitFor(),
   },
   {
     name: "first-run-no-ai",
@@ -2782,6 +2787,45 @@ scenes.push(
     }),
     act: (page) =>
       page.locator("#provider-claude-code .provider-state", { hasText: "Ready" }).waitFor(),
+  },
+  // Settings' Connections (decision 0049): each connection with what a
+  // person sets on it; Jira's project picked again; Disconnect, which asks
+  // first; and Add a connection, with the folder's picker.
+  {
+    name: "settings-connections",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    act: (page) => page.locator(".connection-row .connection-options").first().waitFor(),
+  },
+  {
+    name: "settings-connections-project",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Change" }).click();
+      await page.locator('.connection-options input[type="radio"][value="SYN"]').waitFor();
+    },
+  },
+  {
+    name: "settings-connections-disconnect",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    act: async (page) => {
+      await page.getByRole("button", { name: "Disconnect Jira" }).click();
+      await page.getByRole("alertdialog", { name: "Disconnect Jira?" }).waitFor();
+    },
+  },
+  {
+    name: "settings-connections-add",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, jira: true, folder: notes, state: setupFinished }),
+    act: async (page) => {
+      await page
+        .locator("#settings-add-connection ~ .provider-rows .provider-row", { hasText: "Folder" })
+        .getByRole("button", { name: "Connect" })
+        .click();
+      await page.locator(".path-form").waitFor();
+    },
   },
 );
 
@@ -2873,10 +2917,10 @@ async function onboarding(): Promise<void> {
     await fillJira(page, account.token);
     await count("connect");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
-    await page.locator(".jira-projects").waitFor();
+    await page.locator(".connect-pick").waitFor();
     await count("project");
     await page.getByRole("button", { name: /^Use / }).click();
-    await page.locator(".connect-jira").waitFor({ state: "detached" });
+    await page.locator(".connect-card").waitFor({ state: "detached" });
     const connected = performance.now();
     await page
       .getByRole("navigation", { name: "Window" })

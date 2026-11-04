@@ -161,6 +161,9 @@ test("an item's key reads as its connector declares, and as the key where the pa
       icon: "row" as const,
       keysReadAs: "Row",
       columns: [],
+      writable: true,
+      connect: null,
+      options: [],
     },
   };
   assert.deepEqual([chipKey(row, sheets), chipLabel(row, sheets)], [null, `Row: ${item.name}`]);

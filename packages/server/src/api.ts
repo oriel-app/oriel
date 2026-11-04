@@ -36,7 +36,7 @@ import {
   startQuestions,
 } from "@oriel/core";
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
-import { connectorViews, parseDeclared, sources } from "@oriel/sources";
+import { connectorViews, parseDeclared, sourceKinds, sources } from "@oriel/sources";
 import {
   type DeletedView,
   type DeletionView,
@@ -128,9 +128,17 @@ export type ApiDeps = {
   ): Promise<
     { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
   >;
-  // The field a connector's folder step fills, or null when it has none or
-  // the window doesn't connect it now.
-  folderField(kind: string): string | null;
+  // A pick step's list again for a connection it made, by its ID, from its
+  // own account: a read, which keeps nothing.
+  choices(
+    id: string,
+    query: string,
+  ): Promise<
+    { choices: PickChoiceView[]; more: boolean } | { problem: string; fields?: readonly string[] }
+  >;
+  // A connector's folder step, or null when it has none or the window
+  // doesn't connect it now: the field it fills and what the picker asks.
+  folderStep(kind: string): { field: string; prompt: string } | null;
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   settings: SettingsService;
@@ -309,7 +317,8 @@ const windowEvent = union(
       literal("sign-in"),
       literal("update"),
       literal("test"),
-      literal("jira"),
+      // A connector's first sync that stopped, by its kind.
+      ...sourceKinds.map((kind) => literal(kind)),
     ),
   }),
 );
@@ -701,12 +710,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/connections/picker"),
       async run(_, request) {
         const body = await readJson(request, smallBody, pickerBody);
-        const field = deps.folderField(body.kind);
-        if (!deps.pickFolder || field === null)
+        const step = deps.folderStep(body.kind);
+        if (!deps.pickFolder || step === null)
           throw new Refused(409, "Type the folder's path: there's no picker here.");
+        const { field } = step;
         let picked: string | null;
         try {
-          picked = await deps.pickFolder("Choose a folder of markdown files for Oriel to read.");
+          picked = await deps.pickFolder(step.prompt);
         } catch {
           throw new Refused(409, "The folder picker didn't open. Try again.");
         }
@@ -716,6 +726,24 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const connected = await deps.dispatch("source.connect", input, user);
         if ("problem" in connected) throw new Refused(400, connected.problem);
         return json(200, { ...connected, picked: true });
+      },
+    },
+    {
+      // A connection's pick step's list again, from its own account, for
+      // Settings to pick from. A read: nothing is kept, and its secret stays
+      // on the server.
+      method: "POST",
+      path: at("/connections/:id/pick"),
+      async run([id = ""], request) {
+        const { query } = await readJson(
+          request,
+          smallBody,
+          object({ query: optional(typedText(100)) }),
+        );
+        const listed = await deps.choices(id, query ?? "");
+        return "problem" in listed
+          ? json(400, { error: listed.problem, fields: listed.fields ?? [] })
+          : json(200, listed);
       },
     },
     {

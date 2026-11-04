@@ -9,7 +9,6 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { WorkstreamMenu } from "./end-workstream.tsx";
-import type { FolderModel, FolderMsg } from "./folder.ts";
 import { doneRoute, doneTabs, type Nav, type NavWorkstream, nav } from "./nav.ts";
 import { changeSetStateNames, stateNames } from "./chip.ts";
 import {
@@ -25,7 +24,13 @@ import {
 import type { Model } from "./root.ts";
 import type { Route } from "./route.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
-import { type SourcesModel, type SourcesMsg, sourcesLine, syncChanges } from "./sources.ts";
+import {
+  type ConnectionsModel,
+  type ConnectionsMsg,
+  openConnections,
+  sourcesLine,
+  syncChanges,
+} from "./connections.ts";
 import { windowRoute } from "./update.ts";
 import { Tooltip } from "./tooltip.tsx";
 
@@ -102,8 +107,7 @@ export function Sidebar(props: {
         </>
       )}
       <Sources
-        sources={model.sources}
-        folder={model.folder}
+        connections={model.connections}
         browse={windowRoute(model.window)}
         dispatch={dispatch}
       />
@@ -579,23 +583,22 @@ function writeOpen(key: string, open: boolean) {
 // drawn the same way, whatever the source: its name, its items, which open
 // Browse filtered to it, and when it last synced, with what that sync
 // changed under it when it changed anything, and Sync on hover or focus;
-// Sync all heads them. Adding a source is the last entry: the folder, typed
-// by its path, the one the sidebar can add.
+// Sync all heads them. Adding a source is the last entry, which opens
+// Settings' Connections, where every connector is offered.
 function Sources(props: {
-  sources: SourcesModel;
-  folder: FolderModel;
+  connections: ConnectionsModel;
   // Browse as the user last left it, which a row opens filtered to its source.
   browse: Extract<Route, { page: "window" }>;
   dispatch: Dispatch;
 }) {
-  const { sources, folder, dispatch } = props;
+  const { connections: sources, dispatch } = props;
   const [open, toggle, show] = useFold("oriel.sidebar.sources", false);
   const line = sourcesLine(sources);
-  const problems = Object.keys(sources.problems).length + (folder.problem ? 1 : 0);
+  const problems = Object.keys(sources.problems).length;
   useEffect(() => {
     if (problems > 0) show();
   }, [problems]);
-  const send = (msg: SourcesMsg) => dispatch({ type: "sources", msg });
+  const send = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const synced = useStamp();
   if (sources.view === null) return null;
   return (
@@ -637,7 +640,7 @@ function Sources(props: {
       </FoldHead>
       {open && (
         <ul id="nav-sources" class="nav-sources">
-          {sources.view.map((source) => {
+          {openConnections(sources).map((source) => {
             const syncing = sources.syncing.includes(source.id);
             const problem = sources.problems[source.id];
             // Said under its last sync's time, unless a sync runs now or
@@ -688,92 +691,17 @@ function Sources(props: {
             );
           })}
           <li>
-            <AddSource folder={folder} dispatch={dispatch} />
+            <Link
+              route={{ page: "settings", section: "connections" }}
+              dispatch={dispatch}
+              class="nav-link nav-more add-source"
+            >
+              Add a source
+            </Link>
           </li>
         </ul>
       )}
     </section>
-  );
-}
-
-// Adding a source: a folder of markdown files, from the system's folder
-// picker on the desktop app, or by the path the user types, which takes the
-// place of the one connected, if any.
-function AddSource({ folder, dispatch }: { folder: FolderModel; dispatch: Dispatch }) {
-  const send = (msg: FolderMsg) => dispatch({ type: "folder", msg });
-  const name = folder.view?.path.split(/[\\/]/).filter(Boolean).at(-1);
-  return (
-    <>
-      {!folder.open ? (
-        <button
-          type="button"
-          class="nav-link nav-more add-source"
-          onClick={() => send({ type: "opened" })}
-        >
-          Add a source
-        </button>
-      ) : folder.picker ? (
-        <div class="folder-form">
-          <span class="folder-actions">
-            <button
-              type="button"
-              class="button primary"
-              disabled={folder.pending}
-              onClick={() => send({ type: "pickClicked" })}
-            >
-              {folder.pending ? "Choosing…" : "Choose a folder…"}
-            </button>
-            <button type="button" class="quiet-action" onClick={() => send({ type: "closed" })}>
-              Cancel
-            </button>
-          </span>
-          <span class="folder-note">
-            A folder of markdown files. Oriel reads its .md files and never changes them.
-            {name && ` It takes the place of ${name}.`}
-          </span>
-        </div>
-      ) : (
-        <form
-          class="folder-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            send({ type: "connectClicked" });
-          }}
-        >
-          <label class="folder-label">
-            A folder of markdown files, by its path
-            <input
-              value={folder.path}
-              placeholder="~/notes"
-              spellcheck={false}
-              autoComplete="off"
-              onInput={(event) => send({ type: "pathChanged", path: event.currentTarget.value })}
-            />
-          </label>
-          <span class="folder-actions">
-            <button
-              type="submit"
-              class="button primary"
-              disabled={folder.pending || folder.path.trim() === ""}
-            >
-              {folder.pending ? "Reading…" : "Add"}
-            </button>
-            <button type="button" class="quiet-action" onClick={() => send({ type: "closed" })}>
-              Cancel
-            </button>
-          </span>
-          <span class="folder-note">
-            Oriel reads its .md files and never changes them.
-            {name && ` It takes the place of ${name}.`}
-          </span>
-        </form>
-      )}
-      {folder.problem && (
-        <p class="source-problem" role="alert">
-          {folder.problem}
-        </p>
-      )}
-    </>
   );
 }
 

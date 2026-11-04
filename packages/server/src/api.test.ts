@@ -12,6 +12,7 @@ import type {
   ThreadView,
 } from "@oriel/web/view";
 import type { Agent } from "./agent.ts";
+import { sources } from "@oriel/sources";
 import { host, json, type Script, t0, testApp } from "./testing.ts";
 
 // SYN-1's epic cluster is keyed by the epic's stable ID.
@@ -664,7 +665,24 @@ test("the page gets how every connector shows, connected or not, from its declar
   // item of theirs a workstream or a thread still names.
   const app = await testApp(t);
   const { connectors } = json<{ connectors: ConnectorView[] }>(await app.get("/api/connectors"));
-  assert.deepEqual(connectors, [
+  const shows = ({
+    kind,
+    name,
+    inSentence,
+    icon,
+    keysReadAs,
+    columns,
+    writable,
+  }: ConnectorView) => ({
+    kind,
+    name,
+    inSentence,
+    icon,
+    keysReadAs,
+    columns,
+    writable,
+  });
+  assert.deepEqual(connectors.map(shows), [
     {
       kind: "jira",
       name: "Jira",
@@ -672,6 +690,7 @@ test("the page gets how every connector shows, connected or not, from its declar
       icon: "ticket",
       keysReadAs: null,
       columns: ["assignee", "estimate"],
+      writable: true,
     },
     {
       kind: "folder",
@@ -680,6 +699,7 @@ test("the page gets how every connector shows, connected or not, from its declar
       icon: "page",
       keysReadAs: "File",
       columns: [],
+      writable: false,
     },
     {
       kind: "slack",
@@ -688,6 +708,7 @@ test("the page gets how every connector shows, connected or not, from its declar
       icon: "message",
       keysReadAs: "Message",
       columns: ["replies"],
+      writable: true,
     },
     {
       kind: "sheets",
@@ -696,6 +717,28 @@ test("the page gets how every connector shows, connected or not, from its declar
       icon: "row",
       keysReadAs: "Row",
       columns: ["assignee", "estimate"],
+      writable: true,
     },
   ]);
+  // Each connector's steps and offer are its declaration's words, and what
+  // Settings draws of its options; their server halves stay on the server.
+  for (const connector of connectors) {
+    const declared = sources[connector.kind as keyof typeof sources];
+    assert.deepEqual(
+      connector.connect,
+      declared.connect
+        ? JSON.parse(
+            JSON.stringify({ steps: declared.connect.steps, offer: declared.connect.offer }),
+          )
+        : null,
+    );
+    assert.deepEqual(connector.options, declared.optionFields ?? []);
+  }
+  // The first run offers Jira, then a folder, as OA-191 has it.
+  assert.deepEqual(
+    connectors
+      .filter((connector) => connector.connect?.offer.firstRun !== undefined)
+      .map((connector) => connector.kind),
+    ["jira", "folder"],
+  );
 });

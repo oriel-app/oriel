@@ -95,7 +95,12 @@ export function ProviderRow(props: {
   );
 }
 
-export function Switch(props: { on: boolean; label: string; onChange(on: boolean): void }) {
+export function Switch(props: {
+  on: boolean;
+  label: string;
+  disabled?: boolean;
+  onChange(on: boolean): void;
+}) {
   return (
     <button
       type="button"
@@ -103,6 +108,7 @@ export function Switch(props: { on: boolean; label: string; onChange(on: boolean
       class="switch"
       aria-checked={props.on}
       aria-label={props.label}
+      disabled={props.disabled}
       onClick={() => props.onChange(!props.on)}
     >
       <span class="switch-knob" aria-hidden="true" />

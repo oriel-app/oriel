@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { browseColumns, connectorIcons, type IndexRecord, instant } from "@oriel/core";
+import {
+  browseColumns,
+  connectorIcons,
+  type IndexRecord,
+  instant,
+  type Shape,
+  settingNames,
+} from "@oriel/core";
 import {
   byItemId,
   connectorViews,
@@ -30,6 +37,7 @@ test("each source is listed under the kind it declares, a short lowercase word",
 });
 
 test("the window gets how each connector shows, in declared order, with nothing else", () => {
+  // Words and step kinds, never a step's server half.
   assert.deepEqual(
     connectorViews.map((view) => view.kind),
     [...sourceKinds],
@@ -37,12 +45,19 @@ test("the window gets how each connector shows, in declared order, with nothing 
   for (const view of connectorViews) {
     assert.deepEqual(Object.keys(view).toSorted(), [
       "columns",
+      "connect",
       "icon",
       "inSentence",
       "keysReadAs",
       "kind",
       "name",
+      "options",
+      "writable",
     ]);
+    assert.deepEqual(
+      Object.keys(view.connect ?? {}).toSorted(),
+      view.connect ? ["offer", "steps"] : [],
+    );
     assert.ok(view.inSentence.length > 0, view.kind);
     assert.ok(connectorIcons.includes(view.icon), view.kind);
     assert.ok(view.keysReadAs === null || view.keysReadAs.length > 0, view.kind);
@@ -138,4 +153,26 @@ test("a kind with no connection open keeps its namespace, as it was before one o
     fns(unconnected),
     fns(namespacesFor([], { jira: { none: new Set(), home: null } })),
   );
+});
+
+test("no connector's options use the names every connection has beside them, and a read-only switch is its readOnly option", () => {
+  // The fields an options validator checks, through any refinement.
+  const fields = (shape: Shape): string[] =>
+    shape.kind === "object"
+      ? Object.keys(shape.fields)
+      : shape.kind === "refined" || shape.kind === "optional" || shape.kind === "nullable"
+        ? fields(shape.inner)
+        : [];
+  for (const kind of sourceKinds) {
+    const declared = fields(sources[kind].options.shape);
+    for (const name of settingNames) assert.ok(!declared.includes(name), `${kind}: ${name}`);
+    for (const field of sources[kind].optionFields ?? []) {
+      assert.ok(
+        declared.includes(field.name),
+        `${kind} draws ${field.name}, which it doesn't check`,
+      );
+      // Only a connector that writes may be set read-only.
+      if (field.kind === "read-only") assert.ok(sources[kind].specs, kind);
+    }
+  }
 });

@@ -2,12 +2,15 @@
 // room for more. Providers first: one row per provider instance, what Oriel
 // found for it and a switch, then the default model and the Title model,
 // picked from those connected and on, and how much of the plan Oriel has
-// used. General: how a time is written, where a thread's page goes after
+// used. Connections: every connection, and Add a connection. General: how a time is written, where a thread's page goes after
 // an approval, and whether the desktop app asks before quitting while Oriel
 // works. Appearance: the theme and the text
 // size. Asking: which key sends a question. Every change applies at once.
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
+import { Connections } from "./connections-page.tsx";
+import type { ConnectionsModel } from "./connections.ts";
+import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
 import { ProviderRow, Switch } from "./provider-row.tsx";
 import type { SettingsSection } from "./route.ts";
@@ -27,6 +30,7 @@ import type {
 
 const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
+  { id: "connections", name: "Connections" },
   { id: "general", name: "General" },
   { id: "appearance", name: "Appearance" },
   { id: "asking", name: "Asking" },
@@ -35,6 +39,8 @@ const sections: { id: SettingsSection; name: string }[] = [
 
 export function SettingsPage(props: {
   model: SettingsModel;
+  connections: ConnectionsModel;
+  connectors: Connectors;
   // On the desktop app, the Claude Code row the first run shares.
   setup: SetupModel;
   section: SettingsSection;
@@ -68,7 +74,13 @@ export function SettingsPage(props: {
               {model.problem}
             </p>
           )}
-          {view === null ? (
+          {section === "connections" ? (
+            <Connections
+              connections={props.connections}
+              connectors={props.connectors}
+              dispatch={dispatch}
+            />
+          ) : view === null ? (
             <p class="loading">Loading…</p>
           ) : section === "providers" ? (
             <Providers
@@ -571,15 +583,17 @@ function Notifications(props: { view: SettingsView; change(change: SettingsChang
   );
 }
 
-// A setting picked from a few, as radio buttons.
-function Choices(props: {
+// A setting picked from a few, as radio buttons. `group` names them where
+// one name shows more than once on the page.
+export function Choices(props: {
   name: string;
+  group?: string;
   about: string;
   options: { value: string; label: string }[];
   value: string;
   onPick(value: string): void;
 }) {
-  const group = `settings-${props.name.toLowerCase().replaceAll(" ", "-")}`;
+  const group = props.group ?? `settings-${props.name.toLowerCase().replaceAll(" ", "-")}`;
   return (
     <fieldset class="settings-field">
       <legend class="settings-field-name">{props.name}</legend>

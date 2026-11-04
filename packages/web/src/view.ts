@@ -9,6 +9,13 @@ import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view"
 
 export type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 export type { BrowseColumn, ConnectorIcon, ConnectorView } from "@oriel/core/connector-view";
+export type {
+  ConnectField,
+  ConnectHelp,
+  ConnectOffer,
+  ConnectStep,
+  OptionField,
+} from "@oriel/core/connect";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
 export const groupingIds = ["epic", "assignee", "stuck", "linked"] as const;
@@ -120,30 +127,20 @@ export type WindowView = {
 
 export type Choice = { id: string; name: string };
 
-// The folder of markdown files the user connected, read-only, as the window
-// reads it from its connection until one component draws every connector's
-// steps (OA-216): its real path, how many files the index has from it, and
-// when it last synced.
-export type FolderView = { path: string; items: number; syncedAt: string | null };
-
-// Jira, as the window reads it from its connection until OA-216: the site
-// and project the index syncs, if any, with how many items
-// it has from them and when it last synced; and whether the user can
-// connect it from the window, which they can only while it isn't connected
-// and the server doesn't set it up itself.
-export type JiraView = {
-  connected: { site: string; project: string; items: number; syncedAt: string | null } | null;
-  connectable: boolean;
-};
-
 // A connection as the window shows it (decision 0049), every one drawn the
 // same way: the ID the page names it by, which the server made; its
-// connector's kind and declared name; its number, and its prefix, whose its
-// items are; what it reads, as the sidebar says it (Jira's project and site,
-// the folder's path, Slack's workspace); what it identifies in its source
-// and its options, never its secret; how many items the index has from it,
-// and when it last synced; whether it's open, or signed out since its
-// source turned it away; and whether a flag of `pnpm dev` makes it, so the
+// connector's kind; its number, and its prefix, whose its items are; its
+// name in the window, the person's (`named`) or its connector's; what it
+// reads, as the sidebar says it (a project and its site, a path, a
+// workspace), and in a word or two (a project, a directory's name); what it
+// identifies in its source and its options, never
+// its secret; whether its options make it read-only, and why it's
+// read-only whatever they say (`all` when none of it can be written); how
+// often it syncs, in minutes, null for when Oriel starts and when asked; how many items the index has
+// from it, and when it last synced; why its last sync didn't work, and what
+// it left out, a line each; whether it's open, waiting for options that fit
+// its source (decision 0051), or signed out since its source turned it
+// away; and whether a flag of `pnpm dev` makes it, so the
 // window can't set or disconnect it.
 export type ConnectionView = {
   id: string;
@@ -151,27 +148,36 @@ export type ConnectionView = {
   number: number;
   prefix: string;
   name: string;
+  named: boolean;
   about: string;
+  reads: string;
   identity: string;
   options: Record<string, unknown>;
+  readOnly: boolean;
+  viewOnly: { why: string; all: boolean } | null;
+  every: number | null;
   items: number;
   syncedAt: string | null;
   // What its last sync changed: how many items it found new, changed and
   // gone from the source.
   lastSync: { new: number; changed: number; removed: number };
-  state: "open" | "signed-out";
+  problem: string | null;
+  report: readonly string[];
+  state: "open" | "waiting" | "signed-out";
   flagged: boolean;
 };
 
-// Every connection, which kinds the window may connect now, and whether the
-// server offers the system's folder picker, for a connector's folder step.
+// Every connection, which kinds the window may connect now and why not the
+// others, and whether the server offers the folder picker, for a
+// connector's folder step.
 export type ConnectionsView = {
   connections: ConnectionView[];
   connectable: string[];
+  refused: Readonly<Record<string, string>>;
   picker: boolean;
 };
 
-// One of a connector's pick step's list, such as a Jira project: what is
+// One of a connector's pick step's list, such as a project: what is
 // picked, its name, how many items it holds and when it last changed, when
 // the source says.
 export type PickChoiceView = {
@@ -262,7 +268,8 @@ export function waitingOn(thread: {
 export type ItemPanelView = {
   id: string;
   key: string;
-  // The source's name, such as "Jira", and the item's page there.
+  // The source's name, as its connector declares it, and the item's page
+  // there.
   source: string;
   title: string | null;
   url: string | null;
@@ -991,8 +998,9 @@ export type CliView = {
 // neither done nor skipped, where it opens. `firstRun`: the setup finished
 // and no workstream is made yet, while the overview's question to start from
 // is the instruction "Make … a workstream". `line`: the overview's one-time
-// line shows. `reading`: Jira's first sync, the issues read of the total
-// Jira reports, while it reads, or where it stopped.
+// line shows. `reading`: the first sync of what was connected last, the
+// records read of the total its source reports, while it reads, or where it
+// stopped.
 export type FirstRunView = {
   step: "ai" | "work" | "finished";
   steps: { ai: "done" | "skipped" | null; work: "done" | "skipped" | null };
@@ -1010,12 +1018,4 @@ export type SetupView = {
   cli: CliView | null;
   codex: CliView | null;
   firstRun: FirstRunView | null;
-};
-
-// A Jira project the details typed can see, for the first run's pick.
-export type JiraProjectView = {
-  key: string;
-  name: string;
-  issues: number | null;
-  updatedAt: string | null;
 };

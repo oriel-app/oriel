@@ -187,6 +187,7 @@ test("a connection made in the window is there again when the server starts", as
       identity: "https://oriel.atlassian.net",
       name: null,
       options: { project: "SYN" },
+      every: null,
       connectedAt: "",
       disconnectedAt: null,
     },

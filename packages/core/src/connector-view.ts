@@ -1,5 +1,6 @@
 // How a connector shows in the window, as its declaration says and the server
 // sends it, so the page keeps no list of sources (decision 0049).
+import type { ConnectOffer, ConnectStep, OptionField } from "./connect.ts";
 import type { SourceKind } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
 
@@ -24,6 +25,13 @@ export type ConnectorView = {
   // to a person; null where the key is what people read, as Jira's.
   keysReadAs: string | null;
   columns: readonly BrowseColumn[];
+  // Whether it writes, so a connection of it may be read-only.
+  writable: boolean;
+  // How a person makes a connection of it in the window, and how the window
+  // offers it; null where only a flag makes one.
+  connect: { steps: readonly ConnectStep[]; offer: ConnectOffer } | null;
+  // Its options, as Settings draws them.
+  options: readonly OptionField[];
 };
 
 // What a source's items show in the window beyond core's fields: the
@@ -40,7 +48,7 @@ export type DetailsOf = (record: IndexRecord) => ItemDetails | null;
 // `linked` names the item, by its key, that a link into the source points at
 // when the link isn't the item's location, such as a chat reply's link,
 // which is its message's.
-export type Presentation = Omit<ConnectorView, "kind"> & {
+export type Presentation = Omit<ConnectorView, "kind" | "writable" | "connect" | "options"> & {
   details: DetailsOf;
   linked?: (link: URL) => string | null;
 };

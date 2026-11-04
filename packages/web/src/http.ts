@@ -71,12 +71,19 @@ export type Tag =
   // the add still stands.
   | { kind: "panelAddChecked"; workstreamId: string }
   | { kind: "itemStamp"; id: string }
-  | { kind: "folder" }
-  | { kind: "folderConnected" }
-  | { kind: "folderPicked" }
-  | { kind: "jira" }
-  | { kind: "jiraConnected" }
-  | { kind: "sources" }
+  // Every connection, as the server lists them.
+  | { kind: "connections" }
+  // A connector's steps: a pick step's list, the folder picker, and
+  // the connection made, by the connector's kind.
+  | { kind: "connectChoices"; of: string }
+  | { kind: "connectPicked"; of: string }
+  | { kind: "connected"; of: string }
+  // In Settings, by a connection's ID: its options set, or that undone; its
+  // pick step's list again; and it disconnected.
+  | { kind: "configured"; connection: string }
+  | { kind: "configureUndone"; connection: string }
+  | { kind: "connectionChoices"; connection: string }
+  | { kind: "disconnected"; connection: string }
   // How every connector shows, from its declaration.
   | { kind: "connectors" }
   // A connection synced on demand, by its ID.
@@ -95,9 +102,7 @@ export type Tag =
   | { kind: "setupCli" }
   | { kind: "setupAi" }
   | { kind: "setupProgress"; did: string }
-  | { kind: "setupKey" }
-  // The Jira projects the details typed can see.
-  | { kind: "jiraProjects" };
+  | { kind: "setupKey" };
 
 export type Effect =
   // Browse under a grouping, and its filters when any is set.
@@ -191,7 +196,8 @@ export type Report =
   | { name: "window-chat.question-used"; question: StartQuestion }
   | {
       name: "first-run.details-copied";
-      what: "install" | "sign-in" | "update" | "test" | "jira";
+      // A command, or a connector's first sync that stopped, by its kind.
+      what: string;
     };
 
 // Best effort: its reply changes nothing.

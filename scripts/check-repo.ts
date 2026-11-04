@@ -144,25 +144,20 @@ export function crossPackageImports(path: string, text: string): string[] {
 // from declarations too. A listed file that names none comes off the list.
 const sourceWords = [...new Set([...sourceKinds, "sheets"])];
 const sourceWord = new RegExp(sourceWords.join("|"), "i");
+// The folder step (decision 0049) names a kind of step, not the folder's
+// connector: its kind once, as `folderStep`, and the folder picker it opens.
+const folderStepWords =
+  /\bfolder (?:step|picker)s?\b|\b(?:F|f)older(?:Step|Kind)\b|"folder" as const/g;
 export const webNamingSources: Record<string, string> = {
-  "packages/web/src/app.tsx": "passes Jira's and the folder's models to their pages",
-  "packages/web/src/folder.ts": "connecting a folder",
-  "packages/web/src/http.ts": "the folder's and Jira's connect requests",
-  "packages/web/src/jira.ts": "connecting Jira",
-  "packages/web/src/jira-connect.tsx": "connecting Jira",
-  "packages/web/src/overview-page.tsx": "the first run's line, and Connect Jira",
-  "packages/web/src/root.ts": "the folder's and Jira's models and replies",
-  "packages/web/src/setup.ts": "the first run's Jira screens",
-  "packages/web/src/setup-page.tsx": "the first run's Jira and folder rows",
-  "packages/web/src/sidebar.tsx": "Add a source, which offers a folder",
-  "packages/web/src/view.ts": "the folder's and Jira's views",
+  "packages/web/src/setup-page.tsx":
+    "the first run's own words, that Claude Code installs nothing outside your own folder",
 };
 
 // Whether a file of the page's names a source where it shouldn't, or is
 // listed and no longer does.
 export function webSourceNames(path: string, text: string): string[] {
   if (!path.startsWith("packages/web/src/") || testFile.test(path)) return [];
-  const names = sourceWord.exec(text)?.[0];
+  const names = sourceWord.exec(text.replace(folderStepWords, ""))?.[0];
   if (path in webNamingSources)
     return names === undefined
       ? [`scripts/check-repo.ts: ${path} names no source now; take it off webNamingSources`]
@@ -190,6 +185,8 @@ export const exemptRoutes: Record<string, string> = {
   "/setup/progress": "the person's own first run, which no agent may move",
   // Decision 0049: a connector's pick step, such as Jira's projects.
   "/connections/pick": "a read of a list to pick from, for the details typed, which keeps nothing",
+  "/connections/:id/pick":
+    "a read of a list to pick from, for a connection's own account, which keeps nothing",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex
