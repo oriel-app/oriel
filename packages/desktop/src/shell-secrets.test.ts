@@ -73,7 +73,17 @@ test("with no key from the OS, nothing is read or written, and never as plaintex
 test("only the server's own names are kept", async (t) => {
   const dir = folder(t);
   const store = secretStore(dir, fakeCrypt().crypt);
-  for (const name of ["../jira", "slack", "Secrets", "jira.123.tmp"]) {
+  await store.set("connection.01JC0NNECT10NSST0RED0000AB", "s");
+  assert.deepEqual(readdirSync(dir), ["connection.01JC0NNECT10NSST0RED0000AB"]);
+  for (const name of [
+    "../jira",
+    "slack",
+    "Secrets",
+    "jira.123.tmp",
+    "connection.01jc0nnect10nsst0red0000ab",
+    "connection.01JC0NNECT10NSST0RED0000AB.123.tmp",
+    "connection../JC0NNECT10NSST0RED0000AB",
+  ]) {
     await assert.rejects(store.get(name), /not a secret's name/);
     await assert.rejects(store.set(name, "s"), /not a secret's name/);
     await assert.rejects(store.delete(name), /not a secret's name/);

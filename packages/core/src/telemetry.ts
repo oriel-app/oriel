@@ -28,9 +28,10 @@ export type CloseVia = "page" | "menu" | "swipe" | "new-chat";
 // an actor other than the user fills in; or, by their `cause`, who changed a
 // workstream (decision 0024). An Undo's events name, in `undoes`, whose
 // action it undid, unless it was the user's own: the agent's, say, from the
-// list under its reply.
+// list under its reply. A source connected says whether it was a `later`
+// connection of its kind than the first (decision 0049).
 export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
-  | { name: "source.connected"; source: SourceKind }
+  | { name: "source.connected"; source: SourceKind; later: boolean }
   // The user asked for a sync, and whether it worked.
   | { name: "source.synced"; source: SourceKind; ok: boolean }
   // `size` is how many items it started with.

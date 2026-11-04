@@ -130,6 +130,70 @@ test("picking the same folder again keeps every item's ID", async (t) => {
   assert.deepEqual(after, before);
 });
 
+// Every folder item's ID the window shows, from any folder's connection.
+const allFileIds = (view: WindowView) =>
+  view.clusters
+    .flatMap((c) => c.list.map((row) => row.id))
+    .filter((id) => /^folder(\.\d+)?:/.test(id))
+    .toSorted();
+
+test("another folder takes the place of the first as a later connection, and the first comes back under its IDs", async (t) => {
+  const top = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-db-")));
+  t.after(() => rmSync(top, { recursive: true, force: true }));
+  const db = join(top, "oriel.db");
+  const app = await connected(t, { db });
+  const window = async (on: Pick<typeof app, "get"> = app) =>
+    allFileIds(json<WindowView>(await on.get("/api/window?grouping=epic")));
+  const first = await window();
+  assert.equal(first.length, 2);
+  const [held] = first;
+  assert.ok(held);
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Notes", items: [held] }),
+  );
+  const members = async (on: Pick<typeof app, "get"> = app) =>
+    json<WorkstreamView>(await on.get(`/api/workstreams/${workstreamId}`)).members.map((m) => [
+      m.ref.id,
+      m.row !== null,
+    ]);
+  assert.deepEqual(await members(), [[held, true]]);
+
+  // Another folder: a later connection, whose items carry its number. The
+  // first's go from the window, and its workstream holds its item as gone.
+  const plans = join(app.dir.top, "plans");
+  mkdirSync(plans);
+  writeFileSync(join(plans, "Roadmap.md"), "Q4.");
+  assert.equal((await app.post("/api/folder", { path: plans })).status, 200);
+  const second = await window();
+  assert.equal(second.length, 1);
+  assert.match(second[0] ?? "", /^folder\.2:[0-9a-f]{16}$/);
+  assert.deepEqual(await members(), [[held, false]]);
+  // The first again: the same connection, so the same IDs, and its workstream
+  // holds its item again. Restarting changes nothing.
+  assert.equal((await app.post("/api/folder", { path: app.dir.root })).status, 200);
+  assert.deepEqual(await window(), first);
+  assert.deepEqual(await members(), [[held, true]]);
+  // Each connect counted, the later one as later.
+  assert.deepEqual(
+    app.app
+      .telemetry()
+      .flatMap((e) => (e.name === "source.connected" ? [[e.data.source, e.data.later]] : [])),
+    [
+      ["jira", false],
+      ["folder", false],
+      ["folder", true],
+      ["folder", false],
+    ],
+  );
+  await app.app.close();
+  const again = await testApp(t, { db });
+  assert.deepEqual(await window(again), first);
+  assert.deepEqual(
+    json<{ folder: FolderView }>(await again.get("/api/folder")).folder.path,
+    app.dir.root,
+  );
+});
+
 test("a folder that can't be listed isn't kept; the one before stays as it was", async (t) => {
   const app = await connected(t);
   const before = fileIds(json<WindowView>(await app.get("/api/window?grouping=epic")));

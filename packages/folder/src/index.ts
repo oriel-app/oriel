@@ -31,7 +31,12 @@ export {
   parseFolderFixture,
 } from "./fixture.ts";
 export { openChecked } from "./nofollow.ts";
-export { type FolderSource, type FolderSourceOptions, folderSource } from "./source.ts";
+export {
+  type FolderPrefix,
+  type FolderSource,
+  type FolderSourceOptions,
+  folderSource,
+} from "./source.ts";
 export {
   canonicalPath,
   canonicalTime,

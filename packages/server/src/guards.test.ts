@@ -93,7 +93,7 @@ test("the first sync connects the source; marking a thread done is recorded", as
   assert.deepEqual(app.app.telemetry()[0], {
     name: "source.connected",
     at: t0,
-    data: { source: "jira" },
+    data: { source: "jira", later: false },
   });
   app.advance(1000);
   await app.post(`/api/threads/${app.id}/done`);

@@ -1,8 +1,8 @@
 // The server's desktop mode (decision 0036): the server as the desktop
 // shell's child. It reads the launch secret and talks to the shell over
 // stdin and stdout (PROTOCOL.md), keeps its database and port in the data
-// folder the shell names, keeps the Jira connection and the API key in the
-// OS secret store through the shell, and quits when the shell is gone (its
+// folder the shell names, keeps each connection's secret and the API key in
+// the OS secret store through the shell, and quits when the shell is gone (its
 // stdin ends, on every OS) or sends SIGTERM.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import type { Readable } from "node:stream";
 import type { Log } from "@oriel/core";
 import type { AppOptions } from "../app.ts";
 import type { SetupOptions } from "../setup/setup.ts";
-import { type Secrets, secretsStore } from "../connection.ts";
+import { legacySecret, type Secrets } from "../connection.ts";
 import { type Serving, serve } from "../serve.ts";
 import { channel, type Shell } from "./channel.ts";
 import { keepPort, keptPort, portsFrom } from "./port.ts";
@@ -113,9 +113,10 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
             },
           }
         : {}),
+      secrets,
       jira: {
         kind: "window",
-        store: secretsStore(secrets, log),
+        legacy: legacySecret(secrets),
         // Any Jira Cloud site the person connects (decision 0038).
         anySite: true,
         ...(options.jiraFetch ? { fetch: options.jiraFetch } : {}),

@@ -20,7 +20,7 @@ import {
 import { instant } from "../packages/core/src/ids.ts";
 import { memorySite } from "../packages/jira/src/memory-site.ts";
 import type { AppOptions } from "../packages/server/src/app.ts";
-import { memoryStore } from "../packages/server/src/connection.ts";
+import { legacySecret, memorySecrets } from "../packages/server/src/connection.ts";
 import { models } from "../packages/server/src/model.ts";
 import type { Serving } from "../packages/server/src/serve.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
@@ -257,15 +257,31 @@ export async function firstRunServer(
       throw new TypeError("fetch failed");
     return site.fetch(input, init);
   };
-  const store = memoryStore(
-    options.jira ? { site: "https://oriel.atlassian.net", ...jiraAccount, project: "SYN" } : null,
+  // Jira connected before, as the secret store kept it until connections,
+  // which the start moves into one.
+  const secrets = memorySecrets(
+    new Map(
+      options.jira
+        ? [
+            [
+              "jira",
+              JSON.stringify({
+                site: "https://oriel.atlassian.net",
+                ...jiraAccount,
+                project: "SYN",
+              }),
+            ],
+          ]
+        : [],
+    ),
   );
   const state = options.data ? setupFile(join(options.data, "setup.json")) : memorySetup();
   if (options.state) state.set({ ...state.get(), ...options.state });
 
   const serving = await start(0, {
     db: options.data ? join(options.data, "oriel.db") : ":memory:",
-    jira: { kind: "window", store, anySite: true, fetch: fetchJira },
+    secrets,
+    jira: { kind: "window", legacy: legacySecret(secrets), anySite: true, fetch: fetchJira },
     models: chooser,
     settings,
     agent,

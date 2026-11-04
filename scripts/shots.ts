@@ -46,7 +46,6 @@ import {
   richDescription,
 } from "../packages/jira/src/memory-site.ts";
 import type { TurnInput } from "../packages/server/src/agent.ts";
-import { memoryStore } from "../packages/server/src/connection.ts";
 import type { SlackMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
@@ -387,7 +386,6 @@ const unconnected = (syn = loadJiraFixture()) =>
     db: ":memory:",
     jira: {
       kind: "window",
-      store: memoryStore(),
       fetch: memorySite(syn, instant(new Date()), { account }).fetch,
     },
     agent: (deps) => scriptedAgent(deps, planning),

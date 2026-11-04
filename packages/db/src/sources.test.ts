@@ -11,6 +11,9 @@ import { ensureWorkspace } from "./workspaces.ts";
 const now = instant(new Date(Date.UTC(2026, 9, 31)));
 const workspaceId = ulid(0, new Uint8Array(10));
 const insert = "insert into sources (workspace_id, kind, cursor, synced_at) values (?, ?, ?, ?)";
+// Migrations before 0020 named the column `kind`: a test of one of them
+// stops before it.
+const beforeConnections = () => loadMigrations().filter((m) => m.version < 20);
 
 test("a kind no migration names can sync, and taking any keeps each source's cursor", () => {
   const db = open(":memory:");
@@ -21,7 +24,7 @@ test("a kind no migration names can sync, and taking any keeps each source's cur
   ensureWorkspace(db, { id: workspaceId, name: "test" }, now);
   db.prepare(insert).run(workspaceId, "jira", "2026-10-30T09:00:00.000Z", now);
   assert.throws(() => db.prepare(insert).run(workspaceId, "sheets", null, now), /CHECK/);
-  migrate(db, migrations, now);
+  migrate(db, beforeConnections(), now);
   db.prepare(insert).run(workspaceId, "sheets", null, now);
   assert.deepEqual(
     db
@@ -44,7 +47,7 @@ test("adding Slack keeps each source's cursor and last sync", () => {
   ensureWorkspace(db, { id: workspaceId, name: "test" }, now);
   db.prepare(insert).run(workspaceId, "jira", "2026-10-30T09:00:00.000Z", now);
   db.prepare(insert).run(workspaceId, "folder", null, now);
-  migrate(db, migrations, now);
+  migrate(db, beforeConnections(), now);
   assert.deepEqual(
     db
       .prepare("select kind, cursor, synced_at from sources order by kind")
@@ -102,4 +105,48 @@ test("a term drops only the prefix of a connection the index holds, so text like
   });
   assert.deepEqual(searchTerms("jira:", prefixes).terms, []);
   assert.equal(searchTerms("jira:SYN-12", prefixes).whole, "syn-12");
+});
+
+test("connections name each source's column for what it holds, a connection's prefix, and keep every row", () => {
+  const db = open(":memory:");
+  migrate(db, beforeConnections(), now);
+  ensureWorkspace(db, { id: workspaceId, name: "test" }, now);
+  db.prepare(insert).run(workspaceId, "jira", "2026-10-30T09:00:00.000Z", now);
+  db.prepare(insert).run(workspaceId, "slack", null, now);
+  const folderId = ulid(1, new Uint8Array(10));
+  db.prepare("insert into folders (id, workspace_id, path, connected_at) values (?, ?, ?, ?)").run(
+    folderId,
+    workspaceId,
+    "/Users/pm/notes",
+    now,
+  );
+  migrate(db, loadMigrations(), now);
+  const rows = (sql: string) =>
+    db
+      .prepare(sql)
+      .all()
+      .map((row) => ({ ...row }));
+  assert.deepEqual(rows("select source, cursor, synced_at from sources order by source"), [
+    { source: "jira", cursor: "2026-10-30T09:00:00.000Z", synced_at: now },
+    { source: "slack", cursor: null, synced_at: now },
+  ]);
+  // The folder is a connection, under its own ID, which its keys hash.
+  assert.deepEqual(
+    rows(
+      "select id, kind, number, identity, name, options, connected_at, disconnected_at from connections",
+    ),
+    [
+      {
+        id: folderId,
+        kind: "folder",
+        number: 1,
+        identity: "/Users/pm/notes",
+        name: null,
+        options: "{}",
+        connected_at: now,
+        disconnected_at: null,
+      },
+    ],
+  );
+  assert.deepEqual(rows("select name from sqlite_master where name = 'folders'"), []);
 });

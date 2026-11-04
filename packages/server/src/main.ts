@@ -2,14 +2,17 @@
 // port. Jira is the frozen SYN fixture, read-only, unless `--jira live`,
 // which syncs the throwaway site and writes to it through approved change
 // sets. Its credentials come from `.env` if it has them; otherwise the user
-// connects Jira from the window, and the connection is kept in the
-// gitignored `secrets/jira.json` for the next start. The database is a file
+// connects Jira from the window, and the connection is kept for the next
+// start: its options in the database, and its secret in a file of its own,
+// in the gitignored `secrets/` folder named for the database, such as
+// `secrets/window/` (decision 0049). One kept in `secrets/jira.json` before
+// connections moves there at the first start. The database is a file
 // under the gitignored `.oriel/`, one per Jira mode, so fixture items, those
 // of the site `.env` names and those of the one connected in the window
 // never mix. `--jira window` ignores `.env`'s Jira credentials, so the user
 // connects from the window as a new user does. `--fresh <name>` keeps the
-// run's database under `.oriel/fresh/<name>/` and its saved connection under
-// `secrets/fresh/<name>/`, so a timed first run starts from nothing and
+// run's database under `.oriel/fresh/<name>/` and its connections' secrets
+// under `secrets/fresh/<name>/`, so a timed first run starts from nothing and
 // leaves the usual ones alone.
 //
 // Slack is off unless `--slack fixture`, the synthetic workspace, or
@@ -47,7 +50,7 @@ import { webFiles, serve } from "./serve.ts";
 import { isAbsolute, join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
 import { keyStore } from "./api-key.ts";
-import { fileStore } from "./connection.ts";
+import { fileSecrets, legacyFile } from "./connection.ts";
 import { serverEnv, slackEnv } from "./env.ts";
 import type { Log } from "@oriel/core";
 import { models as findModels } from "./model.ts";
@@ -213,7 +216,9 @@ const jira: JiraMode =
         }
       : {
           kind: "window",
-          store: fileStore(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json")),
+          legacy: legacyFile(
+            join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json"),
+          ),
         };
 
 let slack: SlackMode | null = values.slack === "fixture" ? { kind: "fixture" } : null;
@@ -246,6 +251,9 @@ await models?.look(settings.get());
 const serving = await serve(port, {
   db: join(dir, `${jira.kind}.db`),
   jira,
+  // Each database's connections keep their secrets in a folder named for it
+  // (decision 0049).
+  secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), jira.kind)),
   ...(slack ? { slack } : {}),
   ...(models ? { models } : {}),
   settings,
