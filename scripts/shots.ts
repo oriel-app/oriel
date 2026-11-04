@@ -3051,15 +3051,18 @@ try {
         if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
           await on.app.settings.change({ textSize: textSize as TextSize });
         await page.goto(new URL(scene.path, on.url).href);
-        // A scene that fails leaves a shot of where it stopped, to see why.
-        await scene.act?.(page).catch(async (error: unknown) => {
-          const failed = new URL(`${scene?.name}-${scheme}-${width}.stopped.png`, out);
+        // A scene that fails, in its steps or the waits after them, leaves a
+        // shot of where it stopped, to see why.
+        await (async () => {
+          await scene.act?.(page);
+          // These show an answer or a thread once it's done, never "Working…".
+          if (/^(ask-|panel-|search-opened)/.test(name))
+            await page.locator(".working").first().waitFor({ state: "detached" });
+        })().catch(async (error: unknown) => {
+          const failed = new URL(`${name}-${scheme}-${width}.stopped.png`, out);
           await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
           throw error;
         });
-        // These show an answer or a thread once it's done, never "Working…".
-        if (/^(ask-|panel-|search-opened)/.test(name))
-          await page.locator(".working").first().waitFor({ state: "detached" });
         // A full page draws what's fixed or sticky where the window was
         // scrolled to, which a scene's last step leaves to chance: shoot it
         // from the top, once it has stayed there for three frames.
