@@ -3,13 +3,15 @@
 // person's own, and it answers what the first run asks from a state file in
 // its folder, so a try never runs, signs in or updates the person's CLI:
 // `--version`, `auth login`, `auth status`, `update`, and a session's
-// `initialize` and turn, with fixed text and no model. A thread's turn,
-// which needs Oriel's run tool, stops at the harness's check.
+// `initialize` and turn, with fixed text and no model. A thread's turn
+// runs one script that never ends, so a try can see a run, and what quitting
+// or a crash does to it, until the sandbox's wall time stops it.
 //
 // Run as `stand-in-claude.ts <folder> <claude's arguments…>`.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { harnessRunTool, harnessServer } from "../packages/agent/src/claude-code.ts";
 
 export type StandIn = {
   version: string;
@@ -59,10 +61,40 @@ const account = { authMethod: "claude.ai", email: "pm@example.com", subscription
 
 type Message = Record<string, unknown>;
 
+// The script a thread's turn runs: one that never ends.
+export const endlessScript = "while (true) {}";
+const runCall = "toolu_stand_in_run";
+
+// A response as the CLI relays the model's stream: one tool call, or text.
+const response = (model: string, block: Message, json: string | null, stop: string) =>
+  [
+    { type: "message_start", message: { model, usage: { input_tokens: 12, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: block },
+    ...(json === null
+      ? []
+      : [
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "input_json_delta", partial_json: json },
+          },
+        ]),
+    { type: "content_block_stop", index: 0 },
+    { type: "message_delta", delta: { stop_reason: stop }, usage: { output_tokens: 4 } },
+    { type: "message_stop" },
+  ].map((event) => ({ type: "stream_event", event, parent_tool_use_id: null }));
+
 // A session's answers to one line from Oriel: `initialize`, saying whether
-// there's an account, and a turn, as a title's turn would answer.
-export function session(state: StandIn, model: string, line: Message): Message[] {
+// there's an account, and a turn. With `run`, a thread's turn: it runs
+// endlessScript, asks Oriel for the result as the CLI would, and ends once
+// Oriel answers. Without, a title's turn.
+export function session(state: StandIn, model: string, line: Message, run = false): Message[] {
   const request = (line.request ?? {}) as Message;
+  if (run && line.type === "control_response") {
+    const answered = (line.response ?? {}) as Message;
+    if (answered.request_id !== runCall) return [];
+    return response(model, { type: "text", text: "The stand-in's run ended." }, null, "end_turn");
+  }
   if (line.type === "control_request") {
     const id = line.request_id;
     return request.subtype === "initialize"
@@ -84,19 +116,46 @@ export function session(state: StandIn, model: string, line: Message): Message[]
         ];
   }
   if (line.type !== "user") return [];
+  const init = {
+    type: "system",
+    subtype: "init",
+    tools: run ? [harnessRunTool] : [],
+    mcp_servers: run ? [{ name: harnessServer, status: "connected" }] : [],
+    permissionMode: "dontAsk",
+    plugins: [],
+    skills: [],
+    slash_commands: [],
+    claude_code_version: state.version,
+    model,
+  };
+  if (run) {
+    const input = { script: endlessScript };
+    return [
+      init,
+      ...response(
+        model,
+        { type: "tool_use", id: runCall, name: harnessRunTool, input: {} },
+        JSON.stringify(input),
+        "tool_use",
+      ),
+      {
+        type: "control_request",
+        request_id: runCall,
+        request: {
+          subtype: "mcp_message",
+          server_name: harnessServer,
+          message: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: "run", arguments: input, _meta: { "claudecode/toolUseId": runCall } },
+          },
+        },
+      },
+    ];
+  }
   return [
-    {
-      type: "system",
-      subtype: "init",
-      tools: [],
-      mcp_servers: [],
-      permissionMode: "dontAsk",
-      plugins: [],
-      skills: [],
-      slash_commands: [],
-      claude_code_version: state.version,
-      model,
-    },
+    init,
     {
       type: "result",
       subtype: "success",
@@ -115,6 +174,7 @@ if (import.meta.main) {
   if (args.includes("-p")) {
     const at = args.indexOf("--model");
     const model = at >= 0 ? (args[at + 1] ?? "") : "";
+    const run = args.includes("--allowed-tools");
     for await (const text of createInterface({ input: process.stdin })) {
       let line: unknown;
       try {
@@ -123,7 +183,7 @@ if (import.meta.main) {
         continue;
       }
       if (typeof line !== "object" || line === null) continue;
-      for (const answer of session(state, model, line as Message))
+      for (const answer of session(state, model, line as Message, run))
         process.stdout.write(`${JSON.stringify(answer)}\n`);
     }
   } else {

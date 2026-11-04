@@ -41,6 +41,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { basicAuth } from "@oriel/jira";
+import { findDeno } from "@oriel/sandbox";
 import { bearer } from "@oriel/slack";
 import { webFiles, serve } from "./serve.ts";
 import { isAbsolute, join } from "node:path";
@@ -54,7 +55,7 @@ import { settingsFile } from "./settings.ts";
 import { usageFile } from "./usage.ts";
 import { firstPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
-import { killDescendants, parentPort, portPipes } from "./desktop/utility.ts";
+import { killDescendants, parentPort, portPipes, watchChildren } from "./desktop/utility.ts";
 import { anthropicSigned, installerTrust, withLocalBin } from "./setup/signature.ts";
 import { setupFile } from "./setup/state.ts";
 import { homedir } from "node:os";
@@ -134,8 +135,17 @@ if (!existsSync(join(files.dist, files.entry))) {
 
 if (pipes && values.data) {
   // On the shell's Node, nothing the server starts is in a group the shell
-  // can kill, so the server ends it all itself.
-  if (parent) process.on("exit", killDescendants);
+  // can kill, so the server ends it all itself, and its watcher does when
+  // the server can't.
+  if (parent) {
+    process.on("exit", killDescendants);
+    const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
+    try {
+      watchChildren(findDeno(), log);
+    } catch (error) {
+      log("watcher: no Deno to run it on", { error: String(error) });
+    }
+  }
   let looked: Promise<string> = Promise.resolve("");
   // Logs go to stderr, which the shell keeps in a file.
   const desktop = await runDesktop({

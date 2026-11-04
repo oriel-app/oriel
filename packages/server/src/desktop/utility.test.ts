@@ -1,12 +1,15 @@
 // The server on the shell's own Node (decision 0047): the channel over the
-// parent port, and what the server kills as it exits. The port is a stand-in;
-// the last test starts a stand-in server, which starts two sleeps.
+// parent port, what the server kills as it exits, and what its watcher kills
+// once it's gone. The port is a stand-in; the exit test starts a stand-in
+// server, which starts two sleeps, and the watcher's test runs the watcher.
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { EventEmitter, once } from "node:events";
+import { createInterface } from "node:readline";
 import { test } from "node:test";
+import { findDeno } from "@oriel/sandbox";
 import { channel } from "./channel.ts";
-import { descendants, type ParentPort, portPipes } from "./utility.ts";
+import { descendants, type ParentPort, portPipes, watchChildren } from "./utility.ts";
 
 const secret = "ab".repeat(32);
 
@@ -126,5 +129,39 @@ test(
       const stat = ps(pid, "stat");
       assert.ok(stat === "" || stat.startsWith("Z"), `${pid} outlived the server: ${stat}`);
     }
+  },
+);
+
+test(
+  "once the server is gone, its watcher kills what the server started, and nothing else",
+  { skip: process.platform === "win32" },
+  async () => {
+    // Started before the watching begins, so not one to kill.
+    const other = spawn("/bin/sleep", ["600"], { stdio: "ignore" });
+    const watching = watchChildren(findDeno(), () => {});
+    assert.ok(watching);
+    const exited = (child: ChildProcess) =>
+      new Promise((resolve) => child.once("exit", (_code, signal) => resolve(signal)));
+    const watcher = exited(watching.watcher);
+    // A sandbox run, and a first-run command in its own group whose script
+    // has left a child to launchd, as an installer might.
+    const run = spawn("/bin/sleep", ["600"], { stdio: "ignore" });
+    const command = spawn(
+      "/bin/sh",
+      ["-c", '/bin/sh -c "/bin/sleep 600 & echo \\$!"; exec /bin/sleep 600'],
+      { detached: true, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const killed = [exited(run), exited(command)];
+    const [line] = (await once(createInterface({ input: command.stdout! }), "line")) as [string];
+    const left = Number(line);
+    assert.equal(Number(ps(left, "pgid")), command.pid);
+    // As the server's death would end the watcher's stdin.
+    watching.stop();
+    assert.deepEqual(await Promise.all(killed), ["SIGKILL", "SIGKILL"]);
+    await watcher;
+    const stat = ps(left, "stat");
+    assert.ok(stat === "" || stat.startsWith("Z"), `${left} outlived the server: ${stat}`);
+    assert.match(ps(other.pid!, "stat"), /^[^Z]/);
+    other.kill("SIGKILL");
   },
 );

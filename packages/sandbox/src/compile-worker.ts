@@ -2,6 +2,10 @@
 // it starts, then the reply that starts the guest or why it can't start, out.
 import { parentPort } from "node:worker_threads";
 import { guestStart, typecheck } from "@oriel/bindings";
+import { relayChildren } from "./children.ts";
+
+// So the desktop server's watcher hears of each tsc (children.ts).
+relayChildren();
 
 // `dir` is the main thread's, which removes it; `tscMs` is tsc's own timeout.
 export type CompileRequest = { script: string; dts: string; tscMs: number; dir: string };
