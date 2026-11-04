@@ -4,6 +4,7 @@
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
+import type { ReviewTable } from "@oriel/core/connect";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
@@ -15,6 +16,7 @@ export type {
   ConnectOffer,
   ConnectStep,
   OptionField,
+  ReviewTable,
 } from "@oriel/core/connect";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
@@ -175,6 +177,17 @@ export type ConnectionsView = {
   connectable: string[];
   refused: Readonly<Record<string, string>>;
   picker: boolean;
+};
+
+// What a waiting connection's review step shows (decision 0051): whether it
+// still waits; Oriel's own guess, drawn from its source, with the options it
+// settles into; the agent's draft once its onboarding turn holds one, drawn,
+// and where it is held; and that turn's thread while it runs.
+export type OptionsReviewView = {
+  waits: boolean;
+  guess: { tables: ReviewTable[]; options: Record<string, unknown> } | null;
+  draft: { thread: string; seq: number; tables: ReviewTable[] } | null;
+  drafting: { thread: string } | null;
 };
 
 // One of a connector's pick step's list, such as a project: what is
@@ -500,6 +513,9 @@ export type ChatEntry = { seq: number; at: string } & (
       kind: "draft";
       connection: { id: string; name: string } | null;
       changes: DraftChange[];
+      // While it waits, the draft as Oriel draws it from its source, for a
+      // connector that drafts in its own form, such as columns by letter.
+      tables: ReviewTable[] | null;
       stale: boolean;
       outcome: "applied" | "discarded" | null;
     }

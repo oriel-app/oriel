@@ -116,6 +116,8 @@ test("the agent drafts a waiting Slack connection's channels, and the user appli
         drafted: ["weather-disruptions"],
       },
     ],
+    // Slack drafts options as they are, so there's nothing to draw.
+    tables: null,
     stale: false,
     outcome: null,
   });

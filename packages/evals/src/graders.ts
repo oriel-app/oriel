@@ -214,24 +214,51 @@ const unordered = (value: unknown): unknown =>
       ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, unordered(inner)]))
       : value;
 
+const isPlain = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Whether a draft holds what a golden does (decision 0051): each key a
+// golden object names, and none it sets to null; each object a golden list
+// holds, in some entry of the draft's; and every other value equal, lists
+// of them in any order. So a golden names the tab that must be mapped so,
+// and what it mustn't map, and leaves the rest to the drafter.
+export function holds(actual: unknown, golden: unknown): boolean {
+  if (golden === null) return actual === undefined || actual === null;
+  if (Array.isArray(golden) && golden.length > 0 && golden.every(isPlain))
+    return Array.isArray(actual) && golden.every((want) => actual.some((got) => holds(got, want)));
+  if (isPlain(golden))
+    return (
+      isPlain(actual) && Object.entries(golden).every(([key, want]) => holds(actual[key], want))
+    );
+  return canonicalJson(unordered(actual)) === canonicalJson(unordered(golden));
+}
+
 // The drafts the turn held, in order: each the expected action, for the
-// expected connection, with the expected options, lists in any order
-// (decision 0051).
+// expected connection, with the expected options, lists in any order, or
+// holding a golden's (decision 0051).
 export function gradeDrafts(
-  expected: readonly { action: string; connection: string; options: Record<string, unknown> }[],
+  expected: readonly {
+    action: string;
+    connection: string;
+    options: Record<string, unknown>;
+    golden?: string;
+  }[],
   actual: readonly AppliedCall[],
 ): Grade {
-  const same = (a: unknown, b: unknown) =>
+  const equal = (a: unknown, b: unknown) =>
     canonicalJson(unordered(a)) === canonicalJson(unordered(b));
   const problems = [
     ...expected.flatMap((want, i) => {
       const draft = actual[i];
       if (!draft) return [`missing: ${want.action}`];
+      const same = want.golden === undefined ? equal : holds;
       return draft.action === want.action &&
         draft.input["connection"] === want.connection &&
         same(draft.input["options"], want.options)
         ? []
-        : [`expected ${want.action} with ${JSON.stringify(want.options)}, got ${callLine(draft)}`];
+        : [
+            `expected ${want.action} ${want.golden ? `holding ${want.golden}` : `with ${JSON.stringify(want.options)}`}, got ${callLine(draft)}`,
+          ];
     }),
     ...actual.slice(expected.length).map((draft) => `unexpected: ${callLine(draft)}`),
   ];

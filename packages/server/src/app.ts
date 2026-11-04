@@ -15,6 +15,9 @@ import {
   type ConnectionSettings,
   type Draft,
   type FieldReader,
+  noOptionsYet,
+  type PreviewTable,
+  type ReviewTable,
   type IndexRecord,
   type Instant,
   instant,
@@ -73,7 +76,13 @@ import {
   sources,
   specs,
 } from "@oriel/sources";
-import type { ConnectionView, GroupingId, OverviewView, WindowView } from "@oriel/web/view";
+import type {
+  ConnectionView,
+  GroupingId,
+  OverviewView,
+  OptionsReviewView,
+  WindowView,
+} from "@oriel/web/view";
 import type { KeyCheck, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
@@ -108,6 +117,9 @@ import { browseView, clusterPage, groupings, keepOf, windowView } from "./window
 
 export type { SourceMode, SourceModes } from "./modes.ts";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export type AppOptions = {
   // A SQLite file, or ":memory:".
   db: string;
@@ -121,6 +133,10 @@ export type AppOptions = {
   // Any account or site may be connected in the window, as on the desktop
   // app (decision 0038); otherwise only those Oriel's own tests use.
   anywhere?: boolean;
+  // Oriel's own clients of sources, by kind, as each connector's `client`
+  // names them, such as Google's from `.env` under `pnpm dev`. A connector
+  // that names one isn't connected in the window without it.
+  clients?: Readonly<Partial<Record<SourceKind, Readonly<Record<string, string>>>>>;
   // Jira's saved connection from before connections, which the first start
   // moves into one (decision 0049).
   legacyJira?: LegacyJira;
@@ -281,6 +297,24 @@ export async function createApp(options: AppOptions): Promise<App> {
     if (!declaration) throw new Error(`no source declares ${kind}`);
     return declaration;
   };
+  // What a connection is opened or read with: how requests reach its
+  // source, Oriel's client of it, and, for one the window made, where a
+  // refreshed token is kept for its next start.
+  const openVia = (
+    kind: SourceKind,
+    id: Ulid,
+    how: { kept: boolean; fetch?: typeof fetch | undefined },
+  ): OpenVia => {
+    const client = options.clients?.[kind];
+    return {
+      kept: how.kept,
+      log,
+      now,
+      ...(how.fetch ? { fetch: how.fetch } : {}),
+      ...(client ? { client } : {}),
+      ...(how.kept ? { keep: (secret: string) => connections.rekey(id, secret) } : {}),
+    };
+  };
   // Opens a connection through its connector's declaration, or its
   // fixture's. A source that keeps no prefix of its own reads its items under
   // its kind, so it opens only its kind's first connection.
@@ -290,7 +324,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     how: { fixture: boolean; kept: boolean; fetch?: typeof fetch | undefined },
   ): Promise<Opened> => {
     const declaration = declared(kind);
-    const via: OpenVia = { kept: how.kept, log, now, ...(how.fetch ? { fetch: how.fetch } : {}) };
+    const via = openVia(kind, connection.id, how);
     const opened = await (how.fixture
       ? declaration.fixture.open(connection, via)
       : declaration.open(connection, via));
@@ -311,9 +345,15 @@ export async function createApp(options: AppOptions): Promise<App> {
   const windows = connecting({
     modes,
     anywhere: options.anywhere ?? false,
+    ...(options.clients ? { clients: options.clients } : {}),
+    now,
     opening: {
       connections,
-      open: (kind) => openedOf(kind) !== null,
+      // One signed out since it opened may be signed in to again.
+      open: (kind) => {
+        const open = openedOf(kind);
+        return open !== null && !open.opened.signedOut?.();
+      },
       connect: (kind, made, how) => connect(kind, made, how),
     },
     log,
@@ -467,6 +507,10 @@ export async function createApp(options: AppOptions): Promise<App> {
           clock: now,
           log,
         });
+        // Whether its options still fit its source, as this sync found.
+        const why = opened.unfit?.() ?? null;
+        if (why === null) unfit.delete(connection.prefix);
+        else unfit.set(connection.prefix, why);
       })
       .then(async () => {
         // A workstream that can't follow its epic is no reason to call the
@@ -620,7 +664,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // under its ID and number; anything else is new, with the next number.
   const connect = (
     kind: SourceKind,
-    made: { identity: string; options: Record<string, unknown>; secret?: string },
+    made: { identity: string; options: Record<string, unknown>; secret?: string; name?: string },
     how: { replaces?: boolean; counting?: (records: number) => void } = {},
   ): Promise<
     | { connection: Connection; signedIn: boolean }
@@ -630,7 +674,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       const current = openedOf(kind);
       // The same thing again keeps its connection, so none of its items' IDs
       // change.
-      if (current?.connection.identity === made.identity) {
+      // One signed out since it opened is opened again with what was given.
+      if (current?.connection.identity === made.identity && !current.opened.signedOut?.()) {
         const problem = await syncOpen(current, true);
         return problem
           ? { failed: "sync" as const, error: new Error(problem) }
@@ -641,7 +686,11 @@ export async function createApp(options: AppOptions): Promise<App> {
       const number = was?.number ?? ("number" in plan ? plan.number : 1);
       // Signed in again, it keeps what was set on it, such as read-only,
       // under what its steps gave.
-      const options = "live" in plan ? { ...plan.live.options, ...made.options } : made.options;
+      const again = declared(kind).connect?.again;
+      const options =
+        "live" in plan
+          ? (again?.(plan.live.options, made.options) ?? { ...plan.live.options, ...made.options })
+          : made.options;
       const toOpen: ToOpen = {
         id: was?.id ?? newId(),
         number,
@@ -679,6 +728,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             current.opened.close?.();
           }
           if ("live" in plan) {
+            if (current?.connection.id === plan.live.id) current.opened.close?.();
             await connections.signIn(plan.live, { options, secret: made.secret ?? "" });
             return { ...plan.live, options };
           }
@@ -690,10 +740,17 @@ export async function createApp(options: AppOptions): Promise<App> {
             ...(made.secret === undefined ? {} : { secret: made.secret }),
           });
           if ("taken" in kept) throw new Error(`that ${kind} connection is live already`);
-          return kept.connection;
+          // Named as its source says, such as by its account's email, unless
+          // the person named it before.
+          if (made.name === undefined || kept.connection.name !== null) return kept.connection;
+          const named = { name: made.name, every: kept.connection.every };
+          connections.settle(kept.connection, named);
+          return { ...kept.connection, ...named };
         });
         byPrefix.set(connection.prefix, { connection, opened });
         shut.delete(connection.prefix);
+        // Its first sync just worked: what the last one said is past.
+        problems.delete(connection.id);
         sets.rewire(wiring());
         arm(connection);
         if (first) connected(connection);
@@ -945,16 +1002,119 @@ export async function createApp(options: AppOptions): Promise<App> {
   // The connections that wait for their options (decision 0051): ones of a
   // connector that declares a preview, made in the window, that have none
   // yet or whose options no longer fit their source; each with why.
+  const whyWaits = (connection: Connection): string | null => {
+    if (connection.disconnectedAt !== null || byFlag.has(connection.id)) return null;
+    const declaration = declared(connection.kind);
+    if (!declaration.preview) return null;
+    return (
+      unfit.get(connection.prefix) ??
+      (declaration.options(connection.options).ok && !declaration.review?.waits(connection.options)
+        ? null
+        : noOptionsYet)
+    );
+  };
   const waitingConnections = (): { connection: Connection; why: string }[] =>
     connections.list().flatMap((connection) => {
-      if (connection.disconnectedAt !== null || byFlag.has(connection.id)) return [];
-      const declaration = declared(connection.kind);
-      if (!declaration.preview) return [];
-      const why =
-        unfit.get(connection.prefix) ??
-        (declaration.options(connection.options).ok ? null : "It has no options yet.");
+      const why = whyWaits(connection);
       return why === null ? [] : [{ connection, why }];
     });
+  // Each waiting connection's preview as last read, while its options are
+  // the same, for 5 minutes at most: the review step asks again while the
+  // agent drafts, and each read is requests to the source, under its quota.
+  // A draft is drawn from it.
+  const previews = new Map<Ulid, { options: string; at: number; tables: PreviewTable[] }>();
+  const previewOf = async (connection: Connection, fresh = false): Promise<PreviewTable[]> => {
+    const declaration = declared(connection.kind);
+    const key = JSON.stringify(connection.options);
+    const had = previews.get(connection.id);
+    const at = Date.parse(now());
+    if (!fresh && had?.options === key && at - had.at < 5 * 60_000) return had.tables;
+    const secret = await connections.secret(connection);
+    const via = openVia(connection.kind, connection.id, {
+      kept: true,
+      fetch: windows.viaFor(connection.kind).fetch,
+    });
+    const tables = (await declaration.preview?.({ ...connection, secret }, via)) ?? [];
+    previews.set(connection.id, { options: key, at, tables });
+    return tables;
+  };
+  // A draft of `source.configure` whose connector drafts in its own form,
+  // with that connection and its review.
+  const reviewed = (draft: Draft) => {
+    if (draft.action !== "source.configure") return null;
+    const id = draft.input["connection"];
+    const connection = typeof id === "string" && isUlid(id) ? connections.get(id) : null;
+    const review = connection && declared(connection.kind).review;
+    return connection && review ? { connection, review } : null;
+  };
+  // A held draft as Oriel draws it from its source, from the preview the
+  // agent read; null when it's no longer there to draw from.
+  const drawn = (draft: Draft): ReviewTable[] | null => {
+    const of = reviewed(draft);
+    const tables = of && previews.get(of.connection.id)?.tables;
+    const given = draft.input["options"];
+    if (!of || !tables || !isRecord(given)) return null;
+    return of.review.draw(given, tables);
+  };
+  // A draft's input as its action takes it: one in its connector's own form
+  // settles into options against its source as it is now, such as each
+  // column's letter turned into the header above it (decision 0051).
+  const settleDraft = async (draft: Draft): Promise<Record<string, unknown>> => {
+    const of = reviewed(draft);
+    const given = draft.input["options"];
+    if (!of) return draft.input;
+    const tables = await previewOf(of.connection, true);
+    const settled = of.review.settle(isRecord(given) ? given : {}, tables, of.connection.options);
+    if ("problem" in settled) throw new ActionError("refused", String(settled.problem));
+    return { ...draft.input, options: settled };
+  };
+  // The onboarding turns the window chat ran, by the connection each drafts.
+  const onboarding = new Map<Ulid, Ulid>();
+  // What a waiting connection's review step shows (decision 0051): Oriel's
+  // guess, drawn and settled, with no model; the agent's draft once its turn
+  // holds one, drawn; and whether that turn still runs.
+  const review = async (id: Ulid, fresh = false): Promise<OptionsReviewView> => {
+    const connection = live(id);
+    const declaration = declared(connection.kind);
+    const of = declaration.review;
+    if (!of || !declaration.preview)
+      throw new ActionError("not-found", "it has no options to review");
+    const waits = waitingConnections().some((each) => each.connection.id === id);
+    if (!waits) return { waits, guess: null, draft: null, drafting: null };
+    const tables = await previewOf(connection, fresh);
+    const guessed = of.guess(tables);
+    const settled = guessed && of.settle(guessed, tables, connection.options);
+    const thread = onboarding.get(id) ?? null;
+    const held = thread
+      ? threads
+          .held(thread)
+          .filter(
+            (each) =>
+              "draft" in each && each.outcome === null && each.draft.input["connection"] === id,
+          )
+          .at(-1)
+      : undefined;
+    const draft = held && "draft" in held ? held : null;
+    const options = draft?.draft.input["options"];
+    return {
+      waits,
+      guess:
+        guessed && settled && !("problem" in settled)
+          ? { tables: of.draw(guessed, tables), options: settled }
+          : null,
+      draft:
+        thread && draft && isRecord(options)
+          ? { thread, seq: draft.seq, tables: of.draw(options, tables) }
+          : null,
+      drafting: thread && conversation.running(thread) ? { thread } : null,
+    };
+  };
+  // Whether a model runs the agent now, so it may draft: the scripted agent
+  // always does.
+  const drafts = () =>
+    options.agent !== undefined ||
+    !options.models ||
+    options.models.choose(store.get()).model !== null;
   // A draft's action is `source.configure`, the one draftable action: what
   // it would replace now is the options its connection has, and its name
   // the connection's.
@@ -981,11 +1141,11 @@ export async function createApp(options: AppOptions): Promise<App> {
           why,
           options: connection.options,
           validator: declaration.options,
-          preview: async () => {
-            const secret = await connections.secret(connection);
-            const via = { kept: true, log, now, fetch: windows.viaFor(connection.kind).fetch };
-            return (await declaration.preview?.({ ...connection, secret }, via)) ?? [];
-          },
+          ...(declaration.review
+            ? { draft: { validator: declaration.review.draft, doc: declaration.review.doc } }
+            : {}),
+          // The agent's read is always live.
+          preview: () => previewOf(connection, true),
         };
       }),
     );
@@ -1162,6 +1322,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     running: conversation.running,
     changeSets: sets,
     drafted,
+    drawn,
     sketchBase: options.sketchBase,
     get writable() {
       return opens().some(
@@ -1278,6 +1439,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       disconnect: ({ connection: id }) => disconnect(id as Ulid),
     },
     drafted,
+    settle: settleDraft,
     running: conversation.running,
     unsettled: async (threadId) =>
       Promise.all(
@@ -1428,12 +1590,17 @@ export async function createApp(options: AppOptions): Promise<App> {
         changed: 0,
         removed: 0,
       },
+      // Open, it still waits while its options don't fit, or it has none,
+      // and is signed out once its source turned its sign-in away.
       state:
-        open?.connection.id === connection.id
-          ? "open"
-          : unfit.has(kept.prefix)
+        open?.connection.id === connection.id && open.opened.signedOut?.()
+          ? "signed-out"
+          : whyWaits(kept) !== null ||
+              (open?.connection.id !== connection.id && unfit.has(kept.prefix))
             ? "waiting"
-            : "signed-out",
+            : open?.connection.id === connection.id
+              ? "open"
+              : "signed-out",
       flagged: byFlag.has(kept.id),
     };
   };
@@ -1611,6 +1778,21 @@ export async function createApp(options: AppOptions): Promise<App> {
       pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: (id, query) => windows.choices(live(id as Ulid), query),
       folderStep: (kind) => windows.folderStep(kind),
+      begin: (kind) => windows.begin(kind),
+      review: (id, fresh) => review(id as Ulid, fresh),
+      // The words that start a waiting connection's onboarding turn, when the
+      // agent may draft and none has started for it; null otherwise.
+      onboard: (id) => {
+        const connection = live(id as Ulid);
+        const step = declared(connection.kind).connect?.steps.find(
+          (each) => each.kind === "review",
+        );
+        const waits = waitingConnections().some((each) => each.connection.id === connection.id);
+        if (step?.kind !== "review" || !waits || !drafts() || onboarding.has(connection.id))
+          return null;
+        return step.ask;
+      },
+      onboarded: (id, thread) => void onboarding.set(id as Ulid, thread as Ulid),
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       setup,
       log,

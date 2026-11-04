@@ -61,6 +61,8 @@ import {
   fillJira as fillFirstRun,
   type FirstRunOptions,
   firstRunServer,
+  googleSignsIn,
+  timedSheets,
   jiraAccount,
   keepUntilDone,
   releaseAll,
@@ -188,6 +190,19 @@ const makeScript = (id: string) =>
     'workstream.create({ kind: "picked", name, items });',
     "return items.length;",
   ].join("\n");
+// The onboarding turn's draft (decision 0051): the tracker's first tab, by
+// letter, from the preview.
+const sheetsDraftScript = [
+  "const [waiting] = await source.preview();",
+  'const tracker = waiting.tables.find((table) => table.rows[0]?.[0] === "ID");',
+  "if (!tracker?.at) return null;",
+  "source.configure({ connection: waiting.connection, options: { tabs: [{",
+  '  at: tracker.at, header: 1, end: "blank", hidden: false,',
+  '  key: "A", title: "C", status: "D", assignee: "E", estimate: "F", link: "G",',
+  '  states: { todo: ["To do"], "in-progress": ["In progress", "Blocked"], done: ["Done"] },',
+  "}] } });",
+  "return waiting.tables.length;",
+].join("\n");
 // A PM's change: acceptance criteria drafted for a few of the region's stories.
 const criteriaScript = [
   'const stories = (await jira.listItems()).filter((item) => !item.gone && item.issueType === "Story").slice(0, 3);',
@@ -214,6 +229,13 @@ await show({ read: "jira.listStories", form: "bars", label: "assignee.name", val
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  if (/^Draft how Oriel should read\b/.test(input.text))
+    return [
+      { run: sheetsDraftScript },
+      {
+        text: "Each row of the tracker is an item, keyed by its ID, to the first blank row, so the notes below it aren't read. The Epic column stays content: its names aren't rows. Nothing is read until you apply it.",
+      },
+    ];
   const made =
     /^Make a workstream of the top candidate in Not in a workstream yet, ([a-z]+:\S+), with all its items\.$/.exec(
       input.text,
@@ -2514,6 +2536,37 @@ const useProject = async (page: Page) => {
 };
 const continueWithClaude = (page: Page) =>
   page.getByRole("button", { name: "Continue with Claude Code" }).click();
+// Google Sheets' row in the first run (decision 0051): its consent line, then,
+// past Google's page, its review in the row.
+const toSheets = async (page: Page) => {
+  await continueWithClaude(page);
+  await page
+    .locator(".provider-row", { hasText: "Google Sheets" })
+    .getByRole("button", { name: "Connect" })
+    .click();
+  await page.getByRole("link", { name: "Continue to Google" }).waitFor();
+};
+scenes.push(
+  {
+    name: "setup-sheets-consent",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, sheets: true }),
+    act: toSheets,
+  },
+  {
+    name: "setup-sheets-review",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true }, sheets: true }),
+    act: async (page) => {
+      await googleSignsIn(page.context());
+      await toSheets(page);
+      const popup = page.waitForEvent("popup");
+      await page.getByRole("link", { name: "Continue to Google" }).click();
+      await (await popup).close();
+      await page.getByText("The agent drafted how Oriel reads them.").waitFor();
+    },
+  },
+);
 scenes.push(
   {
     name: "setup-checking",
@@ -2954,6 +3007,48 @@ async function onboarding(): Promise<void> {
     await context.close();
   }
   await firstRunPaths();
+  await sheetsPath();
+}
+
+// Google Sheets' path through the first run (decision 0051), measured, not
+// guessed: with no token to type but one more turn, the draft's, timed apart.
+async function sheetsPath(): Promise<void> {
+  const data = mkdtempSync(join(tmpdir(), "oriel-shots-data-"));
+  const serving = await firstRunServer(
+    start,
+    (deps) => scriptedAgent(deps, planning),
+    async () => notes,
+    { cli: { signedIn: true }, data, sheets: true },
+  );
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await googleSignsIn(context);
+  const page = await context.newPage();
+  try {
+    const { ms, draftMs, tokens } = await timedSheets(page, serving.url);
+    console.log(
+      `first run, Google Sheets: ${(ms / 60_000).toFixed(2)} min from the first screen to the overview with its rows read, ${(draftMs / 1000).toFixed(1)}s of it the draft's turn`,
+    );
+    console.log(
+      `first run, Google Sheets: "token" appears ${tokens.map(([screen, n]) => `${n}× on ${screen}`).join(", ")}`,
+    );
+    if (ms > 5 * 60_000)
+      problems.push(
+        `first run, Google Sheets: ${(ms / 60_000).toFixed(2)} min, over the budget of 5`,
+      );
+    const total = tokens.reduce((sum, [, n]) => sum + n, 0);
+    if (total > 1)
+      problems.push(
+        `first run, Google Sheets: "token" appears ${total} times, over the budget of 1`,
+      );
+  } catch (error) {
+    problems.push(
+      `first run, Google Sheets: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
+    );
+    await page.screenshot({ path: fileURLToPath(new URL("first-run-sheets-stopped.png", out)) });
+  } finally {
+    await context.close();
+    keepUntilDone(data);
+  }
 }
 
 // The desktop app's onboarding budget (decision 0038): from the first run's

@@ -3,10 +3,14 @@
 // Add a connection (decision 0049). Each step kind is drawn here once, in
 // its connector's words: what the person types, with its help beside it;
 // one from a list the source gives; a folder step's path, from the folder picker or
-// by its typed path. A refusal names its fields and keeps the help on
-// screen (OA-125). And what the window says of a connector it offers, or of
-// a connection that read nothing.
+// by its typed path; a sign-in on the source's own page, in the person's
+// browser; and the options Oriel or the agent drafts, drawn from the source,
+// to apply. A refusal names its fields and keeps the help on screen
+// (OA-125). And what the window says of a connector it offers, or of a
+// connection that read nothing.
 import type { ComponentChildren } from "preact";
+import { useEffect } from "preact/hooks";
+import { ReviewTables } from "./block.tsx";
 import {
   type ConnectForm,
   type ConnectionsModel,
@@ -22,7 +26,7 @@ import {
 } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
-import type { ConnectField, ConnectorView, ConnectStep } from "./view.ts";
+import type { ConnectField, ConnectorView, ConnectStep, OptionsReviewView } from "./view.ts";
 
 type Step<K extends ConnectStep["kind"]> = Extract<ConnectStep, { kind: K }>;
 
@@ -216,6 +220,122 @@ export function PickStep(props: StepProps<"pick">) {
   );
 }
 
+// A browser step (decision 0050): what the person agrees to, said first,
+// then a link to the source's own page, which the desktop app opens in
+// their browser through its shell, so no command line holds the sign-in;
+// then a line while they finish there. Its sign-in begins as it shows.
+export function BrowserStep(props: StepProps<"browser">) {
+  const { connector, step, form, send } = props;
+  const { kind } = connector;
+  const steps = connector.connect?.steps ?? [];
+  const begins = form.signIn === null && form.pending === null && form.problem === null;
+  useEffect(() => {
+    if (begins) send({ type: "browserShown", kind });
+  }, [begins, kind]);
+  return (
+    <div class="connect-browser" role="group" aria-label={step.label}>
+      <p class="connect-consent">{step.consent}</p>
+      {form.pending === "connecting" && (
+        <p class="cli-line cli-waiting" role="status">
+          <span class="spinner" aria-hidden="true" />
+          {step.waiting}
+        </p>
+      )}
+      {form.problem && (
+        <p class="connect-problem" role="alert">
+          {form.problem}
+        </p>
+      )}
+      <div class="connect-actions">
+        {props.actions}
+        {form.pending === "connecting" ? null : form.signIn && form.pending === null ? (
+          <a
+            class="button primary"
+            href={form.signIn.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => send({ type: "browserOpened", kind, steps })}
+          >
+            {step.go}
+          </a>
+        ) : (
+          <button
+            type="button"
+            class="button primary"
+            disabled={form.pending !== null}
+            onClick={() => send({ type: "browserShown", kind })}
+          >
+            {form.problem ? "Try again" : step.go}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A review step (decision 0051): the connection's options as the agent
+// drafted them, or Oriel's guess until then, or with no AI, each drawn from
+// the source by Oriel, for the person to apply. It says whose it is.
+export function ReviewStep(props: StepProps<"review"> & { review: OptionsReviewView | null }) {
+  const { connector, step, form, send, review } = props;
+  const { kind } = connector;
+  const connection = form.made ?? "";
+  const shown = review?.draft ?? review?.guess ?? null;
+  if (!review || (!shown && review.drafting))
+    return (
+      <p class="cli-line cli-waiting" role="status">
+        <span class="spinner" aria-hidden="true" />
+        {step.reading}
+      </p>
+    );
+  const whose = review.draft
+    ? "The agent drafted how Oriel reads them."
+    : review.drafting
+      ? "Oriel's guess, while the agent drafts a better one."
+      : "Oriel's guess, from the first row and the first column with a value in every row.";
+  return (
+    <div class="connect-review" role="group" aria-label={step.label}>
+      <p class="connect-note">
+        <strong>{whose}</strong> {step.lede}
+      </p>
+      {shown ? (
+        <ReviewTables tables={shown.tables} />
+      ) : (
+        <p class="connect-none">
+          Oriel couldn't guess: no column has a different value in every row. Add one, such as an
+          ID, in the sheet, then try again.
+        </p>
+      )}
+      {form.problem && (
+        <p class="connect-problem" role="alert">
+          {form.problem}
+        </p>
+      )}
+      <div class="connect-actions">
+        {props.actions}
+        {shown ? (
+          <button
+            type="button"
+            class="button primary"
+            disabled={form.pending !== null}
+            onClick={() => send({ type: "reviewApplied", kind, connection })}
+          >
+            {form.pending === "applying" ? "Reading…" : "Apply"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            class="button"
+            onClick={() => send({ type: "reviewAsked", kind, connection, fresh: true })}
+          >
+            Try again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // A folder step: the system's folder picker on the desktop app, or a path typed under
 // `pnpm dev`, which has none. One that takes the place of the connector's
 // connection says so.
@@ -348,6 +468,30 @@ export function ConnectSteps(props: {
               Back
             </button>
           }
+        />
+      );
+    case "browser":
+      return (
+        <BrowserStep
+          connector={connector}
+          step={step}
+          form={form}
+          send={send}
+          actions={
+            <button type="button" class="quiet-action" onClick={props.onCancel}>
+              Cancel
+            </button>
+          }
+        />
+      );
+    case "review":
+      return (
+        <ReviewStep
+          connector={connector}
+          step={step}
+          form={form}
+          send={send}
+          review={connections.reviews[form.made ?? ""] ?? null}
         />
       );
     case folderStep: {

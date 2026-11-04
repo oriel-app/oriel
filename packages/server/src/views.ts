@@ -18,6 +18,7 @@ import {
   type Presentations,
   type Ulid,
   type Draft,
+  type ReviewTable,
   type Thread,
 } from "@oriel/core";
 import { plainError } from "@oriel/changeset";
@@ -63,6 +64,9 @@ export type ViewDeps = {
   // What a draft would replace now, and the name of what it sets; null when
   // that's gone (decision 0051).
   drafted: (draft: Draft) => { over: unknown; name: string } | null;
+  // A draft as Oriel draws it from its source, when its connector drafts in
+  // its own form; null otherwise.
+  drawn?: (draft: Draft) => ReviewTable[] | null;
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
@@ -445,6 +449,7 @@ export function views(deps: ViewDeps) {
         kind: "draft",
         connection: now && typeof id === "string" ? { id, name: now.name } : null,
         changes,
+        tables: outcome === null ? (deps.drawn?.(draft) ?? null) : null,
         stale: now === null || JSON.stringify(now.over) !== JSON.stringify(over),
         outcome,
       };

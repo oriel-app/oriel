@@ -1,0 +1,29 @@
+{
+  "id": "draft-sheets-tracker",
+  "split": "train",
+  "kind": 2,
+  "window": {
+    "workstreams": [{ "name": "Boarding", "region": "boarding-epic" }],
+    "at": "2026-10-01T12:00:00.000Z"
+  },
+  "unfit": {
+    "sheets": {
+      "spreadsheets": [{ "id": "1FwTrackerFixture000000000000000000000000000", "tabs": [] }]
+    }
+  },
+  "prompt": "Draft how Oriel should read the spreadsheets just picked.",
+  "expect": [
+    {
+      "grader": "drafts",
+      "calls": [
+        {
+          "action": "source.configure",
+          "kind": "sheets",
+          "golden": "tests/golden/sheets-tracker-draft.json"
+        }
+      ]
+    },
+    { "grader": "blocks", "form": "preview", "read": "source.preview" },
+    { "grader": "avoids", "text": ["I've applied", "I have applied", "is now syncing"] }
+  ]
+}

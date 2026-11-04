@@ -15,7 +15,10 @@ import type { OverviewSection } from "./overview.ts";
 //   `changeset.decided` minus `first-run.opened`, or on localhost, where
 //   there is no first run, minus `source.connected`
 // - each phase of the first run: the time between its events, Atlassian's
-//   page included, as the gap before `source.connected`
+//   page included, as the gap before `source.connected`; for Google Sheets
+//   (decision 0051), Google's page as that gap, the draft's turn from its
+//   onboarding `question.asked` to `draft.made`, and the review from there
+//   to `draft.applied`, or to `source.configured` for Oriel's guess
 // - time to done: from `thread.opened` to the thread's first
 //   `changeset.applied` or `thread.marked-done`, whichever came first
 // Where the user closed a thread from: its page, or a menu on a list, or a

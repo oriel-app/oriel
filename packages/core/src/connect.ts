@@ -6,6 +6,8 @@
 // `pnpm dev`, how a flag's live connection is made from `.env`. And what
 // every connection has, whatever its connector: its name and how often it
 // syncs.
+import type { PreviewTable } from "./block.ts";
+import type { Instant } from "./ids.ts";
 import type { ToOpen } from "./open.ts";
 import type { Log } from "./run.ts";
 import {
@@ -42,7 +44,10 @@ export type ConnectHelp = { intro: string; lines: readonly string[] };
 // from the system's picker through the shell, or a typed path under
 // `pnpm dev`, into `field`. `pick`: one from a list the connector fetches
 // from what the steps before gave, into `field`; each choice counts its
-// items as `counts` says one, such as "issue".
+// items as `counts` says one, such as "issue". `browser`: a sign-in in the
+// person's own browser, on the source's page, after a line saying what they
+// agree to (decision 0050). `review`: the options Oriel or the agent drafts
+// from what the connection reads, for the person to apply (decision 0051).
 export type ConnectStep =
   | {
       kind: "fields";
@@ -87,6 +92,28 @@ export type ConnectStep =
       counts: string;
       // The button, until one is picked: then it names the pick.
       use: string;
+    }
+  | {
+      kind: "browser";
+      label: string;
+      title: string;
+      lede: string;
+      // What the person agrees to, said before the source's page opens; the
+      // button that opens it; and the line while they finish there.
+      consent: string;
+      go: string;
+      waiting: string;
+    }
+  | {
+      kind: "review";
+      label: string;
+      title: string;
+      lede: string;
+      // The line while Oriel reads what a draft is made from, such as the
+      // headers; and the person's words that start the window chat's turn
+      // that drafts the options, which name nothing synced (decision 0051).
+      reading: string;
+      ask: string;
     };
 
 // How Settings draws one of a connector's options. `pick`: one from the list
@@ -141,6 +168,12 @@ export type ConnectVia = {
   // How requests reach the source: the global fetch unless given, as tests
   // give one that answers from memory.
   fetch?: typeof fetch;
+  // What its `client` names, as the composition root has them: Oriel's own
+  // client of the source, such as Google's, never a person's secret.
+  client?: Readonly<Record<string, string>>;
+  // The composition root's clock, which tokens' ends are read against;
+  // the system's when absent.
+  now?: () => Instant;
   // Whether any account or site may be connected, as on the desktop app;
   // otherwise only the ones Oriel's own tests use (SPEC §4).
   anywhere: boolean;
@@ -163,9 +196,12 @@ export type PickChoice = {
 // A connection as its connector made it: its options, and its secret as one
 // value. `reading`: what its first sync reads and how many records it
 // holds, for the first run's progress, when the source says.
+// `name`: what the window calls it, such as the account's email, when
+// the source says.
 export type Made = {
   options: Record<string, unknown>;
   secret?: string;
+  name?: string;
   reading?: { name: string; total: number | null };
 };
 
@@ -206,6 +242,25 @@ export type ConnectOf<G = unknown, P = unknown> = {
       via: ConnectVia,
     ): Promise<{ choices: PickChoice[]; more: boolean } | ConnectRefusal>;
   };
+  // A browser step's server half: a sign-in begun at `url`, which the window
+  // opens in the person's browser, and what it gave once they finished
+  // there, or why not. What it gives stays on the server.
+  browser?: {
+    begin(
+      via: ConnectVia,
+    ): Promise<{ url: string; done: Promise<G | ConnectRefusal> } | ConnectRefusal>;
+  };
+  // Oriel's own client of the source, such as Google's, by the `.env` names
+  // `pnpm dev` reads it from; the desktop app has it once its release build
+  // does. Without it, the window says `absent` and doesn't connect it.
+  client?: { env: readonly string[]; absent: string };
+  // Signed in again, its options, from those it had and those the steps
+  // gave; those it had, with the steps' over them, when absent. Sheets keeps
+  // its mappings and adds any spreadsheet picked anew.
+  again?(
+    kept: Readonly<Record<string, unknown>>,
+    made: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown>;
   // Whether a connection kept from an earlier start opens as this one
   // starts: false when its source turns it away now, as it does a revoked
   // token, so the window asks for it again. One that can't be reached opens.
@@ -262,3 +317,41 @@ export const settingNames = [
   "name",
   "every",
 ] as const satisfies readonly (keyof ConnectionSettings)[];
+
+// A draft of a connection's options as Oriel draws it from its source, never
+// from the drafter's words (decision 0051): each table it would read, with
+// each column by its name in the source, such as its letter, the header the
+// source has there and the field it would feed, if any; the first rows as
+// the source shows them; and what it reads and leaves out, in lines.
+export type ReviewTable = {
+  name: string;
+  columns: readonly { at: string; header: string | null; feeds: string | null }[];
+  rows: readonly (readonly (string | null)[])[];
+  lines: readonly string[];
+};
+
+// How Oriel helps a person set a connection's options while it waits for
+// them (decision 0051), from its preview. A draft names what it reads the
+// way the preview shows it, such as columns by letter, so a header can't
+// steer what the card says; applying it settles it into options against the
+// source as it is then, such as each letter's header.
+export type ReviewOf = {
+  // A draft, as the agent writes it and the card holds it, with a line on
+  // how to write one, in the connector's own words, for the agent's module.
+  draft: Described<Record<string, unknown>>;
+  doc: string;
+  // Whether options that check out still leave it nothing to read, as
+  // spreadsheets picked with no tab mapped do, so it waits for its options.
+  waits(options: Readonly<Record<string, unknown>>): boolean;
+  // Its options, from a draft and the preview read now, over the options it
+  // has; or why the draft no longer fits what the source shows.
+  settle(
+    draft: Readonly<Record<string, unknown>>,
+    tables: readonly PreviewTable[],
+    options: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> | { problem: string };
+  // Oriel's own guess at a draft, calling no model, as the card shows with
+  // no AI set up, or before the agent's draft arrives; null when it has none.
+  guess(tables: readonly PreviewTable[]): Record<string, unknown> | null;
+  draw(draft: Readonly<Record<string, unknown>>, tables: readonly PreviewTable[]): ReviewTable[];
+};

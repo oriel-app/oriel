@@ -521,7 +521,9 @@ function AddConnection(props: {
           const offer = connector.connect?.offer;
           const connectable = view.connectable.includes(connector.kind);
           const why = view.refused[connector.kind];
-          const open = connectable && formOf(connections, connector.kind).open;
+          // One just made stays open on its review step, until it applies.
+          const form = formOf(connections, connector.kind);
+          const open = (connectable || form.made !== null) && form.open;
           return (
             <li key={connector.kind} class="provider-row">
               <span class="provider-icon" aria-hidden="true">
@@ -530,7 +532,7 @@ function AddConnection(props: {
               <div class="provider-main">
                 <span class="provider-name">{connector.name}</span>
                 {offer && <span class="provider-about">{offer.about}</span>}
-                {!connectable && why && <span class="settings-field-about">{why}</span>}
+                {!connectable && !open && why && <span class="settings-field-about">{why}</span>}
                 {open && (
                   <ConnectSteps
                     connector={connector}

@@ -351,8 +351,9 @@ async function grade(
     if (expectation.grader === "drafts")
       grades.push(
         gradeDrafts(
-          expectation.calls.map(({ kind, ...call }) => ({
+          expectation.calls.map(({ kind, options, ...call }) => ({
             ...call,
+            options: options ?? {},
             connection: waitingConnectionId(kind),
           })),
           output.drafts ?? [],

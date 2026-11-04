@@ -33,7 +33,17 @@ export type OpenVia = {
   kept: boolean;
   log: Log;
   now: () => Instant;
+  // Oriel's own client of the source, as its connector's `client` names it,
+  // such as Google's, which refreshes a token. Absent where there's none.
+  client?: Readonly<Record<string, string>>;
+  // Keeps the connection's secret anew, as a refreshed token is, for its
+  // next start. Absent for a flag's connection, which keeps none.
+  keep?(secret: string): Promise<void>;
 };
+
+// Why a new connection waits, as one of a connector with a preview does
+// while its options don't check out (decision 0051).
+export const noOptionsYet = "It has no options yet.";
 
 // Why a connection can't open: its options no longer fit its source, such
 // as a channel they name gone, so it waits for its options (decision 0051),
@@ -94,6 +104,14 @@ export type Opened<C = unknown, R = unknown, W = unknown> = {
   // line each, such as rows that share a key, by row number, or what a cap
   // stopped. Settings shows them under the connection. None is empty.
   report?(): readonly string[];
+  // Whether its source turned its sign-in away since it opened, as Google
+  // refusing a refresh does: it reads as signed out, and signing in to it
+  // again in the window reopens it, keeping its number and items.
+  signedOut?(): boolean;
+  // Why its options no longer fit its source, from its last sync, such as a
+  // mapped column gone, so it waits for options (decision 0051); null
+  // while they fit.
+  unfit?(): string | null;
   // Why it's read-only whatever its `readOnly` option says, from its
   // records, as a spreadsheet the person can only view is: `all` when none
   // of it can be written, so Settings shows its switch locked.

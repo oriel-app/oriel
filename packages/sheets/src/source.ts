@@ -401,7 +401,10 @@ export function sheetsSource(options: SheetsSourceOptions): SheetsSource {
           next[pick.id] = { version: file.version, print: mappingPrint(pick) };
           continue;
         }
-        next[pick.id] = { version: file.version, print: read.print };
+        // A tab that stopped is read again next time, so its connection
+        // waits until the sheet or the mapping is fixed, across restarts.
+        const stopped = read.report.some((tab) => tab.stopped !== undefined);
+        next[pick.id] = { version: stopped ? "" : file.version, print: read.print };
         const { records, texts } = recordsOf(pick.id, read);
         const page: SyncPage<"sheets", SheetsAttrs> = {
           records,

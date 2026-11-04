@@ -85,6 +85,11 @@ export function connectionsOf(deps: {
       return result;
     },
 
+    // Keeps a connection's secret anew, as a refreshed token is.
+    async rekey(id: Ulid, secret: string): Promise<void> {
+      await secrets.set(secretName(id), secret);
+    },
+
     // Signs a live connection in again, with its options: the same ID,
     // number and items.
     async signIn(

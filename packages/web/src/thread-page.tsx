@@ -3,7 +3,7 @@
 // a diff with what can be done with it.
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect } from "preact/hooks";
-import { BlockFigure, SketchFigure } from "./block.tsx";
+import { BlockFigure, ReviewTables, SketchFigure } from "./block.tsx";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -516,39 +516,43 @@ function DraftCard(props: {
         <strong>The agent drafted</strong> how {name} reads its source.
         {waits && " Nothing changes until you apply it."}
       </p>
-      <dl class="draft-changes">
-        {block.changes.map((change) => (
-          <div key={change.option}>
-            <dt>{change.option}</dt>
-            {editing ? (
-              <dd>
-                <textarea
-                  class="held-field"
-                  rows={Math.min(Math.max(optionText(change.drafted).split("\n").length, 2), 8)}
-                  value={model.editing[optionKey(seq, change.option)] ?? ""}
-                  aria-label={`Edit ${change.option}`}
-                  disabled={busy}
-                  onInput={(event) =>
-                    send({
-                      type: "heldOptionEdited",
-                      seq,
-                      option: change.option,
-                      text: event.currentTarget.value,
-                    })
-                  }
-                />
-              </dd>
-            ) : (
-              <dd>
-                <span class="draft-was">{shownValue(change.was)}</span>
-                <span aria-hidden="true"> → </span>
-                <span class="visually-hidden"> becomes </span>
-                <span class="draft-to">{shownValue(change.drafted)}</span>
-              </dd>
-            )}
-          </div>
-        ))}
-      </dl>
+      {block.tables && !editing ? (
+        <ReviewTables tables={block.tables} />
+      ) : (
+        <dl class="draft-changes">
+          {block.changes.map((change) => (
+            <div key={change.option}>
+              <dt>{change.option}</dt>
+              {editing ? (
+                <dd>
+                  <textarea
+                    class="held-field"
+                    rows={Math.min(Math.max(optionText(change.drafted).split("\n").length, 2), 8)}
+                    value={model.editing[optionKey(seq, change.option)] ?? ""}
+                    aria-label={`Edit ${change.option}`}
+                    disabled={busy}
+                    onInput={(event) =>
+                      send({
+                        type: "heldOptionEdited",
+                        seq,
+                        option: change.option,
+                        text: event.currentTarget.value,
+                      })
+                    }
+                  />
+                </dd>
+              ) : (
+                <dd>
+                  <span class="draft-was">{shownValue(change.was)}</span>
+                  <span aria-hidden="true"> → </span>
+                  <span class="visually-hidden"> becomes </span>
+                  <span class="draft-to">{shownValue(change.drafted)}</span>
+                </dd>
+              )}
+            </div>
+          ))}
+        </dl>
+      )}
       {waits && block.stale ? (
         <div class="held-actions">
           <span class="held-note">

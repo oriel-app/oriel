@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
-import { bindingsFor, waitingOf } from "@oriel/bindings";
+import { bindingsFor, typecheck, waitingOf } from "@oriel/bindings";
 import { loadFixtures } from "./fixtures.ts";
 import { moduleOf, moduleSize, regionOf, shape } from "./module-size.ts";
 
@@ -121,4 +121,33 @@ test("a waiting connection's preview and draft add within their own budget, in t
   assert.ok(added > 0 && added <= drafting, `drafting adds ${added} bytes`);
   // No waiting connection, no source namespace.
   assert.doesNotMatch(chat, /declare const source/);
+});
+
+test("a waiting Sheets connection's draft, in its own form, typechecks in the window chat's module", async () => {
+  const sheets = fixtures.get("sheets")?.declaration;
+  assert.ok(sheets?.review);
+  const waiting = waitingOf([
+    {
+      id: "01JC0NNECT10N0000000000000",
+      kind: "sheets",
+      source: sheets.name,
+      why: "",
+      options: {},
+      validator: sheets.options,
+      draft: { validator: sheets.review.draft, doc: sheets.review.doc },
+      preview: async () => [],
+    },
+  ]);
+  assert.ok(waiting);
+  const reader = { read: async () => [], search: async () => [] };
+  const overview = async () => ({ view: null, items: [] });
+  const { dts } = bindingsFor(regionOf([]), { reader, namespaces: {}, overview, waiting });
+  const script = [
+    "const [waiting] = await source.preview();",
+    "source.configure({ connection: waiting.connection, options: { tabs: [{",
+    '  at: waiting.tables[0]?.at ?? "", header: 1, end: "blank", hidden: false, key: "A", title: "C",',
+    '  status: "D", states: { todo: ["To do"], "in-progress": ["In progress"], done: ["Done"] },',
+    "}] } });",
+  ].join("\n");
+  assert.equal(await typecheck(script, dts), null);
 });

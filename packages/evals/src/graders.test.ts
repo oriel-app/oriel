@@ -11,6 +11,7 @@ import {
   gradeNoSketch,
   gradeZeroMutations,
   gradeDrafts,
+  holds,
   judgeSystem,
 } from "./graders.ts";
 import { message, verdicts } from "./testing.ts";
@@ -449,4 +450,29 @@ test("drafts grade by action, connection and options, lists in any order", () =>
     gradeDrafts(want, [configure(["weather-disruptions", "random"]), configure(["random"])]).detail,
     /unexpected/,
   );
+});
+
+test("a draft holds a golden's tabs, leaves out what it sets to null, and may map more", () => {
+  const tab = { at: "s/1", key: "A", title: "C", parent: null };
+  assert.equal(
+    holds(
+      {
+        tabs: [
+          { at: "s/2", key: "B" },
+          { at: "s/1", key: "A", title: "C", status: "D" },
+        ],
+      },
+      { tabs: [tab] },
+    ),
+    true,
+  );
+  assert.equal(
+    holds({ tabs: [{ at: "s/1", key: "A", title: "C", parent: "B" }] }, { tabs: [tab] }),
+    false,
+  );
+  assert.equal(holds({ tabs: [{ at: "s/1", key: "B", title: "C" }] }, { tabs: [tab] }), false);
+  assert.equal(holds({ tabs: [] }, { tabs: [tab] }), false);
+  // Lists of values are equal, in any order.
+  assert.equal(holds({ done: ["Closed", "Done"] }, { done: ["Done", "Closed"] }), true);
+  assert.equal(holds({ done: ["Closed", "Open"] }, { done: ["Closed"] }), false);
 });

@@ -13,8 +13,17 @@ export const scope = "https://www.googleapis.com/auth/drive.file";
 export const spreadsheetType = "application/vnd.google-apps.spreadsheet";
 
 // Oriel's desktop client: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, never in
-// the repo.
+// the repo, as the composition root gives them by these names.
 export type GoogleClient = { id: string; secret: string };
+export const googleClientEnv = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const;
+
+export function googleClientOf(
+  client: Readonly<Record<string, string>> | undefined,
+): GoogleClient | null {
+  const id = client?.GOOGLE_CLIENT_ID?.trim();
+  const secret = client?.GOOGLE_CLIENT_SECRET?.trim();
+  return id && secret ? { id, secret } : null;
+}
 
 // The connection's secret (decision 0049), kept in memory until connections
 // keep it. `expiresAt` is in milliseconds since the epoch.
