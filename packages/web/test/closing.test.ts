@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { deletionWarning } from "../src/closing.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
-import { threadView } from "../testing.ts";
+import { connectors, threadView } from "../testing.ts";
 
 const threadId = "01JBZ0000000000000000000T1";
 const workstreamId = "01JBZ0000000000000000000G1";
@@ -142,17 +142,29 @@ test("a thread deleted in another tab says so on its page, which then watches th
 });
 
 test("what deleting would lose, in plain words", () => {
-  assert.equal(deletionWarning(nothing), "Its chat and any change sets not applied go for good.");
   assert.equal(
-    deletionWarning({ applied: 2, reverted: 1, unconfirmed: 0, sources: ["jira"] }),
+    deletionWarning(nothing, connectors),
+    "Its chat and any change sets not applied go for good.",
+  );
+  assert.equal(
+    deletionWarning({ applied: 2, reverted: 1, unconfirmed: 0, sources: ["jira"] }, connectors),
     "It made 2 changes in Jira. After deleting the thread you can no longer revert them from Oriel.",
   );
   assert.equal(
-    deletionWarning({ applied: 0, reverted: 2, unconfirmed: 0, sources: ["jira"] }),
+    deletionWarning({ applied: 0, reverted: 2, unconfirmed: 0, sources: ["jira"] }, connectors),
     "What it changed in Jira was reverted. Its chat goes for good.",
   );
+  // Each connection by its connector's name in a sentence, once, and one the
+  // page doesn't know by its prefix.
   assert.match(
-    deletionWarning({ applied: 0, reverted: 0, unconfirmed: 1, sources: [] }),
+    deletionWarning(
+      { applied: 1, reverted: 0, unconfirmed: 0, sources: ["jira", "folder", "jira.2", "memo"] },
+      connectors,
+    ),
+    /^It made 1 change in Jira and the folder and memo\./,
+  );
+  assert.match(
+    deletionWarning({ applied: 0, reverted: 0, unconfirmed: 1, sources: [] }, connectors),
     /^It sent 1 change to its source with no answer, so it may have been made\. After deleting the thread you can no longer revert it/,
   );
 });

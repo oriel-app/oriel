@@ -9,6 +9,8 @@ import {
   lockedPackages,
   postRoutes,
   problems,
+  webNamingSources,
+  webSourceNames,
 } from "./check-repo.ts";
 
 const lockfile = `lockfileVersion: '9.0'
@@ -510,6 +512,34 @@ test("a Chrome launch must be the installed Chrome with its sandbox on, and noth
   assert.ok(
     problems({ ...clean, sources: [{ path: "scripts/e.ts", text: "chromium.launch({})" }] }).some(
       (p) => p.startsWith("scripts/e.ts: launches Chrome"),
+    ),
+  );
+});
+
+test("the page names no source outside its tests and the files still listed (decision 0049)", () => {
+  const chip = "packages/web/src/chip.ts";
+  assert.deepEqual(webSourceNames(chip, `const readsAs = connectors[kind]?.keysReadAs;`), []);
+  for (const text of [
+    `const readsAs = { folder: "File" };`,
+    `// A Jira item's key.`,
+    `kind !== "SLACK"`,
+    `const sheetsIcon = "row";`,
+  ])
+    assert.match(
+      webSourceNames(chip, text)[0] ?? "",
+      /^packages\/web\/src\/chip\.ts: names a source/,
+    );
+  // Tests, and anything outside the page's src, may name them.
+  assert.deepEqual(webSourceNames("packages/web/src/chip.test.ts", `"jira:SYN-1"`), []);
+  assert.deepEqual(webSourceNames("packages/web/test/chip.test.ts", `"jira:SYN-1"`), []);
+  assert.deepEqual(webSourceNames("packages/server/src/app.ts", `jira`), []);
+  // A listed file may, until it no longer does.
+  const listed = Object.keys(webNamingSources)[0] ?? "";
+  assert.deepEqual(webSourceNames(listed, `import { jiraReady } from "./jira.ts";`), []);
+  assert.match(webSourceNames(listed, `const x = 1;`)[0] ?? "", /take it off webNamingSources/);
+  assert.ok(
+    problems({ ...clean, sources: [{ path: chip, text: `kind === "folder"` }] }).some((p) =>
+      p.startsWith(`${chip}: names a source`),
     ),
   );
 });

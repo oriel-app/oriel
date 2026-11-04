@@ -2422,7 +2422,7 @@ scenes.push(
     name: "setup-checking",
     path: "/setup",
     make: firstRun({ stillLooking: true }),
-    act: (page) => page.getByText("Looking for it on this Mac").waitFor(),
+    act: (page) => page.getByText("Looking for it on this Mac").first().waitFor(),
   },
   {
     name: "setup-ready",

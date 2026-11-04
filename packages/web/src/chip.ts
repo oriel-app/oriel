@@ -4,7 +4,7 @@
 // (`ChipView`), never from the agent's words. A rows block draws its items
 // the same way, so an item looks the same in a sentence and in a block.
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
-import { kindOfItem } from "./item-id.ts";
+import { connectorOf, type Connectors } from "./connectors.ts";
 import type { ChipView, ThreadStateId } from "./view.ts";
 
 // Where a thread stands, as a person says it: on its chip, its page and in
@@ -26,19 +26,21 @@ export const changeSetStateNames: Record<ChangeSetState, string> = {
   reverted: "reverted",
 };
 
-// A file's key is a hash and a message's is a channel ID and a time, which
-// mean nothing to anyone, so each reads as what the item is, by its source.
-const readsAs: Partial<Record<string, string>> = { folder: "File", slack: "Message" };
-
-// What a person reads for an item's key; its title says which file or message.
-export function keyLabel(item: { id: string; key: string }): string {
-  return readsAs[kindOfItem(item.id) ?? ""] ?? item.key;
+// What a person reads for an item's key: what its connector says its keys
+// read as, where a key means nothing to anyone, such as a hash; its title
+// says which.
+export function keyLabel(item: { id: string; key: string }, connectors: Connectors): string {
+  return connectorOf(connectors, item.id)?.keysReadAs ?? item.key;
 }
 
-// The key beside a chip's icon: none for a file or a message, which its icon
-// says it is.
-export const chipKey = (chip: ChipView): string | null =>
-  chip.kind === "item" && readsAs[chip.source] === undefined ? chip.key : null;
+// What an item chip's key reads as, by its source's kind, if not the key.
+const readsAs = (chip: Extract<ChipView, { kind: "item" }>, connectors: Connectors) =>
+  connectors[chip.source]?.keysReadAs ?? null;
+
+// The key beside a chip's icon: none for an item whose key reads as what it
+// is, which its icon says.
+export const chipKey = (chip: ChipView, connectors: Connectors): string | null =>
+  chip.kind === "item" && readsAs(chip, connectors) === null ? chip.key : null;
 
 // Where it stands, for its colour: an item's status category, a thread's or
 // a change set's state, or a workstream open or done.
@@ -79,8 +81,9 @@ const kindNames: Record<Exclude<ChipView["kind"], "item">, string> = {
 
 // What a chip says in full, to a screen reader and on hover: its kind or
 // key, its whole name, and where it stands.
-export function chipLabel(chip: ChipView): string {
-  const lead = chip.kind === "item" ? (readsAs[chip.source] ?? chip.key) : kindNames[chip.kind];
+export function chipLabel(chip: ChipView, connectors: Connectors): string {
+  const lead =
+    chip.kind === "item" ? (readsAs(chip, connectors) ?? chip.key) : kindNames[chip.kind];
   const state = chipStateName(chip);
   return `${lead}: ${chip.name}${state ? `, ${state.toLowerCase()}` : ""}`;
 }

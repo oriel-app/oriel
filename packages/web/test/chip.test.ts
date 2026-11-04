@@ -9,7 +9,7 @@ import { chipKey, chipLabel, chipName, chipState, chipStateName } from "../src/c
 import { chipIds, inline, parse, quoteKey, quotesFrom } from "../src/markdown.ts";
 import { init, type Model, update } from "../src/root.ts";
 import type { ChipView, ThreadView } from "../src/view.ts";
-import { threadView } from "../testing.ts";
+import { connectors, threadView } from "../testing.ts";
 
 const text = (text: string) => ({ kind: "text", text });
 const ulid = "01JBZ0000000000000000000T1";
@@ -128,10 +128,10 @@ test("each kind reads its key, name and where it stands, as a person says them",
   const workstream: ChipView = { kind: "workstream", name: "Fares", done: true };
   assert.deepEqual(
     [item, file, thread, set, workstream].map((chip) => [
-      chipKey(chip),
+      chipKey(chip, connectors),
       chipStateName(chip),
       chipState(chip),
-      chipLabel(chip),
+      chipLabel(chip, connectors),
     ]),
     [
       [
@@ -148,6 +148,29 @@ test("each kind reads its key, name and where it stands, as a person says them",
     ],
   );
   assert.equal(chipStateName({ kind: "workstream", name: "Fares", done: false }), "Open");
+});
+
+test("an item's key reads as its connector declares, and as the key where the page knows none", () => {
+  const row: ChipView = { ...item, source: "sheets", key: "1a2b-7", state: null };
+  const sheets = {
+    ...connectors,
+    sheets: {
+      kind: "sheets",
+      name: "Google Sheets",
+      inSentence: "Google Sheets",
+      icon: "row" as const,
+      keysReadAs: "Row",
+      columns: [],
+    },
+  };
+  assert.deepEqual([chipKey(row, sheets), chipLabel(row, sheets)], [null, `Row: ${item.name}`]);
+  // Before the page has heard how connectors show, or of one it doesn't
+  // know, an item reads by its key.
+  assert.deepEqual(
+    [chipKey(row, connectors), chipLabel(row, {})],
+    ["1a2b-7", `1a2b-7: ${item.name}`],
+  );
+  assert.equal(chipKey({ ...item, source: "folder" }, {}), "SYN-45");
 });
 
 test("a long name is cut at a word, and never through a character", () => {

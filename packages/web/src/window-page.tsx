@@ -1,11 +1,12 @@
 // The window: clusters under a grouping, and items to pick into a workstream.
 // Controls stay out of the way until something is picked or hovered.
-import { emptyJira, type JiraModel, type JiraMsg } from "./jira.ts";
-import { JiraDetails, JiraProjects } from "./jira-connect.tsx";
-import { kindOfItem } from "./item-id.ts";
+import type { ComponentChildren } from "preact";
+import { useContext } from "preact/hooks";
+import { columnsOf } from "./connectors.ts";
 import {
   Assignee,
   Chevron,
+  ConnectorsContext,
   type Dispatch,
   ItemLink,
   ItemListContext,
@@ -55,12 +56,12 @@ const groupingNames: Record<GroupingId, string> = {
 export function WindowPage(props: {
   model: Model;
   workstreams: WorkstreamSummary[] | null;
-  jira: JiraModel;
+  // What asks to connect a source, or says one connected has nothing yet.
+  connect: ComponentChildren;
   dispatch: Dispatch;
 }) {
-  const { model, workstreams, jira, dispatch } = props;
+  const { model, workstreams, dispatch } = props;
   const adding = workstreams?.find((workstream) => workstream.id === model.addTo) ?? null;
-  const empty = emptyJira(jira.view);
   return (
     <div class="window-layout">
       <main class="window" aria-busy={model.status === "loading"}>
@@ -80,72 +81,11 @@ export function WindowPage(props: {
             Pick items to add to <strong>{adding.name}</strong>.
           </p>
         )}
-        {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
-        {empty && <EmptyJira site={empty.site} project={empty.project} />}
+        {props.connect}
         <Body model={model} dispatch={dispatch} />
       </main>
       <Selection model={model} workstreams={workstreams} adding={adding} dispatch={dispatch} />
     </div>
-  );
-}
-
-// Until Jira is connected, the window asks for it first: the one place the
-// onboarding names the token, in its field's label.
-export function ConnectJira(props: {
-  jira: JiraModel;
-  // Only a folder is connected, which Oriel only reads (decision 0038).
-  folderOnly?: boolean;
-  dispatch: Dispatch;
-}) {
-  const { jira, dispatch } = props;
-  const send = (msg: JiraMsg) => dispatch({ type: "jira", msg });
-  return (
-    <section class="connect-jira" aria-labelledby="connect-jira-title">
-      <h2 id="connect-jira-title">
-        {jira.projects === null ? "Connect Jira" : "Which Jira project?"}
-      </h2>
-      <p class="connect-note">
-        {jira.projects !== null
-          ? "Jira accepted your details. Pick the project you work in."
-          : props.folderOnly
-            ? "Oriel only reads folders. Ask about your notes now; to have Oriel draft changes for you to approve, connect Jira."
-            : "Your epics and stories show here. Oriel changes them only when you approve a change."}
-      </p>
-      {jira.projects === null ? (
-        <JiraDetails jira={jira} send={send} />
-      ) : (
-        <JiraProjects
-          jira={jira}
-          send={send}
-          actions={
-            <button
-              type="button"
-              class="quiet-action"
-              onClick={() => send({ type: "changeClicked" })}
-            >
-              Back
-            </button>
-          }
-        />
-      )}
-    </section>
-  );
-}
-
-// Jira connected to a project with no issues yet: said in its place, so the
-// window doesn't look as if the connection failed.
-function EmptyJira({ site, project }: { site: string; project: string }) {
-  return (
-    <section class="empty-jira" aria-labelledby="empty-jira-title">
-      <h2 id="empty-jira-title">
-        <span class="connected-dot" aria-hidden="true" />
-        Jira is connected
-      </h2>
-      <p class="connect-note">
-        <strong>{project}</strong> on {site.replace(/^https?:\/\//, "")} has no issues yet. Epics
-        and stories made there show here when Oriel syncs Jira.
-      </p>
-    </section>
   );
 }
 
@@ -601,12 +541,8 @@ function More(props: {
 
 function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispatch: Dispatch }) {
   const { item, picked, dispatch } = props;
-  // Files and Slack messages carry no assignees or estimates (decisions 0019
-  // and 0021).
-  const kind = kindOfItem(item.id);
-  const tracked = kind !== "folder" && kind !== "slack";
-  // A Jira item whose board takes no estimates carries none either.
-  const estimated = tracked && !item.noEstimates;
+  const connectors = useContext(ConnectorsContext);
+  const columns = columnsOf(connectors, item);
   return (
     <li class={picked ? "item picked" : "item"}>
       <label class="pick">
@@ -619,7 +555,7 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
       </label>
       <ItemLink item={{ id: item.id, url: props.url }} class="key source-link">
         <span class="type" data-type={item.type.toLowerCase()} title={item.type} />
-        {keyLabel(item)}
+        {keyLabel(item, connectors)}
       </ItemLink>
       <span class="title" title={item.title}>
         {item.title}
@@ -627,20 +563,20 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
       <span class="status" data-category={item.status?.category}>
         {item.status?.name}
       </span>
-      {/* A file or a message has no assignee or estimate to lack: those stay
-          empty, or a message shows its replies there. */}
-      {tracked ? (
+      {columns.assignee ? (
         <Assignee name={item.assignee} />
       ) : (
         <span class="assignee">
-          {item.replies && <Replies id={item.id} replies={item.replies} />}
+          {columns.replies && item.replies && <Replies id={item.id} replies={item.replies} />}
         </span>
       )}
       <span
         class="points"
-        title={!estimated ? undefined : item.points === null ? "Unestimated" : points(item.points)}
+        title={
+          !columns.estimate ? undefined : item.points === null ? "Unestimated" : points(item.points)
+        }
       >
-        {estimated ? (item.points ?? "–") : ""}
+        {columns.estimate ? (item.points ?? "–") : ""}
       </span>
       <span
         class="idle"

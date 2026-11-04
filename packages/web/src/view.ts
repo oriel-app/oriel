@@ -8,6 +8,7 @@ import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
 export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
+export type { BrowseColumn, ConnectorIcon, ConnectorView } from "@oriel/core/connector-view";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
 export const groupingIds = ["epic", "assignee", "stuck", "linked"] as const;

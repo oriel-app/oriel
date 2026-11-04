@@ -1,3 +1,4 @@
+import type { ConnectorView } from "./connector-view.ts";
 import type { Cluster } from "./grouping.ts";
 import type { Instant, ItemId, SourceKind } from "./ids.ts";
 import type { IndexRecord } from "./source.ts";
@@ -22,12 +23,12 @@ export type Summary = {
 export type ItemDetails = { type: string; status: string; labels: string[]; replies?: number };
 export type DetailsOf = (record: IndexRecord) => ItemDetails | null;
 
-// How a source shows in the window: its name as a person knows it, such as
-// "Jira", and its items' details. `linked` names the item, by its key, that a
-// link into the source points at when the link isn't the item's location,
-// such as a chat reply's link, which is its message's.
-export type Presentation = {
-  name: string;
+// How a source shows in the window: its name, icon, keys and columns, which
+// the server sends the page (`ConnectorView`), and its items' details.
+// `linked` names the item, by its key, that a link into the source points at
+// when the link isn't the item's location, such as a chat reply's link,
+// which is its message's.
+export type Presentation = Omit<ConnectorView, "kind"> & {
   details: DetailsOf;
   linked?: (link: URL) => string | null;
 };

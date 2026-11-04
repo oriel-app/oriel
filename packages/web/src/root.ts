@@ -44,6 +44,7 @@ import {
   leftPage,
   updateEnding,
 } from "./ending.ts";
+import { type Connectors, connectorsReplied, loadConnectors, noConnectors } from "./connectors.ts";
 import { type Effect, get, type Replied, report, type Tag } from "./http.ts";
 import {
   initJira,
@@ -190,6 +191,8 @@ export type Model = {
   jira: JiraModel;
   // Every connected source, at the foot of the sidebar, to sync.
   sources: SourcesModel;
+  // How every connector shows, connected or not.
+  connectors: Connectors;
   // For the chrome: the workspace's workstreams and threads.
   workstreams: WorkstreamSummary[] | null;
   threads: ThreadSummaryView[] | null;
@@ -334,6 +337,7 @@ export function init(route: Route): [Model, Effect[]] {
     folder: initFolder(),
     jira: initJira(),
     sources: initSources(),
+    connectors: noConnectors,
     workstreams: null,
     threads: null,
     closing: initClosing(),
@@ -351,7 +355,9 @@ export function init(route: Route): [Model, Effect[]] {
   const settings = route.page === "review" || route.page === "settings" ? [] : [loadSettings];
   // The first run, which the overview and Settings show parts of too.
   const setup = route.page === "review" || route.page === "setup" ? [] : [loadSetup];
-  return withPanel(model, [...effects, ...settings, ...setup]);
+  // Nor does it show the person's items as the window does.
+  const connectors = route.page === "review" ? [] : [loadConnectors];
+  return withPanel(model, [...effects, ...settings, ...setup, ...connectors]);
 }
 
 // The panel follows the route: it opens, reading the item, when the route
@@ -900,6 +906,8 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
       const effects = [...watching, ...shown];
       return synced ? sourceSynced(next, effects) : [next, effects];
     }
+    case "connectors":
+      return [{ ...model, connectors: connectorsReplied(model.connectors, msg) }, []];
     case "sources":
     case "sourceSynced": {
       const { model: sources, synced } = sourcesReplied(model.sources, msg);

@@ -6,8 +6,8 @@
 // on screen (OA-125).
 import type { ComponentChildren } from "preact";
 import type { JiraField, JiraModel, JiraMsg } from "./jira.ts";
-import { jiraReady } from "./jira.ts";
-import { plural, useStamp } from "./parts.tsx";
+import { emptyJira, jiraReady } from "./jira.ts";
+import { type Dispatch, plural, useStamp } from "./parts.tsx";
 
 const atlassianPage = "https://id.atlassian.com/manage-profile/security/api-tokens";
 
@@ -189,5 +189,77 @@ export function JiraProjects(props: {
         </button>
       </div>
     </form>
+  );
+}
+
+// What Browse shows of Jira above its clusters: Connect Jira until it is
+// connected, and a project with no issues yet said in its place.
+export function JiraNotices({ jira, dispatch }: { jira: JiraModel; dispatch: Dispatch }) {
+  const empty = emptyJira(jira.view);
+  return (
+    <>
+      {jira.view?.connectable && <ConnectJira jira={jira} dispatch={dispatch} />}
+      {empty && <EmptyJira site={empty.site} project={empty.project} />}
+    </>
+  );
+}
+
+// Until Jira is connected, the window asks for it first: the one place the
+// onboarding names the token, in its field's label.
+export function ConnectJira(props: {
+  jira: JiraModel;
+  // Only a folder is connected, which Oriel only reads (decision 0038).
+  folderOnly?: boolean;
+  dispatch: Dispatch;
+}) {
+  const { jira, dispatch } = props;
+  const send = (msg: JiraMsg) => dispatch({ type: "jira", msg });
+  return (
+    <section class="connect-jira" aria-labelledby="connect-jira-title">
+      <h2 id="connect-jira-title">
+        {jira.projects === null ? "Connect Jira" : "Which Jira project?"}
+      </h2>
+      <p class="connect-note">
+        {jira.projects !== null
+          ? "Jira accepted your details. Pick the project you work in."
+          : props.folderOnly
+            ? "Oriel only reads folders. Ask about your notes now; to have Oriel draft changes for you to approve, connect Jira."
+            : "Your epics and stories show here. Oriel changes them only when you approve a change."}
+      </p>
+      {jira.projects === null ? (
+        <JiraDetails jira={jira} send={send} />
+      ) : (
+        <JiraProjects
+          jira={jira}
+          send={send}
+          actions={
+            <button
+              type="button"
+              class="quiet-action"
+              onClick={() => send({ type: "changeClicked" })}
+            >
+              Back
+            </button>
+          }
+        />
+      )}
+    </section>
+  );
+}
+
+// Jira connected to a project with no issues yet: said in its place, so the
+// window doesn't look as if the connection failed.
+function EmptyJira({ site, project }: { site: string; project: string }) {
+  return (
+    <section class="empty-jira" aria-labelledby="empty-jira-title">
+      <h2 id="empty-jira-title">
+        <span class="connected-dot" aria-hidden="true" />
+        Jira is connected
+      </h2>
+      <p class="connect-note">
+        <strong>{project}</strong> on {site.replace(/^https?:\/\//, "")} has no issues yet. Epics
+        and stories made there show here when Oriel syncs Jira.
+      </p>
+    </section>
   );
 }

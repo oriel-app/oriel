@@ -74,6 +74,8 @@ export type Tag =
   | { kind: "jira" }
   | { kind: "jiraConnected" }
   | { kind: "sources" }
+  // How every connector shows, from its declaration.
+  | { kind: "connectors" }
   // A source synced on demand, by its kind.
   | { kind: "sourceSynced"; source: string }
   // Settings, loaded, changed, or looked for again (OA-181).

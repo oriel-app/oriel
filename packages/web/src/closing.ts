@@ -2,6 +2,7 @@
 // done, as its page's button does, or deleting it, which asks once first and
 // says what deleting would lose. What else must reload once one closes is
 // the app's to say (root.ts).
+import type { Connectors } from "./connectors.ts";
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
 import type { DeletedView, DeletionView } from "./view.ts";
 
@@ -86,16 +87,15 @@ export function closingReplied(model: ClosingModel, msg: Replied): ClosingModel 
 export const deletedOf = (msg: Replied): DeletedView | null =>
   msg.ok && msg.tag.kind === "deleted" ? (msg.body as DeletedView) : null;
 
-const sourceNames: Record<string, string> = { jira: "Jira", folder: "the folder", slack: "Slack" };
-
 // What the person is told before deleting: what goes, and what deleting
-// would lose that the source keeps.
-export function deletionWarning(deletion: DeletionView): string {
+// would lose that the source keeps. Its sources are connections, by prefix
+// (`kind.2`), each named as its connector is in a sentence.
+export function deletionWarning(deletion: DeletionView, connectors: Connectors): string {
   const { applied, reverted, unconfirmed, sources } = deletion;
-  const where =
-    sources.length === 0
-      ? "its source"
-      : sources.map((source) => sourceNames[source] ?? source).join(" and ");
+  const names = sources.map(
+    (prefix) => connectors[prefix.split(".")[0] ?? ""]?.inSentence ?? prefix,
+  );
+  const where = names.length === 0 ? "its source" : [...new Set(names)].join(" and ");
   if (applied === 0 && unconfirmed === 0)
     return reverted === 0
       ? "Its chat and any change sets not applied go for good."

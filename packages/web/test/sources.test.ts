@@ -15,6 +15,8 @@ import {
   updateSources,
 } from "../src/sources.ts";
 import type { SourceView } from "../src/view.ts";
+import { columnsOf } from "../src/connectors.ts";
+import { connectors, connectorViews } from "../testing.ts";
 
 const source = (kind: string, name: string, syncedAt: string | null): SourceView => ({
   kind,
@@ -146,4 +148,43 @@ test("a workstream reloaded after a sync keeps an Ask that's still on its way", 
     replied({ kind: "workstreamSynced", id: "01JB0000000000000000000000" }, true, view),
   );
   assert.deepEqual([after.pending, after.draft, after.view], [true, "What's left?", view]);
+});
+
+test("the page hears how every connector shows once, and a review link's page doesn't ask", () => {
+  const asks = (effects: readonly { type: string; url?: string }[]) =>
+    effects.some((effect) => effect.type === "http" && effect.url === "/api/connectors");
+  const [overview, effects] = initRoot({ page: "overview" });
+  assert.ok(asks(effects));
+  assert.ok(!asks(initRoot({ page: "review", token: "t" })[1]));
+  const [heard] = updateRoot(
+    overview,
+    replied({ kind: "connectors" }, true, { connectors: connectorViews }),
+  );
+  assert.deepEqual(heard.connectors, connectors);
+  // A failed load keeps what the page had.
+  const [kept] = updateRoot(heard, replied({ kind: "connectors" }, false, { error: "no" }));
+  assert.equal(kept.connectors, heard.connectors);
+});
+
+test("Browse fills the columns each item's connector declares", () => {
+  const columns = (id: string, noEstimates?: true) =>
+    columnsOf(connectors, { id, ...(noEstimates && { noEstimates }) });
+  assert.deepEqual(columns("jira:SYN-1"), { assignee: true, estimate: true, replies: false });
+  assert.deepEqual(columns("jira.2:ACME-4", true), {
+    assignee: true,
+    estimate: false,
+    replies: false,
+  });
+  assert.deepEqual(columns("folder:0123456789abcdef"), {
+    assignee: false,
+    estimate: false,
+    replies: false,
+  });
+  assert.deepEqual(columns("slack:C0A1B2C3D-1759309200.000100"), {
+    assignee: false,
+    estimate: false,
+    replies: true,
+  });
+  // A connector the page hasn't heard of fills none.
+  assert.deepEqual(columns("sheets:1a2b-7"), { assignee: false, estimate: false, replies: false });
 });

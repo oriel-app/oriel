@@ -4,6 +4,7 @@
 // kind's key shape is its declaration's (decision 0049).
 import {
   type Candidate,
+  type ConnectorView,
   type IndexRecord,
   itemOrder,
   kindOf,
@@ -68,6 +69,13 @@ function each<T>(
     }),
   );
 }
+
+// How every connector shows in the window, in declared order, which the
+// server sends the page (decision 0049).
+export const connectorViews: readonly ConnectorView[] = sourceKinds.map((kind) => {
+  const { name, inSentence, icon, keysReadAs, columns } = sources[kind];
+  return { kind, name, inSentence, icon, keysReadAs, columns };
+});
 
 // What each source's items are, as bindings' `items` takes them.
 export const itemDocs = each((declaration) => declaration.itemDoc);

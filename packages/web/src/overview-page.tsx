@@ -6,6 +6,7 @@
 // count of them points to (OA-185). Every number and line is the server's,
 // computed, never generated; each derived one shows its rule.
 import type { ComponentChildren } from "preact";
+import { useContext } from "preact/hooks";
 import type { OverviewSection } from "@oriel/core/overview";
 import { WindowUndos } from "./end-workstream.tsx";
 import type { EndingModel } from "./ending.ts";
@@ -15,6 +16,7 @@ import type { Route } from "./route.ts";
 import { shown } from "./overview.ts";
 import { needsYouId } from "./sidebar.tsx";
 import {
+  ConnectorsContext,
   type Dispatch,
   ItemLink,
   ItemListContext,
@@ -32,7 +34,8 @@ import type {
   PersonRowView,
   WorkstreamRowView,
 } from "./view.ts";
-import { ConnectJira, StatusBar } from "./window-page.tsx";
+import { ConnectJira } from "./jira-connect.tsx";
+import { StatusBar } from "./window-page.tsx";
 import { AskBar } from "./window-chat-view.tsx";
 import type { WindowChatModel } from "./window-chat.ts";
 
@@ -418,9 +421,10 @@ function Headline(props: { line: HeadlineView; lastSeen: string | null; dispatch
 
 // An item, by its key and title, opening in the panel.
 function Item({ item }: { item: ItemRef }) {
+  const connectors = useContext(ConnectorsContext);
   return (
     <ItemLink item={item} class="overview-title">
-      <span class="key">{keyLabel(item)}</span> {item.title ?? "Not in the window"}
+      <span class="key">{keyLabel(item, connectors)}</span> {item.title ?? "Not in the window"}
     </ItemLink>
   );
 }
