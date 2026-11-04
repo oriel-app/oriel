@@ -105,7 +105,7 @@ export async function live(
 }
 
 // The default browser, by the system's own opener.
-const openBrowser = (url: string) =>
+export const openBrowser = (url: string) =>
   new Promise<void>((resolve, reject) =>
     execFile(process.platform === "darwin" ? "open" : "xdg-open", [url], (error) =>
       error ? reject(error) : resolve(),
