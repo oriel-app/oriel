@@ -12,7 +12,15 @@ test("every source declares its facets beyond the common ones, each with a label
         Object.entries(sources[kind].facets).map(([key, facet]) => [key, facet.label]),
       ]),
     ),
-    { jira: [["estimate", "Estimate"]], folder: [], slack: [["replies", "Replies"]] },
+    {
+      jira: [["estimate", "Estimate"]],
+      folder: [],
+      slack: [["replies", "Replies"]],
+      sheets: [
+        ["estimate", "Estimate"],
+        ["status", "Status"],
+      ],
+    },
   );
 });
 

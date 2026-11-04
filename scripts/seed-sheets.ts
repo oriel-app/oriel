@@ -48,7 +48,7 @@ import {
   within,
 } from "../packages/sheets/src/fixture.ts";
 import { type Fetch, signIn, spreadsheetType } from "../packages/sheets/src/index.ts";
-import { loadSheetsFixture } from "./fixtures/sheets.ts";
+import { loadSheetsFixture } from "../packages/sheets/src/fixture.ts";
 import { liveEnv, openBrowser } from "./sheets-live.ts";
 
 const drive = "https://www.googleapis.com/drive/v3";

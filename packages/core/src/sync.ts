@@ -20,7 +20,7 @@ import type { Validator } from "./validate.ts";
 // their texts, and the item IDs each record's text names, by stable ID,
 // for the index to resolve. A record left out of `references` keeps what it
 // had.
-export type IndexPage = Omit<SyncPage, "texts"> & {
+export type IndexPage = Omit<SyncPage, "texts" | "swept" | "held"> & {
   references?: Readonly<Record<string, readonly ItemId[]>>;
 };
 
@@ -106,6 +106,9 @@ export async function syncSource<K extends SourceKind, A>(
   // can't be indexed still exists, so a full sweep mustn't mark it gone.
   const seen = new Set<string>();
   let last: string | null = null;
+  // What the source says it listed in full, or couldn't read (`SyncPage`).
+  const swept: string[] = [];
+  const held: string[] = [];
   let records = 0;
   let skipped = 0;
   let gone = 0;
@@ -134,6 +137,8 @@ export async function syncSource<K extends SourceKind, A>(
         return [[record.stableId, named]];
       }),
     );
+    swept.push(...(page.swept ?? []));
+    held.push(...(page.held ?? []));
     run.apply({ records: valid, gone: page.gone, cursor: page.cursor, references });
     records += valid.length;
     gone += page.gone.length;
@@ -189,8 +194,11 @@ export async function syncSource<K extends SourceKind, A>(
       ...(read.texts ? { texts: read.texts } : {}),
     });
   }
-  if (full) {
-    const missing = index.liveStableIds(workspaceId, prefix).filter((id) => !seen.has(id));
+  const under = (parts: readonly string[], id: string) => parts.some((part) => id.startsWith(part));
+  if (full || swept.length) {
+    const missing = index
+      .liveStableIds(workspaceId, prefix)
+      .filter((id) => !seen.has(id) && (full || under(swept, id)) && !under(held, id));
     if (missing.length) run.apply({ records: [], gone: missing, cursor: last });
     gone += missing.length;
   }

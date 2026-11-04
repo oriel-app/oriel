@@ -89,6 +89,14 @@ export type SyncPage<K extends SourceKind = SourceKind, A = unknown> = {
   // in, beside the record and never in it. The index never stores it. A
   // record with none keeps the references it had.
   texts?: Readonly<Record<string, string>>;
+  // Parts of the source this sync lists in full, by the start their stable
+  // IDs share, for a source that reads only what moved, such as one
+  // spreadsheet's tab: what the index has under one and the sync didn't
+  // return is gone, as in a full sweep.
+  swept?: readonly string[];
+  // Parts it couldn't read this time, the same way: what the index has under
+  // one stays as it is, even in a full sweep, as after a failed sync.
+  held?: readonly string[];
 };
 
 // A live read. Every item's content has its title and its text, so any item

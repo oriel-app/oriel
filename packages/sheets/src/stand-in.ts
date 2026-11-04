@@ -48,6 +48,10 @@ export const sheetsOrigin = "https://sheets.googleapis.com";
 export type StandInOptions = {
   // The access token every request must carry.
   token?: string;
+  // Answers `spreadsheets.get` with every tab even when `ranges` names
+  // some, the other way Google's reference leaves open, so a test can show
+  // a reader keeps only the tabs it asked for.
+  everyTab?: boolean;
 };
 
 export type StandInCall = { method: string; url: string };
@@ -493,9 +497,10 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
         picked.set(tab, [...(picked.get(tab) ?? []), within(bounds, grid)]);
       }
     }
-    // With ranges, only the tabs they name. Google's page doesn't say so;
-    // it is what Google answers, and a live read should confirm it.
-    const tabs = picked ? file.tabs.filter((tab) => picked.has(tab)) : file.tabs;
+    // With ranges, only the tabs they name. Google's page doesn't say so,
+    // and a live read should confirm it; `everyTab` answers the other way.
+    const tabs =
+      picked && !options.everyTab ? file.tabs.filter((tab) => picked.has(tab)) : file.tabs;
     const answer = {
       spreadsheetId: file.id,
       properties: {
