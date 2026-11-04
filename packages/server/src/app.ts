@@ -34,6 +34,7 @@ import {
   type ToOpen,
   type Ulid,
   ulid,
+  unknown,
 } from "@oriel/core";
 import {
   type Connection,
@@ -284,6 +285,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     log,
   });
   await windows.beforeOpen();
+  // Kept connections that didn't open, as one whose account its source
+  // turned away: what the index has of them still shows, but nothing reads
+  // or writes them until a person signs in again.
+  const shut = new Map<string, Connection>();
   for (const kind of sourceKinds) {
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
@@ -311,7 +316,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     const connection = windows.kept(kind) ? connections.first(kind) : null;
     if (!connection) continue;
     const secret = await connections.secret(connection);
-    if (!(await windows.vet(connection, secret))) continue;
+    if (!(await windows.vet(connection, secret))) {
+      shut.set(connection.prefix, connection);
+      continue;
+    }
     try {
       const opened = await openOne(
         kind,
@@ -320,6 +328,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       );
       byPrefix.set(connection.prefix, { connection, opened });
     } catch (error) {
+      shut.set(connection.prefix, connection);
       log("connections: one couldn't open", {
         kind,
         number: connection.number,
@@ -333,9 +342,20 @@ export async function createApp(options: AppOptions): Promise<App> {
 
   const recordsOf = ({ connection, opened }: Open) =>
     index.records(workspaceId, connection.prefix, opened.attrs);
-  // Only open connections' records: a server started without one keeps what
-  // an earlier one indexed, which nothing can read now.
-  const records = (): IndexRecord[] => opens().flatMap(recordsOf);
+  // Open and shut connections' prefixes, in declared order. A server
+  // started without a connection a flag made keeps what an earlier one
+  // indexed, which nothing can read now, out of the window.
+  const indexed = (): string[] =>
+    sourceKinds.flatMap((kind) =>
+      [...opens(), ...[...shut.values()].map((connection) => ({ connection }))]
+        .filter((each) => each.connection.kind === kind)
+        .map((each) => each.connection.prefix),
+    );
+  const records = (): IndexRecord[] =>
+    indexed().flatMap((prefix) => {
+      const each = byPrefix.get(prefix);
+      return each ? recordsOf(each) : index.records(workspaceId, prefix, unknown);
+    });
   const synced = (prefix: string) => {
     const each = byPrefix.get(prefix);
     return {
@@ -582,10 +602,8 @@ export async function createApp(options: AppOptions): Promise<App> {
           return kept.connection;
         });
         byPrefix.set(connection.prefix, { connection, opened });
-        // The writers are built with the change sets: built again, into this
-        // same object, everything holding it writes through the connection
-        // from then on.
-        Object.assign(sets, buildSets());
+        shut.delete(connection.prefix);
+        sets.rewire(wiring());
         if (first) connected(connection);
         return { connection };
       } catch (error) {
@@ -615,9 +633,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      // The connections open now, by their prefixes.
-      const prefixes = opens().map((each) => each.connection.prefix);
-      return index.search(workspaceId, query, limit, prefixes).map((record) => ({
+      // The connections open or shut now, by their prefixes.
+      return index.search(workspaceId, query, limit, indexed()).map((record) => ({
         id: record.id,
         title: record.title,
         location: record.location,
@@ -663,7 +680,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
     });
 
-  const buildSets = () => {
+  const wiring = () => {
     const writable = opens().flatMap(({ connection, opened }) =>
       opened.writes === undefined
         ? []
@@ -688,25 +705,27 @@ export async function createApp(options: AppOptions): Promise<App> {
           : [],
       ),
     ]);
-    return changeSets({
-      db,
+    return {
       writerConfig: writable,
       readers,
       names: Object.fromEntries(
         writable.map(({ prefix }) => [prefix, async (id: string) => people().get(id) ?? null]),
       ),
-      specs,
-      reviewBase: options.reviewBase,
-      now,
-      emit,
-      log,
-    });
+    };
   };
   // The writers are built with the change sets. Connecting from the window
-  // builds them again, into this same object, so everything holding it
-  // writes through the connection from then on. Nothing can be applying
-  // then: with no writer, no change set can be approved.
-  const sets = buildSets();
+  // builds them again, in place, so everything holding the change sets
+  // writes through the connection from then on, and an apply running then
+  // keeps its writer.
+  const sets = changeSets({
+    db,
+    ...wiring(),
+    specs,
+    reviewBase: options.reviewBase,
+    now,
+    emit,
+    log,
+  });
 
   let deno: Sandbox | null = null;
   const sandbox: Sandbox = options.sandbox ?? {
