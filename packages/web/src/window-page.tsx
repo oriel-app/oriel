@@ -2,6 +2,7 @@
 // Controls stay out of the way until something is picked or hovered.
 import { emptyJira, type JiraModel, type JiraMsg } from "./jira.ts";
 import { JiraDetails, JiraProjects } from "./jira-connect.tsx";
+import { kindOfItem } from "./item-id.ts";
 import {
   Assignee,
   Chevron,
@@ -602,7 +603,8 @@ function Item(props: { item: ItemRow; picked: boolean; url: string | null; dispa
   const { item, picked, dispatch } = props;
   // Files and Slack messages carry no assignees or estimates (decisions 0019
   // and 0021).
-  const tracked = !item.id.startsWith("folder:") && !item.id.startsWith("slack:");
+  const kind = kindOfItem(item.id);
+  const tracked = kind !== "folder" && kind !== "slack";
   // A Jira item whose board takes no estimates carries none either.
   const estimated = tracked && !item.noEstimates;
   return (

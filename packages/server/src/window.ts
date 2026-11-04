@@ -5,7 +5,6 @@ import {
   type IndexRecord,
   type Instant,
   parseItemId,
-  sourceKinds,
 } from "@oriel/core";
 import { matchesSearch, searchTerms } from "@oriel/db";
 import {
@@ -17,7 +16,7 @@ import {
   linkedGrouping,
   stuckGrouping,
 } from "@oriel/groupings";
-import { sources } from "@oriel/sources";
+import { byItemId, sourceKinds, sources } from "@oriel/sources";
 import {
   type BrowseFilter,
   type Choice,
@@ -40,8 +39,12 @@ export const groupings: Record<GroupingId, Grouping> = {
 // title, as search() matches; the source; the status category; the assignee;
 // none an open workstream holds (`held`). Null when nothing is filtered.
 export type Keep = (record: IndexRecord) => boolean;
-export function keepOf(filter: BrowseFilter, held: () => Keep): Keep | null {
-  const { terms } = searchTerms(filter.q ?? "");
+export function keepOf(
+  filter: BrowseFilter,
+  held: () => Keep,
+  prefixes: ReadonlySet<string>,
+): Keep | null {
+  const { terms } = searchTerms(filter.q ?? "", prefixes);
   const { q, source, status, assignee, workstream } = filter;
   if (!q && !source && !status && !assignee && !workstream) return null;
   // Only a filter that asks reads what the workstreams hold.
@@ -50,7 +53,7 @@ export function keepOf(filter: BrowseFilter, held: () => Keep): Keep | null {
   // search().
   return (record) =>
     (!q || (terms.length > 0 && matchesSearch(record, terms))) &&
-    (!source || parseItemId(record.id)?.source === source) &&
+    (!source || parseItemId(record.id)?.kind === source) &&
     (!status || record.facets.state === status) &&
     (!assignee || assigneeOf(record)?.id === assignee) &&
     (!workstream || !holds(record));
@@ -59,7 +62,9 @@ export function keepOf(filter: BrowseFilter, held: () => Keep): Keep | null {
 // What the filters can pick from: the sources the index has items from, in
 // their usual order, and the people assigned an item, by name.
 function choices(records: readonly IndexRecord[]): { sources: Choice[]; people: Choice[] } {
-  const present = new Set(records.map((record) => parseItemId(record.id)?.source));
+  const present = new Set<string | undefined>(
+    records.map((record) => parseItemId(record.id)?.kind),
+  );
   const people = new Map<string, string>();
   for (const record of records) {
     const person = assigneeOf(record);
@@ -128,7 +133,7 @@ export function windowView(
   now: Instant,
   fixture: boolean,
 ): WindowView {
-  return clustersView(id, grouping.group(records, now), records, now, fixture, true);
+  return clustersView(id, grouping.group(records, now, byItemId), records, now, fixture, true);
 }
 
 // Browse's first reply: the clusters as rows, with no items yet. Under a
@@ -142,7 +147,7 @@ export function browseView(
   fixture: boolean,
   keep: Keep | null = null,
 ): WindowView {
-  const clusters = grouping.group(records, now);
+  const clusters = grouping.group(records, now, byItemId);
   const all = clustersView(id, clusters, records, now, fixture, false);
   const view = { ...all, choices: choices(records) };
   if (!keep) return view;
@@ -186,7 +191,7 @@ export function clusterPage(
   from: number,
   keep: Keep | null = null,
 ): ClusterPageView | null {
-  const cluster = grouping.group(records, now).find((each) => each.key === key);
+  const cluster = grouping.group(records, now, byItemId).find((each) => each.key === key);
   if (!cluster) return null;
   const known = new Map(records.map((record) => [record.id, record]));
   const present = cluster.itemIds.filter((item) => {

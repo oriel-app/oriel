@@ -70,11 +70,7 @@ export const jiraAttrs = object({
   labels: array(string),
 }) satisfies Validator<JiraAttrs>;
 
-const jiraId = refine(
-  string,
-  (id): id is ItemId<"jira"> => parseItemId(id)?.source === "jira",
-  "expected a Jira item ID",
-);
+const jiraId = refine(string, isJiraId, "expected a Jira item ID");
 const state = union(literal("todo"), literal("in-progress"), literal("done"));
 
 // What a read returns, checked where it is used: a reader may sit behind any
@@ -105,7 +101,7 @@ export const jiraContent = object({
 
 // A record's Jira attrs, or null for another source's item.
 export function jiraAttrsOf(record: IndexRecord): JiraAttrs | null {
-  if (parseItemId(record.id)?.source !== "jira") return null;
+  if (parseItemId(record.id)?.kind !== "jira") return null;
   const parsed = jiraAttrs(record.attrs);
   return parsed.ok ? parsed.value : null;
 }
@@ -117,6 +113,15 @@ export const jiraDetails: DetailsOf = (record) => {
   const attrs = jiraAttrsOf(record);
   return attrs && { type: attrs.issueType, status: attrs.status, labels: [...attrs.labels] };
 };
+
+// An issue's key, such as SYN-12: its project's key and its number.
+export const jiraKeyShape = /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/;
+
+// An item ID of Jira's, from any Jira connection, with an issue's key.
+export function isJiraId(id: string): id is ItemId<"jira"> {
+  const parsed = parseItemId(id);
+  return parsed?.kind === "jira" && jiraKeyShape.test(parsed.key);
+}
 
 export const jiraPresentation: Presentation = { name: "Jira", details: jiraDetails };
 

@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, type IndexRecord, instant } from "@oriel/core";
+import { type Cluster, type IndexRecord, instant, itemOrder } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
 import { clusterZoom, itemZoom, listZoom } from "./zoom.ts";
+
+// Item IDs in declared kind order, as the composition root gives it.
+const order = itemOrder(["jira", "folder", "slack"]);
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
@@ -21,7 +24,7 @@ const cluster = (clusters: Cluster[], key: string) => {
 
 test("the epic row counts and sums its epic's items, and names their source", () => {
   // Checkout, after SYN-88 moved out of it.
-  const checkout = cluster(epicGrouping.group(current, now), "10001");
+  const checkout = cluster(epicGrouping.group(current, now, order), "10001");
   const row = clusterZoom(now, sources).view(checkout, current);
   assert.deepEqual(
     { ...row, anchor: row.anchor?.key },
@@ -39,7 +42,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
     },
   );
   const none = clusterZoom(now, sources).view(
-    cluster(epicGrouping.group(current, now), "no-epic"),
+    cluster(epicGrouping.group(current, now, order), "no-epic"),
     current,
   );
   assert.deepEqual(none.origin, { kind: "source", source: "Jira" });
@@ -48,7 +51,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
 });
 
 test("a derived row carries its rule, and its story list agrees with it", () => {
-  const idle = cluster(stuckGrouping.group(current, now), "no-update-14-days");
+  const idle = cluster(stuckGrouping.group(current, now, order), "no-update-14-days");
   const row = clusterZoom(now, sources).view(idle, current);
   assert.deepEqual(row.origin, {
     kind: "derived",
@@ -71,7 +74,7 @@ test("a derived row carries its rule, and its story list agrees with it", () => 
 
 test("the story list keeps the cluster's order and skips IDs the index no longer has", () => {
   // The boarding epic as grouped before SYN-27 was deleted.
-  const boarding = cluster(epicGrouping.group(base, now), "10002");
+  const boarding = cluster(epicGrouping.group(base, now, order), "10002");
   assert.ok(boarding.itemIds.includes("jira:SYN-27"));
   const list = listZoom(now, sources).view(boarding, current);
   assert.deepEqual(
@@ -82,7 +85,7 @@ test("the story list keeps the cluster's order and skips IDs the index no longer
 });
 
 test("the item view shows what the index has, with the epic by title", () => {
-  const weather = cluster(epicGrouping.group(current, now), "10003");
+  const weather = cluster(epicGrouping.group(current, now, order), "10003");
   const [moved] = itemZoom(now, sources).view({ ...weather, itemIds: ["jira:SYN-88"] }, current);
   assert.deepEqual(moved, {
     id: "jira:SYN-88",
@@ -103,7 +106,7 @@ test("the item view shows what the index has, with the epic by title", () => {
   const without = current.filter((record) => record.id !== "jira:SYN-3");
   const [orphan] = itemZoom(now, sources).view({ ...weather, itemIds: ["jira:SYN-88"] }, without);
   assert.deepEqual(orphan?.epic, { id: "jira:SYN-3", key: "SYN-3", title: null });
-  const loose = cluster(epicGrouping.group(current, now), "no-epic");
+  const loose = cluster(epicGrouping.group(current, now, order), "no-epic");
   assert.ok(
     itemZoom(now, sources)
       .view(loose, current)

@@ -22,6 +22,7 @@ import {
   object,
   optional,
   agentNote,
+  parseItemId,
   refine,
   type Result,
   string,
@@ -207,7 +208,7 @@ const evalCaseShape = object({
     atLeastOne(
       refine(
         string,
-        (id): id is ItemId<"slack"> => isItemId(id) && id.startsWith("slack:"),
+        (id): id is ItemId<"slack"> => parseItemId(id)?.kind === "slack",
         "expected a Slack item ID like slack:C0123456789-1788444000.000100",
       ),
     ),
@@ -398,7 +399,7 @@ function loadCase(
         problems.push(`$.expect[${i}].file: not one of the case's files`);
       return;
     }
-    if (e.item.startsWith("slack:")) {
+    if (parseItemId(e.item)?.kind === "slack") {
       // The window chat's overview shows the picked channel's messages.
       if (!(evalCase.window ? posted.has(e.item) : messages.includes(e.item)))
         problems.push(`$.expect[${i}].item: not one of the case's messages`);

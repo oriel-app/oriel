@@ -1,4 +1,5 @@
 import type { DeclaredFacets } from "./change-log.ts";
+import type { SourceKind } from "./ids.ts";
 import type { NamespaceSpec } from "./namespace.ts";
 import type { OpSpecs } from "./ops.ts";
 import type { OverviewOf } from "./overview.ts";
@@ -16,6 +17,12 @@ import type { Presentation } from "./zoom.ts";
 // declaration `satisfies SourceDeclaration<C>`, so the list in
 // packages/sources sees its namespace and asks for its context.
 export type SourceDeclaration<C = never, R = never> = Presentation & {
+  // Its name in item IDs and in the agent's module, such as `jira`: a short
+  // lowercase word, never one of Oriel's own spaces (decision 0049).
+  kind: SourceKind;
+  // Its items' key shape, stricter than core's for every ID, with no text a
+  // person wrote. Its sync refuses a record whose key doesn't match.
+  key: RegExp;
   // What its items are, in the declarations' `Item` (see `ItemDocs` in
   // bindings): shape only, never source text.
   itemDoc: string;

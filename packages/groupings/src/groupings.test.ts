@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Cluster, type Grouping, type IndexRecord, type Instant, instant } from "@oriel/core";
+import {
+  type Cluster,
+  type Grouping,
+  type IndexRecord,
+  type Instant,
+  instant,
+  itemOrder,
+} from "@oriel/core";
 import { fixtureSnapshot, type JiraRecord } from "@oriel/jira";
 import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { assigneeGrouping, byKey, epicGrouping, stuckGrouping } from "./groupings.ts";
+
+// Item IDs in declared kind order, as the composition root gives it.
+const order = itemOrder(["jira", "folder", "slack"]);
 
 const fixture = loadJiraFixture();
 const site = "https://oriel.atlassian.net";
@@ -97,7 +107,7 @@ test("every derived rule is true of each item it shows, and of none it leaves ou
   for (const { edited, records } of states) {
     for (const now of nows) {
       for (const grouping of groupings) {
-        const clusters = grouping.group(records, now);
+        const clusters = grouping.group(records, now, order);
         assert.deepEqual(
           ruleProblems(clusters, records, now),
           [],
@@ -109,7 +119,7 @@ test("every derived rule is true of each item it shows, and of none it leaves ou
   }
   assert.equal(checked, states.length * nows.length * 2);
   // Not vacuous: the fixtures have items each stuck rule shows and leaves out.
-  const [idle, unestimated] = stuckGrouping.group(current, last);
+  const [idle, unestimated] = stuckGrouping.group(current, last, order);
   assert.ok(idle && unestimated);
   assert.ok(idle.itemIds.length > 0 && idle.itemIds.length < current.length);
   assert.ok(unestimated.itemIds.length > 0 && unestimated.itemIds.length < current.length);
@@ -122,7 +132,7 @@ test("the rule check fails a grouping whose rule is wrong", () => {
   const changed = (grouping: Grouping<JiraRecord>, change: (cluster: Cluster) => Cluster) => ({
     ...grouping,
     group: (records: readonly JiraRecord[], now: Instant) =>
-      grouping.group(records, now).map(change),
+      grouping.group(records, now, order).map(change),
   });
   const wrong: [string, Grouping<JiraRecord>][] = [
     ["a threshold a day short", stuckAfterDays(13)],
@@ -153,7 +163,9 @@ test("the rule check fails a grouping whose rule is wrong", () => {
     ],
   ];
   for (const [name, grouping] of wrong) {
-    const caught = nows.some((now) => ruleProblems(grouping.group(index, now), index, now).length);
+    const caught = nows.some(
+      (now) => ruleProblems(grouping.group(index, now, order), index, now).length,
+    );
     assert.ok(caught, name);
   }
 });
@@ -163,7 +175,8 @@ test("the rule check fails a grouping whose rule is wrong", () => {
 function stuckAfterDays(days: number): Grouping<JiraRecord> {
   return {
     ...stuckGrouping,
-    group: (records, now) => stuckGrouping.group(records, shift(now, (14 - days) * day)),
+    group: (records, now, order) =>
+      stuckGrouping.group(records, shift(now, (14 - days) * day), order),
   };
 }
 
@@ -183,7 +196,7 @@ test("no update in 14 days counts back from now to the millisecond", () => {
     // Updated after `now`: not idle, and no negative age either.
     updated(-day, "SYN-903"),
   ];
-  const [idle] = stuckGrouping.group(records, now);
+  const [idle] = stuckGrouping.group(records, now, order);
   // The longest idle first.
   assert.deepEqual(idle?.itemIds, ["jira:SYN-902", "jira:SYN-900"]);
 });
@@ -205,7 +218,7 @@ test("stuck leaves out epics, done work, types it doesn't name and zero estimate
     },
     { ...story, id: "jira:SYN-901", facets: { ...story.facets, estimate: 0 } },
   ];
-  const clusters = stuckGrouping.group(records, last);
+  const clusters = stuckGrouping.group(records, last, order);
   assert.deepEqual(
     clusters.map((cluster) => [cluster.key, cluster.label, cluster.itemIds]),
     [
@@ -218,9 +231,9 @@ test("stuck leaves out epics, done work, types it doesn't name and zero estimate
 
 test("each epic is a cluster keyed by its stable ID, anchored on it, holding its items", () => {
   for (const { edited, records } of states) {
-    const clusters = epicGrouping.group(records, last);
+    const clusters = epicGrouping.group(records, last, order);
     const epics = records.filter((record) => record.facets.kind === "epic");
-    const items = records.filter((record) => record.facets.kind !== "epic").toSorted(byKey);
+    const items = records.filter((record) => record.facets.kind !== "epic").toSorted(byKey(order));
     assert.deepEqual(
       clusters.map(({ key, label, anchor, itemIds, origin }) => ({
         key,
@@ -230,7 +243,7 @@ test("each epic is a cluster keyed by its stable ID, anchored on it, holding its
         origin,
       })),
       [
-        ...epics.toSorted(byKey).map((epic) => ({
+        ...epics.toSorted(byKey(order)).map((epic) => ({
           key: epic.stableId,
           label: epic.title,
           anchor: epic.id,
@@ -257,7 +270,7 @@ test("each epic is a cluster keyed by its stable ID, anchored on it, holding its
 test("over the base, the epic grouping reproduces each frozen epic region", () => {
   const [base] = states;
   assert.ok(base);
-  const clusters = epicGrouping.group(base.records, last);
+  const clusters = epicGrouping.group(base.records, last, order);
   const regions = fixture.regions.flatMap((region) =>
     region.origin.kind === "cluster" && region.origin.grouping === "epic"
       ? [{ ...region, origin: region.origin }]
@@ -275,7 +288,7 @@ test("over the base, the epic grouping reproduces each frozen epic region", () =
 });
 
 test("the epic grouping follows the source edits and keeps an epic with no stories", () => {
-  const clusters = epicGrouping.group(current, last);
+  const clusters = epicGrouping.group(current, last, order);
   const keyed = (key: string) => clusters.find((cluster) => cluster.key === key);
   // SYN-88 moved from checkout (SYN-1) to weather (SYN-3); SYN-27 was deleted.
   assert.ok(keyed("10003")?.itemIds.includes("jira:SYN-88"));
@@ -288,7 +301,7 @@ test("the epic grouping follows the source edits and keeps an epic with no stori
 test("items whose epic isn't in the index get a derived cluster that says so", () => {
   // Without the weather epic, its stories still name it.
   const records = current.filter((record) => record.id !== "jira:SYN-3");
-  const clusters = epicGrouping.group(records, last);
+  const clusters = epicGrouping.group(records, last, order);
   const orphaned = records.filter((record) => epicOf(record)?.id === "jira:SYN-3");
   assert.ok(orphaned.length > 0);
   const missing = clusters.at(-1);
@@ -296,7 +309,7 @@ test("items whose epic isn't in the index get a derived cluster that says so", (
     key: "epic-not-indexed",
     label: "Epic not in the index",
     anchor: null,
-    itemIds: orphaned.toSorted(byKey).map((record) => record.id),
+    itemIds: orphaned.toSorted(byKey(order)).map((record) => record.id),
     origin: { derived: "Items whose epic isn't in the index" },
   });
   assert.deepEqual(ruleProblems(clusters, records, last), []);
@@ -320,7 +333,7 @@ test("an item the source names as an epic anchors a cluster, whatever its type",
       { ...story, facets: { ...story.facets, container: epic } },
       child,
     ];
-    const clusters = epicGrouping.group(records, last);
+    const clusters = epicGrouping.group(records, last, order);
     assert.deepEqual(clusters.find((cluster) => cluster.anchor === story.id)?.itemIds, [child.id]);
     assert.deepEqual(ruleProblems(clusters, records, last), []);
     for (const place of placement(clusters, records)) {
@@ -332,7 +345,7 @@ test("an item the source names as an epic anchors a cluster, whatever its type",
 
 test("one cluster per assignee by name, then the unassigned, with epics as items", () => {
   for (const { edited, records } of states) {
-    const clusters = assigneeGrouping.group(records, last);
+    const clusters = assigneeGrouping.group(records, last, order);
     const people = new Map(
       records.flatMap(({ facets }) =>
         (facets.people ?? []).flatMap((person) =>
@@ -354,7 +367,7 @@ test("one cluster per assignee by name, then the unassigned, with epics as items
       assert.ok(members.every((record) => assigneeId(record) === accountId));
       assert.deepEqual(
         cluster.itemIds,
-        members.toSorted(byKey).map((record) => record.id),
+        members.toSorted(byKey(order)).map((record) => record.id),
       );
     }
     for (const place of placement(clusters, records)) {
@@ -362,7 +375,7 @@ test("one cluster per assignee by name, then the unassigned, with epics as items
     }
   }
   // Stale (inactive) assignees keep their clusters, and epics are items.
-  const clusters = assigneeGrouping.group(current, last);
+  const clusters = assigneeGrouping.group(current, last, order);
   const labels = clusters.map((cluster) => cluster.label);
   assert.ok(labels.includes("Greta Lindqvist") && labels.includes("Hiro Tanabe"));
   assert.ok(clusters.find((c) => c.label === "Amara Okafor")?.itemIds.includes("jira:SYN-1"));
@@ -373,7 +386,11 @@ test("groupings are pure: the same records in any order give the same clusters",
   const shuffled = current.toReversed();
   for (const grouping of groupings) {
     for (const now of nows) {
-      assert.deepEqual(grouping.group(shuffled, now), grouping.group(current, now), grouping.id);
+      assert.deepEqual(
+        grouping.group(shuffled, now, order),
+        grouping.group(current, now, order),
+        grouping.id,
+      );
     }
   }
 });
@@ -390,7 +407,7 @@ test("an item from a source with no epics or people gets a cluster saying so", (
     attrs: {},
   };
   const records = [...current, file];
-  const epics = epicGrouping.group(records, last);
+  const epics = epicGrouping.group(records, last, order);
   assert.deepEqual(epics.at(-1), {
     key: "no-epics-in-source",
     label: "No epics in this source",
@@ -399,7 +416,7 @@ test("an item from a source with no epics or people gets a cluster saying so", (
     origin: { derived: "Items from sources that have no epics" },
   });
   assert.equal(epics.find((c) => c.key === "no-epic")?.itemIds.includes(file.id), false);
-  const assignees = assigneeGrouping.group(records, last);
+  const assignees = assigneeGrouping.group(records, last, order);
   assert.deepEqual(assignees.at(-1), {
     key: "no-assignees-in-source",
     label: "No assignees in this source",
@@ -415,6 +432,6 @@ test("an item from a source with no epics or people gets a cluster saying so", (
     assert.deepEqual(ruleProblems(clusters, records, last), []);
   }
   // A file isn't work, so it is never stuck, however old.
-  for (const cluster of stuckGrouping.group(records, shift(last, 400 * day)))
+  for (const cluster of stuckGrouping.group(records, shift(last, 400 * day), order))
     assert.equal(cluster.itemIds.includes(file.id), false, cluster.key);
 });

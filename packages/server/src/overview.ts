@@ -10,7 +10,6 @@ import {
   type IndexRecord,
   type Instant,
   parseItemId,
-  sourceKinds,
   stalled,
   stuckDays,
   thisWeek,
@@ -18,7 +17,7 @@ import {
   type WorkstreamMember,
 } from "@oriel/core";
 import { assigneeOf } from "@oriel/groupings";
-import { candidatesFor, sources } from "@oriel/sources";
+import { candidatesFor, declarationOf, sourceKinds, sources } from "@oriel/sources";
 import {
   type CandidateView,
   type GroupingId,
@@ -62,7 +61,7 @@ export const caps = { candidates: 8, people: 10 };
 
 const identity = (source: string, stableId: string) => `${source}\u0000${stableId}`;
 const identityOf = (item: { id: string; stableId: string }) =>
-  identity(parseItemId(item.id)?.source ?? "", item.stableId);
+  identity(parseItemId(item.id)?.prefix ?? "", item.stableId);
 
 export const itemRef = (record: IndexRecord): ItemRef => ({
   id: record.id,
@@ -161,10 +160,11 @@ export function overviewView(input: OverviewInput): OverviewView {
             ]
           : []),
       ];
-      const bySource = [...Map.groupBy(members, (record) => parseItemId(record.id)?.source)]
-        .flatMap(([kind, list]) =>
-          kind ? [{ source: sources[kind].name, count: list.length }] : [],
-        )
+      const bySource = [...Map.groupBy(members, (record) => parseItemId(record.id)?.kind)]
+        .flatMap(([kind, list]) => {
+          const name = kind === undefined ? undefined : declarationOf(kind)?.name;
+          return name === undefined ? [] : [{ source: name, count: list.length }];
+        })
         .toSorted((a, b) => b.count - a.count);
       return {
         id: workstream.id,
@@ -319,7 +319,7 @@ function rankCandidates(
       const members = items(cluster);
       const free = members.filter((record) => !held(record)).length;
       if (free < linkedAtLeast) return [];
-      const kinds = new Set(members.map((record) => parseItemId(record.id)?.source));
+      const kinds = new Set(members.map((record) => parseItemId(record.id)?.kind));
       const row = clusterRow("linked", cluster, {
         rule: "An item and the items it names or that name it",
         source: sourceKinds

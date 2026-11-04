@@ -2,7 +2,7 @@
 // its prompt. IDs and types only, never source text. The same scope gives the
 // same bytes, since a hash of the output goes in the run record.
 import { idUnion } from "@oriel/core";
-import { type Scope, spaceNames } from "./describe.ts";
+import type { Scope } from "./describe.ts";
 import type { Fn } from "./fn.ts";
 import { itemTypes } from "./items.ts";
 import { orielTypes } from "./oriel.ts";
@@ -54,7 +54,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...actionTypes,
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
     "",
-    ...spaceNames.flatMap((name) => namespace(name, fns)),
+    ...scope.spaces.flatMap((name) => namespace(name, fns)),
     ...fns
       .filter((fn) => fn.space === null)
       .flatMap((fn) => [`/** ${fn.doc} */`, `declare function ${signature(fn)};`]),

@@ -26,7 +26,6 @@ import {
   object,
   type OrielReads,
   optional,
-  parseItemId,
   refine,
   string,
   type TelemetryEvent,
@@ -37,7 +36,7 @@ import {
   startQuestions,
 } from "@oriel/core";
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
-import { sources } from "@oriel/sources";
+import { parseDeclared, sources } from "@oriel/sources";
 import {
   type DeletedView,
   type DeletionView,
@@ -435,11 +434,11 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     return set;
   };
 
-  // An item ID from a request, with its source.
+  // An item ID from a request, of a declared kind, with its kind.
   const mustItem = (text: string) => {
-    const parsed = parseItemId(text);
+    const parsed = parseDeclared(text);
     if (!parsed) throw new Refused(400, "expected an item ID");
-    return { id: text as ItemId, source: parsed.source };
+    return { id: text as ItemId, source: parsed.kind };
   };
 
   // A change set as the window shows it, with what can be done with it, as

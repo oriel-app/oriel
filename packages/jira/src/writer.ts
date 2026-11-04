@@ -26,6 +26,7 @@ import {
   type WriteResult,
   WriteStalled,
 } from "@oriel/core";
+import { jiraKeyShape } from "./attrs.ts";
 import { isJiraOp, issueFields, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";
 import { adfToText, textToAdf } from "./adf.ts";
 import { type JiraBoards, jiraBoards } from "./boards.ts";
@@ -254,7 +255,7 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     args: JiraArgs<"createStory">,
   ): Promise<WriteResult<"jira">> => {
     const epic = args.epic === null ? null : parseItemId(args.epic);
-    if (args.epic !== null && epic?.source !== "jira")
+    if (args.epic !== null && (epic?.prefix !== "jira" || !jiraKeyShape.test(epic.key)))
       throw new Error("createStory: epic must be a Jira item ID, like jira:SYN-1");
     const project = epic ? projectOf(epic.key) : options.project;
     const fields: Record<string, unknown> = {

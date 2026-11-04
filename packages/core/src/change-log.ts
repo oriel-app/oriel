@@ -4,7 +4,7 @@
 // with their labels, on its `SourceDeclaration`, and core never names one.
 // Facets only, never content: a title, a description or a message's text is
 // never a facet.
-import type { Instant, SourceKind } from "./ids.ts";
+import type { Instant } from "./ids.ts";
 import {
   containerShape,
   type Facets,
@@ -69,7 +69,8 @@ export type FacetChanges = {
 // which may be another source's). `seq` orders entries as they committed.
 export type ChangeLogEntry = {
   seq: number;
-  source: SourceKind;
+  // The item's connection: its ID's prefix.
+  source: string;
   stableId: string;
   version: number;
   at: Instant;

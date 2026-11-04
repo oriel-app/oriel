@@ -55,6 +55,10 @@ export const folderFacets = (): Facets => ({ kind: "doc" });
 // what core knows.
 export const folderDetails: DetailsOf = () => null;
 
+// A fixed-length hash of the folder's ID and the file's canonical relative
+// path (decision 0019): a file's name is its title, never its key.
+export const folderKeyShape = /^[0-9a-f]{16}$/;
+
 export const folderPresentation: Presentation = { name: "Folder", details: folderDetails };
 
 // A file as the panel beside the page shows it, from a live read: its text,
@@ -78,6 +82,8 @@ export const folderPanel: PanelOf = (content) => {
 // The folder as it declares itself to the composition root: read-only, so it
 // has no namespace and no op specs.
 export const folderDeclaration = {
+  kind: "folder",
+  key: folderKeyShape,
   ...folderPresentation,
   itemDoc: folderItemDoc,
   panel: folderPanel,

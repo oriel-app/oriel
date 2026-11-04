@@ -66,7 +66,7 @@ export function pickedWithEpic(): Region {
 // Every term must appear in the item's key or title.
 export function fixtureReader(snapshot: FixtureSnapshot): Reader {
   const contentOf = (id: ItemId) =>
-    parseItemId(id)?.source === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
+    parseItemId(id)?.kind === "jira" ? snapshot.content.get(id as ItemId<"jira">) : undefined;
   return {
     read: async (ids) =>
       ids.map((id): ReadResult => {

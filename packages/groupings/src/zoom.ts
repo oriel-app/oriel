@@ -23,21 +23,21 @@ import type { ClusterRow, ItemRow, ItemView, StatusCategory } from "./view.ts";
 const day = 86_400_000;
 
 const presentationOf = (id: ItemId, sources: Presentations): Presentation | undefined => {
-  const source = parseItemId(id)?.source;
-  return source && sources[source];
+  const kind = parseItemId(id)?.kind;
+  return kind === undefined ? undefined : sources[kind];
 };
 
 // What the window calls an item's source: its presentation's name, or its
 // kind.
 function sourceName(id: ItemId, sources: Presentations): string | undefined {
-  return presentationOf(id, sources)?.name ?? parseItemId(id)?.source;
+  return presentationOf(id, sources)?.name ?? parseItemId(id)?.kind;
 }
 
-const keyOf = (id: ItemId) => id.slice(id.indexOf(":") + 1);
+const keyOf = (id: ItemId) => parseItemId(id)?.key ?? id;
 
-// An item by its source and stable ID, which outlive its handle.
+// An item by its connection and stable ID, which outlive its handle.
 const identity = (item: { id: ItemId; stableId: string }) =>
-  `${parseItemId(item.id)?.source ?? ""}\u0000${item.stableId}`;
+  `${parseItemId(item.id)?.prefix ?? ""}\u0000${item.stableId}`;
 
 // An item's state as a status category, with its source's name for it; none
 // for an item whose source tracks no state, which isn't counted as not

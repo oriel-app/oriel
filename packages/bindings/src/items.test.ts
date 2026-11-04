@@ -247,7 +247,8 @@ for (const [name, region] of [
 ] as const) {
   test(`${name}: the items stubs typecheck against the declarations`, async () => {
     const { dts } = bindingsFor(region, { reader, namespaces });
-    const fns = describe(scopeOf(region, namespaces));
+    const scope = scopeOf(region, namespaces);
+    const fns = describe(scope);
     const checked = await compile(
       {
         "region.d.ts": `${dts}export type Declared = { items: typeof items };\n`,
@@ -258,7 +259,7 @@ for (const [name, region] of [
           "  write(fn: string, args: unknown[], creates: boolean): never;",
           "  intend(fn: string, args: unknown[]): void;",
           "};",
-          stubs(fns),
+          stubs(fns, scope.spaces),
           "type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;",
           "export const declaredItems: Declared['items'] = items;",
           "export const sameNames: Same<keyof typeof items, keyof Declared['items']> = true;",
@@ -378,15 +379,21 @@ test("a namespace can't offer a revert-only op, or one its catalogue doesn't hav
   }
 });
 
-test("IDs from every source must have their source's key shape", () => {
+test("IDs from every source must have the shape core checks, named by their source", () => {
+  const items = { folder: "A file." };
   const evil: Region = {
     ...folderOnly,
     items: [{ id: 'folder:0123456789abcdef" | string' as ItemId, stableId: "x" }],
   };
-  assert.throws(() => bindingsFor(evil, { reader, namespaces }), /not a folder item ID/);
+  assert.throws(() => bindingsFor(evil, { reader, namespaces, items }), /not a folder item ID/);
   const named: Region = {
     ...folderOnly,
     items: [{ id: "folder:Q3 plan.md" as ItemId, stableId: "x" }],
   };
-  assert.throws(() => bindingsFor(named, { reader, namespaces }), /not a folder item ID/);
+  assert.throws(() => bindingsFor(named, { reader, namespaces, items }), /not a folder item ID/);
+  const unknown: Region = {
+    ...folderOnly,
+    items: [{ id: "chat:Q3 plan" as ItemId, stableId: "x" }],
+  };
+  assert.throws(() => bindingsFor(unknown, { reader, namespaces, items }), /not a known item ID/);
 });

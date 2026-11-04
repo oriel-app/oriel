@@ -23,20 +23,24 @@ import {
   string,
   union,
 } from "@oriel/core";
-import { type JiraContent, jiraFacets, jiraKind, type JiraRecord, jiraText } from "./attrs.ts";
+import {
+  isJiraId,
+  type JiraContent,
+  jiraFacets,
+  jiraKeyShape,
+  jiraKind,
+  type JiraRecord,
+  jiraText,
+} from "./attrs.ts";
 import { isSummary, maxSummary } from "./ops.ts";
 
 const utc = refine(string, isInstant, "expected a canonical UTC instant");
 const issueKey = refine(
   string,
-  (key) => parseItemId(`jira:${key}`) !== null,
+  (key) => jiraKeyShape.test(key),
   "expected an issue key like SYN-12",
 );
-const jiraItemId = refine(
-  string,
-  (id): id is ItemId<"jira"> => parseItemId(id)?.source === "jira",
-  "expected a Jira item ID like jira:SYN-12",
-);
+const jiraItemId = refine(string, isJiraId, "expected a Jira item ID like jira:SYN-12");
 
 export const fixtureProject = object({
   key: refine(string, (key) => /^[A-Z][A-Z0-9_]*$/.test(key), "expected a project key"),

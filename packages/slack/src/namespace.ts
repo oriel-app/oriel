@@ -24,7 +24,7 @@ export type SlackContext = { channels: readonly string[]; author: string } | und
 
 const channelOf = (id: string): string | null => {
   const parsed = parseItemId(id);
-  return parsed?.source === "slack" ? (keyParts(parsed.key)?.channel ?? null) : null;
+  return parsed?.kind === "slack" ? (keyParts(parsed.key)?.channel ?? null) : null;
 };
 
 // The channel of a conversation in the region, so long as Oriel reads it:

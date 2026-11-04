@@ -167,7 +167,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     listed: ReadonlyMap<string, string>,
   ): Promise<ReadResult<"jira", JiraContent>> => {
     const parsed = parseItemId(id);
-    if (parsed?.source !== "jira") return { id, status: "gone", reason: "deleted" };
+    if (parsed?.prefix !== "jira") return { id, status: "gone", reason: "deleted" };
     const points = await withOwn(parsed.key, listed);
     const request = {
       method: "GET" as const,
@@ -216,7 +216,7 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     listed: ReadonlyMap<string, string>,
   ): Promise<{ record: IndexRecord<"jira", JiraAttrs>; text: string } | "gone" | null> => {
     const parsed = parseItemId(id);
-    if (parsed?.source !== "jira") return "gone";
+    if (parsed?.prefix !== "jira") return "gone";
     const points = await withOwn(parsed.key, listed);
     const request = {
       method: "GET" as const,

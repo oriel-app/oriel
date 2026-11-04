@@ -9,6 +9,7 @@ import {
   type Instant,
   isInstant,
   isItemId,
+  isPrefix,
   keptSince,
   literal,
   nullable,
@@ -17,7 +18,6 @@ import {
   parseItemId,
   refine,
   type SourceKind,
-  sourceKinds,
   string,
   type IndexPage,
   type ItemId,
@@ -54,11 +54,7 @@ const referenceRow = object({
 });
 const changeRow = object({
   seq: number,
-  source: refine(
-    string,
-    (kind): kind is SourceKind => sourceKinds.some((k) => k === kind),
-    "expected a source",
-  ),
+  source: refine(string, isPrefix, "expected a source"),
   stable_id: string,
   version: number,
   at: refine(string, isInstant, "expected an instant"),
@@ -78,20 +74,28 @@ const fold = (text: string) =>
 const maxQueryChars = 256;
 const maxTerms = 8;
 const maxResults = 50;
-const sourcePrefix = new RegExp(`^(${sourceKinds.join("|")}):`);
+// The connections records are from, by their IDs' prefixes.
+export const prefixesOf = (records: readonly { id: string }[]): Set<string> =>
+  new Set(records.flatMap((record) => parseItemId(record.id)?.prefix ?? []));
 
 // A query as search() takes it: at most 256 characters and 8 distinct
-// terms, folded, with a "jira:" prefix on a term dropped, so a full item ID
-// works as a query. `whole` is the query as one key.
-export function searchTerms(query: string): { terms: string[]; whole: string } {
+// terms, folded, with the prefix of a connection in `prefixes` dropped from
+// a term, so a full item ID, such as "jira:syn-12", works as a query. Text
+// that only looks like one, such as "fix:login", stays as written. `whole`
+// is the query as one key.
+export function searchTerms(
+  query: string,
+  prefixes: ReadonlySet<string>,
+): { terms: string[]; whole: string } {
+  const keyOf = (term: string) => {
+    const at = term.indexOf(":");
+    return at > 0 && prefixes.has(term.slice(0, at)) ? term.slice(at + 1) : term;
+  };
   const bounded = fold(query.slice(0, maxQueryChars));
-  const stripped = bounded
-    .split(/\s+/)
-    .map((term) => term.replace(sourcePrefix, ""))
-    .filter(Boolean);
+  const stripped = bounded.split(/\s+/).map(keyOf).filter(Boolean);
   return {
     terms: [...new Set(stripped)].slice(0, maxTerms),
-    whole: bounded.trim().replace(sourcePrefix, ""),
+    whole: keyOf(bounded.trim()),
   };
 }
 
@@ -269,7 +273,7 @@ export function indexStore(db: DatabaseSync) {
     const references = referencesOf(workspaceId);
     const records = selectLive.all(workspaceId, source, source).map((raw) => {
       const record = recordOf(raw, attrs);
-      const named = references.get(`${parseItemId(record.id)?.source}\u0000${record.stableId}`);
+      const named = references.get(`${parseItemId(record.id)?.prefix}\u0000${record.stableId}`);
       return frozen(
         named ? { ...record, facets: { ...record.facets, references: named } } : record,
       );
@@ -306,7 +310,7 @@ export function indexStore(db: DatabaseSync) {
   // round trip, so one bad record can't break the window later.
   const check = <A>(source: SourceKind, attrs: Validator<A>, page: SyncPage) => {
     for (const r of page.records) {
-      if (parseItemId(r.id)?.source !== source) {
+      if (parseItemId(r.id)?.prefix !== source) {
         throw new Error(`${JSON.stringify(r.id)} is not a ${source} item ID`);
       }
       if (!isInstant(r.updatedAt)) throw new Error(`${r.id}: updatedAt is not a canonical instant`);
@@ -404,15 +408,15 @@ export function indexStore(db: DatabaseSync) {
                 const found = liveByHandle.get(workspaceId, id);
                 const toStableId = found ? stableIdRow(found) : null;
                 const resolved = toStableId?.ok ? toStableId.value.stable_id : null;
-                if (resolved === stableId && to.source === source) continue;
-                const key = `${to.source}\u0000${resolved ?? `handle\u0000${to.key}`}`;
+                if (resolved === stableId && to.prefix === source) continue;
+                const key = `${to.prefix}\u0000${resolved ?? `handle\u0000${to.key}`}`;
                 if (kept.has(key)) continue;
                 kept.add(key);
                 insertReference.run(
                   workspaceId,
                   source,
                   stableId,
-                  to.source,
+                  to.prefix,
                   resolved,
                   resolved === null ? to.key : null,
                   now,
@@ -452,7 +456,7 @@ export function indexStore(db: DatabaseSync) {
     },
 
     // The escape hatch, across every source. Every term must appear in the
-    // item's key or title; a "jira:" prefix on a term is ignored, so a full
+    // item's key or title; a "jira:" prefix on a term is dropped, so a full
     // item ID works as a query. An exact key comes first, then titles starting
     // with the first term, then the most recently updated. At most 256
     // characters, 8 distinct terms and 50 results.
@@ -464,13 +468,14 @@ export function indexStore(db: DatabaseSync) {
       limit: number,
       sources?: readonly SourceKind[],
     ): IndexRecord<SourceKind, unknown>[] {
-      const { terms, whole } = searchTerms(query);
+      const all = live(workspaceId, null, unknown);
+      const { terms, whole } = searchTerms(query, prefixesOf(all));
       const first = terms[0];
       const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
       if (!first) return [];
-      return live(workspaceId, null, unknown)
+      return all
         .filter((record) => {
-          const source = parseItemId(record.id)?.source;
+          const source = parseItemId(record.id)?.prefix;
           return !sources || (source !== undefined && sources.includes(source));
         })
         .filter((record) => matchesSearch(record, terms))

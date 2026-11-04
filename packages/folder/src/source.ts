@@ -94,7 +94,7 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
         const retry: typeof pending = [];
         for (const id of pending) {
           const parsed = parseItemId(id);
-          const key = parsed?.source === "folder" ? parsed.key : "";
+          const key = parsed?.prefix === "folder" ? parsed.key : "";
           const entry = byKey.get(key);
           // A file the walk found but couldn't read is forbidden, not deleted.
           const missing = scope.forbidden.has(key) ? "forbidden" : "vanished";

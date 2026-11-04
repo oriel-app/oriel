@@ -8,8 +8,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
 import { bindingsFor, type ItemDocs, type Namespaces } from "@oriel/bindings";
-import { type ItemId, type Region, sourceKinds, type SourceKind } from "@oriel/core";
+import { type ItemId, parseItemId, type Region } from "@oriel/core";
 import { slackNamespace } from "@oriel/slack";
+import { type DeclaredKind, sourceKinds } from "@oriel/sources";
 import { loadJiraFixture } from "./repo.ts";
 import { buildWorld, fileId, itemDocs } from "./world.ts";
 
@@ -24,19 +25,19 @@ const world = await buildWorld({
 });
 
 // One item of each source; the module never reads them.
-const one: Record<SourceKind, ItemId> = {
+const one: Record<DeclaredKind, ItemId> = {
   jira: "jira:SYN-3",
   folder: fileId("meeting-notes.md"),
   slack: "slack:C0FW1WEATHR-1788444000.000100",
 };
 
-const regionOf = (kinds: readonly SourceKind[]): Region => ({
+const regionOf = (kinds: readonly DeclaredKind[]): Region => ({
   ...world.region,
-  items: kinds.map((kind) => ({ id: one[kind], stableId: one[kind].split(":")[1] ?? "" })),
+  items: kinds.map((kind) => ({ id: one[kind], stableId: parseItemId(one[kind])?.key ?? "" })),
   origin: { kind: "picked" },
 });
 
-const dts = (kinds: readonly SourceKind[], namespaces: Namespaces, items: ItemDocs) =>
+const dts = (kinds: readonly DeclaredKind[], namespaces: Namespaces, items: ItemDocs) =>
   bindingsFor(regionOf(kinds), { reader: world.reader, namespaces, items }).dts;
 
 // Bytes without the ID lines, which grow with the region, not the source.

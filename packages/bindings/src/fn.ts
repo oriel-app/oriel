@@ -15,7 +15,6 @@ import {
   type SearchHit,
   type Shown,
   type SourceKind,
-  sourceKinds,
   type Tombstone,
   type Validator,
 } from "@oriel/core";
@@ -71,12 +70,14 @@ export type Fn = ReadFn | WriteFn | IntentFn;
 
 export const pathOf = (fn: Fn): string => (fn.space ? `${fn.space}.${fn.name}` : fn.name);
 
-// IDs reach generated code, so each must have its source's strict key shape.
-// `names` are the sources' names as a person knows them, where declared.
+// IDs reach generated code, so each must have the shape core checks.
+// `names` are the sources' names as a person knows them, by kind, where
+// declared.
 export function checkedId(id: string, names: Partial<Record<SourceKind, string>>): ItemId {
-  const parsed = parseItemId(id);
-  if (parsed) return id as ItemId;
-  const source = sourceKinds.find((kind) => id.startsWith(`${kind}:`));
+  if (parseItemId(id)) return id as ItemId;
+  const source = Object.keys(names).find(
+    (kind) => id.startsWith(`${kind}:`) || id.startsWith(`${kind}.`),
+  );
   const name = source ? (names[source] ?? source) : "known";
   throw new RangeError(`not a ${name} item ID: ${JSON.stringify(id)}`);
 }

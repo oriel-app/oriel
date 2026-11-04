@@ -251,7 +251,7 @@ export function slackSource(options: SlackSourceOptions): SlackSource {
       const results: ReadResult<"slack", SlackContent>[] = [];
       for (const id of ids) {
         const parsed = parseItemId(id);
-        const [channel = "", ts = ""] = parsed?.source === "slack" ? parsed.key.split("-") : [];
+        const [channel = "", ts = ""] = parsed?.prefix === "slack" ? parsed.key.split("-") : [];
         const listed = channels.includes(channel) && ts >= (cutoff.get(channel) ?? "");
         const name = listed ? await nameOf(channel) : null;
         if (typeof name !== "string") {

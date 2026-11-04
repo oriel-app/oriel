@@ -16,6 +16,7 @@ import {
   number,
   object,
   optional,
+  parseItemId,
   record,
   string,
   union,
@@ -585,8 +586,9 @@ export function exitCode(
 // app that posted as itself, or null for an item from another source. Their
 // name is how a reply names the message.
 function slackAuthor(slack: SlackFixture | null, item: string): { title: string } | null {
-  if (!slack || !item.startsWith("slack:")) return null;
-  const [channel, ts] = item.slice("slack:".length).split("-");
+  const parsed = parseItemId(item);
+  if (!slack || parsed?.kind !== "slack") return null;
+  const [channel, ts] = parsed.key.split("-");
   const message = slack.channels.find((c) => c.id === channel)?.messages.find((m) => m.ts === ts);
   const person = slack.users.find((user) => user.id === message?.user);
   if (person) return { title: person.real_name };

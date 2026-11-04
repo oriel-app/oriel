@@ -6,7 +6,7 @@
 // parses every line with `guestMessage` and checks every call.
 import { stripTypeScriptTypes } from "node:module";
 import type { HostReply, RunError } from "@oriel/core";
-import { type Fn, globals, parameters, pathOf, spaceNames } from "./describe.ts";
+import { type Fn, globalsOf, parameters, pathOf } from "./describe.ts";
 
 // JSON lines: calls go out on stdout, replies come back on stdin. Reply 0
 // carries the script; the guest's own reads count from 1. Reads await their
@@ -147,7 +147,7 @@ const __oriel = (() => {
 // One stub per function. Each forwards its arguments untouched; the host
 // validates them. Typed, so a test can check the stubs against the
 // declarations.
-export function stubs(fns: readonly Fn[]): string {
+export function stubs(fns: readonly Fn[], spaces: readonly string[]): string {
   const call = (fn: Fn) => {
     const path = JSON.stringify(pathOf(fn));
     if (fn.kind === "read") return `(...args: unknown[]) => __oriel.read(${path}, args)`;
@@ -157,7 +157,7 @@ export function stubs(fns: readonly Fn[]): string {
   // Every namespace, even one this region has no functions in, so each name
   // the guest passes the script exists.
   return [
-    ...spaceNames.flatMap((space) => [
+    ...spaces.flatMap((space) => [
       `const ${space} = Object.freeze({`,
       ...fns.filter((fn) => fn.space === space).map((fn) => `  ${fn.name}: ${call(fn)},`),
       "});",
@@ -170,8 +170,8 @@ export function stubs(fns: readonly Fn[]): string {
 // The entry file, run as TypeScript: the runtime, the stubs, and a start
 // that hands the script its parameters, in the order `guestStart` compiled it
 // with, and makes every namespace a read-only global.
-export const shimFor = (fns: readonly Fn[]): string =>
-  `${runtime}${stubs(fns)}__oriel.start({ ${globals.join(", ")} });\n`;
+export const shimFor = (fns: readonly Fn[], spaces: readonly string[]): string =>
+  `${runtime}${stubs(fns, spaces)}__oriel.start({ ${globalsOf(spaces).join(", ")} });\n`;
 
 // The script as TypeScript sees it, both when types are stripped here and in
 // the typecheck: the body of an async function. The opening line is its own,

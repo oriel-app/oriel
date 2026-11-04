@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
-import { describe, type Fn, globals, scopeOf } from "./describe.ts";
+import { describe, type Fn, globalsOf, scopeOf } from "./describe.ts";
 import { stubs } from "./shim.ts";
 import {
   fixture,
@@ -45,9 +45,9 @@ const stubModule = (text: string) =>
     "export const sameNames: Same<keyof typeof jira, keyof Declared['jira']> = true;",
   ].join("\n");
 
-async function checkStubs(dts: string, fns: readonly Fn[]) {
+async function checkStubs(dts: string, fns: readonly Fn[], spaces: readonly string[]) {
   const checked = await compile(
-    { "region.d.ts": declaredModule(dts), "stubs.ts": stubModule(stubs(fns)) },
+    { "region.d.ts": declaredModule(dts), "stubs.ts": stubModule(stubs(fns, spaces)) },
     { timeoutMs: 10_000 },
   );
   assert.equal(checked.kind, "checked");
@@ -63,10 +63,14 @@ const regions = [
 for (const [name, region] of regions) {
   test(`${name}: the stubs typecheck against the declarations`, async () => {
     const bindings = bindingsFor(region, { reader, namespaces });
-    const fns = describe(scopeOf(region, namespaces));
-    const start = `__oriel.start({ ${globals.join(", ")} });\n`;
-    assert.ok(bindings.shim.endsWith(stubs(fns) + start), "the shim ends with these stubs");
-    assert.deepEqual(await checkStubs(bindings.dts, fns), []);
+    const scope = scopeOf(region, namespaces);
+    const fns = describe(scope);
+    const start = `__oriel.start({ ${globalsOf(scope.spaces).join(", ")} });\n`;
+    assert.ok(
+      bindings.shim.endsWith(stubs(fns, scope.spaces) + start),
+      "the shim ends with these stubs",
+    );
+    assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
   });
 }
 
@@ -74,23 +78,38 @@ test("a window chat's module: the stubs typecheck against the declarations, wind
   const [, region] = regions[0];
   const overview = async () => ({ view: null, items: [] });
   const bindings = bindingsFor(region, { reader, namespaces, overview });
-  const fns = describe(scopeOf(region, namespaces), { window: true });
+  const scope = scopeOf(region, namespaces);
+  const fns = describe(scope, { window: true });
   assert.ok(fns.some((fn) => fn.space === "window" && fn.name === "overview"));
-  const start = `__oriel.start({ ${globals.join(", ")} });\n`;
-  assert.ok(bindings.shim.endsWith(stubs(fns) + start), "the shim ends with these stubs");
-  assert.deepEqual(await checkStubs(bindings.dts, fns), []);
+  const start = `__oriel.start({ ${globalsOf(scope.spaces).join(", ")} });\n`;
+  assert.ok(
+    bindings.shim.endsWith(stubs(fns, scope.spaces) + start),
+    "the shim ends with these stubs",
+  );
+  assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
 });
 
 test("every function lives under a name the guest hands the script, and each name is used", () => {
+  // Every kind with an item doc or a namespace has a name, in that order.
+  const items = { jira: "An issue.", folder: "A file.", slack: "A message." };
   for (const [, region] of regions) {
-    const homes = new Set(describe(scopeOf(region, namespaces)).map((fn) => fn.space ?? fn.name));
+    const scope = scopeOf(region, namespaces, items);
+    const homes = new Set(describe(scope).map((fn) => fn.space ?? fn.name));
+    const globals = globalsOf(scope.spaces);
+    assert.deepEqual(globals.slice(0, 4), ["items", "jira", "folder", "slack"]);
     // Every name but a namespace for a source the region holds nothing from,
     // and the window chat's own, which the guest still hands the script,
     // empty.
     const unused = globals.filter((name) => !homes.has(name));
     assert.deepEqual(unused, ["folder", "slack", "window"]);
-    assert.ok([...homes].every((home) => (globals as readonly string[]).includes(home)));
+    assert.ok([...homes].every((home) => globals.includes(home)));
   }
+});
+
+test("no source may take one of Oriel's own names", () => {
+  const region = fixtureRegion("picked");
+  for (const kind of ["items", "workstream", "thread", "window", "search", "show", "sketch"])
+    assert.throws(() => scopeOf(region, namespaces, { [kind]: "A thing." }), /Oriel's own names/);
 });
 
 test("the stub check catches a missing, extra, renamed or mis-kinded stub", async () => {
@@ -120,8 +139,9 @@ test("the stub check catches a missing, extra, renamed or mis-kinded stub", asyn
     ],
     ["no global", fns.filter((fn) => fn.name !== "search"), [2304]],
   ];
+  const { spaces } = scopeOf(region, namespaces);
   for (const [drift, list, codes] of drifted) {
-    const diagnostics = await checkStubs(dts, list);
+    const diagnostics = await checkStubs(dts, list, spaces);
     assert.deepEqual(
       diagnostics.map((d) => [d.file, d.code]),
       codes.map((code) => ["stubs.ts", code]),

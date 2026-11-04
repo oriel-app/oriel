@@ -37,7 +37,6 @@ import {
   type Source,
   SourceRefused,
   type SourceKind,
-  sourceKinds,
   syncSource,
   type Ulid,
   ulid,
@@ -54,6 +53,7 @@ import {
   markSeen,
   migrate,
   open,
+  prefixesOf,
   runStore,
   type StoredEvent,
   telemetryStore,
@@ -88,7 +88,16 @@ import {
   webApi,
 } from "@oriel/slack";
 import { createSandbox } from "@oriel/sandbox";
-import { itemDocs, namespacesFor, recognizerFor, sources, specs } from "@oriel/sources";
+import {
+  byItemId,
+  declarationOf,
+  itemDocs,
+  namespacesFor,
+  recognizerFor,
+  sourceKinds,
+  sources,
+  specs,
+} from "@oriel/sources";
 import type {
   FolderView,
   GroupingId,
@@ -286,7 +295,9 @@ export const limits: AgentLimits = {
 const site = "https://oriel.atlassian.net";
 // How long Jira's search may take to find a write; it is usually seconds.
 const searchLagMs = 10 * 60 * 1000;
-const isJira = (id: string): id is ItemId<"jira"> => parseItemId(id)?.source === "jira";
+// Whose an item is: each source here is its kind's first connection, whose
+// prefix is the kind.
+const isJira = (id: string): id is ItemId<"jira"> => parseItemId(id)?.prefix === "jira";
 
 export async function createApp(options: AppOptions): Promise<App> {
   const now = options.now ?? (() => instant(new Date()));
@@ -407,13 +418,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     full: boolean,
     items: readonly { id: ItemId<K>; stableId: string }[] = [],
   ): Promise<unknown> => {
+    const declared = declarationOf(from.kind);
+    if (!declared) throw new Error(`no source declares ${from.kind}`);
     const run = syncing
       .catch(() => {})
       .then(() =>
         syncSource({
           source: from,
           attrs,
-          facets: sources[from.kind].facets,
+          facets: declared.facets,
+          key: declared.key,
           recognize: recognize(),
           index,
           workspaceId,
@@ -611,10 +625,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     async read(ids) {
       const jira = ids.filter(isJira);
       const files = ids.filter(
-        (id): id is ItemId<"folder"> => parseItemId(id)?.source === "folder",
+        (id): id is ItemId<"folder"> => parseItemId(id)?.prefix === "folder",
       );
       const messages = ids.filter(
-        (id): id is ItemId<"slack"> => parseItemId(id)?.source === "slack",
+        (id): id is ItemId<"slack"> => parseItemId(id)?.prefix === "slack",
       );
       const results: ReadResult[] = [
         ...(jira.length && source ? await source.read(jira) : []),
@@ -625,7 +639,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       return ids.map((id) => read.get(id) ?? { id, status: "gone", reason: "forbidden" as const });
     },
     async search(query, limit) {
-      // Slack only while it's connected.
+      // Slack only while it's connected. Each kind's one connection, by its
+      // prefix, which is the kind.
       const sources = sourceKinds.filter((kind) => kind !== "slack" || slack);
       return index.search(workspaceId, query, limit, sources).map((record) => ({
         id: record.id,
@@ -817,8 +832,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // among its arguments; never a new item's ref.
   const namedBy = (set: ChangeSet): ItemId[] => {
     const refs = (op: string, args: unknown) =>
-      sourceKinds.flatMap((kind) => {
-        const spec = specs[kind]?.ops[op];
+      Object.values(specs).flatMap((catalogue) => {
+        const spec = catalogue?.ops[op];
         if (!spec) return [];
         try {
           return spec.refs(args);
@@ -844,7 +859,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     workstreams,
     threads,
     records,
-    clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now()),
+    clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now(), byItemId),
     created: async (id) => {
       const set = await sets.get(id);
       return set ? created(set) : [];
@@ -979,7 +994,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         await dispatch("workstream.add", { workstream: thread.workstreamId, items }, by);
     }
     // What it posted in Slack shows once Slack is listed again.
-    if (set.mutations.some((m) => m.applied && parseItemId(m.applied.item.id)?.source === "slack"))
+    if (set.mutations.some((m) => m.applied && parseItemId(m.applied.item.id)?.prefix === "slack"))
       await syncSlack();
     if (mode.kind === "fixture") return;
     for (const { applied: write } of set.mutations)
@@ -1006,7 +1021,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       })(),
     connectable: mode.kind === "window" && source === null,
   });
-  // Every connected source, in `sourceKinds` order, as the sidebar lists them.
+  // Every connected source, in declared order, as the sidebar lists them.
   const sourcesView = (): SourceView[] => {
     const jira = jiraView().connected;
     const files = folderView();
@@ -1186,7 +1201,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       threads: await viewer.threads(workspaceId),
       unopened: await sets.unopenedLinks(workspaceId),
       clusters: (grouping) => {
-        const found = grouped.get(grouping) ?? groupings[grouping].group(all, at);
+        const found = grouped.get(grouping) ?? groupings[grouping].group(all, at, byItemId);
         grouped.set(grouping, found);
         return found;
       },
@@ -1207,7 +1222,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // 0038). The page itself never needs them.
     const at = asOf ?? now();
     const membersOf = (grouping: GroupingId, key: string) => {
-      const cluster = groupings[grouping].group(all, at).find((each) => each.key === key);
+      const cluster = groupings[grouping].group(all, at, byItemId).find((each) => each.key === key);
       return cluster ? clusterMembers(cluster).slice(0, maxItems) : [];
     };
     const rows = view.candidates.rows.map((row) =>
@@ -1302,7 +1317,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             records(),
             asOf ?? now(),
             fixture !== null,
-            keepOf(filter, () => heldBy(openWorkstreams())),
+            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
           ),
         page: (grouping, cluster, from, filter) =>
           clusterPage(
@@ -1312,7 +1327,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             asOf ?? now(),
             cluster,
             from,
-            keepOf(filter, () => heldBy(openWorkstreams())),
+            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
           ),
       },
       overview,

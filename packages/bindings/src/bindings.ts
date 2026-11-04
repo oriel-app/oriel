@@ -104,7 +104,7 @@ export function bindingsFor(
 
   return {
     dts: declarations(scope, fns),
-    shim: shimFor(fns),
+    shim: shimFor(fns, scope.spaces),
 
     async read(fn, args) {
       const entry = byPath.get(fn);

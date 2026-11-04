@@ -45,8 +45,10 @@ export type SyncIndex = {
 
 export type SyncOptions<K extends SourceKind, A> = {
   source: Source<K, A>;
-  // The source's attrs shape; each record is checked against it.
+  // The source's attrs shape and its declared key shape; each record is
+  // checked against them.
   attrs: Validator<A>;
+  key: RegExp;
   // The source's declared facets, which the change log records beside the
   // common ones: its declaration's `facets`. None when left out.
   facets?: DeclaredFacets;
@@ -108,7 +110,7 @@ export async function syncSource<K extends SourceKind, A>(
   const keep = (page: SyncPage<K, A>) => {
     const valid = page.records.filter((record) => {
       if (record.stableId) seen.add(record.stableId);
-      const problem = check(source.kind, attrs, record);
+      const problem = check(source.kind, options.key, attrs, record);
       if (problem === null) return true;
       skipped++;
       log("sync: skipped a malformed record", {
@@ -198,8 +200,16 @@ export async function syncSource<K extends SourceKind, A>(
 // The index store's own checks, made per record so one bad record is skipped
 // instead of failing its page. Attrs are checked after a JSON round trip, as
 // the index reads them back.
-function check<A>(kind: SourceKind, attrs: Validator<A>, record: IndexRecord): string | null {
-  if (parseItemId(record.id)?.source !== kind) return `not a ${kind} item ID`;
+// A record's ID names the source's own connection: its prefix is the one the
+// index keeps it under.
+function check<A>(
+  prefix: string,
+  key: RegExp,
+  attrs: Validator<A>,
+  record: IndexRecord,
+): string | null {
+  const id = parseItemId(record.id);
+  if (id?.prefix !== prefix || !key.test(id.key)) return `not a ${prefix} item ID`;
   if (!record.stableId || typeof record.stableId !== "string") return "empty stable ID";
   if (typeof record.title !== "string" || typeof record.location !== "string")
     return "title and location must be strings";

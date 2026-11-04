@@ -19,6 +19,7 @@ import {
   type ItemId,
   isItemId,
   isNewRef,
+  kindOf,
   type Issue,
   type Known,
   type Log,
@@ -34,7 +35,6 @@ import {
   parseItemId,
   type RunRef,
   type SourceKind,
-  sourceKinds,
   SourceRefused,
   type SourceWriter,
   string,
@@ -210,7 +210,7 @@ function text(value: unknown): string | null {
 }
 
 function catalogueOf(specs: Specs, item: ItemId): OpSpecs {
-  const kind = parseItemId(item)?.source;
+  const kind = parseItemId(item)?.kind;
   if (!kind) throw new Error(`not an item ID: ${item}`);
   return catalogueFor(specs, kind);
 }
@@ -221,35 +221,35 @@ function mint<K extends SourceKind>(request: WriteRequest<K>): Approved<WriteReq
   return Object.freeze(request) as Approved<WriteRequest<K>>;
 }
 
-// The source a mutation writes to: its target's; for a new item, that of the
-// create naming it; for a create, the one source whose catalogue has the op.
-function kindOf(specs: Specs, m: Draft, all: readonly Draft[]): SourceKind | null {
-  if (m.target !== null && !isNewRef(m.target)) return parseItemId(m.target)?.source ?? null;
+// What a mutation writes to: its kind, whose catalogue checks it, and its
+// connection's prefix, whose writer sends it. Its target's; for a new item,
+// that of the create naming it; for a create, the one kind whose catalogue
+// has the op, through its first connection.
+type Owner = { kind: SourceKind; prefix: string };
+
+function ownerOf(specs: Specs, m: Draft, all: readonly Draft[]): Owner | null {
+  if (m.target !== null && !isNewRef(m.target)) {
+    const parsed = parseItemId(m.target);
+    return parsed && { kind: parsed.kind, prefix: parsed.prefix };
+  }
   if (m.target !== null) {
     const ref = m.target;
     const create = all.find((c) => c.ref === ref);
-    return create && create.target === null ? kindOf(specs, create, all) : null;
+    return create && create.target === null ? ownerOf(specs, create, all) : null;
   }
-  const owners = sourceKinds.filter((kind) => hasOp(specs, kind, m.op));
-  return owners.length === 1 ? (owners[0] ?? null) : null;
+  const owners = Object.keys(specs).filter((kind) => hasOp(specs, kind, m.op));
+  const [kind] = owners;
+  return owners.length === 1 && kind !== undefined ? { kind, prefix: kind } : null;
 }
 
-function specFor(
-  specs: Specs,
-  m: Draft,
-  all: readonly Draft[],
-): { kind: SourceKind; spec: OpSpec } | null {
-  const kind = kindOf(specs, m, all);
-  if (kind === null || !hasOp(specs, kind, m.op)) return null;
-  const spec = catalogueFor(specs, kind).ops[m.op];
-  return spec ? { kind, spec } : null;
+function specFor(specs: Specs, m: Draft, all: readonly Draft[]): (Owner & { spec: OpSpec }) | null {
+  const owner = ownerOf(specs, m, all);
+  if (owner === null || !hasOp(specs, owner.kind, m.op)) return null;
+  const spec = catalogueFor(specs, owner.kind).ops[m.op];
+  return spec ? { ...owner, spec } : null;
 }
 
-function mustSpec(
-  specs: Specs,
-  m: Draft,
-  all: readonly Draft[],
-): { kind: SourceKind; spec: OpSpec } {
+function mustSpec(specs: Specs, m: Draft, all: readonly Draft[]): Owner & { spec: OpSpec } {
   const found = specFor(specs, m, all);
   if (!found) throw new Error(`no catalogue has the op ${m.op} for ${m.target ?? "a new item"}`);
   return found;
@@ -410,14 +410,17 @@ export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Pro
       title: async (id) => title(id),
     });
     if (m.ref !== null) titles.set(m.ref, text(after[catalogue.titleField]));
-    // Words it writes: text values, and a link's title, never an ID.
+    // Words it writes: text values, and a link's title, never an ID of a
+    // writable kind's. Text that only looks like one, such as "fix:login",
+    // is words.
     const written = Object.entries(after).flatMap(([field, value]) => {
       if (catalogue.fields[field] === "item") return [];
       const words =
         typeof value === "object" && value !== null && "title" in value ? value.title : value;
+      const kind = typeof words === "string" ? parseItemId(words)?.kind : undefined;
       return typeof words === "string" &&
         words.trim() !== "" &&
-        !isItemId(words) &&
+        !(kind !== undefined && Object.hasOwn(specs, kind)) &&
         !isNewRef(words)
         ? [words]
         : [];
@@ -434,14 +437,15 @@ export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Pro
 export function changeSets(deps: ChangeSetDeps): ChangeSets {
   const writers = buildWriters(deps.writerConfig, deps.log);
   const unknown = async () => null;
+  const prefixes = new Set([...Object.keys(writers), ...Object.keys(deps.readers ?? {})]);
   const sources = Object.fromEntries(
-    sourceKinds.flatMap(
-      (kind): [SourceKind, { writer: SourceWriter | null; reader: unknown }][] => {
-        const writer = writers[kind];
-        const name = deps.names?.[kind] ?? writer?.name?.bind(writer) ?? unknown;
-        if (writer) return [[kind, { writer, reader: { current: writer.current, name } }]];
-        const reader = deps.readers?.[kind];
-        return reader ? [[kind, { writer: null, reader }]] : [];
+    [...prefixes].flatMap(
+      (prefix): [string, { writer: SourceWriter | null; reader: unknown }][] => {
+        const writer = writers[prefix];
+        const name = deps.names?.[prefix] ?? writer?.name?.bind(writer) ?? unknown;
+        if (writer) return [[prefix, { writer, reader: { current: writer.current, name } }]];
+        const reader = deps.readers?.[prefix];
+        return reader ? [[prefix, { writer: null, reader }]] : [];
       },
     ),
   ) as Sources;
@@ -497,31 +501,32 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     return link;
   };
 
-  const sourceOf = (kind: SourceKind): { writer: SourceWriter | null; reader: FieldReader } => {
-    const found = deps.sources[kind];
-    if (!found) throw new Error(`${kind} items are read-only`);
+  // Each connection's writer and reader, by its prefix.
+  const sourceOf = (prefix: string): { writer: SourceWriter | null; reader: FieldReader } => {
+    const found = deps.sources[prefix];
+    if (!found) throw new Error(`${prefix} items are read-only`);
     return found;
   };
-  const reader = (kind: SourceKind): FieldReader => sourceOf(kind).reader;
+  const reader = (prefix: string): FieldReader => sourceOf(prefix).reader;
   // Why a change set can't be approved or applied here: a source it writes
   // to has no writer configured. Null when every one has.
   const unwritable = (set: ChangeSet): string | null => {
     const names = new Set<string>();
     for (const m of set.mutations) {
       if (m.status === "applied") continue;
-      const { kind } = mustSpec(specs, m, set.mutations);
-      if (deps.sources[kind]?.writer) continue;
+      const { kind, prefix } = mustSpec(specs, m, set.mutations);
+      if (deps.sources[prefix]?.writer) continue;
       names.add(catalogueFor(specs, kind).name);
     }
     if (names.size === 0) return null;
     return `Writing to ${[...names].join(" and ")} isn't configured here, so this change set can be reviewed but not approved or applied.`;
   };
-  const writerOf = (kind: SourceKind): SourceWriter => {
-    const { writer } = sourceOf(kind);
+  const writerOf = (prefix: string): SourceWriter => {
+    const { writer } = sourceOf(prefix);
     if (!writer)
       throw new ChangeSetError(
         "read-only",
-        `Writing to ${catalogueFor(specs, kind).name} isn't configured here.`,
+        `Writing to ${catalogueFor(specs, kindOf(prefix)).name} isn't configured here.`,
       );
     return writer;
   };
@@ -561,14 +566,14 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // Each item's fields, and the stable ID it should have, where known.
     const wanted = new Map<
       ItemId,
-      { kind: SourceKind; fields: Set<string>; stableId: string | null }
+      { prefix: string; fields: Set<string>; stableId: string | null }
     >();
     for (const m of set.mutations) {
       const item = itemOf(m);
       if (item === null) continue;
-      const { kind, spec } = mustSpec(specs, m, set.mutations);
+      const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
       const entry = wanted.get(item) ?? {
-        kind,
+        prefix,
         fields: new Set([catalogueFor(specs, kind).titleField]),
         stableId: null,
       };
@@ -585,13 +590,13 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     const readLive = async (
       item: ItemId,
       {
-        kind,
+        prefix,
         fields,
         stableId,
-      }: { kind: SourceKind; fields: Set<string>; stableId: string | null },
+      }: { prefix: string; fields: Set<string>; stableId: string | null },
     ): Promise<FieldValues | "gone"> => {
-      const { writer } = sourceOf(kind);
-      if (!writer) return reader(kind).current(item, [...fields]);
+      const { writer } = sourceOf(prefix);
+      if (!writer) return reader(prefix).current(item, [...fields]);
       if (stableId === null) return "gone";
       const found = await writer.read(item, [...fields]);
       return found === "gone" || found.stableId !== stableId ? "gone" : found.values;
@@ -612,21 +617,21 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         return titles.get(id) ?? null;
       }
       if (titles.has(id)) return titles.get(id) ?? null;
-      const kind = parseItemId(id)?.source;
-      if (!kind) return null;
-      const field = catalogueFor(specs, kind).titleField;
-      const values = live.get(id) ?? (await reader(kind).current(id, [field]));
+      const parsed = parseItemId(id);
+      if (!parsed) return null;
+      const field = catalogueFor(specs, parsed.kind).titleField;
+      const values = live.get(id) ?? (await reader(parsed.prefix).current(id, [field]));
       return values === "gone" ? null : text(values[field]);
     };
     const lines: Diff["lines"] = [];
     const gone = new Set<Ulid>();
     for (const m of set.mutations) {
-      const { kind, spec } = mustSpec(specs, m, set.mutations);
+      const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
       const catalogue = catalogueFor(specs, kind);
       const context = (subject: Subject, before: FieldValues) => ({
         subject,
         before,
-        name: (id: string) => reader(kind).name(id),
+        name: (id: string) => reader(prefix).name(id),
         title,
       });
       const item = itemOf(m);
@@ -820,9 +825,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     }
     const conflicts: Conflict[] = [];
     for (const [item, { last, fields }] of expected) {
-      const kind = parseItemId(item)?.source;
-      if (!kind || fields.size === 0) continue;
-      const current = await writerOf(kind).current(item, [...fields.keys()]);
+      const prefix = parseItemId(item)?.prefix;
+      if (!prefix || fields.size === 0) continue;
+      const current = await writerOf(prefix).current(item, [...fields.keys()]);
       if (current === "gone") {
         conflicts.push({
           mutationId: last,
@@ -852,11 +857,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   ): Promise<Conflict | null> => {
     const last = onItem.at(-1);
     if (!last?.applied) throw new Error(`no applied mutation on ${item}`);
-    const kind = parseItemId(item)?.source;
-    if (!kind) throw new Error(`not an item ID: ${item}`);
-    const field = catalogueFor(specs, kind).updatedField;
+    const parsed = parseItemId(item);
+    if (!parsed) throw new Error(`not an item ID: ${item}`);
+    const field = catalogueFor(specs, parsed.kind).updatedField;
     const expected = last.applied.after[field];
-    const current = await writerOf(kind).current(item, [field]);
+    const current = await writerOf(parsed.prefix).current(item, [field]);
     if (current === "gone")
       return {
         mutationId: last.id,
@@ -951,7 +956,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   ): string | null => {
     if (target === null || m.reverts !== null || (m.target !== null && isNewRef(m.target)))
       return null;
-    const source = parseItemId(target)?.source;
+    const source = parseItemId(target)?.prefix;
     const stableId = stableIdFor(m, set, target);
     if (!source || stableId === null || rows.inWorkstreamNow(set.threadId, source, stableId))
       return null;
@@ -968,7 +973,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
   const inPlace = async (
     m: MutationRecord,
     set: ChangeSet,
-    kind: SourceKind,
+    { kind, prefix }: Owner,
     spec: OpSpec,
     target: ItemId,
   ): Promise<{ applied: AppliedValue } | "absent" | { unknown: string }> => {
@@ -980,7 +985,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return { unknown: `${key(target)} no longer names an item in the region it was made in` };
     // A read that fails tells nothing either, and says why. A bug in Oriel
     // (a RangeError, say) isn't the source's answer, and throws.
-    const found = await writerOf(kind)
+    const found = await writerOf(prefix)
       .read(target, [...fields, updated])
       .catch((error: unknown) => {
         if (error instanceof RangeError || error instanceof SyntaxError) throw error;
@@ -1019,11 +1024,11 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       workspaceId: set.workspaceId,
       changeSetId: set.id,
       threadId: set.threadId,
-      sources: sourceKinds.filter((kind) => wrote.has(kind)),
+      sources: Object.keys(specs).filter((kind) => wrote.has(kind)),
     });
   };
 
-  const hasWriter = (kind: SourceKind) => Boolean(deps.sources[kind]?.writer);
+  const hasWriter = (prefix: string) => Boolean(deps.sources[prefix]?.writer);
 
   // Guards. Each action has one: whether it may run on the change set as it
   // stands now, and if not, why. The action calls its own guard first, and
@@ -1097,8 +1102,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     set: ChangeSet,
     checked: "no" | "absent" | "unknown" = "no",
   ): { refusal: Refusal } | { target: ItemId | null; stableId: string | null; args: unknown } => {
-    const { kind, spec } = mustSpec(specs, m, set.mutations);
-    if (!hasWriter(kind))
+    const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
+    if (!hasWriter(prefix))
       return {
         refusal: {
           code: "read-only",
@@ -1323,8 +1328,8 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
     // Items it created: everything it did to one is undone by deleting it.
     const created = new Map<ItemId, MutationRecord>();
     for (const m of applied) {
-      const { kind, spec } = mustSpec(specs, m, set.mutations);
-      if (!hasWriter(kind))
+      const { kind, prefix, spec } = mustSpec(specs, m, set.mutations);
+      if (!hasWriter(prefix))
         return {
           code: "read-only",
           message: `Writing to ${catalogueFor(specs, kind).name} isn't configured here.`,
@@ -1343,7 +1348,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       if ("refused" in step)
         return refused(`mutation ${m.seq} (${m.op}) can't be reverted: ${step.refused}`);
       // What it would put back must pass the catalogue as it is now.
-      const kind = parseItemId(m.applied.item.id)?.source;
+      const kind = parseItemId(m.applied.item.id)?.kind;
       const back =
         kind && hasOp(specs, kind, step.op) ? catalogueFor(specs, kind).ops[step.op] : undefined;
       if (!back?.args(step.args).ok)
@@ -1436,8 +1441,9 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       // The row as this pass first read it, before any await.
       const seen = { version: m.version };
       const wasSent = m.status === "failed";
-      const { kind, spec } = mustSpec(specs, m, set.mutations);
-      const source = catalogueFor(specs, kind).name;
+      const owner = mustSpec(specs, m, set.mutations);
+      const { spec } = owner;
+      const source = catalogueFor(specs, owner.kind).name;
       let plan = sendPlan(m, set);
       if ("refusal" in plan) return stopAt(mutationId, plan.refusal, seen);
       const writes = Object.keys(spec.after(m.args));
@@ -1446,7 +1452,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       // couldn't tell, it may have, so it isn't sent again.
       let inPlaceFound: "no" | "absent" | "unknown" = "no";
       if (spec.idempotent && plan.target !== null) {
-        const result = await inPlace(m, set, kind, spec, plan.target);
+        const result = await inPlace(m, set, owner, spec, plan.target);
         if (typeof result === "object" && "applied" in result) {
           ({ m } = approved(id, mutationId));
           if (!m) continue;
@@ -1536,7 +1542,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       let result: unknown;
       try {
         const until = sending.ms + writeLimitMs;
-        result = await writerOf(kind).apply(request, { left: () => until - at().ms });
+        result = await writerOf(owner.prefix).apply(request, { left: () => until - at().ms });
       } catch (error) {
         const said = `${message(error).replace(/\.$/, "")}.`;
         // Nothing landed: the source changed nothing, or the write was never

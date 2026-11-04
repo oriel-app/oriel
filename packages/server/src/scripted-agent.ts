@@ -211,7 +211,7 @@ export function devPlan(input: TurnInput): Step[] {
   const slackAsked = slackAsk.exec(input.text);
   if (slackAsked) {
     const fn = slackAsked[1]?.toLowerCase() === "reply" ? "reply" : "postMessage";
-    const slack = input.region.items.some((item) => parseItemId(item.id)?.source === "slack");
+    const slack = input.region.items.some((item) => parseItemId(item.id)?.kind === "slack");
     if (!slack)
       return [{ text: "Nothing in this workstream is in Slack, so there's nowhere to post." }];
     const text = slackAsked[2]?.trim() || "A smoke test from Oriel's dev server.";
@@ -239,7 +239,7 @@ export function devPlan(input: TurnInput): Step[] {
       { text: "Those come from outside this workstream, so they're read-only here." },
     ];
   if (/\b(take|remove)\b.*\bfinished\b/i.test(input.text)) {
-    const jira = input.region.items.some((item) => parseItemId(item.id)?.source === "jira");
+    const jira = input.region.items.some((item) => parseItemId(item.id)?.kind === "jira");
     if (!jira) return [{ text: "Nothing in this workstream is a story that can be finished." }];
     return [
       { text: "I'll take the finished stories out of this workstream." },
@@ -247,7 +247,7 @@ export function devPlan(input: TurnInput): Step[] {
     ];
   }
   if (/\b(estimate|estimates|points|unestimated)\b/i.test(input.text)) {
-    const jira = input.region.items.some((item) => parseItemId(item.id)?.source === "jira");
+    const jira = input.region.items.some((item) => parseItemId(item.id)?.kind === "jira");
     if (!jira)
       return [{ text: "Nothing in this workstream can be estimated: it has no Jira items." }];
     return [

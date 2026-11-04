@@ -14,14 +14,13 @@ import {
   isUlid,
   literal,
   holderName,
+  isPrefix,
   nullable,
   number,
   object,
   parseItemId,
   type Region,
   refine,
-  type SourceKind,
-  sourceKinds,
   string,
   type Ulid,
   union,
@@ -52,11 +51,7 @@ const cause: Validator<WorkstreamChange["cause"]> = union(
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
   object({
     kind: literal("sync"),
-    source: refine(
-      string,
-      (kind): kind is SourceKind => (sourceKinds as readonly string[]).includes(kind),
-      "expected a source",
-    ),
+    source: refine(string, isPrefix, "expected a source"),
   }),
 );
 
@@ -92,7 +87,7 @@ function parse<T>(validator: Validator<T>, raw: unknown, what: string): T {
 function distinct(members: readonly WorkstreamMember[]): (WorkstreamMember & { source: string })[] {
   const seen = new Map<string, WorkstreamMember & { source: string }>();
   for (const member of members) {
-    const source = parseItemId(member.id)?.source;
+    const source = parseItemId(member.id)?.prefix;
     if (!source) throw new RangeError(`not an item ID: ${JSON.stringify(member.id)}`);
     if (typeof member.stableId !== "string" || member.stableId === "")
       throw new RangeError(`${member.id} has no stable ID`);
@@ -393,7 +388,7 @@ export function workstreamStore(db: DatabaseSync) {
         items.find(
           (item) =>
             item.stableId === anchor.stableId &&
-            parseItemId(item.id)?.source === parseItemId(anchor.id)?.source,
+            parseItemId(item.id)?.prefix === parseItemId(anchor.id)?.prefix,
         );
       return {
         workstreamId,

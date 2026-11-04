@@ -6,6 +6,7 @@
 // a page per section, or a review link. A thread's address may name one of
 // its change sets, to open the thread there. On any page but a review
 // link's, `item` is the item open in the panel beside it, by its ID.
+import { isItemId } from "./item-id.ts";
 import {
   type BrowseFilter,
   browseFilter,
@@ -48,13 +49,10 @@ const threadPath = new RegExp(`^/threads/(${ulid})$`);
 const reviewPath = /^\/review\/([A-Za-z0-9_-]{1,64})$/;
 const ulidShape = new RegExp(`^${ulid}$`);
 
-// An item ID's shape, loosely: the server checks each source's key.
-const itemShape = /^[a-z]+:[^\s/]{1,500}$/;
-
 export function parseRoute(pathname: string, search: string): Route {
   const page = parsePage(pathname, search);
   const item = new URLSearchParams(search).get("item");
-  return page.page !== "review" && item !== null && itemShape.test(item) ? { ...page, item } : page;
+  return page.page !== "review" && item !== null && isItemId(item) ? { ...page, item } : page;
 }
 
 function parsePage(pathname: string, search: string): Page {

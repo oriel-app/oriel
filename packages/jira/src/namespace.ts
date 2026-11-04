@@ -17,18 +17,15 @@ import {
   object,
   optional,
   param,
-  parseItemId,
   read,
   type ResultFields,
   string,
   type Validator,
   write,
 } from "@oriel/core";
-import { type JiraContent, jiraContent } from "./attrs.ts";
+import { isJiraId, type JiraContent, jiraContent } from "./attrs.ts";
 import { type JiraOp, jiraOps } from "./ops.ts";
 import { keyOf, projectOf } from "./rest.ts";
-
-const isJiraId = (id: string): id is ItemId<"jira"> => parseItemId(id)?.source === "jira";
 
 const outside = (id: string) =>
   new RangeError(`${JSON.stringify(id)} isn't in this region; use search() to look outside it`);
