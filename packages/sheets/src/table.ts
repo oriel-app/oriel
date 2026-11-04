@@ -14,11 +14,21 @@
 //   a row with none, aren't items until fixed, and are listed by row number.
 import type { State } from "@oriel/core";
 import { columnLetters } from "./a1.ts";
-import { mappedColumns, type TabMapping } from "./mapping.ts";
+import { type FieldName, mappedColumns, type TabMapping } from "./mapping.ts";
 
 // A cell as the sheet shows it, the number Google computed for it if any,
-// and its note.
-export type Cell = { shown: string; number: number | null; note: string | null };
+// and its note. A writer's reads add what was entered (`Entered`).
+export type Cell = {
+  shown: string;
+  number: number | null;
+  note: string | null;
+  entered?: Entered;
+};
+
+// What a person entered in a cell, as Google's `userEnteredValue` has it:
+// text, a number or a boolean, or a formula, which is never text. Null for
+// an empty cell.
+export type Entered = string | number | boolean | { formula: string } | null;
 
 // A tab's grid from its header row down, as far as it was read.
 export type Grid = {
@@ -57,6 +67,12 @@ export type TableRow = {
 export type Table =
   | {
       rows: TableRow[];
+      // Each mapped field's column, 0-based.
+      columns: Partial<Record<FieldName, number>>;
+      // The 0-based index of the table's last row, hidden, keyless and
+      // duplicate rows included; the header's when it has none. A new row
+      // goes after it.
+      last: number;
       // Row numbers of rows sharing a key, and of rows with none.
       duplicates: number[];
       keyless: number[];
@@ -82,7 +98,7 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
     { length: grid.rows.reduce((most, row) => Math.max(most, row.length), headerRow.length) },
     (_, c) => clean(headerRow[c]?.shown ?? ""),
   );
-  const columnOf = new Map<string, number>();
+  const columnOf = new Map<FieldName, number>();
   for (const [field, header] of mappedColumns(mapping)) {
     const found = headers.flatMap((h, c) => (h === clean(header) ? [c] : []));
     if (found.length === 0)
@@ -111,6 +127,7 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
   let hidden = 0;
   let taken = 0;
   let capped = false;
+  let last = grid.startRow + headerAt;
   for (let at = headerAt + 1; at < filled.length; at++) {
     const row = filled[at] ?? [];
     if (row.every(empty)) {
@@ -123,15 +140,16 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
     }
     taken++;
     const index = grid.startRow + at;
+    last = index;
     if (grid.hiddenRows.has(index) && !mapping.hidden) {
       hidden++;
       continue;
     }
-    const shown = (field: string) => {
+    const shown = (field: FieldName) => {
       const column = columnOf.get(field);
       return column === undefined ? undefined : clean(row[column]?.shown ?? "");
     };
-    const orNull = (field: string) => {
+    const orNull = (field: FieldName) => {
       const value = shown(field);
       return value === undefined ? {} : { [field]: value || null };
     };
@@ -164,6 +182,8 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
     .toSorted((a, b) => a - b);
   return {
     rows: candidates.filter((row) => row.key !== "" && byKey.get(row.key)?.length === 1),
+    columns: Object.fromEntries(columnOf),
+    last,
     duplicates,
     keyless,
     hidden,

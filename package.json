@@ -12,6 +12,7 @@
     "record:jira": "node scripts/record-jira.ts",
     "seed:slack": "node scripts/seed-slack.ts",
     "sheets:live": "node scripts/sheets-live.ts",
+    "sheets:live-writes": "node scripts/sheets-live-writes.ts",
     "seed:sheets": "node scripts/seed-sheets.ts",
     "evals": "node packages/evals/src/cli.ts",
     "test": "node scripts/run-tests.ts",

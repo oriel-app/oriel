@@ -1,5 +1,6 @@
 // Google Sheets as it declares itself to the composition root (decision
-// 0050): read-only for now, so it has no namespace and no op specs.
+// 0050): writable through approved change sets, values only, so it has a
+// namespace and op specs.
 import type { SourceDeclaration } from "@oriel/core";
 import {
   sheetsAttrsOf,
@@ -9,9 +10,11 @@ import {
   sheetsPresentation,
 } from "./attrs.ts";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
-import { openSheets } from "./open-connection.ts";
 import { sheetsPicks } from "./mapping.ts";
+import { type SheetsContext, sheetsNamespace } from "./namespace.ts";
+import { openSheets, type SheetsWrites } from "./open-connection.ts";
 import { sheetsOverview } from "./overview.ts";
+import { sheetsSpecs } from "./specs.ts";
 
 export const sheetsDeclaration = {
   kind: "sheets",
@@ -34,10 +37,13 @@ export const sheetsDeclaration = {
   // Nothing names a row or a spreadsheet by its key, a hash.
   recognizer: () => () => [],
   overview: sheetsOverview,
-  // Its item doc only.
-  budget: 300,
+  namespace: sheetsNamespace,
+  specs: sheetsSpecs,
+  // Its item doc, and, in a region holding a row Oriel may change,
+  // setField and addRow (OA-223): 835 bytes.
+  budget: 900,
   open: openSheets,
   // The spreadsheets the person picked, and each tab's mapping.
   options: sheetsPicks,
   fixture: sheetsDeclaredFixture,
-} satisfies SourceDeclaration;
+} satisfies SourceDeclaration<SheetsContext, never, SheetsWrites>;

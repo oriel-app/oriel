@@ -6,6 +6,7 @@
 // nowhere else.
 import type { Log, SourceKind, SourceWriter } from "@oriel/core";
 import { jiraWriterOf } from "@oriel/jira/writer";
+import { sheetsWriterOf } from "@oriel/sheets/writer";
 import { slackWriterOf } from "@oriel/slack/writer";
 
 // One line per writable connector: its `./writer` export, which builds a
@@ -16,6 +17,7 @@ import { slackWriterOf } from "@oriel/slack/writer";
 const lines = {
   jira: jiraWriterOf,
   slack: slackWriterOf,
+  sheets: sheetsWriterOf,
 };
 
 // The kinds with a line here.

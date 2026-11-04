@@ -162,6 +162,11 @@ export type WriteRequest<K extends SourceKind = SourceKind> = {
   // handle now names another item, as when a recreated project reuses keys.
   expectedStableId: string | null;
   args: unknown;
+  // What the diff the person approved showed for its item just before it,
+  // by field. A writer whose source has no conditional write, as Sheets,
+  // checks the item still holds these before it writes (decision 0050).
+  // Absent where Oriel recorded none.
+  seen?: FieldValues;
 };
 
 export type WriteResult<K extends SourceKind = SourceKind> = {

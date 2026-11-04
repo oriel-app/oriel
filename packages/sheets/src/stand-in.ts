@@ -18,11 +18,31 @@
 // field that is zero, false or empty in the Sheets API's answers: the first
 // tab has no `index`, and a range from row 1 no `startRowIndex`. Drive's
 // answers keep their `false`s. It keeps no cell formats, so no answer has
-// them. It writes nothing: any other method is refused.
+// them.
+//
+// And the writes Oriel makes (decision 0050), each moving the spreadsheet's
+// version by one, refused with a `403` on a spreadsheet the account can only
+// view, and applied whole or not at all:
+// - `values.batchUpdate`, with `valueInputOption=RAW` only: each value is
+//   stored as it is, text starting with `=` as text, and an empty string
+//   empties the cell. It has no parser, so `USER_ENTERED` is refused.
+//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdate
+// - `spreadsheets.batchUpdate`, with `insertDimension`, `updateCells` (of
+//   `userEnteredValue`) and `deleteDimension` rows. A `formulaValue` is
+//   kept as a formula, with no value computed, as a test can find.
+//   https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate
+// Any other method is refused.
 //
 // Every request needs its access token, as Google does, and each is kept in
 // `calls`, so a test can count them.
-import { type A1Range, type Bounds, columnIndex, parseBounds, parseRange } from "./a1.ts";
+import {
+  type A1Range,
+  type Bounds,
+  columnIndex,
+  columnLetters,
+  parseBounds,
+  parseRange,
+} from "./a1.ts";
 import { type Mask, parseMask, project, type Schema, unknownField } from "./fields.ts";
 import {
   applyChange,
@@ -52,9 +72,12 @@ export type StandInOptions = {
   // some, the other way Google's reference leaves open, so a test can show
   // a reader keeps only the tabs it asked for.
   everyTab?: boolean;
+  // A write's `modifiedTime`; without it, a write moves only the version.
+  now?: () => string;
 };
 
-export type StandInCall = { method: string; url: string };
+// A write's call keeps its body too.
+export type StandInCall = { method: string; url: string; body?: unknown };
 
 export const standInToken = "fixture-access-token";
 
@@ -71,6 +94,7 @@ const driveError = (code: number, message: string, why: DriveReason) =>
 const sheetsStatus: Record<number, string> = {
   400: "INVALID_ARGUMENT",
   401: "UNAUTHENTICATED",
+  403: "PERMISSION_DENIED",
   404: "NOT_FOUND",
   405: "UNIMPLEMENTED",
 };
@@ -518,7 +542,14 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
   const fetchApi = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    calls.push({ method: request.method, url: url.href });
+    const text = request.method === "POST" ? await request.text() : null;
+    let body: unknown = undefined;
+    try {
+      body = text === null ? undefined : JSON.parse(text);
+    } catch {
+      body = text;
+    }
+    calls.push({ method: request.method, url: url.href, ...(text === null ? {} : { body }) });
     const isDrive = url.origin === driveOrigin && url.pathname.startsWith("/drive/v3/");
     const isSheets = url.origin === sheetsOrigin && url.pathname.startsWith("/v4/");
     if (!isDrive && !isSheets) return new Response("not found", { status: 404 });
@@ -530,11 +561,35 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
             locationType: "header",
           })
         : sheetsError(401, "Request had invalid authentication credentials.");
+    if (isSheets && request.method === "POST") return written(url.pathname, body);
     if (request.method !== "GET")
       return isDrive
         ? driveError(405, "The fixture's stand-in only reads.", { reason: "methodNotAllowed" })
-        : sheetsError(405, "The fixture's stand-in only reads.");
+        : sheetsError(405, "The fixture's stand-in writes only cells and rows.");
     return isDrive ? drive(url.pathname, url.searchParams) : sheets(url.pathname, url.searchParams);
+  };
+
+  // What runs just before the next write lands, as a person's edit racing
+  // it would.
+  let racing: (() => void) | null = null;
+
+  // A write, whole or not at all: on a copy, kept only if all of it worked.
+  const written = (path: string, body: unknown): Response => {
+    const match = /^\/v4\/spreadsheets\/([^/:]+)(\/values:batchUpdate|:batchUpdate)$/.exec(path);
+    if (!match?.[1]) return sheetsError(404, "Requested entity was not found.");
+    const file = files.get(decodeURIComponent(match[1]));
+    if (!file) return sheetsError(404, "Requested entity was not found.");
+    if (!file.spreadsheet.canEdit) return sheetsError(403, "The caller does not have permission");
+    const race = racing;
+    racing = null;
+    race?.();
+    const copy = structuredClone(file.spreadsheet);
+    const made = match[2] === ":batchUpdate" ? batchUpdate(copy, body) : valuesUpdate(copy, body);
+    if (typeof made === "string") return sheetsError(400, made);
+    copy.version = String(BigInt(copy.version) + 1n);
+    if (options.now) copy.modifiedTime = options.now();
+    file.spreadsheet = copy;
+    return Response.json({ spreadsheetId: copy.id, ...made });
   };
 
   const fileFor = (id: string) => {
@@ -561,6 +616,15 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
       file.next++;
       return next.version;
     },
+    // Runs `race` just before the next write lands, as a person's edit
+    // between Oriel finding a row and writing to it would.
+    beforeNextWrite(race: () => void) {
+      racing = race;
+    },
+    // The spreadsheet as it is now.
+    spreadsheet(id: string): FixtureSpreadsheet {
+      return fileFor(id).spreadsheet;
+    },
     // A change a test makes, as a person editing the sheet would: the
     // version moves by one.
     change(id: string, change: FixtureChange, modifiedTime?: string): string {
@@ -572,6 +636,99 @@ export function fixtureGoogle(fixture: SheetsFixture, options: StandInOptions = 
       return spreadsheet.version;
     },
   };
+}
+
+// `values.batchUpdate`: each range's values, stored as they are.
+function valuesUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | string {
+  const update = body as { valueInputOption?: unknown; data?: unknown };
+  if (update?.valueInputOption !== "RAW")
+    return "The fixture's stand-in takes valueInputOption=RAW only.";
+  if (!Array.isArray(update.data)) return "Invalid data: expected a list of ranges.";
+  let cells = 0;
+  for (const each of update.data as { range?: unknown; values?: unknown }[]) {
+    const range = typeof each?.range === "string" ? parseRange(each.range) : null;
+    const tab = range && tabNamed(spreadsheet, range.tab);
+    if (!range || !tab) return `Unable to parse range: ${String(each?.range)}`;
+    const box = within(range.bounds ?? {}, gridOf(tab));
+    if (!Array.isArray(each.values)) return "Invalid values: expected rows.";
+    for (const [r, row] of (each.values as unknown[]).entries()) {
+      if (!Array.isArray(row)) return "Invalid values: expected rows.";
+      for (const [c, value] of row.entries()) {
+        if (box.startRow + r >= box.endRow || box.startColumn + c >= box.endColumn)
+          return "Requested writing within range, but tried writing outside it.";
+        if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean")
+          return "Invalid value: expected a string, number or boolean.";
+        const cell = `${columnLetters(box.startColumn + c)}${box.startRow + r + 1}`;
+        const problem = applyChange(spreadsheet, {
+          kind: "set",
+          sheetId: tab.sheetId,
+          cell,
+          value: value === "" ? null : value,
+        });
+        if (problem) return problem;
+        cells++;
+      }
+    }
+  }
+  return { totalUpdatedCells: cells };
+}
+
+// The cell a `userEnteredValue` makes; a formula keeps no computed value.
+function enteredCell(value: unknown): FixtureCell | { invalid: string } {
+  if (value === undefined) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.stringValue === "string") return v.stringValue;
+  if (typeof v.numberValue === "number") return v.numberValue;
+  if (typeof v.boolValue === "boolean") return v.boolValue;
+  if (typeof v.formulaValue === "string") return { formula: v.formulaValue, value: "" };
+  return {
+    invalid: "Invalid value: expected one of stringValue, numberValue, boolValue or formulaValue.",
+  };
+}
+
+type Dimension = { sheetId?: number; dimension?: string; startIndex?: number; endIndex?: number };
+
+// `spreadsheets.batchUpdate`: rows inserted, filled and deleted, in order.
+function batchUpdate(spreadsheet: FixtureSpreadsheet, body: unknown): object | string {
+  const requests = (body as { requests?: unknown })?.requests;
+  if (!Array.isArray(requests) || !requests.length) return "Invalid requests: expected some.";
+  const rows = (range: Dimension | undefined, one: boolean) => {
+    if (range?.dimension !== "ROWS" || typeof range.startIndex !== "number") return null;
+    const count = (range.endIndex ?? range.startIndex + 1) - range.startIndex;
+    return one && count !== 1 ? null : { sheetId: range.sheetId ?? 0, row: range.startIndex + 1 };
+  };
+  for (const request of requests as Record<string, Record<string, unknown> | undefined>[]) {
+    const [kind, ...more] = Object.keys(request ?? {});
+    const spec = kind === undefined ? undefined : request[kind];
+    if (more.length || !spec) return "Invalid request: expected one kind of request.";
+    let problem: string | null;
+    if (kind === "insertDimension" || kind === "deleteDimension") {
+      const at = rows(spec.range as Dimension | undefined, true);
+      if (!at) return `Invalid ${kind}: the stand-in takes one row.`;
+      problem = applyChange(spreadsheet, {
+        kind: kind === "insertDimension" ? "insert" : "delete",
+        ...at,
+      });
+    } else if (kind === "updateCells") {
+      const start = spec.start as { sheetId?: number; rowIndex?: number; columnIndex?: number };
+      if (spec.fields !== "userEnteredValue")
+        return "Invalid updateCells: the stand-in takes fields=userEnteredValue only.";
+      problem = null;
+      for (const [r, row] of ((spec.rows ?? []) as { values?: unknown[] }[]).entries())
+        for (const [c, data] of (row.values ?? []).entries()) {
+          const cell = enteredCell((data as { userEnteredValue?: unknown }).userEnteredValue);
+          if (cell !== null && typeof cell === "object" && "invalid" in cell) return cell.invalid;
+          problem ??= applyChange(spreadsheet, {
+            kind: "set",
+            sheetId: start?.sheetId ?? 0,
+            cell: `${columnLetters((start?.columnIndex ?? 0) + c)}${(start?.rowIndex ?? 0) + r + 1}`,
+            value: cell,
+          });
+        }
+    } else return `Invalid request: the stand-in doesn't take ${kind ?? "nothing"}.`;
+    if (problem) return problem;
+  }
+  return { replies: requests.map(() => ({})) };
 }
 
 // A range's tab: by name, as Google matches it, ignoring case; with no
