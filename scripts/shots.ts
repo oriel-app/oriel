@@ -758,6 +758,55 @@ const fares = await post<{ id: string }>(
 );
 const faresThread = await ask("What's in here?", chatty, fares.id);
 
+// The decision desk (a spike): the fare conversation, the support numbers
+// that started it and the story it is about, each on a server of its own.
+// The agent finds the open choice; on the second the user chooses an
+// option, and the change set carrying it shows; on the third that change
+// set is approved, so its items changed since Oriel checked the choice.
+const deciding = async (then: "find" | "choose" | "apply") => {
+  const { serving } = await writing({ kind: "fixture" });
+  const { id: workstreamId } = await post<{ id: string }>(
+    "/api/workstreams",
+    {
+      kind: "picked",
+      name: "Fares after cancellations",
+      items: [
+        "jira:SYN-45",
+        "slack:C0FW1WEATHR-1788444000.000100",
+        "slack:C0FW1WEATHR-1788344100.000100",
+      ],
+    },
+    serving,
+  );
+  const threadId = await ask("What's in here?", serving, workstreamId);
+  await post(`/api/threads/${threadId}/choices`, {}, serving);
+  await serving.app.settled();
+  if (then === "find") return { serving, threadId };
+  const view = await call<{ entries: { kind: string; choice?: { id: string } }[] }>(
+    serving,
+    "GET",
+    `/api/threads/${threadId}`,
+  );
+  const choiceId = view.entries.find((e) => e.kind === "choice")?.choice?.id;
+  if (!choiceId) throw new Error("the scripted agent found no choice");
+  await post(
+    `/api/threads/${threadId}/choices/${choiceId}`,
+    { outcome: "chosen", option: 1 },
+    serving,
+  );
+  await serving.app.settled();
+  if (then === "apply") {
+    const setId = await changeSetOf(serving, threadId);
+    const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
+    await post(`/api/change-sets/${setId}/approve`, { hash }, serving);
+    await serving.app.settled();
+  }
+  return { serving, threadId };
+};
+const choiceFound = await deciding("find");
+const choiceMade = await deciding("choose");
+const choiceApplied = await deciding("apply");
+
 // One change set to two sources: SYN-61 to Ready for Dev in Jira, and a
 // message in Slack's channel that it's ready to pick up. Proposed, approved,
 // and approved then reverted, each on a server of its own, so each diff reads
@@ -1454,6 +1503,37 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.locator(".run summary").first().click();
       await page.locator(".run[open] .output").first().waitFor();
+    },
+  },
+  {
+    name: "choice-found",
+    path: `/threads/${choiceFound.threadId}`,
+    on: choiceFound.serving,
+    act: async (page) => {
+      await page.locator(".choice-card").scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "choice-history",
+    path: `/threads/${choiceFound.threadId}`,
+    on: choiceFound.serving,
+    act: async (page) => {
+      await page.locator(".choice-history summary").click();
+      await page.locator(".choice-history .moments").scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "choice-chosen",
+    path: `/threads/${choiceMade.threadId}`,
+    on: choiceMade.serving,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    name: "choice-stale",
+    path: `/threads/${choiceApplied.threadId}`,
+    on: choiceApplied.serving,
+    act: async (page) => {
+      await page.locator(".choice-stale").scrollIntoViewIfNeeded();
     },
   },
   {

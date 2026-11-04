@@ -264,7 +264,8 @@ export const fareChoice = {
   ],
 };
 
-const choiceScript = `const read = await items.read(${JSON.stringify([fareConversation, fareStory])});
+const choiceScript = `await items.read(${JSON.stringify(fareConversation)});
+await items.read(${JSON.stringify(fareStory)});
 return await choices.add(${JSON.stringify(fareChoice, null, 2)});`;
 
 const carryScript = (option: number) => {

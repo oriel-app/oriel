@@ -110,7 +110,7 @@ export const sketchRefusal: Validator<SketchRefusal> = union(
 // sketch's HTML, which may repeat what the agent read, as its size in bytes,
 // never its text; a choice, which quotes items, as its size too.
 export const recordedArgs = (fn: string, args: readonly unknown[]): unknown[] => {
-  if (fn === "choice")
+  if (fn === "choices.add")
     return args.map((arg) => ({
       bytes: new TextEncoder().encode(JSON.stringify(arg) ?? "").length,
     }));

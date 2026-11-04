@@ -14,6 +14,13 @@ import { when } from "./time.ts";
 import { Tooltip } from "./tooltip.tsx";
 import type { ThreadMsg } from "./thread.ts";
 
+// A title in a line, cut at a word.
+const clipped = (title: string, max = 48) => {
+  if ([...title].length <= max) return title;
+  const cut = [...title].slice(0, max).join("");
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max / 2)).trimEnd()}…`;
+};
+
 const letters = "ABCDE";
 export const optionLetter = (index: number) => letters[index] ?? String(index + 1);
 
@@ -185,6 +192,7 @@ export function ChoiceCard(props: {
                 <>
                   {i > 0 && ", "}
                   <ItemKey item={item} />
+                  {item.title && ` (${clipped(item.title)})`}
                 </>
               ))}
               .{" "}
