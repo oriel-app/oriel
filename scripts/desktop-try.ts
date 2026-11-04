@@ -138,7 +138,6 @@ export function build(force: boolean): string {
       "--",
       "packages",
       "fixtures",
-      "scripts/fixtures",
       "mise.toml",
       "pnpm-lock.yaml",
     ],

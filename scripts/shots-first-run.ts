@@ -25,7 +25,7 @@ import { models } from "../packages/server/src/model.ts";
 import type { Serving } from "../packages/server/src/serve.ts";
 import { memorySettings, settingsFile } from "../packages/server/src/settings.ts";
 import { type SetupState, memorySetup, setupFile } from "../packages/server/src/setup/state.ts";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 
 // The Jira account SYN in memory takes, as the onboarding types it.
 export const jiraAccount = { email: "pm@example.com", token: "shots-only-value" };

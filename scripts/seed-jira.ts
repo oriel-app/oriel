@@ -21,7 +21,7 @@ import {
   unknown,
   type Validator,
 } from "../packages/core/src/validate.ts";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 
 // The only site this script writes to (SPEC §4).
 const throwawaySite = "https://oriel.atlassian.net";

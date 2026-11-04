@@ -19,7 +19,7 @@ import { type Instant, parseItemId } from "@oriel/core";
 import { chipStateName } from "@oriel/web/chip";
 import { chipIds } from "@oriel/web/markdown";
 import type { ChipView } from "@oriel/web/view";
-import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { fileTitle, type FolderFixture } from "@oriel/folder";
 import type { OrielWorkspace } from "./case.ts";
 import type { Grade } from "./graders.ts";
 import { evalSite, fileId, windowWorkstreamId } from "./world.ts";

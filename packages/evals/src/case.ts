@@ -34,8 +34,8 @@ import {
 } from "@oriel/core";
 import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 import type { SlackFixture } from "@oriel/slack";
-import { diskDependent, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
+import { diskDependent, type FolderFixture } from "@oriel/folder";
+import { loadSlackFixture } from "@oriel/slack";
 
 // The eval kinds a case can be. Kinds 1 to 6 are deterministic; 7 and 8 are
 // graded by an LLM judge. SPEC §8 also has kinds 1, 5 and 6, which no grader

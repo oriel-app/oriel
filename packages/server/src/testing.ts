@@ -23,7 +23,7 @@ import {
 } from "@oriel/core";
 import type { JiraFixture } from "@oriel/jira";
 import { memorySite, memorySiteOrigin } from "@oriel/jira/testing";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { loadJiraFixture } from "@oriel/jira";
 import type { Titler } from "@oriel/agent";
 import type { Agent, ServerAgentDeps, AgentLimits } from "./agent.ts";
 import {

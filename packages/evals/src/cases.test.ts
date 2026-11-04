@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadFolderFixture } from "@oriel/folder";
 import { loadCases } from "./case.ts";
 import { cassettesDir, casesDir, loadJiraFixture, repoRoot } from "./repo.ts";
 

@@ -18,7 +18,7 @@ import { type Exchange, recording } from "../packages/jira/src/cassette.ts";
 import { type JiraSourceOptions, jiraSource } from "../packages/jira/src/source.ts";
 import { basicAuth, type ReadTransport, readTransport } from "../packages/jira/src/transport.ts";
 import { readEnv } from "./env.ts";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { jiraEnv } from "./seed-jira.ts";
 
 export const testData = new URL("../packages/jira/test-data/", import.meta.url);

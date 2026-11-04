@@ -5,9 +5,9 @@
 // acts in as others do.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { fixtureApi, type FixtureWorkspace } from "@oriel/slack";
+import { fixtureApi, type FixtureWorkspace, loadSlackFixture } from "@oriel/slack";
 import type { ChangeSetView, DiffView, WorkstreamView, ThreadView } from "@oriel/web/view";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import { json, type Script, testApp } from "./testing.ts";
 

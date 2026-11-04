@@ -7,10 +7,9 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { SyncPage } from "@oriel/core";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { recordedReads, recordedSource, testData } from "../../../scripts/record-jira.ts";
 import { type JiraAttrs, jiraText } from "./attrs.ts";
-import { fixtureSnapshot } from "./fixture.ts";
+import { fixtureSnapshot, loadJiraFixture } from "./fixture.ts";
 import { cassette, replay } from "./cassette.ts";
 import { jiraSource } from "./source.ts";
 

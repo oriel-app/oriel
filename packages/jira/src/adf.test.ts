@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { loadJiraFixture } from "./fixture.ts";
 import { adf as seedAdf } from "../../../scripts/seed-jira.ts";
 import { adfToText, textToAdf } from "./adf.ts";
 

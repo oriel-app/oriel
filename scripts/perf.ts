@@ -26,7 +26,7 @@ import { instant } from "../packages/core/src/ids.ts";
 import { memorySite, memorySiteOrigin } from "../packages/jira/src/memory-site.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { bigWorld } from "./big-world.ts";
-import { loadJiraFixture } from "./fixtures/load.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 
 const { values } = parseArgs({
   options: {

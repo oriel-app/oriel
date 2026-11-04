@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { type TestContext, test } from "node:test";
 import { bindingsFor } from "@oriel/bindings";
 import type { ItemId } from "@oriel/core";
-import { loadSlackFixture } from "../../../scripts/fixtures/slack.ts";
+import { loadSlackFixture } from "@oriel/slack";
 import { loadCases, parseEvalCase, slackMessages } from "./case.ts";
 import { loadJiraFixture } from "./repo.ts";
 import { tempDir } from "./testing.ts";

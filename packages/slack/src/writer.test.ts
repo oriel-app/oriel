@@ -8,8 +8,8 @@ import {
   ulid,
   type WriteRequest,
 } from "@oriel/core";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
-import { fixtureApi } from "./fixture.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
+import { fixtureApi, loadSlackFixture } from "./fixture.ts";
 import { slackSource } from "./source.ts";
 import { slackWriter, writeApi } from "./writer.ts";
 

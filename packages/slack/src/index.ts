@@ -37,8 +37,10 @@ export {
   type FixtureWorkspace,
   fixtureApi,
   fixtureApiOrigin,
+  loadSlackFixture,
   parseSlackFixture,
   type SlackFixture,
+  slackFixtureFile,
 } from "./fixture.ts";
 export { mentionedUsers, plainText } from "./mrkdwn.ts";
 export {

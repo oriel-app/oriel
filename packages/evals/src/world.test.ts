@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { bindingsFor } from "@oriel/bindings";
 import type { ReadResult } from "@oriel/core";
-import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadFolderFixture } from "@oriel/folder";
 import { loadJiraFixture } from "./repo.ts";
 import { buildWorld, evalFolderLocation, fileId, type WorldInput } from "./world.ts";
 

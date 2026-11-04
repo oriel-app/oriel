@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { instant } from "@oriel/core";
-import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadFolderFixture } from "@oriel/folder";
 import type { Fetch } from "./anthropic.ts";
 import { type LoadedCase, loadCases, parseEvalCase } from "./case.ts";
 import { loadJiraFixture } from "./repo.ts";

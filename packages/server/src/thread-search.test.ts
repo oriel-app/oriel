@@ -6,9 +6,9 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import type { ThreadFound } from "@oriel/core";
-import { fixtureApi } from "@oriel/slack";
+import { fixtureApi, loadSlackFixture } from "@oriel/slack";
 import type { DiffView, SearchView, ThreadView } from "@oriel/web/view";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import { json, type Script, testApp } from "./testing.ts";
 
 const sms = `slack:${weather}-1788782400.000100`;

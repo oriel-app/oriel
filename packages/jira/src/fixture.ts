@@ -4,6 +4,7 @@
 // throwaway site. Fixtures are the source of truth. `fixtureSnapshot` is the
 // one mapping from fixtures to index records and content, shared by sources
 // and tests.
+import { readFileSync } from "node:fs";
 import {
   array,
   boolean,
@@ -116,6 +117,23 @@ export type JiraFixture = Omit<JiraFixtureFile, "regions"> & { regions: FixtureR
 
 // Each part is stored as `<part>.json` in `fixtures/jira/`.
 export const jiraFixtureParts = ["project", "people", "issues", "edits", "regions"] as const;
+
+// Where the fixture is kept.
+export const jiraFixtureDir = new URL("../../../fixtures/jira/", import.meta.url);
+
+// Reads `<dir>/<part>.json` as one checked fixture.
+export function loadJiraFixture(dir: URL = jiraFixtureDir): JiraFixture {
+  const input = Object.fromEntries(
+    jiraFixtureParts.map((part) => [
+      part,
+      JSON.parse(readFileSync(new URL(`${part}.json`, dir), "utf8")) as unknown,
+    ]),
+  );
+  const result = parseJiraFixture(input);
+  if (result.ok) return result.value;
+  const issues = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
+  throw new Error(`invalid Jira fixture:\n${issues.join("\n")}`);
+}
 
 const badSummary = (summary: string) => !isSummary(summary);
 

@@ -21,7 +21,14 @@ import {
   type WriteRequest,
   type WriteResult,
 } from "@oriel/core";
-import { fixtureSnapshot, isJiraOp, type JiraFixture, jiraOps, jiraSpecs } from "@oriel/jira";
+import {
+  fixtureSnapshot,
+  isJiraOp,
+  type JiraFixture,
+  jiraOps,
+  jiraSpecs,
+  loadJiraFixture,
+} from "@oriel/jira";
 import {
   ensureWorkspace,
   workstreamStore,
@@ -30,7 +37,6 @@ import {
   migrate,
   open,
 } from "@oriel/db";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
 import { changeSetsOver, type FieldReader, type Specs } from "./change-sets.ts";
 
 export type MemoryIssue = {

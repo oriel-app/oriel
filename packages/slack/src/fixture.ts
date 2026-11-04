@@ -13,6 +13,7 @@
 // `chat.delete` for a user token. Its `fetch` answers each method at
 // slack.com's address, so the writer reaches it as it reaches Slack. Others'
 // edits and replies (`edit`, `replyAs`) are for tests of what a revert finds.
+import { readFileSync } from "node:fs";
 import {
   array,
   boolean,
@@ -102,6 +103,16 @@ export function parseSlackFixture(input: unknown): Result<SlackFixture> {
     });
   });
   return issues.length ? { ok: false, issues } : shaped;
+}
+
+// Where the fixture is kept.
+export const slackFixtureFile = new URL("../../../fixtures/slack/workspace.json", import.meta.url);
+
+export function loadSlackFixture(file: URL = slackFixtureFile): SlackFixture {
+  const result = parseSlackFixture(JSON.parse(readFileSync(file, "utf8")));
+  if (result.ok) return result.value;
+  const issues = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
+  throw new Error(`invalid Slack fixture:\n${issues.join("\n")}`);
 }
 
 export type FixtureApiOptions = {

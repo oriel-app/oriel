@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ItemId, type Log, parseItemId } from "@oriel/core";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import { slackAttrs, slackContent, type SlackRecord } from "./attrs.ts";
-import { type FixtureApiOptions, fixtureApi } from "./fixture.ts";
+import { type FixtureApiOptions, fixtureApi, loadSlackFixture } from "./fixture.ts";
 import { slackSource, tsInstant } from "./source.ts";
 
 const fixture = loadSlackFixture();

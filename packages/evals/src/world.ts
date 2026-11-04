@@ -38,18 +38,21 @@ import {
   type Ulid,
   ulid,
 } from "@oriel/core";
-import { canonicalPath, folderKey, folderSource, resolveFolder } from "@oriel/folder";
+import {
+  canonicalPath,
+  folderKey,
+  folderSource,
+  resolveFolder,
+  buildFolder,
+  diskDependent,
+  type FolderFixture,
+} from "@oriel/folder";
 import { type FixtureRegion, fixtureSnapshot, type JiraFixture } from "@oriel/jira";
 import { fixtureApi, type SlackFixture, type SlackRecord, slackSource } from "@oriel/slack";
 import { overviewItems, overviewView } from "@oriel/server/overview";
 import { groupings } from "@oriel/server/window";
 import { byItemId, itemDocs, namespacesFor, sources } from "@oriel/sources";
 import type { OrielWorkspace } from "./case.ts";
-import {
-  buildFolder,
-  diskDependent,
-  type FolderFixture,
-} from "../../../scripts/fixtures/folder.ts";
 
 // What each source's items are: the same docs the server hands to bindings.
 export { itemDocs };

@@ -8,8 +8,7 @@ import {
   instant,
   itemOrder,
 } from "@oriel/core";
-import { fixtureSnapshot, type JiraRecord } from "@oriel/jira";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { fixtureSnapshot, type JiraRecord, loadJiraFixture } from "@oriel/jira";
 import { assigneeGrouping, byKey, epicGrouping, stuckGrouping } from "./groupings.ts";
 
 // Item IDs in declared kind order, as the composition root gives it.

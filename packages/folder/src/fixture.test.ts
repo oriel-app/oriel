@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { type ItemId, itemId } from "@oriel/core";
-import { buildFolder, fileTitle, loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { buildFolder, fileTitle, loadFolderFixture } from "./fixture.ts";
 import { replacedNote, tooLarge } from "./open.ts";
 import { folderSource } from "./source.ts";
 import { folderA, keptLog } from "./testing.ts";

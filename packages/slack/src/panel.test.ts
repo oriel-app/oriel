@@ -4,9 +4,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ItemId, PanelBlock, PanelMessage } from "@oriel/core";
-import { loadSlackFixture, weather } from "../../../scripts/fixtures/slack.ts";
+import { weather } from "../../../scripts/fixtures/slack.ts";
 import { slackPanel } from "./attrs.ts";
-import { fixtureApi } from "./fixture.ts";
+import { fixtureApi, loadSlackFixture } from "./fixture.ts";
 import { slackSource } from "./source.ts";
 
 const fixture = loadSlackFixture();

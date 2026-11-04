@@ -8,7 +8,7 @@ import {
   ulid,
   type WriteRequest,
 } from "@oriel/core";
-import { loadJiraFixture } from "../../../scripts/fixtures/load.ts";
+import { loadJiraFixture } from "./fixture.ts";
 import { textToAdf } from "./adf.ts";
 import { jiraBoards } from "./boards.ts";
 import {

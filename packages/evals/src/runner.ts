@@ -27,7 +27,7 @@ import type { FixtureRegion, JiraFixture } from "@oriel/jira";
 import { checkQuotes } from "@oriel/server/quotes";
 import type { SlackFixture } from "@oriel/slack";
 import { quotesFrom } from "@oriel/web/markdown";
-import { fileTitle, type FolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { fileTitle, type FolderFixture } from "@oriel/folder";
 import {
   cost,
   type Fetch,

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import type { AgentEvent } from "@oriel/agent";
 import { instant, type Sandbox } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
-import { loadFolderFixture } from "../../../scripts/fixtures/folder.ts";
+import { loadFolderFixture } from "@oriel/folder";
 import { parseEvalCase } from "./case.ts";
 import { loadJiraFixture } from "./repo.ts";
 import type { SystemInput } from "./runner.ts";
