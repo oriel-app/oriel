@@ -71,9 +71,20 @@ export type NoticeLine = {
 
 const chip = /\[\[([^\]]+)\]\]/gu;
 
+// The numbers in a text, outside its chips.
+export const numbersIn = (text: string): string[] =>
+  text.replace(chip, " ").match(/\p{Nd}+/gu) ?? [];
+
 // Why a model's line can't be shown, or null when it can. `allowed` holds
-// the IDs it may name as chips: the signal's subject and items.
-export function whyProblem(why: string, allowed: ReadonlySet<string>): string | null {
+// the IDs it may name as chips: the signal's subject and items. `known`
+// holds the numbers already in the signal's headline or its items' text,
+// such as a name's ("3-D Secure"), which the line may repeat; any other
+// number would be a figure the model made.
+export function whyProblem(
+  why: string,
+  allowed: ReadonlySet<string>,
+  known: ReadonlySet<string> = new Set(),
+): string | null {
   const text = why.trim();
   if (!text) return "it is empty";
   if ([...text].length > maxWhyChars) return `it is longer than ${maxWhyChars} characters`;
@@ -82,8 +93,9 @@ export function whyProblem(why: string, allowed: ReadonlySet<string>): string | 
   const stray = named.filter((id) => !allowed.has(id));
   if (stray.length) return `it names ${stray.join(", ")}, which isn't behind this signal`;
   const prose = text.replace(chip, "");
-  // Oriel shows every figure; a digit in the model's words is one it made.
-  if (/\p{Nd}/u.test(prose)) return "it carries a figure";
+  // Oriel shows every figure; a number in the model's words that its
+  // sources don't hold is one it made.
+  if (numbersIn(prose).some((n) => !known.has(n))) return "it carries a figure";
   if (/https?:|www\.|\w+\.\w{2,}\//iu.test(prose)) return "it carries a link";
   if (/[<>`*_#|]|\]\(|\[\[|\]\]/u.test(prose)) return "it carries markup";
   return null;
@@ -142,7 +154,10 @@ export function checkNotice(
   const signal = signals.get(line.signal);
   if (!signal) return { ok: false, why: `${line.signal} isn't a signal Oriel offered` };
   const allowed = new Set<string>([...signal.items, subjectId(signal.subject)]);
-  const lineProblem = whyProblem(line.why, allowed);
+  const known = new Set(
+    [signal.headline, ...signal.items.map((id) => texts.get(id) ?? "")].flatMap(numbersIn),
+  );
+  const lineProblem = whyProblem(line.why, allowed, known);
   const quoted = line.quote;
   const keep =
     quoted !== null &&
