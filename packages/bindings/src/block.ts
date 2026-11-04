@@ -13,11 +13,11 @@ export const showFn: Fn = {
   outsideRegion: false,
   ...read({
     name: "show",
-    doc: "Rows, bars (summed by label) or a table from a read this turn ran (same args).",
+    doc: "A block from a read this turn ran (same args): rows, bars (summed by label), a table, or a chart.",
     params: [
       param(
         "b",
-        '{ read: string; args?: unknown[]; form: "rows" | "bars" | "table"; [k: string]: unknown }',
+        '{ read: string; args?: unknown[]; form: "rows" | "bars" | "table" | "series" | "timeline" | "spread" | "pivot"; [k: string]: unknown }',
         unknown,
       ),
     ],

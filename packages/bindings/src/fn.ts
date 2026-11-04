@@ -33,6 +33,9 @@ export type Host = NamespaceHost &
     // The waiting connections' previews, in a window chat's module only
     // while one waits (decision 0051).
     preview(): Promise<unknown>;
+    // Items with what the change log saw of them (`history()`): an epic's
+    // or a workstream's, by its ID, or every item.
+    history(of: string | null): Promise<unknown>;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named

@@ -5,6 +5,7 @@ import { idUnion } from "@oriel/core";
 import type { Scope } from "./describe.ts";
 import type { Fn } from "./fn.ts";
 import { itemTypes } from "./items.ts";
+import { historyTypes } from "./history.ts";
 import { orielTypes } from "./oriel.ts";
 import { windowTypes } from "./window.ts";
 import { actionTypes } from "./actions.ts";
@@ -52,6 +53,7 @@ export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting
     ...itemTypes(scope.docs),
     ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
     ...orielTypes,
+    ...historyTypes,
     ...actionTypes,
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
     ...(waiting ? draftTypes(waiting) : []),

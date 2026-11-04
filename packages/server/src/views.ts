@@ -12,6 +12,7 @@ import {
   type IndexRecord,
   type Instant,
   type ItemId,
+  isItemId,
   isUlid,
   type NextStep,
   parseItemId,
@@ -407,6 +408,23 @@ export function views(deps: ViewDeps) {
   // saying so.
   const blockView = (built: Block, region: ReadonlySet<string>): BlockView => {
     const { spec: _spec, ...block } = built;
+    if (block.form === "timeline" || block.form === "pivot") {
+      // Labels that are items, as each lane of history()'s items is and
+      // each of their epics, by the name the index has for each now
+      // (decision 0053): Oriel's data, never the agent's.
+      const { byId } = lookup();
+      const labels =
+        block.form === "timeline"
+          ? block.lanes.map((lane) => lane.label)
+          : Object.values(block.tables).flatMap((table) => [...table.rows, ...table.columns]);
+      const names = Object.fromEntries(
+        [...new Set(labels)].flatMap((label) => {
+          const record = isItemId(label) ? byId.get(label) : undefined;
+          return record ? [[label, record.title]] : [];
+        }),
+      );
+      return { ...block, names };
+    }
     if (block.form !== "rows") return block;
     const { byId } = lookup();
     const asOf = deps.asOf();

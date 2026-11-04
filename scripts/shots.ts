@@ -58,6 +58,7 @@ import { indexStore, open as openDb } from "../packages/db/src/index.ts";
 import { fixtureApi, loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { replayNoticer } from "./noticed/replay.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
+import { history as pastWeeks, weekAt, weeks } from "./history-world.ts";
 import {
   fillJira as fillFirstRun,
   type FirstRunOptions,
@@ -160,6 +161,43 @@ const quotedReply = [
 // from the overview, in each of its forms, or the rows a search found,
 // which Oriel shows unasked.
 const windowAnswers: [RegExp, string, string][] = [
+  // The chart blocks, from history(): the index and its change log.
+  [
+    /^are we going to finish checkout/i,
+    `await history("jira:SYN-1");
+await show({ read: "history", args: ["jira:SYN-1"], from: "items", form: "series", at: "doneAt", running: true, fit: true });`,
+    "Checkout's stories done, week by week, with Oriel's line through them and where it puts the rest.",
+  ],
+  [
+    /^how many stories did we finish/i,
+    `await history();
+await show({ read: "history", from: "items", form: "series", at: "doneAt", fit: true, where: { kind: "story" } });`,
+    "Stories done each week, with the trend Oriel fits to them.",
+  ],
+  [
+    /^when will each epic land/i,
+    `await history();
+await show({ read: "history", from: "items", form: "timeline", start: "startedAt", end: "doneAt", by: "epic", where: { kind: "story" } });`,
+    "Each epic from its first story started to its last one done; the open ones run to today.",
+  ],
+  [
+    /^show checkout on a timeline/i,
+    `await history("jira:SYN-1");
+await show({ read: "history", args: ["jira:SYN-1"], from: "items", form: "timeline", start: "startedAt", end: "doneAt" });`,
+    "Checkout's stories, each from when it started to when it was done.",
+  ],
+  [
+    /^how long has work been sitting/i,
+    `await history();
+await show({ read: "history", from: "items", form: "spread", value: "daysInState", where: { state: "In progress" } });`,
+    "How long each item in progress has been there.",
+  ],
+  [
+    /^who'?s overloaded/i,
+    `await history();
+await show({ read: "history", from: "items", form: "pivot", rows: "assignee", columns: "state", where: { kind: "story" } });`,
+    "Stories by assignee and state. Change the rows or columns to look another way.",
+  ],
   [
     /^chart/i,
     `await window.overview();
@@ -580,6 +618,39 @@ const syncKind = async (kind: string, on: Serving) => {
   if (!connection) throw new Error(`no ${kind} connection to sync`);
   await post(`/api/connections/${connection.id}/sync`, {}, on);
 };
+// SYN with eight weeks behind it (history-world.ts): synced each Monday from
+// Sep 7, a week's moves at a time, so the change log holds what a team's
+// would, for the chart blocks. Its clock is the last Monday's, running on.
+const historied = await (async () => {
+  const { start: past, moves } = pastWeeks(loadJiraFixture());
+  let base = Date.parse(weekAt(0));
+  let mark = Date.now();
+  const site = memorySite(past, weekAt(0));
+  const serving = await start(0, {
+    db: ":memory:",
+    sources: {
+      jira: {
+        mode: "live",
+        identity: memorySiteOrigin,
+        options: { project: "SYN" },
+        secret: JSON.stringify({ email: "", token: "" }),
+        fetch: site.fetch,
+      },
+    },
+    now: () => instant(new Date(base + Date.now() - mark)),
+    agent: (deps) => scriptedAgent(deps, planning),
+  });
+  for (let k = 0; k <= weeks; k += 1) {
+    base = Date.parse(weekAt(k)) + (k === 0 ? 3_600_000 : 0);
+    mark = Date.now();
+    for (const [key, status] of moves.get(k) ?? []) site.edit(key, { status });
+    await syncKind("jira", serving);
+  }
+  // A day on from the last sync.
+  base = Date.parse(weekAt(weeks)) + 86_400_000;
+  mark = Date.now();
+  return serving;
+})();
 const changeSetOf = async (on: Serving, threadId: string): Promise<string> => {
   const view = await call<{ changeSets: { id: string }[] }>(on, "GET", `/api/threads/${threadId}`);
   const id = view.changeSets[0]?.id;
@@ -1092,6 +1163,19 @@ async function openSources(page: Page): Promise<void> {
 }
 
 // Once the overview has loaded.
+// A question asked from the ask bar in a fresh window chat, waiting for its
+// block of `form` and the end of the turn.
+async function askInWindow(page: Page, question: string, form: string): Promise<void> {
+  await post("/api/window-chat/new", {}, historied);
+  await page.locator(".ask-input").fill(question);
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  // The last scene's chat may still show its block until this one's
+  // question replaces it.
+  await page.locator(".window-chat").getByText(question, { exact: true }).waitFor();
+  await page.locator(`.window-chat .answer-block[data-form="${form}"]`).waitFor();
+  await page.locator(".window-chat .working").waitFor({ state: "detached" });
+}
+
 async function overviewShown(page: Page): Promise<void> {
   await page.locator('main.overview[aria-busy="false"] .overview-columns').waitFor();
 }
@@ -1336,6 +1420,79 @@ const scenes: Scene[] = [
       await drafted(page);
       await page.getByRole("button", { name: "Apply", exact: true }).click();
       await page.locator('.window-chat .held-block[data-outcome="applied"]').waitFor();
+    },
+  },
+  // The chart blocks (decision 0053): each form in the window chat, built
+  // by Oriel from history() on SYN with eight weeks of change log.
+  ...(
+    [
+      ["chart-series", "Are we going to finish checkout this month?", "series"],
+      ["chart-trend", "How many stories did we finish each week?", "series"],
+      ["chart-timeline", "When will each epic land?", "timeline"],
+      ["chart-timeline-stories", "Show checkout on a timeline", "timeline"],
+      ["chart-spread", "How long has work been sitting in progress?", "spread"],
+      ["chart-pivot", "Who's overloaded?", "pivot"],
+    ] as const
+  ).map(([name, question, form]): Scene => ({
+    name,
+    path: "/",
+    on: historied,
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await askInWindow(page, question, form);
+    },
+  })),
+  {
+    // The pivot regrouped by the person, with no model call: epics down,
+    // states across, story points summed.
+    name: "chart-pivot-regrouped",
+    path: "/",
+    on: historied,
+    window: true,
+    act: async (page) => {
+      await overviewShown(page);
+      await askInWindow(page, "Who's overloaded?", "pivot");
+      const picks = page.locator(".window-chat .pivot-pick select");
+      await picks.nth(0).selectOption({ label: "Epic" });
+      await picks.nth(2).selectOption({ label: "Sum of Estimate" });
+    },
+  },
+  {
+    // Pins (decision 0030) of four chart blocks, as the overview's Pinned
+    // strip shows them. A thread's block can't be pinned yet (0030's
+    // `pin.add`): the blocks are the window chat's, as Oriel built them, put
+    // in Noticed's reply, which carries the pins, for the shot.
+    name: "chart-pinned",
+    path: "/",
+    on: historied,
+    act: async (page) => {
+      await post("/api/window-chat/new", {}, historied);
+      for (const question of [
+        "Are we going to finish checkout this month?",
+        "When will each epic land?",
+        "How long has work been sitting in progress?",
+        "Who's overloaded?",
+      ]) {
+        await post("/api/window-chat/messages", { text: question }, historied);
+        await historied.app.settled();
+      }
+      const { thread } = await call<{ thread: string }>(historied, "GET", "/api/window-chat");
+      const view = await call<{ entries: { kind: string; block?: unknown }[] }>(
+        historied,
+        "GET",
+        `/api/threads/${thread}`,
+      );
+      const pins = view.entries.flatMap((entry, i) =>
+        entry.kind === "block" ? [{ id: `pin-${i}`, block: entry.block }] : [],
+      );
+      await page.route("**/api/noticed", async (route) => {
+        const reply = (await (await route.fetch()).json()) as Record<string, unknown>;
+        await route.fulfill({ json: { ...reply, pins } });
+      });
+      await page.reload();
+      await overviewShown(page);
+      await page.locator(".pinned .answer-block").nth(3).waitFor();
     },
   },
   {

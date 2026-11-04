@@ -13,7 +13,13 @@ const signal = (id: string, items: string[]): Signal => ({
   weight: 6,
   fingerprint: "idle≥14",
   items: items as ItemId[],
-  block: { read: "signals.open", args: [id.slice(8)], from: undefined, form: "rows" },
+  block: {
+    read: "signals.open",
+    args: [id.slice(8)],
+    from: undefined,
+    where: undefined,
+    form: "rows",
+  },
 });
 const signals = [signal("stalled:w1", ["jira:SYN-9"]), signal("stalled:w2", ["jira:SYN-6"])];
 const evidence: Evidence[] = [

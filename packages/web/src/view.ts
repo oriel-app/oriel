@@ -3,6 +3,7 @@
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
+import type { ChartBlock } from "@oriel/core/block-charts";
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { ReviewTable } from "@oriel/core/connect";
 import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
@@ -460,12 +461,16 @@ export type RunView = {
 // `outside`: from a read outside the workstream, the escape hatch, which
 // is read-only; a row the workstream holds too says so (`inRegion`).
 export type BlockView = { caption: string; more: number; outside: boolean } & (
-  | { form: "bars"; bars: { label: string; value: number }[] }
+  | { form: "bars"; bars: { label: string; value: number; atLeast?: true }[] }
   | { form: "table"; columns: string[]; rows: (string | number | boolean | null)[][] }
   | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
   // A waiting connection's preview, read live for the agent to draft its
   // options (decision 0051): its source's cells as text, never items.
   | { form: "preview"; tables: { name: string; columns: string[]; rows: (string | null)[][] }[] }
+  // A chart: a series over time, a timeline, a spread or a pivot, every
+  // figure in it Oriel's. `names`: a label that is an item's ID, as a lane
+  // or an epic is, by the item's name in the index (decision 0053).
+  | (ChartBlock & { names?: Readonly<Record<string, string>> })
 );
 
 // Noticed (decision 0052): what Oriel found in the window

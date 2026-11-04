@@ -237,6 +237,9 @@ export type Msg =
   // The user left for an item's source: from its panel, or by a Cmd/Ctrl or
   // middle click on a link to it. The browser goes; this only tells.
   | { type: "sourceOpened"; id: string; via: "panel" | "link" }
+  // The person regrouped a pivot block in the window (decision 0053). The
+  // window only tells: the grids were Oriel's already.
+  | { type: "pivotRegrouped" }
   // A link inside the app was followed.
   | { type: "linkClicked"; route: Route }
   // The page changed: after a link, or back and forward.
@@ -708,6 +711,8 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       ];
     case "sourceOpened":
       return [model, [report({ name: "item.source-opened", item: msg.id, via: msg.via })]];
+    case "pivotRegrouped":
+      return [model, [report({ name: "block.regrouped" })]];
     case "linkClicked":
       return [model, [{ type: "navigate", route: msg.route }]];
     // Only the panel changing leaves the page as it is; the same address

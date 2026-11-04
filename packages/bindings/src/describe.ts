@@ -23,6 +23,7 @@ import { checkedId, type Fn, orielSpaces } from "./fn.ts";
 import { itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
 import { showFn } from "./block.ts";
+import { historyFn } from "./history.ts";
 import { sketchFn } from "./sketch.ts";
 import { windowFns } from "./window.ts";
 import { draftFns, previewFn, type Waiting } from "./drafts.ts";
@@ -42,7 +43,7 @@ export type ItemDocs = Partial<Record<SourceKind, string>>;
 
 // The global functions, parameters of the script's function, which it
 // can't redeclare.
-export const parameters: readonly string[] = ["search", "show", "sketch"];
+export const parameters: readonly string[] = ["search", "history", "show", "sketch"];
 
 // Oriel's own names in every module, which no source's kind may take
 // (decision 0049).
@@ -162,6 +163,7 @@ export function describe(
     ...window,
     ...waiting,
     searchFn,
+    historyFn,
     showFn,
     sketchFn,
   ];

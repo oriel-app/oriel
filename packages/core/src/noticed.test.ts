@@ -21,7 +21,13 @@ const signal: Signal = {
   weight: 2,
   fingerprint: "slack:C1-1",
   items: ["jira:SYN-61" as ItemId, "slack:C1-1" as ItemId],
-  block: { read: "signals.after-done", args: ["jira:SYN-61"], from: undefined, form: "rows" },
+  block: {
+    read: "signals.after-done",
+    args: ["jira:SYN-61"],
+    from: undefined,
+    where: undefined,
+    form: "rows",
+  },
 };
 const offered = new Map([[signal.id, signal]]);
 const texts = new Map([

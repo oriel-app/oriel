@@ -200,6 +200,7 @@ export type Report =
   | { name: "threads.search-opened"; opened: "thread" | "change-set"; rank: number }
   | { name: "items.searched"; queryLength: number; results: number }
   | { name: "overview.opened" }
+  | { name: "block.regrouped" }
   | { name: "overview.more-opened"; section: OverviewSection }
   | { name: "overview.suggestion-made"; workstreamId: string; grouping: GroupingId }
   | { name: "window-chat.question-used"; question: StartQuestion }

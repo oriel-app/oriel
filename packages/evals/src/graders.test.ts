@@ -361,6 +361,7 @@ test("blocks: each block shown must be the one its read builds, and one of the e
       read: "window.overview",
       args: undefined,
       from: "workstreams",
+      where: undefined,
       form: "bars",
       label: "name",
       value: "moved",
@@ -400,7 +401,7 @@ test("no sketch: any sketch() call fails, shown or refused", () => {
 
 test("blocks: the expected read may be one of several", () => {
   const block = buildBlock(
-    { read: "workstream.list", args: undefined, from: undefined, form: "rows" },
+    { read: "workstream.list", args: undefined, from: undefined, where: undefined, form: "rows" },
     {
       value: [{ id: "jira:SYN-3" }],
       outside: false,

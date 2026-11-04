@@ -308,6 +308,8 @@ const windowEvent = union(
     rank: count,
   }),
   object({ name: literal("overview.opened") }),
+  // A pivot block regrouped in the window, by nothing but that it was.
+  object({ name: literal("block.regrouped") }),
   // Make a workstream on a cluster the overview suggested.
   object({
     name: literal("overview.suggestion-made"),

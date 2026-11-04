@@ -62,6 +62,8 @@ export function bindingsFor(
     // The window chat's connections that wait for their options; its
     // thread's module gets `source` only with it (decision 0051).
     waiting?: Waiting;
+    // Items with what the change log saw of them, from the index alone.
+    history?: (of: string | null) => Promise<unknown>;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
@@ -108,6 +110,10 @@ export function bindingsFor(
     },
     preview: async () => {
       throw new Error("only the window chat reads a waiting connection's preview");
+    },
+    history: async (of) => {
+      if (!options.history) throw new Error("Oriel keeps no change log here");
+      return options.history(of);
     },
   };
   // The ref the next create must carry. Every correctly numbered create uses

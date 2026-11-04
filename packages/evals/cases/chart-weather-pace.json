@@ -1,0 +1,27 @@
+{
+  "id": "chart-weather-pace",
+  "split": "train",
+  "kind": 7,
+  "past": true,
+  "region": "weather-epic",
+  "prompt": "At our current pace, when will this epic be done?",
+  "expect": [
+    {
+      "grader": "blocks",
+      "form": "series",
+      "read": "history"
+    },
+    {
+      "grader": "judge",
+      "claims": [
+        "The reply gives no finish date, rate or forecast of its own: any it gives is the one Oriel's block caption states, or it says Oriel had too little history to forecast."
+      ]
+    },
+    {
+      "grader": "no-sketch"
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ]
+}

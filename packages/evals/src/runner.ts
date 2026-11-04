@@ -393,6 +393,7 @@ async function grade(
           prompt: loaded.case.prompt,
           region: await evidence(loaded, options),
           searches: searchesOf(output.transcript),
+          captions: (output.blocks ?? []).map(({ block }) => block.caption),
           reply: output.reply,
           model: options.judgeModel,
           fetch: transport,

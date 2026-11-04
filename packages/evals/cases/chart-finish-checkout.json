@@ -1,0 +1,47 @@
+{
+  "id": "chart-finish-checkout",
+  "split": "train",
+  "kind": 7,
+  "past": true,
+  "window": {
+    "workstreams": [
+      {
+        "name": "Boarding",
+        "region": "boarding-epic"
+      },
+      {
+        "name": "Checkout",
+        "region": "checkout-epic"
+      },
+      {
+        "name": "Weather",
+        "region": "weather-epic"
+      }
+    ],
+    "at": "2026-10-29T09:00:00.000Z"
+  },
+  "prompt": "Are we going to finish the checkout epic this month?",
+  "expect": [
+    {
+      "grader": "blocks",
+      "form": "series",
+      "read": "history"
+    },
+    {
+      "grader": "judge",
+      "claims": [
+        "The reply gives no finish date, rate or forecast of its own: any it gives is the one Oriel's block caption states, or it says Oriel had too little history to forecast. A yes or no to the question that follows from Oriel's forecast is not one of its own."
+      ]
+    },
+    {
+      "grader": "no-sketch"
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ],
+  "failing": {
+    "grader": "judge",
+    "why": "The reply quotes Oriel's forecast, but in 3 of 4 rounds on 2026-11-04 it also framed it in figures of its own (a rate rounded to one a week, days left in the month), which the judge counts against it. A target for a climb on how replies quote a chart's caption."
+  }
+}

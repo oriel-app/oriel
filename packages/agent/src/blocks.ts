@@ -128,7 +128,12 @@ export function turnShown(newId: () => Ulid) {
         if (blocks.length >= maxBlocksPerTurn)
           return refuse(`a reply shows at most ${maxBlocksPerTurn} blocks you ask for.`);
         shown.push({ kind: "block", block: built.block });
-        return `Oriel shows a ${spec.form} block from ${key} under your reply.`;
+        const said = `Oriel shows a ${spec.form} block from ${key} under your reply.`;
+        // A chart's caption holds figures Oriel computed, such as a forecast,
+        // which the reply should use rather than work out again.
+        return ["series", "timeline", "spread", "pivot"].includes(spec.form)
+          ? `${said} Its caption: ${built.block.caption}.`
+          : said;
       };
       const sketch = (html: unknown, height: unknown): string => {
         const refuse = (reason: SketchRefusal, why: string) => {

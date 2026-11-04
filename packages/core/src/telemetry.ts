@@ -156,6 +156,9 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "block.shown"; threadId: Ulid; form: BlockForm | "preview" }
   // A block the agent asked for and Oriel refused; the agent was told why.
   | { name: "block.refused"; threadId: Ulid }
+  // The person regrouped a pivot block in the window, with no model call
+  // (decision 0053); nothing but that it happened.
+  | { name: "block.regrouped" }
   // A sketch the agent wrote showed under its reply, by its height and its
   // size in bytes; or Oriel refused it, by why (decision 0033). Never its
   // text or the names refused.
