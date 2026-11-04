@@ -1,0 +1,20 @@
+{
+  "id": "slices-slack-dependency",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "items": [
+    "slack:C0FW1WEATHR-1788253500.000100",
+    "slack:C0FW1WEATHR-1788444000.000100",
+    "slack:C0FW1WEATHR-1788782400.000100",
+    "slack:C0FW1WEATHR-1789982100.000100"
+  ],
+  "prompt": "This epic has to make its date. Propose release slices I could ship by then.",
+  "expect": [
+    { "grader": "zero-mutations" },
+    {
+      "grader": "slices",
+      "needs": [{ "item": "jira:SYN-61", "on": "sign", "cited": true }]
+    }
+  ]
+}

@@ -48,6 +48,7 @@ import { waitingOn, waitsOnUser } from "@oriel/web/view";
 import { actionLineView } from "./action-lines.ts";
 import { agentEvent, type AgentEvent } from "./agent.ts";
 import { listedWorkstreams } from "./window-chat.ts";
+import { slicesView } from "./slices.ts";
 
 export type ViewDeps = {
   workstreams: WorkstreamStore;
@@ -509,7 +510,18 @@ export function views(deps: ViewDeps) {
       }
       case "block.refused":
       case "sketch.refused":
+      case "slices.refused":
         return null;
+      // Slices, with Oriel's figures from the index as it is now, against
+      // the workstream as it is now, for what went stale.
+      case "slices": {
+        const workstream = workstreams.get(own.workstream);
+        const members = workstream
+          ? (workstreams.region(own.workstream, workstream.version)?.items.map((m) => m.id) ?? [])
+          : [];
+        const view = slicesView(event.slices, deps.records(), members, deps.writable);
+        return { ...at, kind: "slices", slices: view };
+      }
       case "block":
         return { ...at, kind: "block", block: blockView(event.block, region) };
       // A sketch, framed from the sketch origin, which checks it again.
@@ -790,5 +802,15 @@ export function answered(entries: readonly ChatEntry[]): string[] {
       else answers.push(entry.text);
     last = entry;
   }
-  return [...new Set(answers.flatMap(chipIds))];
+  // Slices name their items, and the items their outcomes and needs cite.
+  const sliced = entries.flatMap((entry) =>
+    entry.kind === "slices"
+      ? [
+          ...entry.slices.items.map((item) => item.id),
+          ...entry.slices.slices.flatMap((s) => [...s.keeps, ...s.loses].flatMap(chipIds)),
+          ...entry.slices.needs.flatMap((n) => [n.item, ...n.from, ...chipIds(`[[${n.on}]]`)]),
+        ]
+      : [],
+  );
+  return [...new Set([...answers.flatMap(chipIds), ...sliced])];
 }

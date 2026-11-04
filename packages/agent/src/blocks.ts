@@ -36,10 +36,14 @@ import {
   readKey,
   type RunResult,
   type Shown,
+  type SliceFact,
+  type SliceSet,
   type Sketch,
   type SketchRefusal,
   sketchTokens,
   type Ulid,
+  buildSlices,
+  slicesSaid,
 } from "@oriel/core";
 import type { AgentEvent } from "./contract.ts";
 
@@ -66,14 +70,21 @@ const searchHits = array(
 );
 
 // What a turn shows under its reply, in the order its runs asked for it.
-type Kept = { kind: "block"; block: Block } | { kind: "sketch"; sketch: Sketch };
+type Kept =
+  | { kind: "block"; block: Block }
+  | { kind: "sketch"; sketch: Sketch }
+  | { kind: "slices"; slices: SliceSet };
+
+// What a turn's slices() reads of the region's items from the index: where
+// each stands and its estimate. Without it, a turn shows no slices.
+export type SliceFacts = () => SliceFact[];
 
 // What the agent reads after a sketch Oriel shows: the theme variables its
 // sheet sets, so the next sketch can use them.
 const sketchShown = (height: number) =>
   `Oriel shows your sketch under your reply, ${height} px high, captioned as yours. Its sheet sets ${sketchTokens.join(", ")}.`;
 
-export function turnShown(newId: () => Ulid) {
+export function turnShown(newId: () => Ulid, sliceFacts?: SliceFacts) {
   // What each read this turn answered, by its name and arguments.
   const answered = new Map<string, Answered>();
   const kept: { runId: Ulid; shown: Kept }[] = [];
@@ -151,6 +162,24 @@ export function turnShown(newId: () => Ulid) {
         shown.push({ kind: "sketch", sketch: { id: newId(), html, height } });
         return sketchShown(height);
       };
+      // Slices (the scope-lab spike): one proposal a turn, the last asked
+      // for, built against the region's items as the index has them.
+      const slices = (input: unknown): string => {
+        const refuse = (why: string) => {
+          refused.push({ kind: "slices.refused", runId });
+          return `Oriel refused the slices, and shows nothing: ${why}.`;
+        };
+        if (!sliceFacts) return refuse("this thread can't show slices");
+        const facts = sliceFacts();
+        // What this run found outside the region, which it may cite.
+        const seen = new Map([...hits].map(([id, hit]) => [id, hit.updatedAt] as const));
+        const built = buildSlices(newId(), input, facts, seen);
+        if (!built.ok) return refuse(built.why);
+        for (let i = shown.length - 1; i >= 0; i--)
+          if (shown[i]?.kind === "slices") shown.splice(i, 1);
+        shown.push({ kind: "slices", slices: built.value });
+        return slicesSaid(built.value, facts);
+      };
       const say = (told: string) => {
         said.push(told);
         return told;
@@ -158,6 +187,7 @@ export function turnShown(newId: () => Ulid) {
       const bindings = bindingsFor({
         show: (input) => say(block(input)),
         sketch: (html, height) => say(sketch(html, height)),
+        slices: (input) => say(slices(input)),
       });
       // What the run reached outside the region, which the escape hatch's
       // block shows unasked; the sandbox keeps only each read's hash. A
@@ -175,7 +205,7 @@ export function turnShown(newId: () => Ulid) {
           const found = searchHits(answer.found ?? []);
           for (const hit of found.ok ? found.value : [])
             if (!hits.has(hit.id)) hits.set(hit.id, hit);
-          if (fn !== "show" && fn !== "sketch")
+          if (fn !== "show" && fn !== "sketch" && fn !== "slices")
             answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
           return answer;
         },
@@ -200,7 +230,9 @@ export function turnShown(newId: () => Ulid) {
       for (const { runId, shown } of kept)
         yield shown.kind === "block"
           ? { kind: "block", runId, block: shown.block }
-          : { kind: "sketch", runId, sketch: shown.sketch };
+          : shown.kind === "sketch"
+            ? { kind: "sketch", runId, sketch: shown.sketch }
+            : { kind: "slices", runId, slices: shown.slices };
       yield* refused;
     },
   };

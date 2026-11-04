@@ -53,6 +53,9 @@ export const jiraOps = {
   setDescription: { args: object({ description: string }), revertOnly: false },
   setEstimate: { args: object({ points: nullable(number) }), revertOnly: false },
   setAssignee: { args: object({ accountId: nullable(string) }), revertOnly: false },
+  // Moves an issue to another epic, or out of any (null): how a slice
+  // defers it to a later release.
+  setEpic: { args: object({ epic: nullable(string) }), revertOnly: false },
   // Jira moves an issue through its workflow's transitions: the writer takes
   // the one that leads to `status`, and refuses when there is none.
   setStatus: { args: object({ status: statusName }), revertOnly: false },

@@ -261,6 +261,10 @@ export function memorySite(
         if (pointsField in fields)
           issue.points =
             typeof fields[pointsField] === "number" ? (fields[pointsField] as number) : null;
+        if ("parent" in fields) {
+          const parent = fields.parent as { key: string } | null;
+          issue.epic = parent?.key ?? null;
+        }
         issue.updated = tick();
         return json(204);
       }

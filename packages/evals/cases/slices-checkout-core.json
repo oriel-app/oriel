@@ -1,0 +1,12 @@
+{
+  "id": "slices-checkout-core",
+  "split": "train",
+  "kind": 2,
+  "region": "checkout-epic",
+  "prompt": "Checkout v2 won't all fit in the next release. Propose release slices: what could we defer and still ship the core?",
+  "expect": [
+    { "grader": "zero-mutations" },
+    { "grader": "slices", "keeps": ["jira:SYN-21", "jira:SYN-23"], "defers": ["jira:SYN-98"] },
+    { "grader": "avoids", "text": ["days saved", "days of work", "save you"] }
+  ]
+}

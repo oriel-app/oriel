@@ -23,6 +23,7 @@ import {
   object,
   optional,
   agentNote,
+  boolean,
   record,
   refine,
   type Result,
@@ -120,6 +121,16 @@ const expectations = {
   // The turn never called sketch(), shown or refused (decision 0033): a
   // chart Oriel can build from a read is a block, never the agent's HTML.
   "no-sketch": object({ grader: literal("no-sketch") }),
+  // The turn proposed slices (the scope-lab spike): every slice keeps each
+  // of `keeps`; some slice defers each of `defers`; and each of `needs` is
+  // there, an item needing `on` (an item, or words the need contains),
+  // citing an item it was read in when `cited`. `none`: no slices at all.
+  slices: object({
+    grader: literal("slices"),
+    keeps: optional(array(itemName)),
+    defers: optional(array(itemName)),
+    needs: optional(array(object({ item: itemName, on: text, cited: optional(boolean) }))),
+  }),
   surfaced: object({ grader: literal("surfaced"), item: itemName, text: atLeastOne(text) }),
   mentions: object({ grader: literal("mentions"), text: atLeastOne(text) }),
   // Text the reply never contains, such as disowning Oriel's own line, or

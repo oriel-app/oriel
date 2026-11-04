@@ -8,6 +8,7 @@
 import { isInstant, isItemId, isPrefix, isUlid, type SourceKind, type Ulid } from "./ids.ts";
 import {
   array,
+  boolean,
   type Described,
   type Infer,
   literal,
@@ -393,6 +394,24 @@ export const actions = {
     class: {
       kind: "person-only",
       why: "It takes back approval a link handed out (decision 0024).",
+    },
+  },
+  // A cut of release slices (the scope-lab spike) as a change set: the
+  // items it defers move to a new epic named `later`. `slices`: the
+  // proposal's ID in the thread; `toggled`: the person changed the agent's
+  // slice first, for telemetry.
+  "slices.cut": {
+    doc: "Makes a change set that moves a slice's deferred items to a later epic.",
+    input: object({
+      thread: threadId,
+      slices: refine(string, isUlid, "expected the slices' ID"),
+      defer: items,
+      later: name,
+      toggled: boolean,
+    }),
+    class: {
+      kind: "person-only",
+      why: "The agent proposes slices; which cut becomes a change set is the person's to pick, before they approve it.",
     },
   },
   // A connection's steps, by its connector (decision 0049): what the user

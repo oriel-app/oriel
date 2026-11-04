@@ -19,6 +19,8 @@ import type {
   SearchHit,
   Shown,
   Sketch,
+  SliceFact,
+  SliceSet,
   SketchRefusal,
   Thread,
   Ulid,
@@ -85,6 +87,10 @@ export type AgentEvent =
   // A sketch a run asked for and Oriel refused, by why, for telemetry; the
   // run's result told the agent what to change.
   | { kind: "sketch.refused"; runId: Ulid; reason: SketchRefusal }
+  // Release slices a run proposed (the scope-lab spike): shown under the
+  // reply, where the user toggles items and makes a change set of one.
+  | { kind: "slices"; runId: Ulid; slices: SliceSet }
+  | { kind: "slices.refused"; runId: Ulid }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
   // What became of the intents the turn's last run (`runId`) recorded,
@@ -120,6 +126,9 @@ export type AgentDeps = {
   // block a run asks for, from a read its turn ran, and shows the sketch it
   // asks for, and says what it did.
   bindingsFor: (region: Region, thread: Ulid, shown?: Shown) => Bindings;
+  // The region's items as the index has them now, for slices() (the
+  // scope-lab spike). Without it, a turn shows no slices.
+  sliceFacts?: (region: Region) => SliceFact[];
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if

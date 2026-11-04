@@ -9,6 +9,7 @@ import {
   array,
   boolean,
   builtBlock,
+  storedSliceSet,
   type Infer,
   type Instant,
   literal,
@@ -51,6 +52,7 @@ import { fixtureOf, type Fixtures } from "./fixtures.ts";
 import {
   type Grade,
   gradeBlocks,
+  gradeSlices,
   gradeExactDiff,
   gradeIntents,
   gradeJudge,
@@ -96,6 +98,8 @@ export const systemOutput = object({
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   // How many times the turn called sketch(), shown or refused.
   sketches: optional(number),
+  // The slices the turn showed (the scope-lab spike).
+  slices: optional(array(storedSliceSet)),
   reply: string,
   transcript: array(unknown),
 });
@@ -103,8 +107,9 @@ export const systemOutput = object({
 // never asks for any.
 export type SystemOutput = Omit<
   Infer<typeof systemOutput>,
-  "intents" | "drafts" | "blocks" | "sketches"
+  "intents" | "drafts" | "blocks" | "sketches" | "slices"
 > & {
+  slices?: Infer<typeof systemOutput>["slices"];
   intents?: Infer<typeof systemOutput>["intents"];
   drafts?: Infer<typeof systemOutput>["drafts"];
   blocks?: Infer<typeof systemOutput>["blocks"];
@@ -374,6 +379,20 @@ async function grade(
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
+    if (expectation.grader === "slices")
+      grades.push(
+        gradeSlices(
+          {
+            keeps: (expectation.keeps ?? []).map((item) => named(loaded, item)),
+            defers: (expectation.defers ?? []).map((item) => named(loaded, item)),
+            needs: (expectation.needs ?? []).map((need) => ({
+              ...need,
+              item: named(loaded, need.item),
+            })),
+          },
+          output.slices ?? [],
+        ),
+      );
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));

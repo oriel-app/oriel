@@ -4,6 +4,7 @@
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect } from "preact/hooks";
 import { BlockFigure, SketchFigure } from "./block.tsx";
+import { SlicesFigure } from "./slices.tsx";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -276,6 +277,18 @@ export function ChatEntryItem(props: {
       return (
         <li class="sketch-entry">
           <SketchFigure sketch={entry.sketch} />
+        </li>
+      );
+    case "slices":
+      return (
+        <li class="slices-entry">
+          <ChipsContext.Provider value={props.view.chips}>
+            <SlicesFigure
+              threadId={props.view.id}
+              slices={entry.slices}
+              sites={sites(props.view)}
+            />
+          </ChipsContext.Provider>
         </li>
       );
     case "change-set": {

@@ -7,6 +7,7 @@ import { type Effect, errorOf, get, post, reached, type Replied, undoing } from 
 import type {
   BlockView,
   SketchView,
+  SlicesView,
   ActionLineView,
   ChangeSetView,
   NextStepView,
@@ -864,6 +865,7 @@ export type Entry =
     }
   | { kind: "block"; seq: number; block: BlockView }
   | { kind: "sketch"; seq: number; sketch: SketchView }
+  | { kind: "slices"; seq: number; slices: SlicesView }
   | { kind: "change-set"; seq: number; changeSetId: string }
   | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
@@ -925,6 +927,9 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
         break;
       case "sketch":
         out.push({ kind: "sketch", seq: entry.seq, sketch: entry.sketch });
+        break;
+      case "slices":
+        out.push({ kind: "slices", seq: entry.seq, slices: entry.slices });
         break;
       case "held":
       case "draft":

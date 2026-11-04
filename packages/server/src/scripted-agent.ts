@@ -51,7 +51,8 @@ async function* steps(
 ): AsyncGenerator<AgentEvent> {
   const { thread, region } = input;
   const proposed = proposal();
-  const turnShows = turnShown(deps.newId);
+  const { sliceFacts } = deps;
+  const turnShows = turnShown(deps.newId, sliceFacts && (() => sliceFacts(region)));
   // A run may capture no more than a change set may hold.
   const limits = {
     ...deps.limits.run,

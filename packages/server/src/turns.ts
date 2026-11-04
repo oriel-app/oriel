@@ -296,11 +296,23 @@ export function turns(deps: TurnDeps) {
   // run's result already told the agent, and which the user never sees: it
   // is only counted.
   const record = (threadId: Ulid, event: AgentEvent) => {
-    if (event.kind !== "block.refused" && event.kind !== "sketch.refused") {
+    if (
+      event.kind !== "block.refused" &&
+      event.kind !== "sketch.refused" &&
+      event.kind !== "slices.refused"
+    ) {
       const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
       published(threadId, seq);
     }
-    const counted = ["search", "block", "block.refused", "sketch", "sketch.refused"];
+    const counted = [
+      "search",
+      "block",
+      "block.refused",
+      "sketch",
+      "sketch.refused",
+      "slices",
+      "slices.refused",
+    ];
     if (!counted.includes(event.kind)) return;
     const thread = threads.get(threadId, deps.now());
     if (!thread) return;
@@ -318,6 +330,16 @@ export function turns(deps: TurnDeps) {
       deps.emit({ name: "sketch.shown", at, workspaceId, threadId, height, bytes });
     } else if (event.kind === "sketch.refused")
       deps.emit({ name: "sketch.refused", at, workspaceId, threadId, reason: event.reason });
+    else if (event.kind === "slices")
+      deps.emit({
+        name: "slices.shown",
+        at,
+        workspaceId,
+        threadId,
+        count: event.slices.slices.length,
+      });
+    else if (event.kind === "slices.refused")
+      deps.emit({ name: "slices.refused", at, workspaceId, threadId });
   };
 
   // Titles the thread from its first message, beside its first turn. The

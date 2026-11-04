@@ -103,6 +103,7 @@ import { type Setup, type SetupOptions, setupService } from "./setup/setup.ts";
 import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
+import { regionFacts } from "./slices.ts";
 import { views } from "./views.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
 
@@ -1090,6 +1091,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const agentDeps: ServerAgentDeps = {
     sandbox,
     bindingsFor: regionBindings,
+    sliceFacts: (region) => regionFacts(records(), region),
     changeSets: { capture: (run, mutations) => sets.capture(run, mutations) },
     actions: {
       apply: (turn, recorded) => {

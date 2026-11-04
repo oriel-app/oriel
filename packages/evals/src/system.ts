@@ -28,6 +28,7 @@ import {
   type Answered,
   planned,
   readKey,
+  sliceFactOf,
   type Run,
   type Sandbox,
   type Thread,
@@ -119,11 +120,15 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         read: async (fn, args) => {
           const answer = await bindings.read(fn, args);
           if (fn === "sketch") sketches += 1;
-          if (fn !== "show" && fn !== "sketch")
+          if (fn !== "show" && fn !== "sketch" && fn !== "slices")
             answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
           return answer;
         },
       };
+    },
+    sliceFacts: (r) => {
+      const ids = new Set<string>(r.items.map((m) => m.id));
+      return world.records.filter((rec) => ids.has(rec.id)).map(sliceFactOf);
     },
     runs: records.runs,
     changeSets: records.changeSets,
@@ -165,6 +170,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         : [],
     ),
     sketches,
+    slices: events.flatMap((event) => (event.kind === "slices" ? [event.slices] : [])),
     reply: replyOf(events),
     transcript: events,
   };

@@ -84,12 +84,14 @@ export const blockSpecHelp =
   "a block names `read`, a read this turn ran, with its `args` if it took any, and `form`. `from` names the list in the read's result the block shows, when the result isn't that list itself. Bars take `label` and `value`, the fields holding each row's label and its number; Oriel sums the rows that share a label. A table takes `columns`, 1 to 5 of each row's fields. Rows take nothing more: each row's item is in `id`. Only the lists and fields the read declares can be shown; a refusal names them.";
 
 // What a turn shows under the reply, as a run asks: `show` builds a block
-// from a read the turn ran, and `sketch` shows the agent's HTML in a
-// sandboxed frame (decision 0033). Each says what it did, or why not, in
-// words for the agent.
+// from a read the turn ran, `sketch` shows the agent's HTML in a sandboxed
+// frame (decision 0033), and `slices` shows proposed release slices with
+// Oriel's figures (the scope-lab spike). Each says what it did, or why not,
+// in words for the agent.
 export type Shown = {
   show(spec: unknown): string;
   sketch(html: unknown, height: unknown): string;
+  slices(input: unknown): string;
 };
 
 // What a read declares a block can show, for a refusal: each list and its

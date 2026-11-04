@@ -349,6 +349,15 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           body: { accountId },
         }));
       }
+      case "setEpic": {
+        const { epic } = valid(jiraOps.setEpic.args, args, op);
+        const parent = epic === null ? null : parseItemId(epic);
+        if (epic !== null && (parent?.prefix !== "jira" || !jiraKeyShape.test(parent.key)))
+          throw new Error("setEpic: epic must be a Jira item ID, like jira:SYN-1");
+        return edit(send, target, ["epic"], async (key) =>
+          put(key, { parent: parent ? { key: parent.key } : null }),
+        );
+      }
       case "setStatus":
         return move(send, target, valid(jiraOps.setStatus.args, args, op));
       case "addLink":

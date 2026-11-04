@@ -53,6 +53,7 @@ import {
   type PickChoiceView,
   type OverviewView,
   type SearchView,
+  type SliceFiguresView,
   type StreamEvent,
   type ThreadsView,
   type WindowView,
@@ -74,6 +75,7 @@ import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import { changeSetView, type Views } from "./views.ts";
+import { cutFigures, slicesIn } from "./slices.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
@@ -1142,6 +1144,37 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       async run([id = ""]) {
         const thread = mustThread(id);
         return json(200, await threadView(thread.id));
+      },
+    },
+    // A cut of a thread's slices, as the person toggles items: Oriel's
+    // figures from the index as it is now, with no model call (the
+    // scope-lab spike). `defer`: the items deferred, comma-separated.
+    {
+      method: "GET",
+      path: at("/threads/:id/slices/:id/figures"),
+      async run([id = "", slices = ""], _request, url) {
+        const thread = mustThread(id);
+        const found = deps.threads
+          .messages(thread.id)
+          .map(slicesIn)
+          .find((each) => each?.set.id === slices);
+        if (!found) return json(404, { error: "no such slices in this thread" });
+        const defer = new Set((url.searchParams.get("defer") ?? "").split(",").filter(isItemId));
+        return json(200, cutFigures(found.set, deps.records(), defer) satisfies SliceFiguresView);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/threads/:id/slices/:id/cut"),
+      async run([id = "", slices = ""], request) {
+        const body = await readJson(
+          request,
+          smallBody,
+          object({ defer: unknown, later: unknown, toggled: unknown }),
+        );
+        const input = checked("slices.cut", { thread: id, slices, ...body });
+        const { changeSet } = await deps.dispatch("slices.cut", input, user);
+        return json(200, { changeSet });
       },
     },
     {

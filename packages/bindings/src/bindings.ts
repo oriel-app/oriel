@@ -102,6 +102,7 @@ export function bindingsFor(
     oriel: options.oriel ?? noThreads,
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
+    slices: options.shown?.slices ?? (() => notShown("slices")),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

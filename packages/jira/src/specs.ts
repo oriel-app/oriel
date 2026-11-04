@@ -175,6 +175,27 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
   // Revert moves the item back, which its workflow may not allow; the
   // writer then refuses and says which moves it does.
+  setEpic: op(jiraOps.setEpic, {
+    idempotent: true,
+    refs: (a) => (a.epic === null ? [] : [a.epic]),
+    newRefArgs: { epic: "createEpic" },
+    after: (a) => ({ epic: a.epic }),
+    describe: async (a, context) => {
+      const item = named(context.subject);
+      const epicName = async (id: unknown) => {
+        if (typeof id !== "string") return null;
+        const title = isNewRef(id) || isItemId(id) ? await context.title(id) : null;
+        if (isNewRef(id)) return title === null ? "the new epic" : `the new epic ${quoted(title)}`;
+        return title === null ? `the epic ${key(id)}` : `the epic ${quoted(title)} (${key(id)})`;
+      };
+      const to = await epicName(a.epic);
+      const was = await epicName(context.before.epic);
+      if (to === null)
+        return was === null ? `Leave ${item} in no epic.` : `Take ${item} out of ${was}.`;
+      return was === null ? `Move ${item} into ${to}.` : `Move ${item} from ${was} to ${to}.`;
+    },
+    undo: restore("setEpic", "epic", jiraOps.setEpic.args),
+  }),
   setStatus: op(jiraOps.setStatus, {
     idempotent: true,
     after: (a) => ({ status: a.status }),

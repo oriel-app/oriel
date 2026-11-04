@@ -16,6 +16,7 @@ import {
   type PreviewTable,
   type CapturedMutation,
   type ItemId,
+  type SliceSet,
   number,
   object,
   parseItemId,
@@ -326,6 +327,45 @@ export function gradeBlocks(
   return problems.length
     ? { grader: "blocks", pass: false, detail: problems.join("; ") }
     : { grader: "blocks", pass: true, detail: `${shown.length} shown, each its read's` };
+}
+
+// The turn showed slices (the scope-lab spike) whose cuts keep and defer
+// what the case expects, with the needs it expects, each cited when asked.
+export function gradeSlices(
+  expected: {
+    keeps: readonly string[];
+    defers: readonly string[];
+    needs: readonly { item: string; on: string; cited?: boolean | undefined }[];
+  },
+  shown: readonly SliceSet[],
+): Grade {
+  const set = shown.at(-1);
+  if (!set) return { grader: "slices", pass: false, detail: "no slices were shown" };
+  const problems = [
+    ...expected.keeps.flatMap((id) =>
+      set.slices
+        .filter((slice) => slice.defer.includes(id as ItemId))
+        .map((slice) => `"${slice.name}" defers ${id}`),
+    ),
+    ...expected.defers.flatMap((id) =>
+      set.slices.some((slice) => slice.defer.includes(id as ItemId))
+        ? []
+        : [`no slice defers ${id}`],
+    ),
+    ...expected.needs.flatMap((need) => {
+      const found = set.needs.filter(
+        (n) => n.item === need.item && n.on.toLowerCase().includes(need.on.toLowerCase()),
+      );
+      if (!found.length) return [`no need of ${need.item} on ${need.on}`];
+      return need.cited && !found.some((n) => n.from.length > 0)
+        ? [`${need.item} needs ${need.on}, but cites nothing it read`]
+        : [];
+    }),
+  ];
+  const cuts = set.slices.map((s) => `${s.name}: defers ${s.defer.join(", ")}`).join("; ");
+  return problems.length
+    ? { grader: "slices", pass: false, detail: `${problems.join("; ")} (${cuts})` }
+    : { grader: "slices", pass: true, detail: cuts };
 }
 
 // The turn never called sketch(), shown or refused (decision 0033).

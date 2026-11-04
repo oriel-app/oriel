@@ -212,8 +212,65 @@ const sketchScript = `return await sketch(${JSON.stringify(timeline)}, 240);`;
 const pointsScript = `await jira.listStories();
 await show({ read: "jira.listStories", form: "bars", label: "assignee.name", value: "points" });`;
 
+// Release slices of the weather epic (the scope-lab spike), read from its
+// stories and its channel: three cuts, their outcomes, and what the agent
+// read items need, citing the messages it read that in. Oriel computes
+// every figure.
+const weatherSlack = {
+  kickoff: "slack:C0FW1WEATHR-1788253500.000100",
+  fares: "slack:C0FW1WEATHR-1788444000.000100",
+  sms: smsCopy,
+  contract: "slack:C0FW1WEATHR-1789982100.000100",
+};
+const slicesScript = `await items.list();
+return await slices(${JSON.stringify({
+  slices: [
+    {
+      name: "Rebook in two taps",
+      defer: ["jira:SYN-61", "jira:SYN-85", "jira:SYN-117"],
+      keeps: [
+        "A passenger on a cancelled sailing moves to the next one in two taps [[jira:SYN-102]], at the fare they paid [[jira:SYN-45]].",
+        "No alert arrives for a sailing that has already left [[jira:SYN-54]].",
+      ],
+      loses: [
+        "A passenger without the app still hears about a cancellation at the terminal [[jira:SYN-61]] [[jira:SYN-85]].",
+        "No waitlist when the replacement sailing is full [[jira:SYN-117]].",
+      ],
+    },
+    {
+      name: "Hear it from us first",
+      defer: ["jira:SYN-45", "jira:SYN-102", "jira:SYN-117"],
+      keeps: [
+        "Every passenger hears about a cancellation from us first: by SMS [[jira:SYN-61]] or the status page [[jira:SYN-85]].",
+        "No alert arrives for a sailing that has already left [[jira:SYN-54]].",
+      ],
+      loses: ["Rebooking stays a call to support, the calls [[jira:SYN-102]] was for."],
+    },
+    {
+      name: "Smallest release",
+      defer: ["jira:SYN-45", "jira:SYN-61", "jira:SYN-85", "jira:SYN-117"],
+      keeps: [
+        "Rebooking in two taps [[jira:SYN-102]], and alerts that stop once a sailing has left [[jira:SYN-54]].",
+      ],
+      loses: ["The fare a passenger paid isn't kept on a dearer sailing [[jira:SYN-45]]."],
+    },
+  ],
+  needs: [
+    { item: "jira:SYN-102", on: "jira:SYN-45", from: [weatherSlack.fares] },
+    { item: "jira:SYN-61", on: "ops' sign-off on the SMS wording", from: [weatherSlack.sms] },
+    { item: "jira:SYN-61", on: "a contract with an SMS provider", from: [weatherSlack.contract] },
+    { item: "jira:SYN-117", on: "jira:SYN-102", from: [] },
+  ],
+})});`;
+const slicesReply = [
+  `[[${weatherSlack.kickoff}]] puts the target at 14 November. Here are three ways to cut the epic, from what it says it is for and what the channel decided.`,
+  "",
+  "Four of the six open stories have no estimate, so the points below undercount what's left. I read two dependencies in the channel; they are my reading, not links in Jira.",
+].join("\n");
+
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  if (/\brelease slices\b/i.test(input.text)) return [{ run: slicesScript }, { text: slicesReply }];
   const made =
     /^Make a workstream of the top candidate in Not in a workstream yet, ([a-z]+:\S+), with all its items\.$/.exec(
       input.text,
@@ -561,6 +618,28 @@ const weather = await post<{ id: string }>("/api/workstreams", {
   cluster: "10003",
 });
 const sketched = await ask("Sketch the release timeline", server, weather.id);
+// The weather epic with its channel's messages, sliced (the scope-lab
+// spike): on a server of its own that reads Slack, so a cut's change set
+// is the only one there.
+const slicing = (await writing({ mode: "fixture" })).serving;
+const weatherItems = {
+  kind: "picked",
+  name: "Weather release",
+  items: [
+    ...["SYN-3", "SYN-26", "SYN-29", "SYN-45", "SYN-47", "SYN-54", "SYN-61"].map(
+      (k) => `jira:${k}`,
+    ),
+    ...["SYN-84", "SYN-85", "SYN-102", "SYN-117"].map((k) => `jira:${k}`),
+    ...Object.values(weatherSlack),
+  ],
+};
+let cutThread = "";
+const weatherRelease = await post<{ id: string }>("/api/workstreams", weatherItems, slicing);
+const sliced = await ask(
+  "Propose release slices so this makes its date",
+  slicing,
+  weatherRelease.id,
+);
 const charted = await ask("Draw me a chart of story points by assignee", server, weather.id);
 // On a server of its own, so no other scene shows the thread.
 const quoted = (await writing()).serving;
@@ -2127,6 +2206,50 @@ const scenes: Scene[] = [
         .frameLocator("iframe")
         .locator("h3")
         .waitFor();
+    },
+  },
+  {
+    name: "slices",
+    path: `/threads/${sliced}`,
+    on: slicing,
+    act: (page) => page.locator(".answer-slices .slices-figures").waitFor(),
+  },
+  {
+    name: "slices-toggled",
+    path: `/threads/${sliced}`,
+    on: slicing,
+    act: async (page) => {
+      const figures = page.locator('.slice-side[data-tone="kept"]');
+      await figures.getByText("3 items").waitFor();
+      await page.locator(".slices-items li", { hasText: "SYN-61" }).getByRole("checkbox").click();
+      await figures.getByText("4 items").waitFor();
+    },
+  },
+  {
+    name: "slices-broken",
+    path: `/threads/${sliced}`,
+    on: slicing,
+    act: async (page) => {
+      await page.getByRole("tab", { name: "Smallest release" }).click();
+      await page.locator(".slices-broken").waitFor();
+      await page.locator(".slices-needs summary").click();
+    },
+  },
+  {
+    name: "slices-cut",
+    path: "/",
+    // A server of its own each time, so each shot makes its own change set.
+    make: async () => {
+      const serving = (await writing({ mode: "fixture" })).serving;
+      const { id } = await post<{ id: string }>("/api/workstreams", weatherItems, serving);
+      cutThread = await ask("Propose release slices so this makes its date", serving, id);
+      return serving;
+    },
+    act: async (page) => {
+      await page.goto(new URL(`/threads/${cutThread}`, page.url()).href);
+      await page.getByRole("button", { name: "Make a change set" }).click();
+      await page.locator(".change-set .diff").first().waitFor();
+      await page.locator(".slices-cut").scrollIntoViewIfNeeded();
     },
   },
   {

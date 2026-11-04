@@ -484,6 +484,9 @@ export type ChatEntry = { seq: number; at: string } & (
   // or what a run found outside the workstream (the escape hatch).
   | { kind: "block"; block: BlockView }
   | { kind: "sketch"; sketch: SketchView }
+  // Release slices the agent proposed, with Oriel's figures (the scope-lab
+  // spike).
+  | { kind: "slices"; slices: SlicesView }
   | { kind: "change-set"; changeSetId: string }
   // What Oriel did with the actions the agent asked for, under its reply.
   | { kind: "actions"; lines: ActionLineView[] }
@@ -1018,4 +1021,38 @@ export type SetupView = {
   cli: CliView | null;
   codex: CliView | null;
   firstRun: FirstRunView | null;
+};
+
+// Release slices (the scope-lab spike): the agent's proposal, with every
+// figure Oriel's, computed from the index as it is now. A side of a cut is
+// how many items, the points recorded on those with an estimate, and how
+// many have none: points, never time.
+export type SliceSideView = { items: number; points: number; unestimated: number };
+export type SliceFiguresView = {
+  done: SliceSideView;
+  kept: SliceSideView;
+  deferred: SliceSideView;
+  // A kept item that needs a deferred one, as the agent read it in `from`.
+  broken: { item: string; on: string; from: string[]; deferred: string }[];
+};
+export type SlicesView = {
+  id: string;
+  // The items a slice can keep or defer: `estimate` null when it has none,
+  // `gone` when the index no longer has it.
+  items: { id: string; done: boolean; estimate: number | null; gone: boolean }[];
+  slices: {
+    name: string;
+    defer: string[];
+    keeps: string[];
+    loses: string[];
+    figures: SliceFiguresView;
+  }[];
+  // What the agent says an item needs: an item's ID, or a few words for
+  // what is no item, and the items it read that in, none for its own guess.
+  needs: { item: string; on: string; from: string[] }[];
+  // What changed since the agent proposed them; null while nothing has.
+  stale: { changed: string[]; gone: string[]; added: string[]; removed: string[] } | null;
+  // Where a cut defers to: a new epic, by default named after the one the
+  // items share; null when no source here can move an item to a later epic.
+  later: { name: string } | null;
 };

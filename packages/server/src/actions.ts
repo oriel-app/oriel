@@ -34,6 +34,7 @@ import { sendLeaseMs } from "@oriel/changeset";
 import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
 import { type ConnectionView, type GroupingId, isGroupingId } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
+import { cutMutations, slicesIn } from "./slices.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
@@ -821,6 +822,57 @@ const handlers = {
           workstreamRemoved: deleted.workstreamRemoved,
           via: via ?? "menu",
         },
+      ],
+    };
+  },
+
+  // A cut of the thread's slices as a change set, captured as the run that
+  // proposed them, so its region bounds what it may name; the person
+  // approves it as any other (the scope-lab spike).
+  "slices.cut": async ({ thread: id, slices, defer, later, toggled }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    if (deps.running(thread.id)) throw new ThreadBusy();
+    const found = deps.threads
+      .messages(thread.id)
+      .map(slicesIn)
+      .find((each) => each?.set.id === slices);
+    if (!found) throw new ActionError("not-found", "no such slices in this thread");
+    const covered = new Set<string>(found.set.items);
+    const stray = defer.filter((item) => !covered.has(item));
+    if (stray.length)
+      throw new ActionError("invalid", `not one of the slices' items: ${stray.join(", ")}`);
+    // One cut at a time: a reload shows the slices afresh, and a second
+    // click would otherwise propose the same moves twice.
+    const waiting = (await deps.changeSets.ofThread(thread.id)).some(
+      (set) =>
+        set.runId === found.runId &&
+        set.decision === null &&
+        set.mutations.some((m) => m.op === "setEpic"),
+    );
+    if (waiting)
+      throw new ActionError(
+        "conflict",
+        "A change set cut from these slices waits on you already. Approve, reject or edit it first.",
+      );
+    const { mutations } = cutMutations(found.set, deps.records(), defer, later);
+    if (!mutations.length)
+      throw new ActionError("invalid", "nothing deferred here can move to a later epic");
+    const set = await deps.changeSets.capture(
+      { id: found.runId, threadId: thread.id, workspaceId: thread.workspaceId },
+      mutations,
+    );
+    deps.threads.append(
+      thread.id,
+      { role: "agent", event: { kind: "change-set", changeSetId: set.id } },
+      deps.newId(),
+      deps.now(),
+    );
+    return {
+      output: { changeSet: set.id },
+      undo: null,
+      changed: { thread: thread.id, chat: true },
+      events: [
+        { name: "slices.cut", threadId: thread.id, deferred: mutations.length - 1, toggled },
       ],
     };
   },

@@ -157,6 +157,12 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // text or the names refused.
   | { name: "sketch.shown"; threadId: Ulid; height: SketchHeight; bytes: number }
   | { name: "sketch.refused"; threadId: Ulid; reason: SketchRefusal }
+  // Release slices the agent proposed showed under its reply, by how many;
+  // or Oriel refused them (the scope-lab spike). The person made a change
+  // set of one, by how many items it defers and whether they toggled any.
+  | { name: "slices.shown"; threadId: Ulid; count: number }
+  | { name: "slices.refused"; threadId: Ulid }
+  | { name: "slices.cut"; threadId: Ulid; deferred: number; toggled: boolean }
   // An answer named IDs as chips that Oriel couldn't resolve, `count` of
   // them, which drew as "unknown reference" (decision 0032).
   | { name: "chip.unknown"; threadId: Ulid; count: number }

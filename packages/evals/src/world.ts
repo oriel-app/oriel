@@ -101,6 +101,8 @@ export type World = {
   evidence(): Promise<unknown[]>;
   // Removes what the fixtures' connections made.
   close(): void;
+  // The index's records, for slices().
+  records: readonly IndexRecord[];
 };
 
 // A workstream member, with its stable ID as its fixture keeps it.
@@ -180,6 +182,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     reader,
     namespaces,
     items,
+    records,
     oriel: orielOf(input.oriel),
     ...(window
       ? { overview: async () => windowOverview(fixtures, connections, window, records) }

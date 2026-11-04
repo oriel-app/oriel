@@ -294,7 +294,11 @@ type Offered = {
 // How each one is offered in a region with items. Typed over Jira's
 // catalogue, so an op added there must be offered here or marked
 // revert-only; a new epic starts a plan, so only a blank region offers it.
-const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => NamespaceWrite } = {
+// Moving an item to another epic is how the person's cut of a slice defers
+// it (the scope-lab spike), never offered to a run yet.
+const writes: {
+  [O in Exclude<Offered, "createEpic" | "setEpic">]: (scope: JiraScope) => NamespaceWrite;
+} = {
   createStory,
   setSummary: () =>
     write({
@@ -360,7 +364,8 @@ const writes: { [O in Exclude<Offered, "createEpic">]: (scope: JiraScope) => Nam
 };
 
 const offered = (Object.keys(jiraOps) as JiraOp[]).filter(
-  (op): op is Exclude<Offered, "createEpic"> => !jiraOps[op].revertOnly && op !== "createEpic",
+  (op): op is Exclude<Offered, "createEpic" | "setEpic"> =>
+    !jiraOps[op].revertOnly && op !== "createEpic" && op !== "setEpic",
 );
 
 // What a Jira item is, in the declarations' `Item` (see `ItemDocs` in

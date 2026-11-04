@@ -1,0 +1,13 @@
+{
+  "id": "slices-no-estimates",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Most of these stories have no estimate. What could we defer from this release anyway? Give me a couple of options.",
+  "expect": [
+    { "grader": "zero-mutations" },
+    { "grader": "slices" },
+    { "grader": "mentions", "text": ["no estimate"] },
+    { "grader": "avoids", "text": ["days saved", "days of work"] }
+  ]
+}

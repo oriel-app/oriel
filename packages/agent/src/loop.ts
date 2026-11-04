@@ -111,7 +111,8 @@ async function* turn(
   }
 
   const proposed = proposal();
-  const turnShows = turnShown(deps.newId);
+  const { sliceFacts } = deps;
+  const turnShows = turnShown(deps.newId, sliceFacts && (() => sliceFacts(region)));
 
   // One `run` call: refused without a run if it isn't one, else a run in the
   // sandbox, recorded whatever its outcome. `charge` is the usage of the

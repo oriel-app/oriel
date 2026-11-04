@@ -2905,6 +2905,247 @@ a.replies:hover {
   font-size: var(--text-xs);
 }
 
+/* Release slices (the scope-lab spike): the agent's cuts, toggled by the
+   person, with Oriel's figures. A block's frame, since every figure in it
+   is Oriel's; the agent's words sit in their own sections. */
+.answer-slices {
+  margin: 0;
+  padding: var(--space-3);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunk);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.answer-slices figcaption {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.answer-slices h4 {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+}
+
+.slices-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.slices-title {
+  margin: 0;
+  font-weight: var(--weight-strong);
+}
+
+.slices-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.slices-tabs button {
+  padding: 0.2rem var(--space-2);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.slices-tabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.slices-stale {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  font-size: var(--text-sm);
+}
+
+.slices-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.slice-side {
+  padding: var(--space-2);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.slice-side[data-tone="deferred"] {
+  border-style: dashed;
+}
+
+.slice-side[data-tone="done"] {
+  color: var(--text-muted);
+}
+
+.slice-side dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.slice-side dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  align-items: baseline;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.slice-side strong {
+  font-size: var(--text-md);
+}
+
+.slice-missing {
+  color: var(--danger);
+}
+
+.slices-broken {
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) 1.5rem;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  font-size: var(--text-sm);
+}
+
+.slice-whose {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.slices-outcomes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+.slices-outcomes ul,
+.slices-needs ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--text-sm);
+}
+
+.slices-outcomes li p {
+  margin: 0 0 var(--space-1);
+}
+
+.slices-none {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.slices-items-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.slices-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: var(--border-thin) solid var(--line);
+}
+
+.slices-items li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0.3rem 0;
+  border-bottom: var(--border-thin) solid var(--line);
+  font-size: var(--text-sm);
+}
+
+.slices-items label {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.slices-items li[data-deferred] {
+  background: var(--surface);
+}
+
+.slices-items li[data-deferred] .slices-verb {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+.slices-items li[data-done] {
+  color: var(--text-faint);
+}
+
+.slices-estimate {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.slices-estimate[data-missing] {
+  color: var(--danger);
+}
+
+.slices-needs summary {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.slices-cut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.slices-cut label {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1 1 16rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.slices-cut input {
+  padding: 0.3rem var(--space-2);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.slices-cut p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.slices-problem {
+  color: var(--danger);
+}
+
 /* A sketch (decision 0033): the agent's HTML in a sandboxed frame, inside a
    border no block has, with Oriel's caption under it. Both are outside the
    frame, so no sketch can draw or hide them. */
