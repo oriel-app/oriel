@@ -1,4 +1,4 @@
-// The window: clusters under a grouping, at two zoom levels, and the items
+// The window: clusters under a grouping, each open or closed, and the items
 // the user picks to make or grow a workstream.
 import { type Effect, errorOf, post, type Replied, report } from "./http.ts";
 import type { Route } from "./route.ts";
@@ -19,10 +19,6 @@ import {
 
 export type { Effect } from "./http.ts";
 
-// The two zoom levels inside the list: a cluster as one row (an epic row), or
-// opened to its items (the story list).
-export type Zoom = "cluster" | "list";
-
 export type Model = {
   grouping: GroupingId;
   // The filters the window shows, as its address has them (decision 0027),
@@ -42,7 +38,8 @@ export type Model = {
   status: "loading" | "ready" | "failed";
   // The latest window request. Replies to earlier ones are dropped.
   request: number;
-  // Per grouping, the clusters open at the "list" zoom level.
+  // Per grouping, the clusters open to their items; the rest show only their
+  // row (an epic row).
   open: Readonly<Record<GroupingId, readonly string[]>>;
   // The window on screen's clusters whose next page of items is on its way,
   // by its request, or didn't come. A cluster's items load when it opens, a
@@ -269,7 +266,7 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
     case "windowFailed":
       if (msg.request !== model.request) return [model, []];
       return [{ ...model, status: "failed" }, []];
-    // Zoom acts on the window on screen, which is the old grouping's while a
+    // A toggle acts on the window on screen, which is the old grouping's while a
     // new one loads.
     case "clusterToggled": {
       if (model.window === null) return [model, []];
@@ -391,9 +388,8 @@ export function windowRoute(model: Model | null): Extract<Route, { page: "window
   };
 }
 
-export function zoomOf(model: Model, key: string): Zoom {
-  if (model.window === null) return "cluster";
-  return model.open[model.window.grouping].includes(key) ? "list" : "cluster";
+export function isOpen(model: Model, key: string): boolean {
+  return model.window !== null && model.open[model.window.grouping].includes(key);
 }
 
 // A name for a workstream of hand-picked items, from what they are: the epic

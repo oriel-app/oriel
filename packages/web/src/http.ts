@@ -175,7 +175,8 @@ export function undoing(
 // Pilot telemetry only the page knows happened, as the server takes it.
 export type Report =
   | { name: "grouping.switched"; grouping: GroupingId }
-  | { name: "zoom.changed"; from: "cluster" | "list"; to: "cluster" | "list" }
+  | { name: "cluster.opened" }
+  | { name: "cluster.closed" }
   | { name: "item.panel-opened"; item: string }
   | { name: "item.source-opened"; item: string; via: "panel" | "link" }
   | { name: "threads.searched"; queryLength: number; results: number }

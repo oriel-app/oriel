@@ -10,9 +10,9 @@ import { matchesSearch, searchTerms } from "@oriel/db";
 import {
   assigneeGrouping,
   assigneeOf,
-  clusterZoom,
+  clusterItemsOf,
+  clusterRowOf,
   epicGrouping,
-  listZoom,
   linkedGrouping,
   stuckGrouping,
 } from "@oriel/groupings";
@@ -93,7 +93,7 @@ function locations(rows: readonly ItemRow[], records: readonly IndexRecord[]) {
   );
 }
 
-// The clusters as rows, each with its items as the list zoom level shows
+// The clusters as rows, each with its items as a cluster opened shows
 // them, or with none: Browse loads a cluster's items when it opens, a page
 // at a time (decision 0027).
 function clustersView(
@@ -104,12 +104,12 @@ function clustersView(
   fixture: boolean,
   withItems: boolean,
 ): WindowView {
-  const rows = clusterZoom(now, sources);
-  const list = listZoom(now, sources);
+  const rowOf = clusterRowOf(now, sources);
+  const itemsOf = clusterItemsOf(now, sources);
   const known = new Set(records.map((record) => record.id));
   const shown = clusters.map((cluster) => ({
-    row: rows.view(cluster, records),
-    list: withItems ? list.view(cluster, records) : [],
+    row: rowOf(cluster, records),
+    list: withItems ? itemsOf(cluster, records) : [],
   }));
   return {
     grouping: id,
@@ -179,7 +179,7 @@ export function browseView(
   };
 }
 
-// One page of a cluster's items, from the `from`th, as the list zoom level
+// One page of a cluster's items, from the `from`th, as a cluster opened
 // shows them, only those a filter keeps; null when the grouping has no
 // cluster with that key now.
 export function clusterPage(
@@ -199,7 +199,7 @@ export function clusterPage(
     return record !== undefined && (!keep || keep(record));
   });
   const page = { ...cluster, itemIds: present.slice(from, from + pageSize) };
-  const items = listZoom(now, sources).view(page, records);
+  const items = clusterItemsOf(now, sources)(page, records);
   return {
     grouping: id,
     cluster: key,

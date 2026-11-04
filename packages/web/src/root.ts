@@ -374,24 +374,18 @@ function withPanel(model: Model, effects: Effect[]): [Model, Effect[]] {
 // Sets up the page `route` names. The window keeps its state between visits,
 // picked items included.
 // What only the window knows happened, for pilot telemetry: the grouping
-// switched, or a cluster zoomed in or out.
+// switched, or a cluster opened or closed.
 export function windowTelemetry(before: WindowModel, after: WindowModel): Effect[] {
   if (after.grouping !== before.grouping)
     return [report({ name: "grouping.switched", grouping: after.grouping })];
   const shown = after.window?.grouping;
-  // Clusters a search opened as its window loaded aren't the user's zoom.
+  // Clusters a search opened as its window loaded aren't the user's.
   if (shown === undefined || after.open === before.open || after.window !== before.window)
     return [];
   const was = before.open[shown].length;
   const now = after.open[shown].length;
   if (now === was) return [];
-  return [
-    report(
-      now > was
-        ? { name: "zoom.changed", from: "cluster", to: "list" }
-        : { name: "zoom.changed", from: "list", to: "cluster" },
-    ),
-  ];
+  return [report({ name: now > was ? "cluster.opened" : "cluster.closed" })];
 }
 
 // A thread's page watches its events only while it is on screen: leaving

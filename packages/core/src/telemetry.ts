@@ -6,7 +6,6 @@ import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
 import type { SketchHeight, SketchRefusal } from "./sketch.ts";
 import type { OverviewSection } from "./overview.ts";
-import type { ZoomId } from "./zoom.ts";
 
 // Pilot telemetry, stored locally. Only raw events are stored; these are
 // derived from them, never stored:
@@ -105,7 +104,10 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       via: CloseVia;
     }
   | { name: "grouping.switched"; grouping: string }
-  | { name: "zoom.changed"; from: ZoomId; to: ZoomId }
+  // The user opened a cluster in Browse to its items, or closed it. Stored
+  // before OA-153 as `zoom.changed`, which a report maps (SPEC §7).
+  | { name: "cluster.opened" }
+  | { name: "cluster.closed" }
   | { name: "changeset.edited"; changeSetId: Ulid }
   | {
       name: "changeset.decided";

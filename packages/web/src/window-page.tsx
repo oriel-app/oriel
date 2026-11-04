@@ -19,14 +19,7 @@ import {
   useStamp,
 } from "./parts.tsx";
 import { ViewTabs } from "./overview-page.tsx";
-import {
-  windowRoute,
-  type Model,
-  type Msg as WindowMsg,
-  pickedName,
-  type Zoom,
-  zoomOf,
-} from "./update.ts";
+import { isOpen, windowRoute, type Model, type Msg as WindowMsg, pickedName } from "./update.ts";
 import {
   type BrowseFilter,
   type Choice,
@@ -278,7 +271,7 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
           <Cluster
             key={view.row.key}
             view={view}
-            zoom={zoomOf(model, view.row.key)}
+            open={isOpen(model, view.row.key)}
             paging={model.paging[view.row.key] ?? null}
             selected={model.selected}
             pending={model.pending}
@@ -293,24 +286,23 @@ function Body({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
 
 function Cluster(props: {
   view: ClusterView;
-  zoom: Zoom;
+  open: boolean;
   paging: number | "failed" | null;
   selected: readonly string[];
   pending: boolean;
   locations: Readonly<Record<string, string>>;
   dispatch: Dispatch;
 }) {
-  const { view, zoom, dispatch } = props;
+  const { view, open, dispatch } = props;
   const { row, list } = view;
-  const open = zoom === "list";
   const listId = `items-${row.key}`;
   const { anchor } = row;
   const picked = anchor !== null && props.selected.includes(anchor.id);
   return (
-    <section class="cluster" data-zoom={zoom}>
+    <section class="cluster" data-open={open ? "" : undefined}>
       <h2 class={picked ? "cluster-head picked" : "cluster-head"}>
         {/* The anchor (the epic) is an item too, picked here: the heading is
-            where it shows, at both zoom levels, so it never shows twice. */}
+            where it shows, open or closed, so it never shows twice. */}
         {anchor && (
           <label class="pick anchor-pick" title={`Pick ${anchor.key} itself, not its items`}>
             <input

@@ -414,7 +414,7 @@ const vehicles: EpicDraft = {
   ],
 };
 
-// Forty stories: zoom stress.
+// Forty stories: a long cluster, for stress.
 const auditFindings: [summary: string, description: string][] = [
   ["Give the departure time picker an accessible name", ""],
   [

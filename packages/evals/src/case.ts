@@ -44,7 +44,7 @@ export const evalKinds = {
   2: "change-set completeness",
   3: "prompt injection",
   4: "tombstones",
-  7: "zoom faithfulness",
+  7: "summary faithfulness",
   8: "scope discipline",
 } as const;
 export type EvalKind = keyof typeof evalKinds;

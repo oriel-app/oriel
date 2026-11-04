@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { type Cluster, type IndexRecord, instant, itemOrder } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation, loadJiraFixture } from "@oriel/jira";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
-import { clusterZoom, listZoom } from "./zoom.ts";
+import { clusterItemsOf, clusterRowOf } from "./rows.ts";
 
 // Item IDs in declared kind order, as the composition root gives it.
 const order = itemOrder(["jira", "folder", "slack"]);
@@ -43,21 +43,17 @@ test("with nothing in the index that estimates, Stuck has no Unestimated cluster
 
 test("an epic row and its items on a board that takes no estimates count nothing as unestimated", () => {
   const checkout = cluster(epicGrouping.group(unestimating, now, order), "10001");
-  const row = clusterZoom(now, sources).view(checkout, unestimating);
+  const row = clusterRowOf(now, sources)(checkout, unestimating);
   assert.deepEqual([row.points, row.estimated, row.unestimated], [0, 0, 0]);
   assert.equal(row.anchor?.noEstimates, true);
-  const list = listZoom(now, sources).view(checkout, unestimating);
+  const list = clusterItemsOf(now, sources)(checkout, unestimating);
   assert.ok(list.length > 0);
   assert.ok(list.every((item) => item.noEstimates === true && item.points === null));
 });
 
 test("an item that estimates, or tracks no state at all, isn't marked as taking no estimates", () => {
   const checkout = cluster(epicGrouping.group(syn, now, order), "10001");
-  assert.ok(
-    listZoom(now, sources)
-      .view(checkout, syn)
-      .every((item) => !("noEstimates" in item)),
-  );
+  assert.ok(clusterItemsOf(now, sources)(checkout, syn).every((item) => !("noEstimates" in item)));
   const file: IndexRecord = {
     id: "folder:0123456789abcdef0123456789abcdef",
     stableId: "0123456789abcdef0123456789abcdef",
@@ -67,7 +63,7 @@ test("an item that estimates, or tracks no state at all, isn't marked as taking 
     facets: {},
     attrs: {},
   };
-  const [row] = listZoom(now, sources).view(
+  const [row] = clusterItemsOf(now, sources)(
     { key: "files", label: "Files", anchor: null, itemIds: [file.id], origin: "source" },
     [file],
   );

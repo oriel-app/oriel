@@ -1,5 +1,5 @@
 // What the server's JSON routes return: plain data the window renders as it
-// is. The server builds it with core's `Grouping`, the zoom levels in
+// is. The server builds it with core's `Grouping`, the rows in
 // @oriel/groupings and its stores; the browser renders it. Both sides import
 // this file, so it imports only types, which the browser build erases.
 // Source text (titles, content) is always text here, never HTML.
@@ -7,7 +7,7 @@ import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
-export type { ClusterRow, ItemRow, ItemView, StatusCategory } from "@oriel/groupings/view";
+export type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 export type { BrowseColumn, ConnectorIcon, ConnectorView } from "@oriel/core/connector-view";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
 
@@ -244,7 +244,7 @@ export type ItemStampView = { id: string; updatedAt: string | null };
 // `url` is set only for an http(s) location.
 export type ItemRef = { id: string; key: string; title: string | null; url: string | null };
 
-// A workstream's member: its row as the list zoom level shows it, or null when
+// A workstream's member: its row as a cluster opened shows it, or null when
 // the index no longer has the item.
 export type MemberView = { ref: ItemRef; row: ItemRow | null };
 

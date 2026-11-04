@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { type Cluster, type IndexRecord, instant, itemOrder } from "@oriel/core";
 import { fixtureSnapshot, jiraPresentation, loadJiraFixture } from "@oriel/jira";
 import { epicGrouping, stuckGrouping } from "./groupings.ts";
-import { clusterZoom, itemZoom, listZoom } from "./zoom.ts";
+import { clusterItemsOf, clusterRowOf } from "./rows.ts";
 
 // Item IDs in declared kind order, as the composition root gives it.
 const order = itemOrder(["jira", "folder", "slack"]);
@@ -24,7 +24,7 @@ const cluster = (clusters: Cluster[], key: string) => {
 test("the epic row counts and sums its epic's items, and names their source", () => {
   // Checkout, after SYN-88 moved out of it.
   const checkout = cluster(epicGrouping.group(current, now, order), "10001");
-  const row = clusterZoom(now, sources).view(checkout, current);
+  const row = clusterRowOf(now, sources)(checkout, current);
   assert.deepEqual(
     { ...row, anchor: row.anchor?.key },
     {
@@ -40,7 +40,7 @@ test("the epic row counts and sums its epic's items, and names their source", ()
       status: { todo: 4, "in-progress": 4, done: 5 },
     },
   );
-  const none = clusterZoom(now, sources).view(
+  const none = clusterRowOf(now, sources)(
     cluster(epicGrouping.group(current, now, order), "no-epic"),
     current,
   );
@@ -51,12 +51,12 @@ test("the epic row counts and sums its epic's items, and names their source", ()
 
 test("a derived row carries its rule, and its story list agrees with it", () => {
   const idle = cluster(stuckGrouping.group(current, now, order), "no-update-14-days");
-  const row = clusterZoom(now, sources).view(idle, current);
+  const row = clusterRowOf(now, sources)(idle, current);
   assert.deepEqual(row.origin, {
     kind: "derived",
     rule: "Stories, tasks and bugs not done and last updated 14 or more days ago",
   });
-  const list = listZoom(now, sources).view(idle, current);
+  const list = clusterItemsOf(now, sources)(idle, current);
   assert.equal(list.length, row.count);
   assert.ok(
     list.every(
@@ -75,42 +75,12 @@ test("the story list keeps the cluster's order and skips IDs the index no longer
   // The boarding epic as grouped before SYN-27 was deleted.
   const boarding = cluster(epicGrouping.group(base, now, order), "10002");
   assert.ok(boarding.itemIds.includes("jira:SYN-27"));
-  const list = listZoom(now, sources).view(boarding, current);
+  const list = clusterItemsOf(now, sources)(boarding, current);
   assert.deepEqual(
     list.map((item) => item.id),
     boarding.itemIds.filter((id) => id !== "jira:SYN-27"),
   );
-  assert.equal(clusterZoom(now, sources).view(boarding, current).count, list.length);
-});
-
-test("the item view shows what the index has, with the epic by title", () => {
-  const weather = cluster(epicGrouping.group(current, now, order), "10003");
-  const [moved] = itemZoom(now, sources).view({ ...weather, itemIds: ["jira:SYN-88"] }, current);
-  assert.deepEqual(moved, {
-    id: "jira:SYN-88",
-    key: "SYN-88",
-    title: "Refund to the original payment method when a sailing is cancelled",
-    type: "Story",
-    status: { name: "To Do", category: "todo" },
-    assignee: "Esme Whitlock",
-    points: 5,
-    idleDays: 1,
-    source: "Jira",
-    url: "https://oriel.atlassian.net/browse/SYN-88",
-    labels: ["payments", "refunds"],
-    epic: { id: "jira:SYN-3", key: "SYN-3", title: "Weather disruptions and rebooking" },
-    updatedAt: "2026-10-01T11:00:00.000Z",
-  });
-  // Without the epic in the index, the item still names it, untitled.
-  const without = current.filter((record) => record.id !== "jira:SYN-3");
-  const [orphan] = itemZoom(now, sources).view({ ...weather, itemIds: ["jira:SYN-88"] }, without);
-  assert.deepEqual(orphan?.epic, { id: "jira:SYN-3", key: "SYN-3", title: null });
-  const loose = cluster(epicGrouping.group(current, now, order), "no-epic");
-  assert.ok(
-    itemZoom(now, sources)
-      .view(loose, current)
-      .every((item) => item.epic === null),
-  );
+  assert.equal(clusterRowOf(now, sources)(boarding, current).count, list.length);
 });
 
 test("an item whose source tracks no state isn't counted as not started", () => {
@@ -131,11 +101,11 @@ test("an item whose source tracks no state isn't counted as not started", () => 
     itemIds: [file.id, "jira:SYN-88"],
     origin: "source",
   };
-  const row = clusterZoom(now, sources).view(mixed, records);
+  const row = clusterRowOf(now, sources)(mixed, records);
   assert.equal(row.count, 2);
   // SYN-88 is to do; the file is in no category.
   assert.deepEqual(row.status, { todo: 1, "in-progress": 0, done: 0 });
   assert.equal(row.origin.kind === "source" && row.origin.source, "folder and Jira");
-  const [listed] = listZoom(now, sources).view({ ...mixed, itemIds: [file.id] }, records);
+  const [listed] = clusterItemsOf(now, sources)({ ...mixed, itemIds: [file.id] }, records);
   assert.deepEqual([listed?.status, listed?.type, listed?.points], [null, "", null]);
 });

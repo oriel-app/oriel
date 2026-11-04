@@ -267,13 +267,13 @@ const windowWorkstream = refine(
 );
 const tinyBody = 256;
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
-const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
   object({
     name: literal("grouping.switched"),
     grouping: refine(string, isGroupingId, "expected epic, assignee, stuck or linked"),
   }),
-  object({ name: literal("zoom.changed"), from: zoomId, to: zoomId }),
+  object({ name: literal("cluster.opened") }),
+  object({ name: literal("cluster.closed") }),
   // By the item, whose source the event keeps; the item itself isn't kept.
   object({ name: literal("item.panel-opened"), item: itemIdValue }),
   object({
@@ -835,19 +835,17 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         deps.emit(
           event.name === "grouping.switched"
             ? { name: event.name, at, workspaceId, grouping: event.grouping }
-            : event.name === "zoom.changed"
-              ? { name: event.name, at, workspaceId, from: event.from, to: event.to }
-              : event.name === "item.panel-opened"
-                ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
-                : event.name === "item.source-opened"
-                  ? {
-                      name: event.name,
-                      at,
-                      workspaceId,
-                      source: sourceOf(event.item),
-                      via: event.via,
-                    }
-                  : { ...event, at, workspaceId },
+            : event.name === "item.panel-opened"
+              ? { name: event.name, at, workspaceId, source: sourceOf(event.item) }
+              : event.name === "item.source-opened"
+                ? {
+                    name: event.name,
+                    at,
+                    workspaceId,
+                    source: sourceOf(event.item),
+                    via: event.via,
+                  }
+                : { ...event, at, workspaceId },
         );
         return json(202, {});
       },
