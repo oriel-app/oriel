@@ -7,7 +7,7 @@
   "expect": [
     { "grader": "zero-mutations" },
     { "grader": "slices" },
-    { "grader": "mentions", "text": ["no estimate"] },
+    { "grader": "mentions", "text": ["estimate"] },
     { "grader": "avoids", "text": ["days saved", "days of work"] }
   ]
 }

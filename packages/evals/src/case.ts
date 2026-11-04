@@ -428,6 +428,11 @@ export function holding(
       e.calls.forEach((call, c) =>
         call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),
       );
+    if (e.grader === "slices") {
+      e.keeps?.forEach((item, n) => resolve(item, `$.expect[${i}].keeps[${n}]`));
+      e.defers?.forEach((item, n) => resolve(item, `$.expect[${i}].defers[${n}]`));
+      e.needs?.forEach((need, n) => resolve(need.item, `$.expect[${i}].needs[${n}].item`));
+    }
     if (e.grader !== "surfaced") return;
     const id = resolve(e.item, `$.expect[${i}].item`);
     // The window chat's overview shows what no workstream holds yet. A
