@@ -194,6 +194,7 @@ test("an item that moved keeps its title in a workstream's history and a thread'
       applying: () => false,
       stalled: () => false,
     },
+    drafted: () => null,
     writable: false,
   });
   const added = (await shown.workstream(id(2)))?.changes[0]?.added[0];

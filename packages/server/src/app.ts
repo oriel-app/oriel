@@ -5,23 +5,26 @@
 // source (decision 0049). It wires groupings, change sets, bindings, the
 // sandbox and the agent into the JSON routes. Only this file builds change
 // sets, which hold the writers; thread code gets `capture` and nothing else.
-import { bindingsFor } from "@oriel/bindings";
+import { bindingsFor, type Waiting, waitingOf } from "@oriel/bindings";
 import { ChangeSetError, changeSets, explainConflicts } from "@oriel/changeset";
 import {
   type ChangeSet,
   type Cluster,
   clusterMembers,
+  type Draft,
   type FieldReader,
   type IndexRecord,
   type Instant,
   instant,
   isItemId,
+  isUlid,
   type ItemId,
   kindOf,
   type Log,
   maxItems,
   type Opened,
   type OpenVia,
+  OptionsUnfit,
   parseItemId,
   prefixOf,
   type Reader,
@@ -303,6 +306,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // turned away: what the index has of them still shows, but nothing reads
   // or writes them until a person signs in again.
   const shut = new Map<string, Connection>();
+  // Shut ones whose options no longer fit their source, by prefix, with why
+  // (decision 0051): they wait for their options, which opens them again.
+  const unfit = new Map<string, string>();
   for (const kind of sourceKinds) {
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
@@ -344,6 +350,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       byPrefix.set(connection.prefix, { connection, opened });
     } catch (error) {
       shut.set(connection.prefix, connection);
+      if (error instanceof OptionsUnfit) unfit.set(connection.prefix, error.message);
       log("connections: one couldn't open", {
         kind,
         number: connection.number,
@@ -660,7 +667,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // kind's turn. They apply at once, as Settings' do (decision 0049): the
   // connection opens with them, and syncs in full, so what they no longer
   // pick goes; a sync that fails says why, as any sync does. What changed is
-  // named, never its value; `replaced` is what its Undo puts back.
+  // named, never its value; `replaced` is what its Undo puts back. One shut
+  // because its options no longer fit its source opens with new ones, and
+  // options that don't fit shut it so, waiting for others (decision 0051).
   const configure = (
     id: Ulid,
     given: unknown,
@@ -684,7 +693,9 @@ export async function createApp(options: AppOptions): Promise<App> {
       );
     const next = decoded.value;
     return inTurn(connection.kind, async () => {
-      const current = byPrefix.get(connection.prefix);
+      const waits = unfit.has(connection.prefix) ? shut.get(connection.prefix) : undefined;
+      const current =
+        byPrefix.get(connection.prefix) ?? (waits ? { connection: waits, opened: null } : null);
       if (!current || current.connection.id !== id)
         throw new ActionError(
           "conflict",
@@ -709,7 +720,23 @@ export async function createApp(options: AppOptions): Promise<App> {
           kind: connection.kind,
           error: String(error),
         });
-        return { problem: `${declaration.name} couldn't be read that way. Nothing changed.` };
+        if (!(error instanceof OptionsUnfit))
+          return { problem: `${declaration.name} couldn't be read that way. Nothing changed.` };
+        // Options that don't fit its source are still the person's, as an
+        // Undo puts back the ones a draft replaced: it keeps them, shut, and
+        // waits for options that fit (decision 0051).
+        const waits = await betweenSyncs(async () => {
+          connections.configure(current.connection, next);
+          written.delete(connection.prefix);
+          const updated = { ...current.connection, options: next };
+          byPrefix.delete(updated.prefix);
+          shut.set(updated.prefix, updated);
+          unfit.set(updated.prefix, error.message);
+          current.opened?.close?.();
+          sets.rewire(wiring());
+          return updated;
+        });
+        return { connection: waits, changed, replaced: before, problem: error.message };
       }
       const kept = await betweenSyncs(async () => {
         connections.configure(current.connection, next);
@@ -717,7 +744,9 @@ export async function createApp(options: AppOptions): Promise<App> {
         written.delete(connection.prefix);
         const updated = { ...current.connection, options: next };
         byPrefix.set(updated.prefix, { connection: updated, opened });
-        current.opened.close?.();
+        shut.delete(updated.prefix);
+        unfit.delete(updated.prefix);
+        current.opened?.close?.();
         sets.rewire(wiring());
         return { connection: updated, opened };
       });
@@ -798,6 +827,53 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
   });
+  // The connections that wait for their options (decision 0051): ones of a
+  // connector that declares a preview, made in the window, that have none
+  // yet or whose options no longer fit their source; each with why.
+  const waitingConnections = (): { connection: Connection; why: string }[] =>
+    connections.list().flatMap((connection) => {
+      if (connection.disconnectedAt !== null || byFlag.has(connection.id)) return [];
+      const declaration = declared(connection.kind);
+      if (!declaration.preview) return [];
+      const why =
+        unfit.get(connection.prefix) ??
+        (declaration.options(connection.options).ok ? null : "It has no options yet.");
+      return why === null ? [] : [{ connection, why }];
+    });
+  // A draft's action is `source.configure`, the one draftable action: what
+  // it would replace now is the options its connection has, and its name
+  // the connection's.
+  const drafted = (draft: Draft): { over: unknown; name: string } | null => {
+    const id = draft.input["connection"];
+    const connection = typeof id === "string" && isUlid(id) ? connections.get(id) : null;
+    if (!connection || connection.disconnectedAt !== null) return null;
+    return {
+      over: connection.options,
+      name: connection.name ?? declared(connection.kind).name,
+    };
+  };
+  // What the window chat's module offers while any connection waits: each
+  // one's preview, read live from its source, with its connector's validator
+  // for its options' type and a draft's check.
+  const waitingFor = (): Waiting | null =>
+    waitingOf(
+      waitingConnections().map(({ connection, why }) => {
+        const declaration = declared(connection.kind);
+        return {
+          id: connection.id,
+          kind: connection.kind,
+          source: declaration.name,
+          why,
+          options: connection.options,
+          validator: declaration.options,
+          preview: async () => {
+            const secret = await connections.secret(connection);
+            const via = { kept: true, log, now, fetch: windows.viaFor(connection.kind).fetch };
+            return (await declaration.preview?.({ ...connection, secret }, via)) ?? [];
+          },
+        };
+      }),
+    );
   const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) =>
     bindingsFor(region, {
       reader,
@@ -809,9 +885,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       oriel: reads,
       ...(thread ? { thread } : {}),
       ...(shown ? { shown } : {}),
-      // The window chat reads the overview, as the page shows it.
-      ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
+      // The window chat reads the overview, as the page shows it, and the
+      // previews of connections that wait for their options.
+      ...(thread && threads.isWindowChat(thread) ? windowChat() : {}),
     });
+  const windowChat = () => {
+    const waiting = waitingFor();
+    return { overview: windowOverview, ...(waiting ? { waiting } : {}) };
+  };
 
   const wiring = () => {
     const writable = opens().flatMap(({ connection, opened }) =>
@@ -880,6 +961,18 @@ export async function createApp(options: AppOptions): Promise<App> {
         return intents.apply(turn, recorded);
       },
     },
+    // Held under the reply, each with what it was drafted over; one whose
+    // connection went meanwhile is dropped.
+    drafts: {
+      hold: (thread, drafts) =>
+        conversation.holdDrafts(
+          thread.id,
+          drafts.flatMap((draft) => {
+            const now = drafted(draft);
+            return now ? [{ draft, over: now.over }] : [];
+          }),
+        ),
+    },
     runs: { record: (run, reads) => runs.record(run, reads) },
     limits: caps,
     now,
@@ -932,6 +1025,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     running: conversation.running,
     changeSets: sets,
+    drafted,
     sketchBase: options.sketchBase,
     get writable() {
       return opens().some((each) => each.opened.writes !== undefined);
@@ -1045,6 +1139,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       disconnect: ({ connection: id }) => disconnect(id as Ulid),
     },
+    drafted,
     running: conversation.running,
     unsettled: async (threadId) =>
       Promise.all(

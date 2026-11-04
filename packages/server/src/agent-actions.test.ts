@@ -271,6 +271,7 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     applied: () => assert.fail(),
     sources: unreached("sources"),
     markSeen: () => assert.fail("the overview isn't left here"),
+    drafted: () => null,
     running: (thread) => thread === busy || thread === mine,
     unsettled: async () => [],
     emit: () => {},

@@ -483,6 +483,36 @@ test("an action the bindings refuse stops the run, naming it", async () => {
   assert.match(errorOf(result.transcript.at(-1)).message, /workstream\.add: jira:SYN-99/);
 });
 
+test("drafts are recorded beside intents, never applied, and share their cap", async () => {
+  const { result, logged } = await go(`
+    source.configure({ connection: "the waiting one", options: { channels: ["general"] } });
+    workstream.add({ items: ["jira:SYN-1"] });
+    return "drafted";
+  `);
+  assert.equal(result.outcome, "ok");
+  assert.deepEqual(result.drafts, [
+    {
+      action: "source.configure",
+      input: { connection: "the waiting one", options: { channels: ["general"] } },
+    },
+  ]);
+  assert.equal(result.intents.length, 1);
+  assert.equal(logged.at(-1)?.fields?.["drafts"], 1);
+  const capped = await go(
+    `source.configure({ connection: "the waiting one", options: { channels: [] } });\nworkstream.add({ items: ["jira:SYN-1"] });\nreturn "asked";`,
+    { maxIntents: 1 },
+  );
+  assert.equal(capped.result.outcome, "limit");
+  assert.equal(capped.result.drafts.length, 1);
+  assert.deepEqual(capped.result.intents, []);
+  const refused = await go(
+    `source.configure({ connection: "another", options: { channels: [] } });`,
+  );
+  assert.equal(refused.result.outcome, "threw");
+  assert.deepEqual(refused.result.drafts, []);
+  assert.match(errorOf(refused.result.transcript.at(-1)).message, /no connection waits/);
+});
+
 test("the intent cap stops the run", async () => {
   const { result } = await go(
     `for (let i = 0; i < 3; i++) workstream.add({ items: ["jira:SYN-1"] });\nreturn "asked";`,

@@ -1,4 +1,4 @@
-import type { Actor } from "./actions.ts";
+import type { ActionName, Actor } from "./actions.ts";
 import type { BlockForm } from "./block.ts";
 import type { StartQuestion } from "./window-chat.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
@@ -85,6 +85,13 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
     }
   // The user discarded a held message, so it never reached the agent.
   | { name: "held-message.discarded"; threadId: Ulid; from: HeldSender["kind"] }
+  // A draft the agent made, held for the user, by its action; the user
+  // applied it, as drafted or `edited`, or discarded it, `stale` when the
+  // options it was drafted over had moved on (decision 0051). Never its
+  // input.
+  | { name: "draft.made"; threadId: Ulid; action: ActionName }
+  | { name: "draft.applied"; threadId: Ulid; action: ActionName; edited: boolean }
+  | { name: "draft.discarded"; threadId: Ulid; action: ActionName; stale: boolean }
   // The thread was marked done, as one over read-only items needs: by the
   // user, on its page, or from a menu or a swipe on a list of threads; or by
   // someone else, who closed nothing in the window.
@@ -141,7 +148,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "escape-hatch.used"; threadId: Ulid; runId: Ulid }
   // A block the agent asked for showed under its reply, by its form
   // (decision 0030).
-  | { name: "block.shown"; threadId: Ulid; form: BlockForm }
+  // A waiting connection's preview shows as a block unasked (decision 0051).
+  | { name: "block.shown"; threadId: Ulid; form: BlockForm | "preview" }
   // A block the agent asked for and Oriel refused; the agent was told why.
   | { name: "block.refused"; threadId: Ulid }
   // A sketch the agent wrote showed under its reply, by its height and its

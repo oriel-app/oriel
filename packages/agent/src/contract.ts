@@ -5,6 +5,7 @@ import type {
   Bindings,
   Block,
   ChangeSets,
+  Draft,
   Instant,
   Intent,
   Log,
@@ -129,6 +130,9 @@ export type AgentDeps = {
       intents: readonly Intent[],
     ): Promise<ActionLine[]>;
   };
+  // Holds a turn's drafts in the thread, under its reply, for the user to
+  // apply, edit or discard (decision 0051): never applied here.
+  drafts: { hold(thread: Thread, drafts: readonly Draft[]): Promise<void> | void };
   runs: { record(run: Run, reads: ProxiedRead[]): void };
   limits: AgentLimits;
   now: () => Instant;

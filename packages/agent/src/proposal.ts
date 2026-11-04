@@ -1,26 +1,30 @@
 // One proposal per turn, for every agent (decision 0024). The last run that
 // finished and captured mutations makes the turn's change set; the last
-// that finished and recorded intents gives the intents that apply. A run
-// with only one of them doesn't drop an earlier run's other, and a run that
-// failed proposes nothing. A stopped turn applies neither. When the turn
-// ends, the change set is captured first, then the intents apply, so the
-// host can refuse one that would break it.
-import type { CapturedMutation, Intent, Log, RunResult, Thread, Ulid } from "@oriel/core";
+// that finished and recorded intents gives the intents that apply; and the
+// last that finished and drafted any gives the drafts held for the user
+// (decision 0051). A run with only some of them doesn't drop an earlier
+// run's others, and a run that failed proposes nothing. A stopped turn
+// applies and holds nothing. When the turn ends, the change set is captured
+// first, then the intents apply, so the host can refuse one that would
+// break it, then the drafts are held.
+import type { CapturedMutation, Draft, Intent, Log, RunResult, Thread, Ulid } from "@oriel/core";
 import type { AgentDeps, AgentEvent } from "./contract.ts";
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 // What a finished run replaced of an earlier run's proposal in the turn.
-export type Replaced = { mutations: number; intents: number };
+export type Replaced = { mutations: number; intents: number; drafts: number };
 
 export function proposal() {
   let writes: { runId: Ulid; mutations: CapturedMutation[] } | null = null;
   let asked: { runId: Ulid; intents: Intent[] } | null = null;
+  let drafted: { runId: Ulid; drafts: Draft[] } | null = null;
 
   return {
-    // A run that finished: its writes and its intents replace earlier ones.
+    // A run that finished: its writes, its intents and its drafts replace
+    // earlier ones.
     ran(runId: Ulid, result: RunResult): Replaced {
-      const replaced = { mutations: 0, intents: 0 };
+      const replaced = { mutations: 0, intents: 0, drafts: 0 };
       if (result.outcome !== "ok") return replaced;
       if (result.mutations.length) {
         replaced.mutations = writes?.mutations.length ?? 0;
@@ -30,13 +34,17 @@ export function proposal() {
         replaced.intents = asked?.intents.length ?? 0;
         asked = { runId, intents: result.intents };
       }
+      if (result.drafts.length) {
+        replaced.drafts = drafted?.drafts.length ?? 0;
+        drafted = { runId, drafts: result.drafts };
+      }
       return replaced;
     },
 
     // The turn's end, however it ended, unless it was stopped: its change
-    // set, then what became of its intents.
+    // set, then what became of its intents, then its drafts, held.
     async *settle(
-      deps: Pick<AgentDeps, "changeSets" | "actions">,
+      deps: Pick<AgentDeps, "changeSets" | "actions" | "drafts">,
       thread: Thread,
       signal: AbortSignal,
       log: Log,
@@ -64,18 +72,30 @@ export function proposal() {
         }
       }
       // Stopped while its change set was saved: none of its actions apply.
-      if (!asked || signal.aborted) return;
-      const { runId, intents } = asked;
+      if (asked && !signal.aborted) {
+        const { runId, intents } = asked;
+        try {
+          const lines = await deps.actions.apply({ thread, changeSetId }, intents);
+          log("agent.actions", {
+            run_id: runId,
+            applied: lines.filter((line) => line.applied).length,
+            refused: lines.filter((line) => !line.applied).length,
+          });
+          yield { kind: "actions", runId, lines };
+        } catch (error) {
+          const message = `Oriel couldn't carry out what the agent asked of it: ${errorText(error)}`;
+          log("agent.error", { error: message });
+          yield { kind: "error", message };
+        }
+      }
+      // Stopped by now: none of its drafts are held.
+      if (!drafted || signal.aborted) return;
+      const { runId, drafts } = drafted;
       try {
-        const lines = await deps.actions.apply({ thread, changeSetId }, intents);
-        log("agent.actions", {
-          run_id: runId,
-          applied: lines.filter((line) => line.applied).length,
-          refused: lines.filter((line) => !line.applied).length,
-        });
-        yield { kind: "actions", runId, lines };
+        await deps.drafts.hold(thread, drafts);
+        log("agent.drafts", { run_id: runId, drafts: drafts.length });
       } catch (error) {
-        const message = `Oriel couldn't carry out what the agent asked of it: ${errorText(error)}`;
+        const message = `Oriel couldn't hold what the agent drafted: ${errorText(error)}`;
         log("agent.error", { error: message });
         yield { kind: "error", message };
       }

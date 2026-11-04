@@ -70,6 +70,7 @@ function world() {
     applied: () => assert.fail("nothing applies here"),
     sources: unreached("sources"),
     markSeen: () => assert.fail("the overview isn't left here"),
+    drafted: () => null,
     running: () => false,
     unsettled: async () => [],
     emit: (event) => events.push(event),

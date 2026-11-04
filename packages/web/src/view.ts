@@ -204,19 +204,26 @@ export type NoteView = {
 // until it ends, unless it has stalled (OA-82), when the user should know;
 // or else the user's next message. A thread in any other state waits on
 // nothing.
-export type WaitingOn = "agent" | "held" | "review" | "apply" | "stalled" | "reply";
+export type WaitingOn = "agent" | "held" | "draft" | "review" | "apply" | "stalled" | "reply";
 
 // Whether a thread waiting so waits on the user: a message held for them, a
 // change set to review, an apply stalled on its source, or a reply. Needs
 // you lists it.
 export const waitsOnUser = (waiting: WaitingOn | null): boolean =>
-  waiting === "held" || waiting === "review" || waiting === "stalled" || waiting === "reply";
+  waiting === "held" ||
+  waiting === "draft" ||
+  waiting === "review" ||
+  waiting === "stalled" ||
+  waiting === "reply";
 
 // `held`: a message from anyone but the user waits on them to send it to the
-// agent or discard it.
+// agent or discard it. `draft`: a draft of the agent's waits on them to apply
+// it or discard it (decision 0051).
 // Whether a held message in the chat waits on the user.
 export const holding = (entries: readonly ChatEntry[]): boolean =>
-  entries.some((entry) => entry.kind === "held" && entry.outcome === null);
+  entries.some(
+    (entry) => (entry.kind === "held" || entry.kind === "draft") && entry.outcome === null,
+  );
 
 // A window chat waits on the user only for a held message or a change set:
 // an answer to a question asked from the overview isn't the user's turn
@@ -225,6 +232,7 @@ export function waitingOn(thread: {
   state: ThreadStateId;
   running: boolean;
   held?: boolean;
+  drafted?: boolean;
   changeSets: readonly {
     status: ChangeSetStatus;
     nextSteps: readonly { kind: string }[];
@@ -235,6 +243,7 @@ export function waitingOn(thread: {
   if (thread.state !== "working") return null;
   if (thread.running) return "agent";
   if (thread.held) return "held";
+  if (thread.drafted) return "draft";
   const open = (set: (typeof thread.changeSets)[number]) =>
     set.nextSteps.some((step) => step.kind !== "revert");
   if (thread.changeSets.some(open)) return "review";
@@ -433,12 +442,19 @@ export type BlockView = { caption: string; more: number; outside: boolean } & (
   | { form: "bars"; bars: { label: string; value: number }[] }
   | { form: "table"; columns: string[]; rows: (string | number | boolean | null)[][] }
   | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
+  // A waiting connection's preview, read live for the agent to draft its
+  // options (decision 0051): its source's cells as text, never items.
+  | { form: "preview"; tables: { name: string; columns: string[]; rows: (string | null)[][] }[] }
 );
 
 // A sketch under the agent's reply (decision 0033): the agent's HTML, which
 // the page frames from `src` on the sketch origin, in a sandboxed frame
 // `height` pixels high. Oriel draws its border and caption.
 export type SketchView = { src: string; height: 240 | 400 | 640 };
+
+// One option a draft changes: its name, and its value as it was drafted
+// over and as drafted, each as JSON values.
+export type DraftChange = { option: string; was: unknown; drafted: unknown };
 
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
@@ -467,6 +483,19 @@ export type ChatEntry = { seq: number; at: string } & (
   // A message from anyone but the user, which only they can send to the
   // agent, edited or not. `outcome` is null while it waits on them.
   | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
+  // A draft of the agent's (decision 0051): one of the user's own actions,
+  // which only they apply, as it is or edited, or discard. Oriel draws it
+  // from its own data: the connection it sets, by name, and each option it
+  // changes, as it was drafted over and as drafted. `stale`: the options
+  // have moved since, or the connection is gone, so it can't be applied.
+  // `outcome` is null while it waits on them.
+  | {
+      kind: "draft";
+      connection: { id: string; name: string } | null;
+      changes: DraftChange[];
+      stale: boolean;
+      outcome: "applied" | "discarded" | null;
+    }
   // Oriel's own line about what someone did, never the agent's (OA-91).
   | { kind: "note"; note: NoteView }
   | { kind: "limit"; reason: string }

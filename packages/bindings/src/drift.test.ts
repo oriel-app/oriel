@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bindingsFor } from "./bindings.ts";
 import { describe, type Fn, globalsOf, scopeOf } from "./describe.ts";
+import type { Waiting } from "./drafts.ts";
 import { stubs } from "./shim.ts";
 import {
   fixture,
@@ -37,6 +38,7 @@ const stubModule = (text: string) =>
     "  write(fn: string, args: unknown[], creates: true): Declared['NewRef'];",
     "  write(fn: string, args: unknown[], creates: false): void;",
     "  intend(fn: string, args: unknown[]): void;",
+    "  draft(fn: string, args: unknown[]): void;",
     "};",
     text,
     "type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;",
@@ -89,6 +91,39 @@ test("a window chat's module: the stubs typecheck against the declarations, wind
   assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
 });
 
+test("a window chat's module while a connection waits: preview() and the drafts typecheck too", async () => {
+  const [, region] = regions[0];
+  const overview = async () => ({ view: null, items: [] });
+  const waiting: Waiting = {
+    preview: async () => [],
+    types: {
+      fields: { options: "SlackOptions" },
+      lines: ["type SlackOptions = { channels: string[] };"],
+    },
+    check: (draft) => draft,
+  };
+  const bindings = bindingsFor(region, { reader, namespaces, overview, waiting });
+  const scope = scopeOf(region, namespaces);
+  const fns = describe(scope, { window: true, waiting });
+  assert.deepEqual(
+    fns.filter((fn) => fn.space === "source").map((fn) => [fn.kind, fn.name]),
+    [
+      ["read", "preview"],
+      ["draft", "configure"],
+    ],
+  );
+  assert.match(
+    bindings.dts,
+    /configure\(input: \{ connection: ConnectionId; options: SlackOptions \}\): void;/,
+  );
+  const start = `__oriel.start({ ${globalsOf(scope.spaces).join(", ")} });\n`;
+  assert.ok(
+    bindings.shim.endsWith(stubs(fns, scope.spaces) + start),
+    "the shim ends with these stubs",
+  );
+  assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
+});
+
 test("every function lives under a name the guest hands the script, and each name is used", () => {
   // Every kind with an item doc or a namespace has a name, in that order.
   const items = { jira: "An issue.", folder: "A file.", slack: "A message." };
@@ -98,17 +133,26 @@ test("every function lives under a name the guest hands the script, and each nam
     const globals = globalsOf(scope.spaces);
     assert.deepEqual(globals.slice(0, 4), ["items", "jira", "folder", "slack"]);
     // Every name but a namespace for a source the region holds nothing from,
-    // and the window chat's own, which the guest still hands the script,
-    // empty.
+    // and the window chat's own, and a waiting connection's, which the guest
+    // still hands the script, empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder", "slack", "window"]);
+    assert.deepEqual(unused, ["folder", "slack", "window", "source"]);
     assert.ok([...homes].every((home) => globals.includes(home)));
   }
 });
 
 test("no source may take one of Oriel's own names", () => {
   const region = fixtureRegion("picked");
-  for (const kind of ["items", "workstream", "thread", "window", "search", "show", "sketch"])
+  for (const kind of [
+    "items",
+    "workstream",
+    "thread",
+    "window",
+    "source",
+    "search",
+    "show",
+    "sketch",
+  ])
     assert.throws(() => scopeOf(region, namespaces, { [kind]: "A thing." }), /Oriel's own names/);
 });
 

@@ -50,7 +50,7 @@ test("a held message waits on the user until it is settled, once, by its place i
     t0,
   );
   assert.deepEqual(
-    threads.held(threadId).map((h) => [h.seq, h.from, h.text, h.outcome]),
+    threads.held(threadId).map((h) => ("from" in h ? [h.seq, h.from, h.text, h.outcome] : h)),
     [
       [2, fromLink("Ana", first), "Wrong title.", null],
       [3, fromLink("Ben", second, true), "Too many.", null],
@@ -76,6 +76,51 @@ test("a held message waits on the user until it is settled, once, by its place i
   );
   assert.equal(threads.settle(threadId, 3, "sent"), true);
   assert.deepEqual(threads.held(threadId), []);
+});
+
+test("a draft is held as a held message is, and only applied or discarded (decision 0051)", () => {
+  const { threads, threadId } = fresh();
+  const draft = {
+    action: "source.configure",
+    input: { connection: id(30), options: { channels: ["weather-disruptions"] } },
+  } as const;
+  const over = { channels: ["weather-disruptions", "launch-room"] };
+  threads.append(threadId, { role: "held", draft, over }, id(21), t0);
+  threads.append(threadId, { role: "held", draft, over }, id(22), t0);
+  assert.deepEqual(
+    threads.held(threadId).map((h) => ("draft" in h ? [h.seq, h.draft, h.over, h.outcome] : h)),
+    [
+      [1, draft, over, null],
+      [2, draft, over, null],
+    ],
+  );
+  // A draft is applied, never sent; a message is sent, never applied.
+  assert.equal(threads.settle(threadId, 1, "sent"), false);
+  assert.equal(threads.settle(threadId, 1, "applied"), true);
+  assert.equal(threads.settle(threadId, 2, "discarded"), true);
+  assert.deepEqual(threads.held(threadId), []);
+  assert.deepEqual(
+    threads.messages(threadId).map((m) => (m.role === "held" ? m.outcome : m.role)),
+    ["applied", "discarded"],
+  );
+  // Only a draftable action is drafted.
+  assert.throws(
+    () =>
+      threads.append(
+        threadId,
+        { role: "held", draft: { action: "source.connect", input: {} } as never, over: null },
+        id(23),
+        t0,
+      ),
+    RangeError,
+  );
+  threads.append(
+    threadId,
+    { role: "held", from: fromLink("Ana", id(10)), text: "No." },
+    id(24),
+    t0,
+  );
+  assert.equal(threads.settle(threadId, 3, "applied"), false);
 });
 
 test("a review link's holder's name and reason are capped, as they type both", () => {
@@ -126,7 +171,7 @@ test("0011 moves what a review link's holder sent under who it is from, and whet
   migrate(db, migrations, t0);
   const chat = threadStore(db).messages(id(2));
   assert.deepEqual(
-    chat.map((m) => (m.role === "held" ? [m.from, m.text, m.outcome] : m.role)),
+    chat.map((m) => (m.role === "held" && "from" in m ? [m.from, m.text, m.outcome] : m.role)),
     [
       "user",
       [fromLink("Ana", id(10)), "Wrong title.", "sent"],

@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import {
   type Bindings,
   type CapturedMutation,
+  type Draft,
   type Intent,
   guestMessage,
   type ItemId,
@@ -104,6 +105,7 @@ export function movingReader(reader: Reader, from: ItemId<"jira">, to: ItemId<"j
 export type GuestRun = {
   mutations: CapturedMutation[];
   intents: Intent[];
+  drafts: Draft[];
   // Capture errors, one per rejected write or intent.
   rejected: string[];
   reads: { fn: string; args: unknown[]; outsideRegion: boolean }[];
@@ -130,6 +132,7 @@ export async function runGuest(bindings: Bindings, script: string): Promise<Gues
   const run: GuestRun = {
     mutations: [],
     intents: [],
+    drafts: [],
     rejected: [],
     reads: [],
     logs: [],
@@ -166,9 +169,10 @@ export async function runGuest(bindings: Bindings, script: string): Promise<Gues
       }
       continue;
     }
-    if (message.kind === "intent") {
+    if (message.kind === "intent" || message.kind === "draft") {
       try {
-        run.intents.push(bindings.intend(message.fn, message.args));
+        if (message.kind === "intent") run.intents.push(bindings.intend(message.fn, message.args));
+        else run.drafts.push(bindings.draft(message.fn, message.args));
       } catch (error) {
         run.rejected.push(error instanceof Error ? error.message : String(error));
       }

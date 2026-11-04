@@ -1,11 +1,12 @@
 // Test support: the SYN fixture as regions with real bindings, a provider
 // that plays scripted model responses, in-memory run and change-set records,
 // and a fixed clock and IDs. Every test builds its own with `harness()`.
-import { bindingsFor, type Namespaces } from "@oriel/bindings";
+import { bindingsFor, type Namespaces, type Waiting } from "@oriel/bindings";
 import {
   type CapturedMutation,
   type ChangeSet,
   type Instant,
+  type Draft,
   type Intent,
   instant,
   type ItemId,
@@ -106,6 +107,7 @@ export const regionBindings = (
   threadId?: Ulid,
   shown?: Shown,
   oriel?: OrielReads,
+  waiting?: Waiting,
 ) =>
   bindingsFor(region, {
     reader,
@@ -113,7 +115,42 @@ export const regionBindings = (
     ...(threadId ? { thread: threadId } : {}),
     ...(shown ? { shown } : {}),
     ...(oriel ? { oriel } : {}),
+    ...(waiting ? { waiting } : {}),
   });
+
+// One Slack connection that waits for its options, as a window chat's
+// module offers it (decision 0051): its channels as its preview, and a
+// draft of its options checked as Slack's validator would.
+export const waitingSlack: Waiting = {
+  preview: async () => [
+    {
+      connection: "01JC0NNECT10N0000000000000",
+      source: "Slack",
+      why: "Slack has no public channel Oriel can see named #launch-room",
+      options: { channels: ["weather-disruptions", "launch-room"] },
+      tables: [
+        {
+          name: "Public channels",
+          columns: ["Channel", "Last active"],
+          rows: [
+            ["weather-disruptions", "2026-09-27"],
+            ["random", "2026-09-05"],
+          ],
+        },
+      ],
+    },
+  ],
+  types: {
+    fields: { options: "SlackOptions" },
+    lines: ["type SlackOptions = { channels: string[] };"],
+  },
+  check: (draft) => {
+    const channels = (draft.input["options"] as { channels?: unknown } | undefined)?.channels;
+    if (!Array.isArray(channels) || channels.length === 0)
+      throw new TypeError("$.options.channels: expected 1 to 50 channels");
+    return draft;
+  },
+};
 
 export const runLimits: RunLimits = {
   wallMs: 60_000,
@@ -226,7 +263,10 @@ export function memoryRecords(newId: () => Ulid) {
   const runs: { run: Run; reads: ProxiedRead[] }[] = [];
   const changeSets: { changeSet: ChangeSet; mutations: CapturedMutation[] }[] = [];
   const applied: { changeSetId: Ulid | null; intents: Intent[] }[] = [];
-  const deps: Pick<AgentDeps, "runs" | "changeSets" | "actions"> = {
+  // Each turn's drafts, as the host held them.
+  const held: Draft[][] = [];
+  const deps: Pick<AgentDeps, "runs" | "changeSets" | "actions" | "drafts"> = {
+    drafts: { hold: (_thread, drafts) => void held.push([...drafts]) },
     actions: {
       async apply(turn, intents) {
         applied.push({ changeSetId: turn.changeSetId, intents: [...intents] });
@@ -275,7 +315,7 @@ export function memoryRecords(newId: () => Ulid) {
       },
     },
   };
-  return { runs, changeSets, applied, deps };
+  return { runs, changeSets, applied, held, deps };
 }
 
 // Time is passed in: every sandbox duration comes out as 0.

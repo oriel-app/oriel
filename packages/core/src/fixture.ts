@@ -2,6 +2,7 @@
 // loaded once, then connected as often as a test or an eval case asks, with
 // no network. Everything a connection gives is the same on every run and
 // every disk, so evals that read it replay.
+import type { PreviewTable } from "./block.ts";
 import type { ChangeLogEntry } from "./change-log.ts";
 import type { Instant, ItemId } from "./ids.ts";
 import type { Opened, OpenVia, ToOpen } from "./open.ts";
@@ -18,6 +19,9 @@ export type SourceFixture<C = unknown, R = unknown, W = unknown> = {
   // `open` would the source itself. `via.fetch`, when a test gives one, is
   // a stand-in it made, so it can act in the source as others do.
   open: (connection: ToOpen, via: OpenVia) => Promise<Opened<C, R, W>>;
+  // Its declaration's preview over the same stand-in, for a connector that
+  // declares one (decision 0051).
+  preview?: (connection: ToOpen, via: OpenVia) => Promise<PreviewTable[]>;
   // Whether every eval case connects it, as every case recorded before
   // decision 0049 did Jira and the folder. Otherwise a case connects it when
   // its region holds its items, or when it asks in the window chat, so a new

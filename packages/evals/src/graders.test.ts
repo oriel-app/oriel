@@ -10,6 +10,7 @@ import {
   gradeSurfaced,
   gradeNoSketch,
   gradeZeroMutations,
+  gradeDrafts,
   judgeSystem,
 } from "./graders.ts";
 import { message, verdicts } from "./testing.ts";
@@ -419,5 +420,33 @@ test("blocks: the expected read may be one of several", () => {
   assert.match(
     gradeBlocks({ form: "rows", read: ["thread.list", "search"] }, shown).detail,
     /no rows block from thread\.list or search was shown/,
+  );
+});
+
+const configure = (channels: string[]) => ({
+  action: "source.configure",
+  input: { connection: "01JC0NNECT10N0000000000000", options: { channels } },
+});
+
+test("a draft is something proposed: zero mutations fails on one (decision 0051)", () => {
+  const grade = gradeZeroMutations([], [], [configure(["random"])]);
+  assert.equal(grade.pass, false);
+  assert.match(grade.detail, /1 drafts: source\.configure/);
+});
+
+test("drafts grade by action, connection and options, lists in any order", () => {
+  const want = [
+    {
+      action: "source.configure",
+      connection: "01JC0NNECT10N0000000000000",
+      options: { channels: ["weather-disruptions", "random"] },
+    },
+  ];
+  assert.equal(gradeDrafts(want, [configure(["random", "weather-disruptions"])]).pass, true);
+  assert.match(gradeDrafts(want, [configure(["random"])]).detail, /expected source\.configure/);
+  assert.match(gradeDrafts(want, []).detail, /missing: source\.configure/);
+  assert.match(
+    gradeDrafts(want, [configure(["weather-disruptions", "random"]), configure(["random"])]).detail,
+    /unexpected/,
   );
 });

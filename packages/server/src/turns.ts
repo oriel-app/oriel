@@ -2,9 +2,16 @@
 // stored in the thread's chat as it arrives and passed to whoever watches
 // the thread, so a turn outlives the page that started it, and a page that
 // reconnects picks up from the last entry it saw. Stopping is explicit.
-import { type WorkstreamStore, type Message, type Move, type ThreadStore } from "@oriel/db";
+import {
+  type Held,
+  type WorkstreamStore,
+  type Message,
+  type Move,
+  type ThreadStore,
+} from "@oriel/db";
 import {
   type ActionLine,
+  type Draft,
   type Actor,
   type HeldSender,
   type Instant,
@@ -496,6 +503,26 @@ export function turns(deps: TurnDeps) {
     publish(threadId, { type: "status", running: running.has(threadId) });
   };
 
+  // A turn's drafts, held in the thread for the user under its reply, each
+  // with what it was drafted over (decision 0051): it waits on them as a
+  // held message does.
+  const holdDrafts = (threadId: Ulid, drafts: readonly { draft: Draft; over: unknown }[]) => {
+    for (const { draft, over } of drafts) {
+      const held = { role: "held" as const, draft, over };
+      published(threadId, threads.append(threadId, held, deps.newId(), deps.now()));
+      const { workspaceId } = threads.get(threadId, deps.now()) ?? {};
+      if (workspaceId)
+        deps.emit({
+          name: "draft.made",
+          at: deps.now(),
+          workspaceId,
+          threadId,
+          action: draft.action,
+        });
+    }
+    if (drafts.length) publish(threadId, { type: "status", running: running.has(threadId) });
+  };
+
   // One of Oriel's own lines in the thread, with no model call: the one way
   // Oriel writes into a chat, as Oriel, never as the agent (OA-91).
   const note = (threadId: Ulid, line: OrielNote) =>
@@ -510,6 +537,8 @@ export function turns(deps: TurnDeps) {
 
   return {
     running: (threadId: Ulid): boolean => running.has(threadId),
+
+    holdDrafts,
 
     // Who started the thread's running turn, or null with none running.
     startedBy: (threadId: Ulid): Actor | null => running.get(threadId)?.by ?? null,
@@ -609,7 +638,8 @@ export function turns(deps: TurnDeps) {
       text?: string,
     ): { seq: number; from: HeldSender; edited: boolean } {
       const held = threads.held(threadId).find((h) => h.seq === at);
-      if (!held) throw new NothingHeld();
+      // A draft is applied, never sent (decision 0051).
+      if (!held || !("from" in held)) throw new NothingHeld();
       if (running.has(threadId)) throw new ThreadBusy();
       // A review link's holder answers what was wrong with the change set
       // they rejected: held while Oriel couldn't ask, mid-turn, it asks
@@ -625,11 +655,11 @@ export function turns(deps: TurnDeps) {
     },
 
     // The user discards the message held at `seq`: it never reaches the
-    // agent.
-    discardHeld(threadId: Ulid, seq: number): HeldSender {
+    // agent. Or the draft there: it never applies.
+    discardHeld(threadId: Ulid, seq: number): Held {
       const held = threads.held(threadId).find((h) => h.seq === seq);
       if (!held || !threads.settle(threadId, seq, "discarded")) throw new NothingHeld();
-      return held.from;
+      return held;
     },
 
     // The index changed, as a sync changes it, and with it maybe a workstream's

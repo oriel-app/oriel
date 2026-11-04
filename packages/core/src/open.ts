@@ -35,6 +35,14 @@ export type OpenVia = {
   now: () => Instant;
 };
 
+// Why a connection can't open: its options no longer fit its source, such
+// as a channel they name gone, so it waits for its options (decision 0051),
+// rather than for a person to sign in again. Its message names what doesn't
+// fit, never a secret.
+export class OptionsUnfit extends Error {
+  override name = "OptionsUnfit";
+}
+
 // The read side a change set's diff needs: field values as they are now in
 // the source. Not `Reader`, which reads whole items for a run.
 export type FieldReader<K extends SourceKind = SourceKind> = {

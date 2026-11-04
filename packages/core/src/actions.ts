@@ -14,6 +14,7 @@ import {
   number,
   object,
   optional,
+  record,
   refine,
   string,
   union,
@@ -58,6 +59,11 @@ export type ActionDeclaration = {
   // A review link's holder may call it too, on the change set the link
   // names, which the change set engine checks by the link's `token`.
   reviewLink?: true;
+  // Closed to the agent, it may still draft it: write out its input for the
+  // user, who applies it, edits it or discards it (decision 0051). Only a
+  // direct action closed to the agent may be, never a person's, such as one
+  // that holds credentials.
+  draftable?: true;
 };
 
 export const maxNameChars = 120;
@@ -309,11 +315,22 @@ export const actions = {
     },
   },
   "held.discard": {
-    doc: "Discards a message held in a thread, from anyone but the user, so the agent never sees it. `seq` is its place in the thread's chat.",
+    doc: "Discards a message held in a thread, from anyone but the user, so the agent never sees it, or a draft, so it never applies. `seq` is its place in the thread's chat.",
     input: object({ thread: threadId, seq }),
     class: {
       kind: "person-only",
       why: "Whether the agent hears words from outside the thread is the user's call.",
+    },
+  },
+  // A draft is held as a held message is (decision 0051): the user applies
+  // it, as it is or as `edit` changes its input, or discards it with
+  // `held.discard`. Applying calls the drafted action as the user.
+  "held.apply": {
+    doc: "Applies a draft held in a thread, as it is, or with `edit`, the user's changes to its input. `seq` is its place in the thread's chat.",
+    input: object({ thread: threadId, seq, edit: optional(record(unknown)) }),
+    class: {
+      kind: "person-only",
+      why: "A draft is the agent's suggestion of the user's own action, so only the user applies it, in the window (decision 0051).",
     },
   },
   // A change set's own steps, all a person's (decision 0024). What it
@@ -397,6 +414,7 @@ export const actions = {
     input: object({ connection: connectionId, options: unknown }),
     class: { kind: "direct", inverse: "source.configure" },
     closed: { agent: configures, tool: configures },
+    draftable: true,
   },
   // What the user asks for: a full sweep, as only one finds what was
   // deleted in the source.

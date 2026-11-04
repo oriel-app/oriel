@@ -10,12 +10,14 @@ import {
   type ActionInput,
   type ActionName,
   actions,
+  alternatives,
   type Actor,
   type Approver,
   type Call,
   type ChangeSet,
   type ChangeSets,
   type Cluster,
+  type Draft,
   type WorkstreamChange,
   type WorkstreamMember,
   type WorkstreamOrigin,
@@ -121,6 +123,10 @@ export type ActionDeps = {
       input: ActionInput<"source.disconnect">,
     ): Promise<Pick<ConnectionView, "id" | "kind" | "number">>;
   };
+  // What a draft would replace now, such as the options a connection has,
+  // to tell one the user can still apply from one they've moved past, and
+  // the name of what it sets; null when that's gone (decision 0051).
+  drafted(draft: Draft): { over: unknown; name: string } | null;
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
   // A thread's change sets still to apply, pending or approved: whether
@@ -262,12 +268,30 @@ const applyTold = async (deps: ActionDeps, set: ChangeSet) => {
 
 const lookAgainMs = 60_000;
 
+// Whether a held draft can no longer apply: what it was drafted over has
+// changed since, or is gone (decision 0051).
+const stale = (deps: ActionDeps, held: { draft: Draft; over: unknown }): boolean => {
+  const now = deps.drafted(held.draft);
+  return now === null || JSON.stringify(now.over) !== JSON.stringify(held.over);
+};
+
+// The fields of an action's input that say what it acts on, by their type
+// as an ID, which an edit of its draft keeps.
+const fixedFields = (action: ActionName): string[] =>
+  alternatives(action).flatMap((shape) =>
+    Object.entries(shape.fields).flatMap(([key, field]) =>
+      field.kind === "refined" && field.type?.endsWith("Id") ? [key] : [],
+    ),
+  );
+
 // What in a thread waits on the user, in words, or null: a change set to
 // decide, or a message held for them.
 async function waitsOn(deps: ActionDeps, threadId: Ulid): Promise<string | null> {
   if ((await deps.unsettled(threadId)).some((set) => set.waits))
     return "a change set in it waits on you";
-  if (deps.threads.held(threadId).length > 0) return "a message held in it waits on you";
+  const held = deps.threads.held(threadId);
+  if (held.some((each) => "from" in each)) return "a message held in it waits on you";
+  if (held.length > 0) return "a draft of the agent's in it waits on you";
   return null;
 }
 
@@ -512,7 +536,7 @@ const handlers = {
         if (deps.threads.held(thread.id).length > 0)
           throw new ActionError(
             "refused",
-            "a message held in one of its threads waits on you, so it stays in Needs you",
+            "a message or draft held in one of its threads waits on you, so it stays in Needs you",
           );
       }
     }
@@ -661,12 +685,54 @@ const handlers = {
 
   "held.discard": async ({ thread: id, seq }, _actor, deps) => {
     const thread = mustThread(deps, id);
-    const from = deps.turns.discardHeld(thread.id, seq);
+    const held = deps.turns.discardHeld(thread.id, seq);
+    const event =
+      "from" in held
+        ? { name: "held-message.discarded" as const, threadId: thread.id, from: held.from.kind }
+        : {
+            name: "draft.discarded" as const,
+            threadId: thread.id,
+            action: held.draft.action,
+            stale: stale(deps, held),
+          };
+    return { output: {}, undo: null, changed: { thread: thread.id, chat: true }, events: [event] };
+  },
+
+  // The draft held at `seq` applies as the user's own call of its action,
+  // as drafted or with the user's edit, which keeps what it acts on, and
+  // gives that call's Undo. One whose options moved since, or whose
+  // connection is gone, can't apply; one its action refuses stays held, and
+  // the user hears why (decision 0051).
+  "held.apply": async ({ thread: id, seq, edit }, actor, deps) => {
+    const thread = mustThread(deps, id);
+    const held = deps.threads.held(thread.id).find((h) => h.seq === seq);
+    if (!held || !("draft" in held)) throw new ActionError("not-found", "no draft waits there");
+    const { action } = held.draft;
+    if (stale(deps, held))
+      throw new ActionError(
+        "conflict",
+        "what it drafts has changed since, so it can't apply: discard it, and ask again",
+      );
+    const kept = Object.keys(edit ?? {}).find((key) => fixedFields(action).includes(key));
+    if (kept !== undefined)
+      throw new ActionError("invalid", `$.edit.${kept}: an edit keeps what the draft acts on`);
+    const input = checked(action, { ...held.draft.input, ...edit } as Fields<typeof action>);
+    const handler = handlers[action] as Handler<typeof action>;
+    const called = await handler(input, actor, deps, actor);
+    const output = called.output as SourceOutcome;
+    if (!("connection" in output)) throw new ActionError("refused", output.problem);
+    // Kept as it applied, edited or not: the options the connection has now.
+    if (!deps.threads.applied(thread.id, seq, { ...input, options: output.connection.options }))
+      throw new ActionError("conflict", "it was settled meanwhile");
+    const events = called.events === "counted" ? [] : called.events;
     return {
-      output: {},
+      output: { ...output, applied: called.undo },
       undo: null,
       changed: { thread: thread.id, chat: true },
-      events: [{ name: "held-message.discarded", threadId: thread.id, from: from.kind }],
+      events: [
+        ...events,
+        { name: "draft.applied", threadId: thread.id, action, edited: edit !== undefined },
+      ],
     };
   },
 

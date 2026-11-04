@@ -12,6 +12,7 @@ import type { SlackRecord } from "./attrs.ts";
 import { fixtureApi, loadSlackFixture, type SlackFixture } from "./fixture.ts";
 import type { SlackContext } from "./namespace.ts";
 import { openSlack, type SlackWrites } from "./open-connection.ts";
+import { slackPreview } from "./preview.ts";
 import type { SlackScope } from "./references.ts";
 import { slackSource } from "./source.ts";
 
@@ -26,6 +27,11 @@ export const slackDeclaredFixture: SourceFixture<SlackContext, SlackScope, Slack
   // change sets post. A test may give its own, to act in it as others do.
   open: (connection, via) =>
     openSlack(connection, {
+      ...via,
+      fetch: via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
+    }),
+  preview: (connection, via) =>
+    slackPreview(connection, {
       ...via,
       fetch: via.fetch ?? fixtureApi(loadSlackFixture(), { now: via.now }).fetch,
     }),

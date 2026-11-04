@@ -107,8 +107,15 @@ const expectations = {
   // (decision 0030).
   blocks: object({
     grader: literal("blocks"),
-    form: union(literal("bars"), literal("table"), literal("rows")),
+    form: union(literal("bars"), literal("table"), literal("rows"), literal("preview")),
     read: union(text, atLeastOne(text)),
+  }),
+  // What the turn drafted, held for the user (decision 0051): one draft of
+  // `action` for the connection of each `kind`, whose options are `options`,
+  // lists in any order.
+  drafts: object({
+    grader: literal("drafts"),
+    calls: atLeastOne(object({ action: text, kind: text, options: record(unknown) })),
   }),
   // The turn never called sketch(), shown or refused (decision 0033): a
   // chart Oriel can build from a read is a block, never the agent's HTML.
@@ -219,6 +226,11 @@ const evalCaseShape = object({
       ),
     ),
   ),
+  // A window chat's connections whose options no longer fit their source,
+  // by kind, with the options each has: they wait for their options, so the
+  // module offers their preview and a draft of them (decision 0051). Their
+  // items synced before stay in the index.
+  unfit: optional(record(record(unknown))),
   // How many of each fixture's source edits are applied before the case
   // runs, by kind, such as `{ "jira": 3 }`. Absent means none.
   edited: optional(record(whole)),
@@ -259,6 +271,8 @@ function rules(evalCase: EvalCase): Issue[] {
     if (said.role === "note" && said.note.kind === "rejected" && !sets.has(said.note.changeSet))
       found.push({ path: `$.before[${i}].note.changeSet`, message: "no such change set in oriel" });
   });
+  if (evalCase.unfit !== undefined && evalCase.window === undefined)
+    found.push({ path: "$.unfit", message: "only the window chat drafts a connection's options" });
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
     found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
@@ -276,6 +290,10 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "a golden diff and zero mutations contradict" });
   if (graders.includes("intents") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "intents and zero mutations contradict" });
+  if (graders.includes("drafts") && graders.includes("zero-mutations"))
+    found.push({ path: "$.expect", message: "drafts and zero mutations contradict" });
+  if (graders.includes("drafts") && evalCase.unfit === undefined)
+    found.push({ path: "$.expect", message: "a draft needs a connection that waits (`unfit`)" });
   const judged = isJudged(evalCase.kind);
   if (judged && !graders.includes("judge"))
     found.push({ path: "$.expect", message: "kinds 7 and 8 are graded by the judge" });

@@ -8,7 +8,8 @@
 // nothing, as it proposes nothing. The turn shows what it asked for under
 // its reply, in the order asked, each once: at most `maxBlocksPerTurn`
 // blocks and `maxSketchesPerTurn` sketches. The escape hatch's blocks,
-// which Oriel shows unasked, don't count. Each block is built from the
+// which Oriel shows unasked, don't count, nor does a waiting connection's
+// preview, which it shows unasked too (decision 0051). Each block is built from the
 // host's own copy of what the read answered, never a value the script
 // passes in.
 import {
@@ -30,6 +31,8 @@ import {
   isSketchHeight,
   maxBlocksPerTurn,
   maxSketchesPerTurn,
+  previewBlock,
+  previewTable,
   readKey,
   type RunResult,
   type Shown,
@@ -161,10 +164,14 @@ export function turnShown(newId: () => Ulid) {
       // run's reaches share the block, so an item two of them found is in
       // it once, where it was first found.
       const hits = new Map<string, SearchHit>();
+      // What a waiting connection's preview read showed, as its block.
+      const previews: Block[] = [];
       const watched: Bindings = {
         ...bindings,
         read: async (fn, args) => {
           const answer = await bindings.read(fn, args);
+          const tables = array(previewTable)(answer.preview ?? []);
+          if (tables.ok && tables.value.length) previews.push(previewBlock(fn, args, tables.value));
           const found = searchHits(answer.found ?? []);
           for (const hit of found.ok ? found.value : [])
             if (!hits.has(hit.id)) hits.set(hit.id, hit);
@@ -177,10 +184,11 @@ export function turnShown(newId: () => Ulid) {
         bindings: watched,
         said,
         // As the run finishes: what it reached outside the region, as the
-        // escape hatch, whatever its outcome; and what it asked to show, if
+        // escape hatch, and the previews it read, whatever its outcome; and what it asked to show, if
         // it finished.
         *ran(result: RunResult): Generator<AgentEvent> {
           if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
+          for (const block of previews) yield { kind: "block", runId, block };
           if (result.outcome === "ok") kept.push(...shown.map((each) => ({ runId, shown: each })));
         },
       };

@@ -47,6 +47,8 @@ export type Script = (bindings: Bindings) => Promise<{
   writes?: [fn: string, args: unknown[], ref?: `new:${number}`][];
   // Oriel's actions, recorded through the bindings.
   intents?: [fn: string, args: unknown[]][];
+  // Drafts of the user's actions, recorded through the bindings (decision 0051).
+  drafts?: [fn: string, args: unknown[]][];
   logs?: string[];
 }>;
 
@@ -77,6 +79,7 @@ export function fakeSandbox(scripts: Record<string, Script>): Sandbox {
         bindings.capture(fn, args, ref ?? null),
       );
       const intents = (done.intents ?? []).map(([fn, args]) => bindings.intend(fn, args));
+      const drafts = (done.drafts ?? []).map(([fn, args]) => bindings.draft(fn, args));
       const transcript: TranscriptEntry[] = [
         ...(done.logs ?? []).map((text) => ({ kind: "log" as const, text })),
         { kind: "return", value: done.value },
@@ -85,6 +88,7 @@ export function fakeSandbox(scripts: Record<string, Script>): Sandbox {
         reads,
         mutations,
         intents,
+        drafts,
         transcript,
         outcome: "ok",
         wallMs: 5,

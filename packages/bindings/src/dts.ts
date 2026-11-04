@@ -8,6 +8,7 @@ import { itemTypes } from "./items.ts";
 import { orielTypes } from "./oriel.ts";
 import { windowTypes } from "./window.ts";
 import { actionTypes } from "./actions.ts";
+import { draftTypes, type Waiting } from "./drafts.ts";
 
 const header = [
   "// This region's module.",
@@ -29,7 +30,7 @@ const footer = [
 function signature(fn: Fn): string {
   const params = fn.params.map((p) => `${p.name}${p.optional ? "?" : ""}: ${p.type}`).join(", ");
   if (fn.kind === "read") return `${fn.name}(${params}): Promise<${fn.returns}>`;
-  if (fn.kind === "intent") return `${fn.name}(${params}): void`;
+  if (fn.kind === "intent" || fn.kind === "draft") return `${fn.name}(${params}): void`;
   return `${fn.name}(${params}): ${fn.creates ? "NewRef" : "void"}`;
 }
 
@@ -43,7 +44,7 @@ function namespace(name: string, fns: readonly Fn[]): string[] {
   ];
 }
 
-export function declarations(scope: Scope, fns: readonly Fn[]): string {
+export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting): string {
   return [
     ...header,
     "/** The items in this region. */",
@@ -53,6 +54,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...orielTypes,
     ...actionTypes,
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
+    ...(waiting ? draftTypes(waiting) : []),
     "",
     ...scope.spaces.flatMap((name) => namespace(name, fns)),
     ...fns

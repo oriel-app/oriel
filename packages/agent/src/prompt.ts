@@ -172,9 +172,11 @@ const mutationLines = (mutations: readonly CapturedMutation[]) =>
 const intentLines = (intents: readonly Intent[]) =>
   intents.map((intent) => json({ action: intent.action, input: intent.input }));
 
+const drafts = (count: number) => (count === 1 ? "1 draft" : `${count} drafts`);
+
 // A run as the model reads it: its transcript, then what became of its writes,
 // of the actions it asked for and of the blocks and sketches it asked Oriel
-// to show. `replaced` and `replacedIntents` are what it replaced of an
+// to show. `replaced`, `replacedIntents` and `replacedDrafts` are what it replaced of an
 // earlier run's; `shown`, Oriel's line for each block and sketch. No run ID, timing or other value a
 // replay can't reproduce.
 export function runResultText(
@@ -182,13 +184,16 @@ export function runResultText(
   replaced: number,
   replacedIntents = 0,
   shown: readonly string[] = [],
+  replacedDrafts = 0,
 ): string {
   const lines = result.transcript.flatMap(entry);
   const count = result.mutations.length;
   const asked = result.intents.length;
+  const drafted = result.drafts.length;
   if (result.outcome !== "ok") {
     if (count) lines.push(`It captured ${changes(count)} before it stopped; they were discarded.`);
     if (asked) lines.push(`It recorded ${actions(asked)} before it stopped; they were discarded.`);
+    if (drafted) lines.push(`It made ${drafts(drafted)} before it stopped; they were discarded.`);
     if (shown.length) lines.push("Oriel shows nothing from a run that stopped.");
     return lines.join("\n");
   }
@@ -208,6 +213,15 @@ export function runResultText(
       replacedIntents
         ? `They replace the ${actions(replacedIntents)} an earlier run in this turn recorded, and apply when this turn ends.`
         : "They apply when this turn ends, unless a later run in this turn records actions instead.",
+    );
+  }
+  if (drafted) {
+    lines.push(`Drafted ${drafts(drafted)}:`, ...intentLines(result.drafts));
+    lines.push(
+      replacedDrafts
+        ? `They replace the ${drafts(replacedDrafts)} an earlier run in this turn made.`
+        : "Unless a later run in this turn drafts instead:",
+      "They wait under your reply for the user to apply, edit or discard. Nothing changes until the user applies one: never say it's done.",
     );
   }
   return lines.join("\n");

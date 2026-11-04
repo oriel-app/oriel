@@ -87,6 +87,7 @@ const words: { [N in ActionName]: Words } = {
     `Discarded a held message in ${place}`,
     `discard a held message in ${place}`,
   ],
+  "held.apply": (_, place) => [`Applied a draft in ${place}`, `apply a draft in ${place}`],
   "changeset.edit": () => ["Edited a change set", "edit a change set"],
   "changeset.approve": () => ["Gave a change set its approval", "approve a change set"],
   "changeset.reject": () => ["Rejected a change set", "reject a change set"],

@@ -882,7 +882,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     {
       // An Undo: the call the server gave for one of Oriel's own actions,
       // sent back as it is, so only an action that undoes another. The reply
-      // is that call's own undo. One from a line under the agent's reply
+      // is that call's own undo, and what went wrong, if anything did. One from a line under the agent's reply
       // names the line, which then says what came of it.
       method: "POST",
       path: /^\/api\/actions\/([a-z]+\.[a-z]+)$/,
@@ -890,10 +890,13 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
         const at = linePlace(url.searchParams);
-        const { undo } = at
+        const done = at
           ? await deps.undoLine(at, { action: name, input } as Call, user)
           : await deps.dispatch.untyped(name, input, user);
-        return json(200, { undo });
+        // What went wrong after it applied, such as a connection's options
+        // that don't fit its source (decision 0051), is said too.
+        const { problem } = done as { problem?: unknown };
+        return json(200, { undo: done.undo, ...(typeof problem === "string" ? { problem } : {}) });
       },
     },
     {
@@ -1246,6 +1249,20 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const input = checked("held.send", { thread: id, seq: Number(place), text });
         const { seq } = await deps.dispatch("held.send", input, user);
         return json(202, { seq });
+      },
+    },
+    {
+      // A draft of the agent's held in the thread (decision 0051): the user
+      // applies it, as it is or with their edit of its input, as their own
+      // call of its action, whose Undo comes back; or discards it, below. One
+      // its action refuses stays held, and the reply says why.
+      method: "POST",
+      path: at("/threads/:id/held/:seq/apply"),
+      async run([id = "", place = ""], request) {
+        const { edit } = await readJson(request, smallBody, object({ edit: unknown }));
+        const input = checked("held.apply", { thread: id, seq: Number(place), edit });
+        const { applied, ...outcome } = await deps.dispatch("held.apply", input, user);
+        return json(200, { ...outcome, undo: applied });
       },
     },
     {

@@ -5,6 +5,7 @@ import {
   type NewRef,
   noThreads,
   type OrielReads,
+  type PreviewTable,
   type Reader,
   type Region,
   type SearchHit,
@@ -12,6 +13,7 @@ import {
   type Ulid,
 } from "@oriel/core";
 import { intended } from "./actions.ts";
+import type { Waiting } from "./drafts.ts";
 import { describe, type Fn, type ItemDocs, type Namespaces, pathOf, scopeOf } from "./describe.ts";
 import { declarations } from "./dts.ts";
 import { type Host, live, outside } from "./fn.ts";
@@ -57,10 +59,17 @@ export function bindingsFor(
     // an action in the run may take, as Make a workstream does, though the
     // read shows none of them, so none can be read (decision 0044).
     overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
+    // The window chat's connections that wait for their options; its
+    // thread's module gets `source` only with it (decision 0051).
+    waiting?: Waiting;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
-  const fns = describe(scope, { window: options.overview !== undefined });
+  const { waiting } = options;
+  const fns = describe(scope, {
+    window: options.overview !== undefined,
+    ...(waiting ? { waiting } : {}),
+  });
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
   const created = new Map<NewRef, string>();
@@ -97,13 +106,16 @@ export function bindingsFor(
     overview: async () => {
       throw new Error("only the window chat reads the overview");
     },
+    preview: async () => {
+      throw new Error("only the window chat reads a waiting connection's preview");
+    },
   };
   // The ref the next create must carry. Every correctly numbered create uses
   // one up, so a rejected create can't shift the numbering of later ones.
   let nextRef = 1;
 
   return {
-    dts: declarations(scope, fns),
+    dts: declarations(scope, fns, waiting),
     shim: shimFor(fns, scope.spaces),
 
     async read(fn, args) {
@@ -114,6 +126,8 @@ export function bindingsFor(
       let outsideRegion = entry.outsideRegion;
       // What it reached outside the region, for the escape-hatch block.
       const reached: SearchHit[] = [];
+      // What a waiting connection's preview showed, for its block.
+      const previewed: PreviewTable[] = [];
       const own: Host = {
         ...host,
         read: (ids, view) => {
@@ -133,10 +147,21 @@ export function bindingsFor(
           reached.push(...items);
           return view;
         },
+        preview: async () => {
+          if (!waiting) return host.preview();
+          const connections = await waiting.preview();
+          previewed.push(...connections.flatMap((each) => each.tables));
+          return connections;
+        },
       };
       try {
         const value = await entry.run(args, own);
-        return { value, outsideRegion, ...(reached.length ? { found: reached } : {}) };
+        return {
+          value,
+          outsideRegion,
+          ...(reached.length ? { found: reached } : {}),
+          ...(previewed.length ? { preview: previewed } : {}),
+        };
       } catch (error) {
         throw named(fn, error);
       }
@@ -177,6 +202,25 @@ export function bindingsFor(
           thread: options.thread ?? null,
           reaches: (id) => members.has(id) || found.has(id) || joinable.has(id),
         });
+      } catch (error) {
+        throw named(fn, error);
+      }
+    },
+
+    draft(fn, args) {
+      const entry = byPath.get(fn);
+      if (entry?.kind !== "draft" || !waiting)
+        throw new Error(`${JSON.stringify(fn)} isn't a draft here`);
+      try {
+        // Checked as an intent is, against the action's own declaration,
+        // then by the connector's validator, as the composition root has it.
+        return waiting.check(
+          intended(entry, args, {
+            workstream: region.workstreamId,
+            thread: options.thread ?? null,
+            reaches: () => false,
+          }),
+        );
       } catch (error) {
         throw named(fn, error);
       }

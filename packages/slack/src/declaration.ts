@@ -7,6 +7,7 @@ import { slackDeclaredFixture } from "./declared-fixture.ts";
 import { type SlackContext, slackItemDoc, slackNamespace } from "./namespace.ts";
 import { openSlack, type SlackWrites } from "./open-connection.ts";
 import { slackOverview } from "./overview.ts";
+import { slackPreview } from "./preview.ts";
 import { type SlackScope, slackRecognizer } from "./references.ts";
 import { slackSpecs } from "./specs.ts";
 
@@ -27,6 +28,8 @@ export const slackDeclaration = {
   budget: 900,
   open: openSlack,
   options: slackOptions,
+  // Its public channels, for the agent to draft which it reads (decision 0051).
+  preview: slackPreview,
   live: slackLive,
   fixture: slackDeclaredFixture,
 } satisfies SourceDeclaration<SlackContext, SlackScope, SlackWrites>;
