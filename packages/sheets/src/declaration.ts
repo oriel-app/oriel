@@ -19,8 +19,9 @@ export const sheetsDeclaration = {
   itemDoc: sheetsItemDoc,
   panel: sheetsPanel,
   // A row's status as the cell says it, which moves even where it means no
-  // state, as a RAG column's does.
+  // state, as a RAG column's does, and its estimate, where its tab maps one.
   facets: {
+    estimate: { label: "Estimate", of: (record) => record.facets.estimate ?? null },
     status: {
       label: "Status",
       of: (record) => {

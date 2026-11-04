@@ -220,7 +220,15 @@ export const sheetsDetails: DetailsOf = (record) => {
   return { type: "row", status: attrs.status ?? "", labels: [attrs.tab.title] };
 };
 
-export const sheetsPresentation: Presentation = { name: "Google Sheets", details: sheetsDetails };
+export const sheetsPresentation: Presentation = {
+  name: "Google Sheets",
+  inSentence: "Google Sheets",
+  icon: "row",
+  // A key is a hash: a row is read by its title.
+  keysReadAs: "Row",
+  columns: ["assignee", "estimate"],
+  details: sheetsDetails,
+};
 
 // What reads as one short fact; anything longer is a block of its own.
 const factChars = 120;

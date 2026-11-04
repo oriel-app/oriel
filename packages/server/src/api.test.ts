@@ -660,7 +660,7 @@ test("a thread from nothing is made with its first message, and nothing without 
 });
 
 test("the page gets how every connector shows, connected or not, from its declaration", async (t) => {
-  // Started with Jira alone: the folder and Slack show all the same, for an
+  // Started with Jira alone: the folder, Slack and Google Sheets show all the same, for an
   // item of theirs a workstream or a thread still names.
   const app = await testApp(t);
   const { connectors } = json<{ connectors: ConnectorView[] }>(await app.get("/api/connectors"));
@@ -688,6 +688,14 @@ test("the page gets how every connector shows, connected or not, from its declar
       icon: "message",
       keysReadAs: "Message",
       columns: ["replies"],
+    },
+    {
+      kind: "sheets",
+      name: "Google Sheets",
+      inSentence: "Google Sheets",
+      icon: "row",
+      keysReadAs: "Row",
+      columns: ["assignee", "estimate"],
     },
   ]);
 });
