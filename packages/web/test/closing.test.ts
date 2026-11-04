@@ -51,6 +51,7 @@ test("marking a thread done from its menu posts as the page's button does, and r
     "GET /api/threads",
     "GET /api/workstreams",
     `GET /api/workstreams/${workstreamId}`,
+    `GET /api/workstreams/${workstreamId}/rehearsal`,
   ]);
 });
 

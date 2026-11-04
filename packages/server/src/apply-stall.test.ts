@@ -19,6 +19,7 @@ import {
   loadMigrations,
   migrate,
   open,
+  rehearsalStore,
   threadStore,
   workstreamStore,
 } from "@oriel/db";
@@ -61,6 +62,7 @@ function world() {
     workspaceId,
     workstreams,
     threads,
+    rehearsals: rehearsalStore(db),
     records: () => [],
     clusters: () => [],
     created: async () => [],

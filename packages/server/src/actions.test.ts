@@ -22,6 +22,7 @@ import {
   loadMigrations,
   migrate,
   open,
+  rehearsalStore,
   threadStore,
 } from "@oriel/db";
 import { ActionError, type Changed, dispatcher, refusal } from "./actions.ts";
@@ -62,6 +63,7 @@ function world() {
     workspaceId,
     workstreams,
     threads,
+    rehearsals: rehearsalStore(db),
     records: () => records,
     clusters: () => [],
     created: async (set) => (set === changeSetId ? [m("SYN-9", "10009")] : []),

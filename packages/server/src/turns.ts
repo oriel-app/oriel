@@ -318,7 +318,8 @@ export function turns(deps: TurnDeps) {
   // never does, the thread keeps the clipped message as its title.
   const title = (threadId: Ulid, text: string) => {
     const { titler } = deps;
-    if (!titler) return;
+    // One Oriel already titled, as a rehearsal thread, needs no model call.
+    if (!titler || threads.title(threadId) !== null) return;
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: threadId });
     const { signal } = closing;
     const done = titler(text, { signal, log })

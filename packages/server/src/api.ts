@@ -9,6 +9,7 @@ import {
   type ChangeSet,
   type ChangeSets,
   type Conflict,
+  followUpAsk,
   type IndexRecord,
   type Instant,
   type ItemId,
@@ -35,7 +36,7 @@ import {
   type Validator,
   startQuestions,
 } from "@oriel/core";
-import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
+import type { WorkstreamStore, Message, RehearsalStore, ThreadStore } from "@oriel/db";
 import { parseDeclared, sources } from "@oriel/sources";
 import {
   type DeletedView,
@@ -75,12 +76,16 @@ import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import { rehearsalView, updatedAtOf } from "./rehearsals.ts";
 import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
   workstreams: WorkstreamStore;
   threads: ThreadStore;
+  // Which threads rehearse a release, and what they kept (the
+  // release-rehearsal spike).
+  rehearsals: RehearsalStore;
   // The index's live records, from every source.
   records(): readonly IndexRecord[];
   // Oriel's own actions, through the one dispatcher (decision 0024).
@@ -222,6 +227,9 @@ const reviewDismissal = object({
   hash: string,
 });
 const emptyBody = object({});
+const followUpBody = object({
+  situation: refine(number, (n) => Number.isInteger(n) && n >= 1, "expected a situation, from 1"),
+});
 const setupCommand = object({
   command: union(
     literal("check"),
@@ -1048,6 +1056,58 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         const { thread } = await deps.dispatch("thread.open", opened, user);
         if (text !== undefined) await deps.dispatch("thread.say", { thread, text }, user);
         return json(201, { id: thread });
+      },
+    },
+    {
+      // Rehearse the release (the release-rehearsal spike): a thread on the
+      // workstream, asked with Oriel's fixed words.
+      method: "POST",
+      path: at("/workstreams/:id/rehearsals"),
+      async run([id = ""], request) {
+        await readJson(request, tinyBody, emptyBody);
+        const input = checked("workstream.rehearse", { workstream: id });
+        const { thread } = await deps.dispatch("workstream.rehearse", input, user);
+        return json(201, { id: thread });
+      },
+    },
+    {
+      // Prepare follow-up work: Oriel's fixed words for the situation picked,
+      // said in the newest rehearsal thread, whose agent proposes the change
+      // set there.
+      method: "POST",
+      path: at("/workstreams/:id/rehearsal/follow-up"),
+      async run([id = ""], request) {
+        const { situation } = await readJson(request, tinyBody, followUpBody);
+        const newest = deps.rehearsals.newest(mustWorkstream(id).id);
+        const count = newest?.rehearsal?.situations.length ?? 0;
+        if (!newest || situation > count) throw new Refused(404, "no such situation");
+        const text = followUpAsk(situation);
+        await deps.dispatch(
+          "thread.say",
+          checked("thread.say", { thread: newest.thread, text }),
+          user,
+        );
+        return json(202, { id: newest.thread });
+      },
+    },
+    {
+      // The workstream's newest rehearsal, computed from what Oriel kept, the
+      // index and its thread, with no model call.
+      method: "GET",
+      path: at("/workstreams/:id/rehearsal"),
+      async run([id = ""]) {
+        const workstream = mustWorkstream(id);
+        const members = workstreams.region(workstream.id, workstream.version)?.items ?? [];
+        const view = await rehearsalView({
+          store: deps.rehearsals,
+          workstream: workstream.id,
+          members: members.map((member) => member.id),
+          updatedAt: updatedAtOf(deps.records()),
+          messages: (thread) => threads.messages(thread),
+          running: (thread) => turns.running(thread),
+          chips: (ids, thread) => views.chips(ids, thread),
+        });
+        return json(200, { rehearsal: view });
       },
     },
     {

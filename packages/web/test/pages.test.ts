@@ -632,6 +632,12 @@ test("asking on a workstream's page opens a thread and goes to it", () => {
       url: `/api/workstreams/${workstreamId}`,
       tag: { kind: "workstream", id: workstreamId },
     },
+    {
+      type: "http",
+      method: "GET",
+      url: `/api/workstreams/${workstreamId}/rehearsal`,
+      tag: { kind: "rehearsal", id: workstreamId },
+    },
   ]);
   const drafted = updateWorkstream(model, { type: "draftChanged", text: "What's stuck?" })[0];
   const [pending, ask] = updateWorkstream(drafted, { type: "askClicked" });
@@ -959,4 +965,69 @@ test("a diff that works clears an earlier diff's failure", () => {
 test("a new thread's draft has its own address", () => {
   assert.equal(routeUrl({ page: "new-thread" }), "/threads/new");
   assert.deepEqual(parseRoute("/threads/new", ""), { page: "new-thread" });
+});
+
+test("Rehearse the release stays on the page and loads what was kept; follow-up work goes to its thread", () => {
+  const [model] = initWorkstream(workstreamId);
+  const [asking, start] = updateWorkstream(model, { type: "rehearseClicked" });
+  assert.equal(asking.asking, true);
+  assert.deepEqual(start, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/workstreams/${workstreamId}/rehearsals`,
+      body: {},
+      tag: { kind: "rehearsed", id: workstreamId },
+    },
+  ]);
+  // A second click while it answers sends nothing.
+  assert.deepEqual(updateWorkstream(asking, { type: "rehearseClicked" })[1], []);
+  const [started, load] = workstreamReplied(asking, {
+    type: "replied",
+    tag: { kind: "rehearsed", id: workstreamId },
+    ok: true,
+    body: { id: "01JBZ0000000000000000000T9" },
+  });
+  assert.equal(started.asking, false);
+  assert.deepEqual(load, [
+    {
+      type: "http",
+      method: "GET",
+      url: `/api/workstreams/${workstreamId}/rehearsal`,
+      tag: { kind: "rehearsal", id: workstreamId },
+    },
+  ]);
+  const [, follow] = updateWorkstream(started, { type: "followUpClicked", situation: 2 });
+  assert.deepEqual(follow, [
+    {
+      type: "http",
+      method: "POST",
+      url: `/api/workstreams/${workstreamId}/rehearsal/follow-up`,
+      body: { situation: 2 },
+      tag: { kind: "followUpAsked", id: workstreamId },
+    },
+  ]);
+  const [, go] = workstreamReplied(
+    { ...started, asking: true },
+    {
+      type: "replied",
+      tag: { kind: "followUpAsked", id: workstreamId },
+      ok: true,
+      body: { id: "01JBZ0000000000000000000T9" },
+    },
+  );
+  assert.deepEqual(go, [
+    { type: "navigate", route: { page: "thread", id: "01JBZ0000000000000000000T9" } },
+  ]);
+});
+
+test("the root hands a workstream page its rehearsal as it loads", () => {
+  const [root] = initRoot({ page: "workstream", id: workstreamId });
+  const [next] = updateRoot(root, {
+    type: "replied",
+    tag: { kind: "rehearsal", id: workstreamId },
+    ok: true,
+    body: { rehearsal: null },
+  });
+  assert.equal(next.workstream?.rehearsal, null);
 });

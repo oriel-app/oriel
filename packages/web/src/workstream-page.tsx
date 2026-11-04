@@ -3,6 +3,7 @@ import { useContext, useEffect, useRef } from "preact/hooks";
 import { ThreadMenu } from "./close-thread.tsx";
 import { EndButtons, WindowUndos } from "./end-workstream.tsx";
 import { deleted, type EndingModel } from "./ending.ts";
+import { Rehearsal } from "./rehearsal.tsx";
 import {
   askPrompt,
   type WorkstreamModel,
@@ -192,6 +193,13 @@ export function WorkstreamPage(props: {
             {model.notice}
           </p>
         )}
+
+        <Rehearsal
+          view={model.rehearsal}
+          asking={model.asking ?? false}
+          onRehearse={() => send({ type: "rehearseClicked" })}
+          onFollowUp={(situation) => send({ type: "followUpClicked", situation })}
+        />
 
         {threads.length > 0 && (
           <section class="section">

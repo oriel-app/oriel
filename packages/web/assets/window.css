@@ -6091,3 +6091,153 @@ a.button.primary {
     gap: 2px;
   }
 }
+
+/* A workstream's release rehearsal (the release-rehearsal spike): one card
+   per situation, its items by what they say, and what nobody has answered.
+   The agent's reading, in the page's own components; no score anywhere. */
+.rehearsal-start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.rehearsal-start .button {
+  flex: none;
+}
+
+.rehearsal-caption {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.notice[data-tone="warn"] {
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-thin) solid var(--derived-line);
+  border-radius: var(--radius);
+  background: var(--derived-soft);
+}
+
+.situations {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.situation {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.situation-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.situation-n {
+  flex: none;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-strong);
+}
+
+.situation-title {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--title-weight);
+}
+
+.situation-head .button {
+  flex: none;
+}
+
+.ladder {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.ladder dt {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.ladder dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.ladder ul,
+.unanswered ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ladder li[data-tone="warn"] {
+  padding-left: var(--space-2);
+  border-left: var(--border-thick) solid var(--danger);
+}
+
+.ladder-rule,
+.asked {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.rehearsal-quote {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-3);
+  border-left: var(--border-thick) solid var(--accent);
+  color: var(--text-muted);
+}
+
+.unanswered {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--border-thin) solid var(--line);
+}
+
+.unanswered h4 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+}
+
+.unanswered li {
+  padding-left: var(--space-3);
+  border-left: var(--border-thick) solid var(--line-strong);
+}
+
+.follow-ups {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 40rem) {
+  .rehearsal-start,
+  .situation-head {
+    flex-wrap: wrap;
+  }
+
+  .ladder {
+    grid-template-columns: 1fr;
+  }
+}

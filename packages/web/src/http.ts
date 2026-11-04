@@ -25,6 +25,10 @@ export type Tag =
   // undone (decision 0028).
   | { kind: "ended"; id: string; how: Ending["kind"] | "undone"; name: string }
   | { kind: "threadOpened"; workstreamId: string }
+  // A workstream's release rehearsal, loaded, started, or asked to follow up.
+  | { kind: "rehearsal"; id: string }
+  | { kind: "rehearsed"; id: string }
+  | { kind: "followUpAsked"; id: string }
   | { kind: "threadStarted"; draft: number }
   // `statuses`: how many statuses the thread's stream had sent when it was
   // asked for, when any had.

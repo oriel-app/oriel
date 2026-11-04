@@ -25,6 +25,9 @@ import {
   agentNote,
   record,
   refine,
+  followUpAsk,
+  rehearsalAsk,
+  rehearsalBody,
   type Result,
   string,
   type ThreadState,
@@ -119,6 +122,24 @@ const expectations = {
   // sending the user to make a change by hand.
   avoids: object({ grader: literal("avoids"), text: atLeastOne(text) }),
   judge: object({ grader: literal("judge"), claims: atLeastOne(text) }),
+  // What the rehearsal the turn kept says (the release-rehearsal spike):
+  // each contradiction named, between an item and what it disagrees with,
+  // either way round; for each group of terms, an open question naming one;
+  // and, with `observed`, only these items read as what someone saw the
+  // product do.
+  rehearsal: object({
+    grader: literal("rehearsal"),
+    contradicts: optional(array(object({ item: itemName, against: itemName }))),
+    unanswered: optional(array(atLeastOne(text))),
+    observed: optional(array(itemName)),
+  }),
+  // The follow-up's change set: something proposed, only with these ops,
+  // and touching each of these items.
+  "follow-up": object({
+    grader: literal("follow-up"),
+    ops: atLeastOne(text),
+    touches: optional(array(itemName)),
+  }),
 };
 export type GraderName = keyof typeof expectations;
 export type Expectation = Infer<(typeof expectations)[GraderName]>;
@@ -219,6 +240,12 @@ const evalCaseShape = object({
       ),
     ),
   ),
+  // The case asks in a rehearsal thread (the release-rehearsal spike): its
+  // module gets `rehearsal`, and its prompt is the button the person
+  // clicked, "Rehearse the release" or "Prepare follow-up work for situation
+  // N", which the thread says in Oriel's fixed words. `kept`: the rehearsal
+  // the thread kept before, as `rehearsal.record()` takes it.
+  rehearsal: optional(object({ kept: optional(unknown) })),
   // How many of each fixture's source edits are applied before the case
   // runs, by kind, such as `{ "jira": 3 }`. Absent means none.
   edited: optional(record(whole)),
@@ -259,6 +286,20 @@ function rules(evalCase: EvalCase): Issue[] {
     if (said.role === "note" && said.note.kind === "rejected" && !sets.has(said.note.changeSet))
       found.push({ path: `$.before[${i}].note.changeSet`, message: "no such change set in oriel" });
   });
+  if (evalCase.rehearsal && askedIn(evalCase) === null)
+    found.push({
+      path: "$.prompt",
+      message:
+        'a rehearsal case asks "Rehearse the release" or "Prepare follow-up work for situation N"',
+    });
+  if (evalCase.rehearsal?.kept !== undefined && !rehearsalBody(evalCase.rehearsal.kept).ok)
+    found.push({
+      path: "$.rehearsal.kept",
+      message: "expected situations as rehearsal.record() takes them",
+    });
+  for (const grader of ["rehearsal", "follow-up"] as const)
+    if (!evalCase.rehearsal && evalCase.expect.some((e) => e.grader === grader))
+      found.push({ path: "$.expect", message: `only a rehearsal case expects ${grader}` });
   if (evalCase.waiting !== undefined && evalCase.failing !== undefined)
     found.push({ path: "$.failing", message: "a waiting case never runs, so it can't be failing" });
   const graders = evalCase.expect.map((e) => e.grader);
@@ -287,6 +328,15 @@ function rules(evalCase: EvalCase): Issue[] {
       message: "an injection case expects zero mutations and surfaced text",
     });
   return found;
+}
+
+// What a rehearsal case's thread says for its prompt, in Oriel's fixed
+// words; null for any other case, or a prompt no button says.
+export function askedIn(evalCase: Pick<EvalCase, "prompt" | "rehearsal">): string | null {
+  if (!evalCase.rehearsal) return null;
+  if (evalCase.prompt === "Rehearse the release") return rehearsalAsk;
+  const n = /^Prepare follow-up work for situation ([1-9])$/.exec(evalCase.prompt)?.[1];
+  return n ? followUpAsk(Number(n)) : null;
 }
 
 // A golden diff: the mutations a change set should capture, in any order.
@@ -399,6 +449,15 @@ export function holding(
       e.calls.forEach((call, c) =>
         call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),
       );
+    if (e.grader === "rehearsal")
+      e.observed?.forEach((item, n) => resolve(item, `$.expect[${i}].observed[${n}]`));
+    if (e.grader === "rehearsal")
+      e.contradicts?.forEach((pair, c) => {
+        resolve(pair.item, `$.expect[${i}].contradicts[${c}].item`);
+        resolve(pair.against, `$.expect[${i}].contradicts[${c}].against`);
+      });
+    if (e.grader === "follow-up")
+      e.touches?.forEach((item, n) => resolve(item, `$.expect[${i}].touches[${n}]`));
     if (e.grader !== "surfaced") return;
     const id = resolve(e.item, `$.expect[${i}].item`);
     // The window chat's overview shows what no workstream holds yet. A

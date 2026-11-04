@@ -26,3 +26,4 @@ export * from "./thread.ts";
 export * from "./validate.ts";
 export * from "./window-chat.ts";
 export * from "./zoom.ts";
+export * from "./rehearsal.ts";

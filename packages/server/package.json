@@ -6,6 +6,7 @@
     "./desktop/utility": "./src/desktop/utility.ts",
     "./overview": "./src/overview.ts",
     "./quotes": "./src/quotes.ts",
+    "./rehearsals": "./src/rehearsals.ts",
     "./window": "./src/window.ts"
   },
   "scripts": {

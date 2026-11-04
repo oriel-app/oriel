@@ -1,0 +1,39 @@
+{
+  "id": "rehearsal-follow-up",
+  "split": "train",
+  "kind": 2,
+  "items": ["jira:SYN-45", "jira:SYN-102", "slack:C0FW1WEATHR-1788444000.000100"],
+  "rehearsal": {
+    "kept": [
+      {
+        "title": "A sailing is cancelled and the passenger rebooks onto a dearer one",
+        "evidence": [
+          {
+            "id": "jira:SYN-45",
+            "says": "intent",
+            "quote": "We absorb the difference; we never charge it.",
+            "against": null
+          },
+          { "id": "jira:SYN-102", "says": "claim", "quote": null, "against": null },
+          {
+            "id": "slack:C0FW1WEATHR-1788444000.000100",
+            "says": "contradiction",
+            "quote": "ops agreed that next-day sailings now follow the same rule",
+            "against": "jira:SYN-45"
+          }
+        ],
+        "unanswered": [
+          {
+            "question": "Do vehicle supplements carry over to the new sailing, and does the receipt say so?",
+            "id": null,
+            "quote": null
+          }
+        ]
+      }
+    ]
+  },
+  "prompt": "Prepare follow-up work for situation 1",
+  "expect": [
+    { "grader": "follow-up", "ops": ["setDescription", "createStory"], "touches": ["jira:SYN-45"] }
+  ]
+}

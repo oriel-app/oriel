@@ -30,6 +30,11 @@ export type Host = NamespaceHost &
     // The overview, in a window chat's module only (decision 0027). Its items
     // count as this run's search() hits.
     overview(): Promise<unknown>;
+    // A rehearsal thread's (the release-rehearsal spike): hands Oriel a
+    // rehearsal to check and keep, saying what it did, and reads back the
+    // one it keeps.
+    rehearse(situations: unknown): Promise<string>;
+    rehearsed(): Promise<unknown>;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
@@ -39,8 +44,9 @@ export type OrielSpace = (typeof orielSpaces)[number];
 
 // The namespace a function lives in: `items` for any item, one per source
 // that declares one, one of Oriel's own, or null for a global.
-// `window`: the window chat's own (decision 0027).
-export type Space = "items" | SourceKind | OrielSpace | "window" | null;
+// `window`: the window chat's own (decision 0027). `rehearsal`: a rehearsal
+// thread's own.
+export type Space = "items" | SourceKind | OrielSpace | "window" | "rehearsal" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;

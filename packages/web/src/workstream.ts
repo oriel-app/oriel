@@ -5,7 +5,14 @@ import { type Dropped, type DropReply, dropNotice, isEmpty } from "./drop.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type { Msg } from "./root.ts";
 import { expiry, type Held, type Hold, hold, holding, notHeld, undoMs } from "./undos.ts";
-import type { WorkstreamSummary, WorkstreamView, MemberView, Undoable, UndoView } from "./view.ts";
+import type {
+  MemberView,
+  RehearsalView,
+  Undoable,
+  UndoView,
+  WorkstreamSummary,
+  WorkstreamView,
+} from "./view.ts";
 
 export { undoMs };
 
@@ -41,6 +48,11 @@ export type WorkstreamModel = {
   removals: readonly Removal[];
   // The user is on the undos, by pointer or keyboard: none runs out meanwhile.
   held: Held;
+  // Its newest release rehearsal (the release-rehearsal spike), null when
+  // none was started, and undefined until it loads. `asking`: Rehearse the
+  // release or Prepare follow-up work was clicked and hasn't answered.
+  rehearsal?: RehearsalView | null;
+  asking?: boolean;
 };
 
 export type WorkstreamMsg =
@@ -53,7 +65,9 @@ export type WorkstreamMsg =
   | { type: "nameEdited"; name: string }
   | { type: "nameSaved" }
   | { type: "addClicked" }
-  | { type: "dropped"; dropped: Dropped };
+  | { type: "dropped"; dropped: Dropped }
+  | { type: "rehearseClicked" }
+  | { type: "followUpClicked"; situation: number };
 
 export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
   return [
@@ -70,9 +84,12 @@ export function initWorkstream(id: string): [WorkstreamModel, Effect[]] {
       removals: [],
       held: notHeld,
     },
-    [get(`/api/workstreams/${id}`, { kind: "workstream", id })],
+    [get(`/api/workstreams/${id}`, { kind: "workstream", id }), loadRehearsal(id)],
   ];
 }
+
+const loadRehearsal = (id: string): Effect =>
+  get(`/api/workstreams/${id}/rehearsal`, { kind: "rehearsal", id });
 
 export function updateWorkstream(
   model: WorkstreamModel,
@@ -138,6 +155,24 @@ export function updateWorkstream(
       return [
         model,
         [{ type: "navigate", route: { page: "window", grouping: "epic", addTo: model.id } }],
+      ];
+    case "rehearseClicked":
+      if (model.asking) return [model, []];
+      return [
+        { ...model, asking: true, notice: null },
+        [post(`/api/workstreams/${model.id}/rehearsals`, {}, { kind: "rehearsed", id: model.id })],
+      ];
+    case "followUpClicked":
+      if (model.asking) return [model, []];
+      return [
+        { ...model, asking: true, notice: null },
+        [
+          post(
+            `/api/workstreams/${model.id}/rehearsal/follow-up`,
+            { situation: msg.situation },
+            { kind: "followUpAsked", id: model.id },
+          ),
+        ],
       ];
     case "dropped":
       if (isEmpty(msg.dropped)) return [{ ...model, notice: nothingToAdd }, []];
@@ -241,9 +276,31 @@ export function workstreamReplied(
     // Loaded, or loaded again after the workspace changed, maybe in another
     // tab, which may have deleted it: the page says why it can't go on.
     case "workstream":
-    case "workstreamSynced":
       if (tag.id !== model.id) return [model, []];
       return [loaded(model, msg), []];
+    // A turn that ended may have kept a rehearsal.
+    case "workstreamSynced":
+      if (tag.id !== model.id) return [model, []];
+      return [loaded(model, msg), [loadRehearsal(model.id)]];
+    case "rehearsal": {
+      if (tag.id !== model.id || !msg.ok) return [model, []];
+      return [
+        { ...model, rehearsal: (msg.body as { rehearsal: RehearsalView | null }).rehearsal },
+        [],
+      ];
+    }
+    case "rehearsed": {
+      if (tag.id !== model.id) return [model, []];
+      if (!msg.ok) return [{ ...model, asking: false, notice: errorOf(msg.body) }, []];
+      return [{ ...model, asking: false }, [loadRehearsal(model.id)]];
+    }
+    // The follow-up's change set is reviewed in its thread.
+    case "followUpAsked": {
+      if (tag.id !== model.id) return [model, []];
+      if (!msg.ok) return [{ ...model, asking: false, notice: errorOf(msg.body) }, []];
+      const { id } = msg.body as { id: string };
+      return [{ ...model, asking: false }, [{ type: "navigate", route: { page: "thread", id } }]];
+    }
     case "renamed": {
       if (tag.id !== model.id || model.view === null) return [model, []];
       if (!msg.ok) return [{ ...model, notice: errorOf(msg.body) }, []];

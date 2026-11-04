@@ -57,10 +57,20 @@ export function bindingsFor(
     // an action in the run may take, as Make a workstream does, though the
     // read shows none of them, so none can be read (decision 0044).
     overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
+    // A rehearsal thread's (the release-rehearsal spike); its module gets
+    // `rehearsal` only with it. `record` checks the agent's situations, each
+    // ID one the run `reaches`, and keeps them, or says what to change.
+    rehearsal?: {
+      record(situations: unknown, reaches: (id: string) => boolean): Promise<string>;
+      read(): Promise<unknown>;
+    };
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
-  const fns = describe(scope, { window: options.overview !== undefined });
+  const fns = describe(scope, {
+    window: options.overview !== undefined,
+    rehearsal: options.rehearsal !== undefined,
+  });
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
   const created = new Map<NewRef, string>();
@@ -93,6 +103,14 @@ export function bindingsFor(
     oriel: options.oriel ?? noThreads,
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
+    rehearse: async (situations) => {
+      if (!options.rehearsal) throw new Error("only a rehearsal thread records a rehearsal");
+      return options.rehearsal.record(situations, (id) => members.has(id) || found.has(id));
+    },
+    rehearsed: async () => {
+      if (!options.rehearsal) throw new Error("only a rehearsal thread reads its rehearsal");
+      return options.rehearsal.read();
+    },
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

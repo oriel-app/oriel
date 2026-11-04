@@ -54,6 +54,7 @@ import {
   migrate,
   open,
   prefixesOf,
+  rehearsalStore,
   runStore,
   type StoredEvent,
   telemetryStore,
@@ -136,6 +137,7 @@ import { fixtureIndex } from "./fixture.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
+import { rehearsalHost, updatedAtOf } from "./rehearsals.ts";
 import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import type { Models } from "./model.ts";
@@ -334,6 +336,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const index = indexStore(db);
   const workstreams = workstreamStore(db);
   const threads = threadStore(db);
+  const rehearsals = rehearsalStore(db);
   const runs = runStore(db);
   const telemetry = telemetryStore(db);
   const emit = (event: Parameters<typeof telemetry.record>[0]) => telemetry.record(event, newId());
@@ -786,6 +789,20 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(shown ? { shown } : {}),
       // The window chat reads the overview, as the page shows it.
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
+      // A rehearsal thread records its rehearsal (the release-rehearsal spike).
+      ...(thread && rehearsals.is(thread)
+        ? {
+            rehearsal: rehearsalHost({
+              store: rehearsals,
+              thread,
+              region,
+              reader,
+              updatedAt: updatedAtOf(records()),
+              newId,
+              now,
+            }),
+          }
+        : {}),
     });
   };
 
@@ -951,6 +968,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     workspaceId,
     workstreams,
     threads,
+    rehearsals,
     records,
     clusters: (grouping) => groupings[grouping].group(records(), asOf ?? now(), byItemId),
     created: async (id) => {
@@ -1395,6 +1413,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       settings,
       workstreams,
       threads,
+      rehearsals,
       records,
       dispatch,
       undoLine,

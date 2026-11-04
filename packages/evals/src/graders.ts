@@ -17,6 +17,7 @@ import {
   object,
   parseItemId,
   type QuoteCheck,
+  type Situation,
   readKey,
   string,
 } from "@oriel/core";
@@ -467,4 +468,71 @@ function parseJson(text: string): unknown {
   } catch {
     return null;
   }
+}
+
+// What the rehearsal the turn kept says (the release-rehearsal spike), as
+// Oriel checked it: none kept fails. Each contradiction expected is between
+// its two items, either way round; each group of terms is named by some
+// open question, case aside; and only the items in `observed` are read as
+// evidence of what someone saw the product do: none, where nothing reports it.
+export function gradeRehearsal(
+  expected: {
+    contradicts?: readonly { item: ItemId; against: ItemId }[];
+    unanswered?: readonly (readonly string[])[];
+    observed?: readonly ItemId[];
+  },
+  kept: readonly Situation[] | null,
+): Grade {
+  if (!kept) return { grader: "rehearsal", pass: false, detail: "no rehearsal was kept" };
+  const evidence = kept.flatMap((s) => s.evidence);
+  const questions = kept.flatMap((s) => s.unanswered.map((q) => normalized(q.question)));
+  const problems = [
+    ...(expected.contradicts ?? []).flatMap(({ item, against }) =>
+      evidence.some(
+        (e) =>
+          e.says === "contradiction" &&
+          ((e.id === item && e.against === against) || (e.id === against && e.against === item)),
+      )
+        ? []
+        : [`no contradiction between ${item} and ${against}`],
+    ),
+    ...(expected.unanswered ?? []).flatMap((terms) =>
+      questions.some((q) => terms.some((t) => q.includes(normalized(t))))
+        ? []
+        : [`no open question names ${terms.map((t) => JSON.stringify(t)).join(" or ")}`],
+    ),
+    ...(expected.observed
+      ? [
+          ...new Set(
+            evidence
+              .filter((e) => e.says === "observed" && !expected.observed?.includes(e.id))
+              .map((e) => `${e.id} read as observed`),
+          ),
+        ]
+      : []),
+  ];
+  const summary = `${kept.length} situations, ${evidence.length} items, ${questions.length} questions`;
+  return problems.length
+    ? { grader: "rehearsal", pass: false, detail: `${problems.join("; ")} (${summary})` }
+    : { grader: "rehearsal", pass: true, detail: summary };
+}
+
+// The follow-up's change set: something proposed, every op one of `ops`,
+// and each of `touches` a mutation's target.
+export function gradeFollowUp(
+  ops: readonly string[],
+  touches: readonly ItemId[],
+  mutations: readonly CapturedMutation[],
+): Grade {
+  const problems = [
+    ...(mutations.length ? [] : ["nothing proposed"]),
+    ...mutations.filter((m) => !ops.includes(m.op)).map((m) => `${m.op} isn't a follow-up op`),
+    ...touches
+      .filter((id) => !mutations.some((m) => m.target === id))
+      .map((id) => `nothing proposed for ${id}`),
+  ];
+  const all = mutations.map(describer(mutations)).join("; ");
+  return problems.length
+    ? { grader: "follow-up", pass: false, detail: `${problems.join("; ")}. Captured: ${all}` }
+    : { grader: "follow-up", pass: true, detail: all };
 }

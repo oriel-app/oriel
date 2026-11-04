@@ -12,11 +12,13 @@ import {
   type Infer,
   type Instant,
   literal,
+  type Situation,
   nullable,
   number,
   object,
   optional,
   type ItemId,
+  rehearsalBody,
   record,
   string,
   union,
@@ -40,6 +42,7 @@ import {
   type EvalCase,
   type GraderName,
   graderName,
+  askedIn,
   isJudged,
   type LoadedCase,
   type Split,
@@ -59,6 +62,8 @@ import {
   gradeQuotes,
   gradeSurfaced,
   gradeNoSketch,
+  gradeFollowUp,
+  gradeRehearsal,
   gradeZeroMutations,
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
@@ -93,15 +98,22 @@ export const systemOutput = object({
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   // How many times the turn called sketch(), shown or refused.
   sketches: optional(number),
+  // A rehearsal thread's: what it kept, as Oriel checked it, and how many
+  // times Oriel refused what it was handed (the release-rehearsal spike).
+  rehearsal: optional(object({ situations: nullable(rehearsalBody), refused: number })),
   reply: string,
   transcript: array(unknown),
 });
 // A system may leave its intents, blocks and sketches out, as one that
 // never asks for any.
-export type SystemOutput = Omit<Infer<typeof systemOutput>, "intents" | "blocks" | "sketches"> & {
+export type SystemOutput = Omit<
+  Infer<typeof systemOutput>,
+  "intents" | "blocks" | "sketches" | "rehearsal"
+> & {
   intents?: Infer<typeof systemOutput>["intents"];
   blocks?: Infer<typeof systemOutput>["blocks"];
   sketches?: number;
+  rehearsal?: Infer<typeof systemOutput>["rehearsal"];
 };
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
@@ -330,6 +342,19 @@ async function grade(
     ? await inWorld(loaded, options, (world) => checkQuotes([output.reply], world.reader.read))
     : [];
   output = { ...output, reply: seen.text };
+  // A rehearsal case's reply is graded with the rehearsal the page shows.
+  const shownRehearsal = output.rehearsal?.situations
+    ? shown(
+        rehearsalText(output.rehearsal.situations),
+        resolver({
+          fixtures: options.fixtures,
+          edited: loaded.case.edited ?? {},
+          oriel: loaded.case.oriel,
+          held: [...(loaded.region?.items ?? []), ...loaded.items],
+          window: null,
+        }),
+      ).text
+    : null;
   const refs = gradeRefs(seen);
   if (refs) grades.push(refs);
   const quotes = gradeQuotes(checked);
@@ -357,6 +382,28 @@ async function grade(
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
+    if (expectation.grader === "rehearsal")
+      grades.push(
+        gradeRehearsal(
+          {
+            ...expectation,
+            observed: expectation.observed?.map((item) => named(loaded, item)),
+            contradicts: expectation.contradicts?.map((pair) => ({
+              item: named(loaded, pair.item),
+              against: named(loaded, pair.against),
+            })),
+          },
+          output.rehearsal?.situations ?? null,
+        ),
+      );
+    if (expectation.grader === "follow-up")
+      grades.push(
+        gradeFollowUp(
+          expectation.ops,
+          (expectation.touches ?? []).map((item) => named(loaded, item)),
+          output.mutations,
+        ),
+      );
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));
@@ -364,10 +411,12 @@ async function grade(
       grades.push(
         await gradeJudge({
           claims: expectation.claims,
-          prompt: loaded.case.prompt,
+          prompt: askedIn(loaded.case) ?? loaded.case.prompt,
           region: await evidence(loaded, options),
           searches: searchesOf(output.transcript),
-          reply: output.reply,
+          reply: shownRehearsal
+            ? `${output.reply}\n\nThe rehearsal, as Oriel shows it beside the reply:\n\n${shownRehearsal}`
+            : output.reply,
           model: options.judgeModel,
           fetch: transport,
         }),
@@ -558,4 +607,34 @@ export function exitCode(
     return r.outcome === "fail" && !isJudged(r.kind);
   });
   return broken ? 1 : 0;
+}
+
+// A kept rehearsal as the page shows it, in words, with each item as its
+// chip: what a reader, and the judge, sees beside the reply.
+export function rehearsalText(situations: readonly Situation[]): string {
+  const labels = {
+    intent: "Intent",
+    claim: "Claimed built",
+    observed: "Observed",
+    contradiction: "Contradicts",
+  };
+  return situations
+    .map((situation, i) => {
+      const lines = [`${i + 1}. ${situation.title}`];
+      for (const each of situation.evidence) {
+        const against = each.against ? ` (against [[${each.against}]])` : "";
+        const quote = each.quote ? `: "${each.quote}"` : "";
+        lines.push(`   - ${labels[each.says]}: [[${each.id}]]${against}${quote}`);
+      }
+      if (!situation.evidence.some((each) => each.says === "observed"))
+        lines.push(
+          "   - Observed: nobody reports seeing it happen, in a test, a check or a real case.",
+        );
+      for (const question of situation.unanswered) {
+        const where = question.id ? ` (asked in [[${question.id}]])` : "";
+        lines.push(`   - Nobody has answered: ${question.question}${where}`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n");
 }

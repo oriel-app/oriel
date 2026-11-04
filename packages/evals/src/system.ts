@@ -27,12 +27,16 @@ import {
   planned,
   readKey,
   type Run,
+  rehearsalBody,
   type Sandbox,
+  type Situation,
   type Thread,
   type Ulid,
   ulid,
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
+import { checkRehearsal } from "@oriel/server/rehearsals";
+import { askedIn } from "./case.ts";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
 import { buildWorld, caseWorld, type World } from "./world.ts";
 
@@ -86,6 +90,24 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const answered = new Map<string, Answered>();
   // Every sketch() call, shown or refused.
   let sketches = 0;
+  // A rehearsal thread's: what it kept, as Oriel checked it, the case's own
+  // first, and how often Oriel refused what it was handed.
+  const kept = input.case.rehearsal?.kept;
+  const before = kept === undefined ? null : rehearsalBody(kept);
+  let rehearsed: Situation[] | null = before?.ok ? before.value : null;
+  let refusedRehearsals = 0;
+  const rehearsal = {
+    async record(given: unknown, reaches: (id: string) => boolean) {
+      const checked = await checkRehearsal(given, reaches, (ids) => world.reader.read(ids));
+      if (!checked.ok) {
+        refusedRehearsals += 1;
+        return `Oriel kept nothing: ${checked.why}`;
+      }
+      rehearsed = checked.situations;
+      return `Oriel keeps this rehearsal: ${checked.situations.length} situations.`;
+    },
+    read: async () => rehearsed && rehearsed.map((situation, i) => ({ n: i + 1, situation })),
+  };
   const { region } = world;
   const thread: Thread = {
     id: newId(),
@@ -108,6 +130,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         thread: threadId,
         ...(shown ? { shown } : {}),
         ...(world.overview ? { overview: world.overview } : {}),
+        ...(input.case.rehearsal ? { rehearsal } : {}),
       });
       // What each read answered, so the blocks grader can build each block
       // again from its read.
@@ -135,7 +158,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
       thread,
       region,
       history: (input.case.before ?? []).map((said) => ({ ...said, at: input.now })),
-      text: input.case.prompt,
+      text: askedIn(input.case) ?? input.case.prompt,
       snapshot: 1,
       spent: { inputTokens: 0, outputTokens: 0 },
     },
@@ -160,6 +183,9 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         : [],
     ),
     sketches,
+    ...(input.case.rehearsal
+      ? { rehearsal: { situations: rehearsed, refused: refusedRehearsals } }
+      : {}),
     reply: replyOf(events),
     transcript: events,
   };

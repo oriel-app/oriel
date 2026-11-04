@@ -917,7 +917,10 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "restored":
     case "workstreamSynced":
     case "renamed":
-    case "threadOpened": {
+    case "threadOpened":
+    case "rehearsal":
+    case "rehearsed":
+    case "followUpAsked": {
       if (model.workstream === null) return [model, []];
       const [workstream, effects] = workstreamReplied(model.workstream, msg);
       const moved =

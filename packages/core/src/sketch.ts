@@ -8,7 +8,7 @@
 // `xlink:href` included, in any case, must be written `href="#name"`,
 // pointing inside the sketch. The check runs when the agent calls
 // `sketch()`, and again whenever the frame is served.
-import { isUlid, type Ulid } from "./ids.ts";
+import { isItemId, isUlid, type Ulid } from "./ids.ts";
 import { literal, number, object, refine, string, union, type Validator } from "./validate.ts";
 
 // Elements for text, lists, tables, sections, form controls outside a form,
@@ -108,8 +108,11 @@ export const sketchRefusal: Validator<SketchRefusal> = union(
 
 // What a run's record and its log lines keep of a call's arguments: a
 // sketch's HTML, which may repeat what the agent read, as its size in bytes,
-// never its text.
+// never its text; and a rehearsal (the release-rehearsal spike), whose
+// quotes are items' words, as its situations' count and the items they
+// name.
 export const recordedArgs = (fn: string, args: readonly unknown[]): unknown[] => {
+  if (fn === "rehearsal.record") return [rehearsalShape(args[0])];
   if (fn !== "sketch" || args.length === 0) return [...args];
   const [html, ...rest] = args;
   const text = typeof html === "string" ? html : (JSON.stringify(html) ?? "");
@@ -162,3 +165,26 @@ export function checkSketch(html: string): SketchChecked {
     ? { ok: false, reason: "not-allowed", why: problems.join("; ") }
     : { ok: true };
 }
+
+const rehearsalShape = (given: unknown) => {
+  const situations: unknown[] = Array.isArray(given) ? given : [];
+  const ids = new Set<string>();
+  const take = (value: unknown) => {
+    if (typeof value === "string" && isItemId(value)) ids.add(value);
+  };
+  for (const situation of situations) {
+    const { evidence = [], unanswered = [] } =
+      typeof situation === "object" && situation !== null
+        ? (situation as { evidence?: unknown; unanswered?: unknown })
+        : {};
+    for (const each of [
+      ...(Array.isArray(evidence) ? evidence : []),
+      ...(Array.isArray(unanswered) ? unanswered : []),
+    ])
+      if (typeof each === "object" && each !== null) {
+        take((each as { id?: unknown }).id);
+        take((each as { against?: unknown }).against);
+      }
+  }
+  return { situations: situations.length, items: [...ids].sort() };
+};

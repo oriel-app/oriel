@@ -241,6 +241,19 @@ export const actions = {
     },
     closed: { agent: unsaid, tool: untold },
   },
+  // A release rehearsal (draft decision): a thread on the workstream whose
+  // first message is Oriel's fixed ask, and whose module records the
+  // rehearsal Oriel checks and keeps.
+  "workstream.rehearse": {
+    doc: "Opens a thread that rehearses a workstream's release, and asks for the rehearsal.",
+    input: object({ workstream: workstreamId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "Its Undo would delete the thread, which is the user's (decision 0024).",
+    },
+    closed: { agent: unsaid, tool: untold },
+  },
   // The user's message, which starts a turn to answer it.
   "thread.say": {
     doc: "Says something in a thread, which the agent answers.",

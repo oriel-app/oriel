@@ -53,6 +53,7 @@ import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
+import { fareSituation, rehearsalPlan, rehearsedItems } from "./shots-rehearsal.ts";
 import {
   fillJira as fillFirstRun,
   type FirstRunOptions,
@@ -209,6 +210,8 @@ const pointsScript = `await jira.listStories();
 await show({ read: "jira.listStories", form: "bars", label: "assignee.name", value: "points" });`;
 
 const planning = (input: TurnInput): Step[] => {
+  const rehearsing = rehearsalPlan(input);
+  if (rehearsing) return rehearsing;
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
   const made =
     /^Make a workstream of the top candidate in Not in a workstream yet, ([a-z]+:\S+), with all its items\.$/.exec(
@@ -757,6 +760,31 @@ const fares = await post<{ id: string }>(
   chatty,
 );
 const faresThread = await ask("What's in here?", chatty, fares.id);
+
+// A release rehearsal of the weather epic, its Slack decisions and the retro
+// (the release-rehearsal spike): kept, on one server; on another, kept, its
+// fare followed up with a change set, and an item added since, so it shows
+// stale.
+const rehearse = async (on: Serving) => {
+  const { id } = await post<{ id: string }>(
+    "/api/workstreams",
+    { kind: "picked", name: "Weather disruptions release", items: rehearsedItems },
+    on,
+  );
+  const { id: thread } = await post<{ id: string }>(`/api/workstreams/${id}/rehearsals`, {}, on);
+  await on.app.settled();
+  return { id, thread };
+};
+const rehearsed = await rehearse(chatty);
+const followed = (await writing({ kind: "fixture" })).serving;
+const followedUp = await rehearse(followed);
+await post(
+  `/api/workstreams/${followedUp.id}/rehearsal/follow-up`,
+  { situation: fareSituation },
+  followed,
+);
+await followed.app.settled();
+await post(`/api/workstreams/${followedUp.id}/add`, { items: ["jira:SYN-31"] }, followed);
 
 // One change set to two sources: SYN-61 to Ready for Dev in Jira, and a
 // message in Slack's channel that it's ready to pick up. Proposed, approved,
@@ -1446,6 +1474,30 @@ const scenes: Scene[] = [
     path: `/workstreams/${fares.id}`,
     on: chatty,
     act: (page) => page.locator(".workstream-page .members").waitFor(),
+  },
+  {
+    name: "rehearsal-start",
+    path: `/workstreams/${fares.id}`,
+    on: chatty,
+    act: (page) => page.locator(".rehearsal-start").waitFor(),
+  },
+  {
+    name: "rehearsal",
+    path: `/workstreams/${rehearsed.id}`,
+    on: chatty,
+    act: (page) => page.locator(".situations").waitFor(),
+  },
+  {
+    name: "rehearsal-followed",
+    path: `/workstreams/${followedUp.id}`,
+    on: followed,
+    act: (page) => page.locator(".follow-ups").first().waitFor(),
+  },
+  {
+    name: "rehearsal-follow-up-thread",
+    path: `/threads/${followedUp.thread}`,
+    on: followed,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
   },
   {
     name: "thread-slack",

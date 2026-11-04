@@ -25,11 +25,13 @@ import {
   type ItemId,
   maxReasonChars,
   parseItemId,
+  rehearsalAsk,
+  rehearsalTitle,
   type TelemetryEvent,
   type Ulid,
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
-import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
+import type { Move, RehearsalStore, WorkstreamStore, ThreadStore } from "@oriel/db";
 import {
   type FolderView,
   type GroupingId,
@@ -89,6 +91,8 @@ export type ActionDeps = {
   workspaceId: Ulid;
   workstreams: WorkstreamStore;
   threads: ThreadStore;
+  // Which threads rehearse a release (the release-rehearsal spike).
+  rehearsals: RehearsalStore;
   // The index's live records, from every source.
   records(): readonly IndexRecord[];
   // A grouping's clusters as the window shows them now.
@@ -676,6 +680,33 @@ const handlers = {
     if (chat) deps.threads.startWindowChat(thread);
     return {
       output: { thread },
+      undo: null,
+      changed: { thread },
+      events: [
+        {
+          name: "thread.opened",
+          threadId: thread,
+          workstreamId: workstream.id,
+          regionSize: deps.workstreams.region(workstream.id, workstream.version)?.items.length ?? 0,
+        },
+      ],
+    };
+  },
+
+  // A thread that rehearses the workstream's release, asked with Oriel's
+  // fixed words (the release-rehearsal spike). The turn counts the question.
+  "workstream.rehearse": async ({ workstream: id }, _actor, deps) => {
+    const workstream = mustWorkstream(deps, id);
+    const thread = deps.newId();
+    deps.threads.open(
+      { id: thread, workspaceId: deps.workspaceId, workstreamId: workstream.id },
+      deps.now(),
+    );
+    deps.rehearsals.start(thread, deps.now());
+    deps.threads.setTitle(thread, rehearsalTitle, deps.now());
+    const { seq } = deps.turns.say(thread, rehearsalAsk);
+    return {
+      output: { thread, seq },
       undo: null,
       changed: { thread },
       events: [

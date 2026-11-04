@@ -957,3 +957,32 @@ export type JiraProjectView = {
   issues: number | null;
   updatedAt: string | null;
 };
+
+// A workstream's release rehearsal (the release-rehearsal spike), as its
+// page shows it. `thread`: the newest rehearsal thread, by its chip, and
+// whether its agent is answering now. `rehearsal`: what that thread's turn
+// recorded, as Oriel checked it, or null before it recorded one. Every item
+// it names draws as a chip, from the index; `stale` says what changed since
+// it was kept. `followUps`: for each situation the person asked follow-up
+// work for, numbered from 1, the change sets the thread proposed since.
+export type RehearsalView = {
+  thread: { id: string; running: boolean };
+  rehearsal: {
+    at: string;
+    situations: RehearsalSituation[];
+    stale: { kind: "changed" | "gone" | "added" | "removed"; ids: string[] }[];
+  } | null;
+  followUps: { situation: number; changeSets: string[] }[];
+  chips: Chips;
+};
+
+export type RehearsalSituation = {
+  title: string;
+  evidence: {
+    id: string;
+    says: "intent" | "claim" | "observed" | "contradiction";
+    quote: string | null;
+    against: string | null;
+  }[];
+  unanswered: { question: string; id: string | null; quote: string | null }[];
+};

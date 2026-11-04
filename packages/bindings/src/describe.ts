@@ -24,6 +24,7 @@ import { itemFns, searchFn } from "./items.ts";
 import { orielFns } from "./oriel.ts";
 import { showFn } from "./block.ts";
 import { sketchFn } from "./sketch.ts";
+import { rehearsalFns } from "./rehearsal.ts";
 import { windowFns } from "./window.ts";
 
 export type { Fn } from "./fn.ts";
@@ -45,7 +46,13 @@ export const parameters: readonly string[] = ["search", "show", "sketch"];
 
 // Oriel's own names in every module, which no source's kind may take
 // (decision 0049).
-export const orielNames: readonly string[] = ["items", ...orielSpaces, "window", ...parameters];
+export const orielNames: readonly string[] = [
+  "items",
+  ...orielSpaces,
+  "window",
+  "rehearsal",
+  ...parameters,
+];
 
 // The names the script sees: `items`, a namespace per kind, Oriel's own,
 // then the global functions. The list is fixed, whatever the region holds,
@@ -60,6 +67,7 @@ export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
   ...kinds,
   ...orielSpaces,
   "window",
+  "rehearsal",
 ];
 export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ...parameters];
 
@@ -126,11 +134,14 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 
 // `items`, then each namespace in source order, then Oriel's own (its reads,
 // then its actions, in registry order), the window chat's `window` if the
-// thread is one, then the escape hatch, blocks and sketches. The order is
+// thread is one, a rehearsal thread's `rehearsal` if it is one, then the escape hatch, blocks and sketches. The order is
 // the order of the declarations, so it is part of the byte-stable output. A
 // namespace's write must name an op in its catalogue that a run may capture;
 // revert-only ops are never offered.
-export function describe(scope: Scope, options: { window?: boolean } = {}): Fn[] {
+export function describe(
+  scope: Scope,
+  options: { window?: boolean; rehearsal?: boolean } = {},
+): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
       if (fn.kind === "read") return { ...fn, space: kind, outsideRegion: false };
@@ -147,6 +158,7 @@ export function describe(scope: Scope, options: { window?: boolean } = {}): Fn[]
     ...orielFns,
     ...intentFns,
     ...window,
+    ...(options.rehearsal ? rehearsalFns : []),
     searchFn,
     showFn,
     sketchFn,

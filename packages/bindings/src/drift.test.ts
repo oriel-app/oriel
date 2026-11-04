@@ -98,10 +98,10 @@ test("every function lives under a name the guest hands the script, and each nam
     const globals = globalsOf(scope.spaces);
     assert.deepEqual(globals.slice(0, 4), ["items", "jira", "folder", "slack"]);
     // Every name but a namespace for a source the region holds nothing from,
-    // and the window chat's own, which the guest still hands the script,
-    // empty.
+    // and the window chat's and a rehearsal thread's own, which the guest
+    // still hands the script, empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder", "slack", "window"]);
+    assert.deepEqual(unused, ["folder", "slack", "window", "rehearsal"]);
     assert.ok([...homes].every((home) => globals.includes(home)));
   }
 });

@@ -11,6 +11,7 @@ import {
   loadMigrations,
   migrate,
   open,
+  rehearsalStore,
   threadStore,
   workstreamStore,
 } from "@oriel/db";
@@ -263,6 +264,7 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     workspaceId,
     workstreams,
     threads,
+    rehearsals: rehearsalStore(db),
     records: () => [member("SYN-1", "10001"), member("SYN-2", "10002")] as unknown as IndexRecord[],
     clusters: () => [],
     created: async () => [],

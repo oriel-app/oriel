@@ -172,6 +172,14 @@ export function threadStore(db: DatabaseSync) {
       ),
       forget: db.prepare("delete from window_chats where thread_id = ?"),
     });
+  // A rehearsal thread's records (the release-rehearsal spike), prepared
+  // when first used, as the window chat's are.
+  let rehearsalPurge: StatementSync[] | null = null;
+  const rehearsals = () =>
+    (rehearsalPurge ??= [
+      db.prepare("delete from rehearsals where thread_id = ?"),
+      db.prepare("delete from rehearsal_threads where thread_id = ?"),
+    ]);
   const selectByWorkstream = db.prepare(`
     select id from threads where workstream_id = ? and ${live}
     order by created_at desc, id desc`);
@@ -617,6 +625,7 @@ export function threadStore(db: DatabaseSync) {
           return { workstreamId: thread.workstream_id, kept: true, workstreamRemoved: false };
         }
         windowChat().forget.run(id);
+        for (const statement of rehearsals()) statement.run(id);
         for (const statement of purge) statement.run(id);
         const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
         if (empty) for (const statement of dropEmpty) statement.run(thread.workstream_id);
