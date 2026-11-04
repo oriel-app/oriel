@@ -120,6 +120,7 @@ const actionLine: Validator<ActionLine> = union(
     touched,
     applied: literal(true),
     undo: nullable(intent as Validator<unknown> as Validator<Call>),
+    gone: optional(array(refine(string, isItemId, "expected an item ID"))),
     since: optional(
       object({ undone: boolean, next: nullable(intent as Validator<unknown> as Validator<Call>) }),
     ),

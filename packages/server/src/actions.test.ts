@@ -139,6 +139,7 @@ test("a removal undoes as adding back what the index still has", async () => {
     action: "workstream.add",
     input: { workstream: w.workstreamId, items: ["jira:SYN-2"] },
   });
+  assert.deepEqual(removed.gone, []);
   // SYN-9 joined from a change set; the index doesn't have it, so once it's
   // removed it can't come back.
   await w.dispatch(
@@ -152,6 +153,7 @@ test("a removal undoes as adding back what the index still has", async () => {
     user,
   );
   assert.equal(gone.undo, null);
+  assert.deepEqual(gone.gone, ["jira:SYN-9"]);
 });
 
 test("a rename undoes as renaming it back, to whoever named it; one that changes nothing has no undo", async () => {

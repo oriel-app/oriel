@@ -417,11 +417,12 @@ const handlers = {
     }
     const change = deps.workstreams.remove(workstream.id, named, cause, deps.now());
     // Back under the handle the index has now; one it no longer has can't
-    // come back.
+    // come back, and is `gone`, for the line under a reply to say why.
     const live = new Map(records.map((record) => [identity(record), record.id]));
-    const back = (change?.removed ?? []).flatMap((member) => live.get(identity(member)) ?? []);
+    const removed = change?.removed ?? [];
+    const back = removed.flatMap((member) => live.get(identity(member)) ?? []);
     return {
-      output: {},
+      output: { gone: removed.filter((member) => !live.has(identity(member))).map((m) => m.id) },
       undo: back.length
         ? { action: "workstream.add", input: { workstream: workstream.id, items: back } }
         : null,
