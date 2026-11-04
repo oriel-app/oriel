@@ -57,10 +57,16 @@ export function bindingsFor(
     // an action in the run may take, as Make a workstream does, though the
     // read shows none of them, so none can be read (decision 0044).
     overview?: () => Promise<{ view: unknown; items: SearchHit[]; reachable?: readonly string[] }>;
+    // A run Oriel started to find the workstream's open choices: its module
+    // gets `choices` (the decision-desk spike).
+    choices?: boolean;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
-  const fns = describe(scope, { window: options.overview !== undefined });
+  const fns = describe(scope, {
+    window: options.overview !== undefined,
+    choices: options.choices === true,
+  });
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
   const created = new Map<NewRef, string>();
@@ -93,6 +99,7 @@ export function bindingsFor(
     oriel: options.oriel ?? noThreads,
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
+    ...(options.shown?.choice ? { choice: options.shown.choice } : {}),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

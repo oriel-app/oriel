@@ -1,5 +1,6 @@
 import type { Actor } from "./actions.ts";
 import type { BlockForm } from "./block.ts";
+import type { ChoiceOutcome } from "./choice.ts";
 import type { StartQuestion } from "./window-chat.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
@@ -142,6 +143,12 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // text or the names refused.
   | { name: "sketch.shown"; threadId: Ulid; height: SketchHeight; bytes: number }
   | { name: "sketch.refused"; threadId: Ulid; reason: SketchRefusal }
+  // The decision-desk spike: a choice the agent found showed under its
+  // reply, by how many options and quotes it has, or Oriel refused one; and
+  // what the person did with one. Never its words.
+  | { name: "choice.shown"; threadId: Ulid; options: number; quotes: number }
+  | { name: "choice.refused"; threadId: Ulid }
+  | { name: "choice.settled"; threadId: Ulid; outcome: ChoiceOutcome }
   // An answer named IDs as chips that Oriel couldn't resolve, `count` of
   // them, which drew as "unknown reference" (decision 0032).
   | { name: "chip.unknown"; threadId: Ulid; count: number }

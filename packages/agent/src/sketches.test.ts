@@ -14,7 +14,7 @@ const options = {
     region: Parameters<typeof regionBindings>[0],
     thread: Ulid,
     shown?: Parameters<typeof regionBindings>[2],
-  ) => regionBindings(region, thread, shown, noThreads),
+  ) => regionBindings(region, thread, shown, { oriel: noThreads }),
 };
 
 const contentOf = (model: ReturnType<typeof harness>["model"], step = 1) =>

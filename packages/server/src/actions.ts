@@ -37,6 +37,7 @@ import {
   type JiraView,
   type SlackView,
 } from "@oriel/web/view";
+import { agentEvent } from "./agent.ts";
 import { nameOf } from "./names.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
@@ -97,7 +98,10 @@ export type ActionDeps = {
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a thread's chat: the user's message, which starts a
   // turn; a message held in it, whoever it is from; and its running turn.
-  turns: Pick<Turns, "say" | "rejected" | "stop" | "sendHeld" | "discardHeld">;
+  turns: Pick<
+    Turns,
+    "say" | "rejected" | "stop" | "sendHeld" | "discardHeld" | "findChoices" | "settleChoice"
+  >;
   changeSets: ChangeSets;
   // After a change set applied, partly or in full: what it created joins
   // the workstream, and a live index syncs.
@@ -694,6 +698,44 @@ const handlers = {
     const thread = mustThread(deps, id);
     const { seq } = deps.turns.say(thread.id, text);
     return { output: { seq }, undo: null, changed: null, events: "counted" };
+  },
+
+  // The decision-desk spike. The turn counts its question, as for any.
+  "choice.find": async ({ thread: id }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    const { seq } = deps.turns.findChoices(thread.id);
+    return { output: { seq }, undo: null, changed: null, events: "counted" };
+  },
+
+  // Only a choice this thread's agent found, and only one of its options.
+  "choice.settle": async ({ thread: id, choice, outcome, option }, _actor, deps) => {
+    const thread = mustThread(deps, id);
+    const found = deps.threads.messages(thread.id).flatMap((m) => {
+      if (m.role !== "agent") return [];
+      const event = agentEvent(m.event);
+      return event.ok && event.value.kind === "choice" && event.value.choice.id === choice
+        ? [event.value.choice]
+        : [];
+    })[0];
+    if (!found) throw new ActionError("not-found", "no such choice in this thread");
+    const picked = outcome === "chosen" ? (option ?? -1) : null;
+    const label = picked === null ? null : (found.options[picked]?.label ?? undefined);
+    if (label === undefined) throw new ActionError("invalid", "no such option in that choice");
+    const line = {
+      kind: "choice" as const,
+      choice: found.id,
+      outcome,
+      option: picked,
+      question: found.question,
+      label,
+    };
+    const { seq } = deps.turns.settleChoice(thread.id, line);
+    return {
+      output: { seq },
+      undo: null,
+      changed: { thread: thread.id },
+      events: [{ name: "choice.settled", threadId: thread.id, outcome }],
+    };
   },
 
   "thread.stop": async ({ thread: id }, _actor, deps) => {

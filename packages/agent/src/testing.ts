@@ -105,14 +105,15 @@ export const regionBindings = (
   region: Region,
   threadId?: Ulid,
   shown?: Shown,
-  oriel?: OrielReads,
+  options: { choices?: boolean; oriel?: OrielReads } = {},
 ) =>
   bindingsFor(region, {
     reader,
     namespaces,
     ...(threadId ? { thread: threadId } : {}),
     ...(shown ? { shown } : {}),
-    ...(oriel ? { oriel } : {}),
+    ...(options.oriel ? { oriel: options.oriel } : {}),
+    ...(options.choices ? { choices: true } : {}),
   });
 
 export const runLimits: RunLimits = {

@@ -159,11 +159,18 @@ export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
 // One of Oriel's lines in a thread, as the server's OrielNote has them:
 // a change set of the thread was rejected, here or on its review link, and
 // Oriel asks what was wrong with it.
-export type NoteView = {
-  kind: "rejected";
-  changeSetId: string;
-  via: "thread" | "review-link";
-};
+export type NoteView =
+  | { kind: "rejected"; changeSetId: string; via: "thread" | "review-link" }
+  // What the person did with a choice (the decision-desk spike), as Oriel
+  // recorded it: `option` by its place, from 0, for one chosen.
+  | {
+      kind: "choice";
+      choiceId: string;
+      outcome: "chosen" | "deferred" | "asked" | "reopened";
+      option: number | null;
+      question: string;
+      label: string | null;
+    };
 
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
@@ -407,6 +414,36 @@ export type BlockView = { caption: string; more: number; outside: boolean } & (
 // `height` pixels high. Oriel draws its border and caption.
 export type SketchView = { src: string; height: 240 | 400 | 640 };
 
+// A choice the agent found (the decision-desk spike). The question, each
+// option's label and standing, each quote's role and the open questions
+// are the agent's reading, and show as the agent's. Each quote was found in
+// its item word for word, and its `author`, `at` and `place` are Oriel's,
+// from the source's view of the item (`at` null for a quote in an item's
+// body, which has no one date; `asOf` when that item last changed then).
+// `items`: each item it cites, as the index has it now: `changed`, it
+// changed since Oriel checked the choice, or the index no longer has it.
+export type EvidenceView = {
+  id: string;
+  quote: string;
+  role: "proposes" | "agrees" | "objects" | "amends" | "asks";
+  author: string | null;
+  at: string | null;
+  place: string;
+  asOf: string;
+};
+export type ChoiceView = {
+  id: string;
+  question: string;
+  options: {
+    label: string;
+    standing: "proposed" | "agreed" | "superseded";
+    evidence: EvidenceView[];
+  }[];
+  open: string[];
+  checkedAt: string;
+  items: (ItemRef & { source: string; updatedAt: string | null; changed: boolean })[];
+};
+
 export type ChatEntry = { seq: number; at: string } & (
   | { kind: "user"; text: string }
   // `ownAgent`: this thread's agent made every change it covers.
@@ -428,6 +465,7 @@ export type ChatEntry = { seq: number; at: string } & (
   // or what a run found outside the workstream (the escape hatch).
   | { kind: "block"; block: BlockView }
   | { kind: "sketch"; sketch: SketchView }
+  | { kind: "choice"; choice: ChoiceView }
   | { kind: "change-set"; changeSetId: string }
   // What Oriel did with the actions the agent asked for, under its reply.
   | { kind: "actions"; lines: ActionLineView[] }

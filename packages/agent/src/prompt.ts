@@ -142,6 +142,19 @@ export function noteText(note: AgentNote): string {
       const ids = note.ids.map((id) => `[[${id}]]`).join(", ");
       return `Your last answer named ${ids}, but Oriel has nothing with ${note.ids.length === 1 ? "that ID" : "those IDs"}, so the user saw "unknown reference" there. Name things only by IDs a run returned.`;
     }
+    // The decision-desk spike: what the person did with a choice you found.
+    case "choice": {
+      const which = `the choice you found, ${JSON.stringify(note.question)}`;
+      const did =
+        note.outcome === "chosen"
+          ? `The user chose option ${(note.option ?? 0) + 1} of ${which}: ${JSON.stringify(note.label ?? "")}`
+          : note.outcome === "deferred"
+            ? `The user deferred ${which}; it stays open`
+            : note.outcome === "asked"
+              ? `The user asked for clarification on ${which}, before choosing`
+              : `The user reopened ${which}; nothing is chosen`;
+      return `${did}. Oriel, not you, recorded it, and the choice is theirs alone.`;
+    }
   }
 }
 

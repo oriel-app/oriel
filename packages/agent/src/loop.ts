@@ -111,7 +111,12 @@ async function* turn(
   }
 
   const proposed = proposal();
-  const turnShows = turnShown(deps.newId);
+  const { choices } = deps;
+  const turnShows = turnShown(
+    deps.newId,
+    input.choices && choices ? (ask) => choices.check(ask, region) : undefined,
+  );
+  const options = { choices: input.choices === true };
 
   // One `run` call: refused without a run if it isn't one, else a run in the
   // sandbox, recorded whatever its outcome. `charge` is the usage of the
@@ -132,7 +137,9 @@ async function* turn(
     const runId = deps.newId();
     // Its bindings, with show() and sketch(), each read they answer noted
     // for blocks.
-    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
+    const shown = turnShows.run(runId, (asked) =>
+      deps.bindingsFor(region, thread.id, asked, options),
+    );
     const { bindings } = shown;
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
@@ -186,7 +193,7 @@ async function* turn(
   try {
     conversation = deps.provider.converse({
       system: systemPrompt,
-      tools: [runTool(deps.bindingsFor(region, thread.id).dts)],
+      tools: [runTool(deps.bindingsFor(region, thread.id, undefined, options).dts)],
       messages: threadMessages(input.history, input.text),
       signal,
       log,

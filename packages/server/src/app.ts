@@ -138,6 +138,7 @@ import { intentsOf, lineUndo } from "./intents.ts";
 import { orielReads } from "./oriel-reads.ts";
 import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
+import { choiceChecker } from "./choices.ts";
 import type { Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
 import {
@@ -769,7 +770,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     now,
   });
-  const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) => {
+  const regionBindings = (
+    region: Region,
+    thread?: Ulid,
+    shown?: Shown,
+    options: { choices?: boolean } = {},
+  ) => {
     // Where a story with no epic is created: the project the writer writes to.
     const home = writes?.project ?? fixture?.project.key ?? null;
     // What the last sync found on the boards; nothing before one.
@@ -786,6 +792,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(shown ? { shown } : {}),
       // The window chat reads the overview, as the page shows it.
       ...(thread && threads.isWindowChat(thread) ? { overview: windowOverview } : {}),
+      ...(options.choices ? { choices: true } : {}),
     });
   };
 
@@ -838,6 +845,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
     },
     runs: { record: (run, reads) => runs.record(run, reads) },
+    choices: { check: choiceChecker({ reader, records, sources, now }) },
     limits: caps,
     now,
     newId,

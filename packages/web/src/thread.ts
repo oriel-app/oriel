@@ -6,6 +6,7 @@ import { nothingToAdd } from "./workstream.ts";
 import { type Effect, errorOf, get, post, reached, type Replied, undoing } from "./http.ts";
 import type {
   BlockView,
+  ChoiceView,
   SketchView,
   ActionLineView,
   ChangeSetView,
@@ -77,6 +78,15 @@ export type ThreadMsg =
   | { type: "doneClicked" }
   // Sync now: the thread catches up with its workstream without a message.
   | { type: "syncClicked" }
+  // The decision-desk spike: what's still undecided here, and what the
+  // user did with a choice the agent found.
+  | { type: "choicesClicked" }
+  | {
+      type: "choiceClicked";
+      choiceId: string;
+      outcome: "chosen" | "deferred" | "asked" | "reopened";
+      option?: number;
+    }
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
   // A rejected change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
@@ -213,6 +223,32 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         model,
         [post(`/api/threads/${model.id}/done`, {}, { kind: "threadAction", threadId: model.id })],
       ];
+    case "choicesClicked":
+      if (model.sending || model.view?.running !== false) return [model, []];
+      return [
+        { ...model, notice: null, atLatest: true },
+        [
+          post(
+            `/api/threads/${model.id}/choices`,
+            {},
+            { kind: "threadAction", threadId: model.id },
+          ),
+        ],
+      ];
+    case "choiceClicked": {
+      if (model.view?.running !== false) return [model, []];
+      const { choiceId, outcome, option } = msg;
+      const body = option === undefined ? { outcome } : { outcome, option };
+      return [
+        { ...model, notice: null, atLatest: outcome === "chosen" || outcome === "asked" },
+        [
+          post(`/api/threads/${model.id}/choices/${choiceId}`, body, {
+            kind: "threadAction",
+            threadId: model.id,
+          }),
+        ],
+      ];
+    }
     // Not while a turn runs: it works in the version it started in.
     case "syncClicked":
       if (model.syncing || model.view?.running !== false) return [model, []];
@@ -726,6 +762,7 @@ export type Entry =
     }
   | { kind: "block"; seq: number; block: BlockView }
   | { kind: "sketch"; seq: number; sketch: SketchView }
+  | { kind: "choice"; seq: number; choice: ChoiceView }
   | { kind: "change-set"; seq: number; changeSetId: string }
   | { kind: "actions"; seq: number; lines: ActionLineView[] }
   | {
@@ -786,6 +823,9 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
         break;
       case "sketch":
         out.push({ kind: "sketch", seq: entry.seq, sketch: entry.sketch });
+        break;
+      case "choice":
+        out.push({ kind: "choice", seq: entry.seq, choice: entry.choice });
         break;
       case "held":
         out.push(entry);

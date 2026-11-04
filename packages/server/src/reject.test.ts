@@ -66,7 +66,7 @@ const said = (entries: readonly ChatEntry[]) =>
       e.kind === "user" || e.kind === "text"
         ? [[e.kind, e.text]]
         : e.kind === "note"
-          ? [[e.kind, e.note.changeSetId]]
+          ? [[e.kind, e.note.kind === "rejected" ? e.note.changeSetId : e.note.choiceId]]
           : [],
     );
 

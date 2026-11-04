@@ -2,8 +2,20 @@
 // its workstream and works in one version of it, its region. Its state is derived
 // from what happened in it, never stored (packages/db derives it).
 import { holderName, maxReasonChars } from "./actions.ts";
+import { choiceOutcome, maxLabelChars, maxQuestionChars } from "./choice.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
-import { array, boolean, type Infer, literal, object, refine, string, union } from "./validate.ts";
+import {
+  array,
+  boolean,
+  type Infer,
+  literal,
+  nullable,
+  number,
+  object,
+  refine,
+  string,
+  union,
+} from "./validate.ts";
 
 // Working until a change set applies or the user marks it done; handed off
 // when the assignee changes or an external link is attached; dropped after 7
@@ -66,7 +78,10 @@ export const heldText = (from: HeldSender, text: string): boolean =>
 // alone reads it. `quotes`: whether each quote from an item in the agent's
 // last answer is in that item word for word, as Oriel checked it when the
 // turn ended (decision 0032); the window alone reads it, to caption each, so
-// it is no `AgentNote`.
+// it is no `AgentNote`. `choice`: what the person did with a choice the
+// agent found (the decision-desk spike): chose an option, by its place,
+// deferred it, asked for clarification, or reopened it. The person's alone,
+// and both the window and the agent read it as Oriel's record of it.
 export const maxUnknownChips = 20;
 export const maxQuotes = 20;
 export const maxQuoteChars = 8_000;
@@ -90,11 +105,22 @@ const quoteCheck = object({
   found: boolean,
 });
 export type QuoteCheck = Infer<typeof quoteCheck>;
-export const agentNote = union(rejectedNote, unknownChipsNote);
+const choiceNote = object({
+  kind: literal("choice"),
+  choice: refine(string, isUlid, "expected a choice's ID"),
+  outcome: choiceOutcome,
+  option: nullable(refine(number, (n) => Number.isInteger(n) && n >= 0, "expected an option")),
+  // The agent's own words for the choice and the option, as stored with it,
+  // so the agent knows which it was without the choice's ID.
+  question: refine(string, (text) => text.length <= maxQuestionChars, "expected a question"),
+  label: nullable(refine(string, (text) => text.length <= maxLabelChars, "expected an option")),
+});
+export const agentNote = union(rejectedNote, unknownChipsNote, choiceNote);
 export type AgentNote = Infer<typeof agentNote>;
 export const orielNote = union(
   rejectedNote,
   unknownChipsNote,
+  choiceNote,
   object({
     kind: literal("quotes"),
     checked: refine(

@@ -1,5 +1,7 @@
-// What a turn shows under its reply, for every agent: blocks (decision 0030)
-// and sketches (decision 0033). A run asks for a block with show(), naming a
+// What a turn shows under its reply, for every agent: blocks (decision 0030),
+// sketches (decision 0033) and, in a run Oriel started to find them, the
+// workstream's open choices (the decision-desk spike), whose quotes the
+// server checks and dates. A run asks for a block with show(), naming a
 // read this turn ran, its arguments and the block's form; Oriel builds the
 // block from what that read answered, so a script never hands Oriel a
 // block's numbers. A run hands sketch() its HTML and a height; Oriel checks
@@ -13,6 +15,11 @@
 // passes in.
 import {
   array,
+  type ChoiceAsk,
+  choiceAsk,
+  choiceHelp,
+  type Choice,
+  maxChoicesPerTurn,
   isInstant,
   isItemId,
   object,
@@ -63,14 +70,37 @@ const searchHits = array(
 );
 
 // What a turn shows under its reply, in the order its runs asked for it.
-type Kept = { kind: "block"; block: Block } | { kind: "sketch"; sketch: Sketch };
+type Kept =
+  | { kind: "block"; block: Block }
+  | { kind: "sketch"; sketch: Sketch }
+  | { kind: "choice"; choice: Choice };
+
+// How the turn checks a choice: every quote in its item, word for word, and
+// dated from the source's view of it; or why not, for the agent.
+export type CheckChoice = (
+  ask: ChoiceAsk,
+) => Promise<{ ok: true; choice: Omit<Choice, "id"> } | { ok: false; why: string }>;
+
+// What the agent reads after a choice Oriel shows: where and when each quote
+// was said, as Oriel found it, so its answer agrees with the card.
+const choiceShown = (choice: Omit<Choice, "id">) =>
+  [
+    "Oriel shows this choice under your reply, as yours, with each quote dated as its source has it:",
+    ...choice.options.flatMap((option, i) =>
+      option.evidence.map(
+        (e) =>
+          `option ${i + 1}, [[${e.id}]]: ${e.at ? `${e.author ?? "someone"}, ${e.at}` : `in its ${e.place}, which last changed ${e.asOf}`}`,
+      ),
+    ),
+    "The person chooses, defers or asks; never say it is decided unless they chose.",
+  ].join("\n");
 
 // What the agent reads after a sketch Oriel shows: the theme variables its
 // sheet sets, so the next sketch can use them.
 const sketchShown = (height: number) =>
   `Oriel shows your sketch under your reply, ${height} px high, captioned as yours. Its sheet sets ${sketchTokens.join(", ")}.`;
 
-export function turnShown(newId: () => Ulid) {
+export function turnShown(newId: () => Ulid, checkChoice?: CheckChoice) {
   // What each read this turn answered, by its name and arguments.
   const answered = new Map<string, Answered>();
   const kept: { runId: Ulid; shown: Kept }[] = [];
@@ -148,6 +178,35 @@ export function turnShown(newId: () => Ulid) {
         shown.push({ kind: "sketch", sketch: { id: newId(), html, height } });
         return sketchShown(height);
       };
+      const choice = async (input: unknown): Promise<string> => {
+        if (!checkChoice) return "Oriel shows choices only in a run it started to find them.";
+        const refuse = (why: string) => {
+          refused.push({ kind: "choice.refused", runId });
+          return `Oriel refused the choice, and shows nothing: ${why}`;
+        };
+        const shaped = choiceAsk(input);
+        if (!shaped.ok)
+          return refuse(
+            `${shaped.issues
+              .slice(0, 5)
+              .map((i) => `${i.path}: ${i.message}`)
+              .join("; ")}. ${choiceHelp}`,
+          );
+        const choices = all("choice");
+        const question = shaped.value.question.trim().toLowerCase();
+        if (
+          choices.some(
+            (k) => k.kind === "choice" && k.choice.question.trim().toLowerCase() === question,
+          )
+        )
+          return "Oriel already shows a choice with that question under your reply.";
+        if (choices.length >= maxChoicesPerTurn)
+          return refuse(`a reply shows at most ${maxChoicesPerTurn} choices.`);
+        const checked = await checkChoice(shaped.value);
+        if (!checked.ok) return refuse(checked.why);
+        shown.push({ kind: "choice", choice: { id: newId(), ...checked.choice } });
+        return choiceShown(checked.choice);
+      };
       const say = (told: string) => {
         said.push(told);
         return told;
@@ -155,6 +214,7 @@ export function turnShown(newId: () => Ulid) {
       const bindings = bindingsFor({
         show: (input) => say(block(input)),
         sketch: (html, height) => say(sketch(html, height)),
+        choice: async (input) => say(await choice(input)),
       });
       // What the run reached outside the region, which the escape hatch's
       // block shows unasked; the sandbox keeps only each read's hash. A
@@ -168,7 +228,7 @@ export function turnShown(newId: () => Ulid) {
           const found = searchHits(answer.found ?? []);
           for (const hit of found.ok ? found.value : [])
             if (!hits.has(hit.id)) hits.set(hit.id, hit);
-          if (fn !== "show" && fn !== "sketch")
+          if (fn !== "show" && fn !== "sketch" && fn !== "choices.add")
             answered.set(readKey(fn, args), answerOf(bindings, fn, answer));
           return answer;
         },
@@ -192,7 +252,9 @@ export function turnShown(newId: () => Ulid) {
       for (const { runId, shown } of kept)
         yield shown.kind === "block"
           ? { kind: "block", runId, block: shown.block }
-          : { kind: "sketch", runId, sketch: shown.sketch };
+          : shown.kind === "sketch"
+            ? { kind: "sketch", runId, sketch: shown.sketch }
+            : { kind: "choice", runId, choice: shown.choice };
       yield* refused;
     },
   };

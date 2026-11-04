@@ -5,6 +5,8 @@ import type {
   Bindings,
   Block,
   ChangeSets,
+  Choice,
+  ChoiceAsk,
   Instant,
   Intent,
   Log,
@@ -41,6 +43,9 @@ export type TurnInput = {
   // `maxTokensPerThread` covers the whole thread. Required: optional would let
   // the cap silently become per-turn.
   spent: { inputTokens: number; outputTokens: number };
+  // A run Oriel started to find the workstream's open choices: the module
+  // gets `choices`, and the turn checks what the agent hands it.
+  choices?: true;
 };
 
 export type ChatMessage =
@@ -84,6 +89,12 @@ export type AgentEvent =
   // A sketch a run asked for and Oriel refused, by why, for telemetry; the
   // run's result told the agent what to change.
   | { kind: "sketch.refused"; runId: Ulid; reason: SketchRefusal }
+  // A choice the agent found, as Oriel checked and dated it (the
+  // decision-desk spike): shown under the reply with the blocks.
+  | { kind: "choice"; runId: Ulid; choice: Choice }
+  // A choice a run handed Oriel and Oriel refused, for telemetry; the run's
+  // result told the agent why.
+  | { kind: "choice.refused"; runId: Ulid }
   // Captured mutations awaiting approval.
   | { kind: "change-set"; changeSetId: Ulid }
   // What became of the intents the turn's last run (`runId`) recorded,
@@ -118,7 +129,20 @@ export type AgentDeps = {
   // default to the thread's workstream and the thread. `shown` builds the
   // block a run asks for, from a read its turn ran, and shows the sketch it
   // asks for, and says what it did.
-  bindingsFor: (region: Region, thread: Ulid, shown?: Shown) => Bindings;
+  bindingsFor: (
+    region: Region,
+    thread: Ulid,
+    shown?: Shown,
+    options?: { choices?: boolean },
+  ) => Bindings;
+  // Checks a choice the agent hands Oriel against the region's items: each
+  // quote word for word, dated from its source's view of the item.
+  choices?: {
+    check(
+      ask: ChoiceAsk,
+      region: Region,
+    ): Promise<{ ok: true; choice: Omit<Choice, "id"> } | { ok: false; why: string }>;
+  };
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if

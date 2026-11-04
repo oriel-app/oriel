@@ -252,6 +252,33 @@ export const actions = {
     },
     closed: { agent: unsaid, tool: untold },
   },
+  // The decision-desk spike: Oriel's fixed question, as the user's, in a
+  // turn whose module can hand Oriel the choices the agent finds.
+  "choice.find": {
+    doc: "Asks the agent what is still undecided in a thread's workstream.",
+    input: object({ thread: threadId }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "What was said stays said: only deleting the thread erases it, which is the user's.",
+    },
+    closed: { agent: unsaid, tool: untold },
+  },
+  // What the user did with a choice the agent found: chose an option, by
+  // its place from 0, deferred it, asked for clarification, or reopened it.
+  "choice.settle": {
+    doc: "Records what the user did with a choice the agent found, and carries out a choice made or a clarification asked in a turn.",
+    input: object({
+      thread: threadId,
+      choice: refine(string, isUlid, "expected a choice's ID"),
+      outcome: union(literal("chosen"), literal("deferred"), literal("asked"), literal("reopened")),
+      option: optional(refine(number, (n) => Number.isInteger(n) && n >= 0, "expected an option")),
+    }),
+    class: {
+      kind: "person-only",
+      why: "Choosing is the user's: the agent's reading of the evidence never settles a choice, and a choice made starts the turn that proposes its change set.",
+    },
+  },
   "thread.stop": {
     doc: "Stops the turn running in a thread.",
     input: object({ thread: threadId }),

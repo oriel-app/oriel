@@ -39,8 +39,9 @@ export type OrielSpace = (typeof orielSpaces)[number];
 
 // The namespace a function lives in: `items` for any item, one per source
 // that declares one, one of Oriel's own, or null for a global.
-// `window`: the window chat's own (decision 0027).
-export type Space = "items" | SourceKind | OrielSpace | "window" | null;
+// `window`: the window chat's own (decision 0027). `choices`: a run's that
+// Oriel started to find a workstream's open choices.
+export type Space = "items" | SourceKind | OrielSpace | "window" | "choices" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;

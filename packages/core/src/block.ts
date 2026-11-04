@@ -90,6 +90,9 @@ export const blockSpecHelp =
 export type Shown = {
   show(spec: unknown): string;
   sketch(html: unknown, height: unknown): string;
+  // A choice the agent found, in a run Oriel started to find them: Oriel
+  // checks and dates its quotes, and shows it, or says why not.
+  choice?(input: unknown): Promise<string>;
 };
 
 // What a read declares a block can show, for a refusal: each list and its

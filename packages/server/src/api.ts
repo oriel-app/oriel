@@ -1156,6 +1156,32 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return json(202, { seq });
       },
     },
+    // The decision-desk spike: find a thread's open choices, and what the
+    // user did with one.
+    {
+      method: "POST",
+      path: at("/threads/:id/choices"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("choice.find", { thread: id });
+        const { seq } = await deps.dispatch("choice.find", input, user);
+        return json(202, { seq });
+      },
+    },
+    {
+      method: "POST",
+      path: at("/threads/:id/choices/:id"),
+      async run([id = "", choice = ""], request) {
+        const body = await readJson(
+          request,
+          smallBody,
+          object({ outcome: unknown, option: optional(unknown) }),
+        );
+        const input = checked("choice.settle", { thread: id, choice, ...body });
+        const { seq } = await deps.dispatch("choice.settle", input, user);
+        return json(seq === null ? 200 : 202, { seq });
+      },
+    },
     {
       method: "POST",
       path: at("/threads/:id/stop"),

@@ -4,6 +4,7 @@
 import { type ComponentChildren, Fragment } from "preact";
 import { useContext, useEffect } from "preact/hooks";
 import { BlockFigure, SketchFigure } from "./block.tsx";
+import { ChoiceCard, settledLine } from "./choice.tsx";
 import { watchLatest } from "./effects.ts";
 import {
   addressOf,
@@ -153,6 +154,18 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
                   windowChat: view.windowChat === true,
                 })}
               />
+              {view.members.length > 0 && (
+                <Tooltip text="The agent finds choices this workstream's items discuss and haven't settled, with the evidence for each. Nothing is sent.">
+                  <button
+                    type="button"
+                    class="quiet-action"
+                    disabled={view.running || model.sending}
+                    onClick={() => send({ type: "choicesClicked" })}
+                  >
+                    What's undecided?
+                  </button>
+                </Tooltip>
+              )}
               {view.state !== "done" && (
                 <button
                   type="button"
@@ -276,6 +289,24 @@ export function ChatEntryItem(props: {
           <SketchFigure sketch={entry.sketch} />
         </li>
       );
+    case "choice": {
+      const { entries } = props.view;
+      // A later question found choices again: this card is history.
+      const asked = entries.findIndex((e) => e.kind === "user" && e.seq > entry.seq);
+      const replaced =
+        asked >= 0 && entries.slice(asked).some((e) => e.kind === "choice" && e.seq > entry.seq);
+      return (
+        <li class="choice-entry">
+          <ChoiceCard
+            choice={entry.choice}
+            entries={entries}
+            running={props.view.running}
+            replaced={replaced}
+            send={props.send}
+          />
+        </li>
+      );
+    }
     case "change-set": {
       const set = props.view.changeSets.find((s) => s.id === entry.changeSetId);
       if (!set) return null;
@@ -324,6 +355,14 @@ export function ChatEntryItem(props: {
 // One of Oriel's own lines, never the agent's (OA-91): after a rejection,
 // what the user can do next.
 function OrielNote({ note }: { note: NoteView }) {
+  if (note.kind === "choice")
+    return (
+      <p>
+        {settledLine(note)}
+        {note.outcome !== "chosen" && ` in “${note.question}”`}.
+        {note.outcome === "chosen" && " The agent proposes how to carry it into the work."}
+      </p>
+    );
   return (
     <p>
       {note.via === "thread" ? "Change rejected." : "Change rejected on its review link."} You can

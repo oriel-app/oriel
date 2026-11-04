@@ -51,7 +51,12 @@ async function* steps(
 ): AsyncGenerator<AgentEvent> {
   const { thread, region } = input;
   const proposed = proposal();
-  const turnShows = turnShown(deps.newId);
+  const { choices } = deps;
+  const turnShows = turnShown(
+    deps.newId,
+    input.choices && choices ? (ask) => choices.check(ask, region) : undefined,
+  );
+  const options = { choices: input.choices === true };
   // A run may capture no more than a change set may hold.
   const limits = {
     ...deps.limits.run,
@@ -71,7 +76,9 @@ async function* steps(
           : `return await thread.find(${JSON.stringify(step.threads)}, 1);`;
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
-    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
+    const shown = turnShows.run(runId, (asked) =>
+      deps.bindingsFor(region, thread.id, asked, options),
+    );
     const { bindings } = shown;
     const startedAt = deps.now();
     const run = {
@@ -202,6 +209,118 @@ const filler = new Set([
   "with",
 ]);
 
+// The synthetic fare-policy conversation in the Slack fixture, and its
+// story, which the scripted agent finds a choice in (the decision-desk
+// spike); each quote is copied from the fixture.
+const fareConversation = "slack:C0FW1WEATHR-1788444000.000100";
+const fareStory = "jira:SYN-45";
+export const fareChoice = {
+  question: "Do passengers keep their fare on next-day sailings after a weather cancellation?",
+  options: [
+    {
+      label: "Same day only: the fare holds on later sailings that day; next day case by case",
+      standing: "agreed",
+      evidence: [
+        {
+          id: fareConversation,
+          quote:
+            "passengers keep the fare they paid on any later sailing that day, even a dearer one",
+          role: "proposes",
+        },
+        {
+          id: fareConversation,
+          quote: "Next-day sailings are case by case for now.",
+          role: "proposes",
+        },
+        {
+          id: fareConversation,
+          quote: "Yes, supplements carry over too. Same fare, same supplements.",
+          role: "amends",
+        },
+      ],
+    },
+    {
+      label: "Next day too: the fare holds on the next day's sailings",
+      standing: "proposed",
+      evidence: [
+        {
+          id: fareConversation,
+          quote: "ops agreed that next-day sailings now follow the same rule",
+          role: "amends",
+        },
+        { id: fareConversation, quote: "I've updated SYN-45.", role: "proposes" },
+        {
+          id: fareStory,
+          quote:
+            "if we cancel, the passenger keeps the fare they paid, even when the next sailing is in a dearer fare band",
+          role: "proposes",
+        },
+      ],
+    },
+  ],
+  open: [
+    "Only Farid says ops agreed to next-day sailings; neither Dara nor anyone from ops says so in the conversation.",
+    "SYN-45 last changed before Farid said he updated it, and its acceptance criteria name no day.",
+  ],
+};
+
+const choiceScript = `const read = await items.read(${JSON.stringify([fareConversation, fareStory])});
+return await choices.add(${JSON.stringify(fareChoice, null, 2)});`;
+
+const carryScript = (option: number) => {
+  const sameDay = option === 0;
+  const rule = sameDay
+    ? "keeps the fare they paid on any later sailing that day, even when it is in a dearer fare band. Next-day sailings are case by case"
+    : "keeps the fare they paid on any later sailing that day and on the next day's sailings, even when that sailing is in a dearer fare band";
+  const description = `Policy from operations: if we cancel a sailing for weather, the passenger ${rule}. Vehicle supplements carry over. We absorb the difference; we never charge it.\n\nAcceptance criteria:\n- The rebooked fare equals the original fare${sameDay ? " on the same day" : ", the same day or the next"}\n- Supplements carry over\n- The receipt says 'Fare difference waived'`;
+  const said = sameDay
+    ? "Decided: after a weather cancellation, passengers keep their fare on later sailings the same day, supplements included. Next-day sailings stay case by case. SYN-45 says so now."
+    : "Decided: after a weather cancellation, passengers keep their fare on later sailings the same day and the next day, supplements included. SYN-45 says so now.";
+  return `jira.setDescription(${JSON.stringify(fareStory)}, ${JSON.stringify(description)});
+slack.reply(${JSON.stringify(fareConversation)}, ${JSON.stringify(said)});
+return "proposed";`;
+};
+
+const askScript = `slack.reply(${JSON.stringify(fareConversation)}, ${JSON.stringify(
+  "Before we build SYN-45: did ops agree that next-day sailings keep the fare too? The decision above says next day is case by case, and only the later reply says ops agreed.",
+)});
+return "proposed";`;
+
+// A run Oriel started to find choices, or one carrying out what the user
+// did with one, as Oriel's last line in the history says.
+function choicePlan(input: TurnInput): Step[] | null {
+  const holds = input.region.items.some((item) => item.id === fareConversation);
+  if (input.choices)
+    return holds
+      ? [
+          { text: "I read the workstream's conversations and stories for choices still open." },
+          { run: choiceScript },
+          {
+            text: "One choice is still open: whether the fare holds on next-day sailings. The later reply says ops agreed, but nobody from ops or the person who made the first decision says so.",
+          },
+        ]
+      : [
+          { text: "I read every item here." },
+          { run: listScript },
+          { text: "I found no choice the items discuss and leave open." },
+        ];
+  const last = input.history.findLast((m) => m.role === "note");
+  if (last?.role !== "note" || last.note.kind !== "choice" || !holds) return null;
+  if (last.note.outcome === "chosen")
+    return [
+      { text: "I'll write the choice into the story and tell the conversation." },
+      { run: carryScript(last.note.option ?? 0) },
+      { text: "The proposed changes are below. Nothing is written or posted until you approve." },
+    ];
+  if (last.note.outcome === "asked")
+    return [
+      { text: "I'll ask in the conversation what's still unanswered." },
+      { run: askScript },
+      { text: "The reply is below for you to review. Nothing is posted until you approve." },
+    ];
+  return null;
+}
+
 // What `pnpm dev` answers with: a link to a thread when asked where
 // something happened, a search when asked to find something, an estimate
 // change when asked about estimates, the finished stories taken out of the
@@ -209,6 +328,8 @@ const filler = new Set([
 // or reply when asked to "post: …" or "reply: …", and otherwise a read of
 // every item in the region.
 export function devPlan(input: TurnInput): Step[] {
+  const chose = choicePlan(input);
+  if (chose) return chose;
   if (threadsAsk.test(input.text))
     return [
       { text: "I'll look through your threads." },

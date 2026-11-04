@@ -25,6 +25,7 @@ import { orielFns } from "./oriel.ts";
 import { showFn } from "./block.ts";
 import { sketchFn } from "./sketch.ts";
 import { windowFns } from "./window.ts";
+import { choiceFns } from "./choices.ts";
 
 export type { Fn } from "./fn.ts";
 export { pathOf } from "./fn.ts";
@@ -45,7 +46,13 @@ export const parameters: readonly string[] = ["search", "show", "sketch"];
 
 // Oriel's own names in every module, which no source's kind may take
 // (decision 0049).
-export const orielNames: readonly string[] = ["items", ...orielSpaces, "window", ...parameters];
+export const orielNames: readonly string[] = [
+  "items",
+  ...orielSpaces,
+  "window",
+  "choices",
+  ...parameters,
+];
 
 // The names the script sees: `items`, a namespace per kind, Oriel's own,
 // then the global functions. The list is fixed, whatever the region holds,
@@ -60,6 +67,7 @@ export const spacesOf = (kinds: readonly SourceKind[]): string[] => [
   ...kinds,
   ...orielSpaces,
   "window",
+  "choices",
 ];
 export const globalsOf = (spaces: readonly string[]): string[] => [...spaces, ...parameters];
 
@@ -130,7 +138,10 @@ export function scopeOf(region: Region, namespaces: Namespaces, items: ItemDocs 
 // the order of the declarations, so it is part of the byte-stable output. A
 // namespace's write must name an op in its catalogue that a run may capture;
 // revert-only ops are never offered.
-export function describe(scope: Scope, options: { window?: boolean } = {}): Fn[] {
+export function describe(
+  scope: Scope,
+  options: { window?: boolean; choices?: boolean } = {},
+): Fn[] {
   const namespaced = scope.sources.flatMap(({ kind, spec, scope: own }) =>
     spec.fns(own).map((fn): Fn => {
       if (fn.kind === "read") return { ...fn, space: kind, outsideRegion: false };
@@ -141,12 +152,14 @@ export function describe(scope: Scope, options: { window?: boolean } = {}): Fn[]
     }),
   );
   const window = options.window ? windowFns : [];
+  const choices = options.choices ? choiceFns : [];
   return [
     ...itemFns,
     ...namespaced,
     ...orielFns,
     ...intentFns,
     ...window,
+    ...choices,
     searchFn,
     showFn,
     sketchFn,

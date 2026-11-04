@@ -6,6 +6,7 @@ import { type WorkstreamStore, type Message, type Move, type ThreadStore } from 
 import {
   type ActionLine,
   type Actor,
+  choiceWords,
   type HeldSender,
   type Instant,
   type Log,
@@ -289,11 +290,23 @@ export function turns(deps: TurnDeps) {
   // run's result already told the agent, and which the user never sees: it
   // is only counted.
   const record = (threadId: Ulid, event: AgentEvent) => {
-    if (event.kind !== "block.refused" && event.kind !== "sketch.refused") {
+    if (
+      event.kind !== "block.refused" &&
+      event.kind !== "sketch.refused" &&
+      event.kind !== "choice.refused"
+    ) {
       const seq = threads.append(threadId, { role: "agent", event }, deps.newId(), deps.now());
       published(threadId, seq);
     }
-    const counted = ["search", "block", "block.refused", "sketch", "sketch.refused"];
+    const counted = [
+      "search",
+      "block",
+      "block.refused",
+      "sketch",
+      "sketch.refused",
+      "choice",
+      "choice.refused",
+    ];
     if (!counted.includes(event.kind)) return;
     const thread = threads.get(threadId, deps.now());
     if (!thread) return;
@@ -311,6 +324,19 @@ export function turns(deps: TurnDeps) {
       deps.emit({ name: "sketch.shown", at, workspaceId, threadId, height, bytes });
     } else if (event.kind === "sketch.refused")
       deps.emit({ name: "sketch.refused", at, workspaceId, threadId, reason: event.reason });
+    else if (event.kind === "choice") {
+      const { options } = event.choice;
+      const quotes = options.reduce((sum, option) => sum + option.evidence.length, 0);
+      deps.emit({
+        name: "choice.shown",
+        at,
+        workspaceId,
+        threadId,
+        options: options.length,
+        quotes,
+      });
+    } else if (event.kind === "choice.refused")
+      deps.emit({ name: "choice.refused", at, workspaceId, threadId });
   };
 
   // Titles the thread from its first message, beside its first turn. The
@@ -352,7 +378,13 @@ export function turns(deps: TurnDeps) {
   // runs to its end. One that throws instead gets an error and a `done`
   // here, so every turn in the chat ends the same way. A stopped turn says so
   // last.
-  const run = async (thread: Thread, text: string, seq: number, signal: AbortSignal) => {
+  const run = async (
+    thread: Thread,
+    text: string,
+    seq: number,
+    signal: AbortSignal,
+    choices: boolean,
+  ) => {
     const log: Log = (message, fields) => deps.log(message, { ...fields, thread_id: thread.id });
     let done = false;
     try {
@@ -366,6 +398,7 @@ export function turns(deps: TurnDeps) {
         text,
         snapshot: deps.snapshot(),
         spent: spent(before),
+        ...(choices ? { choices: true as const } : {}),
       };
       for await (const event of deps.agent.turn(input, { signal, log })) {
         record(thread.id, event);
@@ -431,6 +464,7 @@ export function turns(deps: TurnDeps) {
     threadId: Ulid,
     text: string,
     by: Actor,
+    options: { choices?: boolean; before?: OrielNote } = {},
   ): { seq: number; at: Instant; workspaceId: Ulid } => {
     if (running.has(threadId)) throw new ThreadBusy();
     // The per-thread caps hold whatever agent is plugged in (SPEC §9).
@@ -444,6 +478,9 @@ export function turns(deps: TurnDeps) {
       throw new ThreadLimit(reason);
     }
     const first = !earlier.some((m) => m.role === "user");
+    // Oriel's own line about what the person did, such as choosing an
+    // option, just before the words that start the turn.
+    if (options.before) note(threadId, options.before);
     const now = deps.now();
     const said = threads.say(threadId, text, { marker: deps.newId(), message: deps.newId() }, now);
     if (said.move) published(threadId, said.move.seq);
@@ -451,10 +488,12 @@ export function turns(deps: TurnDeps) {
     const thread = threads.get(threadId, now);
     if (!thread) throw new RangeError(`no thread ${threadId}`);
     const controller = new AbortController();
-    const done = run(thread, text, said.seq, controller.signal).finally(() => {
-      running.delete(threadId);
-      publish(threadId, { type: "status", running: false });
-    });
+    const done = run(thread, text, said.seq, controller.signal, options.choices === true).finally(
+      () => {
+        running.delete(threadId);
+        publish(threadId, { type: "status", running: false });
+      },
+    );
     running.set(threadId, { controller, done, by });
     publish(threadId, { type: "status", running: true });
     if (first) title(threadId, text);
@@ -472,6 +511,29 @@ export function turns(deps: TurnDeps) {
         : undefined;
     const { seq, at, workspaceId } = start(threadId, text, { kind: "user" });
     deps.emit({ name: "question.asked", at, workspaceId, threadId, ...answers });
+    return { seq };
+  };
+
+  // A run that finds the workstream's open choices (the decision-desk
+  // spike): Oriel's fixed question, as the person's, whose module gets
+  // `choices`. Counting it is the dispatcher's.
+  const findChoices = (threadId: Ulid): { seq: number } => {
+    const { seq } = start(threadId, choiceWords.find, { kind: "user" }, { choices: true });
+    return { seq };
+  };
+
+  // What the person did with a choice: Oriel's line saying so, and for a
+  // choice made or a clarification asked, the fixed words that start the
+  // turn carrying it out. Deferring or reopening one starts no turn.
+  const settleChoice = (
+    threadId: Ulid,
+    line: Extract<OrielNote, { kind: "choice" }>,
+  ): { seq: number | null } => {
+    if (line.outcome === "deferred" || line.outcome === "reopened") {
+      note(threadId, line);
+      return { seq: null };
+    }
+    const { seq } = start(threadId, choiceWords[line.outcome], { kind: "user" }, { before: line });
     return { seq };
   };
 
@@ -574,6 +636,8 @@ export function turns(deps: TurnDeps) {
     },
 
     say,
+    findChoices,
+    settleChoice,
 
     // A change set of the thread was rejected. The thread says so and asks
     // what was wrong, in a line Oriel writes with no model call: the agent reads it

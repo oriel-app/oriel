@@ -8,6 +8,7 @@ import { itemTypes } from "./items.ts";
 import { orielTypes } from "./oriel.ts";
 import { windowTypes } from "./window.ts";
 import { actionTypes } from "./actions.ts";
+import { choiceTypes } from "./choices.ts";
 
 const header = [
   "// This region's module.",
@@ -53,6 +54,7 @@ export function declarations(scope: Scope, fns: readonly Fn[]): string {
     ...orielTypes,
     ...actionTypes,
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
+    ...(fns.some((fn) => fn.space === "choices") ? choiceTypes : []),
     "",
     ...scope.spaces.flatMap((name) => namespace(name, fns)),
     ...fns

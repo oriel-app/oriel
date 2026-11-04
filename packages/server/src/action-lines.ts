@@ -76,6 +76,11 @@ const words: { [N in ActionName]: Words } = {
   "window.new-chat": () => ["Started a fresh window chat", "start a fresh window chat"],
   "thread.open": (_, place) => [`Opened a thread on ${place}`, `open a thread on ${place}`],
   "thread.say": (_, place) => [`Said something in ${place}`, `say something in ${place}`],
+  "choice.find": (_, place) => [
+    `Asked what's still undecided in ${place}`,
+    `ask what's still undecided in ${place}`,
+  ],
+  "choice.settle": (_, place) => [`Settled a choice in ${place}`, `settle a choice in ${place}`],
   "thread.stop": (_, place) => [`Stopped the turn in ${place}`, `stop the turn in ${place}`],
   "thread.sync": (_, place) => [
     `Moved ${place} to its workstream's latest version`,

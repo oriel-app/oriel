@@ -421,6 +421,18 @@ export function views(deps: ViewDeps) {
       // The agent alone reads of unknown chips: the answer showed each. A
       // check of the answer's quotes captions them (`ThreadView.quotes`).
       if (message.note.kind === "unknown-chips" || message.note.kind === "quotes") return null;
+      if (message.note.kind === "choice") {
+        const { choice, outcome, option, question, label } = message.note;
+        const note = {
+          kind: "choice" as const,
+          choiceId: choice,
+          outcome,
+          option,
+          question,
+          label,
+        };
+        return { ...at, kind: "note", note };
+      }
       const { kind, changeSet, via } = message.note;
       return { ...at, kind: "note", note: { kind, changeSetId: changeSet, via } };
     }
@@ -470,7 +482,27 @@ export function views(deps: ViewDeps) {
       }
       case "block.refused":
       case "sketch.refused":
+      case "choice.refused":
         return null;
+      // A choice, with each item it cites as the index has it now, so the
+      // page can say what changed since Oriel checked it.
+      case "choice": {
+        const { byId } = lookup();
+        const asOf = new Map<ItemId, string>();
+        for (const option of event.choice.options)
+          for (const e of option.evidence) if (!asOf.has(e.id)) asOf.set(e.id, e.asOf);
+        const items = [...asOf].map(([id, was]) => {
+          const record = byId.get(id);
+          const kind = parseItemId(id)?.kind ?? "";
+          return {
+            ...ref(record, id),
+            source: deps.presentations[kind]?.name ?? kind,
+            updatedAt: record?.updatedAt ?? null,
+            changed: record?.updatedAt !== was,
+          };
+        });
+        return { ...at, kind: "choice", choice: { ...event.choice, items } };
+      }
       case "block":
         return { ...at, kind: "block", block: blockView(event.block, region) };
       // A sketch, framed from the sketch origin, which checks it again.

@@ -89,6 +89,23 @@ test("a window chat's module: the stubs typecheck against the declarations, wind
   assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
 });
 
+test("a choices run's module: the stubs typecheck against the declarations, choices included", async () => {
+  const [, region] = regions[0];
+  const bindings = bindingsFor(region, { reader, namespaces, choices: true });
+  const scope = scopeOf(region, namespaces);
+  const fns = describe(scope, { choices: true });
+  assert.ok(fns.some((fn) => fn.space === "choices" && fn.name === "add"));
+  assert.match(bindings.dts, /type Choice = /);
+  const start = `__oriel.start({ ${globalsOf(scope.spaces).join(", ")} });\n`;
+  assert.ok(
+    bindings.shim.endsWith(stubs(fns, scope.spaces) + start),
+    "the shim ends with these stubs",
+  );
+  assert.deepEqual(await checkStubs(bindings.dts, fns, scope.spaces), []);
+  // Every other module is as it was: no choices, and no word of them.
+  assert.doesNotMatch(bindingsFor(region, { reader, namespaces }).dts, /choices|Choice/);
+});
+
 test("every function lives under a name the guest hands the script, and each name is used", () => {
   // Every kind with an item doc or a namespace has a name, in that order.
   const items = { jira: "An issue.", folder: "A file.", slack: "A message." };
@@ -98,17 +115,17 @@ test("every function lives under a name the guest hands the script, and each nam
     const globals = globalsOf(scope.spaces);
     assert.deepEqual(globals.slice(0, 4), ["items", "jira", "folder", "slack"]);
     // Every name but a namespace for a source the region holds nothing from,
-    // and the window chat's own, which the guest still hands the script,
-    // empty.
+    // the window chat's own, and a choices run's, which the guest still
+    // hands the script, empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder", "slack", "window"]);
+    assert.deepEqual(unused, ["folder", "slack", "window", "choices"]);
     assert.ok([...homes].every((home) => globals.includes(home)));
   }
 });
 
 test("no source may take one of Oriel's own names", () => {
   const region = fixtureRegion("picked");
-  for (const kind of ["items", "workstream", "thread", "window", "search", "show", "sketch"])
+  for (const kind of ["items", "workstream", "thread", "window", "choices", "search", "show"])
     assert.throws(() => scopeOf(region, namespaces, { [kind]: "A thing." }), /Oriel's own names/);
 });
 

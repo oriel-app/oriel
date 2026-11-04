@@ -6091,3 +6091,238 @@ a.button.primary {
     gap: 2px;
   }
 }
+
+/* A choice the agent found (the decision-desk spike). The agent's reading
+   (the question, standings, roles, what's unanswered) is set in muted text
+   and labelled; Oriel's (each quote, found word for word, and who said it
+   and when) is set as a quote with Oriel's caption. Its controls are
+   Oriel's, in the page. */
+.choice-card {
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.choice-card[data-settled="deferred"] {
+  background: var(--surface-sunk);
+}
+
+.choice-kicker {
+  margin: 0;
+  color: var(--text-faint);
+  font: var(--section-head-font);
+  text-transform: var(--section-head-case);
+  letter-spacing: var(--section-head-tracking);
+}
+
+.choice-question {
+  margin: var(--space-1) 0 var(--space-3);
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: var(--title-weight);
+  line-height: var(--leading-tight);
+}
+
+.choice-stale {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  font-size: var(--text-md);
+}
+
+.choice-options {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choice-option {
+  padding: var(--space-3);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+}
+
+.choice-option[data-standing="superseded"] .choice-label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+
+.choice-option[data-chosen] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.choice-letter {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  font-weight: var(--weight-strong);
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+.choice-label {
+  flex: 1 1 16rem;
+  font-weight: var(--weight-medium);
+}
+
+.choice-standing {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.choice-standing[data-standing="agreed"] {
+  color: var(--done);
+}
+
+.agent-reading {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
+.choice-quotes {
+  margin: var(--space-2) 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.choice-quote + .choice-quote {
+  margin-top: var(--space-2);
+}
+
+.choice-quote blockquote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: var(--border-thick) solid var(--accent);
+  font-size: var(--text-md);
+  line-height: var(--leading-prose);
+}
+
+.choice-said {
+  margin: var(--space-1) 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.choice-choose {
+  margin: var(--space-2) 0 0 2rem;
+  padding: 0.25rem var(--space-3);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.choice-choose:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.choice-choose:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.choice-chosen {
+  margin: var(--space-2) 0 0 2rem;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.choice-open {
+  margin-top: var(--space-3);
+  font-size: var(--text-md);
+}
+
+.choice-open-head {
+  margin: 0 0 var(--space-1);
+  font-weight: var(--weight-medium);
+}
+
+.choice-open ul {
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
+.choice-foot {
+  margin-top: var(--space-3);
+}
+
+.choice-settled {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.choice-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.choice-history {
+  margin-top: var(--space-2);
+  font-size: var(--text-md);
+}
+
+.choice-history summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.moments {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.moment {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: var(--border-thin) solid var(--line);
+}
+
+.moment time {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.moment[data-by="oriel"] .moment-line {
+  color: var(--text-muted);
+}
+
+.moment[data-by="oriel"] .moment-line::before {
+  content: "◆ ";
+  color: var(--derived);
+}
+
+.moment-who {
+  font-weight: var(--weight-medium);
+}
+
+.moments-key,
+.choice-caption {
+  margin: var(--space-2) 0 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}

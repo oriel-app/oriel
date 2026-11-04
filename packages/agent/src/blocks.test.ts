@@ -33,7 +33,7 @@ const options = {
     region: Parameters<typeof regionBindings>[0],
     thread: Ulid,
     show?: Parameters<typeof regionBindings>[2],
-  ) => regionBindings(region, thread, show, oriel),
+  ) => regionBindings(region, thread, show, { oriel }),
 };
 
 const contentOf = (model: ReturnType<typeof harness>["model"], step = 1) =>
