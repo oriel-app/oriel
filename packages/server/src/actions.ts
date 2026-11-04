@@ -29,6 +29,7 @@ import {
   parseItemId,
   type TelemetryEvent,
   type Ulid,
+  maxCutMoves,
 } from "@oriel/core";
 import { sendLeaseMs } from "@oriel/changeset";
 import type { Move, WorkstreamStore, ThreadStore } from "@oriel/db";
@@ -857,6 +858,11 @@ const handlers = {
     const { mutations } = cutMutations(found.set, deps.records(), defer, later);
     if (!mutations.length)
       throw new ActionError("invalid", "nothing deferred here can move to a later epic");
+    if (mutations.length - 1 > maxCutMoves)
+      throw new ActionError(
+        "invalid",
+        `A change set moves at most ${maxCutMoves} items; defer fewer, or cut twice.`,
+      );
     const set = await deps.changeSets.capture(
       { id: found.runId, threadId: thread.id, workspaceId: thread.workspaceId },
       mutations,

@@ -64,6 +64,16 @@ test("the items a slice can cut are tracked work, never a container or a message
     workOf(facts).map((f) => f.id),
     ["jira:SYN-45", "jira:SYN-61", "jira:SYN-102", "jira:SYN-26"],
   );
+  // An epic with none of its stories here, and a subtask, by their kind.
+  const alone: SliceFact[] = [
+    { id: jira("SYN-7"), state: "todo", updatedAt: at, kind: "epic" },
+    { id: jira("SYN-8"), state: "todo", updatedAt: at, kind: "subtask" },
+    { id: jira("SYN-9"), state: "todo", updatedAt: at, kind: "story" },
+  ];
+  assert.deepEqual(
+    workOf(alone).map((f) => f.id),
+    ["jira:SYN-9"],
+  );
   // Open first, then done, each in their keys' order.
   assert.deepEqual(built().items, ["jira:SYN-45", "jira:SYN-61", "jira:SYN-102", "jira:SYN-26"]);
 });

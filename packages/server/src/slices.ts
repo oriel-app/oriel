@@ -48,7 +48,7 @@ export function slicesView(
   }
   const shared = [...counts].toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   const sharedTitle = shared ? byId.get(shared)?.title : undefined;
-  const movable = set.items.some((id) => parseItemId(id)?.kind === "jira");
+  const anyMovable = set.items.some((id) => movable(id, byId.get(id)));
   return {
     id: set.id,
     items: set.items.map((id) => {
@@ -59,6 +59,7 @@ export function slicesView(
         done: record?.facets.state === "done",
         estimate: typeof estimate === "number" ? estimate : null,
         gone: !record,
+        movable: writable && movable(id, record),
       };
     }),
     slices: set.slices.map((slice) => ({
@@ -68,7 +69,9 @@ export function slicesView(
     needs: set.needs,
     stale: isStale(stale) ? stale : null,
     later:
-      writable && movable ? { name: sharedTitle ? `${sharedTitle}${laterSuffix}` : "Later" } : null,
+      writable && anyMovable
+        ? { name: sharedTitle ? `${sharedTitle}${laterSuffix}` : "Later" }
+        : null,
   };
 }
 
@@ -89,9 +92,14 @@ export function slicesIn(message: Message): { runId: Ulid; set: SliceSet } | nul
   return { runId: checked.value.runId, set: checked.value.slices };
 }
 
+// Whether a cut can move an item: an open item of the first Jira
+// connection, where a new epic with no target is made; anything else stays
+// where it is, and the lab says so.
+export const movable = (id: string, record: IndexRecord | undefined) =>
+  parseItemId(id)?.prefix === "jira" && record !== undefined && record.facets.state !== "done";
+
 // The mutations a cut proposes: a new epic named `later`, and each deferred
-// item that can move moved into it. Only an open Jira item can be moved;
-// anything else stays as it is, and the reply says so.
+// item that can move moved into it.
 export function cutMutations(
   set: SliceSet,
   records: readonly IndexRecord[],
@@ -99,12 +107,7 @@ export function cutMutations(
   later: string,
 ): { mutations: CapturedMutation[] } {
   const byId = new Map(records.map((r) => [r.id as string, r]));
-  const moved: ItemId[] = set.items.filter(
-    (id) =>
-      defer.includes(id) &&
-      parseItemId(id)?.kind === "jira" &&
-      byId.get(id)?.facets.state !== "done",
-  );
+  const moved: ItemId[] = set.items.filter((id) => defer.includes(id) && movable(id, byId.get(id)));
   if (!moved.length) return { mutations: [] };
   return {
     mutations: [

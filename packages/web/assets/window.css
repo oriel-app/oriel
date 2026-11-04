@@ -3142,6 +3142,16 @@ a.replies:hover {
   font-size: var(--text-sm);
 }
 
+.slices-pending {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.slices-figures[data-pending] {
+  opacity: 0.6;
+}
+
 .slices-problem {
   color: var(--danger);
 }

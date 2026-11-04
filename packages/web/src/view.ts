@@ -1039,7 +1039,8 @@ export type SlicesView = {
   id: string;
   // The items a slice can keep or defer: `estimate` null when it has none,
   // `gone` when the index no longer has it.
-  items: { id: string; done: boolean; estimate: number | null; gone: boolean }[];
+  // `movable`: a cut can move it to a later epic.
+  items: { id: string; done: boolean; estimate: number | null; gone: boolean; movable: boolean }[];
   slices: {
     name: string;
     defer: string[];

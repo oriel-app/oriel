@@ -219,7 +219,12 @@ export function turnShown(newId: () => Ulid, sliceFacts?: SliceFacts) {
         *ran(result: RunResult): Generator<AgentEvent> {
           if (hits.size) yield { kind: "search", runId, hits: [...hits.values()] };
           for (const block of previews) yield { kind: "block", runId, block };
-          if (result.outcome === "ok") kept.push(...shown.map((each) => ({ runId, shown: each })));
+          if (result.outcome !== "ok") return;
+          // A turn shows one proposal of slices: the last a finished run made.
+          if (shown.some((each) => each.kind === "slices"))
+            for (let i = kept.length - 1; i >= 0; i--)
+              if (kept[i]?.shown.kind === "slices") kept.splice(i, 1);
+          kept.push(...shown.map((each) => ({ runId, shown: each })));
         },
       };
     },

@@ -109,8 +109,10 @@ export const sketchRefusal: Validator<SketchRefusal> = union(
 // What a run's record and its log lines keep of a call's arguments: a
 // sketch's HTML, which may repeat what the agent read, as its size in bytes,
 // never its text.
+// Slices (the scope-lab spike), whose outcomes may repeat what the agent
+// read too, likewise.
 export const recordedArgs = (fn: string, args: readonly unknown[]): unknown[] => {
-  if (fn !== "sketch" || args.length === 0) return [...args];
+  if ((fn !== "sketch" && fn !== "slices") || args.length === 0) return [...args];
   const [html, ...rest] = args;
   const text = typeof html === "string" ? html : (JSON.stringify(html) ?? "");
   return [{ bytes: new TextEncoder().encode(text).length }, ...rest];

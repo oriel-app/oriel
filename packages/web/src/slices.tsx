@@ -5,9 +5,13 @@
 // index as it is now: each toggle asks the server again, which calls no
 // model. Points are what was recorded on items, never time. A cut becomes a
 // change set the person approves as any other.
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { AnswerChip, Markdown } from "./parts.tsx";
 import type { SliceFiguresView, SliceSideView, SlicesView } from "./view.ts";
+
+// A change set holds 20 changes: a new epic and 19 moves (core's
+// `maxCutMoves`, which the server checks again).
+const maxCutMoves = 19;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -59,6 +63,10 @@ export function SlicesFigure(props: {
   );
   const [later, setLater] = useState(view.later?.name ?? "");
   const [state, setState] = useState<"idle" | "making" | "made" | { problem: string }>("idle");
+  // Only the latest toggle's answer is shown, whatever order answers come in;
+  // until it comes, or if it fails, the figures say they're out of date.
+  const asked = useRef(0);
+  const [pending, setPending] = useState<"computing" | "failed" | null>(null);
   const slice = view.slices[picked];
   const cut = cuts[picked];
   const shown = figures[picked];
@@ -67,12 +75,17 @@ export function SlicesFigure(props: {
   const toggled = cut.size !== slice.defer.length || slice.defer.some((id) => !cut.has(id));
 
   const refigure = async (index: number, next: Set<string>) => {
+    const ask = ++asked.current;
+    setPending("computing");
     const query = new URLSearchParams({ defer: [...next].join(",") });
-    const response = await fetch(`${base}/figures?${query}`);
-    if (!response.ok) return;
+    const response = await fetch(`${base}/figures?${query}`).catch(() => null);
+    if (ask !== asked.current) return;
+    if (!response?.ok) return setPending("failed");
     // Our own server's reply, in the shape view.ts declares for both sides.
     const computed = (await response.json()) as SliceFiguresView;
+    if (ask !== asked.current) return;
     setFigures((all) => all.map((f, i) => (i === index ? computed : f)));
+    setPending(null);
   };
   const toggle = (id: string) => {
     const next = new Set(cut);
@@ -99,7 +112,12 @@ export function SlicesFigure(props: {
   };
 
   const stale = view.stale;
-  const staleIds = stale ? [...stale.changed, ...stale.gone, ...stale.added, ...stale.removed] : [];
+  const staleIds = stale
+    ? [...new Set([...stale.changed, ...stale.gone, ...stale.added, ...stale.removed])]
+    : [];
+  // What the cut moves: deferred items a later epic can take.
+  const moving = view.items.filter((item) => item.movable && cut.has(item.id)).length;
+  const staying = cut.size - moving;
   return (
     <figure class="answer-slices">
       <header class="slices-head">
@@ -130,7 +148,14 @@ export function SlicesFigure(props: {
           ). Oriel's figures are current; the agent's words may not be. Ask again to refresh them.
         </p>
       )}
-      <dl class="slices-figures" aria-live="polite">
+      {pending && (
+        <p class="slices-pending" role="status">
+          {pending === "computing"
+            ? "Computing…"
+            : "Oriel couldn't compute these figures for your change; they're for the cut before it."}
+        </p>
+      )}
+      <dl class="slices-figures" aria-live="polite" data-pending={pending ?? undefined}>
         <Side label="Keeps" side={shown.kept} tone="kept" />
         <Side label="Defers" side={shown.deferred} tone="deferred" />
         <Side label="Done already" side={shown.done} tone="done" />
@@ -227,7 +252,8 @@ export function SlicesFigure(props: {
           ) : (
             <>
               <label>
-                Move {plural(shown.deferred.items, "deferred item")} to a new epic
+                Move {plural(moving, "deferred item")} to a new epic
+                {staying > 0 && ` (${staying} can't move and stay where they are)`}
                 <input
                   type="text"
                   value={later}
@@ -238,11 +264,22 @@ export function SlicesFigure(props: {
               <button
                 type="button"
                 class="button primary"
-                disabled={state === "making" || shown.deferred.items === 0 || later.trim() === ""}
+                disabled={
+                  state === "making" ||
+                  pending !== null ||
+                  moving === 0 ||
+                  moving > maxCutMoves ||
+                  later.trim() === ""
+                }
                 onClick={() => void make()}
               >
                 Make a change set
               </button>
+              {moving > maxCutMoves && (
+                <p class="slices-problem">
+                  A change set moves at most {maxCutMoves} items; defer fewer, or cut twice.
+                </p>
+              )}
               {typeof state === "object" && <p class="slices-problem">{state.problem}</p>}
             </>
           )}

@@ -20,6 +20,10 @@ export const maxOutcomes = 4;
 export const maxOutcomeChars = 240;
 export const maxNeeds = 12;
 export const maxNeedChars = 160;
+// A cut's change set is a new epic and one move per deferred item, and a
+// change set holds at most 20 changes (SPEC §9, the server's default cap,
+// which the spike repeats here rather than plumb through).
+export const maxCutMoves = 19;
 
 // What `[[…]]` names in an outcome, as an answer's chip (decision 0032).
 const chipPattern = /\[\[\s*([^\][\s]+)\s*\]\]/g;
@@ -106,12 +110,15 @@ export const storedSliceSet: Validator<SliceSet> = object({
   evidence: array(object({ id: itemId, updatedAt: instant })),
 });
 
-// The items a slice can cut: tracked work (it has a state) that isn't the
-// container of another item in the workstream, as an epic is of its
-// stories.
+// The items a slice can cut: tracked work (it has a state) that is neither
+// an epic nor a subtask, in the words every source's `kind` uses, nor the
+// container of another item in the workstream.
+const uncut = new Set(["epic", "subtask"]);
 export function workOf(facts: readonly SliceFact[]): SliceFact[] {
   const containers = new Set(facts.flatMap((f) => (f.container ? [f.container] : [])));
-  return facts.filter((f) => f.state !== undefined && !containers.has(f.id));
+  return facts.filter(
+    (f) => f.state !== undefined && !uncut.has(f.kind ?? "") && !containers.has(f.id),
+  );
 }
 
 const open = (fact: SliceFact | undefined) => fact !== undefined && fact.state !== "done";
@@ -153,7 +160,7 @@ export function buildSlices(
       if (!fact)
         return refuse(
           inRegion.has(deferred)
-            ? `${at}: ${deferred} holds other items; defer its items instead`
+            ? `${at}: ${deferred} is an epic, a subtask or holds other items; defer stories instead`
             : `${at}: ${deferred} isn't one of the workstream's items`,
         );
       if (!open(fact)) return refuse(`${at}: ${deferred} is done, so it can't be deferred`);
