@@ -30,7 +30,14 @@ export type FixtureValue = string | number | boolean;
 export type FixtureCell =
   | FixtureValue
   | null
-  | { value?: FixtureValue; formula?: string; formatted?: string; note?: string };
+  | {
+      value?: FixtureValue;
+      formula?: string;
+      formatted?: string;
+      note?: string;
+      // A value an array formula elsewhere put here: nobody entered it.
+      spilled?: true;
+    };
 
 export type FixtureTab = {
   // Google's `sheetId`, which survives a rename.
@@ -121,6 +128,7 @@ const cell: Validator<FixtureCell> = union(
     value: optional(value),
     formula: optional(string),
     formatted: optional(string),
+    spilled: optional(literal(true)),
     note: optional(string),
   }),
 );
@@ -470,6 +478,8 @@ function tabProblems(tab: FixtureTab): string[] {
       if (cell === null || typeof cell !== "object") continue;
       if (cell.formula !== undefined && (!cell.formula.startsWith("=") || cell.value === undefined))
         problems.push("a formula starts with = and has the value Google computed");
+      if (cell.spilled && (cell.value === undefined || cell.formula !== undefined))
+        problems.push("a spilled cell has a value and no formula of its own");
       if (cell.formatted !== undefined && typeof cell.value !== "number")
         problems.push("only a number is shown another way");
     }

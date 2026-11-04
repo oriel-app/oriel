@@ -224,8 +224,9 @@ function cellData(cell: FixtureCell | undefined): Record<string, unknown> {
   const formula = typeof cell === "object" ? cell.formula : undefined;
   const note = typeof cell === "object" ? cell.note : undefined;
   const data: Record<string, unknown> = {};
+  const spilled = typeof cell === "object" && cell.spilled;
   if (formula !== undefined) data.userEnteredValue = { formulaValue: formula };
-  else if (held !== null) data.userEnteredValue = typed(held);
+  else if (held !== null && !spilled) data.userEnteredValue = typed(held);
   if (held !== null) {
     data.effectiveValue = typed(held);
     data.formattedValue = shown(cell);

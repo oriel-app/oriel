@@ -8,7 +8,7 @@ import type { FieldReader, FieldValues, ItemId } from "@oriel/core";
 import { parseItemId } from "@oriel/core";
 import { rowKey, tabPart } from "./attrs.ts";
 import type { Google, TabInfo } from "./google.ts";
-import { readGrid } from "./grid.ts";
+import { maxRows, readGrid } from "./grid.ts";
 import { type FieldName, type SheetsPicks, type TabMapping } from "./mapping.ts";
 import { type Cell, type Entered, type Grid, type TableRow, tableOf } from "./table.ts";
 
@@ -43,11 +43,13 @@ export const valueOf = (entered: Entered | undefined): unknown =>
 export const cellsAt = (grid: Grid, index: number): readonly (Cell | null)[] =>
   grid.rows[index - grid.startRow] ?? [];
 
-// A digest of everything a row holds as entered, so any edit to it moves
-// it and an edit elsewhere doesn't: a revert's check that nobody touched a
-// row Oriel added.
+// A digest of everything a row holds as entered, and its notes, so any edit
+// to it moves it and an edit elsewhere doesn't: a revert's check that nobody
+// touched a row Oriel added.
 export function cellsDigest(cells: readonly (Cell | null)[]): string {
-  const held = cells.map((cell) => (cell?.entered === undefined ? null : cell.entered));
+  const held = cells.map((cell) =>
+    cell ? (cell.note === null ? (cell.entered ?? null) : [cell.entered ?? null, cell.note]) : null,
+  );
   while (held.length && held.at(-1) === null) held.pop();
   return createHash("sha256").update(JSON.stringify(held)).digest("hex").slice(0, 16);
 }
@@ -105,7 +107,7 @@ export function rowFinder(
     if (!tab) return "gone";
     const grid = await readGrid(google, spreadsheet, tab, mapping, true);
     if (grid === "gone") return grid;
-    const table = tableOf(grid, mapping);
+    const table = tableOf(grid, mapping, maxRows);
     if ("stopped" in table) return table;
     for (const row of table.rows)
       where.set(rowKey(spreadsheet, sheetId, row.key), { spreadsheet, sheetId });

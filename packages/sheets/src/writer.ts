@@ -33,6 +33,7 @@ import {
 import { rowKey } from "./attrs.ts";
 import { type Google, googleReads, maxBackoffMs, maxRetries } from "./google.ts";
 import type { FieldName } from "./mapping.ts";
+import type { Cell } from "./table.ts";
 import { isSheetsOp, type SheetsArgs, type SheetsOp, sheetsOps } from "./ops.ts";
 import { addRowBody, type CellValue, deleteRowBody, editBody } from "./requests.ts";
 import {
@@ -49,6 +50,11 @@ import { sheetsOrigin } from "./stand-in.ts";
 
 const requestTimeoutMs = 60_000;
 const source = "Google Sheets";
+
+// A cell showing a value nobody entered there: an array formula elsewhere
+// fills it, and a value written over it would break that formula.
+const spilled = (cell: Cell | null | undefined) =>
+  cell !== null && cell !== undefined && cell.entered === null && cell.shown !== "";
 
 // A value as a person reads it in a message: short, on one line.
 function said(value: unknown): string {
@@ -186,10 +192,17 @@ export function sheetsWriter(
     const at = await target(google, request.target, request.expectedStableId);
     const column = at.columns[field];
     if (column === undefined) throw new Error(`the row's tab maps no ${field} column`);
+    // A key column that is the title too finds the row, so it isn't edited.
+    if (column === at.columns.key)
+      throw new Error(`the ${field} cell is the row's key too, and Oriel never changes a key`);
     const cells = cellsAt(at.grid, at.index);
     const entered = cells[column]?.entered;
     if (entered !== null && typeof entered === "object")
       throw new Error(`the ${field} cell holds a formula, and Oriel never writes over one`);
+    if (spilled(cells[column]))
+      throw new Error(
+        `the ${field} cell shows a value a formula elsewhere put there, and Oriel never writes over one`,
+      );
     if (
       at.grid.merges.some(
         (m) =>
@@ -254,6 +267,19 @@ export function sheetsWriter(
         (row[keyColumn]?.shown ?? "").normalize("NFC").trim() === key,
     );
     if (taken) throw new Error("a row in the tab has that key already");
+    // Two fields in one column, as a key that is the title too, must agree.
+    const clash = given.find(([field, value]) =>
+      given.some(
+        ([other, v]) =>
+          other !== field && read.columns[other] === read.columns[field] && v !== value,
+      ),
+    );
+    if (clash) throw new Error(`the ${clash[0]} column is another field's too, and they differ`);
+    // A column an array formula above fills down: a value there would break it.
+    const above = cellsAt(read.grid, read.last);
+    const filled = given.find(([field]) => spilled(above[read.columns[field] ?? 0]));
+    if (filled && read.last > read.mapping.header - 1)
+      throw new Error(`a formula fills the ${filled[0]} column, and Oriel never writes over one`);
     const width = Math.max(...given.map(([field]) => read.columns[field] ?? 0)) + 1;
     const cells: CellValue[] = Array.from({ length: width }, () => null);
     for (const [field, value] of given) cells[read.columns[field] ?? 0] = value;

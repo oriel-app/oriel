@@ -187,3 +187,26 @@ test("a read-only connection builds no writer: its change sets are shown, never 
   assert.deepEqual(nth(diff.lines, 0).fields, [{ name: "status", before: "To do", after: "Done" }]);
   await assert.rejects(approve(sets, set.id), /isn't configured here/);
 });
+
+test("reverting an added row stops if someone left a note on it since", async () => {
+  const { sets, run, cell, standIn } = await setup();
+  const set = await sets.capture(run, [
+    {
+      op: "addRow",
+      target: null,
+      ref: null,
+      args: { spreadsheet: tracker, sheetId: 1100, values: { key: "FW-110", title: "Night" } },
+    },
+  ]);
+  await approve(sets, set.id);
+  assert.deepEqual((await sets.apply(set.id)).failed, []);
+  standIn.change(tracker, {
+    kind: "set",
+    sheetId: 1100,
+    cell: "C13",
+    value: { value: "Night", note: "Keep this one." },
+  });
+  const revert = await sets.revert(set.id);
+  assert.ok("conflicts" in revert);
+  assert.deepEqual(cell(12, 0), "FW-110");
+});

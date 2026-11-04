@@ -18,6 +18,7 @@ import { rowKey } from "./attrs.ts";
 import { fixturePicks } from "./declared-fixture.ts";
 import { type FixtureCell, loadSheetsFixture } from "./fixture.ts";
 import { googleReads } from "./google.ts";
+import type { SheetsPicks } from "./mapping.ts";
 import { sheetsSource } from "./source.ts";
 import { fixtureGoogle, type StandInCall, standInToken } from "./stand-in.ts";
 import { sheetsWriter } from "./writer.ts";
@@ -64,12 +65,12 @@ const request = (
     ...(seen ? { seen } : {}),
   });
 
-function setup() {
+function setup(picks: SheetsPicks = fixturePicks(fixture)) {
   const standIn = fixtureGoogle(fixture);
   const writer = sheetsWriter(
     {
       credential,
-      picks: fixturePicks(fixture),
+      picks,
       prefix: "sheets",
       fetch: standIn.fetch,
       wait: async () => {},
@@ -400,3 +401,78 @@ for (const name of ["sheets-edit-status", "sheets-add-row"])
     }
     assert.equal(writes().length, golden.mutations.length);
   });
+
+test("a key column that is the title too is never edited, and a new row's key and title must agree", async () => {
+  // Sprint 41's tickets as both key and title.
+  const picks: SheetsPicks = {
+    spreadsheets: [
+      {
+        id: tracker,
+        tabs: [
+          { sheetId: 2141, header: 1, end: "blank", hidden: false, key: "Ticket", title: "Ticket" },
+        ],
+      },
+    ],
+  };
+  const { writer, writes } = setup(picks);
+  await assert.rejects(
+    writer.apply(
+      request("setField", row(tracker, 2141, "00411"), { field: "title", value: "00419" }),
+    ),
+    refused(false, /is the row's key too, and Oriel never changes a key/),
+  );
+  await assert.rejects(
+    writer.apply(
+      request("addRow", null, {
+        spreadsheet: tracker,
+        sheetId: 2141,
+        values: { key: "00415", title: "x" },
+      }),
+    ),
+    refused(false, /column is another field's too, and they differ/),
+  );
+  assert.deepEqual(writes(), []);
+  await writer.apply(
+    request("addRow", null, {
+      spreadsheet: tracker,
+      sheetId: 2141,
+      values: { key: "00415", title: "00415" },
+    }),
+  );
+});
+
+test("a tab past the rows Oriel reads takes no new row", async () => {
+  const { writer, writes } = setup();
+  await assert.rejects(
+    writer.apply(
+      request("addRow", null, {
+        spreadsheet: idOf("archive"),
+        sheetId: 6100,
+        values: { key: "FW-B0001", title: "x" },
+      }),
+    ),
+    refused(false, /past the rows Oriel reads/),
+  );
+  assert.deepEqual(writes(), []);
+});
+
+test("a cell an array formula fills is never written, nor a new row under one", async () => {
+  const { standIn, writer, writes } = setup();
+  // An ARRAYFORMULA in the header fills Owner down the tab.
+  for (const at of ["E3", "E12"])
+    standIn.change(tracker, {
+      kind: "set",
+      sheetId: 1100,
+      cell: at,
+      value: { value: "Rowan Pike", spilled: true },
+    });
+  await assert.rejects(
+    writer.apply(request("setField", fw102, { field: "assignee", value: "Amara Okafor" })),
+    refused(false, /a formula elsewhere put there/),
+  );
+  await assert.rejects(
+    writer.apply(request("addRow", null, { ...night, values: { ...night.values, assignee: "x" } })),
+    refused(false, /a formula fills the assignee column/),
+  );
+  assert.deepEqual(writes(), []);
+});
