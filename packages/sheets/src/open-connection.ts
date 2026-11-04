@@ -13,6 +13,7 @@ import {
   type Opened,
   type OpenVia,
   optional,
+  refine,
   string,
   type ToOpen,
 } from "@oriel/core";
@@ -23,7 +24,9 @@ import { type SheetsSource, sheetsSource } from "./source.ts";
 
 export type OpenedSheets = Opened & { source: SheetsSource };
 
-const tokensShape = object({ access: string, refresh: optional(string), expiresAt: number });
+// A token is printable ASCII, so a header can't refuse it and quote it.
+const token = refine(string, (text) => /^[\x21-\x7e]+$/.test(text), "expected a token");
+const tokensShape = object({ access: token, refresh: optional(string), expiresAt: number });
 
 // The picks a connection's options hold, or none when they aren't picks.
 export function picksOf(options: Readonly<Record<string, unknown>>): SheetsPicks {

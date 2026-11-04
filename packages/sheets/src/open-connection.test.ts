@@ -41,6 +41,7 @@ test("an expired or missing token fails the whole sync, read as signed out", asy
   for (const secret of [
     JSON.stringify({ access: standInToken, expiresAt: Date.parse(now) - 1 }),
     "not json",
+    JSON.stringify({ access: "two\nlines", expiresAt: Date.parse(now) + 60_000 }),
     null,
   ]) {
     const sheets = await opened(secret);
