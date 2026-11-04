@@ -10,7 +10,7 @@ import {
   sheetsPresentation,
 } from "./attrs.ts";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
-import { sheetsPicks } from "./mapping.ts";
+import { sheetsOptions } from "./mapping.ts";
 import { type SheetsContext, sheetsNamespace } from "./namespace.ts";
 import { openSheets, type SheetsWrites } from "./open-connection.ts";
 import { sheetsOverview } from "./overview.ts";
@@ -43,7 +43,8 @@ export const sheetsDeclaration = {
   // setField and addRow (OA-223): 835 bytes.
   budget: 900,
   open: openSheets,
-  // The spreadsheets the person picked, and each tab's mapping.
-  options: sheetsPicks,
+  // The spreadsheets the person picked, each tab's mapping, and whether
+  // it is read-only.
+  options: sheetsOptions,
   fixture: sheetsDeclaredFixture,
 } satisfies SourceDeclaration<SheetsContext, never, SheetsWrites>;

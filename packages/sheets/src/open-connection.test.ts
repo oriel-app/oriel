@@ -4,6 +4,7 @@ import { instant, ulid } from "@oriel/core";
 import { fixturePicks } from "./declared-fixture.ts";
 import { loadSheetsFixture } from "./fixture.ts";
 import { SheetsError } from "./google.ts";
+import { sheetsDeclaration } from "./declaration.ts";
 import { openSheets, sheetsProblem } from "./open-connection.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 
@@ -92,4 +93,12 @@ test("a connection names its spreadsheets and tabs for what a change set wrote",
   const tracker = fixture.spreadsheets.find((s) => s.slug === "tracker")?.id ?? "";
   assert.equal(names.get(tracker), "Ferrowick delivery tracker");
   assert.equal(names.get(`${tracker}/2142`), "Sprint 42");
+});
+
+test("the read-only switch is one of the options a person sets, which configuring keeps", () => {
+  const options = { ...fixturePicks(fixture), readOnly: true };
+  const kept = sheetsDeclaration.options(options);
+  assert.ok(kept.ok);
+  assert.equal(kept.value.readOnly, true);
+  assert.equal(sheetsDeclaration.options({ ...options, readOnly: "yes" }).ok, false);
 });

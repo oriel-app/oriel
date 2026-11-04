@@ -95,6 +95,8 @@ export {
   fieldNames,
   mappingPrint,
   type SheetsPicks,
+  type SheetsOptions,
+  sheetsOptions,
   sheetsPicks,
   type SpreadsheetPick,
   type States,
