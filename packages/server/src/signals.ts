@@ -56,6 +56,8 @@ type Lookups = {
   byId: ReadonlyMap<string, IndexRecord>;
   members: (workstream: SignalInput["workstreams"][number]) => IndexRecord[];
   doneAt: ReadonlyMap<string, Instant>;
+  // Chat messages by the stable ID of each item they name.
+  named: ReadonlyMap<string, readonly IndexRecord[]>;
 };
 
 function lookups(input: SignalInput): Lookups {
@@ -70,6 +72,20 @@ function lookups(input: SignalInput): Lookups {
     members: (workstream) =>
       [...new Set(workstream.members.map(identityOf))].flatMap((key) => byIdentity.get(key) ?? []),
     doneAt,
+    named: new Map(
+      [
+        ...Map.groupBy(
+          input.records.flatMap((record) =>
+            record.facets.kind === "message"
+              ? [...new Set((record.facets.references ?? []).map((ref) => ref.stableId))].map(
+                  (stableId) => ({ stableId, record }),
+                )
+              : [],
+          ),
+          ({ stableId }) => stableId,
+        ),
+      ].map(([stableId, list]) => [stableId, list.map(({ record }) => record)]),
+    ),
   };
 }
 
@@ -156,12 +172,7 @@ function joined(
 function namedAfterDone(input: SignalInput, item: IndexRecord, at: Lookups): IndexRecord[] {
   if (item.facets.state !== "done") return [];
   const since = at.doneAt.get(identityOf(item)) ?? item.updatedAt;
-  return input.records.filter(
-    (record) =>
-      record.facets.kind === "message" &&
-      record.updatedAt > since &&
-      (record.facets.references ?? []).some((ref) => ref.stableId === item.stableId),
-  );
+  return (at.named.get(item.stableId) ?? []).filter((record) => record.updatedAt > since);
 }
 
 const inProgress = (record: IndexRecord) =>
