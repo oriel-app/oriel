@@ -42,9 +42,9 @@ export type DeclaredFacet = {
   label: string;
   // Its value on one of the source's index records.
   of: (record: IndexRecord) => FacetValue;
-  // What it measures, when that is something core reads across sources: an
-  // estimate, whose rises Noticed looks for (draft-noticed).
-  measures?: "estimate";
+  // Its values add up across items, as a sum of work does, so a rise in
+  // their total is worth a look (Noticed, docs/decisions/draft-noticed.md).
+  sums?: true;
 };
 
 // A source's declared facets, by a key of its own choosing.

@@ -30,7 +30,7 @@ const usage = `usage: pnpm evals:noticed freeze <climb> --cap <dollars> --reps <
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 async function pool<T, R>(items: readonly T[], size: number, run: (item: T) => Promise<R>) {
-  const out: R[] = new Array(items.length);
+  const out: R[] = Array.from({ length: items.length });
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(size, items.length) }, async () => {

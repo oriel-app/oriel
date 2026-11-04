@@ -38,6 +38,7 @@ import {
   type SlackView,
 } from "@oriel/web/view";
 import { nameOf } from "./names.ts";
+import type { NoticedService } from "./noticed.ts";
 import { ThreadBusy, type Turns } from "./turns.ts";
 import { identity, memberOf } from "./views.ts";
 
@@ -120,6 +121,9 @@ export type ActionDeps = {
   // Moves the workspace's last-seen stamp to `at` and change log entry
   // `seq`, never back.
   markSeen(at: Instant, seq: number): void;
+  // Noticed's dismissals and pins (docs/decisions/draft-noticed.md); absent
+  // where the app has none.
+  noticed?: () => NoticedService;
   // Calls `then` once `ms` have passed, unless the call it gives back
   // cancels that first.
   later(ms: number, then: () => void): () => void;
@@ -919,7 +923,30 @@ const handlers = {
     deps.markSeen(seenAt, seq);
     return { output: { seenAt }, undo: null, changed: null, events: [] };
   },
+
+  "noticed.dismiss": async ({ signal }, _actor, deps) => {
+    if (!(await noticedOf(deps).dismiss(signal)))
+      throw new ActionError("not-found", "That card isn't there any more.");
+    return { output: {}, undo: null, changed: null, events: [] };
+  },
+
+  "pin.add": async ({ signal }, _actor, deps) => {
+    const pinned = await noticedOf(deps).pin(signal);
+    if ("refused" in pinned) throw new ActionError("conflict", pinned.refused);
+    return { output: pinned, undo: null, changed: null, events: [] };
+  },
+
+  "pin.remove": async ({ pin }, _actor, deps) => {
+    if (!noticedOf(deps).unpin(pin as Ulid)) throw new ActionError("not-found", "no such pin");
+    return { output: {}, undo: null, changed: null, events: [] };
+  },
 } satisfies { [N in ActionName]: Handler<N> };
+
+const noticedOf = (deps: ActionDeps) => {
+  const noticed = deps.noticed?.();
+  if (!noticed) throw new ActionError("not-found", "Noticed isn't on here");
+  return noticed;
+};
 
 // Why `actor` may not call the action, or null. A review-link holder may only
 // decide or dismiss the change set the link names, as the change set engine

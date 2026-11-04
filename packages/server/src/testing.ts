@@ -153,6 +153,8 @@ export type TestOptions = {
   setup?: SetupOptions;
   // Any Jira Cloud site may be connected, as on the desktop app.
   anySite?: boolean;
+  // What Noticed's pass runs on (docs/decisions/draft-noticed.md).
+  noticer?: AppOptions["noticer"];
 };
 
 // The account SYN in memory answers when the window connects it.
@@ -214,6 +216,7 @@ export async function testApp(
     ...(options.setup ? { setup: options.setup } : {}),
     themes: ["graphite", "broadsheet"],
     ...(options.titler ? { titler: options.titler } : {}),
+    ...(options.noticer ? { noticer: options.noticer } : {}),
     log: (message, fields = {}) => logged.push({ message, fields }),
   });
   t.after(() => app.close());

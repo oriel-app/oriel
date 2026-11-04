@@ -173,7 +173,7 @@ export async function buildNoticedWorld(
       }
       case "estimate": {
         const record = must(plant.item);
-        const key = estimateKey(parseItemId(record.id)?.prefix ?? "") ?? "estimate";
+        const key = estimateKey(parseItemId(record.id)?.prefix ?? "")?.key ?? "estimate";
         record.facets.estimate = plant.to;
         log(record, at(plant.daysAgo), {
           declared: { [key]: { before: plant.from, after: plant.to } },

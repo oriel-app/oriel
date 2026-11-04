@@ -98,6 +98,9 @@ const words: { [N in ActionName]: Words } = {
   "source.connect": () => ["Connected a source", "connect a source"],
   "source.sync": (input) => [`Synced ${input["source"]}`, `sync ${input["source"]}`],
   "overview.leave": () => ["Left the overview", "leave the overview"],
+  "noticed.dismiss": () => ["Dismissed a Noticed card", "dismiss a Noticed card"],
+  "pin.add": () => ["Pinned a block to the overview", "pin a block"],
+  "pin.remove": () => ["Removed a pin", "remove a pin"],
 };
 
 // Why what a removal took out can't come back, by source, as its

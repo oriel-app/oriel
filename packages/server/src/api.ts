@@ -269,10 +269,6 @@ const windowWorkstream = refine(
   "expected a cluster or picked items",
 );
 const tinyBody = 256;
-// A Noticed card's signal, by its ID.
-const signalBody = object({
-  signal: refine(string, (id) => id.length > 0 && id.length <= 200, "expected a signal's ID"),
-});
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
 const zoomId = union(literal("cluster"), literal("list"), literal("item"));
 const windowEvent = union(
@@ -826,8 +822,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/noticed/dismiss"),
       async run(_, request) {
-        const { signal } = await readJson(request, tinyBody, signalBody);
-        if (!(await mustNoticed().dismiss(signal))) throw new Refused(404, "no such card");
+        const typed = await readJson(request, tinyBody, object({ signal: unknown }));
+        await deps.dispatch("noticed.dismiss", checked("noticed.dismiss", typed), user);
         return json(200, {});
       },
     },
@@ -836,10 +832,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/noticed/pin"),
       async run(_, request) {
-        const { signal } = await readJson(request, tinyBody, signalBody);
-        const pinned = await mustNoticed().pin(signal);
-        if ("refused" in pinned) throw new Refused(409, pinned.refused);
-        return json(201, pinned);
+        const typed = await readJson(request, tinyBody, object({ signal: unknown }));
+        return json(201, await deps.dispatch("pin.add", checked("pin.add", typed), user));
       },
     },
     {
@@ -847,7 +841,7 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/pins/:id/remove"),
       async run([id = ""], request) {
         await readJson(request, tinyBody, emptyBody);
-        if (!mustNoticed().unpin(id as Ulid)) throw new Refused(404, "no such pin");
+        await deps.dispatch("pin.remove", { pin: id as Ulid }, user);
         return json(200, {});
       },
     },

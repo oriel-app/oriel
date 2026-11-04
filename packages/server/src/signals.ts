@@ -32,17 +32,18 @@ export type SignalInput = {
   workstreams: readonly { id: string; name: string; members: readonly WorkstreamMember[] }[];
   // When each workstream's threads were last active.
   threadActivity: ReadonlyMap<string, Instant>;
-  // The declared facet each source's estimate is logged under, if any.
-  estimateKey: (source: string) => string | null;
+  // The declared facet whose values each source's items add up, if any.
+  estimateKey: (source: string) => { key: string; label: string } | null;
   now: Instant;
 };
 
-// The declared facet a source logs its estimate under, by its connection's
-// prefix; null for a source that doesn't estimate.
-export const estimateKey = (source: string): string | null => {
+// The declared facet whose values a source's items add up, such as Jira's
+// estimate, by its connection's prefix, with its label; null for none.
+export const estimateKey = (source: string): { key: string; label: string } | null => {
   const kind = parseItemId(`${source}:x`)?.kind;
   const facets = (kind && declarationOf(kind)?.facets) || {};
-  return Object.entries(facets).find(([, facet]) => facet.measures === "estimate")?.[0] ?? null;
+  const found = Object.entries(facets).find(([, facet]) => facet.sums);
+  return found ? { key: found[0], label: found[1].label } : null;
 };
 
 const identity = (source: string, stableId: string) => `${source}\u0000${stableId}`;
@@ -110,7 +111,7 @@ function estimateChanges(
   const found = new Map<string, { record: IndexRecord; before: number; after: number }>();
   for (const entry of input.changes) {
     if (daysSince(entry.at, input.now) >= within) continue;
-    const key = input.estimateKey(entry.source);
+    const key = input.estimateKey(entry.source)?.key;
     const change = key ? entry.facets.declared?.[key] : undefined;
     const record = wanted.get(identity(entry.source, entry.stableId));
     if (!change || !record) continue;
@@ -121,6 +122,15 @@ function estimateChanges(
   }
   return [...found.values()].filter((change) => change.after !== change.before);
 }
+
+// What a workstream's summed facet is called, by the source of its first
+// changed item, lower-cased in a sentence: "estimate".
+const labelOf =
+  (input: SignalInput) =>
+  (changes: readonly { record: IndexRecord }[]): string =>
+    (
+      input.estimateKey(parseItemId(changes[0]?.record.id ?? "")?.prefix ?? "")?.label ?? "Total"
+    ).toLowerCase();
 
 // Items whose container became `container` within `within` days.
 function joined(
@@ -278,7 +288,7 @@ export function runSignalRead(
 // The rules, each the same for every signal of its kind.
 export const signalRules: Record<SignalKind, string> = {
   stalled: `An open workstream with items not done, and no member update or thread activity in ${stuckDays} days`,
-  drift: "A workstream whose estimates rose by 5 points or more, or by a quarter, in 14 days",
+  drift: "A workstream whose summed estimates rose by 5 or more, or by a quarter, in 14 days",
   overloaded: "A person with at least 5 items in progress, twice the median or more",
   contradicted: "A chat message that names an item after it was marked done",
   scope: "An epic that gained 3 items or more, and a quarter or more of its size, in 7 days",
@@ -287,6 +297,7 @@ export const signalRules: Record<SignalKind, string> = {
 // Every signal that holds now, heaviest first.
 export function signalsOf(input: SignalInput): Signal[] {
   const at = lookups(input);
+  const label = labelOf(input);
   const found: Signal[] = [];
 
   for (const workstream of input.workstreams) {
@@ -326,12 +337,12 @@ export function signalsOf(input: SignalInput): Signal[] {
     const before = changes.reduce((sum, change) => sum + change.before, 0);
     const after = changes.reduce((sum, change) => sum + change.after, 0);
     const rise = after - before;
-    if (rise >= 5 || (rise > 0 && before > 0 && rise / before >= 0.25 && rise >= 3))
+    if (rise >= 5 || (before > 0 && rise / before >= 0.25 && rise >= 3))
       found.push({
         id: `drift:${workstream.id}`,
         kind: "drift",
         subject: { kind: "workstream", id: workstream.id, name: workstream.name },
-        headline: `${workstream.name}: estimates rose from ${before} to ${after} points in 14 days, across ${plural(changes.length, "item")}`,
+        headline: `${workstream.name}: ${label(changes)} rose from ${before} to ${after} in 14 days, across ${plural(changes.length, "item")}`,
         rule: signalRules.drift,
         weight: weights.moved * changes.length + 1,
         fingerprint: `after=${after}`,

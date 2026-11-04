@@ -133,7 +133,7 @@ export const jiraDeclaredFacets = {
   estimate: {
     label: "Estimate",
     of: (record) => record.facets.estimate ?? null,
-    measures: "estimate",
+    sums: true,
   },
 } satisfies DeclaredFacets;
 

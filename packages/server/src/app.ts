@@ -964,6 +964,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     markSeen: (at, seq) => markSeen(db, workspaceId, at, seq),
+    // Made once the overview's reads are, below; no action runs before.
+    noticed: () => noticed,
     turns: conversation,
     changeSets: sets,
     applied: (set) => applied(set),
