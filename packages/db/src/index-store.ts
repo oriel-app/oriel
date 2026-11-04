@@ -42,9 +42,17 @@ const itemRow = object({
 const sourceRow = object({
   cursor: nullable(string),
   synced_at: nullable(refine(string, isInstant, "expected an instant")),
+  new_items: number,
+  changed_items: number,
+  removed_items: number,
+});
+const countsRow = object({
+  rows: number,
+  new_items: nullable(number),
+  changed_items: nullable(number),
+  removed_items: nullable(number),
 });
 const versionRow = object({ version: nullable(number) });
-const existsRow = object({ found: number });
 const stableIdRow = object({ stable_id: string });
 const referenceRow = object({
   source: string,
@@ -122,6 +130,11 @@ function frozen<T>(value: T): T {
 
 export type IndexStore = ReturnType<typeof indexStore>;
 
+// What a source's last sync changed: items new to the index or back from
+// gone, items it changed, and items gone from the source. A disconnect
+// isn't a sync, and counts none.
+export type SyncCounts = { new: number; changed: number; removed: number };
+
 // The index the sync worker writes and the window, `search()` and the stale
 // marker read. One complete sync of a source is one snapshot version. Run one
 // sync at a time per workspace.
@@ -130,12 +143,14 @@ export function indexStore(db: DatabaseSync) {
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
   const upsert = db.prepare(`
-    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot, added_in)
+    values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
     on conflict (workspace_id, source, stable_id) do update set
       item_id = excluded.item_id, title = excluded.title, location = excluded.location,
       updated_at = excluded.updated_at, facets = excluded.facets, attrs = excluded.attrs,
-      snapshot = excluded.snapshot, gone_at = null
+      snapshot = excluded.snapshot, gone_at = null,
+      added_in = case when items.gone_at is not null and items.snapshot <= ?11
+        then excluded.added_in else items.added_in end
     where items.item_id is not excluded.item_id or items.title is not excluded.title
       or items.location is not excluded.location or items.updated_at is not excluded.updated_at
       or items.facets is not excluded.facets or items.attrs is not excluded.attrs
@@ -182,13 +197,27 @@ export function indexStore(db: DatabaseSync) {
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
-  const changedIn = db.prepare(
-    "select exists (select 1 from items where workspace_id = ? and source = ? and snapshot = ?) as found",
+  // The version of a source's last sync that finished and changed something:
+  // what its syncs since tagged, a crashed one's too, is theirs to claim.
+  const selectSince = db.prepare(
+    "select max(version) as version from snapshots where workspace_id = ? and source = ?",
   );
+  // What the syncs since `?3` changed, from the items they tagged: live and
+  // added since, new; live and added before, changed; gone, removed, unless
+  // it was new since too. `rows` counts them all.
+  const changedIn = db.prepare(`
+    select count(*) as rows,
+      sum(gone_at is null and added_in > ?3) as new_items,
+      sum(gone_at is null and coalesce(added_in, 0) <= ?3) as changed_items,
+      sum(gone_at is not null and coalesce(added_in, 0) <= ?3) as removed_items
+    from items where workspace_id = ?1 and source = ?2 and snapshot > ?3`);
   const saveSource = db.prepare(`
-    insert into sources (workspace_id, source, cursor, synced_at) values (?, ?, ?, ?)
+    insert into sources (workspace_id, source, cursor, synced_at, new_items, changed_items, removed_items)
+    values (?, ?, ?, ?, ?, ?, ?)
     on conflict (workspace_id, source) do update set
-      cursor = coalesce(excluded.cursor, sources.cursor), synced_at = excluded.synced_at`);
+      cursor = coalesce(excluded.cursor, sources.cursor), synced_at = excluded.synced_at,
+      new_items = excluded.new_items, changed_items = excluded.changed_items,
+      removed_items = excluded.removed_items`);
   const insertSnapshot = db.prepare(
     "insert into snapshots (workspace_id, version, source, taken_at) values (?, ?, ?, ?)",
   );
@@ -205,7 +234,7 @@ export function indexStore(db: DatabaseSync) {
     "select stable_id from items where workspace_id = ? and source = ? and gone_at is not null order by stable_id",
   );
   const selectSource = db.prepare(
-    "select cursor, synced_at from sources where workspace_id = ? and source = ?",
+    "select cursor, synced_at, new_items, changed_items, removed_items from sources where workspace_id = ? and source = ?",
   );
 
   // A disconnected connection's items, as decision 0049 has them forgotten.
@@ -375,6 +404,8 @@ export function indexStore(db: DatabaseSync) {
       declared: DeclaredFacets = {},
     ) {
       const version = snapshot(workspaceId) + 1;
+      const last = versionRow(selectSince.get(workspaceId, source));
+      const since = last.ok ? (last.value.version ?? 0) : 0;
       const gone = (from: SourceKind, stableId: string) =>
         logChange.run(workspaceId, from, stableId, version, now, "{}", 1);
       return {
@@ -400,6 +431,7 @@ export function indexStore(db: DatabaseSync) {
                 JSON.stringify(r.facets),
                 JSON.stringify(r.attrs),
                 version,
+                since,
               );
               // Compared as the index reads both back.
               const changed =
@@ -453,11 +485,22 @@ export function indexStore(db: DatabaseSync) {
         finish(cursor: string | null, finishedAt: Instant): number {
           written();
           return transaction(db, () => {
-            saveSource.run(workspaceId, source, cursor, finishedAt);
+            const counted = countsRow(changedIn.get(workspaceId, source, since));
+            if (!counted.ok)
+              throw new Error(`corrupt sync counts: ${JSON.stringify(counted.issues)}`);
+            const { rows, new_items, changed_items, removed_items } = counted.value;
+            saveSource.run(
+              workspaceId,
+              source,
+              cursor,
+              finishedAt,
+              new_items ?? 0,
+              changed_items ?? 0,
+              removed_items ?? 0,
+            );
             pruneChanges.run(workspaceId, keptSince(finishedAt));
             pruneWaiting.run(workspaceId, keptSince(finishedAt));
-            const changed = existsRow(changedIn.get(workspaceId, source, version));
-            if (!changed.ok || !changed.value.found) return version - 1;
+            if (rows === 0) return version - 1;
             insertSnapshot.run(workspaceId, version, source, finishedAt);
             return version;
           });
@@ -543,12 +586,17 @@ export function indexStore(db: DatabaseSync) {
     source(
       workspaceId: Ulid,
       source: string,
-    ): { cursor: string | null; syncedAt: Instant | null } | null {
+    ): { cursor: string | null; syncedAt: Instant | null; lastSync: SyncCounts } | null {
       const raw = selectSource.get(workspaceId, source);
       if (!raw) return null;
       const row = sourceRow(raw);
       if (!row.ok) throw new Error(`corrupt sources row: ${JSON.stringify(row.issues)}`);
-      return { cursor: row.value.cursor, syncedAt: row.value.synced_at };
+      const { cursor, synced_at, new_items, changed_items, removed_items } = row.value;
+      return {
+        cursor,
+        syncedAt: synced_at,
+        lastSync: { new: new_items, changed: changed_items, removed: removed_items },
+      };
     },
   };
 }

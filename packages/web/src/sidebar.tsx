@@ -25,7 +25,7 @@ import {
 import type { Model } from "./root.ts";
 import type { Route } from "./route.ts";
 import { resultRoute, type SearchModel, type SearchMsg } from "./search.ts";
-import { type SourcesModel, type SourcesMsg, sourcesLine } from "./sources.ts";
+import { type SourcesModel, type SourcesMsg, sourcesLine, syncChanges } from "./sources.ts";
 import { windowRoute } from "./update.ts";
 import { Tooltip } from "./tooltip.tsx";
 
@@ -577,9 +577,10 @@ function writeOpen(key: string, open: boolean) {
 // mark while any has a problem. It draws the eye only while a sync runs or a
 // source has a problem, and a problem opens it. Open, each source is one row
 // drawn the same way, whatever the source: its name, its items, which open
-// Browse filtered to it, and when it last synced, with Sync on hover or
-// focus; Sync all heads them. Adding a source is the last entry: the folder,
-// typed by its path, the one the sidebar can add.
+// Browse filtered to it, and when it last synced, with what that sync
+// changed under it when it changed anything, and Sync on hover or focus;
+// Sync all heads them. Adding a source is the last entry: the folder, typed
+// by its path, the one the sidebar can add.
 function Sources(props: {
   sources: SourcesModel;
   folder: FolderModel;
@@ -639,6 +640,9 @@ function Sources(props: {
           {sources.view.map((source) => {
             const syncing = sources.syncing.includes(source.kind);
             const problem = sources.problems[source.kind];
+            // Said under its last sync's time, unless a sync runs now or
+            // the last one didn't work.
+            const changes = syncing || problem ? null : syncChanges(source.lastSync);
             return (
               <li key={source.kind} class="source-row" data-syncing={syncing || undefined}>
                 <Link
@@ -674,6 +678,7 @@ function Sources(props: {
                 >
                   Sync
                 </button>
+                {changes && <p class="source-changes">{changes}</p>}
                 {problem && (
                   <p class="source-problem" role="alert">
                     {problem}

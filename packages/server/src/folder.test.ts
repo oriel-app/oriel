@@ -318,6 +318,22 @@ test("a folder syncs again on demand, and when the server starts", async (t) => 
   assert.equal(json<{ folder: FolderView }>(await again.get("/api/folder")).folder.items, 4);
 });
 
+test("a folder's row says what its last sync changed, and nothing once a sync changes nothing", async (t) => {
+  const app = await connected(t);
+  const row = async () =>
+    json<{ sources: SourceView[] }>(await app.get("/api/sources")).sources.find(
+      (source) => source.kind === "folder",
+    )?.lastSync;
+  assert.deepEqual(await row(), { new: 2, changed: 0, removed: 0 });
+  app.dir.write("Retro.md", "What went well.");
+  app.dir.write("Launch plan.md", "# Launch plan, v2\n\nShip the phone wallet first.");
+  rmSync(join(app.dir.root, "research/Interviews.md"));
+  assert.equal((await app.post("/api/folder/sync")).status, 200);
+  assert.deepEqual(await row(), { new: 1, changed: 1, removed: 1 });
+  assert.equal((await app.post("/api/folder/sync")).status, 200);
+  assert.deepEqual(await row(), { new: 0, changed: 0, removed: 0 });
+});
+
 test("a dropped link to another site is refused by naming the sources connected now", async (t) => {
   const app = await testApp(t, { slack: { kind: "fixture" } });
   const { id } = json<{ id: string }>(

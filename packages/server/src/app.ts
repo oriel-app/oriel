@@ -1003,13 +1003,19 @@ export async function createApp(options: AppOptions): Promise<App> {
     }
   };
 
-  // Every open connection, in declared order, as the sidebar lists them.
+  // Every open connection, in declared order, as the sidebar lists them,
+  // with what its last sync changed.
   const sourcesView = (): SourceView[] =>
     opens().map(({ connection, opened }) => ({
       kind: connection.kind,
       name: declared(connection.kind).name,
       about: opened.about,
       ...synced(connection.prefix),
+      lastSync: index.source(workspaceId, connection.prefix)?.lastSync ?? {
+        new: 0,
+        changed: 0,
+        removed: 0,
+      },
     }));
 
   // The overview, computed now from the index, the change log, workstreams,
