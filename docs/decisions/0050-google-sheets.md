@@ -114,13 +114,13 @@ Quotes are from Google's pages as fetched on 2026-11-03. **Unsure** marks what t
 - The maintainer's setup comes before the first Sheets story, which checks each **Unsure** above against Google.
 - The build stories, in order, are in the pull request.
 
-**Amended by OA-219, 2026-11-03.** Partly settled by the live run of 2026-11-03; the rest is pending. `packages/sheets` signs in as Signing in says, and `pnpm sheets:live` runs it once against Google, as the maintainer's desktop client: it signs in, takes the picked spreadsheets back from the redirect, reads each one's Drive `version`, asks the reads below, refreshes, revokes the grant, and refreshes again. Each **Unsure**:
+**Amended by OA-219, 2026-11-03.** Settled by the live run of 2026-11-03, where it can be. `packages/sheets` signs in as Signing in says, and `pnpm sheets:live` runs it once against Google, as the maintainer's desktop client: it signs in, takes the picked spreadsheets back from the redirect, reads each one's Drive `version`, asks the reads below, refreshes, revokes the grant, and refreshes again. Each **Unsure**:
 
 - **The desktop Picker with PKCE and a loopback redirect:** it works. Google took the `S256` challenge and the redirect to `http://127.0.0.1:<port>/`, showed the Picker after consent in the same tab, and sent the code back with `picked_file_ids`. One pick brought back four spreadsheets, so `allow_multiple` works, and Drive's `version` read for each under `drive.file`.
-- **Whether `drive.file` may read `about`** (Which account): pending.
-- **Whether `drive.file` may list a picked spreadsheet's comments** (Comments): pending.
+- **Whether `drive.file` may read `about`** (Which account): it may. `about?fields=user(permissionId)` answered 200, so Which account's first way stands: the same Google account connected again is known by its `permissionId`. The run asked for that field alone; the account's email, in the same `user`, is the connections story's to read.
+- **Whether `drive.file` may list a picked spreadsheet's comments** (Comments): it may. Listing a picked spreadsheet's comments answered 200, so comments are read with their spreadsheet's item, as Comments says.
 - **Formulas under `RAW`** (Writes): not settled by this story, which writes nothing. The first story that writes proves it live, as Writes says.
 - **Whether a released app built from the open repo embeds the client** (The client's secret): the maintainer's to confirm, as before; no run settles it.
 - **Whether the index is a cached copy** (Terms): a question of Google's terms, which no run settles. The privacy policy says what the index keeps.
 
-The run also checks what 0050 assumed without marking it: that the Sheets API reads a picked spreadsheet under `drive.file`, and that a refresh after the grant is revoked is refused (`invalid_grant`), which Oriel reads as signed out.
+The run also checked what 0050 assumed without marking it. The Sheets API reads a picked spreadsheet under `drive.file` (`spreadsheets.get` answered 200). A refresh works, and a refresh after the grant is revoked is refused, which Oriel reads as signed out.
