@@ -149,7 +149,7 @@ export function indexStore(db: DatabaseSync) {
       item_id = excluded.item_id, title = excluded.title, location = excluded.location,
       updated_at = excluded.updated_at, facets = excluded.facets, attrs = excluded.attrs,
       snapshot = excluded.snapshot, gone_at = null,
-      added_in = case when items.gone_at is not null and items.snapshot is not excluded.snapshot
+      added_in = case when items.gone_at is not null and items.snapshot <= ?11
         then excluded.added_in else items.added_in end
     where items.item_id is not excluded.item_id or items.title is not excluded.title
       or items.location is not excluded.location or items.updated_at is not excluded.updated_at
@@ -197,15 +197,20 @@ export function indexStore(db: DatabaseSync) {
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
-  // What a sync changed, from the items it tagged with its version: live and
-  // added in it, new; live and added before, changed; gone, removed, unless
-  // it was new in the same sync. `rows` counts them all.
+  // The version of a source's last sync that finished and changed something:
+  // what its syncs since tagged, a crashed one's too, is theirs to claim.
+  const selectSince = db.prepare(
+    "select max(version) as version from snapshots where workspace_id = ? and source = ?",
+  );
+  // What the syncs since `?3` changed, from the items they tagged: live and
+  // added since, new; live and added before, changed; gone, removed, unless
+  // it was new since too. `rows` counts them all.
   const changedIn = db.prepare(`
     select count(*) as rows,
-      sum(gone_at is null and added_in is ?3) as new_items,
-      sum(gone_at is null and added_in is not ?3) as changed_items,
-      sum(gone_at is not null and added_in is not ?3) as removed_items
-    from items where workspace_id = ?1 and source = ?2 and snapshot = ?3`);
+      sum(gone_at is null and added_in > ?3) as new_items,
+      sum(gone_at is null and coalesce(added_in, 0) <= ?3) as changed_items,
+      sum(gone_at is not null and coalesce(added_in, 0) <= ?3) as removed_items
+    from items where workspace_id = ?1 and source = ?2 and snapshot > ?3`);
   const saveSource = db.prepare(`
     insert into sources (workspace_id, source, cursor, synced_at, new_items, changed_items, removed_items)
     values (?, ?, ?, ?, ?, ?, ?)
@@ -399,6 +404,8 @@ export function indexStore(db: DatabaseSync) {
       declared: DeclaredFacets = {},
     ) {
       const version = snapshot(workspaceId) + 1;
+      const last = versionRow(selectSince.get(workspaceId, source));
+      const since = last.ok ? (last.value.version ?? 0) : 0;
       const gone = (from: SourceKind, stableId: string) =>
         logChange.run(workspaceId, from, stableId, version, now, "{}", 1);
       return {
@@ -424,6 +431,7 @@ export function indexStore(db: DatabaseSync) {
                 JSON.stringify(r.facets),
                 JSON.stringify(r.attrs),
                 version,
+                since,
               );
               // Compared as the index reads both back.
               const changed =
@@ -477,7 +485,7 @@ export function indexStore(db: DatabaseSync) {
         finish(cursor: string | null, finishedAt: Instant): number {
           written();
           return transaction(db, () => {
-            const counted = countsRow(changedIn.get(workspaceId, source, version));
+            const counted = countsRow(changedIn.get(workspaceId, source, since));
             if (!counted.ok)
               throw new Error(`corrupt sync counts: ${JSON.stringify(counted.issues)}`);
             const { rows, new_items, changed_items, removed_items } = counted.value;

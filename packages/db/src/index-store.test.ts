@@ -120,6 +120,31 @@ test("a sync that crashed partway counts what it applied once the next one finis
   assert.deepEqual(index.source(workspaceId, "jira")?.lastSync, { new: 1, changed: 0, removed: 0 });
 });
 
+test("a crashed sync's changes still count when another source finished before the next one", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("10001", "SYN-1", "A"), record("10002", "SYN-2", "B")] }]);
+  const crashed = index.beginSync(workspaceId, "jira", attrs, t1);
+  crashed.apply({
+    records: [record("10001", "SYN-1", "A, renamed"), record("10003", "SYN-3", "C")],
+    gone: ["10002"],
+    cursor: "c",
+  });
+  const other = index.beginSync(workspaceId, "folder", attrs, t1);
+  other.apply({
+    records: [{ ...record("f1", "SYN-9", "Notes"), id: "folder:f1" }],
+    gone: [],
+    cursor: null,
+  });
+  assert.equal(other.finish(null, t1), 2);
+  sync([{ records: [record("10001", "SYN-1", "A, renamed"), record("10003", "SYN-3", "C")] }]);
+  assert.deepEqual(index.source(workspaceId, "jira")?.lastSync, { new: 1, changed: 1, removed: 1 });
+  assert.deepEqual(index.source(workspaceId, "folder")?.lastSync, {
+    new: 1,
+    changed: 0,
+    removed: 0,
+  });
+});
+
 test("a sync that changes nothing keeps the version", () => {
   const { sync } = fresh();
   sync([{ records: [record("10001", "SYN-1", "Checkout retries")] }]);
