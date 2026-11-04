@@ -92,7 +92,8 @@ export function noticedPayload(
 
 export type NoticedResult = {
   notices: Notice[];
-  // Lines Oriel refused, and why: what a climb reads.
+  // Lines Oriel refused, or whose sentence it dropped, and why: what a
+  // climb reads.
   refused: string[];
   quotesDropped: number;
   model: string;
@@ -138,6 +139,8 @@ export async function runNoticed(
     const checked = checkNotice(parsed.line, offered, texts);
     if (!checked.ok) return void refused.push(checked.why);
     if (checked.quoteDropped) quotesDropped++;
+    if (checked.lineProblem)
+      refused.push(`${parsed.line.signal}: line dropped, ${checked.lineProblem}`);
     notices.push(checked.notice);
     firstMs ??= context.clock() - start;
     context.onNotice?.(checked.notice);

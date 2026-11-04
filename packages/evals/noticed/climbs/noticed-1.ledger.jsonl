@@ -1,0 +1,10 @@
+{"round":"01M6JFCNQ06ANDJB3TZP855FHA","label":"B1 start","split":"train","trials":60,"usd":3,"estimated":true}
+{"round":"01M6JFCNQ06ANDJB3TZP855FHA","label":"B1 start","split":"train","trials":60,"usd":0.5539184}
+{"round":"01M6JFEQQB918P4TWYYNX5WQ4T","label":"B2 start","split":"train","trials":60,"usd":0.5539184,"estimated":true}
+{"round":"01M6JFEQQB918P4TWYYNX5WQ4T","label":"B2 start","split":"train","trials":60,"usd":0.4333319999999999}
+{"round":"01M6JFGV1VN8ERTYNJXVZ2DTKA","label":"T0a start on test","split":"test","trials":42,"usd":0.34553764,"estimated":true}
+{"round":"01M6JFGV1VN8ERTYNJXVZ2DTKA","label":"T0a start on test","split":"test","trials":42,"usd":0.3957092000000001}
+{"round":"01M6JFJ8HCVRYATEK91VMBJT4M","label":"T0b start on test","split":"test","trials":42,"usd":0.35854508148148145,"estimated":true}
+{"round":"01M6JFJ8HCVRYATEK91VMBJT4M","label":"T0b start on test","split":"test","trials":42,"usd":0.3266139999999999}
+{"round":"01M6JFKS4S0C1JSK10JD2MYHE4","label":"M model-first","split":"train","trials":60,"usd":0.5028157647058823,"estimated":true}
+{"round":"01M6JFKS4S0C1JSK10JD2MYHE4","label":"M model-first","split":"train","trials":60,"usd":6.0772396}

@@ -60,8 +60,17 @@ export type TrialExtra = {
 export const caseHash = (evalCase: NoticedCase) =>
   createHash("sha256").update(canonicalJson(evalCase)).digest("hex");
 
-// Every digit run in a text.
-const figures = (text: string) => text.match(/\d+(?:\.\d+)?/gu) ?? [];
+// Every figure in a text: its numbers, leaving out item IDs and keys
+// (`jira:SYN-104`, `SYN-104`), chips, clock times and names with digits in
+// them, such as "3-D Secure".
+export const figures = (text: string) =>
+  text
+    .replace(/\[\[[^\]]*\]\]/gu, " ")
+    .replace(/\b[a-z]+(?:\.\d+)?:[\w.-]+/gu, " ")
+    .replace(/\b[A-Z][A-Z0-9]*-\d+\b/gu, " ")
+    .replace(/\b\d{1,2}:\d{2}\b/gu, " ")
+    .replace(/\b\d+-[A-Za-z]\w*/gu, " ")
+    .match(/\d+(?:\.\d+)?/gu) ?? [];
 
 export async function runTrial(
   evalCase: NoticedCase,

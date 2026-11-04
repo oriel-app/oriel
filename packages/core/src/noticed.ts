@@ -127,19 +127,22 @@ export function parseNoticeLine(
   return { ok: true, line: { signal, why, quote: { item: quote.item, text: quote.text } } };
 }
 
-// A checked notice from a parsed line: the signal must be one Oriel offered,
-// the line must pass `whyProblem`, and a quote must be from one of its items,
+// A checked notice from a parsed line. The signal must be one Oriel offered,
+// or there is nothing to show. The pick is the model's judgement and its
+// line only decoration: a line that fails `whyProblem` is dropped and the
+// card shows Oriel's headline alone. A quote must be from one of its items,
 // found word for word in the text the run was given, or it is dropped.
 export function checkNotice(
   line: NoticeLine,
   signals: ReadonlyMap<string, Signal>,
   texts: ReadonlyMap<string, string>,
-): { ok: true; notice: Notice; quoteDropped: boolean } | { ok: false; why: string } {
+):
+  | { ok: true; notice: Notice; quoteDropped: boolean; lineProblem: string | null }
+  | { ok: false; why: string } {
   const signal = signals.get(line.signal);
   if (!signal) return { ok: false, why: `${line.signal} isn't a signal Oriel offered` };
   const allowed = new Set<string>([...signal.items, subjectId(signal.subject)]);
-  const problem = whyProblem(line.why, allowed);
-  if (problem) return { ok: false, why: `${signal.id}: ${problem}` };
+  const lineProblem = whyProblem(line.why, allowed);
   const quoted = line.quote;
   const keep =
     quoted !== null &&
@@ -150,10 +153,11 @@ export function checkNotice(
     ok: true,
     notice: {
       signal,
-      why: line.why.trim(),
+      why: lineProblem ? null : line.why.trim(),
       quote: keep && quoted ? { item: quoted.item as ItemId, text: quoted.text.trim() } : null,
     },
     quoteDropped: quoted !== null && !keep,
+    lineProblem,
   };
 }
 
