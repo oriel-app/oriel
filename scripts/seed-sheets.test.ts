@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { archiveRows, contactsId, loadSheetsFixture, trackerId } from "./fixtures/sheets.ts";
+import { loadSheetsFixture } from "../packages/sheets/src/fixture.ts";
+import { archiveRows, contactsId, trackerId } from "./fixtures/sheets.ts";
 import {
   changeRequests,
   entered,

@@ -20,6 +20,7 @@ import {
 } from "@oriel/core";
 import { folderDeclaration } from "@oriel/folder";
 import { jiraDeclaration } from "@oriel/jira";
+import { sheetsDeclaration } from "@oriel/sheets";
 import { slackDeclaration } from "@oriel/slack";
 
 // Each under its own kind, which a test checks.
@@ -27,6 +28,7 @@ const declared = {
   jira: jiraDeclaration,
   folder: folderDeclaration,
   slack: slackDeclaration,
+  sheets: sheetsDeclaration,
 };
 
 // A kind some source declares.

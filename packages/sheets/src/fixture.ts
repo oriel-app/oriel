@@ -9,6 +9,7 @@
 // another way (a date is a number shown as one). Text starting with `=` is
 // text; only `formula` is a formula. Rows and columns are as the sheet shows
 // them: row 1 is the first, column A the first.
+import { readFileSync } from "node:fs";
 import {
   array,
   boolean,
@@ -451,4 +452,22 @@ function tabProblems(tab: FixtureTab): string[] {
   if ((tab.frozenRows ?? 0) < 0 || (tab.frozenRows ?? 0) > grid.rows)
     problems.push("its frozen rows don't fit its grid");
   return problems;
+}
+
+export const sheetsFixtureDir = new URL("../../../fixtures/sheets/", import.meta.url);
+
+type Account = { user: SheetsFixture["user"]; spreadsheets: string[] };
+
+// The fixture, from account.json and the spreadsheets it names.
+export function loadSheetsFixture(dir: URL = sheetsFixtureDir): SheetsFixture {
+  const read = (name: string): unknown =>
+    JSON.parse(readFileSync(new URL(`${name}.json`, dir), "utf8"));
+  const account = read("account") as Account;
+  const result = parseSheetsFixture({
+    user: account.user,
+    spreadsheets: (account.spreadsheets ?? []).map(read),
+  });
+  if (result.ok) return result.value;
+  const issues = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
+  throw new Error(`invalid Sheets fixture:\n${issues.join("\n")}`);
 }

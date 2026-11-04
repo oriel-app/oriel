@@ -22,32 +22,15 @@
 // - archive.json, "Ferrowick story archive": a tab past the row cap.
 //
 // Usage: node scripts/fixtures/sheets.ts
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   type FixtureCell,
   type FixtureSpreadsheet,
   parseSheetsFixture,
   type SheetsFixture,
+  sheetsFixtureDir,
 } from "../../packages/sheets/src/fixture.ts";
-
-export const sheetsFixtureDir = new URL("../../fixtures/sheets/", import.meta.url);
-
-type Account = { user: SheetsFixture["user"]; spreadsheets: string[] };
-
-// The fixture, from account.json and the spreadsheets it names.
-export function loadSheetsFixture(dir: URL = sheetsFixtureDir): SheetsFixture {
-  const read = (name: string): unknown =>
-    JSON.parse(readFileSync(new URL(`${name}.json`, dir), "utf8"));
-  const account = read("account") as Account;
-  const result = parseSheetsFixture({
-    user: account.user,
-    spreadsheets: (account.spreadsheets ?? []).map(read),
-  });
-  if (result.ok) return result.value;
-  const issues = result.issues.map((issue) => `${issue.path}: ${issue.message}`);
-  throw new Error(`invalid Sheets fixture:\n${issues.join("\n")}`);
-}
 
 // A made-up Drive file ID, 44 characters as Google's are.
 const fileId = (name: string) => `1Fw${name}Fixture`.padEnd(44, "0");
@@ -521,6 +504,8 @@ function stringify(value: unknown, indent: string): string {
   const lines = entries.map(([k, v]) => `${inner}${JSON.stringify(k)}: ${stringify(v, inner)}`);
   return `{\n${lines.join(",\n")}\n${indent}}`;
 }
+
+type Account = { user: SheetsFixture["user"]; spreadsheets: string[] };
 
 // Each file as the generator writes it.
 export function sheetsFixtureFiles(): Map<string, string> {

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   contactsId,
-  loadSheetsFixture,
   raidId,
   sprint41,
   sprint42,
@@ -10,6 +9,7 @@ import {
   trackerTab,
 } from "../../../scripts/fixtures/sheets.ts";
 import { quoteTab } from "./a1.ts";
+import { loadSheetsFixture } from "./fixture.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 
 const fixture = loadSheetsFixture();
