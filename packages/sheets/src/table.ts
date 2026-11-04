@@ -79,7 +79,7 @@ export function tableOf(grid: Grid, mapping: TabMapping, most = Infinity): Table
   const headerAt = mapping.header - 1 - grid.startRow;
   const headerRow = grid.rows[headerAt] ?? [];
   const headers = Array.from(
-    { length: Math.max(headerRow.length, ...grid.rows.map((row) => row.length)) },
+    { length: grid.rows.reduce((most, row) => Math.max(most, row.length), headerRow.length) },
     (_, c) => clean(headerRow[c]?.shown ?? ""),
   );
   const columnOf = new Map<string, number>();

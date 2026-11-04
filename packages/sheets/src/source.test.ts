@@ -536,3 +536,20 @@ test("a spreadsheet's comments past 50,000 characters aren't read, and its read 
   assert.ok(content.comments.reduce((n, c) => n + c.text.length, 0) <= 50_000);
   assert.match(content.note ?? "", /over 50,000 characters/);
 });
+
+test("a sparse tab read to the grid's end stops at the cap's rows, and says rows past them weren't read", async () => {
+  const sparse = structuredClone(fixture);
+  const tab = sparse.spreadsheets.find((s) => s.slug === "contacts")?.tabs[0];
+  assert.ok(tab);
+  tab.grid = { rows: 200_000, columns: 4 };
+  tab.rows[150_000] = ["Far", "Away", "+44 1632 960999", "never"];
+  const mapping: TabMapping = { ...(fixtureMappings.contacts?.[0] as TabMapping), end: "grid" };
+  const { source, standIn, sync } = connect({
+    fixture: sparse,
+    picks: only("contacts", [mapping]),
+  });
+  const { records } = await sync();
+  assert.equal(rowsOf(records, 5100).length, 2);
+  assert.equal(source.report().spreadsheets[0]?.tabs[0]?.capped, true);
+  assert.ok(standIn.calls.length < 20);
+});

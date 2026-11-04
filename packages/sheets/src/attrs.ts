@@ -151,33 +151,40 @@ export function rowText(cells: RowContent["cells"]): { text: string; note: strin
         `${cell.header}: ${cell.value}${cell.note === null ? "" : `\nNote on ${cell.header}: ${cell.note}`}`,
     )
     .join("\n");
-  return capped(text, "row");
+  if (text.length <= maxItemChars) return { text, note: null };
+  const note = `This row is over ${maxItemChars.toLocaleString("en")} characters, so only its first ${maxItemChars.toLocaleString("en")} are read.`;
+  return { text: `${text.slice(0, maxItemChars)}\n\n${note}`, note };
 }
 
-// A spreadsheet's text: its tabs, then each comment with its replies.
-export function spreadsheetText(content: Pick<SpreadsheetContent, "tabs" | "comments">): {
-  text: string;
-  note: string | null;
-} {
-  const comments = content.comments.map((c) =>
+// A spreadsheet's text: its tabs, then each comment with its replies, as
+// many whole comments as fit the cap. The comments a read returns are those
+// the text holds, and the note says how many weren't read.
+export function spreadsheetText(
+  content: Pick<SpreadsheetContent, "tabs" | "comments">,
+): Pick<SpreadsheetContent, "comments" | "text" | "note"> {
+  const head = `Tabs: ${content.tabs.join(", ")}\n\nComments:`;
+  const blocks = content.comments.map((c) =>
     [
       `${c.author}, ${c.at}${c.resolved ? " (resolved)" : ""}:${c.quoted === null ? "" : `\nOn: ${c.quoted}`}\n${c.text}`,
       ...c.replies.map((r) => `${r.author} replied, ${r.at}:\n${r.text}`),
     ].join("\n"),
   );
-  return capped(
-    [
-      `Tabs: ${content.tabs.join(", ")}`,
-      ...(comments.length ? ["Comments:", ...comments] : ["No comments."]),
-    ].join("\n\n"),
-    "spreadsheet",
-  );
-}
-
-function capped(text: string, what: string): { text: string; note: string | null } {
-  if (text.length <= maxItemChars) return { text, note: null };
-  const note = `This ${what} is over ${maxItemChars.toLocaleString("en")} characters, so only its first ${maxItemChars.toLocaleString("en")} are read.`;
-  return { text: `${text.slice(0, maxItemChars)}\n\n${note}`, note };
+  let length = head.length;
+  let kept = 0;
+  for (const block of blocks) {
+    if (length + 2 + block.length > maxItemChars) break;
+    length += 2 + block.length;
+    kept++;
+  }
+  const all = content.comments.length;
+  const note =
+    kept === all
+      ? null
+      : `This spreadsheet's comments are over ${maxItemChars.toLocaleString("en")} characters, so only the first ${kept} of ${all} are read.`;
+  const text = all
+    ? [head, ...blocks.slice(0, kept), ...(note === null ? [] : [note])].join("\n\n")
+    : `Tabs: ${content.tabs.join(", ")}\n\nNo comments.`;
+  return { comments: content.comments.slice(0, kept), text, note };
 }
 
 // A record's Sheets attrs, or null for another source's item.
