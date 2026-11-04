@@ -65,6 +65,8 @@ Run the start state (B's settings, before C1) on test twice, then the final stat
 - **P not run.** Train was 120/120 from C2 on, with no failure left to read.
 - **The model-first reference's grounding grader** first counted item keys (`SYN-104`) as figures. It was fixed to leave out IDs, keys, clock times and names with digits, and M was graded again from its transcripts, at no cost. M is a reference, not a decision.
 
+- **After the final step, the reviews' fixes changed what the model reads.** The drift headline now reads "estimate rose on N items, from X to Y in all", a pass that ends on a tool call is a failure, and fingerprints and dismissals changed. One confirmation round of the final state on all cases (`R`, $0.39) passed 102/102, with the first card's p50 at 2.8 s and its p90 at 3.8 s. It is a check, not a decision.
+
 ## Log
 
 | round  | change                                         | train pass                                      | first card p50 / p90          | $ a run                                    | verdict                           |
