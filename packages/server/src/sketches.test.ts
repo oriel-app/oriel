@@ -16,7 +16,7 @@ import { sketchDocument, sketchHandler, sketchStyle } from "./sketch-site.ts";
 import { json, port, type Script, sketchOrigin, sketchPort, testApp } from "./testing.ts";
 
 const css = readFileSync(fileURLToPath(new URL("window.css", `${assets.href}/`)), "utf8");
-const sheet = sketchStyle(css, defaultTheme);
+const sheet = sketchStyle(css, defaultTheme, "default");
 
 const drawing = `<style>p { color: var(--text-muted); }</style><p title="a &amp; &quot;b&quot;">Ships "soon" & then</p>`;
 
