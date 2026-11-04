@@ -175,12 +175,6 @@ export async function testApp(
     : options.writes || options.live
       ? memorySite(served, now(), board)
       : null;
-  const writeTo = site && {
-    site: memorySiteOrigin,
-    credential: { headers: async () => ({}) },
-    project: "SYN",
-    fetch: site.fetch,
-  };
   const jira: JiraMode = options.connect
     ? {
         kind: "window",
@@ -188,10 +182,16 @@ export async function testApp(
         ...(options.anySite ? { anySite: true } : {}),
         ...(site ? { fetch: site.fetch } : {}),
       }
-    : writeTo
+    : site
       ? options.live
-        ? { kind: "live", ...writeTo }
-        : { kind: "fixture", writeTo }
+        ? {
+            kind: "live",
+            site: memorySiteOrigin,
+            account: { email: "", token: "" },
+            project: "SYN",
+            fetch: site.fetch,
+          }
+        : { kind: "fixture", fetch: site.fetch }
       : { kind: "fixture" };
   const logged: Logged[] = [];
   const app: App = await createApp({

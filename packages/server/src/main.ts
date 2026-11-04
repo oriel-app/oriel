@@ -43,9 +43,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { basicAuth } from "@oriel/jira";
 import { findDeno } from "@oriel/sandbox";
-import { bearer } from "@oriel/slack";
 import { webFiles, serve } from "./serve.ts";
 import { isAbsolute, join } from "node:path";
 import type { JiraMode, SlackMode } from "./app.ts";
@@ -211,7 +209,7 @@ const jira: JiraMode =
       ? {
           kind: "live",
           site: fromEnv.site,
-          credential: basicAuth(fromEnv.email, fromEnv.token),
+          account: { email: fromEnv.email, token: fromEnv.token },
           project: values.project,
         }
       : {
@@ -228,7 +226,7 @@ if (values.slack === "live") {
     console.error(found.problem);
     process.exit(1);
   }
-  slack = { kind: "live", credential: bearer(found.token), channels };
+  slack = { kind: "live", token: found.token, channels };
 }
 
 const dir = join(root, ".oriel", ...(fresh ? ["fresh", fresh] : []));

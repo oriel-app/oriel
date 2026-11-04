@@ -8,6 +8,7 @@ import {
   itemOrder,
   kindOf,
   type NamespaceSpec,
+  type Opened,
   type OverviewInput,
   type ParsedItemId,
   parseItemId,
@@ -135,6 +136,45 @@ export function recognizerFor(scopes: RecognizerScopes): Recognizer {
       kind in given ? [sources[kind].recognizer(given[kind] as never)] : [],
     ),
   );
+}
+
+// An open connection as the composition root holds it: its connector's kind
+// and what that connector's `open` gave it.
+export type OpenSource = { kind: string; opened: Opened };
+
+// The first open connection of each declared kind, by kind: what a kind's
+// recognizer and namespace take, until a kind can have several open.
+const firstOpen = (open: readonly OpenSource[]): Partial<Record<DeclaredKind, Opened>> =>
+  Object.fromEntries(
+    sourceKinds.flatMap((kind) => {
+      const found = open.find((each) => each.kind === kind);
+      return found ? [[kind, found.opened]] : [];
+    }),
+  );
+
+// Every open connection's recognizer as one, each in its connection's scope.
+// A kind with none open recognizes nothing.
+export function recognizerOf(open: readonly OpenSource[]): Recognizer {
+  const scopes = Object.fromEntries(
+    Object.entries(firstOpen(open)).map(([kind, opened]) => [kind, opened.scope]),
+  );
+  // Each scope is what its own connector's `open` gave, so it is the scope
+  // its recognizer takes.
+  return recognizerFor(scopes as RecognizerScopes);
+}
+
+// Each source's namespace, for bindings, from the index and each kind's
+// open connection's context, asked for now. A kind with none open gets its
+// namespace's context-free form, as Slack's while it isn't connected.
+export function namespacesOf(
+  records: readonly IndexRecord[],
+  open: readonly OpenSource[],
+): Partial<Record<DeclaredKind, NamespaceSpec>> {
+  const contexts = Object.fromEntries(
+    Object.entries(firstOpen(open)).map(([kind, opened]) => [kind, opened.context()]),
+  );
+  // As above: each context is what its own connector's `open` gave.
+  return namespacesFor(records, contexts as NamespaceContexts);
 }
 
 // Every source's candidates for the overview, each with its source, from

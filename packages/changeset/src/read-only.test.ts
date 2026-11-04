@@ -9,7 +9,7 @@ function readOnly() {
   const fixture = setup();
   const sets = changeSets({
     db: fixture.db,
-    writerConfig: {},
+    writerConfig: [],
     readers: { jira: fixture.jira.reader },
     specs,
     reviewBase: new URL("http://localhost:4000/review/"),

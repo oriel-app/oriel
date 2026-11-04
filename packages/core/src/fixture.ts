@@ -4,12 +4,20 @@
 // every disk, so evals that read it replay.
 import type { ChangeLogEntry } from "./change-log.ts";
 import type { Instant, ItemId } from "./ids.ts";
+import type { Opened, OpenVia, ToOpen } from "./open.ts";
 import type { IndexRecord, ReadResult } from "./source.ts";
 import type { WorkstreamOrigin } from "./workstream.ts";
 
-export type SourceFixture<C = unknown> = {
+export type SourceFixture<C = unknown, R = unknown, W = unknown> = {
   // Reads its data, such as `fixtures/jira/`, and checks it.
   load: () => LoadedFixture<C>;
+  // The connection the server makes for its fixture mode: what it
+  // identifies and its options. It keeps no secret.
+  connection: () => { identity: string; options: Record<string, unknown> };
+  // Opens that connection over the fixture's stand-in for the source, as
+  // `open` would the source itself. `via.fetch`, when a test gives one, is
+  // a stand-in it made, so it can act in the source as others do.
+  open: (connection: ToOpen, via: OpenVia) => Promise<Opened<C, R, W>>;
   // Whether every eval case connects it, as every case recorded before
   // decision 0049 did Jira and the folder. Otherwise a case connects it when
   // its region holds its items, or when it asks in the window chat, so a new

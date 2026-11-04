@@ -16,7 +16,15 @@ export {
   jiraText,
 } from "./attrs.ts";
 export { jiraDeclaration } from "./declaration.ts";
-export { jiraDeclaredFixture, jiraFixtureSite } from "./declared-fixture.ts";
+export { frozenAt, jiraDeclaredFixture, jiraFixtureSite } from "./declared-fixture.ts";
+export {
+  jiraAccount,
+  jiraProblem,
+  jiraProject,
+  type JiraWrites,
+  openJira,
+  type OpenedJira,
+} from "./open-connection.ts";
 export { type JiraScope, jiraRecognizer } from "./references.ts";
 export * from "./fixture.ts";
 export { isJiraOp, type JiraArgs, type JiraOp, jiraOps } from "./ops.ts";

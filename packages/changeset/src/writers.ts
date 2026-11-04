@@ -1,68 +1,41 @@
-// The one file in the repo that builds writers (decision 0003). Each comes from
-// the config the composition root passes in, how to reach that source, so a
+// The one file in the repo that builds writers (decision 0003). Each comes
+// from what an open connection's connector gave it to be built from, so a
 // writer object never exists outside packages/changeset, and no code that a
 // thread or the agent runs can reach one. scripts/check-repo.ts allows an
 // `@oriel/<kind>/writer` import here and in an adapter's own writer files,
 // nowhere else.
-import type { Credential, Log, SourceWriter } from "@oriel/core";
-import { type JiraBoards, jiraWriter, restTransport } from "@oriel/jira/writer";
-import { slackWriter, writeApi } from "@oriel/slack/writer";
+import type { Log, SourceKind, SourceWriter } from "@oriel/core";
+import { jiraWriterOf } from "@oriel/jira/writer";
+import { slackWriterOf } from "@oriel/slack/writer";
 
-// How to reach each writable source to write to it. A source with no config
-// here is read-only to change sets.
-export type WriterConfig = {
-  jira?: {
-    // An https origin, such as "https://oriel.atlassian.net".
-    site: string;
-    credential: Credential;
-    // Where a story with no epic is created.
-    project: string;
-    // How requests reach the site: the global fetch unless given, as tests
-    // give one that answers from memory. The transport and the writer are
-    // still built here, never by the caller.
-    fetch?: typeof fetch;
-    // What each board estimates in, shared with the source that syncs it.
-    // Without it, the writer finds each board's once.
-    boards?: JiraBoards;
-  };
-  slack?: {
-    // The token of the person Oriel reads Slack as, who posts.
-    credential: Credential;
-    // The channels the server reads, by ID: the only ones written to.
-    channels: readonly string[];
-    // How requests reach Slack's Web API: the global fetch unless given, as
-    // the synthetic workspace gives one that answers from memory.
-    fetch?: typeof fetch;
-  };
+// One line per writable connector: its `./writer` export, which builds a
+// writer from what its declaration's `open` gave a connection (decision
+// 0049). The declaration can't name it, or everything that imports the
+// declarations would reach a writer. A test checks this list against the
+// declarations with op specs.
+const lines = {
+  jira: jiraWriterOf,
+  slack: slackWriterOf,
 };
 
-// Each writable source's writer, by its connection's prefix.
+// The kinds with a line here.
+export const writableKinds: readonly SourceKind[] = Object.keys(lines);
+
+// The open connections that may propose changes: each one's prefix, its
+// connector's kind, and what its open gave its writer (`Opened.writes`). A
+// connection left out is read-only to change sets.
+export type WriterConfig = readonly { prefix: string; kind: SourceKind; writes: unknown }[];
+
+// Each writable connection's writer, by its prefix.
 export type Writers = Partial<Record<string, SourceWriter>>;
 
 export function buildWriters(config: WriterConfig, log: Log): Writers {
-  const { jira, slack } = config;
-  return {
-    ...(jira && {
-      jira: jiraWriter({
-        transport: restTransport({
-          site: jira.site,
-          credential: jira.credential,
-          ...(jira.fetch ? { fetch: jira.fetch } : {}),
-        }),
-        project: jira.project,
-        ...(jira.boards ? { boards: jira.boards } : {}),
-        log,
-      }),
+  return Object.fromEntries(
+    config.map(({ prefix, kind, writes }) => {
+      const line = Object.hasOwn(lines, kind) ? lines[kind as keyof typeof lines] : undefined;
+      if (!line) throw new Error(`${kind} has no line in writers.ts, so it can't write`);
+      // What the connector's own `open` gave, which its own line takes.
+      return [prefix, line(writes as never, log)];
     }),
-    ...(slack && {
-      slack: slackWriter({
-        api: writeApi({
-          credential: slack.credential,
-          ...(slack.fetch ? { fetch: slack.fetch } : {}),
-        }),
-        channels: slack.channels,
-        log,
-      }),
-    }),
-  };
+  );
 }

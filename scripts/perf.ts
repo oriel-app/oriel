@@ -58,7 +58,7 @@ const start = async (): Promise<{ serving: Serving; ms: number }> => {
     jira: {
       kind: "live",
       site: memorySiteOrigin,
-      credential: { headers: async () => ({}) },
+      account: { email: "", token: "" },
       project: "SYN",
       fetch: site.fetch,
     },

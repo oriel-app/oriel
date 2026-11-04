@@ -100,6 +100,11 @@ const memoFixture: SourceFixture<MemoContext> = {
       close: () => {},
     }),
   }),
+  // The harness never opens it as the server would.
+  connection: () => ({ identity: "https://memo.example", options: {} }),
+  open: async () => {
+    throw new Error("memo connections don't open here");
+  },
 };
 
 const memo = {
@@ -114,6 +119,9 @@ const memo = {
   overview: () => [],
   namespace: (_records, context: MemoContext) => memoNamespace(context),
   budget: 300,
+  open: async () => {
+    throw new Error("memo connections don't open here");
+  },
   fixture: memoFixture,
 } satisfies SourceDeclaration<MemoContext>;
 

@@ -4,6 +4,7 @@ import type { SourceDeclaration } from "@oriel/core";
 import { slackAttrsOf, slackKeyShape, slackPanel, slackPresentation } from "./attrs.ts";
 import { slackDeclaredFixture } from "./declared-fixture.ts";
 import { type SlackContext, slackItemDoc, slackNamespace } from "./namespace.ts";
+import { openSlack, type SlackWrites } from "./open-connection.ts";
 import { slackOverview } from "./overview.ts";
 import { type SlackScope, slackRecognizer } from "./references.ts";
 import { slackSpecs } from "./specs.ts";
@@ -23,5 +24,6 @@ export const slackDeclaration = {
   specs: slackSpecs,
   // Its item doc, and, connected, postMessage and reply (OA-28).
   budget: 900,
+  open: openSlack,
   fixture: slackDeclaredFixture,
-} satisfies SourceDeclaration<SlackContext, SlackScope>;
+} satisfies SourceDeclaration<SlackContext, SlackScope, SlackWrites>;

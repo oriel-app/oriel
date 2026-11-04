@@ -1,6 +1,9 @@
 // The write path, end to end through the routes: change sets write to SYN as
 // a Jira site in memory, through the writer @oriel/changeset builds.
 import assert from "node:assert/strict";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type {
   ChangeSetView,
@@ -463,6 +466,22 @@ test("while a change set applies, nothing is offered for it and every action wai
   assert.equal(applied.body.changeSet.status, "applied");
   assert.equal(applied.body.changeSet.applying, false);
   assert.deepEqual(applied.body.changeSet.nextSteps, [{ kind: "revert" }]);
+});
+
+test("a folder connected while a change set applies leaves it applying, with its writer, until its write lands", async (t) => {
+  const app = await proposed(t);
+  const notes = realpathSync(mkdtempSync(join(tmpdir(), "oriel-server-writes-")));
+  t.after(() => rmSync(notes, { recursive: true, force: true }));
+  writeFileSync(join(notes, "Plan.md"), "Ship it.");
+  const held = app.site.hold("SYN-99");
+  const approving = app.approve();
+  await held.reached;
+  assert.equal((await app.post("/api/folder", { path: notes })).status, 200);
+  const set = (await app.view()).changeSets.find((s) => s.id === app.changeSetId);
+  assert.equal(set?.status, "applying");
+  assert.equal((await app.act("dismiss")).status, 409);
+  held.release();
+  assert.equal((await approving).body.changeSet.status, "applied");
 });
 
 test("a change set whose apply stalls on its source shows stalled, back in Needs you, until it moves", async (t) => {

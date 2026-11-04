@@ -306,6 +306,8 @@ test("a connection Jira no longer takes is signed out, and signing in again keep
   const { jira } = json<{ jira: JiraView }>(await app.get("/api/jira"));
   assert.deepEqual(jira, { connected: null, connectable: true });
   assert.ok(app.logged.some((line) => line.message === "jira: the saved connection was refused"));
+  // What the index had of it still shows while it waits for its account.
+  assert.match(JSON.stringify(app.app.window("epic")), /"jira:SYN-1"/);
   // Another site is refused while this one waits for its account.
   for (const path of ["/api/jira", "/api/jira/projects"]) {
     const elsewhere = await app.post(path, { ...details, site: "acme" });

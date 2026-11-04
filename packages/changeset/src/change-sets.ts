@@ -13,6 +13,7 @@ import {
   type Conflict,
   type Decision,
   type Diff,
+  type FieldReader,
   type FieldValues,
   type Instant,
   instant,
@@ -60,28 +61,21 @@ import {
   type LinkRow,
 } from "./store.ts";
 
-// The read side a diff needs: field values as they are now in the source.
-// Not core's `Reader`, which reads whole items for a run.
-export type FieldReader<K extends SourceKind = SourceKind> = {
-  // Field names as in the source's op specs; "gone" when the
-  // item no longer exists or can't be seen.
-  current(id: ItemId<K>, fields: readonly string[]): Promise<FieldValues | "gone">;
-  // What a person calls an ID an op names, for a diff line; null when
-  // unknown.
-  name(id: string): Promise<string | null>;
-};
+// The read side a diff needs, as core has it.
+export type { FieldReader };
 
 export type ChangeSetDeps = {
   db: DatabaseSync;
-  // How to reach each writable source. Change sets build the writers from it
-  // (writers.ts): nothing passes a writer in, so none exists outside this
-  // package (decision 0003). A source with no config is read-only.
+  // The connections that may propose changes, and what each one's writer is
+  // built from. Change sets build the writers from it (writers.ts): nothing
+  // passes a writer in, so none exists outside this package (decision 0003).
+  // A connection with no config is read-only.
   writerConfig: WriterConfig;
   // What a person calls an ID an op names, such as an account, for a diff
-  // line, by source; null when unknown. A writer that names its own IDs
+  // line, by connection prefix; null when unknown. A writer that names its own IDs
   // (`SourceWriter.name`) needs none.
   names?: { [K in SourceKind]?: (id: string) => Promise<string | null> };
-  // How a source with no writer config reads its current values, so its
+  // How a connection with no writer config, by prefix, reads its current values, so its
   // change sets can still be captured and diffed. They can't be approved
   // until writing to the source is configured.
   readers?: { [K in SourceKind]?: FieldReader<K> };
@@ -430,26 +424,39 @@ export async function changesOf(set: ChangeSet, specs: Specs, known: Known): Pro
   return lines;
 }
 
+// What a workspace's connections give change sets: what each writable one's
+// writer is built from, and how the others read and name.
+export type Wiring = Pick<ChangeSetDeps, "writerConfig" | "names" | "readers">;
+
 // Change sets over the writers built from `deps.writerConfig`. A diff reads a
 // source's current values through its writer, which knows its field names.
 // A source with no writer config reads through `deps.readers`, if it has one
 // there: its diffs work, and approving its change sets is refused.
-export function changeSets(deps: ChangeSetDeps): ChangeSets {
-  const writers = buildWriters(deps.writerConfig, deps.log);
-  const unknown = async () => null;
-  const prefixes = new Set([...Object.keys(writers), ...Object.keys(deps.readers ?? {})]);
-  const sources = Object.fromEntries(
-    [...prefixes].flatMap(
-      (prefix): [string, { writer: SourceWriter | null; reader: unknown }][] => {
-        const writer = writers[prefix];
-        const name = deps.names?.[prefix] ?? writer?.name?.bind(writer) ?? unknown;
-        if (writer) return [[prefix, { writer, reader: { current: writer.current, name } }]];
-        const reader = deps.readers?.[prefix];
-        return reader ? [[prefix, { writer: null, reader }]] : [];
-      },
-    ),
-  ) as Sources;
-  return changeSetsOver({ ...deps, sources });
+// `rewire` builds them again from a connection made or replaced, in place,
+// so an apply running then keeps its writer and its place.
+export function changeSets(deps: ChangeSetDeps): ChangeSets & { rewire(next: Wiring): void } {
+  const sources: Sources = {};
+  const rewire = (next: Wiring) => {
+    const writers = buildWriters(next.writerConfig, deps.log);
+    const unknown = async () => null;
+    const prefixes = new Set([...Object.keys(writers), ...Object.keys(next.readers ?? {})]);
+    const built = Object.fromEntries(
+      [...prefixes].flatMap(
+        (prefix): [string, { writer: SourceWriter | null; reader: unknown }][] => {
+          const writer = writers[prefix];
+          // A writer that names its own IDs knows best.
+          const name = writer?.name?.bind(writer) ?? next.names?.[prefix] ?? unknown;
+          if (writer) return [[prefix, { writer, reader: { current: writer.current, name } }]];
+          const reader = next.readers?.[prefix];
+          return reader ? [[prefix, { writer: null, reader }]] : [];
+        },
+      ),
+    ) as Sources;
+    for (const prefix of Object.keys(sources)) delete sources[prefix];
+    Object.assign(sources, built);
+  };
+  rewire(deps);
+  return { ...changeSetsOver({ ...deps, sources }), rewire };
 }
 
 // The engine, over writers and readers already built. Only `changeSets` and

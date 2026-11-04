@@ -132,7 +132,13 @@ test("a database from before connections moves in: Jira's saved connection, a fo
     [
       ["folder", "folder", notes, {}, null],
       ["jira", "jira", synSite, { project: "SYN" }, null],
-      ["slack", "slack", "https://ferrowick-example.slack.com/", {}, null],
+      [
+        "slack",
+        "slack",
+        "https://ferrowick-example.slack.com/",
+        { channels: ["C0FW1WEATHR"] },
+        null,
+      ],
     ],
   );
   assert.equal(
