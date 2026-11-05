@@ -62,7 +62,8 @@ export type ChallengerDeps = {
   spent: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
   // The most changes a change set may hold, which adding a suggestion keeps.
   maxMutations: number;
-  // The thread's pages hear that its change set's second look changed.
+  // The thread's pages hear that its change set's second look changed, and
+  // nothing else of it: its diff stands.
   changed: (threadId: Ulid, changeSetId: Ulid) => void;
   emit: (event: TelemetryEvent) => void;
   now: () => Instant;
@@ -253,6 +254,8 @@ export type ChallengeView = {
   error: string | null;
   startedAt: Instant;
   finishedAt: Instant | null;
+  // The person dismissed it (OA-257): the window shows it no more.
+  dismissed: boolean;
 };
 
 export type Challenger = ReturnType<typeof challenger>;
@@ -261,6 +264,8 @@ export function challenger(deps: ChallengerDeps) {
   const { challenges } = deps;
   const running = new Set<Promise<void>>();
   const closing = new AbortController();
+  // Each running look's own stop, by look, for a Dismiss.
+  const stops = new Map<Ulid, AbortController>();
   // Suggestions being added, by look and place, so two clicks add one.
   const adding = new Set<string>();
 
@@ -282,6 +287,9 @@ export function challenger(deps: ChallengerDeps) {
       const last = [...results.keys()].at(-1);
       return last === undefined ? null : deps.modelOf(last);
     };
+    const stop = new AbortController();
+    stops.set(id, stop);
+    const signal = AbortSignal.any([closing.signal, stop.signal]);
     const failed = (why: string, kind: "no-record" | "error") => {
       challenges.failed(id, why, model(), usage, deps.now());
       deps.emit({
@@ -321,7 +329,7 @@ export function challenger(deps: ChallengerDeps) {
           spent: deps.spent(thread.id),
           challenge: { diff: async () => lines, record },
         },
-        { signal: closing.signal, log },
+        { signal, log },
       );
       for await (const event of turn) {
         if (event.kind === "run.finished") results.set(event.runId, event.result);
@@ -330,6 +338,9 @@ export function challenger(deps: ChallengerDeps) {
           usage.outputTokens = event.usage.outputTokens;
         }
       }
+      // The agent's loop may end a stopped turn as done: a look stopped
+      // partway keeps nothing.
+      signal.throwIfAborted();
       const kept = keep(results, recorded);
       if (!kept)
         return failed("The second look ended without findings Oriel could keep.", "no-record");
@@ -362,8 +373,16 @@ export function challenger(deps: ChallengerDeps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log("challenge: failed", { error: message });
-      failed(closing.signal.aborted ? "Oriel stopped before it finished." : message, "error");
+      failed(
+        closing.signal.aborted
+          ? "Oriel stopped before it finished."
+          : stop.signal.aborted
+            ? "You dismissed it before it finished."
+            : message,
+        "error",
+      );
     } finally {
+      stops.delete(id);
       deps.changed(set.threadId, set.id);
     }
   };
@@ -389,8 +408,16 @@ export function challenger(deps: ChallengerDeps) {
     const set = await deps.changeSets.get(changeSetId);
     if (!set || set.revertOf !== null || set.decision !== null) return null;
     const latest = challenges.latest(changeSetId);
-    if (latest?.state === "running") return latest.id;
-    if (latest?.state === "ready" && !stale(latest, set)) return latest.id;
+    const shown = latest?.dismissedAt === null;
+    if (latest?.state === "running" && shown) return latest.id;
+    // Dismissed while still current, it shows again, with no model call.
+    if (latest?.state === "ready" && !stale(latest, set)) {
+      if (!shown) {
+        challenges.dismissed(latest.id, null);
+        deps.changed(set.threadId, set.id);
+      }
+      return latest.id;
+    }
     const id = deps.newId();
     challenges.start({
       id,
@@ -457,34 +484,55 @@ export function challenger(deps: ChallengerDeps) {
         error: latest.error,
         startedAt: latest.startedAt,
         finishedAt: latest.finishedAt,
+        dismissed: latest.dismissedAt !== null,
       };
     },
 
-    // The person adds the second look's suggested changes at `place` to the
-    // change set: the engine checks them as it checks a capture.
-    async add(changeSetId: Ulid, challengeId: Ulid, place: number): Promise<ChangeSet> {
+    // The person dismissed the look: it shows no more, and stops if it
+    // still runs, since nobody will read what it finds.
+    dismiss(changeSetId: Ulid, challengeId: Ulid): void {
+      const look = challenges.get(challengeId);
+      if (!look || look.changeSetId !== changeSetId)
+        throw new RangeError("no such second look on this change set");
+      if (look.dismissedAt !== null) return;
+      challenges.dismissed(challengeId, deps.now());
+      stops.get(challengeId)?.abort(new Error("Dismissed."));
+      deps.changed(look.threadId, changeSetId);
+    },
+
+    // The person adds the second look's suggested changes at `places` to
+    // the change set, in one edit: the engine checks them as it checks a
+    // capture.
+    async add(changeSetId: Ulid, challengeId: Ulid, places: readonly number[]): Promise<ChangeSet> {
       const look = challenges.get(challengeId);
       if (!look || look.changeSetId !== changeSetId || look.state !== "ready")
         throw new RangeError("no such second look on this change set");
-      const change = look.companions[place];
-      if (!change) throw new RangeError("no such suggested change");
-      const key = `${challengeId}:${place}`;
-      if (look.added.includes(place) || adding.has(key))
+      const changes = places.map((place) => look.companions[place]);
+      if (changes.some((change) => change === undefined))
+        throw new RangeError("no such suggested change");
+      const keys = places.map((place) => `${challengeId}:${place}`);
+      if (places.some((place) => look.added.includes(place)) || keys.some((key) => adding.has(key)))
         throw new RangeError("that change was already added");
-      adding.add(key);
+      for (const key of keys) adding.add(key);
       let set: ChangeSet;
       try {
-        set = await deps.changeSets.extend(changeSetId, [change], deps.maxMutations);
-        challenges.added(challengeId, place);
+        set = await deps.changeSets.extend(
+          changeSetId,
+          changes as CapturedMutation[],
+          deps.maxMutations,
+        );
+        for (const place of places) challenges.added(challengeId, place);
       } finally {
-        adding.delete(key);
+        for (const key of keys) adding.delete(key);
       }
-      deps.emit({
-        name: "challenge.companion-added",
-        at: deps.now(),
-        workspaceId: set.workspaceId,
-        changeSetId,
-      });
+      places.forEach(() =>
+        deps.emit({
+          name: "challenge.companion-added",
+          at: deps.now(),
+          workspaceId: set.workspaceId,
+          changeSetId,
+        }),
+      );
       deps.changed(set.threadId, set.id);
       return set;
     },

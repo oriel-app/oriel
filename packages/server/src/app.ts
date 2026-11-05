@@ -1513,7 +1513,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       },
       maxMutations: caps.maxMutationsPerChangeSet,
       changed: (threadId, changeSetId) =>
-        conversation.changeSet(threadId, changeSetId, sets.applying(changeSetId)),
+        conversation.changeSet(threadId, changeSetId, sets.applying(changeSetId), true),
       emit,
       now,
       newId,
@@ -1613,7 +1613,9 @@ export async function createApp(options: AppOptions): Promise<App> {
             take: async (id: Ulid) => {
               await secondLooks.take(id);
             },
-            add: (id: Ulid, look: Ulid, place: number) => secondLooks.add(id, look, place),
+            add: (id: Ulid, look: Ulid, places: readonly number[]) =>
+              secondLooks.add(id, look, places),
+            dismiss: (id: Ulid, look: Ulid) => secondLooks.dismiss(id, look),
           },
         }
       : {}),

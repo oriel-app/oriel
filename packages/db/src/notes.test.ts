@@ -34,8 +34,12 @@ test("0014 turns each line Oriel wrote after a rejection into a note naming the 
     t0,
   );
   const threadId = id(2);
-  threadStore(db).open({ id: threadId, workspaceId, workstreamId: id(1) }, t0);
+  // As threadStore opens one, written by hand: the store reads columns
+  // later migrations add.
   db.exec(`
+    insert into threads (id, workspace_id, workstream_id, region_version, created_at)
+    select '${threadId}', '${workspaceId}', workstream_id, max(version), '${t0}'
+    from workstream_changes where workstream_id = '${id(1)}' group by workstream_id;
     insert into change_sets (id, workspace_id, thread_id, created_at) values
       ('${id(10)}', '${workspaceId}', '${threadId}', '${t0}'),
       ('${id(11)}', '${workspaceId}', '${threadId}', '${t0}');

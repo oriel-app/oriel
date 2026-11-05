@@ -82,6 +82,7 @@ const decisionRow = object({
   by_name: string,
   hash: string,
   at: instantValue,
+  undone_at: nullable(instantValue),
 });
 const linkRow = object({
   token_hash: string,
@@ -139,8 +140,11 @@ export function store(db: DatabaseSync) {
       version
     from mutations where id = ?`);
   const selectLatestDecision = db.prepare(`
-    select id, kind, via, by_name, hash, at from decisions
+    select id, kind, via, by_name, hash, at, undone_at from decisions
     where change_set_id = ? order by seq desc limit 1`);
+  const markUndone = db.prepare(
+    "update decisions set undone_at = ? where id = ? and undone_at is null",
+  );
   const selectNextDecisionSeq = db.prepare(
     "select coalesce(max(seq), 0) + 1 as next from decisions where change_set_id = ?",
   );
@@ -262,7 +266,8 @@ export function store(db: DatabaseSync) {
 
   return {
     // A change set as its rows say now, with the hash derived from them. Its
-    // decision is the latest one, and only while its hash still matches.
+    // decision is the latest one, only while its hash still matches and
+    // nobody undid it (OA-258).
     load(id: string): ChangeSet | null {
       const raw = selectChangeSet.get(id);
       if (!raw) return null;
@@ -279,7 +284,7 @@ export function store(db: DatabaseSync) {
         mutations,
         hash,
         decision:
-          decision && decision.hash === hash
+          decision && decision.hash === hash && decision.undone_at === null
             ? ({
                 id: decision.id,
                 kind: decision.kind,
@@ -490,6 +495,11 @@ export function store(db: DatabaseSync) {
         d.hash,
         d.at,
       );
+    },
+
+    // Marks a decision undone; false when it already was.
+    undoDecision(decisionId: Ulid, at: Instant): boolean {
+      return markUndone.run(at, decisionId).changes > 0;
     },
 
     link(tokenHash: string): LinkRow | null {

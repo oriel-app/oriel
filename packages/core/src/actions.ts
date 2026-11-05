@@ -37,11 +37,12 @@ export type Actor =
 export type Door = "agent" | "tool";
 
 // Direct: applied at once, and undone by its inverse; one with none says
-// why. Person only: never the agent's or a tool's, and says why.
+// why. Person only: never the agent's or a tool's, and says why; one may
+// have an inverse, a person's too, as rejecting a change set has (OA-258).
 export type ActionClass =
   | { kind: "direct"; inverse: string }
   | { kind: "direct"; inverse: null; why: string }
-  | { kind: "person-only"; why: string };
+  | { kind: "person-only"; why: string; inverse?: string };
 
 export type ActionDeclaration = {
   doc: string;
@@ -364,12 +365,27 @@ export const actions = {
     reviewLink: true,
   },
   // The user's reason is their next message; a review link's holder's is
-  // held in the thread for the user (decision 0024).
+  // held in the thread for the user (decision 0024). In the thread, its Undo
+  // puts it back to awaiting review (OA-258).
   "changeset.reject": {
     doc: "Rejects a change set; a review link's holder says why.",
     input: object({ changeSet: changeSetId, hash: string, reason: optional(messageText), token }),
-    class: { kind: "person-only", why: approval },
+    class: { kind: "person-only", why: approval, inverse: "changeset.unreject" },
     reviewLink: true,
+  },
+  // Rejecting's Undo, in the thread only: the change set awaits review again,
+  // as it was, with its second look. `decision`: the rejection it takes
+  // back, so an Undo never takes back a later one.
+  "changeset.unreject": {
+    doc: "Undoes a rejection made in the thread, so the change set awaits review again.",
+    input: object({
+      changeSet: changeSetId,
+      decision: refine(string, isUlid, "expected a decision's ID"),
+    }),
+    class: {
+      kind: "person-only",
+      why: `Taking a rejection back decides the change set again. ${approval}`,
+    },
   },
   // Retries an approved change set that stopped partway.
   "changeset.apply": {
@@ -401,12 +417,35 @@ export const actions = {
     },
     closed: { agent: secondLook, tool: secondLook },
   },
-  "changeset.add-suggestion": {
-    doc: "Adds a change a second look suggested to a change set.",
+  // The look's head says it's the agent's reading; while it shows, the
+  // change set offers only what pertains to it, so Dismiss gives back
+  // Approve and Reject (OA-257).
+  "changeset.dismiss-look": {
+    doc: "Dismisses a change set's second look, stopping it if it still runs.",
     input: object({
       changeSet: changeSetId,
       look: refine(string, isUlid, "expected a second look's ID"),
-      place: refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a suggestion's place"),
+    }),
+    class: {
+      kind: "direct",
+      inverse: null,
+      why: "Second look shows a dismissed look again while it is current, with no model call.",
+    },
+    closed: { agent: secondLook, tool: secondLook },
+  },
+  // `places`: the suggestions to add, by place: one, or all not yet added.
+  "changeset.add-suggestion": {
+    doc: "Adds changes a second look suggested to a change set.",
+    input: object({
+      changeSet: changeSetId,
+      look: refine(string, isUlid, "expected a second look's ID"),
+      places: refine(
+        array(
+          refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a suggestion's place"),
+        ),
+        (places) => places.length > 0 && new Set(places).size === places.length,
+        "expected one or more suggestions, each once",
+      ),
     }),
     class: { kind: "person-only", why: `It changes what a person approves. ${approval}` },
   },
@@ -526,7 +565,4 @@ export type Call = { [N in ActionName]: { action: N; input: ActionInput<N> } }[A
 
 // Whether `name` undoes some action: what an Undo may call.
 export const isInverse = (name: string): name is ActionName =>
-  Object.values(actions).some(
-    (declared: ActionDeclaration) =>
-      declared.class.kind === "direct" && declared.class.inverse === name,
-  );
+  Object.values(actions).some((declared: ActionDeclaration) => declared.class.inverse === name);

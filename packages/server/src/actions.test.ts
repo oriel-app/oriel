@@ -5,8 +5,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  type ActionClass,
   type Actor,
   actions,
+  isInverse,
   type WorkstreamMember,
   type IndexRecord,
   instant,
@@ -323,8 +325,8 @@ test("every action is declared with a doc, its class and, if closed, why", () =>
   for (const [name, declared] of Object.entries(actions)) {
     assert.match(declared.doc, /^[A-Z].*\.$/, name);
     assert.equal(shapeOf(declared.input).kind === "unknown", false, name);
-    if (declared.class.kind === "direct" && declared.class.inverse !== null)
-      assert.ok(Object.hasOwn(actions, declared.class.inverse), `${name}'s inverse`);
+    const { inverse }: ActionClass = declared.class;
+    if (inverse != null) assert.ok(Object.hasOwn(actions, inverse), `${name}'s inverse`);
   }
   // A direct action open to every door is open to the agent and tools.
   const agent: Actor = { kind: "agent", threadId: id(2) as Ulid };
@@ -335,6 +337,20 @@ test("every action is declared with a doc, its class and, if closed, why", () =>
     typeText(shapeOf(actions["workstream.remove"].input)),
     "{ workstream: WorkstreamId; items: ItemId[] }",
   );
+});
+
+test("only the person undoes a rejection, or dismisses a second look, whatever the door", () => {
+  const agent: Actor = { kind: "agent", threadId: id(2) as Ulid };
+  const tool: Actor = { kind: "tool", name: "a chat bot" };
+  const holder: Actor = { kind: "review-link", by: "Ana" };
+  for (const actor of [agent, tool])
+    assert.match(refusal("changeset.unreject", actor) ?? "", /is the user's/);
+  assert.match(refusal("changeset.unreject", holder) ?? "", /isn't for a review link/);
+  assert.match(refusal("changeset.dismiss-look", agent) ?? "", /closed to agents/);
+  assert.match(refusal("changeset.dismiss-look", tool) ?? "", /closed to tools/);
+  assert.equal(refusal("changeset.unreject", { kind: "user" }), null);
+  // It is an Undo, so the one path every Undo takes may call it.
+  assert.ok(isInverse("changeset.unreject"));
 });
 
 test("marking done undoes as reopening, unless it was marked already; reopening, as marking done", async () => {

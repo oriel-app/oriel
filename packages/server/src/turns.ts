@@ -39,7 +39,7 @@ import {
 export type ThreadEvent =
   | { type: "message"; message: Message }
   | { type: "status"; running: boolean }
-  | { type: "change-set"; changeSetId: Ulid; applying: boolean }
+  | { type: "change-set"; changeSetId: Ulid; applying: boolean; look?: true }
   | { type: "workstream" }
   // An entry already in the thread's chat changed, as a held message settles.
   | { type: "chat" }
@@ -589,9 +589,10 @@ export function turns(deps: TurnDeps) {
     },
 
     // A change set of the thread started or finished applying: every page
-    // watching it reloads it.
-    changeSet(threadId: Ulid, changeSetId: Ulid, applying: boolean): void {
-      publish(threadId, { type: "change-set", changeSetId, applying });
+    // watching it reloads it. `look`: only its second look changed, so its
+    // diff stands and the page needn't read it again (OA-257).
+    changeSet(threadId: Ulid, changeSetId: Ulid, applying: boolean, look?: true): void {
+      publish(threadId, { type: "change-set", changeSetId, applying, ...(look && { look }) });
     },
 
     // One of Oriel's own actions changed the workspace, by whoever (decision
@@ -643,6 +644,15 @@ export function turns(deps: TurnDeps) {
         askFirst: !asked && set.revertOf === null,
       } as const;
       hold(threadId, from, holder.reason);
+    },
+
+    // The user undid their rejection of a change set (OA-258): the thread
+    // says so in a line Oriel writes, which the agent reads in its history,
+    // so the rejection it read before isn't the last word; and Oriel no
+    // longer asks what was wrong. Every list hears it waits on the user.
+    unrejected(set: Rejected): void {
+      note(set.threadId, { kind: "unrejected", changeSet: set.id });
+      publish(set.threadId, { type: "status", running: running.has(set.threadId) });
     },
 
     // The user sends the message held at `seq` to the agent, as it was or as

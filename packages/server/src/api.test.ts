@@ -314,6 +314,79 @@ test("a captured change set shows as a diff; read-only, approving says writing i
   assert.deepEqual(await waits(app), ["reply", "reply"]);
 });
 
+type Undo = { action: string; input: { changeSet: string; decision: string } };
+
+test("a rejection in the thread has an Undo, which puts it back to awaiting review, once", async (t) => {
+  const app = await proposed(t);
+  const { hash } = await app.diff();
+  const reject = await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash });
+  const { undo } = json<{ undo: Undo }>(reject);
+  assert.deepEqual(undo.action, "changeset.unreject");
+  assert.equal(undo.input.changeSet, app.changeSetId);
+  app.advance(1000);
+  const undone = await app.post(`/api/actions/${undo.action}`, undo.input);
+  assert.equal(undone.status, 200);
+  const view = await app.view();
+  assert.equal(view.changeSets[0]?.status, "open");
+  assert.deepEqual(
+    view.changeSets[0]?.nextSteps.map((step) => step.kind),
+    ["reject"],
+    "read-only here, it can be rejected again, not approved",
+  );
+  // The thread says so, after its line asking what was wrong.
+  assert.deepEqual(
+    view.entries.flatMap((e) => (e.kind === "note" ? [e.note.kind] : [])),
+    ["rejected", "unrejected"],
+  );
+  assert.deepEqual(await waits(app), ["review", "review"]);
+  assert.ok(names(app).includes("changeset.unrejected"));
+  // Its Undo is spent: undoing it again changes nothing.
+  assert.equal((await app.post(`/api/actions/${undo.action}`, undo.input)).status, 403);
+  // Rejected again, the new rejection has its own Undo, and the old one
+  // can't take it back.
+  const again = json<{ undo: Undo }>(
+    await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash }),
+  );
+  assert.notEqual(again.undo.input.decision, undo.input.decision);
+  assert.equal((await app.post(`/api/actions/${undo.action}`, undo.input)).status, 403);
+});
+
+test("once the person has told the agent what was wrong, a rejection's Undo is refused, with why", async (t) => {
+  const app = await proposed(t);
+  const { hash } = await app.diff();
+  const { undo } = json<{ undo: Undo }>(
+    await app.post(`/api/change-sets/${app.changeSetId}/reject`, { hash }),
+  );
+  app.advance(1000);
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: "Not 3, it's a 5" });
+  await app.app.settled();
+  const refused = await app.post(`/api/actions/${undo.action}`, undo.input);
+  assert.equal(refused.status, 403);
+  assert.match(json<{ error: string }>(refused).error, /told the agent what was wrong since/);
+  assert.equal(
+    (await app.view()).changeSets.find((set) => set.id === app.changeSetId)?.status,
+    "rejected",
+  );
+});
+
+test("a rejection through a review link has no Undo, in the thread or on the link", async (t) => {
+  const app = await proposed(t);
+  const minted = json<{ url: string }>(
+    await app.post(`/api/change-sets/${app.changeSetId}/review-link`),
+  );
+  const token = new URL(minted.url).pathname.split("/").at(-1) ?? "";
+  const review = json<ReviewView>(await app.post("/api/review/open", { token }));
+  const decided = await app.post("/api/review/decide", {
+    token,
+    changeSet: app.changeSetId,
+    kind: "rejected",
+    name: "Ana",
+    hash: review.diff.hash,
+  });
+  assert.equal(decided.status, 200);
+  assert.equal("undo" in json<object>(decided), false);
+});
+
 test("a line can be removed from a change set, which needs a fresh diff to decide", async (t) => {
   const twice: Script = async (bindings) => {
     const first = await estimate(bindings);

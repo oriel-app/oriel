@@ -585,6 +585,13 @@ const noticedShown = async (page: Page) => {
 
 // A server whose threads are each rejected for real once, in a shot.
 const answering = (await writing()).serving;
+// Rejecting and undoing it (OA-258), and a change set whose diff is still
+// reading its source (OA-257): each shot on a thread of its own.
+const unrejecting = (await writing()).serving;
+const freshThread = async (): Promise<string> => {
+  const { id } = await post<{ id: string }>("/api/workstreams", checkout, unrejecting);
+  return ask("Plan gift cards", unrejecting, id);
+};
 
 // Settings (OA-181), on a stand-in for the person's machine: Claude Code
 // and Codex found and signed in, and no API key. Nothing is started; the
@@ -1140,7 +1147,7 @@ return await challenge.record(${JSON.stringify(look.findings)});`,
     if (!set?.secondLook) throw new Error("no second look to add from");
     await post(
       `/api/change-sets/${set.id}/suggestions`,
-      { look: set.secondLook.id, place: 0 },
+      { look: set.secondLook.id, places: [0] },
       serving,
     );
   }
@@ -1195,6 +1202,11 @@ const lookHeld = await lookedAt(
   "held",
 );
 const looked = await lookedAt("Make SYN-45 say same-day sailings only", narrowing, fareFindings);
+const lookDismissed = await lookedAt(
+  "Make SYN-45 say same-day sailings only",
+  narrowing,
+  fareFindings,
+);
 const lookAdded = await lookedAt(
   "Make SYN-45 say same-day sailings only",
   narrowing,
@@ -2228,6 +2240,20 @@ const scenes: Scene[] = [
     act: (page) => page.locator(".second-look-stale").waitFor(),
   },
   {
+    // Dismissed: Approve and Reject are back, and Second look shows it again
+    // (OA-257). Dismissed once, it stays so for the later shots.
+    name: "second-look-dismissed",
+    path: `/threads/${lookDismissed.threadId}`,
+    on: lookDismissed.serving,
+    act: async (page) => {
+      const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
+      await page.getByRole("button", { name: "Approve and apply" }).or(dismiss).waitFor();
+      if (await dismiss.isVisible()) await dismiss.click();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await page.getByRole("button", { name: "Second look", exact: true }).waitFor();
+    },
+  },
+  {
     name: "second-look-none",
     path: `/threads/${lookedQuiet.threadId}`,
     on: lookedQuiet.serving,
@@ -3048,6 +3074,44 @@ const scenes: Scene[] = [
       await page.getByRole("button", { name: "Reject" }).click();
       await page.locator(".oriel-note").waitFor();
       await page.keyboard.type('Title should be "Checkout v2: wallets and gift cards"');
+    },
+  },
+  {
+    // Rejected in the thread: the bead says so, with Undo (OA-258).
+    name: "bead-rejected",
+    window: true,
+    path: "/",
+    on: unrejecting,
+    act: async (page) => {
+      await page.goto(new URL(`/threads/${await freshThread()}`, unrejecting.url).href);
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await page.getByRole("button", { name: "Reject" }).click();
+      await page.locator(beadSays, { hasText: "You rejected the change in" }).waitFor();
+    },
+  },
+  {
+    // Undone: awaiting review again, under Oriel's line saying so.
+    name: "thread-unrejected",
+    path: "/",
+    on: unrejecting,
+    act: async (page) => {
+      await page.goto(new URL(`/threads/${await freshThread()}`, unrejecting.url).href);
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+      await page.getByRole("button", { name: "Reject" }).click();
+      await page.getByRole("button", { name: /^Undo: You rejected/ }).click();
+      await page.getByText("Rejection undone.").waitFor();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    },
+  },
+  {
+    // Its diff still reading its source: no steps yet (OA-257).
+    name: "change-set-loading",
+    path: "/",
+    on: unrejecting,
+    act: async (page) => {
+      await hang(page, "/diff");
+      await page.goto(new URL(`/threads/${await freshThread()}`, unrejecting.url).href);
+      await page.locator(".change-set-loading").waitFor();
     },
   },
   {

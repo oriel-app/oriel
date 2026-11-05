@@ -93,14 +93,15 @@ export type ActionDeps = {
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a thread's chat: the user's message, which starts a
   // turn; a message held in it, whoever it is from; and its running turn.
-  turns: Pick<Turns, "say" | "rejected" | "stop" | "sendHeld" | "discardHeld">;
+  turns: Pick<Turns, "say" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld">;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
-  // asks, and a change one suggested, added. Absent where no model runs
-  // the agent.
+  // asks, changes one suggested, added, and one dismissed (OA-257). Absent
+  // where no model runs the agent.
   secondLook?: {
     take(changeSetId: Ulid): Promise<void>;
-    add(changeSetId: Ulid, look: Ulid, place: number): Promise<ChangeSet>;
+    add(changeSetId: Ulid, look: Ulid, places: readonly number[]): Promise<ChangeSet>;
+    dismiss(changeSetId: Ulid, look: Ulid): void;
   };
   // After a change set applied, partly or in full: what it created joins
   // the workstream, and a live index syncs.
@@ -862,22 +863,36 @@ const handlers = {
         "refused",
         "a second look is only of a change set nobody has decided on",
       );
+    // The look tells the thread's pages itself, as only it changed: the
+    // diff stands, so they needn't read it again.
     await deps.secondLook.take(set.id);
-    return {
-      output: {},
-      undo: null,
-      changed: { thread: set.threadId, changeSet: set.id, applying: false },
-      events: [],
-    };
+    return { output: {}, undo: null, changed: null, events: [] };
   },
 
-  "changeset.add-suggestion": async ({ changeSet: id, look, place }, _actor, deps) => {
+  // Shown no more, and stopped if it still runs: the change set offers
+  // Approve and Reject again (OA-257).
+  "changeset.dismiss-look": async ({ changeSet: id, look }, _actor, deps) => {
     const set = await mustChangeSet(deps, id);
     if (!deps.secondLook) throw new ActionError("refused", "second looks are off here");
-    const added = await deps.secondLook.add(set.id, look as Ulid, place).catch((error: unknown) => {
+    try {
+      deps.secondLook.dismiss(set.id, look as Ulid);
+    } catch (error) {
       if (error instanceof RangeError) throw new ActionError("not-found", error.message);
       throw error;
-    });
+    }
+    // As for taking one, the look tells the thread's pages itself.
+    return { output: {}, undo: null, changed: null, events: [] };
+  },
+
+  "changeset.add-suggestion": async ({ changeSet: id, look, places }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    if (!deps.secondLook) throw new ActionError("refused", "second looks are off here");
+    const added = await deps.secondLook
+      .add(set.id, look as Ulid, places)
+      .catch((error: unknown) => {
+        if (error instanceof RangeError) throw new ActionError("not-found", error.message);
+        throw error;
+      });
     return {
       output: {},
       undo: null,
@@ -935,10 +950,48 @@ const handlers = {
       decided,
       approver.via === "review-link" ? { by: approver.by, reason: reason ?? null } : null,
     );
+    // The person's own rejection has an Undo; a review link's holder has
+    // nowhere to undo from, and the link died with the decision (OA-258). A
+    // revert's has none: Revert again makes another.
+    const undo =
+      approver.via === "thread" && decided.decision && set.revertOf === null
+        ? {
+            action: "changeset.unreject" as const,
+            input: { changeSet: set.id, decision: decided.decision.id },
+          }
+        : null;
+    return {
+      output: { report: null, problem: null },
+      undo,
+      changed: null,
+      events: "counted",
+    };
+  },
+
+  // Rejecting's Undo (OA-258): the change set awaits review again, as it
+  // was, and the thread says so, for the person and the agent. Only while
+  // the thread hasn't moved on from it: once the person has said anything
+  // to the agent since, it is working from the rejection, and they ask it
+  // for the change again instead.
+  "changeset.unreject": async ({ changeSet: id, decision }, _actor, deps) => {
+    const set = await mustChangeSet(deps, id);
+    const rejection = set.decision;
+    if (rejection?.kind !== "rejected" || rejection.id !== decision)
+      throw new ActionError("refused", "it isn't rejected as it was, so there's nothing to undo");
+    const said = deps.threads
+      .messages(set.threadId)
+      .some((m) => m.role === "user" && m.at > rejection.at);
+    if (said)
+      throw new ActionError(
+        "refused",
+        "you've told the agent what was wrong since, so it is working from that rejection: ask it for the change again",
+      );
+    const undone = await deps.changeSets.undoRejection(set.id);
+    deps.turns.unrejected(undone);
     return {
       output: { report: null, problem: null },
       undo: null,
-      changed: null,
+      changed: { thread: set.threadId, changeSet: set.id, applying: false },
       events: "counted",
     };
   },
@@ -1186,10 +1239,7 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     const cause =
       actor.kind === "user" && via !== undefined ? { kind: "user" as const, via } : actor;
     const outcome = await handler(checked(name, raw as Fields<N>), actor, deps, cause);
-    if (
-      outcome.undo &&
-      (declared.class.kind !== "direct" || outcome.undo.action !== declared.class.inverse)
-    )
+    if (outcome.undo && outcome.undo.action !== declared.class.inverse)
       throw new Error(`${name} gave an undo that isn't its inverse`);
     const at = deps.now();
     const { workspaceId } = deps;

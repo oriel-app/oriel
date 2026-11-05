@@ -125,6 +125,19 @@ test("a change set applied in full makes it done; one partly applied doesn't, un
   assert.deepEqual(state(after(6000)), ["done", "applied"]);
 });
 
+test("a rejection undone puts its change set back awaiting review, so the thread isn't done", () => {
+  const { db, changeSet, decide, state } = fresh();
+  const rejected = changeSet([{ after: { points: 5 }, at: null }]);
+  decide(rejected, "rejected", after(500));
+  changeSet([{ after: { points: 3 }, at: after(1000) }]);
+  assert.deepEqual(state(after(2000)), ["done", "applied"]);
+  db.prepare("update decisions set undone_at = ? where change_set_id = ?").run(
+    after(2500),
+    rejected,
+  );
+  assert.deepEqual(state(after(3000)), ["working", null]);
+});
+
 test("of two change sets, applying one leaves the thread working while the other awaits review", () => {
   const pending = { after: { points: 3 }, at: null };
   const apply = (db: ReturnType<typeof fresh>["db"], changeSetId: Ulid, at: Instant) =>

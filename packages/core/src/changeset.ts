@@ -180,6 +180,11 @@ export interface ChangeSets {
     approver: Approver,
     reviewed: string,
   ): Promise<ChangeSet>;
+  // Undoes the person's own rejection in the thread (OA-258): the change set
+  // is undecided again, as it was, and its next decision is a new one. A
+  // rejection through a review link, or a dismissal of what started landing,
+  // is refused. Its review link stays dead.
+  undoRejection(id: Ulid): Promise<ChangeSet>;
   // Writes only under an approval whose hash matches the hash derived from the
   // mutation rows it is about to send. Replays exactly the captured arguments,
   // in `seq` order, and can resume after a crash.

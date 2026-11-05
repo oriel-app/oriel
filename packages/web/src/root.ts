@@ -14,6 +14,15 @@ import {
   updateApproved,
 } from "./approved.ts";
 import {
+  initRejected,
+  noted,
+  rejectedIn,
+  type RejectedModel,
+  type RejectedMsg,
+  rejectedReplied,
+  updateRejected,
+} from "./rejected.ts";
+import {
   type ClosingModel,
   type ClosingMsg,
   closingReplied,
@@ -207,6 +216,8 @@ export type Model = {
   // Where an approval in a thread took the page, as a note in the stack of
   // Undo notes.
   approved: ApprovedModel;
+  // A rejection in a thread, with its Undo, as another (OA-258).
+  rejected: RejectedModel;
 };
 
 export type Msg =
@@ -223,6 +234,7 @@ export type Msg =
   | { type: "panel"; msg: PanelMsg }
   | { type: "panelAdd"; msg: PanelAddMsg }
   | { type: "approved"; msg: ApprovedMsg }
+  | { type: "rejected"; msg: RejectedMsg }
   // The pointer or keyboard came onto the stack of Undo notes, or left it,
   // which holds every note in it, of every kind.
   | { type: "undoHeld"; by: Hold; held: boolean }
@@ -334,6 +346,7 @@ export function init(route: Route): [Model, Effect[]] {
     settings: initSettings(),
     setup: initSetup(),
     approved: initApproved(),
+    rejected: initRejected(),
   };
   const [model, effects] = enter(empty, route);
   // A review link's page isn't the person's, so it keeps the default look.
@@ -479,6 +492,11 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
 }
 
 function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
+  const rejection = rejectedIn(before, msg);
+  if (rejection) {
+    const [rejected, expiry] = noted(after.rejected, rejection);
+    return [{ ...after, rejected }, [...effects, ...expiry]];
+  }
   const next = { ...after, approved: sending(after.approved, msg) };
   const changeSetId = accepted(before, msg);
   const [moved, going] = changeSetId === null ? [next, []] : approvedIn(before, next, changeSetId);
@@ -662,15 +680,20 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         ? updateOverview(model.overview, { type: "undoHeld", by, held })
         : [null, []];
       const [panelAdds, added] = holdAdds(model.panelAdds, by, held);
-      const [approved, noted] = updateApproved(model.approved, { type: "undoHeld", by, held });
+      const [approved, told] = updateApproved(model.approved, { type: "undoHeld", by, held });
+      const [rejected, kept] = updateRejected(model.rejected, { type: "undoHeld", by, held });
       return [
-        { ...model, workstream, ending, overview, panelAdds, approved },
-        [...removals, ...ended, ...made, ...added, ...noted],
+        { ...model, workstream, ending, overview, panelAdds, approved, rejected },
+        [...removals, ...ended, ...made, ...added, ...told, ...kept],
       ];
     }
     case "approved": {
       const [approved, effects] = updateApproved(model.approved, msg.msg);
       return [{ ...model, approved }, effects];
+    }
+    case "rejected": {
+      const [rejected, effects] = updateRejected(model.rejected, msg.msg);
+      return [{ ...model, rejected }, effects];
     }
     case "search": {
       const [search, effects] = updateSearch(model.search, msg.msg);
@@ -859,6 +882,13 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "deletion":
     case "deleted":
       return closed({ ...model, closing: closingReplied(model.closing, msg) }, msg);
+    // Undone, the thread's stream reloads it, and the lists hear it waits on
+    // the person again.
+    case "unrejected":
+      return [
+        { ...model, rejected: rejectedReplied(model.rejected, msg) },
+        msg.ok ? [loadThreads, loadWorkstreams] : [],
+      ];
     // The new workstream shows in the sidebar once the thread's page loads it.
     // One started from a draft the person has since left shows there now.
     case "threadStarted": {
