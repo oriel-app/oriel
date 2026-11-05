@@ -94,7 +94,8 @@ import type { KeyCheck, Provider, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
-import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
+import { ActionError, blankWorkstreamName, type Changed, dispatcher } from "./actions.ts";
+import type { Outside } from "./mcp/door.ts";
 import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -226,6 +227,8 @@ export type App = {
   telemetry(): StoredEvent[];
   // Revokes every live review link, and says how many there were.
   revokeReviewLinks(): Promise<number>;
+  // What the MCP door reaches (decision 0024).
+  outside: Outside;
   close(): Promise<void>;
 };
 
@@ -1591,6 +1594,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
+  // Who hears each change a call publishes, besides the window: the MCP
+  // door's subscriptions.
+  const watchers = new Set<(changed: Changed) => void>();
   const dispatch = dispatcher({
     workspaceId,
     workstreams,
@@ -1680,6 +1686,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return () => clearTimeout(timer);
     },
     publish: (changed) => {
+      for (const listener of watchers) listener(changed);
       if ("changeSet" in changed)
         return conversation.changeSet(changed.thread, changed.changeSet, changed.applying);
       if ("deleted" in changed) {
@@ -2102,6 +2109,20 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     telemetry: () => telemetry.list(workspaceId),
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
+    outside: {
+      workspaceId,
+      dispatch,
+      reads,
+      reader,
+      indexed: (id) => records().some((record) => record.id === id),
+      workstream: (id) => viewer.workstream(id),
+      watch: (listener) => {
+        watchers.add(listener);
+        return () => {
+          watchers.delete(listener);
+        };
+      },
+    },
     // Stops every turn, waits for the last sync, and closes the database.
     // Closing twice does nothing more.
     async close() {

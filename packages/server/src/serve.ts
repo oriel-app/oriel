@@ -44,7 +44,7 @@ export function bodyReader(req: IncomingMessage): (limit: number) => Promise<str
   };
 }
 
-async function send(res: ServerResponse, method: string, reply: Reply): Promise<void> {
+export async function send(res: ServerResponse, method: string, reply: Reply): Promise<void> {
   res.writeHead(reply.status, reply.headers);
   if (!reply.stream) {
     res.end(method === "HEAD" ? undefined : reply.body);
@@ -201,7 +201,7 @@ export async function serve(
 }
 
 // Listens on the first port that isn't taken. Any other failure stops it.
-async function listen(server: Server, ports: readonly number[]): Promise<AddressInfo> {
+export async function listen(server: Server, ports: readonly number[]): Promise<AddressInfo> {
   for (const [i, port] of ports.entries()) {
     try {
       await new Promise<void>((resolve, reject) => {

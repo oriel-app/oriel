@@ -242,7 +242,10 @@ export type ThreadStateId = (typeof threadStates)[number];
 // Who a held message is from: a review link's holder, by the name they
 // typed, giving why they rejected a change set. Each kind of sender is one
 // variant, as the server's HeldSender has them.
-export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
+export type HeldFrom =
+  | { kind: "review-link"; by: string; changeSetId: string }
+  // An outside tool, by the name the user gave it (OA-73).
+  | { kind: "tool"; name: string };
 
 // One of Oriel's lines in a thread, as the server's OrielNote has them:
 // a change set of the thread was rejected, here or on its review link, and
@@ -377,6 +380,10 @@ export type WorkstreamChangeView = {
   cause: "user" | "agent" | "tool" | "review-link" | "change-set" | "sync";
   // The thread whose agent made it, when the agent did.
   thread?: { id: string; title: string | null };
+  // The outside tool that made it, by the name the user gave it, and, while
+  // it is the workstream's latest version, the call that undoes it (OA-71).
+  tool?: string;
+  undo?: UndoView | null;
 };
 
 export type ThreadSummaryView = {

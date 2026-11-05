@@ -1,7 +1,7 @@
 // A thread: a workstream, a chat and change sets (decision 0018). It is pinned to
 // its workstream and works in one version of it, its region. Its state is derived
 // from what happened in it, never stored (packages/db derives it).
-import { holderName, maxReasonChars } from "./actions.ts";
+import { holderName, maxMessageChars, maxReasonChars, toolName } from "./actions.ts";
 import { type Instant, isUlid, type Ulid } from "./ids.ts";
 import { array, boolean, type Infer, literal, object, refine, string, union } from "./validate.ts";
 
@@ -32,8 +32,9 @@ export type Thread = {
 // link's holder sends why they rejected the change set the link names, under
 // the name they typed; `askFirst`: Oriel is to ask what was wrong with it
 // before the reason reaches the agent, as it couldn't as it was held
-// (mid-turn), and never does for an Undo. Another thread's agent (OA-89) and
-// an outside tool (OA-75) join here, each as one more variant and its limit
+// (mid-turn), and never does for an Undo. An outside tool (OA-73) says
+// what it asks, under the name the user gave it when they connected it.
+// Another thread's agent (OA-89) joins here as one more variant and its limit
 // below.
 export const heldSender = union(
   object({
@@ -42,6 +43,7 @@ export const heldSender = union(
     changeSet: refine(string, isUlid, "expected a change set ID"),
     askFirst: boolean,
   }),
+  object({ kind: literal("tool"), name: toolName }),
 );
 export type HeldSender = Infer<typeof heldSender>;
 
@@ -49,6 +51,7 @@ export type HeldSender = Infer<typeof heldSender>;
 // controls, it is capped at.
 export const maxHeldChars: Record<HeldSender["kind"], number> = {
   "review-link": maxReasonChars,
+  tool: maxMessageChars,
 };
 
 // What a held message says: not blank, and within its sender's limit.

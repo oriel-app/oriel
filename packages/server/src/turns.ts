@@ -623,6 +623,13 @@ export function turns(deps: TurnDeps) {
 
     say,
 
+    // An outside tool's words (OA-73), held in the thread for the user as
+    // a review link's holder's reason is: they reach the agent only as the
+    // user sends them on.
+    holdFromTool(threadId: Ulid, name: string, text: string): void {
+      hold(threadId, { kind: "tool", name }, text);
+    },
+
     // A change set of the thread was rejected. The thread says so and asks
     // what was wrong, in a line Oriel writes with no model call: the agent reads it
     // in its history, so it answers with a revised change set rather than

@@ -22,8 +22,8 @@ import {
 } from "./validate.ts";
 
 // Who acted, recorded with every call: the user, in the window; the agent in
-// a thread; an outside tool, by the name it gives (until OA-75); whoever
-// holds a review link, by the name they typed; a change set, for what
+// a thread; an outside tool, by the name the user gave it when they
+// connected it, never what it says of itself (OA-75); whoever holds a review link, by the name they typed; a change set, for what
 // follows its apply; or a source's sync, for what follows it.
 export type Actor =
   | { kind: "user" }
@@ -110,6 +110,15 @@ const name = refine(
 // What a review link's holder types, and so controls: the name they give,
 // and why they rejected a change set.
 export const holderName = name;
+// What an outside tool is called: the name the user gave it when they
+// connected it (OA-72), which the window and every record show. Capped, as
+// a holder's name is, before the MCP door opens (OA-71).
+export const maxToolNameChars = 60;
+export const toolName = refine(
+  string,
+  (text) => text.trim() !== "" && [...text].length <= maxToolNameChars,
+  `expected a name of 1 to ${maxToolNameChars} characters`,
+);
 export const holderReason = refine(
   string,
   (text) => text.trim() !== "" && text.length <= maxReasonChars,
@@ -138,7 +147,6 @@ const secondLook =
 // Opening a thread and saying something in one, which the agent may not yet.
 const unsaid =
   "Text the agent writes must show where it came from before it reaches a thread, or it would read as the user's words (decision 0024).";
-const untold = "Whether an outside tool may say anything waits on its threat model (OA-75).";
 // Deleting a workstream and bringing it back, which only the user may.
 const hides =
   "It has no Undo when no thread ever used the workstream, and otherwise it hides what was said in its threads, which is the user's call (decision 0028).";
@@ -266,9 +274,12 @@ export const actions = {
       inverse: null,
       why: "Its Undo would delete the thread, which is the user's (decision 0024).",
     },
-    closed: { agent: unsaid, tool: untold },
+    // An outside tool opens one empty, to say what it asks (OA-73).
+    closed: { agent: unsaid },
   },
-  // The user's message, which starts a turn to answer it.
+  // The user's message, which starts a turn to answer it. An outside tool's
+  // is held in the thread for the user, who sends it on, edits it or
+  // discards it, as a review link's holder's reason (OA-73).
   "thread.say": {
     doc: "Says something in a thread, which the agent answers.",
     input: object({ thread: threadId, text: messageText }),
@@ -277,7 +288,7 @@ export const actions = {
       inverse: null,
       why: "What was said stays said: only deleting the thread erases it, which is the user's.",
     },
-    closed: { agent: unsaid, tool: untold },
+    closed: { agent: unsaid },
   },
   "thread.stop": {
     doc: "Stops the turn running in a thread.",
@@ -290,6 +301,7 @@ export const actions = {
     closed: {
       agent:
         "An intent applies as its turn ends, when its own turn is over, and another thread's turn answers that thread's user.",
+      tool: "Stopping a turn is the user's call about their own turn, which steered words shouldn't make (OA-75).",
     },
   },
   // Sync now, in a thread's right rail: the thread catches up with its
@@ -306,6 +318,7 @@ export const actions = {
     closed: {
       agent:
         "A turn works in the version it started in, and another thread's version is its user's to move.",
+      tool: "A thread's version is its user's to move (OA-75).",
     },
   },
   "thread.delete": {

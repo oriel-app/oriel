@@ -93,7 +93,10 @@ export type ActionDeps = {
   created(changeSetId: Ulid): Promise<WorkstreamMember[]>;
   // What becomes of a thread's chat: the user's message, which starts a
   // turn; a message held in it, whoever it is from; and its running turn.
-  turns: Pick<Turns, "say" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld">;
+  turns: Pick<
+    Turns,
+    "say" | "holdFromTool" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld"
+  >;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
   // asks, changes one suggested, added, and one dismissed (OA-257). Absent
@@ -782,9 +785,15 @@ const handlers = {
     };
   },
 
-  // The turn counts the question, and tells the thread's pages.
-  "thread.say": async ({ thread: id, text }, _actor, deps) => {
+  // The turn counts the question, and tells the thread's pages. An outside
+  // tool's words wait in the thread for the user, and start no turn: a turn
+  // costs the user's model, and its words would steer the agent (OA-73).
+  "thread.say": async ({ thread: id, text }, actor, deps) => {
     const thread = mustThread(deps, id);
+    if (actor.kind === "tool") {
+      deps.turns.holdFromTool(thread.id, actor.name, text);
+      return { output: { held: true }, undo: null, changed: null, events: [] };
+    }
     const { seq } = deps.turns.say(thread.id, text);
     return { output: { seq }, undo: null, changed: null, events: "counted" };
   },

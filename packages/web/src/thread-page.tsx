@@ -428,6 +428,15 @@ function heldFrom(from: HeldFrom) {
         ),
         whose: `${from.by}'s reason`,
       };
+    case "tool":
+      return {
+        line: (
+          <>
+            <strong>{from.name}</strong>, an outside tool, asks:
+          </>
+        ),
+        whose: `${from.name}'s words`,
+      };
   }
 }
 
