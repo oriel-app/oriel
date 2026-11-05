@@ -953,6 +953,138 @@ const commented = await commentOn("approve");
 const handing = await handOff("propose");
 const handed = await handOff("approve");
 const handedBack = await handOff("revert");
+
+// A second look at a change set (decision 0054), each on a server of
+// its own: SYN-45 narrowed to same-day sailings, beside the Slack decision
+// whose later reply extends it to next-day ones. Before the person presses
+// Second look; while it runs (`held`, until the server closes); its
+// findings, with a suggested change, which `add` adds; and a harmless
+// estimate it raises nothing about. The looks are scripted, as the
+// thread's agent is.
+const fareDecision = "slack:C0FW1WEATHR-1788444000.000100";
+const lookedAt = async (
+  asked: string,
+  propose: string,
+  look: { findings: unknown[]; writes?: string },
+  then: "before" | "held" | "ready" | "add" = "ready",
+) => {
+  const site = memorySite(loadJiraFixture(), instant(new Date()));
+  const serving = await start(0, {
+    db: ":memory:",
+    sources: { jira: { mode: "fixture", fetch: site.fetch }, slack: { mode: "fixture" } },
+    agent: (deps) =>
+      scriptedAgent(deps, () => [
+        { text: "Here's the change for you to review." },
+        { run: propose },
+      ]),
+    challenger: (deps) =>
+      then === "held"
+        ? {
+            async *turn(_input, { signal }) {
+              await new Promise((resolve) => signal.addEventListener("abort", resolve));
+              yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
+            },
+          }
+        : scriptedAgent(deps, () => [
+            {
+              run: `await challenge.diff();
+await items.read("jira:SYN-45");
+${look.writes ?? ""}
+return await challenge.record(${JSON.stringify(look.findings)});`,
+            },
+          ]),
+  });
+  const { id: workstreamId } = await post<{ id: string }>(
+    "/api/workstreams",
+    {
+      kind: "picked",
+      name: "Fares after cancellations",
+      items: ["jira:SYN-45", "jira:SYN-29", "jira:SYN-54", fareDecision],
+    },
+    serving,
+  );
+  const threadId = await ask(asked, serving, workstreamId);
+  if (then === "before") return { serving, threadId };
+  const setId = await changeSetOf(serving, threadId);
+  await post(`/api/change-sets/${setId}/second-look`, {}, serving);
+  if (then === "held") return { serving, threadId };
+  await serving.app.settled();
+  if (then === "add") {
+    const view = await call<{ changeSets: { id: string; secondLook?: { id: string } | null }[] }>(
+      serving,
+      "GET",
+      `/api/threads/${threadId}`,
+    );
+    const set = view.changeSets[0];
+    if (!set?.secondLook) throw new Error("no second look to add from");
+    await post(
+      `/api/change-sets/${set.id}/suggestions`,
+      { look: set.secondLook.id, place: 0 },
+      serving,
+    );
+  }
+  return { serving, threadId };
+};
+const narrowing = `jira.setDescription("jira:SYN-45", ${JSON.stringify(
+  "Policy from operations: if we cancel a sailing for weather, the passenger keeps the fare they paid on any later sailing the same day, even in a dearer fare band. We absorb the difference; we never charge it. Next-day sailings are case by case.\n\nAcceptance criteria:\n- On a later sailing the same day, the rebooked fare equals the original fare\n- The receipt says 'Fare difference waived'",
+)});`;
+const fareFindings = {
+  findings: [
+    {
+      kind: "conflict",
+      lines: [1],
+      says: "This makes next-day sailings case by case again. A later reply under the decision says ops agreed next-day sailings follow the same rule.",
+      evidence: [
+        { line: 1, quote: "Next-day sailings are case by case." },
+        {
+          id: fareDecision,
+          quote:
+            "ops agreed that next-day sailings now follow the same rule, so passengers keep their fare on the next day's sailings too",
+        },
+      ],
+    },
+    {
+      kind: "discussion",
+      lines: [1],
+      says: "Support is updating its macros from the original decision; they would answer differently from this story.",
+      evidence: [{ id: fareDecision, quote: "I'll update the support macros." }],
+    },
+    {
+      kind: "companion",
+      lines: [1],
+      says: "The cancellation screen's compensation copy should state the same rule as the story.",
+      evidence: [
+        { id: "jira:SYN-29", quote: "Explain compensation rules on the cancellation screen" },
+      ],
+      changes: [1],
+    },
+  ],
+  writes: `jira.setDescription("jira:SYN-29", "On the cancellation screen: if we cancel for weather, your fare carries over to any later sailing the same day, at no extra cost.");`,
+};
+const lookBefore = await lookedAt(
+  "Make SYN-45 say same-day sailings only",
+  narrowing,
+  fareFindings,
+  "before",
+);
+const lookHeld = await lookedAt(
+  "Make SYN-45 say same-day sailings only",
+  narrowing,
+  fareFindings,
+  "held",
+);
+const looked = await lookedAt("Make SYN-45 say same-day sailings only", narrowing, fareFindings);
+const lookAdded = await lookedAt(
+  "Make SYN-45 say same-day sailings only",
+  narrowing,
+  fareFindings,
+  "add",
+);
+const lookedQuiet = await lookedAt(
+  "Estimate SYN-54 at 2 points",
+  `jira.setEstimate("jira:SYN-54", 2);`,
+  { findings: [] },
+);
 // Another thread asks where the hand-off was approved; the agent links to it.
 const askedWhere = await ask(
   "Where did I approve the post that SYN-61 is ready?",
@@ -1856,6 +1988,36 @@ const scenes: Scene[] = [
     path: `/workstreams/${handed.workstreamId}`,
     on: handed.serving,
     act: (page) => page.locator(".workstream-page .members").waitFor(),
+  },
+  {
+    name: "second-look-before",
+    path: `/threads/${lookBefore.threadId}`,
+    on: lookBefore.serving,
+    act: (page) => page.locator(".second-look-button").waitFor(),
+  },
+  {
+    name: "second-look-running",
+    path: `/threads/${lookHeld.threadId}`,
+    on: lookHeld.serving,
+    act: (page) => page.locator(".second-look[data-state=running]").waitFor(),
+  },
+  {
+    name: "second-look",
+    path: `/threads/${looked.threadId}`,
+    on: looked.serving,
+    act: (page) => page.locator(".second-look .finding").first().waitFor(),
+  },
+  {
+    name: "second-look-added",
+    path: `/threads/${lookAdded.threadId}`,
+    on: lookAdded.serving,
+    act: (page) => page.locator(".second-look-stale").waitFor(),
+  },
+  {
+    name: "second-look-none",
+    path: `/threads/${lookedQuiet.threadId}`,
+    on: lookedQuiet.serving,
+    act: (page) => page.locator(".second-look-none").waitFor(),
   },
   {
     name: "thread-handoff-reverted",

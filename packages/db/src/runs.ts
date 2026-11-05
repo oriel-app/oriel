@@ -2,7 +2,7 @@
 // runs are attributable. Each proxied read keeps its arguments and a hash of
 // its payload, never the payload.
 import type { DatabaseSync } from "node:sqlite";
-import type { ProxiedRead, Run } from "@oriel/core";
+import type { ProxiedRead, Run, Ulid } from "@oriel/core";
 import { transaction } from "./open.ts";
 
 export type RunStore = ReturnType<typeof runStore>;
@@ -16,6 +16,7 @@ export function runStore(db: DatabaseSync) {
     insert into run_reads (workspace_id, run_id, seq, fn, args, ms, outside_region, status,
       payload_hash)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const selectModel = db.prepare("select model from runs where id = ?");
 
   return {
     // The run and its reads, together or not at all.
@@ -52,6 +53,12 @@ export function runStore(db: DatabaseSync) {
           );
         });
       });
+    },
+
+    // The model a run ran on, or null for a run never recorded.
+    model(id: Ulid): string | null {
+      const row = selectModel.get(id) as { model: string } | undefined;
+      return row?.model ?? null;
     },
   };
 }

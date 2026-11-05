@@ -51,11 +51,11 @@ test("a case parses, each expectation keeping only its grader's fields", () => {
 });
 
 test("kinds no grader here can check are refused", () => {
-  for (const kind of [1, 5, 6, 0, 9, 2.5]) {
+  for (const kind of [1, 5, 6, 0, 10, 2.5]) {
     const result = parseEvalCase({ ...estimate(), kind });
     assert.deepEqual(
       !result.ok && result.issues,
-      [{ path: "$.kind", message: "expected an eval kind with a grader: 2, 3, 4, 7 or 8" }],
+      [{ path: "$.kind", message: "expected an eval kind with a grader: 2, 3, 4, 7, 8 or 9" }],
       String(kind),
     );
   }
@@ -66,7 +66,7 @@ test("bad fields are reported with their paths", () => {
     ...estimate(),
     id: "Estimate Checkout",
     split: "dev",
-    kind: 9,
+    kind: 10,
     edited: -1,
     prompt: " ",
     expect: [
@@ -243,4 +243,34 @@ test("a golden diff creates each new ref once, before anything names it", () => 
 test("a missing case directory holds no cases", (t) => {
   const root = tempDir(t);
   assert.deepEqual(loadCases(new URL("cases/", root), fixtures, root), { cases: [], problems: [] });
+});
+
+test("a second look is kind 9, has no prompt and is graded by what it found", () => {
+  const look = {
+    id: "look-estimate",
+    split: "train",
+    kind: 9,
+    region: "checkout-epic",
+    challenge: { lines: [{ change: "Estimate it.", item: "jira:SYN-23", fields: [] }] },
+    expect: [{ grader: "findings", atMost: 1 }],
+  };
+  assert.equal(parseEvalCase(look).ok, true);
+  const messages = (input: unknown) => {
+    const result = parseEvalCase(input);
+    return result.ok ? [] : result.issues.map((issue) => issue.message);
+  };
+  assert.ok(messages({ ...look, kind: 2 }).some((m) => m.includes("kind 9, and only it")));
+  assert.ok(
+    messages({ ...look, prompt: "Hi" }).some((m) => m.includes("unless it is a second look")),
+  );
+  assert.ok(
+    messages({ ...look, expect: [{ grader: "zero-mutations" }] }).some((m) =>
+      m.includes("graded by what it found"),
+    ),
+  );
+  assert.ok(
+    messages({ ...estimate(), expect: [{ grader: "findings" }] }).some((m) =>
+      m.includes("only a second look has findings"),
+    ),
+  );
 });

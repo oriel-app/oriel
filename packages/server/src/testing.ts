@@ -118,6 +118,9 @@ export type TestOptions = {
   plan?: (input: Parameters<Agent["turn"]>[0]) => Step[];
   scripts?: Record<string, Script>;
   agent?: (deps: ServerAgentDeps) => Agent;
+  // The agent that takes a second look when the person asks; without one,
+  // none is offered (decision 0054).
+  challenger?: (deps: ServerAgentDeps) => Agent;
   // Writes threads' titles; without one, titles are first messages, clipped.
   titler?: Titler;
   sandbox?: Sandbox;
@@ -211,6 +214,7 @@ export async function testApp(
     ...(options.models
       ? { models: options.models }
       : { agent: options.agent ?? ((deps) => scriptedAgent(deps, plan)) }),
+    ...(options.challenger ? { challenger: options.challenger } : {}),
     ...(options.settings ? { settings: options.settings } : {}),
     ...(options.keys ? { keys: options.keys } : {}),
     ...(options.notify ? { notify: options.notify } : {}),

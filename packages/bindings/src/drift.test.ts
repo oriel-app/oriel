@@ -133,10 +133,10 @@ test("every function lives under a name the guest hands the script, and each nam
     const globals = globalsOf(scope.spaces);
     assert.deepEqual(globals.slice(0, 4), ["items", "jira", "folder", "slack"]);
     // Every name but a namespace for a source the region holds nothing from,
-    // and the window chat's own, and a waiting connection's, which the guest
-    // still hands the script, empty.
+    // and the window chat's own, a waiting connection's and a second look's,
+    // which the guest still hands the script, empty.
     const unused = globals.filter((name) => !homes.has(name));
-    assert.deepEqual(unused, ["folder", "slack", "window", "source"]);
+    assert.deepEqual(unused, ["folder", "slack", "window", "source", "challenge"]);
     assert.ok([...homes].every((home) => globals.includes(home)));
   }
 });
@@ -149,6 +149,7 @@ test("no source may take one of Oriel's own names", () => {
     "thread",
     "window",
     "source",
+    "challenge",
     "search",
     "show",
     "sketch",
@@ -181,7 +182,9 @@ test("the stub check catches a missing, extra, renamed or mis-kinded stub", asyn
       fns.map((fn) => (fn.name === "getItem" ? { ...write, name: "getItem" } : fn)),
       [2322],
     ],
-    ["no global", fns.filter((fn) => fn.name !== "search"), [2304]],
+    // A parameter no function stands behind is handed over as nothing, which
+    // the declarations' function type refuses.
+    ["no global", fns.filter((fn) => fn.name !== "search"), [2322]],
   ];
   const { spaces } = scopeOf(region, namespaces);
   for (const [drift, list, codes] of drifted) {

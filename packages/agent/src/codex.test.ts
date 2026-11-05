@@ -740,7 +740,7 @@ test("through the agent loop: the run happens in Oriel's sandbox and its transcr
   for await (const event of agent({
     ...deps,
     provider: provider(fake),
-    bindingsFor: regionBindings,
+    bindingsFor: (region, threadId, shown) => regionBindings(region, threadId, shown),
   }).turn(
     {
       thread,

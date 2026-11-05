@@ -94,6 +94,11 @@ const words: { [N in ActionName]: Words } = {
   "changeset.apply": () => ["Applied a change set", "apply a change set"],
   "changeset.dismiss": () => ["Dismissed a change set", "dismiss a change set"],
   "changeset.revert": () => ["Reverted a change set", "revert a change set"],
+  "changeset.second-look": () => ["Took a second look", "take a second look"],
+  "changeset.add-suggestion": () => [
+    "Added a second look's suggestion to a change set",
+    "add a second look's suggestion",
+  ],
   "review-link.create": () => ["Made a review link", "make a review link"],
   "review-link.revoke": () => ["Revoked a review link", "revoke a review link"],
   "source.connect": () => ["Connected a source", "connect a source"],

@@ -30,6 +30,7 @@ import type {
   BlockView,
   ChangeSetStatus,
   ChangeSetView,
+  SecondLookView,
   ChatEntry,
   Chips,
   ChipView,
@@ -71,6 +72,9 @@ export type ViewDeps = {
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
+  // A change set's latest second look, for its thread's page (decision
+  // 0054); absent where no model runs the agent, so none can be taken.
+  secondLook?: (set: ChangeSet) => Promise<SecondLookView | null>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -702,6 +706,17 @@ export function views(deps: ViewDeps) {
         if (m.role === "marker") version = m.to;
         return entry(m, { thread: id, workstream: thread.workstreamId }, idsAt(version)) ?? [];
       });
+      // Each undecided change set's second look, or null for one the person
+      // may still ask for; its quotes are drawn under their items' chips.
+      const looks = new Map<string, SecondLookView | null>();
+      for (const set of sets) {
+        if (!deps.secondLook || set.decision !== null || set.revertOf !== null) continue;
+        looks.set(set.id, await deps.secondLook(set));
+      }
+      const evidence = [...looks.values()].flatMap(
+        (look) =>
+          look?.findings.flatMap((finding) => finding.evidence.flatMap((e) => e.id ?? [])) ?? [],
+      );
       return {
         id,
         title: title(id),
@@ -713,18 +728,20 @@ export function views(deps: ViewDeps) {
         entries,
         lastSeq: messages.at(-1)?.seq ?? 0,
         running: deps.running(id),
-        changeSets: sets.map((set) =>
-          changeSetView(
+        changeSets: sets.map((set) => {
+          const view = changeSetView(
             set,
             sets,
             steps.get(set.id) ?? [],
             applying(set.id),
             writable(set.id),
             stalled(set.id),
-          ),
-        ),
+          );
+          const look = looks.get(set.id);
+          return look === undefined ? view : { ...view, secondLook: look };
+        }),
         writable: deps.writable,
-        chips: await chips(answered(entries), id),
+        chips: await chips([...new Set([...answered(entries), ...evidence])], id),
         quotes: Object.fromEntries(
           messages.flatMap((m) =>
             m.role === "note" && m.note.kind === "quotes"

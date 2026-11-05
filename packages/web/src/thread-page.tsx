@@ -27,6 +27,7 @@ import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { sends } from "./settings.ts";
 import { Tooltip } from "./tooltip.tsx";
+import { SecondLook } from "./second-look.tsx";
 import { lines, type Piece } from "./text-diff.ts";
 import {
   type Entry,
@@ -37,6 +38,7 @@ import {
   optionKey,
   optionText,
   removable,
+  type SetStep,
   stepLabel,
   lineKey,
   type ThreadModel,
@@ -704,6 +706,27 @@ function ChangeSet(props: {
   const steps = set.nextSteps.flatMap((step) => (step.kind === "remove" ? [] : [step]));
   const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
   const approvable = set.nextSteps.some((step) => step.kind === "approve");
+  // Approve and apply is the one primary action. Reject is one click: the
+  // thread then asks what was wrong, and the message box waits for the
+  // answer. Second look sits between them (decision 0054).
+  const stepButton = (step: (typeof steps)[number]) => {
+    const forward = isForward(step.kind);
+    const decides = forward && step.kind !== "retry";
+    const disabled = busy || ((decides || step.kind === "reject") && !diff);
+    return (
+      <button
+        key={step.kind}
+        type="button"
+        class={forward ? "button primary" : step.kind === "dismiss" ? "quiet-action" : "button"}
+        disabled={disabled}
+        onClick={() => send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind })}
+      >
+        {stepLabel(step.kind, set)}
+      </button>
+    );
+  };
+  const firstBack = steps.findIndex((step) => !isForward(step.kind));
+  const between = firstBack === -1 ? steps.length : firstBack;
   if (folded(model, set))
     return (
       <section
@@ -779,6 +802,23 @@ function ChangeSet(props: {
           )}
         </>
       )}
+      {set.secondLook && (
+        <SecondLook
+          look={set.secondLook}
+          diff={diff}
+          view={view}
+          busy={busy}
+          onAdd={(place) =>
+            set.secondLook &&
+            send({
+              type: "suggestionAdded",
+              changeSetId: set.id,
+              look: set.secondLook.id,
+              place,
+            })
+          }
+        />
+      )}
       {/* Nothing can be done with it until its source answers or the
           writer gives up: a send may yet land (OA-82). */}
       {set.stalled && (
@@ -795,30 +835,9 @@ function ChangeSet(props: {
         </ul>
       )}
       <footer class="change-set-actions">
-        {steps.map((step) => {
-          const forward =
-            step.kind === "approve" || step.kind === "approve-rest" || step.kind === "retry";
-          const decides = forward && step.kind !== "retry";
-          const disabled = busy || ((decides || step.kind === "reject") && !diff);
-          // Approve and apply is the one primary action. Reject is one
-          // click: the thread then asks what was wrong, and the message box
-          // waits for the answer.
-          return (
-            <button
-              key={step.kind}
-              type="button"
-              class={
-                forward ? "button primary" : step.kind === "dismiss" ? "quiet-action" : "button"
-              }
-              disabled={disabled}
-              onClick={() =>
-                send({ type: "changeSetClicked", changeSetId: set.id, step: step.kind })
-              }
-            >
-              {stepLabel(step.kind, set)}
-            </button>
-          );
-        })}
+        {steps.slice(0, between).map(stepButton)}
+        <SecondLookButton set={set} model={model} send={send} />
+        {steps.slice(between).map(stepButton)}
         {set.status === "open" && (set.readOnly ?? !view.writable) && (
           <span class="read-only-note">
             Live writes aren't configured here, so this can be reviewed and rejected, not approved.
@@ -862,6 +881,48 @@ function ChangeSet(props: {
         <ChangeSet key={revert.id} set={revert} model={model} view={view} send={send} />
       ))}
     </section>
+  );
+}
+
+const isForward = (kind: SetStep): boolean =>
+  kind === "approve" || kind === "approve-rest" || kind === "retry";
+
+// Second look, or Look again once the last went stale or failed (decision
+// 0054): only when the person presses it. While it runs it says so, and
+// nothing else on the change set waits for it.
+function SecondLookButton(props: {
+  set: ChangeSetView;
+  model: ThreadModel;
+  send: (msg: ThreadMsg) => void;
+}) {
+  const { set, model, send } = props;
+  const look = set.secondLook;
+  if (look === undefined) return null;
+  const running = look?.state === "running" || model.looking.includes(set.id);
+  const stale = look !== null && (look.stale.diff || look.stale.items.length > 0);
+  if (!running && look?.state === "ready" && !stale) return null;
+  return (
+    <Tooltip
+      text={
+        running
+          ? "Oriel is reading what this change touches. Approve and Reject don't wait for it."
+          : look === null
+            ? "Oriel reads what else this change could affect, in a run of its own. It never approves."
+            : look.state === "failed"
+              ? "The last look didn't finish. Take another."
+              : "What it read changed since. Take another look."
+      }
+    >
+      <button
+        type="button"
+        class="button second-look-button"
+        disabled={running}
+        aria-busy={running || undefined}
+        onClick={() => send({ type: "secondLookClicked", changeSetId: set.id })}
+      >
+        {running ? "Looking…" : look === null ? "Second look" : "Look again"}
+      </button>
+    </Tooltip>
   );
 }
 

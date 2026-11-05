@@ -8,6 +8,7 @@
 import { bindingsFor, type Waiting, waitingOf } from "@oriel/bindings";
 import { ChangeSetError, changeSets, explainConflicts } from "@oriel/changeset";
 import {
+  type ChallengeRun,
   type ChangeSet,
   type Cluster,
   clusterMembers,
@@ -20,6 +21,7 @@ import {
   type ReviewTable,
   type IndexRecord,
   type Instant,
+  type Known,
   instant,
   isItemId,
   isUlid,
@@ -61,6 +63,7 @@ import {
   open,
   prefixesOf,
   runStore,
+  challengeStore,
   type StoredEvent,
   telemetryStore,
   threadStore,
@@ -101,6 +104,7 @@ import { heldBy, overviewItems, overviewView } from "./overview.ts";
 import { itemPanels } from "./panel.ts";
 import type { Models } from "./model.ts";
 import { devPlan, scriptedAgent } from "./scripted-agent.ts";
+import { type Challenger, challenger } from "./challenger.ts";
 import {
   memorySettings,
   type SettingsService,
@@ -111,7 +115,7 @@ import { type Notify, notifier } from "./notify.ts";
 import { quitGuard, type Working, workingThreads } from "./working.ts";
 import { type Setup, type SetupOptions, setupService } from "./setup/setup.ts";
 import type { Reply, Request } from "./site.ts";
-import { turns } from "./turns.ts";
+import { spent, turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
 import { noticedService } from "./noticed.ts";
@@ -149,6 +153,10 @@ export type AppOptions = {
   // Builds the agent from everything but a model provider: @oriel/agent's,
   // with one, or the scripted dev agent, which is the default.
   agent?: (deps: ServerAgentDeps) => Agent;
+  // Builds the agent that takes a second look at a change set when the
+  // person asks (decision 0054). Absent, the thread's own agent does when
+  // Settings' models run it; the scripted dev agent takes none.
+  challenger?: (deps: ServerAgentDeps) => Agent;
   // Writes each thread's title from its first message. Without one, a
   // thread's title is that message, clipped.
   titler?: Titler;
@@ -274,6 +282,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   const workstreams = workstreamStore(db);
   const threads = threadStore(db);
   const runs = runStore(db);
+  const looks = challengeStore(db);
+  // A second look left running when Oriel last stopped never finishes.
+  looks.abandonRunning(now());
   const telemetry = telemetryStore(db);
   const emit = (event: Parameters<typeof telemetry.record>[0]) => telemetry.record(event, newId());
   const connections = connectionsOf({
@@ -988,6 +999,14 @@ export async function createApp(options: AppOptions): Promise<App> {
       }));
     },
   };
+  const known = (): Known => {
+    const all = records();
+    const titles = new Map<string, string>(all.map((record) => [record.id, record.title]));
+    const names = people();
+    for (const each of opens())
+      for (const [id, name] of each.opened.names?.(recordsOf(each)) ?? []) names.set(id, name);
+    return { name: (id) => names.get(id) ?? null, title: (id) => titles.get(id) ?? null };
+  };
   // Oriel's own data, read one way for the agent's namespaces and the
   // window's search (decision 0024, OA-108). What a change set wrote is named
   // from the index: people by their facets, and what each connection's
@@ -1001,14 +1020,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       changes: (set, known) => sets.changes(set, known),
     },
     title: (id) => viewer.title(id),
-    known: () => {
-      const all = records();
-      const titles = new Map<string, string>(all.map((record) => [record.id, record.title]));
-      const names = people();
-      for (const each of opens())
-        for (const [id, name] of each.opened.names?.(recordsOf(each)) ?? []) names.set(id, name);
-      return { name: (id) => names.get(id) ?? null, title: (id) => titles.get(id) ?? null };
-    },
+    known,
     now,
   });
   // The connections that wait for their options (decision 0051): ones of a
@@ -1161,7 +1173,12 @@ export async function createApp(options: AppOptions): Promise<App> {
         };
       }),
     );
-  const regionBindings = (region: Region, thread?: Ulid, shown?: Shown) =>
+  const regionBindings = (
+    region: Region,
+    thread?: Ulid,
+    shown?: Shown,
+    run?: { challenge?: ChallengeRun },
+  ) =>
     bindingsFor(region, {
       reader,
       namespaces: readable(
@@ -1174,6 +1191,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       oriel: reads,
       ...(thread ? { thread } : {}),
       ...(shown ? { shown } : {}),
+      ...(run?.challenge ? { challenge: run.challenge } : {}),
       // The window chat reads the overview, as the page shows it, and the
       // previews of connections that wait for their options.
       ...(thread && threads.isWindowChat(thread) ? windowChat() : {}),
@@ -1333,8 +1351,53 @@ export async function createApp(options: AppOptions): Promise<App> {
     now,
     newId,
     log,
+    alsoSpent: (threadId) => looks.usage(threadId),
   });
   told = () => conversation.synced();
+  // Second looks (decision 0054), with an agent of their own, or the
+  // thread's agent, on the thread's model, when a model runs it.
+  const lookingAgent = options.challenger
+    ? options.challenger(agentDeps)
+    : models && !options.agent
+      ? agent
+      : null;
+  const secondLooks: Challenger | null =
+    lookingAgent &&
+    challenger({
+      challenges: looks,
+      changeSets: sets,
+      threads,
+      workstreams,
+      agent: lookingAgent,
+      read: (ids) => {
+        const indexed = new Set<string>(records().map((record) => record.id));
+        return reader.read(ids.filter((id) => indexed.has(id)));
+      },
+      asOf: () => {
+        const times = new Map<string, Instant>(
+          records().map((record) => [record.id, record.updatedAt]),
+        );
+        return (id) => times.get(id) ?? null;
+      },
+      modelOf: (runId) => runs.model(runId),
+      known,
+      snapshot: () => index.snapshot(workspaceId),
+      spent: (threadId) => {
+        const said = spent(threads.messages(threadId));
+        const looked = looks.usage(threadId);
+        return {
+          inputTokens: said.inputTokens + looked.inputTokens,
+          outputTokens: said.outputTokens + looked.outputTokens,
+        };
+      },
+      maxMutations: caps.maxMutationsPerChangeSet,
+      changed: (threadId, changeSetId) =>
+        conversation.changeSet(threadId, changeSetId, sets.applying(changeSetId)),
+      emit,
+      now,
+      newId,
+      log,
+    });
   const viewer = views({
     workstreams,
     threads,
@@ -1347,6 +1410,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     drafted,
     drawn,
     sketchBase: options.sketchBase,
+    ...(secondLooks ? { secondLook: (set: ChangeSet) => secondLooks.view(set) } : {}),
     get writable() {
       return opens().some(
         (each) => each.opened.writes !== undefined && !readOnlyOf(each.connection.options),
@@ -1422,6 +1486,16 @@ export async function createApp(options: AppOptions): Promise<App> {
     noticed: () => noticed,
     turns: conversation,
     changeSets: sets,
+    ...(secondLooks
+      ? {
+          secondLook: {
+            take: async (id: Ulid) => {
+              await secondLooks.take(id);
+            },
+            add: (id: Ulid, look: Ulid, place: number) => secondLooks.add(id, look, place),
+          },
+        }
+      : {}),
     applied: (set) => applied(set),
     sources: {
       connect: async ({ kind, given }) => {
@@ -1872,6 +1946,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     settled: async () => {
       await conversation.settled();
+      await secondLooks?.settled();
       await notifying?.idle();
       await guarding?.idle();
       await setup.idle();
@@ -1886,6 +1961,8 @@ export async function createApp(options: AppOptions): Promise<App> {
       for (const summary of threads.list(workspaceId, now())) conversation.stop(summary.thread.id);
       conversation.stopTitles();
       await conversation.settled();
+      secondLooks?.stop();
+      await secondLooks?.settled();
       unwatchNotifying();
       await notifying?.stop();
       unwatchGuarding();

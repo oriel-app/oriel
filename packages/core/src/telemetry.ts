@@ -1,5 +1,6 @@
 import type { ActionName, Actor } from "./actions.ts";
 import type { BlockForm } from "./block.ts";
+import type { FindingKind } from "./challenge.ts";
 import type { StartQuestion } from "./window-chat.ts";
 import type { WorkstreamChange, WorkstreamOrigin } from "./workstream.ts";
 import type { Instant, SourceKind, Ulid } from "./ids.ts";
@@ -139,6 +140,19 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   | { name: "changeset.reverted"; changeSetId: Ulid; conflicts: number }
   // An apply went a send's lease with nothing sent or answered (OA-82).
   | { name: "changeset.stalled"; changeSetId: Ulid; threadId: Ulid }
+  // A second look at a change set (decision 0054): made, by how
+  // many findings of each kind, how long it took and its tokens; failed, by
+  // why in a word; and a companion it suggested, added by the person.
+  // Never its words or quotes.
+  | {
+      name: "challenge.made";
+      changeSetId: Ulid;
+      kinds: Partial<Record<FindingKind, number>>;
+      ms: number;
+      tokens: number;
+    }
+  | { name: "challenge.failed"; changeSetId: Ulid; why: "no-record" | "error" }
+  | { name: "challenge.companion-added"; changeSetId: Ulid }
   | { name: "review-link.opened"; changeSetId: Ulid }
   // A live review link whose change set the page won't show: its workstream
   // was deleted (decision 0028). Not an open (OA-143).

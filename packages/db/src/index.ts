@@ -1,3 +1,4 @@
+export * from "./challenges.ts";
 export * from "./connections.ts";
 export * from "./workstreams.ts";
 export * from "./index-store.ts";

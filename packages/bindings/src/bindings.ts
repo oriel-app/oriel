@@ -1,6 +1,7 @@
 import {
   type Bindings,
   type CapturedMutation,
+  type ChallengeRun,
   type ItemId,
   type NewRef,
   noThreads,
@@ -64,6 +65,10 @@ export function bindingsFor(
     waiting?: Waiting;
     // Items with what the change log saw of them, from the index alone.
     history?: (of: string | null) => Promise<unknown>;
+    // A run Oriel started for a second look at a change set: its module is
+    // the region's reads and writes, `challenge` and search() (decision
+    // 0054).
+    challenge?: ChallengeRun;
   },
 ): Bindings {
   const scope = scopeOf(region, options.namespaces, options.items);
@@ -71,6 +76,7 @@ export function bindingsFor(
   const fns = describe(scope, {
     window: options.overview !== undefined,
     ...(waiting ? { waiting } : {}),
+    challenge: options.challenge !== undefined,
   });
   const byPath = new Map<string, Fn>(fns.map((fn) => [pathOf(fn), fn]));
   const members = new Set<string>(scope.ids);
@@ -104,6 +110,8 @@ export function bindingsFor(
     oriel: options.oriel ?? noThreads,
     show: options.shown?.show ?? (() => notShown("blocks")),
     sketch: options.shown?.sketch ?? (() => notShown("sketches")),
+    ...(options.challenge ? { challenge: options.challenge } : {}),
+    reaches: (id) => members.has(id) || found.has(id),
     // Each read gets its own, below, which says what it reached.
     overview: async () => {
       throw new Error("only the window chat reads the overview");

@@ -3,6 +3,7 @@
 // namespace; this adds where each function lives and what the host knows.
 import {
   type ActionName,
+  type ChallengeRun,
   type ItemId,
   type NamespaceHost,
   type NamespaceRead,
@@ -36,6 +37,11 @@ export type Host = NamespaceHost &
     // Items with what the change log saw of them (`history()`): an epic's
     // or a workstream's, by its ID, or every item.
     history(of: string | null): Promise<unknown>;
+    // A second look's diff and record, in its module only (decision 0054).
+    challenge?: ChallengeRun;
+    // Whether this run may read an item: it is in the region, or this run's
+    // search() found it.
+    reaches(id: string): boolean;
   };
 
 // Oriel's own namespaces, in every region's module (decision 0024), named
@@ -47,7 +53,8 @@ export type OrielSpace = (typeof orielSpaces)[number];
 // that declares one, one of Oriel's own, or null for a global.
 // `window`: the window chat's own (decision 0027). `source`: a waiting
 // connection's preview and drafts, in the window chat only (decision 0051).
-export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | null;
+// `challenge`: a second look's, in a run Oriel starts for one only.
+export type Space = "items" | SourceKind | OrielSpace | "window" | "source" | "challenge" | null;
 
 export type ReadFn = Omit<NamespaceRead, "run"> & {
   space: Space;

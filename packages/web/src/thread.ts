@@ -32,6 +32,9 @@ export type ThreadModel = {
   diffs: Readonly<Record<string, DiffView>>;
   // A change set with a request in flight.
   busy: readonly string[];
+  // A change set whose second look was asked for and not yet answered: its
+  // button waits, and Approve and Reject don't (decision 0054).
+  looking: readonly string[];
   // A decision sent from this page and not yet answered, by change set. The
   // page and the sidebar show what it will make of the thread (`expected`).
   deciding: Readonly<Record<string, Decision>>;
@@ -86,6 +89,10 @@ export type ThreadMsg =
   // A rejected change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
+  // A change set's second look (decision 0054): asked for, first or again
+  // once stale or failed; or a change it suggested, added to the change set.
+  | { type: "secondLookClicked"; changeSetId: string }
+  | { type: "suggestionAdded"; changeSetId: string; look: string; place: number }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
   // A held message, from anyone but the user: sent to the agent as it is, edited
@@ -124,6 +131,7 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       syncing: false,
       diffs: {},
       busy: [],
+      looking: [],
       deciding: {},
       unfolded: [],
       editing: {},
@@ -356,6 +364,46 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
             `/api/change-sets/${changeSetId}/edit`,
             { remove: [mutationId] },
             { kind: "changeSet", threadId: model.id, changeSetId },
+          ),
+        ],
+      ];
+    }
+    case "secondLookClicked": {
+      const { changeSetId } = msg;
+      if (model.looking.includes(changeSetId)) return [model, []];
+      return [
+        {
+          ...model,
+          looking: [...model.looking, changeSetId],
+          problems: without(model.problems, changeSetId),
+        },
+        [
+          post(
+            `/api/change-sets/${changeSetId}/second-look`,
+            {},
+            { kind: "secondLook", threadId: model.id, changeSetId },
+          ),
+        ],
+      ];
+    }
+    case "suggestionAdded": {
+      const { changeSetId } = msg;
+      if (model.busy.includes(changeSetId)) return [model, []];
+      return [
+        {
+          ...model,
+          busy: [...model.busy, changeSetId],
+          problems: without(model.problems, changeSetId),
+        },
+        [
+          post(
+            `/api/change-sets/${changeSetId}/suggestions`,
+            { look: msg.look, place: msg.place },
+            {
+              kind: "changeSet",
+              threadId: model.id,
+              changeSetId,
+            },
           ),
         ],
       ];
@@ -645,6 +693,21 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
             ? [{ type: "focusComposer" }]
             : []
           : [diffOf(tag.changeSetId), refresh(model)],
+      ];
+    }
+    // The look is running, or was already: the thread's stream says so as it
+    // moves. Refused, it says why.
+    case "secondLook": {
+      if (tag.threadId !== model.id) return [model, []];
+      const looking = model.looking.filter((id) => id !== tag.changeSetId);
+      if (msg.ok) return [{ ...model, looking }, []];
+      return [
+        {
+          ...model,
+          looking,
+          problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) },
+        },
+        [refresh(model)],
       ];
     }
     // Sent or discarded, it is settled: the reload shows it so. Refused, as

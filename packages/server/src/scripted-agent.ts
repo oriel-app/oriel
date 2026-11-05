@@ -7,7 +7,7 @@
 // blocks and sketches its runs ask for show under its reply, as for any
 // agent (`turnShown`).
 import { createHash } from "node:crypto";
-import { proposal, turnShown } from "@oriel/agent";
+import { challengeOf, proposal, turnShown } from "@oriel/agent";
 import { type Log, parseItemId, type RunResult, type ThreadFound } from "@oriel/core";
 import { type Agent, type ServerAgentDeps, type AgentEvent, type TurnInput } from "./agent.ts";
 
@@ -71,7 +71,9 @@ async function* steps(
           : `return await thread.find(${JSON.stringify(step.threads)}, 1);`;
     const runId = deps.newId();
     yield { kind: "run.started", runId, script };
-    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
+    const shown = turnShows.run(runId, (asked) =>
+      deps.bindingsFor(region, thread.id, asked, challengeOf(input, runId)),
+    );
     const { bindings } = shown;
     const startedAt = deps.now();
     const run = {
@@ -125,7 +127,7 @@ async function* steps(
     proposed.ran(runId, result);
   }
   yield* turnShows.settle();
-  yield* proposed.settle(deps, thread, signal, log);
+  if (!input.challenge) yield* proposed.settle(deps, thread, signal, log);
 }
 
 const listScript = `const all = await items.list();
