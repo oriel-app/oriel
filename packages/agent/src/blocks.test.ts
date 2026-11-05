@@ -213,7 +213,7 @@ return "went on";`,
   const content = contentOf(model);
   assert.match(
     content,
-    /Oriel refused a block: a bars block needs `label` and `value`\. In full: a block names `read`.*Bars take `label` and `value`.*Oriel sums the rows that share a label/,
+    /Oriel refused a block: a bars block needs `label`\. In full: a block names `read`.*Bars take `label`.*without `value`, Oriel counts them/,
   );
   // It names what the read it named declares, as the turn ran it.
   assert.match(content, /workstream\.list declares its result: "name", "threads", "done"\./);

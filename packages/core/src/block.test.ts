@@ -287,8 +287,9 @@ test("a spec's ignored keys are those its form doesn't take, or no form takes wh
 test("a refused spec is told what its form lacks and what it got wrong, by key", () => {
   assert.equal(
     specProblems({ read: "history", form: "bars", title: "x" }),
-    "a bars block needs `label` and `value`",
+    "a bars block needs `label`",
   );
+  assert.equal(specProblems({ read: "w", form: "table" }), "a table block needs `columns`");
   assert.equal(
     specProblems({ read: "w", form: "table", columns: [] }),
     "`columns` takes 1 to 5 columns",
@@ -302,4 +303,34 @@ test("a refused spec is told what its form lacks and what it got wrong, by key",
     /^`form` is one of "bars", "table", "rows",/,
   );
   assert.equal(specProblems([]), "show() takes one object");
+});
+
+test("bars with no value count the rows that share a label", () => {
+  const rows = [
+    { id: "jira:SYN-1", assignee: "Ann", state: "In progress" },
+    { id: "jira:SYN-2", assignee: "Ann", state: "In progress" },
+    { id: "jira:SYN-3", assignee: "Bo", state: "In progress" },
+    { id: "jira:SYN-4", assignee: null, state: "In progress" },
+    { id: "jira:SYN-5", assignee: "Bo", state: "Done" },
+    { id: "jira:SYN-6", state: "In progress" },
+  ];
+  const fields: ResultFields = {
+    source: "the index",
+    lists: { "": { id: "Item", assignee: "Assignee", state: "State" } },
+  };
+  const built = buildBlock(
+    spec({ read: "r", form: "bars", label: "assignee", where: { state: "In progress" } }),
+    { value: rows, outside: false, fields },
+  );
+  assert.ok(built.ok && built.block.form === "bars");
+  // A row with no assignee is a blank bar; one without the field has none.
+  assert.deepEqual(built.block.bars, [
+    { label: "Ann", value: 2 },
+    { label: "—", value: 1 },
+    { label: "Bo", value: 1 },
+  ]);
+  assert.equal(
+    built.block.caption,
+    "Computed by Oriel from the index, where State is In progress: Counted by Assignee, highest first",
+  );
 });
