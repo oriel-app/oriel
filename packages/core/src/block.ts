@@ -57,7 +57,8 @@ export const maxBlocksPerTurn = 4;
 // A read whose rows hold dates says, by dotted path, when it was answered
 // (`asOf`) and since when its dates are known (`since`): a date at `since`
 // means by then. A chart over time needs both. `atLeast` names, for a
-// number field, the yes/no field that says the number is only a lower bound.
+// number field, the yes/no field that says the number is only a lower bound
+// (`lowerBound`).
 export type ResultFields = {
   source: string;
   lists: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -157,6 +158,21 @@ export function declaredFields(read: string, fields: ResultFields): string {
 
 export type Cell = string | number | boolean | null;
 
+// The one rule for a figure that is only a lower bound: a number field the
+// read names in `atLeast`, on a row whose flag there is true. Every form that
+// shows such a number marks it as at least what's shown (the window's "≥"),
+// and a form that can't say which of its figures it holds doesn't sum it.
+export type Bound = (name: string) => ((row: unknown) => boolean) | null;
+export const atLeastNote =
+  "≥ marks a value that is only a lower bound: it began before the change log starts";
+function lowerBound(fields: ResultFields, field: (row: unknown, name: string) => unknown): Bound {
+  return (name) => {
+    const flag =
+      fields.atLeast && Object.hasOwn(fields.atLeast, name) ? fields.atLeast[name] : undefined;
+    return flag === undefined ? null : (row) => field(row, flag) === true;
+  };
+}
+
 // A waiting connection's preview (decision 0051): what its connector reads
 // live from its source for the agent to draft its options, as tables of
 // text, such as a tab's cells under their column letters with its headers
@@ -192,11 +208,17 @@ export type Block = {
   // It came from a read outside the region: the escape hatch, read-only.
   outside: boolean;
 } &
-  // `atLeast`: the value is only a lower bound, as the read declares.
+  // `atLeast`: the value is only a lower bound (`lowerBound`); a table's,
+  // each such cell by its place.
   (
     | { form: "bars"; bars: { label: string; value: number; atLeast?: true }[] }
     // `columns`: the declared labels of the fields it shows.
-    | { form: "table"; columns: string[]; rows: Cell[][] }
+    | {
+        form: "table";
+        columns: string[];
+        rows: Cell[][];
+        atLeast?: { row: number; column: number }[];
+      }
     | { form: "rows"; items: ItemId[] }
     | { form: "preview"; tables: PreviewTable[] }
     | ChartBlock
@@ -220,6 +242,7 @@ export const builtBlock: Validator<Block> = union(
     form: literal("table"),
     columns: array(string),
     rows: array(array(cell)),
+    atLeast: optional(array(object({ row: number, column: number }))),
   }),
   object({
     ...builtBase,
@@ -236,6 +259,36 @@ export const builtBlock: Validator<Block> = union(
   }),
   ...builtCharts(builtBase),
 ) as Validator<Block>;
+
+// Every label in a block that is an item's ID, as a lane, an epic or a
+// table's Item is, which the window names by the item's title in the index
+// now (decision 0053): one list for every form, so each names its items the
+// same way. Rows hold their items already, and a preview's cells are never
+// items (decision 0051).
+export function itemLabels(block: Block): ItemId[] {
+  const labels = ((): Cell[] => {
+    switch (block.form) {
+      case "bars":
+        return block.bars.map((bar) => bar.label);
+      case "table":
+        return block.rows.flat();
+      case "timeline":
+        return block.lanes.map((lane) => lane.label);
+      case "pivot":
+        return Object.values(block.tables).flatMap((table) => [...table.rows, ...table.columns]);
+      case "series":
+      case "spread":
+      case "rows":
+      case "preview":
+        return [];
+    }
+  })();
+  return [
+    ...new Set(
+      labels.filter((label): label is ItemId => typeof label === "string" && isItemId(label)),
+    ),
+  ];
+}
 
 // A preview read's block, built from what the connector read: each table
 // with at most `maxPreviewRows` rows, its cells as text, and how many rows
@@ -406,6 +459,8 @@ export function buildBlock(
   const base = { spec, outside: read.outside && !(fields.contentFree && isChart(spec)) };
   const values = (row: unknown, names: readonly string[]) =>
     isRecord(row) ? names.map((name) => fieldOf(row, name)) : null;
+  const field = (row: unknown, name: string) => (isRecord(row) ? fieldOf(row, name) : undefined);
+  const bound = lowerBound(fields, field);
 
   if (isChart(spec)) {
     const since = fields.time ? at(read.value, fields.time.since) : undefined;
@@ -421,9 +476,9 @@ export function buildBlock(
       label,
       labels,
       time,
-      atLeast: fields.atLeast ?? {},
+      bound,
       sums: fields.sums ?? null,
-      field: (row, name) => (isRecord(row) ? fieldOf(row, name) : undefined),
+      field,
       pinned: options.pinned ?? false,
     });
     if (!chart.ok) return refuse(chart.why);
@@ -438,8 +493,8 @@ export function buildBlock(
     // are by their assignee.
     const sums = new Map<string, number>();
     let summed = false;
-    // Bars holding a value that is only a lower bound, as the read declares.
-    const flag = fields.atLeast?.[asked.value];
+    // Bars holding a value that is only a lower bound.
+    const flag = bound(asked.value);
     const bounded = new Set<string>();
     for (const [i, row] of rows.entries()) {
       const [name, count] = values(row, [asked.label, asked.value]) ?? [];
@@ -457,7 +512,7 @@ export function buildBlock(
       const key = name === null ? "—" : String(name);
       summed ||= sums.has(key);
       sums.set(key, (sums.get(key) ?? 0) + count);
-      if (flag !== undefined && isRecord(row) && fieldOf(row, flag) === true) bounded.add(key);
+      if (flag?.(row)) bounded.add(key);
     }
     if (!sums.size) return refuse(`${where} is empty`);
     const ranked = [...sums]
@@ -476,7 +531,7 @@ export function buildBlock(
         bars: ranked.slice(0, maxBars),
         more: Math.max(ranked.length - maxBars, 0),
         caption: caption(
-          `${by}${summed ? ", summed" : ""}, highest first${bounded.size ? `. ≥ marks a value that is only a lower bound: it began before the change log starts` : ""}`,
+          `${by}${summed ? ", summed" : ""}, highest first${bounded.size ? `. ${atLeastNote}` : ""}`,
         ),
       },
     };
@@ -484,6 +539,8 @@ export function buildBlock(
 
   if (spec.form === "table") {
     const table: Cell[][] = [];
+    const flags = asked.columns.map(bound);
+    const atLeast: { row: number; column: number }[] = [];
     for (const [i, row] of rows.slice(0, maxRows).entries()) {
       // A field a row lacks, as an item gone from its source lacks its
       // title, is a blank cell.
@@ -495,6 +552,9 @@ export function buildBlock(
           `row ${i} of ${where} has no text, number or yes/no in ${JSON.stringify(asked.columns[bad])}`,
         );
       table.push(cells as Cell[]);
+      flags.forEach((flag, column) => {
+        if (typeof cells[column] === "number" && flag?.(row)) atLeast.push({ row: i, column });
+      });
     }
     if (!table.length) return refuse(`${where} is empty`);
     const columns = asked.columns.map(label);
@@ -505,8 +565,9 @@ export function buildBlock(
         form: "table",
         columns,
         rows: table,
+        ...(atLeast.length ? { atLeast } : {}),
         more: Math.max(rows.length - maxRows, 0),
-        caption: caption(columns.join(", ")),
+        caption: caption(`${columns.join(", ")}${atLeast.length ? `. ${atLeastNote}` : ""}`),
       },
     };
   }

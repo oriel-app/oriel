@@ -193,12 +193,18 @@ test("a block the agent asks for is stored, shown under the reply with its rows 
   assert.deepEqual(counted?.data, { threadId: id, form: "rows" });
 });
 
-test("history() reads past the region with no content, so its charts aren't the escape hatch, and Oriel names their items", async (t) => {
+test("history() reads past the region with no content, so its charts aren't the escape hatch, and Oriel names their items in every form", async (t) => {
   const charted: Script = async (bindings) => {
     const { value } = await bindings.read("history", []);
     await bindings.read("show", [{ read: "history", from: "items", form: "pivot", rows: "epic" }]);
     await bindings.read("show", [
       { read: "history", from: "items", form: "timeline", start: "startedAt", end: "doneAt" },
+    ]);
+    await bindings.read("show", [
+      { read: "history", from: "items", form: "bars", label: "epic", value: "estimate" },
+    ]);
+    await bindings.read("show", [
+      { read: "history", from: "items", form: "table", columns: ["id", "daysInState"] },
     ]);
     // What `of` names is the agent's text: an ID of a kind no source
     // declares, or of nothing the index has, is refused.
@@ -236,4 +242,12 @@ test("history() reads past the region with no content, so its charts aren't the 
   assert.equal(pivot.names?.["jira:SYN-1"], "Checkout v2: phone wallets and saved cards");
   const lane = timeline.lanes[0];
   assert.ok(lane && lane.label === lane.id && typeof timeline.names?.[lane.label] === "string");
+  // Bars and a table name theirs the same way.
+  const bars = blocks.find((block) => block.form === "bars");
+  const table = blocks.find((block) => block.form === "table");
+  assert.ok(bars?.form === "bars" && table?.form === "table");
+  assert.ok(bars.bars.some((bar) => bar.label === "jira:SYN-1"));
+  assert.equal(bars.names?.["jira:SYN-1"], "Checkout v2: phone wallets and saved cards");
+  const first = table.rows[0]?.[0];
+  assert.ok(typeof first === "string" && typeof table.names?.[first] === "string");
 });

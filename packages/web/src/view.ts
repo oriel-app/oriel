@@ -460,17 +460,29 @@ export type RunView = {
 // how many the read had past what it shows.
 // `outside`: from a read outside the workstream, the escape hatch, which
 // is read-only; a row the workstream holds too says so (`inRegion`).
-export type BlockView = { caption: string; more: number; outside: boolean } & (
+// `names`: a label that is an item's ID, as a lane, an epic or a table's
+// Item is, by the item's name in the index (decision 0053). `atLeast`: a
+// figure that is only a lower bound, which the window marks "≥".
+export type BlockView = {
+  caption: string;
+  more: number;
+  outside: boolean;
+  names?: Readonly<Record<string, string>>;
+} & (
   | { form: "bars"; bars: { label: string; value: number; atLeast?: true }[] }
-  | { form: "table"; columns: string[]; rows: (string | number | boolean | null)[][] }
+  | {
+      form: "table";
+      columns: string[];
+      rows: (string | number | boolean | null)[][];
+      atLeast?: { row: number; column: number }[];
+    }
   | { form: "rows"; items: (MemberView & { inRegion?: true })[] }
   // A waiting connection's preview, read live for the agent to draft its
   // options (decision 0051): its source's cells as text, never items.
   | { form: "preview"; tables: { name: string; columns: string[]; rows: (string | null)[][] }[] }
   // A chart: a series over time, a timeline, a spread or a pivot, every
-  // figure in it Oriel's. `names`: a label that is an item's ID, as a lane
-  // or an epic is, by the item's name in the index (decision 0053).
-  | (ChartBlock & { names?: Readonly<Record<string, string>> })
+  // figure in it Oriel's.
+  | ChartBlock
 );
 
 // Noticed (decision 0052): what Oriel found in the window

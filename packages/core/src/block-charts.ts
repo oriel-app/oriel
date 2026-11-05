@@ -19,6 +19,7 @@ import {
   type Spread,
   spreadOf,
 } from "./chart.ts";
+import type { Bound } from "./block.ts";
 import { type Instant, isInstant, isItemId, type ItemId } from "./ids.ts";
 import {
   array,
@@ -105,14 +106,15 @@ export const isChart = <S extends { form: string }>(spec: S): spec is S & ChartS
   (chartForms as readonly string[]).includes(spec.form);
 
 // What a chart's builder is handed: the rows, the declared labels, the
-// read's clock if it declares one, and its lower bounds.
+// read's clock if it declares one, and its lower bounds, by block.ts's one
+// rule.
 export type ChartInput = {
   rows: readonly unknown[];
   where: string;
   label: (name: string) => string;
   labels: Readonly<Record<string, string>>;
   time: { since: Instant; asOf: Instant } | null;
-  atLeast: Readonly<Record<string, string>>;
+  bound: Bound;
   sums: readonly string[] | null;
   field: (row: unknown, name: string) => unknown;
   // Built for a pin: a pivot computes only its own grouping.
@@ -171,6 +173,12 @@ function series(spec: Extract<ChartSpec, { form: "series" }>, input: ChartInput)
   if (!time) return refuse(`${where} has no dates to draw over time`);
   const since = Date.parse(time.since);
   const asOf = Date.parse(time.asOf);
+  // A sum over time can't say which of its points holds a lower bound.
+  const bounded = spec.value === undefined ? null : input.bound(spec.value);
+  if (bounded && rows.some(bounded))
+    return refuse(
+      `${JSON.stringify(spec.value)} in ${where} is only a lower bound in some rows, so it isn't summed over time`,
+    );
   const dated: { at: number | null; weight: number }[] = [];
   for (const [i, row] of rows.entries()) {
     const at = dateOf(input.field(row, spec.at));
@@ -355,8 +363,8 @@ function timeline(spec: Extract<ChartSpec, { form: "timeline" }>, input: ChartIn
 }
 
 function spread(spec: Extract<ChartSpec, { form: "spread" }>, input: ChartInput): ChartBuilt {
-  const { rows, where, label, atLeast } = input;
-  const flag = Object.hasOwn(atLeast, spec.value) ? atLeast[spec.value] : undefined;
+  const { rows, where, label } = input;
+  const flag = input.bound(spec.value);
   const values: { value: number; atLeast: boolean }[] = [];
   let missing = 0;
   for (const [i, row] of rows.entries()) {
@@ -367,7 +375,7 @@ function spread(spec: Extract<ChartSpec, { form: "spread" }>, input: ChartInput)
     }
     if (typeof value !== "number" || !Number.isFinite(value))
       return refuse(`row ${i} of ${where} has no number in ${JSON.stringify(spec.value)}`);
-    values.push({ value, atLeast: flag !== undefined && input.field(row, flag) === true });
+    values.push({ value, atLeast: flag?.(row) ?? false });
   }
   const built = spreadOf(values);
   if (!built) return refuse(`${where} has no number in ${JSON.stringify(spec.value)}`);
@@ -405,16 +413,21 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
     Object.fromEntries(names.map((name) => [name, input.field(row, name)])),
   );
   // A field is something to group by when its values are text or yes/no,
-  // few enough to read; something to sum when they're all numbers and the
-  // read says they add up.
+  // few enough to read; something to sum when they're all numbers, the
+  // read says they add up, and none is only a lower bound, which a grid's
+  // cell can't say.
   const distinct = new Map<string, number>();
+  const boundIn = (name: string) => {
+    const bounded = input.bound(name);
+    return bounded !== null && rows.some(bounded);
+  };
   const kinds = new Map(
     names.map((name) => {
       const values = flat.map((row) => row[name]).filter((v) => v !== null && v !== undefined);
       if (values.length && values.every((v) => typeof v === "number" && Number.isFinite(v)))
         return [
           name,
-          input.sums === null || input.sums.includes(name) ? "measure" : "none",
+          (input.sums === null || input.sums.includes(name)) && !boundIn(name) ? "measure" : "none",
         ] as const;
       distinct.set(name, new Set(values.map(String)).size);
       return [

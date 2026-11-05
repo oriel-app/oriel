@@ -5,7 +5,7 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
-import { PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
+import { atLeast, named, PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
 import { Chip, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, ReviewTable, SketchView } from "./view.ts";
@@ -136,7 +136,7 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
         <ol class="block-bars">
           {block.bars.map((bar, i) => (
             <li key={i}>
-              <span class="block-bar-label">{bar.label}</span>
+              <span class="block-bar-label">{named(block, bar.label)}</span>
               <span class="block-bar-track" aria-hidden="true">
                 <span
                   class="block-bar"
@@ -144,7 +144,7 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
                 />
               </span>
               <span class="block-bar-value">
-                {bar.atLeast ? "≥ " : ""}
+                {atLeast(bar.atLeast)}
                 {number(bar.value)}
               </span>
             </li>
@@ -152,7 +152,8 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
         </ol>
       );
     }
-    case "table":
+    case "table": {
+      const bounded = new Set(block.atLeast?.map(({ row, column }) => `${row}:${column}`));
       return (
         <table class="block-table">
           <thead>
@@ -173,7 +174,11 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
               <tr key={i}>
                 {row.map((cell, j) => (
                   <td key={j} class={typeof cell === "number" ? "num" : undefined}>
-                    {typeof cell === "number" ? number(cell) : cellText(cell)}
+                    {typeof cell === "number"
+                      ? `${atLeast(bounded.has(`${i}:${j}`))}${number(cell)}`
+                      : typeof cell === "string"
+                        ? named(block, cell)
+                        : cellText(cell)}
                   </td>
                 ))}
               </tr>
@@ -181,6 +186,7 @@ function BlockBody({ block, compact }: { block: BlockView; compact: boolean }) {
           </tbody>
         </table>
       );
+    }
     // A waiting connection's preview (decision 0051): each table its source
     // shows, its cells as text, so nothing in it is an item to cite.
     case "preview":
