@@ -187,7 +187,7 @@ Each row is a [chip](/components/chip): the source's icon, the key, the name (cu
 
 ### The escape hatch: outside the workstream
 
-What a read found outside the thread's workstream (`search()`, `window.overview()`) is marked `data-outside`: the border turns **dashed** in `--derived-line`, the fill `--derived-soft`, and the label says **"Outside this workstream · read-only"**. A row the workstream holds too says "in this workstream".
+What a read found outside the thread's workstream (`search()`, `window.overview()`) is marked `data-outside`: the border turns **dashed** in `--derived-line`, the fill `--derived-soft`, and the label says **"Outside this workstream · read-only"**. A row the workstream holds too says "in this workstream". A block of `history()`, in any form, never is: it holds IDs, facets and dates, never content, so it is Oriel's own computing, not an item reached outside (decision 0053).
 
 ```html specimen id=outside title="Outside this workstream · read-only"
 <figure class="answer-block" data-form="rows" data-outside>
