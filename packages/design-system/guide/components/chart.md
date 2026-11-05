@@ -3,7 +3,7 @@ title: Chart
 status: drifting
 group: Thread
 order: 66
-classes: chart, chart-grid, chart-axis, chart-tick, chart-line, chart-dot, chart-hit, chart-column, chart-bound, chart-total, chart-fit, chart-forecast, chart-range, chart-end, chart-today, chart-mark, chart-timeline, timeline-row, timeline-label, timeline-name, timeline-count, timeline-track, timeline-axis, timeline-tick, timeline-bar, timeline-late, timeline-due, timeline-today, pivot-picks, pivot-shows, pivot-pick, pivot-scroll, pivot-table, pivot-total
+classes: chart, chart-grid, chart-axis, chart-tick, chart-line, chart-dot, chart-hit, chart-column, chart-bound, chart-total, chart-fit, chart-forecast, chart-range, chart-end, chart-today, chart-mark, chart-timeline, timeline-row, timeline-label, timeline-name, timeline-count, timeline-track, timeline-axis, timeline-tick, timeline-bar, timeline-late, timeline-due, timeline-today, visually-hidden, pivot-picks, pivot-shows, pivot-pick, pivot-scroll, pivot-table, pivot-total
 summary: A block's four chart forms from history() (decision 0053), a series with Oriel's fitted line and forecast, a timeline, a spread and a pivot the person regroups, every figure Oriel's.
 ---
 
@@ -39,7 +39,9 @@ A chart never reads the machine's clock: today is the read's `asOf`, and before 
 
 ## Anatomy and variants
 
-A chart is the body of an `answer-block` figure, with `data-form` its form, and the block's caption under it. The series and the spread are an `<svg class="chart" role="img">`, drawn in its own units about the width of the page (640 wide, 420 for a pin), so its text is the page's size; the timeline and the pivot are HTML.
+A chart is the body of an `answer-block` figure, with `data-form` its form, and the block's caption under it. The series and the spread are an `<svg class="chart">`, drawn in its own units about the width of the page (640 wide, 420 for a pin), so its text is the page's size; the timeline and the pivot are HTML.
+
+A screen reader doesn't read the drawing. The series, the timeline and the spread hide their marks (`aria-hidden`) and put the same values in a `table.visually-hidden` beside them: a row per point, bar or bin, then what else is drawn (the whole, the line, the forecast; the median and the 90th percentile). The tooltips on the marks are those rows' words, so the numbers come from one place (`chart-values.ts`). The pivot is a table or a list already, so it needs none.
 
 ### Series, running, with a line and a forecast
 
@@ -47,7 +49,7 @@ The running total (`.chart-line`, `--border-thick` in `--accent`) ends in a dot 
 
 ```html specimen id=series title="A series: the Accessibility audit's stories done, running, with Oriel's line and forecast"
 <figure class="answer-block" data-form="series">
-  <svg class="chart" viewBox="0 0 640 220" role="img" aria-label="Done">
+  <svg class="chart" viewBox="0 0 640 220" aria-hidden="true">
     <g class="chart-grid">
       <line x1="36" x2="584" y1="194" y2="194" />
       <text x="30" y="194" dy="0.32em" text-anchor="end">0</text>
@@ -110,6 +112,67 @@ The running total (`.chart-line`, `--border-thick` in `--accent`) ends in a dot 
     </g>
     <text class="chart-end" x="312.8" y="99.5" dy="0.32em">21</text>
   </svg>
+  <table class="visually-hidden">
+    <caption>
+      Done
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Week</th>
+        <th scope="col">Count, running</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">Week of Sep 7</th>
+        <td>1</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 14</th>
+        <td>4</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 21</th>
+        <td>6</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 28</th>
+        <td>10</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 5</th>
+        <td>13</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 12</th>
+        <td>15</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 19</th>
+        <td>18</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 26</th>
+        <td>20</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Nov 2</th>
+        <td>21</td>
+      </tr>
+      <tr>
+        <th scope="row">In all</th>
+        <td>40</td>
+      </tr>
+      <tr>
+        <th scope="row">Least-squares line</th>
+        <td>1.3 on Sep 7 to 23.3 on Nov 2, R² 0.99</td>
+      </tr>
+      <tr>
+        <th scope="row">Forecast</th>
+        <td>Dec 22, 80% range: Dec 17 to Dec 30</td>
+      </tr>
+    </tbody>
+  </table>
   <figcaption>
     Computed by Oriel from the index and its change log: Done, counted by week, running, since Sep
     7. Least-squares line over 7 whole weeks, R² 0.99, 2.8 a week. At that rate the 19 left get
@@ -124,7 +187,7 @@ Without `running`, each week is a column (`.chart-column`): square at the baseli
 
 ```html specimen id=columns title="A series: stories done each week"
 <figure class="answer-block" data-form="series">
-  <svg class="chart" viewBox="0 0 640 220" role="img" aria-label="Done">
+  <svg class="chart" viewBox="0 0 640 220" aria-hidden="true">
     <g class="chart-grid">
       <line x1="36" x2="584" y1="194" y2="194" />
       <text x="30" y="194" dy="0.32em" text-anchor="end">0</text>
@@ -186,6 +249,55 @@ Without `running`, each week is a column (`.chart-column`): square at the baseli
     </g>
     <text class="chart-end" x="569.7" y="164" dy="0.32em"></text>
   </svg>
+  <table class="visually-hidden">
+    <caption>
+      Done
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Week</th>
+        <th scope="col">Count</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">Week of Sep 7</th>
+        <td>1</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 14</th>
+        <td>6</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 21</th>
+        <td>5</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Sep 28</th>
+        <td>5</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 5</th>
+        <td>5</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 12</th>
+        <td>3</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 19</th>
+        <td>5</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Oct 26</th>
+        <td>6</td>
+      </tr>
+      <tr>
+        <th scope="row">Week of Nov 2</th>
+        <td>1</td>
+      </tr>
+    </tbody>
+  </table>
   <figcaption>
     Computed by Oriel from the index and its change log, where Type is story: Done, counted by week,
     since Sep 7
@@ -210,7 +322,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ><span class="timeline-tick" style="left: 92.8%">Nov 2</span></span
       >
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Boarding passes and gate scanning</span
         ><span class="timeline-count">3/11</span></span
@@ -225,7 +337,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Weather disruptions and rebooking</span
         ><span class="timeline-count">4/9</span></span
@@ -240,7 +352,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Accessibility audit remediation (WCAG 2.2 AA)</span
         ><span class="timeline-count">21/40</span></span
@@ -254,7 +366,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Offline boarding on the pier</span
         ><span class="timeline-count">1/6</span></span
@@ -268,7 +380,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Checkout v2: phone wallets and saved cards</span
         ><span class="timeline-count">3/10</span></span
@@ -282,7 +394,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Vehicle and freight reservations</span
         ><span class="timeline-count">2/8</span></span
@@ -296,7 +408,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">No Epic</span><span class="timeline-count">1/2</span></span
       ><span class="timeline-track"
@@ -309,7 +421,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Localisation for summer visitors</span
         ><span class="timeline-count">2/8</span></span
@@ -323,6 +435,66 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
+    <table class="visually-hidden">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Started</th>
+          <th scope="col">Ended</th>
+          <th scope="col">Rows ended</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Boarding passes and gate scanning</th>
+          <td>by Sep 7</td>
+          <td>still going</td>
+          <td>3 of 11</td>
+        </tr>
+        <tr>
+          <th scope="row">Weather disruptions and rebooking</th>
+          <td>by Sep 7</td>
+          <td>still going</td>
+          <td>4 of 9</td>
+        </tr>
+        <tr>
+          <th scope="row">Accessibility audit remediation (WCAG 2.2 AA)</th>
+          <td>Sep 8</td>
+          <td>still going</td>
+          <td>21 of 40</td>
+        </tr>
+        <tr>
+          <th scope="row">Offline boarding on the pier</th>
+          <td>Sep 9</td>
+          <td>still going</td>
+          <td>1 of 6</td>
+        </tr>
+        <tr>
+          <th scope="row">Checkout v2: phone wallets and saved cards</th>
+          <td>Sep 10</td>
+          <td>still going</td>
+          <td>3 of 10</td>
+        </tr>
+        <tr>
+          <th scope="row">Vehicle and freight reservations</th>
+          <td>Sep 10</td>
+          <td>still going</td>
+          <td>2 of 8</td>
+        </tr>
+        <tr>
+          <th scope="row">No Epic</th>
+          <td>Sep 20</td>
+          <td>still going</td>
+          <td>1 of 2</td>
+        </tr>
+        <tr>
+          <th scope="row">Localisation for summer visitors</th>
+          <td>Oct 2</td>
+          <td>still going</td>
+          <td>2 of 8</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
   <figcaption>
     Computed by Oriel from the index and its change log, where Type is story: Started to Done, by
@@ -345,7 +517,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ><span class="timeline-tick" style="left: 92.8%">Nov 2</span></span
       >
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Receipt email: include the vehicle registration</span></span
       ><span class="timeline-track"
@@ -359,7 +531,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Show the fare breakdown before payment</span></span
       ><span class="timeline-track"
@@ -373,7 +545,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Update the payment declined error message</span></span
       ><span class="timeline-track"
@@ -386,7 +558,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"><span class="timeline-name">Pay with a phone wallet</span></span
       ><span class="timeline-track"
         ><span class="timeline-today" style="left: 96.2%"></span
@@ -398,7 +570,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Pay with a phone wallet on the website</span></span
       ><span class="timeline-track"
@@ -411,7 +583,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name"
           >Handle 3-D Secure challenges in the native checkout</span
@@ -426,7 +598,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Retry a payment without losing the selected seats</span></span
       ><span class="timeline-track"
@@ -439,6 +611,52 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ></span
       ></span>
     </div>
+    <table class="visually-hidden">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Started</th>
+          <th scope="col">Ended</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Receipt email: include the vehicle registration</th>
+          <td>by Sep 7</td>
+          <td>Sep 11</td>
+        </tr>
+        <tr>
+          <th scope="row">Show the fare breakdown before payment</th>
+          <td>by Sep 7</td>
+          <td>still going</td>
+        </tr>
+        <tr>
+          <th scope="row">Update the payment declined error message</th>
+          <td>Sep 13</td>
+          <td>still going</td>
+        </tr>
+        <tr>
+          <th scope="row">Pay with a phone wallet</th>
+          <td>Oct 2</td>
+          <td>Oct 12</td>
+        </tr>
+        <tr>
+          <th scope="row">Pay with a phone wallet on the website</th>
+          <td>Oct 5</td>
+          <td>still going</td>
+        </tr>
+        <tr>
+          <th scope="row">Handle 3-D Secure challenges in the native checkout</th>
+          <td>Oct 14</td>
+          <td>still going</td>
+        </tr>
+        <tr>
+          <th scope="row">Retry a payment without losing the selected seats</th>
+          <td>Oct 17</td>
+          <td>Oct 23</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
   <figcaption>
     Computed by Oriel from the index and its change log, where Type is story: Started to Done, since
@@ -451,7 +669,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
 ```html specimen id=timeline-late title="A due date, and the days past it" nocopy
 <figure class="answer-block" data-form="timeline">
   <div class="chart-timeline">
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Pay with a phone wallet on the website</span></span
       >
@@ -467,7 +685,7 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ><span class="timeline-due" style="left: 78.9%"></span
       ></span>
     </div>
-    <div class="timeline-row">
+    <div class="timeline-row" aria-hidden="true">
       <span class="timeline-label"
         ><span class="timeline-name">Save a card for next time</span></span
       >
@@ -482,6 +700,33 @@ A grid of rows (`.timeline-row`): the label (`.timeline-label`, its name cut wit
         ><span class="timeline-due" style="left: 92.8%"></span
       ></span>
     </div>
+    <table class="visually-hidden">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Started</th>
+          <th scope="col">Ended</th>
+          <th scope="col">Due</th>
+          <th scope="col">Late</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Pay with a phone wallet on the website</th>
+          <td>Oct 5</td>
+          <td>still going</td>
+          <td>Oct 26</td>
+          <td>9 days</td>
+        </tr>
+        <tr>
+          <th scope="row">Save a card for next time</th>
+          <td>Sep 26</td>
+          <td>Oct 23</td>
+          <td>Nov 2</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
   <figcaption>
     Computed by Oriel from a read with due dates: Started to Done, due by Due, since Sep 7; today is
@@ -498,7 +743,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
 
 ```html specimen id=spread title="A spread: days in progress, with two lower bounds"
 <figure class="answer-block" data-form="spread">
-  <svg class="chart" viewBox="0 0 640 200" role="img" aria-label="Days in its state">
+  <svg class="chart" viewBox="0 0 640 200" aria-hidden="true">
     <g class="chart-grid">
       <line x1="32" x2="628" y1="174" y2="174" />
       <text x="26" y="174" dy="0.32em" text-anchor="end">0</text>
@@ -521,7 +766,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M33,174V152.7Q33,148.7 37,148.7H93.2Q97.2,148.7 97.2,152.7V174Z"
       >
-        <title>15–20: 1</title>
+        <title>15–20: 1 row</title>
       </path>
     </g>
     <g>
@@ -529,7 +774,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M99.2,174V127.3Q99.2,123.3 103.2,123.3H159.4Q163.4,123.3 163.4,127.3V174Z"
       >
-        <title>20–25: 2</title>
+        <title>20–25: 2 rows</title>
       </path>
     </g>
     <g>
@@ -537,7 +782,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M165.4,174V127.3Q165.4,123.3 169.4,123.3H225.7Q229.7,123.3 229.7,127.3V174Z"
       >
-        <title>25–30: 2</title>
+        <title>25–30: 2 rows</title>
       </path>
     </g>
     <g>
@@ -545,12 +790,12 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M231.7,174V127.3Q231.7,123.3 235.7,123.3H291.9Q295.9,123.3 295.9,127.3V174Z"
       >
-        <title>30–35: 2</title>
+        <title>30–35: 2 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M297.9,174V102Q297.9,98 301.9,98H358.1Q362.1,98 362.1,102V174Z">
-        <title>35–40: 3</title>
+        <title>35–40: 3 rows</title>
       </path>
     </g>
     <g>
@@ -558,22 +803,22 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M364.1,174V152.7Q364.1,148.7 368.1,148.7H424.3Q428.3,148.7 428.3,152.7V174Z"
       >
-        <title>40–45: 1</title>
+        <title>40–45: 1 row</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M430.3,174V102Q430.3,98 434.3,98H490.6Q494.6,98 494.6,102V174Z">
-        <title>45–50: 3</title>
+        <title>45–50: 3 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M496.6,174V102Q496.6,98 500.6,98H556.8Q560.8,98 560.8,102V174Z">
-        <title>50–55: 3</title>
+        <title>50–55: 3 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M562.8,174V26Q562.8,22 566.8,22H623Q627,22 627,26V174Z">
-        <title>55–60: 6, 2 of them at least this</title>
+        <title>55–60: 6 rows, 2 of them at least this</title>
       </path>
       <path class="chart-bound" d="M562.8,72.7V26Q562.8,22 566.8,22H623Q627,22 627,26V72.7Z" />
     </g>
@@ -596,6 +841,63 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
       <text x="568.4" y="14" text-anchor="end">p90 ≥ 55.8</text>
     </g>
   </svg>
+  <table class="visually-hidden">
+    <caption>
+      Days in its state
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Days in its state</th>
+        <th scope="col">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">15–20</th>
+        <td>1 row</td>
+      </tr>
+      <tr>
+        <th scope="row">20–25</th>
+        <td>2 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">25–30</th>
+        <td>2 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">30–35</th>
+        <td>2 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">35–40</th>
+        <td>3 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">40–45</th>
+        <td>1 row</td>
+      </tr>
+      <tr>
+        <th scope="row">45–50</th>
+        <td>3 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">50–55</th>
+        <td>3 rows</td>
+      </tr>
+      <tr>
+        <th scope="row">55–60</th>
+        <td>6 rows, 2 of them at least this</td>
+      </tr>
+      <tr>
+        <th scope="row">Median</th>
+        <td>≥ 45</td>
+      </tr>
+      <tr>
+        <th scope="row">90th percentile</th>
+        <td>≥ 55.8</td>
+      </tr>
+    </tbody>
+  </table>
   <figcaption>
     Computed by Oriel from the index and its change log, where State is In progress: Days in its
     state of 23 rows: median at least 45, 90th percentile at least 55.8. 2 began before the change
@@ -904,8 +1206,8 @@ Three pickers (`.pivot-picks`, each a `.pivot-pick`, a native `<select>` in a la
 
 ## Keyboard and ARIA
 
-- The SVG forms are `role="img"`, named by `aria-label`, the declared label of what they count ("Done", "Days in its state"). The figure's caption names the figure, so a reader hears how it was computed.
-- A timeline's date axis is `aria-hidden`; each bar's dates are in its `title`.
+- The SVG forms and a timeline's rows are `aria-hidden`. Beside each is a visually hidden table of what it draws, its caption the declared label of what it counts ("Done", "Days in its state"), with `<th scope="row">` for each point, bar or bin. A reader walks it as any table; nothing in it is a tab stop. The figure's caption names the figure, so a reader hears how it was computed.
+- Hidden tables over focusable marks: a mark per week or bin would add dozens of tab stops to a thread, and a table reads in order with its headers.
 - A pivot's pickers are native `<select>`s, each named by its `<label>`. Picking regroups at once, with no model and no server call; telemetry hears only that it was regrouped (`pivotRegrouped`).
 - A pivot's table has `<th scope="col">` for its columns and `<th scope="row">` for its rows; the corner says both fields, "Assignee \ State".
 - Bars (a pivot down one field) are an `<ol>`, the track `aria-hidden`, as on the [Block](/components/block) page.
@@ -921,7 +1223,7 @@ Three pickers (`.pivot-picks`, each a `.pivot-pick`, a native `<select>` in a la
 
 ## Where the app uses it
 
-- `SeriesChart`, `TimelineChart`, `SpreadChart` and `PivotChart` in `packages/web/src/charts.tsx`, chosen by `BlockBody` in `packages/web/src/block.tsx`. The shared helpers: `named` (an item's name for its ID) and `atLeast` ("≥ ").
+- `SeriesChart`, `TimelineChart`, `SpreadChart` and `PivotChart` in `packages/web/src/charts.tsx`, chosen by `BlockBody` in `packages/web/src/block.tsx`. The shared helpers, in `packages/web/src/chart-values.ts`: `named` (an item's name for its ID), `atLeast` ("≥ "), and `seriesValues`, `timelineValues` and `spreadValues`, each chart's values as the hidden table's rows and its marks' tooltips.
 - The figures: `buildChart` in `packages/core/src/block-charts.ts`, over `seriesOf`, `spreadOf` and `pivotOf` in `packages/core/src/chart.ts`. The read: `historyOf` and `historyFields` in `packages/core/src/history.ts`.
 - In a thread and the window chat, under the agent's reply; compact in the overview's Pinned strip (`PinnedStrip` in `packages/web/src/noticed-strip.tsx`).
 - CSS: `.chart`, `.chart-grid line`, `.chart-axis`, `.chart-line`, `.chart-dot`, `.chart-column`, `.chart-bound`, `.chart-fit`, `.chart-range`, `.chart-timeline`, `.timeline-row`, `.timeline-bar`, `.timeline-late`, `.timeline-due`, `.timeline-today`, `.pivot-picks`, `.pivot-pick select`, `.pivot-scroll` and `.pivot-total` in `window.css`.
@@ -930,8 +1232,7 @@ Three pickers (`.pivot-picks`, each a `.pivot-pick`, a native `<select>` in a la
 
 Status **drifting**:
 
-- **Tooltips of the browser's own.** Every other control's tooltip is Oriel's (`Tooltip` in `packages/web/src/tooltip.tsx`), but a chart's values are in SVG `<title>`s and a timeline bar's `title`: the system's look, a delay of its own, and nothing on keyboard focus or touch. A mark's value can't be reached without a pointer.
-- **A thin name.** An SVG chart's name is only its label ("Done"); the series' points and the spread's bins aren't in the accessibility tree except as `<title>`s.
+- **Tooltips of the browser's own.** Every other control's tooltip is Oriel's (`Tooltip` in `packages/web/src/tooltip.tsx`), but a chart's values are in SVG `<title>`s and a timeline bar's `title`: the system's look, a delay of its own, and nothing on keyboard focus or touch. A screen reader has the hidden table; a sighted keyboard or touch user still sees a value only where the drawing labels it.
 - **A fourth styled select.** `.pivot-pick select` styles a native select of its own, beside the three on the [Select](/components/select) page; see [Customizable selects](/drift#d14-customizable-selects).
 - **Literal.** `.timeline-today` is `1px` wide and `.timeline-due` `2px`, where the axes use `--border-thin`. The pivot's wrapper is `<div class="chart-pivot">` with no rule in window.css, so the specimens here leave the class off.
 
