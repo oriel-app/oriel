@@ -24,6 +24,8 @@ jobs:
         run: pnpm lint
       - name: unit
         run: pnpm test
+      - name: design system names
+        run: pnpm ds:check
       - name: dependency allowlist and CLAUDE.md symlink
         run: node scripts/check-repo.ts
       - name: deterministic evals

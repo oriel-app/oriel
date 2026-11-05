@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts && node packages/design-system/scripts/check.ts && pnpm -r --if-present run evals:ci",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts && pnpm ds:check && pnpm -r --if-present run evals:ci",
     "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell && tsc -p packages/desktop/probe && tsc -p packages/design-system",
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
@@ -29,7 +29,8 @@
     "sketch-frames": "pnpm --filter @oriel/web build && node scripts/sketch-frames.ts",
     "design": "node packages/design-system/src/server.ts",
     "ui-check": "node packages/design-system/scripts/ui-check.ts",
-    "ds": "node packages/design-system/src/cli.ts"
+    "ds": "node packages/design-system/src/cli.ts",
+    "ds:check": "node packages/design-system/scripts/check.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
