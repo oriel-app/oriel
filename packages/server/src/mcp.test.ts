@@ -316,3 +316,78 @@ test("a revoked tool's open subscription ends as it is revoked", async (t) => {
   app.connected.revoke(app.reading.tool.id);
   assert.equal((await stream.next()).done, true);
 });
+
+test("guarded membership commands share one receipt on simultaneous retry and survive Undo without replay", async (t) => {
+  const app = await door(t);
+  const checkpoint = await app.call(app.acting.token, "tools/call", {
+    name: "workstream_checkpoint",
+    arguments: { workstream: app.workstream },
+  });
+  const { epoch, version } = (
+    checkpoint.result.structuredContent as unknown as { data: { epoch: string; version: number } }
+  ).data;
+  const command = {
+    workstream: app.workstream,
+    operation: "remove",
+    items: ["jira:SYN-10"],
+    expectedVersion: version,
+    requestId: "remove-1",
+    epoch,
+  };
+  const edit = (arguments_: Record<string, unknown>) =>
+    app.call(app.acting.token, "tools/call", { name: "workstream_edit", arguments: arguments_ });
+  const [first, retry] = await Promise.all([edit(command), edit(command)]);
+  assert.deepEqual(first.result.structuredContent, retry.result.structuredContent);
+  assert.equal((first.result.structuredContent as unknown as { status: string }).status, "applied");
+  const page = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstream}`));
+  assert.equal(page.changes.length, 2);
+  assert.equal(page.changes[0]?.tool, "Claude Code");
+  const undo = page.changes[0]?.undo;
+  assert.ok(undo);
+  await app.post(`/api/actions/${undo.action}`, undo.input);
+  assert.deepEqual((await edit(command)).result.structuredContent, first.result.structuredContent);
+  const after = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstream}`));
+  assert.ok(after.members.some(({ ref }) => ref.id === "jira:SYN-10"));
+  assert.equal((await edit({ ...command, operation: "add" })).result.isError, true);
+  const stale = await edit({ ...command, requestId: "stale" });
+  assert.equal((stale.result.structuredContent as unknown as { code: string }).code, "conflict");
+  const oldEpoch = await edit({ ...command, requestId: "restart", epoch: "previous-server" });
+  assert.equal(oldEpoch.result.isError, true);
+  const readOnly = await app.call(app.reading.token, "tools/call", {
+    name: "workstream_edit",
+    arguments: command,
+  });
+  assert.equal(readOnly.result.isError, true);
+  app.connected.revoke(app.acting.tool.id);
+  assert.equal((await edit(command)).status, 401);
+});
+
+test("receipt keys belong to a connected tool, and refused receipts never become actions", async (t) => {
+  const app = await door(t);
+  const second = app.connected.connect("Build bot", "act");
+  const checkpoint = await app.call(app.acting.token, "tools/call", {
+    name: "workstream_checkpoint",
+    arguments: { workstream: app.workstream },
+  });
+  const { epoch, version } = (
+    checkpoint.result.structuredContent as unknown as { data: { epoch: string; version: number } }
+  ).data;
+  const command = {
+    workstream: app.workstream,
+    operation: "remove",
+    items: ["jira:SYN-10"],
+    expectedVersion: version,
+    requestId: "same-id",
+    epoch,
+  };
+  const edit = (token: string) =>
+    app.call(token, "tools/call", { name: "workstream_edit", arguments: command });
+  const first = await edit(app.acting.token);
+  const other = await edit(second.token);
+  assert.equal((first.result.structuredContent as unknown as { status: string }).status, "applied");
+  assert.equal((other.result.structuredContent as unknown as { code: string }).code, "conflict");
+  assert.deepEqual(
+    (await edit(second.token)).result.structuredContent,
+    other.result.structuredContent,
+  );
+});

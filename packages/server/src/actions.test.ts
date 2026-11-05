@@ -429,3 +429,47 @@ test("an Undo of someone else's action says whose in its events; the user's own 
   assert.equal(w.events.at(-1)?.name, "workstream.item-added");
   assert.ok(!("undoes" in (w.events.at(-1) ?? {})));
 });
+
+test("a guarded membership add checks its region after preparation, before committing", async () => {
+  const w = world();
+  try {
+    const pending = w.dispatch.untyped(
+      "workstream.add",
+      { workstream: w.workstreamId, items: ["jira:SYN-3"] },
+      { kind: "tool", name: "Build bot" },
+      undefined,
+      undefined,
+      { workstream: w.workstreamId, version: 1 },
+    );
+    // The window edits while the command awaits its prepared membership.
+    w.workstreams.remove(w.workstreamId, [m("SYN-1", "10001")], user, t0);
+    await assert.rejects(pending, refused("conflict"));
+    assert.deepEqual(w.held(), ["jira:SYN-2"]);
+    assert.deepEqual(w.events, []);
+    assert.deepEqual(w.published, []);
+  } finally {
+    w.db.close();
+  }
+});
+
+test("two guarded removals prepared on the same region cannot both commit", async () => {
+  const w = world();
+  try {
+    const remove = (item: string) =>
+      w.dispatch.untyped(
+        "workstream.remove",
+        { workstream: w.workstreamId, items: [item] },
+        { kind: "tool", name: "Build bot" },
+        undefined,
+        undefined,
+        { workstream: w.workstreamId, version: 1 },
+      );
+    const results = await Promise.allSettled([remove("jira:SYN-1"), remove("jira:SYN-2")]);
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(w.held()?.length, 1);
+    const failed = results.find((r) => r.status === "rejected");
+    assert.ok(failed?.status === "rejected" && refused("conflict")(failed.reason));
+  } finally {
+    w.db.close();
+  }
+});

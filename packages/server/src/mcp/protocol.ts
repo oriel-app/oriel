@@ -12,6 +12,8 @@
 // Everything read from Oriel goes out marked as data: names, chat, and what
 // sources hold were written by people, and may hold text that looks like an
 // instruction (SPEC §5).
+import { randomUUID } from "node:crypto";
+import { commandTools } from "./commands.ts";
 import { ActionError } from "../actions.ts";
 import { isUlid, type Ulid } from "@oriel/core";
 import type { Outside } from "./door.ts";
@@ -120,10 +122,16 @@ export type McpDeps = {
   version: string;
   // Milliseconds, for the per-minute caps.
   clock(): number;
+  commandEpoch?: string;
 };
 
 export function mcpServer(deps: McpDeps) {
   const { outside } = deps;
+  const commands = commandTools(deps.commandEpoch ?? randomUUID());
+  const listedFor = (by: ConnectedTool) => [
+    ...toolsFor(by),
+    ...commands.filter((tool) => by.mode === "act" || !tool.acts),
+  ];
   const calls = new Map<Ulid, { at: number; acts: boolean }[]>();
   // Whether `by` may make another call now, counting it if so.
   const allowed = (by: ConnectedTool, acts: boolean): boolean => {
@@ -161,7 +169,10 @@ export function mcpServer(deps: McpDeps) {
         content: [
           {
             type: "text",
-            text: `Done. The user sees it in Oriel's window as ${by.name}'s, and can undo it there.`,
+            text:
+              tool.name === "workstream_edit"
+                ? JSON.stringify(result)
+                : `Done. The user sees it in Oriel's window as ${by.name}'s, and can undo it there.`,
           },
         ],
         structuredContent: result,
@@ -253,7 +264,7 @@ export function mcpServer(deps: McpDeps) {
         requested: version,
       });
     const era = version === modern ? "modern" : "legacy";
-    const listed = toolsFor(by);
+    const listed = listedFor(by);
     switch (message.method) {
       case "ping":
         return ok({});
@@ -278,7 +289,7 @@ export function mcpServer(deps: McpDeps) {
       case "tools/call": {
         const tool = listed.find((each) => each.name === params["name"]);
         if (!tool) {
-          const exists = toolsFor({ ...by, mode: "act" }).some((t) => t.name === params["name"]);
+          const exists = listedFor({ ...by, mode: "act" }).some((t) => t.name === params["name"]);
           return exists
             ? ok({
                 content: [

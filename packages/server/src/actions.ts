@@ -186,6 +186,7 @@ type Handler<N extends ActionName> = (
   actor: Actor,
   deps: ActionDeps,
   cause: WorkstreamChange["cause"],
+  beforeCommit?: () => void,
 ) => Promise<Outcome<unknown>>;
 
 // The user's own doing goes unsaid in an event; anyone else is named.
@@ -414,17 +415,20 @@ async function markDone(
 }
 
 const handlers = {
-  "workstream.add": async ({ workstream: id, items }, actor, deps, cause) => {
+  "workstream.add": async (
+    { workstream: id, items },
+    actor,
+    deps,
+    cause,
+    beforeCommit?: () => void,
+  ) => {
     const workstream = mustWorkstream(deps, id);
-    const change = deps.workstreams.add(
-      workstream.id,
-      await members(deps, items, actor),
-      cause,
-      deps.now(),
-    );
+    const joining = await members(deps, items, actor);
+    beforeCommit?.();
+    const change = deps.workstreams.add(workstream.id, joining, cause, deps.now());
     const added = (change?.added ?? []).map((member) => member.id);
     return {
-      output: { added },
+      output: { added, version: mustWorkstream(deps, id).version },
       undo: added.length
         ? { action: "workstream.remove", input: { workstream: workstream.id, items: added } }
         : null,
@@ -438,7 +442,13 @@ const handlers = {
     };
   },
 
-  "workstream.remove": async ({ workstream: id, items }, actor, deps, cause) => {
+  "workstream.remove": async (
+    { workstream: id, items },
+    actor,
+    deps,
+    cause,
+    beforeCommit?: () => void,
+  ) => {
     const workstream = mustWorkstream(deps, id);
     // By identity: a moved item is removed under its current handle, and
     // one the index no longer has under the handle the workstream shows.
@@ -467,6 +477,7 @@ const handlers = {
           `${keys(held)} ${held.length === 1 ? "is" : "are"} in a change set that hasn't applied yet, in one of its threads`,
         );
     }
+    beforeCommit?.();
     const change = deps.workstreams.remove(workstream.id, named, cause, deps.now());
     // Back under the handle the index has now; one it no longer has can't
     // come back, and is `gone`, for the line under a reply to say why.
@@ -474,7 +485,10 @@ const handlers = {
     const removed = change?.removed ?? [];
     const back = removed.flatMap((member) => live.get(identity(member)) ?? []);
     return {
-      output: { gone: removed.filter((member) => !live.has(identity(member))).map((m) => m.id) },
+      output: {
+        gone: removed.filter((member) => !live.has(identity(member))).map((m) => m.id),
+        version: mustWorkstream(deps, id).version,
+      },
       undo: back.length
         ? { action: "workstream.add", input: { workstream: workstream.id, items: back } }
         : null,
@@ -1211,7 +1225,8 @@ export type Dispatch = {
     actor: Actor,
     undoes?: Actor,
     via?: Ulid,
-  ): Promise<{ undo: Call | null }>;
+    condition?: { workstream: Ulid; version: number },
+  ): Promise<{ undo: Call | null; version?: number }>;
 };
 
 // An action's input from what a request carried, checked as the dispatcher
@@ -1240,6 +1255,7 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     actor: Actor,
     undoes?: Actor,
     via?: Ulid,
+    condition?: { workstream: Ulid; version: number },
   ): Promise<Result<N>> => {
     const why = refusal(name, actor);
     if (why !== null) throw new ActionError("refused", why);
@@ -1247,7 +1263,28 @@ export function dispatcher(deps: ActionDeps): Dispatch {
     const handler = handlers[name] as Handler<typeof name>;
     const cause =
       actor.kind === "user" && via !== undefined ? { kind: "user" as const, via } : actor;
-    const outcome = await handler(checked(name, raw as Fields<N>), actor, deps, cause);
+    const input = checked(name, raw as Fields<N>);
+    if (
+      condition &&
+      ((name !== "workstream.add" && name !== "workstream.remove") ||
+        !("workstream" in input) ||
+        input.workstream !== condition.workstream)
+    )
+      throw new ActionError("invalid", "A region condition needs its membership action");
+    // Check after asynchronous preparation, immediately before the synchronous
+    // store mutation. A check in an HTTP adapter would race the window.
+    const beforeCommit = condition
+      ? () => {
+          const current = mustWorkstream(deps, condition.workstream).version;
+          if (current !== condition.version)
+            throw new ActionError(
+              "conflict",
+              `Region changed: expected ${condition.version}, current ${current}. Read again and use a new request ID.`,
+            );
+        }
+      : undefined;
+    beforeCommit?.();
+    const outcome = await handler(input, actor, deps, cause, beforeCommit);
     if (outcome.undo && outcome.undo.action !== declared.class.inverse)
       throw new Error(`${name} gave an undo that isn't its inverse`);
     const at = deps.now();
