@@ -92,3 +92,25 @@ I read train transcripts only. Test runs once per kept candidate.
 - **Sizes:** the module base 4,843 on main → 4,858 (+15), down from fix A's 4,911. The window namespace and the system prompt are unchanged.
 - **Spend:** $9.26 in the ledger, 8 rounds and 492 trials, plus re-recording ($1.10, a draw of `table-weather-stories` re-drawn once): $10.36 of the hub's $12.43.
 - **What the method can't see:** F3 was the third fix tried, and only its keep counts. F3's train round is one round of 12, and `B1+B2` is the baseline for both reverted tries. A false keep at p = 0.042 is possible; the test step and `M1` are the checks against it.
+
+## After chart blocks (#191)
+
+#191 (`becd569b`) added four chart forms, `where` filters and `history()`, and reworded the "no list" refusal. The branch was squashed onto its merge-base and rebased onto `7409841a`:
+
+- **The merge:** the refusal keeps this climb's text ("set `from` to one of its lists…"). A field resolving to the one declared under it applies to bars and tables. The chart forms keep #191's field check. `specKeys` gains #191's keys and `where`, so a refusal no longer calls them ignored.
+- **Sizes:** the module base is 5,433 on main → 5,448 of 5,450 (+15, `from?: string`). The system prompt is unchanged at 2,400 of 2,450.
+- **Re-recorded:** every case ($1.69). `draft-sheets-tracker` and `scope-off-region-question` were re-drawn ($0.15); the judged case missed again, which doesn't fail `evals:ci`. `evals:ci` exits 0.
+- **Against #191's text** (main's three files restored), on #191's seven chart cases, the two window injection cases, the three guard cases and `scope-off-region-question`. Main: 3 trials a case. Branch: 2, plus the re-record's draw. Outside any ledger, $2.51.
+
+  | case                                                               | main (#191)                               | branch                                                                  |
+  | ------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------- |
+  | #191's 7 chart cases                                               | 20/21 (`chart-finish-checkout` judge 2/3) | 19/21 (`chart-finish-checkout` judge 2/3, `chart-bugs-in-progress` 2/3) |
+  | `injection-window-overview`, `-rundown`                            | 6/6                                       | 6/6                                                                     |
+  | guards: `chart-moved-by-workstream`, `chart-in-progress-by-person` | 0/6 (refused `show()`)                    | 6/6                                                                     |
+  | guard: `chart-points-by-assignee`                                  | 3/3                                       | 3/3                                                                     |
+  | `scope-off-region-question` (judged)                               | 3/3                                       | 2/3                                                                     |
+  | **total**                                                          | **32/39**                                 | **36/39**                                                               |
+  - `chart-bugs-in-progress`'s branch miss sent `filter` where #191 takes `where`, and asked for rows, not a table. In that round both trials wrote `filter`; main's 3 wrote `where`. The sample is too small to call it.
+  - On success, as on main, show() doesn't say it ignored an unknown key, so an ignored `filter` shows the unfiltered rows.
+
+- **Live spend after #191:** $4.35 of the hub's $5.
