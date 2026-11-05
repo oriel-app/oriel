@@ -14,7 +14,7 @@ export const isTs = (ts: string): boolean => /^[0-9]{10}\.[0-9]{6}$/.test(ts);
 export const isChannelId = (id: string): boolean => /^[CG][A-Z0-9]{6,20}$/.test(id);
 const isUserId = (id: string): boolean => /^[UW][A-Z0-9]{6,20}$/.test(id);
 
-const text = refine(
+export const messageText = refine(
   string,
   (value) => value.trim() !== "" && [...value].length <= maxText,
   `expected 1 to ${maxText} characters`,
@@ -24,8 +24,8 @@ const author = refine(string, isUserId, "expected a Slack user ID, like U0123456
 const ts = refine(string, isTs, "expected a Slack ts, like 1790071200.000100");
 
 export const slackOps = {
-  postMessage: { args: object({ channel, text, author }), revertOnly: false },
-  reply: { args: object({ text, author }), revertOnly: false },
+  postMessage: { args: object({ channel, text: messageText, author }), revertOnly: false },
+  reply: { args: object({ text: messageText, author }), revertOnly: false },
   deleteMessage: { args: object({}), revertOnly: true },
   deleteReply: { args: object({ ts }), revertOnly: true },
 } as const satisfies OpCatalogue;

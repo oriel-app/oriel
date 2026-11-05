@@ -22,6 +22,7 @@ import {
   type ItemId,
   itemId,
   type Log,
+  noteSent,
   parseItemId,
   requestMs,
   SourceRefused,
@@ -94,17 +95,34 @@ export function sheetsWriter(
       random: Math.random,
     });
 
-  // The one request that writes, as JSON. A `429` was turned away
-  // unprocessed, so it goes again while the write has time; any other
-  // refusal changed nothing, since Google applies a batch whole or not at
-  // all.
-  const post = async (path: string, body: unknown, limit?: WriteLimit): Promise<void> => {
+  // The one request that writes, as JSON. It is sent once its time and its
+  // sign-in are in hand: a failure before then sent nothing this time, and
+  // any time before was a `429`, turned away unprocessed, which goes again
+  // while the write has time. Any other refusal changed nothing, since
+  // Google applies a batch whole or not at all.
+  const post = async (
+    path: string,
+    body: unknown,
+    limit: WriteLimit | undefined,
+    sent: () => void,
+  ): Promise<void> => {
     for (let attempt = 0; ; attempt++) {
+      let ms: number;
+      let headers: Record<string, string>;
+      try {
+        headers = await credential.headers();
+        // Only now: the sign-in may have taken some of the write's time.
+        ms = requestMs(requestTimeoutMs, limit, source);
+      } catch (error) {
+        const said = error instanceof Error ? error.message : String(error);
+        throw new SourceRefused(said, { sent: attempt > 0, cause: error });
+      }
+      sent();
       const response = await send(new URL(path, sheetsOrigin), {
         method: "POST",
-        headers: { ...(await credential.headers()), "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(requestMs(requestTimeoutMs, limit, source)),
+        signal: AbortSignal.timeout(ms),
       });
       await response.body?.cancel();
       if (response.ok) return;
@@ -182,7 +200,7 @@ export function sheetsWriter(
   const setField = async (
     google: Google,
     limit: WriteLimit | undefined,
-    state: { sent: boolean },
+    sent: () => void,
     request: {
       target: ItemId<"sheets"> | null;
       expectedStableId: string | null;
@@ -224,11 +242,11 @@ export function sheetsWriter(
       );
     const fields = [field, "cells"];
     const before = rowValues(at.columns, cells, fields);
-    state.sent = true;
     await post(
       spreadsheetPath(at.spreadsheet, "/values:batchUpdate"),
       editBody(at.tab.title, at.index, column, value),
       limit,
+      sent,
     );
     const after = await rowAt(google, at, at.index);
     if (!holds(at, after, at.key))
@@ -245,7 +263,7 @@ export function sheetsWriter(
   const addRow = async (
     google: Google,
     limit: WriteLimit | undefined,
-    state: { sent: boolean },
+    sent: () => void,
     { spreadsheet, sheetId, values }: SheetsArgs<"addRow">,
   ): Promise<WriteResult<"sheets">> => {
     await editable(google, spreadsheet);
@@ -287,11 +305,11 @@ export function sheetsWriter(
     const cells: CellValue[] = Array.from({ length: width }, () => null);
     for (const [field, value] of given) cells[read.columns[field] ?? 0] = value;
     const index = read.last + 1;
-    state.sent = true;
     await post(
       spreadsheetPath(spreadsheet, ":batchUpdate"),
       addRowBody(sheetId, index, cells, read.last === read.mapping.header - 1),
       limit,
+      sent,
     );
     const hash = rowKey(spreadsheet, sheetId, key);
     const id = itemId(prefix, hash) as ItemId<"sheets">;
@@ -311,17 +329,17 @@ export function sheetsWriter(
   const deleteRow = async (
     google: Google,
     limit: WriteLimit | undefined,
-    state: { sent: boolean },
+    sent: () => void,
     request: { target: ItemId<"sheets"> | null; expectedStableId: string | null },
   ): Promise<WriteResult<"sheets">> => {
     const at = await target(google, request.target, request.expectedStableId);
     const fields = [...Object.keys(at.columns), "cells"];
     const before = rowValues(at.columns, cellsAt(at.grid, at.index), fields);
-    state.sent = true;
     await post(
       spreadsheetPath(at.spreadsheet, ":batchUpdate"),
       deleteRowBody(at.tab.sheetId, at.index),
       limit,
+      sent,
     );
     const still = await rowFinder(google, picks, where).find(at.key, {
       spreadsheet: at.spreadsheet,
@@ -351,36 +369,33 @@ export function sheetsWriter(
     // A target must come with the stable ID it is expected to have, and an
     // added row with none. A failure before the write went out sent nothing.
     apply: async ({ op, target: id, expectedStableId, args, seen }, limit) => {
-      const state = { sent: false };
       const google = reads(limit);
       try {
-        if (!isSheetsOp(op)) throw new Error(`not a Sheets operation: ${op}`);
-        if ((id === null) !== (expectedStableId === null))
-          throw new Error(
-            `${op}: a target needs the stable ID to check it against, and only one does`,
-          );
-        const request = { target: id, expectedStableId, ...(seen ? { seen } : {}) };
-        switch (op) {
-          case "setField":
-            return await setField(google, limit, state, request, valid("setField", args));
-          case "addRow":
-            if (id !== null) throw new Error("addRow: a new row has no target");
-            return await addRow(google, limit, state, valid("addRow", args));
-          case "deleteRow":
-            valid("deleteRow", args);
-            return await deleteRow(google, limit, state, request);
-        }
+        return await noteSent(async (sent) => {
+          if (!isSheetsOp(op)) throw new Error(`not a Sheets operation: ${op}`);
+          if ((id === null) !== (expectedStableId === null))
+            throw new Error(
+              `${op}: a target needs the stable ID to check it against, and only one does`,
+            );
+          const request = { target: id, expectedStableId, ...(seen ? { seen } : {}) };
+          switch (op) {
+            case "setField":
+              return await setField(google, limit, sent, request, valid("setField", args));
+            case "addRow":
+              if (id !== null) throw new Error("addRow: a new row has no target");
+              return await addRow(google, limit, sent, valid("addRow", args));
+            case "deleteRow":
+              valid("deleteRow", args);
+              return await deleteRow(google, limit, sent, request);
+          }
+        });
       } catch (error) {
-        if (state.sent || error instanceof SourceRefused) {
-          if (state.sent && !(error instanceof SourceRefused))
-            log("sheets: wrote, but the write may not have landed as asked", {
-              op,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          throw error;
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        throw new SourceRefused(message, { sent: false, cause: error });
+        if (!(error instanceof SourceRefused))
+          log("sheets: wrote, but the write may not have landed as asked", {
+            op,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        throw error;
       }
     },
     current: async (id, fields) => {
