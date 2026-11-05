@@ -20,7 +20,8 @@ const kindLabels: Record<SignalKind, string> = {
   scope: "Scope grew",
 };
 
-// A card's or a pin's block at its first rows, as a pin shows it (0030).
+// A card's or a pin's block at its first rows, as a pin shows it (0030). A
+// chart keeps every mark: its compact drawing is its own (decision 0053).
 function topOf(block: BlockView, n: number): BlockView {
   if (block.form === "rows")
     return {
@@ -34,7 +35,7 @@ function topOf(block: BlockView, n: number): BlockView {
       rows: block.rows.slice(0, n),
       more: block.more + Math.max(0, block.rows.length - n),
     };
-  if (block.form === "preview") return block;
+  if (block.form !== "bars") return block;
   return {
     ...block,
     bars: block.bars.slice(0, n + 2),
@@ -191,7 +192,7 @@ export function PinnedStrip(props: {
         {pins.map((pin) => (
           <div class="pinned-block" key={pin.id}>
             {pin.block ? (
-              <BlockFigure block={topOf(pin.block, 3)} />
+              <BlockFigure block={topOf(pin.block, 3)} compact />
             ) : (
               <p class="noticed-none">What this pin read isn't there any more.</p>
             )}

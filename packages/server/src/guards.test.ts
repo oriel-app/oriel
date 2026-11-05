@@ -101,21 +101,24 @@ test("the first sync connects the source; marking a thread done is recorded", as
   assert.deepEqual([done?.name, done?.data.threadId], ["thread.marked-done", app.id]);
 });
 
-test("the window reports grouping switches and clusters opened or closed, and nothing else", async (t) => {
+test("the window reports grouping switches, clusters opened or closed and pivots regrouped, and nothing else", async (t) => {
   const app = await testApp(t);
   const send = (body: unknown, headers = {}) => app.post("/api/telemetry", body, headers);
   assert.equal((await send({ name: "grouping.switched", grouping: "stuck" })).status, 202);
   assert.equal((await send({ name: "cluster.opened" })).status, 202);
   assert.equal((await send({ name: "cluster.closed" })).status, 202);
+  // Only that it was regrouped, never by what.
+  assert.equal((await send({ name: "block.regrouped", rows: "assignee" })).status, 202);
   assert.deepEqual(
     app.app
       .telemetry()
-      .slice(-3)
+      .slice(-4)
       .map((e) => [e.name, e.data]),
     [
       ["grouping.switched", { grouping: "stuck" }],
       ["cluster.opened", {}],
       ["cluster.closed", {}],
+      ["block.regrouped", {}],
     ],
   );
   for (const bad of [
@@ -149,7 +152,7 @@ test("the window reports grouping switches and clusters opened or closed, and no
     ).status,
     403,
   );
-  assert.equal(app.app.telemetry().length, 4);
+  assert.equal(app.app.telemetry().length, 5);
 });
 
 test("an item that moved keeps its title in a workstream's history and a thread's markers", async () => {

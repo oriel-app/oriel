@@ -8,8 +8,11 @@
 // block shows only those, under those labels. The spec is the read, its
 // arguments and the form and nothing else, so a block can be saved and built
 // again by running its read with no model. A block is typed data, never
-// HTML: whatever text it holds renders as text.
-import { isItemId, type ItemId } from "./ids.ts";
+// HTML: whatever text it holds renders as text. The chart forms (a series
+// over time, a timeline, a spread, a pivot) are built in block-charts.ts.
+import { buildChart, builtCharts, type ChartBlock, isChart } from "./block-charts.ts";
+import { chartSteps } from "./chart.ts";
+import { isInstant, isItemId, type ItemId } from "./ids.ts";
 import type { SearchHit } from "./source.ts";
 import {
   array,
@@ -19,6 +22,7 @@ import {
   number,
   object,
   optional,
+  record,
   refine,
   string,
   union,
@@ -26,7 +30,15 @@ import {
   type Validator,
 } from "./validate.ts";
 
-export const blockForms = ["table", "bars", "rows"] as const;
+export const blockForms = [
+  "table",
+  "bars",
+  "rows",
+  "series",
+  "timeline",
+  "spread",
+  "pivot",
+] as const;
 export type BlockForm = (typeof blockForms)[number];
 
 // What a block shows at most before "and N more".
@@ -42,9 +54,20 @@ export const maxBlocksPerTurn = 4;
 // its dotted path ("" for the result itself), with each field's label, by
 // its name, dotted for a nested one. A list rows can show has its items' IDs
 // in `id`.
+// A read whose rows hold dates says, by dotted path, when it was answered
+// (`asOf`) and since when its dates are known (`since`): a date at `since`
+// means by then. A chart over time needs both. `atLeast` names, for a
+// number field, the yes/no field that says the number is only a lower bound.
 export type ResultFields = {
   source: string;
   lists: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  time?: { asOf: string; since: string };
+  atLeast?: Readonly<Record<string, string>>;
+  // The number fields that add up, which a pivot may sum; without it, all.
+  sums?: readonly string[];
+  // It holds IDs and facets, never content, so a chart of it isn't the
+  // escape hatch, even read from outside the region (decision 0053).
+  contentFree?: true;
 };
 
 const field = refine(string, (name) => name.trim() !== "", "expected a field's name");
@@ -54,6 +77,8 @@ const base = {
   // The field holding the rows, dotted for a nested one; without it, the
   // read's result is the rows.
   from: optional(field),
+  // Only the rows whose fields hold these values, by each field's name.
+  where: optional(record(union(string, number, boolean, literal(null)))),
 };
 
 // What the agent asks for, as `show()` checks it.
@@ -69,6 +94,32 @@ export const blockSpec = union(
     ),
   }),
   object({ ...base, form: literal("rows") }),
+  object({
+    ...base,
+    form: literal("series"),
+    at: field,
+    value: optional(field),
+    every: optional(union(...chartSteps.map((step) => literal(step)))),
+    running: optional(boolean),
+    fit: optional(boolean),
+  }),
+  object({
+    ...base,
+    form: literal("timeline"),
+    label: optional(field),
+    start: field,
+    end: field,
+    due: optional(field),
+    by: optional(field),
+  }),
+  object({ ...base, form: literal("spread"), value: field }),
+  object({
+    ...base,
+    form: literal("pivot"),
+    rows: field,
+    columns: optional(field),
+    value: optional(field),
+  }),
 );
 export type BlockSpec = Infer<typeof blockSpec>;
 
@@ -81,7 +132,7 @@ export const searchFields: ResultFields = {
 // What a refused spec is told: what every block names, and what each form
 // takes besides.
 export const blockSpecHelp =
-  "a block names `read`, a read this turn ran, with its `args` if it took any, and `form`. `from` names the list in the read's result the block shows, when the result isn't that list itself. Bars take `label` and `value`, the fields holding each row's label and its number; Oriel sums the rows that share a label. A table takes `columns`, 1 to 5 of each row's fields. Rows take nothing more: each row's item is in `id`. Only the lists and fields the read declares can be shown; a refusal names them.";
+  "a block names `read`, a read this turn ran, with its `args` if it took any, and `form`. `from` names the list in the read's result the block shows, when the result isn't that list itself, and `where` keeps only rows whose fields hold the values it gives, as `{ kind: \"bug\" }`. Bars take `label` and `value`, the fields holding each row's label and its number; Oriel sums the rows that share a label. A table takes `columns`, 1 to 5 of each row's fields. Rows take nothing more: each row's item is in `id`. A series takes `at`, a date field, and counts rows by `every` week or day, or sums `value`; `running: true` adds each to the last, and `fit: true` adds Oriel's least-squares line and, running, a forecast of when the rest arrive. A timeline takes `start` and `end`, and `label` (else each bar is its row's item), `due` and `by` (one bar per group) if wanted. A spread takes `value`, a number, and marks the median and 90th percentile. A pivot takes `rows`, and `columns` and `value` (summed, else counted) if wanted; the person can regroup it. Only the lists and fields the read declares can be shown; a refusal names them.";
 
 // What a turn shows under the reply, as a run asks: `show` builds a block
 // from a read the turn ran, and `sketch` shows the agent's HTML in a
@@ -140,13 +191,16 @@ export type Block = {
   more: number;
   // It came from a read outside the region: the escape hatch, read-only.
   outside: boolean;
-} & (
-  | { form: "bars"; bars: { label: string; value: number }[] }
-  // `columns`: the declared labels of the fields it shows.
-  | { form: "table"; columns: string[]; rows: Cell[][] }
-  | { form: "rows"; items: ItemId[] }
-  | { form: "preview"; tables: PreviewTable[] }
-);
+} &
+  // `atLeast`: the value is only a lower bound, as the read declares.
+  (
+    | { form: "bars"; bars: { label: string; value: number; atLeast?: true }[] }
+    // `columns`: the declared labels of the fields it shows.
+    | { form: "table"; columns: string[]; rows: Cell[][] }
+    | { form: "rows"; items: ItemId[] }
+    | { form: "preview"; tables: PreviewTable[] }
+    | ChartBlock
+  );
 
 // A block as Oriel built it, as it is stored and read back: its spec,
 // checked as `show()` checks it, and what it shows.
@@ -159,7 +213,7 @@ export const builtBlock: Validator<Block> = union(
   object({
     ...builtBase,
     form: literal("bars"),
-    bars: array(object({ label: string, value: number })),
+    bars: array(object({ label: string, value: number, atLeast: optional(literal(true)) })),
   }),
   object({
     ...builtBase,
@@ -180,7 +234,8 @@ export const builtBlock: Validator<Block> = union(
     form: literal("preview"),
     tables: array(previewTable),
   }),
-);
+  ...builtCharts(builtBase),
+) as Validator<Block>;
 
 // A preview read's block, built from what the connector read: each table
 // with at most `maxPreviewRows` rows, its cells as text, and how many rows
@@ -230,6 +285,7 @@ const at = (value: unknown, path: string): unknown =>
 // row lacks it, and null where a field on the way is null, as an unassigned
 // story's assignee is.
 const fieldOf = (row: Record<string, unknown>, name: string): unknown => {
+  if (!name.includes(".")) return Object.hasOwn(row, name) ? row[name] : undefined;
   let value: unknown = row;
   for (const key of name.split(".")) {
     if (value === null) return null;
@@ -247,6 +303,31 @@ const isCell = (value: unknown): value is Cell =>
 
 export type Built = { ok: true; block: Block } | { ok: false; why: string };
 
+// The fields a spec names, which its read must declare.
+function namedFields(spec: BlockSpec): string[] {
+  return [...Object.keys(spec.where ?? {}), ...formFields(spec)];
+}
+function formFields(spec: BlockSpec): string[] {
+  const given = (...names: (string | undefined)[]) =>
+    names.flatMap((name) => (name === undefined ? [] : [name]));
+  switch (spec.form) {
+    case "bars":
+      return [spec.label, spec.value];
+    case "table":
+      return spec.columns;
+    case "rows":
+      return [];
+    case "series":
+      return given(spec.at, spec.value);
+    case "timeline":
+      return given(spec.label, spec.start, spec.end, spec.due, spec.by);
+    case "spread":
+      return [spec.value];
+    case "pivot":
+      return given(spec.rows, spec.columns, spec.value);
+  }
+}
+
 // What the host recorded of a read this turn: its answer, whether it reached
 // outside the region, and what it declares of its result, if anything.
 export type Answered = { value: unknown; outside: boolean; fields: ResultFields | null };
@@ -254,21 +335,28 @@ export type Answered = { value: unknown; outside: boolean; fields: ResultFields 
 const listed = (names: readonly string[]) => names.map((name) => JSON.stringify(name)).join(", ");
 
 // The block `spec` names, built from the host's copy of its read's answer;
-// or why not, in words the agent can act on.
-export function buildBlock(spec: BlockSpec, read: Answered): Built {
+// or why not, in words the agent can act on. `pinned`: built for a pin, as
+// the overview reruns it, so a pivot is only the grouping it was pinned
+// with (decision 0053).
+export function buildBlock(
+  spec: BlockSpec,
+  read: Answered,
+  options: { pinned?: boolean } = {},
+): Built {
   const refuse = (why: string): Built => ({ ok: false, why });
   const { fields } = read;
   if (!fields) return refuse(`${spec.read} declares nothing a block can show`);
-  const path = spec.from ?? "";
+  // With no `from`, the result itself, or the one list the read declares.
+  const declared = Object.keys(fields.lists);
+  const path = spec.from ?? (declared.length === 1 ? (declared[0] ?? "") : "");
   const labels = Object.hasOwn(fields.lists, path) ? fields.lists[path] : undefined;
   const where = path === "" ? "its result" : `its field ${JSON.stringify(path)}`;
   const lists = Object.keys(fields.lists).map((list) => (list === "" ? "its result" : list));
   if (!labels)
     return refuse(
-      `${spec.read} declares no list a block can show in ${where}; it declares ${lists.join(", ")}`,
+      `${spec.read} declares no list a block can show in ${where}; name one with \`from\`: ${lists.join(", ")}`,
     );
-  const named =
-    spec.form === "bars" ? [spec.label, spec.value] : spec.form === "table" ? spec.columns : [];
+  const named = namedFields(spec);
   const unknown = named.filter((name) => !Object.hasOwn(labels, name));
   if (unknown.length)
     return refuse(
@@ -277,19 +365,62 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
   if (spec.form === "rows" && !Object.hasOwn(labels, "id"))
     return refuse(`${where} of ${spec.read} holds no items to show as rows`);
   const label = (name: string) => labels[name] ?? name;
-  const rows = path === "" ? read.value : at(read.value, path);
-  if (!Array.isArray(rows)) return refuse(`${spec.read} returned no list in ${where}`);
+  const all = path === "" ? read.value : at(read.value, path);
+  if (!Array.isArray(all)) return refuse(`${spec.read} returned no list in ${where}`);
+  const kept = Object.entries(spec.where ?? {});
+  const rows = kept.length
+    ? all.filter(
+        (row) => isRecord(row) && kept.every(([name, value]) => fieldOf(row, name) === value),
+      )
+    : all;
+  if (kept.length && !rows.length)
+    return refuse(
+      `no row of ${where} has ${kept.map(([name, value]) => `${JSON.stringify(name)} ${JSON.stringify(value)}`).join(" and ")}`,
+    );
+  // A filter's values are the read's own: a row holds each, or nothing shows.
+  const only = kept.length
+    ? `, where ${kept.map(([name, value]) => `${label(name)} is ${value === null ? "blank" : String(value)}`).join(" and ")}`
+    : "";
   const caption = (what: string) =>
-    `Computed by Oriel from ${fields.source}${what ? `: ${what}` : ""}`;
-  const base = { spec, outside: read.outside };
+    `Computed by Oriel from ${fields.source}${only}${what ? `: ${what}` : ""}`;
+  const base = { spec, outside: read.outside && !(fields.contentFree && isChart(spec)) };
   const values = (row: unknown, names: readonly string[]) =>
     isRecord(row) ? names.map((name) => fieldOf(row, name)) : null;
+
+  if (isChart(spec)) {
+    const since = fields.time ? at(read.value, fields.time.since) : undefined;
+    const asOf = fields.time ? at(read.value, fields.time.asOf) : undefined;
+    const time =
+      typeof since === "string" && isInstant(since) && typeof asOf === "string" && isInstant(asOf)
+        ? { since, asOf }
+        : null;
+    if (fields.time && !time) return refuse(`${spec.read} returned no dates to chart over`);
+    const chart = buildChart(spec, {
+      rows,
+      where,
+      label,
+      labels,
+      time,
+      atLeast: fields.atLeast ?? {},
+      sums: fields.sums ?? null,
+      field: (row, name) => (isRecord(row) ? fieldOf(row, name) : undefined),
+      pinned: options.pinned ?? false,
+    });
+    if (!chart.ok) return refuse(chart.why);
+    return {
+      ok: true,
+      block: { ...base, ...chart.chart, more: chart.more, caption: caption(chart.caption) },
+    };
+  }
 
   if (spec.form === "bars") {
     // Rows that share a label are one bar, their values summed, as stories
     // are by their assignee.
     const sums = new Map<string, number>();
     let summed = false;
+    // Bars holding a value that is only a lower bound, as the read declares.
+    const flag = fields.atLeast?.[spec.value];
+    const bounded = new Set<string>();
     for (const [i, row] of rows.entries()) {
       const [name, count] = values(row, [spec.label, spec.value]) ?? [];
       // A row without the field at all, as an item gone from its source, has
@@ -306,10 +437,15 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
       const key = name === null ? "—" : String(name);
       summed ||= sums.has(key);
       sums.set(key, (sums.get(key) ?? 0) + count);
+      if (flag !== undefined && isRecord(row) && fieldOf(row, flag) === true) bounded.add(key);
     }
     if (!sums.size) return refuse(`${where} is empty`);
     const ranked = [...sums]
-      .map(([name, value]) => ({ label: name, value }))
+      .map(([name, value]) => ({
+        label: name,
+        value,
+        ...(bounded.has(name) ? { atLeast: true as const } : {}),
+      }))
       .toSorted((a, b) => b.value - a.value || a.label.localeCompare(b.label));
     const by = `${label(spec.value)} by ${label(spec.label)}`;
     return {
@@ -319,7 +455,9 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
         form: "bars",
         bars: ranked.slice(0, maxBars),
         more: Math.max(ranked.length - maxBars, 0),
-        caption: caption(`${by}${summed ? ", summed" : ""}, highest first`),
+        caption: caption(
+          `${by}${summed ? ", summed" : ""}, highest first${bounded.size ? `. ≥ marks a value that is only a lower bound: it began before the change log starts` : ""}`,
+        ),
       },
     };
   }
@@ -378,7 +516,7 @@ export function buildBlock(spec: BlockSpec, read: Answered): Built {
 // is.
 export function escapeHatchBlock(hits: readonly SearchHit[]): Block | null {
   const built = buildBlock(
-    { read: "search", args: undefined, from: undefined, form: "rows" },
+    { read: "search", args: undefined, from: undefined, where: undefined, form: "rows" },
     { value: hits, outside: true, fields: searchFields },
   );
   return built.ok ? built.block : null;

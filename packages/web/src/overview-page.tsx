@@ -198,8 +198,6 @@ function FirstRunLine(props: {
   );
 }
 
-// Where answers the user pinned go, under the headlines (decision 0030,
-// a later story). Empty until then.
 // The window's two views, side by side at the top of each.
 export function ViewTabs(props: {
   current: "overview" | "browse";

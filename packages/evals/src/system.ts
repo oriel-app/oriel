@@ -111,6 +111,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         ...(shown ? { shown } : {}),
         ...(world.overview ? { overview: world.overview } : {}),
         ...(world.waiting ? { waiting: world.waiting } : {}),
+        history: world.history,
       });
       // What each read answered, so the blocks grader can build each block
       // again from its read.

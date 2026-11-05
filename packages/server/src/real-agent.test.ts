@@ -192,3 +192,48 @@ test("a block the agent asks for is stored, shown under the reply with its rows 
   const counted = app.app.telemetry().find((e) => e.name === "block.shown");
   assert.deepEqual(counted?.data, { threadId: id, form: "rows" });
 });
+
+test("history() reads past the region with no content, so its charts aren't the escape hatch, and Oriel names their items", async (t) => {
+  const charted: Script = async (bindings) => {
+    const { value } = await bindings.read("history", []);
+    await bindings.read("show", [{ read: "history", from: "items", form: "pivot", rows: "epic" }]);
+    await bindings.read("show", [
+      { read: "history", from: "items", form: "timeline", start: "startedAt", end: "doneAt" },
+    ]);
+    // What `of` names is the agent's text: an ID of a kind no source
+    // declares, or of nothing the index has, is refused.
+    const refused: string[] = [];
+    for (const named of ["linear:ORL-1", "jira:SYN-999", "not an id"])
+      await bindings.read("history", [named]).catch((error: Error) => refused.push(error.message));
+    return { value: { value, refused } };
+  };
+  const app = await testApp(t, {
+    scripts: { list: charted },
+    agent: (deps) => agent({ ...deps, provider: provider("list") }),
+  });
+  const id = await thread(app);
+  const view = json<ThreadView>(await app.get(`/api/threads/${id}`));
+  const finished = view.entries.find((e) => e.kind === "run.finished");
+  assert.ok(finished?.kind === "run.finished");
+  const returned = JSON.parse(finished.run.returned ?? "null") as {
+    value: { items: Record<string, unknown>[] };
+    refused: string[];
+  };
+  // Every item, the region's and the rest, by ID and facets, never a title.
+  assert.ok(returned.value.items.length > 10);
+  assert.ok(returned.value.items.every((item) => !("title" in item)));
+  assert.equal(returned.refused.length, 3);
+  assert.match(returned.refused[0] ?? "", /not an item's or a workstream's ID/);
+  assert.match(returned.refused[1] ?? "", /the index has no jira:SYN-999/);
+  const blocks = view.entries.flatMap((e) => (e.kind === "block" ? [e.block] : []));
+  const pivot = blocks.find((block) => block.form === "pivot");
+  const timeline = blocks.find((block) => block.form === "timeline");
+  assert.ok(pivot?.form === "pivot" && timeline?.form === "timeline");
+  assert.ok(!pivot.outside && !timeline.outside);
+  // An epic by its ID, and a lane by its item's, each with its name now.
+  const epics = Object.values(pivot.tables).flatMap((table) => table.rows);
+  assert.ok(epics.includes("jira:SYN-1"));
+  assert.equal(pivot.names?.["jira:SYN-1"], "Checkout v2: phone wallets and saved cards");
+  const lane = timeline.lanes[0];
+  assert.ok(lane && lane.label === lane.id && typeof timeline.names?.[lane.label] === "string");
+});

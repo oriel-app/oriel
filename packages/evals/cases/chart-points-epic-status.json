@@ -1,0 +1,37 @@
+{
+  "id": "chart-points-epic-status",
+  "split": "train",
+  "kind": 2,
+  "past": true,
+  "window": {
+    "workstreams": [
+      {
+        "name": "Boarding",
+        "region": "boarding-epic"
+      },
+      {
+        "name": "Checkout",
+        "region": "checkout-epic"
+      },
+      {
+        "name": "Weather",
+        "region": "weather-epic"
+      }
+    ],
+    "at": "2026-10-29T09:00:00.000Z"
+  },
+  "prompt": "Break story points down by epic and status",
+  "expect": [
+    {
+      "grader": "blocks",
+      "form": "pivot",
+      "read": "history"
+    },
+    {
+      "grader": "no-sketch"
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ]
+}

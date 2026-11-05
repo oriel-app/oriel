@@ -3005,6 +3005,251 @@ a.replies:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* The chart blocks: Oriel's figures, placed. One series colour, hairline
+   axes in the line tokens, and a dash only for what's projected: the fitted
+   line and the forecast. Text wears text tokens, never the series colour. */
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart text {
+  fill: var(--text-muted);
+}
+
+.chart-grid line {
+  stroke: var(--line);
+  stroke-width: var(--border-thin);
+}
+
+.chart-axis {
+  stroke: var(--line-strong);
+  stroke-width: var(--border-thin);
+}
+
+.chart .chart-tick {
+  fill: var(--text-faint);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: var(--border-thick);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--accent);
+  stroke: var(--surface-sunk);
+  stroke-width: var(--border-thick);
+}
+
+.chart-hit {
+  fill: transparent;
+}
+
+.chart-column {
+  fill: var(--accent);
+}
+
+/* The part of a column that is only a lower bound: the series colour,
+   lighter, so it shows on the block in both schemes. */
+.chart-bound {
+  fill: color-mix(in srgb, var(--accent) 40%, var(--surface-sunk));
+}
+
+.chart-total line {
+  stroke: var(--text-faint);
+  stroke-width: var(--border-thin);
+}
+
+.chart-fit,
+.chart-forecast line {
+  stroke: var(--text-muted);
+  stroke-width: var(--border-thin);
+  stroke-dasharray: 4 3;
+}
+
+.chart-range {
+  fill: var(--accent-soft);
+}
+
+.chart .chart-forecast text,
+.chart .chart-end {
+  fill: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.chart-today line,
+.chart-mark line {
+  stroke: var(--text-faint);
+  stroke-width: var(--border-thin);
+}
+
+.chart-timeline {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 12rem) minmax(8rem, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.timeline-label {
+  display: flex;
+  gap: 0.25em;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.timeline-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-count {
+  flex: none;
+}
+
+.timeline-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-track {
+  position: relative;
+  display: block;
+  height: 0.75rem;
+}
+
+.timeline-axis .timeline-track {
+  height: 1rem;
+  border-bottom: var(--border-thin) solid var(--line);
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.timeline-bar,
+.timeline-late {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+}
+
+/* Still going: it runs to today, lighter, with an open end. */
+.timeline-bar[data-state="open"] {
+  border: var(--border-thin) solid var(--accent);
+  border-right-style: dashed;
+  background: var(--accent-soft);
+}
+
+/* Started by the change log's first day: no start of its own. */
+.timeline-bar[data-earlier] {
+  border-left: var(--border-thin) dashed var(--accent);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.timeline-late {
+  background: var(--danger);
+}
+
+.timeline-due {
+  position: absolute;
+  top: -0.1875rem;
+  bottom: -0.1875rem;
+  width: 2px;
+  background: var(--text);
+  transform: translateX(-50%);
+}
+
+.timeline-today {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  width: 1px;
+  background: var(--text-faint);
+}
+
+.pivot-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.pivot-shows {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.pivot-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+}
+
+.pivot-pick select {
+  min-height: 1.75rem;
+  max-width: 11rem;
+  padding: 0 var(--space-1);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+/* A grid wider than a phone scrolls, and no figure breaks across lines. */
+.pivot-scroll {
+  overflow-x: auto;
+}
+
+.pivot-table th,
+.pivot-table td {
+  white-space: nowrap;
+}
+
+.pivot-table th[scope="row"] {
+  max-width: min(12rem, 40vw);
+  overflow: hidden;
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pivot-total {
+  color: var(--text-muted);
+}
+
+.answer-block[data-compact] {
+  padding: var(--space-2);
+}
+
 .block-rows {
   display: grid;
   gap: var(--space-1);

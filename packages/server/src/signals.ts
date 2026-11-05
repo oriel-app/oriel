@@ -358,7 +358,13 @@ export function signalsOf(input: SignalInput): Signal[] {
           ...epics,
           ...open.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((r) => r.id),
         ].slice(0, maxEvidence),
-        block: { read: "signals.open", args: [workstream.id], from: undefined, form: "rows" },
+        block: {
+          read: "signals.open",
+          args: [workstream.id],
+          from: undefined,
+          where: undefined,
+          form: "rows",
+        },
       });
 
     const changes = estimateChanges(input, members, 14, at);
@@ -384,6 +390,7 @@ export function signalsOf(input: SignalInput): Signal[] {
           read: "signals.estimates",
           args: [workstream.id, 14],
           from: undefined,
+          where: undefined,
           form: "table",
           columns: ["key", "title", "before", "after"],
         },
@@ -416,6 +423,7 @@ export function signalsOf(input: SignalInput): Signal[] {
         read: "signals.load",
         args: [],
         from: undefined,
+        where: undefined,
         form: "bars",
         label: "name",
         value: "inProgress",
@@ -444,7 +452,13 @@ export function signalsOf(input: SignalInput): Signal[] {
             .slice(0, maxEvidence - 1)
             .map((message) => message.id),
         ],
-        block: { read: "signals.after-done", args: [item.id], from: undefined, form: "rows" },
+        block: {
+          read: "signals.after-done",
+          args: [item.id],
+          from: undefined,
+          where: undefined,
+          form: "rows",
+        },
       });
 
     if (item.facets.kind !== "epic") continue;
@@ -468,7 +482,13 @@ export function signalsOf(input: SignalInput): Signal[] {
             .slice(0, maxEvidence - 1)
             .map(({ record }) => record.id),
         ],
-        block: { read: "signals.joined", args: [item.id, 7], from: undefined, form: "rows" },
+        block: {
+          read: "signals.joined",
+          args: [item.id, 7],
+          from: undefined,
+          where: undefined,
+          form: "rows",
+        },
       });
   }
 

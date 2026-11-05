@@ -92,6 +92,7 @@ import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
 import { connecting, moveLegacy } from "./connecting.ts";
+import { historyRead } from "./history.ts";
 import { flagged, inWindow, type SourceModes } from "./modes.ts";
 import { followAnchors, nameOf } from "./names.ts";
 import { intentsOf, lineUndo } from "./intents.ts";
@@ -1176,6 +1177,17 @@ export async function createApp(options: AppOptions): Promise<App> {
       // The window chat reads the overview, as the page shows it, and the
       // previews of connections that wait for their options.
       ...(thread && threads.isWindowChat(thread) ? windowChat() : {}),
+      history: historyRead({
+        records,
+        changes: () => index.changes(workspaceId),
+        workstream: (id) => {
+          const found = workstreams.get(id);
+          return found
+            ? { workstream: found, region: workstreams.region(id, found.version) }
+            : null;
+        },
+        asOf: () => asOf ?? now(),
+      }),
     });
   const windowChat = () => {
     const waiting = waitingFor();

@@ -4,6 +4,7 @@
 // case passes when every expectation does.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
+  blockForms,
   array,
   type CapturedMutation,
   type ChangeSetState,
@@ -51,6 +52,7 @@ export type EvalKind = keyof typeof evalKinds;
 
 export const isJudged = (kind: number) => kind === 7 || kind === 8;
 
+const blockFormValue = union(...[...blockForms, "preview" as const].map((form) => literal(form)));
 const text = refine(string, (value) => value.trim() !== "", "expected non-empty text");
 const whole = refine(number, (n) => Number.isInteger(n) && n >= 0, "expected a whole number");
 const atLeastOne = <T>(item: Validator<T>) =>
@@ -105,9 +107,10 @@ const expectations = {
   // A block of `form` from `read`, or from one of them, was shown, and every
   // block shown is the one Oriel builds from what its read answered
   // (decision 0030).
+  // `form` may name several, any of which passes.
   blocks: object({
     grader: literal("blocks"),
-    form: union(literal("bars"), literal("table"), literal("rows"), literal("preview")),
+    form: union(blockFormValue, atLeastOne(blockFormValue)),
     read: union(text, atLeastOne(text)),
   }),
   // What the turn drafted, held for the user (decision 0051): one draft of
@@ -246,6 +249,8 @@ const evalCaseShape = object({
   // How many of each fixture's source edits are applied before the case
   // runs, by kind, such as `{ "jira": 3 }`. Absent means none.
   edited: optional(record(whole)),
+  // Eight weeks of past in the change log (past-weeks.ts), for history().
+  past: optional(literal(true)),
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
   // approved. It is checked and listed, never run.
   waiting: optional(text),
