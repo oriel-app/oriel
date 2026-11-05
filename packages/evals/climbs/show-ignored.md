@@ -65,6 +65,12 @@ I read train transcripts only. Test runs once per arm, at the end.
 
 ## Deviations
 
+1. **After `B1`: no `B2`, and the test step runs on test alone.**
+   - `B1` cost $1.12 for 32 trials, not the $0.8 estimated, so the plan as written comes to about $7.5, past the $6 cap.
+   - `B2` is dropped: the baseline is `B1` alone. Against 3 of 8, F2 is kept on the target only at 8 of 8 (p ≈ 0.013), as against `B1+B2` at 50%; 7 of 8 isn't kept either way (p ≈ 0.14). There is no `aa` check.
+   - The final step is `T0a`, `T0b` (main's text) against `Ft1`, `Ft2` (the final state), all on test. `Fall` is dropped: the cassettes come from the full re-record outside the ledger, whose draw of the target also counts toward the done bar (`F2`'s 8 draws and the re-record's 1, so at least 8 of 9).
+   - `B1`'s train transcripts, read before F2: all five misses read `history()` and asked for bars with a `label`, `where: { state: "In progress" }` and no `value`, four with a stray `title`; each was refused with "a bars block needs `value`", then showed a correct pivot. One also showed bars from `window.overview()` first. The three passes read `window.overview()`. F2 is the fix the evidence points at, unchanged.
+
 ## Log
 
 | round | state | trials | verdict | cost |
