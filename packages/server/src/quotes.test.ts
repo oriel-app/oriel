@@ -9,7 +9,7 @@ import { textToAdf } from "@oriel/jira";
 import { quoteKey } from "@oriel/web/markdown";
 import type { ThreadView } from "@oriel/web/view";
 import type { ChatMessage } from "./agent.ts";
-import { wordForWord } from "./quotes.ts";
+import { wordForWord } from "@oriel/core";
 import { json, testApp } from "./testing.ts";
 
 // SYN-45's description, in the Jira fixture, carries an injection.

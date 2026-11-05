@@ -116,6 +116,8 @@ export function responseUsage(body: string): Usage {
 const prices: Record<string, { input: number; output: number; cacheRead: number }> = {
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
+  // Up to 100K tokens a prompt; Noticed's prompts stay far below.
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01 },
 };
 
 export const isPriced = (model: string) => Object.hasOwn(prices, family(model));

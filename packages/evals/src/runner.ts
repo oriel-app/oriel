@@ -128,7 +128,15 @@ export const caseResult = object({
   outcome: union(literal("pass"), literal("fail"), literal("error")),
   grades: array(
     object({
-      grader: union(graderName, literal("refs"), literal("quotes")),
+      // Noticed's rounds grade with their own three (src/noticed/).
+      grader: union(
+        graderName,
+        literal("refs"),
+        literal("quotes"),
+        literal("recall"),
+        literal("precision"),
+        literal("grounding"),
+      ),
       pass: boolean,
       detail: string,
     }),

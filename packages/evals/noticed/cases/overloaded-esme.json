@@ -1,0 +1,57 @@
+{
+  "id": "overloaded-esme",
+  "split": "test",
+  "group": "overloaded",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    }
+  ],
+  "plants": [
+    {
+      "op": "set",
+      "item": "jira:SYN-18",
+      "state": "in-progress",
+      "assignee": "esme",
+      "daysAgo": 2
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-58",
+      "state": "in-progress",
+      "assignee": "esme",
+      "daysAgo": 2
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-88",
+      "state": "in-progress",
+      "assignee": "esme",
+      "daysAgo": 2
+    },
+    {
+      "op": "set",
+      "item": "jira:SYN-45",
+      "state": "in-progress",
+      "assignee": "esme",
+      "daysAgo": 2
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-66",
+      "append": "Comment by Dara Nikolaidis: Esme is now the only person on vehicles and checkout refunds since Bastian moved teams, and two of these are due this week."
+    }
+  ],
+  "expect": {
+    "find": ["overloaded:esme"],
+    "avoid": []
+  },
+  "about": "A person left alone on two areas."
+}

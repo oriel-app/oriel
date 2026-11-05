@@ -1,0 +1,48 @@
+{
+  "id": "contradicted-alerts",
+  "split": "test",
+  "group": "contradicted",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Weather",
+      "region": "weather-epic"
+    },
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    }
+  ],
+  "plants": [
+    {
+      "op": "done",
+      "item": "jira:SYN-54",
+      "daysAgo": 3
+    },
+    {
+      "op": "message",
+      "author": "Farid Haddad",
+      "text": "Another cancellation alert went out for the 07:30 after it had already sailed this morning, so SYN-54 isn't fixed. Passengers are confused.",
+      "names": ["jira:SYN-54"],
+      "daysAgo": 1
+    },
+    {
+      "op": "done",
+      "item": "jira:SYN-85",
+      "daysAgo": 4
+    },
+    {
+      "op": "message",
+      "author": "Amara Okafor",
+      "text": "The status page from SYN-85 is live; the link is in the channel topic for anyone who asks. Nice work all.",
+      "names": ["jira:SYN-85"],
+      "daysAgo": 2
+    }
+  ],
+  "expect": {
+    "find": ["contradicted:jira:SYN-54"],
+    "avoid": ["contradicted:jira:SYN-85"]
+  },
+  "about": "Chat says a done fix isn't fixed; chat announces another is live."
+}

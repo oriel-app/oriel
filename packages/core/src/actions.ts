@@ -73,6 +73,12 @@ export const maxMessageChars = 8_000;
 // waits in the thread for the user, so it is shorter than a message.
 export const maxReasonChars = 2_000;
 
+// A Noticed card's signal, by its ID: `<kind>:<subject's ID>`.
+const noticedSignal = refine(
+  string,
+  (id) => id.length > 0 && id.length <= 200,
+  "expected a signal's ID",
+);
 const workstreamId = refine(string, isUlid, "expected a workstream ID", { type: "WorkstreamId" });
 const threadId = refine(string, isUlid, "expected a thread ID", { type: "ThreadId" });
 const changeSetId = refine(string, isUlid, "expected a change set ID", { type: "ChangeSetId" });
@@ -452,6 +458,31 @@ export const actions = {
     class: {
       kind: "person-only",
       why: "What the user has seen is theirs to say: only leaving the overview says it.",
+    },
+  },
+  // Noticed (decision 0052): a card dismissed, or its
+  // block pinned to the overview as a saved read (decision 0030), and a pin
+  // removed. Person-only, and named for Noticed: 0030's `pin.add` and
+  // `pin.remove`, direct, with Undo, for the agent too, are the pins story's.
+  "noticed.dismiss": {
+    doc: "Dismisses a Noticed card until its figures move on.",
+    input: object({ signal: noticedSignal }),
+    class: { kind: "person-only", why: "What the user wants to see noticed is theirs to say." },
+  },
+  "noticed.pin": {
+    doc: "Pins a Noticed card's block to the overview, as its saved read.",
+    input: object({ signal: noticedSignal }),
+    class: {
+      kind: "person-only",
+      why: "In the spike, only the user pins; the pins story opens it.",
+    },
+  },
+  "noticed.unpin": {
+    doc: "Removes a pin from the overview.",
+    input: object({ pin: refine(string, isUlid, "expected a pin's ID") }),
+    class: {
+      kind: "person-only",
+      why: "In the spike, only the user unpins; the pins story opens it.",
     },
   },
 } as const satisfies Record<string, ActionDeclaration>;

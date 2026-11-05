@@ -42,6 +42,9 @@ export type DeclaredFacet = {
   label: string;
   // Its value on one of the source's index records.
   of: (record: IndexRecord) => FacetValue;
+  // Its values add up across items, as a sum of work does, so a rise in
+  // their total is worth a look (Noticed, decision 0052).
+  sums?: true;
 };
 
 // A source's declared facets, by a key of its own choosing.

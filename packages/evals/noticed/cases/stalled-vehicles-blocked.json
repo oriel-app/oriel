@@ -1,0 +1,38 @@
+{
+  "id": "stalled-vehicles-blocked",
+  "split": "train",
+  "group": "stalled",
+  "base": "fresh",
+  "at": "2026-10-29T09:00:00.000Z",
+  "workstreams": [
+    {
+      "name": "Checkout",
+      "region": "checkout-epic"
+    },
+    {
+      "name": "Boarding",
+      "region": "boarding-epic"
+    },
+    {
+      "name": "Vehicles",
+      "epic": "jira:SYN-4"
+    }
+  ],
+  "plants": [
+    {
+      "op": "quiet",
+      "epic": "jira:SYN-4",
+      "daysAgo": 24
+    },
+    {
+      "op": "text",
+      "item": "jira:SYN-9",
+      "append": "Comment by Esme Whitlock: Blocked waiting on the port authority's deck-plan API. Nobody has chased them since early October, and the trailer pricing launch depends on it."
+    }
+  ],
+  "expect": {
+    "find": ["stalled:@Vehicles"],
+    "avoid": []
+  },
+  "about": "A workstream stalled on an outside dependency nobody is chasing."
+}

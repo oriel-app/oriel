@@ -1,0 +1,29 @@
+[
+  {
+    "kind": "overloaded",
+    "subject": "amara",
+    "why": "Amara is carrying far more in-progress work than the median, and [[jira:SYN-51]] has had no update for a week. Consider moving some of her items.",
+    "quote": {
+      "item": "jira:SYN-51",
+      "text": "Right-to-left layout for the booking screens."
+    }
+  },
+  {
+    "kind": "contradicted",
+    "subject": "jira:SYN-29",
+    "why": "[[jira:SYN-29]] is marked done, but its copy was handed over as a draft in a folder as the writer left. Check that it was actually delivered.",
+    "quote": {
+      "item": "slack:C0FW1WEATHR-1789902000.000100",
+      "text": "Handing over the compensation rules copy (SYN-29) before I leave. The draft is in the plans folder."
+    }
+  },
+  {
+    "kind": "contradicted",
+    "subject": "jira:SYN-47",
+    "why": "[[jira:SYN-47]] is marked done, but Chen says the copy is still with ops. The replies conflict, so confirm the real status.",
+    "quote": {
+      "item": "slack:C0FW1WEATHR-1790071200.000100",
+      "text": "Not done: copy is still with ops."
+    }
+  }
+]

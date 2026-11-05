@@ -1,0 +1,74 @@
+{
+  "cap": 40,
+  "reps": 6,
+  "cases": {
+    "big-world-alerts": {
+      "hash": "863c4aaaca654d8b510baaef24e2057ba33e813cefbe89e5ffebec7c1ec44d27",
+      "group": "big"
+    },
+    "big-world-vehicles": {
+      "hash": "4a54af7c84cb288c3a32799b22cedd82f102c46cc1c086e5ad6ca5872f987820",
+      "group": "big"
+    },
+    "contradicted-alerts": {
+      "hash": "0500ad3665ea9763ebc291e81821cbf0125b56980ac2f831a3e980eae09f71ee",
+      "group": "contradicted"
+    },
+    "contradicted-sms": {
+      "hash": "90d8a9f2ad710e9983c0ab8e0fe93170bd3e073105ffb7be968b8890740c002c",
+      "group": "contradicted"
+    },
+    "decoys-only-test": {
+      "hash": "5c1e39f4372541ad84996c3d3bd4f28ed17d2194605d32b48b8e174d09dc4911",
+      "group": "decoys"
+    },
+    "decoys-only": {
+      "hash": "0e0336e80497b26b087e12cb5d266fea1470c0a87f9ba680d56386b2e8887d69",
+      "group": "decoys"
+    },
+    "drift-checkout-real": {
+      "hash": "211e404941b2b204ef6620725f608625f172cfe73269623e636e5724ea5be11f",
+      "group": "drift"
+    },
+    "drift-vehicles-real": {
+      "hash": "c0b9ff79ac734cf1689e9a7c0d511fb70dec1fbd48506080b4c3ab882f2624ca",
+      "group": "drift"
+    },
+    "injection-urgent-117": {
+      "hash": "6d21339e097d66f071abc9a63cc2e7f1d2735d2a99dc50318ea6ca433059ed5a",
+      "group": "injection"
+    },
+    "mixed-four": {
+      "hash": "c7686c00cf0d6b6607ef3fdec0593e0bef6d3f785e5201676d4bdf68f11fbd08",
+      "group": "mixed"
+    },
+    "overloaded-amara-crunch": {
+      "hash": "be5e1209b2d6e25b81227d003888f41e701534c72978a22b4f0a75c48eba033a",
+      "group": "overloaded"
+    },
+    "overloaded-esme": {
+      "hash": "73e5a9d091047d32bf22d9f9f7683053e3eb7420f07e07bdee0d7faaebba5c4f",
+      "group": "overloaded"
+    },
+    "paused-and-broken-wallet": {
+      "hash": "cf08278793efaea2c640969a57d24c2ee81b9f97046d5cc8b650e1dda9728c0c",
+      "group": "decoys"
+    },
+    "scope-boarding-grew": {
+      "hash": "a8b13a385c57a9f13fc4e8eea9e4fbcf67748aec22c3c417d238b8e5ec1e5479",
+      "group": "scope"
+    },
+    "scope-offline-grew": {
+      "hash": "b1d0f55a10917308b81576d7876a02e6b873c2c847cb6e3f201dd96bbb9e5137",
+      "group": "scope"
+    },
+    "stalled-offline-waiting": {
+      "hash": "faa07b0ee5352719922b2f7a153bece298ba3052d3a6c045f3d3f29d0c8dd7d3",
+      "group": "stalled"
+    },
+    "stalled-vehicles-blocked": {
+      "hash": "7925c8da7c1e7447070580efc28508c50646c15bff6e9b55623cadea94060b23",
+      "group": "stalled"
+    }
+  }
+}

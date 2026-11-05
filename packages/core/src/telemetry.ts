@@ -6,6 +6,7 @@ import type { Instant, SourceKind, Ulid } from "./ids.ts";
 import type { HeldSender } from "./thread.ts";
 import type { SketchHeight, SketchRefusal } from "./sketch.ts";
 import type { OverviewSection } from "./overview.ts";
+import type { SignalKind } from "./noticed.ts";
 
 // Pilot telemetry, stored locally. Only raw events are stored; these are
 // derived from them, never stored:
@@ -187,6 +188,27 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // A cluster Not in a workstream yet suggested became a workstream, by
   // Make a workstream there; `grouping` is the cluster's.
   | { name: "overview.suggestion-made"; workstreamId: Ulid; grouping: string }
+  // Noticed (decision 0052). A pass ended, by its counts and times, never
+  // its words: the signals it was offered, the cards it picked, the lines
+  // Oriel dropped, its tokens, the time to its first card (null with none)
+  // and in all, and whether it ended with its answer.
+  | {
+      name: "noticed.pass";
+      offered: number;
+      picked: number;
+      dropped: number;
+      inputTokens: number;
+      outputTokens: number;
+      firstMs: number | null;
+      ms: number;
+      ok: boolean;
+    }
+  // A pass's card showed on the overview, once a pass and a card; and one
+  // the person pinned or dismissed, by its signal's kind. Ask about this is
+  // `window-chat.question-used`'s `noticed`.
+  | { name: "noticed.shown"; kind: SignalKind }
+  | { name: "noticed.pinned"; kind: SignalKind }
+  | { name: "noticed.dismissed"; kind: SignalKind }
   // The person picked a theme in Settings, by its name (decision 0034).
   | { name: "theme.picked"; theme: string }
   // The desktop app's first run (decision 0038). Its first screen opened,

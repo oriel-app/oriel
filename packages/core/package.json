@@ -8,6 +8,7 @@
     "./connector-view": "./src/connector-view.ts",
     "./panel": "./src/panel.ts",
     "./oriel-reads": "./src/oriel-reads.ts",
+    "./noticed": "./src/noticed.ts",
     "./overview": "./src/overview.ts",
     "./window-chat": "./src/window-chat.ts"
   },

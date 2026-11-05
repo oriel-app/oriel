@@ -83,7 +83,7 @@ import type {
   OptionsReviewView,
   WindowView,
 } from "@oriel/web/view";
-import type { KeyCheck, Titler } from "@oriel/agent";
+import type { KeyCheck, Provider, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
@@ -113,6 +113,8 @@ import type { Reply, Request } from "./site.ts";
 import { turns } from "./turns.ts";
 import { inOverview } from "./window-chat.ts";
 import { views } from "./views.ts";
+import { noticedService } from "./noticed.ts";
+import { estimateKey } from "./signals.ts";
 import { browseView, clusterPage, groupings, keepOf, windowView } from "./window.ts";
 
 export type { SourceMode, SourceModes } from "./modes.ts";
@@ -177,6 +179,9 @@ export type AppOptions = {
   setup?: SetupOptions;
   // The sandbox runs go to; Deno, started on the first run, when absent.
   sandbox?: Sandbox;
+  // What Noticed's pass runs on, for tests and screenshots; Settings'
+  // choice, through `models`, when absent (decision 0052).
+  noticer?: () => Promise<{ provider: Provider; model: string } | null>;
   // Review links are this URL plus a token.
   reviewBase: URL;
   // Sketches are framed from this URL plus `<thread>/<sketch>`, on the
@@ -201,8 +206,8 @@ export type App = {
   api(request: Request, url: URL): Promise<Reply | null>;
   settings: SettingsService;
   workspaceId: Ulid;
-  // Resolves once no turn is running, no title is being written and no
-  // notification is being looked for.
+  // Resolves once no turn is running, no title is being written, no
+  // notification is being looked for and no Noticed pass is running.
   settled(): Promise<void>;
   // The pilot telemetry stored so far, oldest first.
   telemetry(): StoredEvent[];
@@ -461,6 +466,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Workstreams following their anchors, as a sync renames them through the
   // dispatcher, made below: the syncs before it catch up once it is.
   let follow = async (): Promise<void> => {};
+  // Noticed's pass, made below, looks again at each sync's end (decision
+  // 0052): the syncs before it catch up once it is.
+  let notice = (): void => {};
   // The first sync of a connection into this workspace connects it,
   // whenever that sync is. `announced` counts them, so connecting from the
   // window can tell whether it was counted so.
@@ -521,7 +529,10 @@ export async function createApp(options: AppOptions): Promise<App> {
           log("following epics failed", { error: String(error) });
         }
       })
-      .finally(() => told());
+      .finally(() => {
+        told();
+        notice();
+      });
     syncing = run;
     return run.then(() => {
       if (first && how.announce !== false) connected(connection);
@@ -1395,6 +1406,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     emit,
     markSeen: (at, seq) => markSeen(db, workspaceId, at, seq),
+    // Made once the overview's reads are, below; no action runs before.
+    noticed: () => noticed,
     turns: conversation,
     changeSets: sets,
     applied: (set) => applied(set),
@@ -1464,6 +1477,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         // Every page watching a thread that went with its workstream says so.
         if ("thread" in changed) return conversation.deleted(changed.thread);
         for (const thread of changed.deleted) conversation.deleted(thread);
+        notice();
         return conversation.acted({ thread: null, workstream: null, moves: [] });
       }
       conversation.acted(
@@ -1480,6 +1494,8 @@ export async function createApp(options: AppOptions): Promise<App> {
               moves: changed.members ? threads.follow(changed.workstream, now(), newId) : [],
             },
       );
+      // A curation: Noticed looks again, and passes only if its signals moved.
+      if ("workstream" in changed) notice();
     },
     now,
     newId,
@@ -1689,6 +1705,40 @@ export async function createApp(options: AppOptions): Promise<App> {
     };
   };
 
+  // Noticed (decision 0052): the overview's strip of what
+  // Oriel found unasked, from the same index, change log and workstreams.
+  const noticed = noticedService({
+    db,
+    workspaceId,
+    input: async () => ({
+      records: records(),
+      changes: index.changes(workspaceId),
+      workstreams: openWorkstreams(),
+      threadActivity: new Map(
+        (await viewer.threads(workspaceId))
+          .toSorted((a, b) => a.activityAt.localeCompare(b.activityAt))
+          .map((thread) => [thread.workstream.id, thread.activityAt as Instant]),
+      ),
+      estimateKey,
+      now: asOf ?? now(),
+    }),
+    read: async (ids) =>
+      (await reader.read(ids)).flatMap((result) => {
+        if (result.status !== "ok") return [];
+        const { title, text } = result.content;
+        return [{ id: result.id, facts: {}, title, text }];
+      }),
+    noticer: options.noticer ?? (async () => (models ? models.noticer(store.get()) : null)),
+    block: viewer.block,
+    chips: (ids) => viewer.chips(ids, "" as Ulid),
+    now: () => asOf ?? now(),
+    log,
+    // At the time it happened, even in a window frozen at a fixture's.
+    emit: (event) => emit({ ...event, at: now() }),
+  });
+  notice = () => void noticed.refresh();
+  notice();
+
   const window = (grouping: GroupingId) =>
     windowView(grouping, groupings[grouping], records(), asOf ?? now(), asOf !== null);
 
@@ -1764,6 +1814,7 @@ export async function createApp(options: AppOptions): Promise<App> {
           ),
       },
       overview,
+      noticed,
       connections: () => ({
         connections: connectionsView(),
         connectable: sourceKinds.filter((kind) => windows.connectable(kind)),
@@ -1812,6 +1863,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       await notifying?.idle();
       await guarding?.idle();
       await setup.idle();
+      await noticed.settled();
     },
     telemetry: () => telemetry.list(workspaceId),
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
@@ -1832,6 +1884,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       timers.clear();
       await Promise.all(waiting.values());
       await syncing.catch(() => {});
+      await noticed.stop();
       for (const each of byPrefix.values()) each.opened.close?.();
       if (db.isOpen) db.close();
     },

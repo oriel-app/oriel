@@ -74,6 +74,7 @@ import type { ItemPanels } from "./panel.ts";
 import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
+import type { NoticedService } from "./noticed.ts";
 import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
@@ -116,6 +117,8 @@ export type ApiDeps = {
   // The overview, as the page and the window chat's `window.overview()`
   // read it (decision 0027).
   overview(): Promise<OverviewView>;
+  // Noticed's strip and the pins (decision 0052).
+  noticed?: NoticedService;
   // Every connection as the window shows them, which kinds it may connect
   // now, and whether there's a folder picker. Connecting, configuring,
   // syncing and disconnecting one are actions (decision 0049).
@@ -428,6 +431,10 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
     if (!workstream || workstream.workspaceId !== deps.workspaceId)
       throw new Refused(404, "no such workstream");
     return workstream;
+  };
+  const mustNoticed = () => {
+    if (!deps.noticed) throw new Refused(404, "Noticed isn't on here");
+    return deps.noticed;
   };
   const mustThread = (id: string) => {
     const thread = threads.get(id as Ulid, deps.now());
@@ -879,6 +886,42 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       path: at("/overview"),
       async run() {
         return json(200, await deps.overview());
+      },
+    },
+    {
+      // Noticed's cards and the pins, computed now; a pass runs in the
+      // background when the signals on offer changed, and this never waits
+      // for it.
+      method: "GET",
+      path: at("/noticed"),
+      run: async () => json(200, await mustNoticed().view()),
+    },
+    {
+      // Dismiss a card: it stays away until its figures move on.
+      method: "POST",
+      path: at("/noticed/dismiss"),
+      async run(_, request) {
+        const typed = await readJson(request, tinyBody, object({ signal: unknown }));
+        await deps.dispatch("noticed.dismiss", checked("noticed.dismiss", typed), user);
+        return json(200, {});
+      },
+    },
+    {
+      // Pin a card's block to the overview, as its saved read (decision 0030).
+      method: "POST",
+      path: at("/noticed/pin"),
+      async run(_, request) {
+        const typed = await readJson(request, tinyBody, object({ signal: unknown }));
+        return json(201, await deps.dispatch("noticed.pin", checked("noticed.pin", typed), user));
+      },
+    },
+    {
+      method: "POST",
+      path: at("/pins/:id/remove"),
+      async run([id = ""], request) {
+        await readJson(request, tinyBody, emptyBody);
+        await deps.dispatch("noticed.unpin", { pin: id as Ulid }, user);
+        return json(200, {});
       },
     },
     {

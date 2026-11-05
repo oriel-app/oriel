@@ -363,3 +363,29 @@ test("on the desktop app a turn with no AI points to Settings, never to a termin
   await dev.look(defaultSettings);
   assert.match(dev.choose(defaultSettings).problem, /terminal/);
 });
+
+test("Noticed's pass runs on the threads' provider: Sonnet at low effort, or Codex's own default (0052)", async () => {
+  const ran: string[] = [];
+  const chooser = models({
+    key: "sk-ant-key",
+    env,
+    check: found,
+    checkCodex: codexReady,
+    provider: (r, _key, effort) => {
+      ran.push(`${r.provider.id} ${r.model} ${effort ?? "default"}`);
+      return { converse: () => ({ next: async function* () {} }) };
+    },
+    titler: () => async () => "a title",
+  });
+  await chooser.look(defaultSettings);
+  assert.equal((await chooser.noticer(defaultSettings))?.model, "claude-sonnet-5-5");
+  // The person picked Codex's other model for threads; the pass runs Codex's
+  // default, at its own effort.
+  const codex: Settings = { ...defaultSettings, model: { provider: "codex", model: "gpt-6-luna" } };
+  assert.equal((await chooser.noticer(codex))?.model, "gpt-6.1-sol");
+  assert.deepEqual(ran, ["api claude-sonnet-5-5 low", "codex gpt-6.1-sol default"]);
+  // No model, no pass.
+  const none = models({ key: null, env, check: absent, checkCodex: codexSignedOut });
+  await none.look(defaultSettings);
+  assert.equal(await none.noticer(defaultSettings), null);
+});

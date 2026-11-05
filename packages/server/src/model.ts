@@ -24,6 +24,7 @@ import {
   codexProvider,
   codexTitler,
   defaultModel,
+  type Effort,
   type HarnessProblem,
   locateClaudeCode,
   locateCodex,
@@ -65,6 +66,9 @@ export type Found =
 // one of its models.
 export type Running = { provider: ProviderSetting; model: string; cli: ClaudeCode | null };
 
+// Noticed's model where the provider offers Claude's.
+export const noticedModel = "claude-sonnet-5-5";
+
 export type Choice = { model: Running | null; title: Running | null; problem: string };
 
 export type ModelsOptions = {
@@ -89,7 +93,7 @@ export type ModelsOptions = {
   // Stand in for the CLI check and the providers in tests.
   check?: (options: CheckOptions) => ReturnType<typeof checkClaudeCode>;
   checkCodex?: (options: CheckOptions) => ReturnType<typeof checkCodex>;
-  provider?: (running: Running, key: string | null) => Provider;
+  provider?: (running: Running, key: string | null, effort?: Effort) => Provider;
   titler?: (running: Running, key: string | null) => Titler;
   // Today's counts of each CLI instance's turns and tokens, kept in the
   // data folder (decision 0046). In memory when absent.
@@ -108,6 +112,11 @@ export type Models = {
   // The agent and the titler, each choosing again at every turn and title.
   agent(settings: () => Settings, deps: ServerAgentDeps): Agent;
   titler(settings: () => Settings): Titler;
+  // What Noticed's pass runs on (decision 0052): the
+  // threads' provider, with Sonnet at low effort where it offers Claude's
+  // models, as the noticed-1 climb found best; null with no model, or a CLI
+  // that doesn't pass its trust check now.
+  noticer(settings: Settings): Promise<{ provider: Provider; model: string } | null>;
   // The models the default and Title model can be, from instances found
   // ready and turned on.
   options(settings: Settings): ModelOptionView[];
@@ -166,12 +175,13 @@ export function models(options: ModelsOptions): Models {
   const counts = options.counts ?? memoryUsage(() => "");
   const providerOf =
     options.provider ??
-    ((r: Running, apiKey: string | null): Provider => {
+    ((r: Running, apiKey: string | null, effort?: Effort): Provider => {
       const counted = (used: Usage, first: boolean) => counts.count(r.provider.id, used, first);
-      if (!r.cli) return anthropicProvider({ apiKey: apiKey ?? "", model: r.model });
+      const at = effort ? { effort } : {};
+      if (!r.cli) return anthropicProvider({ apiKey: apiKey ?? "", model: r.model, ...at });
       return r.provider.kind === "codex"
         ? codexProvider({ cli: r.cli, model: r.model, counted })
-        : claudeCodeProvider({ cli: r.cli, model: r.model, counted });
+        : claudeCodeProvider({ cli: r.cli, model: r.model, counted, ...at });
     });
   const titlerOf =
     options.titler ??
@@ -310,6 +320,16 @@ export function models(options: ModelsOptions): Models {
     },
     found: foundOf,
     choose,
+    async noticer(settings) {
+      const { model: chosen } = choose(settings);
+      if (!chosen) return null;
+      const codex = chosen.provider.kind === "codex";
+      const model = codex ? defaultFor(chosen.provider, "model") : noticedModel;
+      if (chosen.cli && (await options.trust?.(chosen.cli.path))) return null;
+      // Codex runs at its own default effort too.
+      const provider = providerOf({ ...chosen, model }, key, codex ? undefined : "low");
+      return { provider, model };
+    },
     agent(settings, deps) {
       return {
         turn(input, turnOptions) {
