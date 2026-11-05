@@ -87,6 +87,25 @@ const drafting: Script = async (bindings) => {
   };
 };
 
+// Asked to change a tab of a connection that reads (OA-232): its options,
+// as preview() gives them, by letter, with that tab's key moved to its ID
+// column, and every other tab kept.
+const fixing: Script = async (bindings) => {
+  const [reads] = (await bindings.read("source.preview", [])).value as {
+    connection: string;
+    why: string;
+    options: { tabs: { at: string; key: string }[] };
+    tables: { at?: string }[];
+  }[];
+  const tabs = reads?.options.tabs.map((tab) =>
+    tab.at === `${tracker}/1100` ? { ...tab, key: "A" } : tab,
+  );
+  return {
+    value: { why: reads?.why, first: reads?.tables[0]?.at, tabs: reads?.options.tabs.length },
+    drafts: [["source.configure", [{ connection: reads?.connection, options: { tabs } }]]],
+  };
+};
+
 async function sheetsApp(t: TestContext, options: { clients?: false } = {}) {
   const { standIn, send, token } = google();
   const turns: string[] = [];
@@ -97,9 +116,11 @@ async function sheetsApp(t: TestContext, options: { clients?: false } = {}) {
       turns.push(input.text);
       return input.text.startsWith("Draft how")
         ? [{ run: "draft" }, { text: "Drafted." }]
-        : [{ text: "Hi." }];
+        : input.text.startsWith("Draft a change")
+          ? [{ run: "fix" }, { text: "Drafted." }]
+          : [{ text: "Hi." }];
     },
-    scripts: { draft: drafting },
+    scripts: { draft: drafting, fix: fixing },
   });
   return { ...it, standIn, token, turns };
 }
@@ -294,19 +315,45 @@ test("a connection Google signs out reads as signed out, and signing in again ke
   );
 });
 
-test("Settings shows a connection's mapping as it reads now, and a new key, said before it applies, makes every row a new item, with an Undo", async (t) => {
+test("Settings sums up a connection's tables, edits one by hand as it reads now, and a new key, said before it applies, makes every row a new item, with an Undo", async (t) => {
   const it = await sheetsApp(t);
   const sheets = await connected(it);
-  const review = async () =>
-    json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  const review = async (tab?: string) =>
+    json<OptionsReviewView>(
+      await it.get(
+        `/api/connections/${sheets.id}/review${tab ? `?tab=${encodeURIComponent(tab)}` : ""}`,
+      ),
+    );
   const { guess } = await review();
   await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
   assert.equal((await it.connection("sheets"))?.state, "open");
 
-  // Read, its review step shows the mapping it reads with, by letter.
-  const shown = await review();
-  assert.deepEqual([shown.waits, shown.guess, shown.draft], [false, null, null]);
+  // Read, each of its tables is a line, by its headers, from their names
+  // alone; nothing is drawn until a table is edited by hand.
   const at = `${tracker}/1100`;
+  const summed = await review();
+  assert.deepEqual(
+    [summed.waits, summed.guess, summed.draft, summed.current],
+    [false, null, null, null],
+  );
+  assert.deepEqual(
+    summed.outline?.find((entry) => entry.at === at),
+    { at, name: "Ferrowick delivery tracker › Tracker", reads: "key and title Story" },
+  );
+  // Every tab of both spreadsheets, read or not.
+  const tabs = fixture.spreadsheets
+    .filter((s) => s.id === tracker || s.id === raid)
+    .flatMap((s) => s.tabs.map((tab) => `${s.id}/${tab.sheetId}`));
+  assert.deepEqual(summed.outline?.map((entry) => entry.at).toSorted(), tabs.toSorted());
+  // A table that isn't this connection's is refused.
+  assert.equal((await it.get(`/api/connections/${sheets.id}/review?tab=a%20b`)).status, 400);
+
+  // Edited by hand, its review step draws that table as it reads, by letter.
+  const shown = await review(at);
+  assert.deepEqual(
+    shown.current?.tables.map((table) => table.at),
+    [at],
+  );
   const tab = shown.current?.tables.find((table) => table.at === at);
   assert.deepEqual(tab?.reads, {
     header: 1,
@@ -355,7 +402,7 @@ test("Settings shows a connection's mapping as it reads now, and a new key, said
     edit: { table: at, field: "title", column: null },
   });
   assert.equal(refused.status, 400);
-  assert.deepEqual((await review()).current, shown.current);
+  assert.deepEqual((await review(at)).current, shown.current);
 
   // Applied as the person's own options: the row held is a new item, and
   // the workstream keeps the old one as an item Oriel no longer has.
@@ -374,8 +421,12 @@ test("Settings shows a connection's mapping as it reads now, and a new key, said
     [[held.id, null]],
   );
   assert.deepEqual(
-    (await review()).current?.tables.find((table) => table.at === at)?.reads?.fields,
+    (await review(at)).current?.tables.find((table) => table.at === at)?.reads?.fields,
     { key: "A", title: "C", status: "D" },
+  );
+  assert.equal(
+    (await review()).outline?.find((entry) => entry.at === at)?.reads,
+    "key ID · title Story · status Status",
   );
 
   // Its Undo puts the old mapping back, and the old item with it.
@@ -415,5 +466,59 @@ test("the agent's draft, edited in the review step, applies as the person edited
   );
   assert.ok(
     it.app.telemetry().some((event) => event.name === "draft.applied" && event.data["edited"]),
+  );
+});
+
+test("Ask Oriel about a tab drafts a change in the window chat, from fixed words naming it by ID, and the card says what it does before it applies", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  const { guess } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
+  const at = `${tracker}/1100`;
+  // Only one of its own tables, by its place.
+  assert.equal((await it.post(`/api/connections/${sheets.id}/draft`, { tab: "x/1" })).status, 400);
+  assert.equal(
+    (await it.post(`/api/connections/${sheets.id}/draft`, { tab: "Tracker" })).status,
+    400,
+  );
+  const asked = json<{ thread: string }>(
+    await it.post(`/api/connections/${sheets.id}/draft`, { tab: at }),
+  );
+  await it.app.settled();
+  // The person's words are Oriel's, naming the tab by ID, nothing synced.
+  assert.deepEqual(it.turns.at(-1), `Draft a change to how Oriel reads the tab at ${at}.`);
+  const view = json<ThreadView>(await it.get(`/api/threads/${asked.thread}`));
+  const run = view.entries.find((entry) => entry.kind === "run.finished");
+  assert.ok(run?.kind === "run.finished");
+  // preview() says it reads, gives its options by letter, and reads the
+  // asked tab first.
+  assert.deepEqual(JSON.parse(run.run.returned ?? "null"), {
+    why: "It reads with these options. Draft a change only when the user asks.",
+    first: at,
+    tabs: (guess?.given["tabs"] as unknown[]).length,
+  });
+  // The card draws only the tab it changes, and says what applying does.
+  const card = view.entries.find((entry) => entry.kind === "draft");
+  assert.ok(card?.kind === "draft");
+  assert.deepEqual(
+    card.tables?.map((table) => table.at),
+    [at],
+  );
+  assert.equal(card.said.length, 1);
+  assert.match(card.said[0] ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  const applied = await it.post(`/api/threads/${asked.thread}/held/${card.seq}/apply`, {});
+  assert.equal(applied.status, 200, String(applied.body));
+  const spreadsheets = (await it.connection("sheets"))?.options["spreadsheets"] as {
+    id: string;
+    tabs: Record<string, unknown>[];
+  }[];
+  // That tab's key is its ID column now, and every other tab still reads.
+  const read = spreadsheets.flatMap((s) => s.tabs);
+  assert.equal(read.length, (guess?.given["tabs"] as unknown[]).length);
+  assert.equal(
+    spreadsheets.find((s) => s.id === tracker)?.tabs.find((tab) => tab["sheetId"] === 1100)?.[
+      "key"
+    ],
+    "ID",
   );
 });

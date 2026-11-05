@@ -22,10 +22,12 @@ import {
   object,
   optional,
   type OpenVia,
+  type PreviewAsk,
   type PreviewTable,
   refine,
   type ReviewEdit,
   type ReviewOf,
+  type ReviewOutline,
   type ReviewTable,
   string,
   type ToOpen,
@@ -39,11 +41,14 @@ import {
   type SheetsPicks,
   type TabMapping,
 } from "./mapping.ts";
+import type { TabInfo } from "./google.ts";
 import { googleOf, picksOf } from "./open-connection.ts";
 import { maxTabs } from "./source.ts";
 
 // The columns a preview shows, at most: past them a sheet is a database.
 const maxColumns = 52;
+// The tabs a list of names shows, at most.
+const maxListed = 1000;
 
 // A tab's place in its source, as a table's `at` says it.
 const placeOf = (at: string): { id: string; sheetId: number } | null => {
@@ -51,27 +56,53 @@ const placeOf = (at: string): { id: string; sheetId: number } | null => {
   return id && sheetId ? { id, sheetId: Number(sheetId) } : null;
 };
 
-export async function sheetsPreview(connection: ToOpen, via: OpenVia): Promise<PreviewTable[]> {
+// The tables read first, then the tabs mapped, then the rest while there's
+// room: a tab the person asks about, and one the options read, is always
+// there (OA-232). With `names`, each tab's name and place alone, from one
+// request a spreadsheet, as Settings lists them; a connection may have
+// hundreds.
+export async function sheetsPreview(
+  connection: ToOpen,
+  via: OpenVia,
+  ask: PreviewAsk = {},
+): Promise<PreviewTable[]> {
   const { google } = googleOf(connection, via);
-  const tables: PreviewTable[] = [];
-  for (const pick of picksOf(connection.options).spreadsheets) {
+  const picks = picksOf(connection.options);
+  const found: { pick: string; title: string; tab: TabInfo; at: string }[] = [];
+  for (const pick of picks.spreadsheets) {
     const info = await google.tabs(pick.id);
     if (info === "gone") continue;
-    for (const tab of info.tabs) {
-      if (tables.length >= maxTabs) return tables;
-      const grid = await google.rows(pick.id, tab, 0, Math.min(tab.rows, maxPreviewRows));
-      if (grid === "gone") continue;
-      const rows = grid.rows.map((row) =>
-        row.slice(0, maxColumns).map((cell) => (cell?.shown ? cell.shown : null)),
-      );
-      const width = Math.max(0, ...rows.map((row) => row.length));
-      tables.push({
-        name: `${info.title} › ${tab.title}`,
-        at: `${pick.id}/${tab.sheetId}`,
-        columns: Array.from({ length: width }, (_, c) => columnLetters(c)),
-        rows: rows.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? null)),
-      });
-    }
+    for (const tab of info.tabs)
+      found.push({ pick: pick.id, title: info.title, tab, at: `${pick.id}/${tab.sheetId}` });
+  }
+  const name = (each: (typeof found)[number]) => `${each.title} › ${each.tab.title}`;
+  if (ask.names)
+    return found
+      .slice(0, maxListed)
+      .map((each) => ({ name: name(each), at: each.at, columns: [], rows: [] }));
+  const mapped = new Set(
+    picks.spreadsheets.flatMap((pick) => pick.tabs.map((tab) => `${pick.id}/${tab.sheetId}`)),
+  );
+  const first = ask.first ?? [];
+  const rank = (at: string) => (first.includes(at) ? 0 : mapped.has(at) ? 1 : 2);
+  const read = found
+    .map((each, i) => ({ ...each, i }))
+    .toSorted((a, b) => rank(a.at) - rank(b.at) || a.i - b.i)
+    .filter((each, n) => rank(each.at) < 2 || n < maxTabs);
+  const tables: PreviewTable[] = [];
+  for (const each of read.toSorted((a, b) => a.i - b.i)) {
+    const grid = await google.rows(each.pick, each.tab, 0, Math.min(each.tab.rows, maxPreviewRows));
+    if (grid === "gone") continue;
+    const rows = grid.rows.map((row) =>
+      row.slice(0, maxColumns).map((cell) => (cell?.shown ? cell.shown : null)),
+    );
+    const width = Math.max(0, ...rows.map((row) => row.length));
+    tables.push({
+      name: name(each),
+      at: each.at,
+      columns: Array.from({ length: width }, (_, c) => columnLetters(c)),
+      rows: rows.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? null)),
+    });
   }
   return tables;
 }
@@ -309,6 +340,41 @@ function current(
   return { tabs };
 }
 
+// Each tab in the preview's names, in its order, and how the options read
+// it, in one line by its headers: a key that is the title too says so once.
+// A mapped tab the names don't have, as one deleted, is named by its place.
+function outline(
+  options: Readonly<Record<string, unknown>>,
+  tables: readonly PreviewTable[],
+): ReviewOutline[] {
+  const mapped = new Map<string, TabMapping>(
+    picksOf(options).spreadsheets.flatMap((pick) =>
+      pick.tabs.map((tab): [string, TabMapping] => [`${pick.id}/${tab.sheetId}`, tab]),
+    ),
+  );
+  const line = (tab: TabMapping) =>
+    mappedColumns(tab)
+      .flatMap(([field, header]) =>
+        field === "title" && header.trim() === tab.key.trim()
+          ? []
+          : [
+              `${field === "key" && header.trim() === tab.title.trim() ? "key and title" : field} ${header}`,
+            ],
+      )
+      .join(" · ");
+  const named = tables.flatMap((table) =>
+    table.at ? [{ at: table.at, name: table.name, reads: null as string | null }] : [],
+  );
+  const gone = [...mapped.keys()].filter((at) => !named.some((each) => each.at === at));
+  return [
+    ...named,
+    ...gone.map((at) => ({ at, name: `Tab ${at.split("/")[1]}`, reads: null })),
+  ].map((each) => {
+    const tab = mapped.get(each.at);
+    return tab ? { ...each, reads: line(tab) } : each;
+  });
+}
+
 // The fields a column feeding them can't be taken from, as every tab read
 // needs them.
 const required: readonly FieldName[] = ["key", "title"];
@@ -428,7 +494,7 @@ export const sheetsReview = {
   // Spreadsheets just picked map no tab, as an Undo of the first mapping
   // puts them back: nothing is read from them yet but each one itself.
   waits: (options) => picksOf(options).spreadsheets.every((pick) => pick.tabs.length === 0),
-  doc: "Each tab by its table's `at`; each field by its column's letter; the header row by its number, 1 for the first; `end: \"blank\"` stops at the first blank row, so notes below the table aren't read; \"grid\" reads to the sheet's end, skipping blank rows. The key names each row, as an ID column does; rows that share one or have none are listed for the user to fix.",
+  doc: "Each tab by its table's `at`; each field by its column's letter; the header row by its number, 1 for the first; `end: \"blank\"` stops at the first blank row, so notes below the table aren't read; \"grid\" reads to the sheet's end, skipping blank rows. The key names each row, as an ID column does; rows that share one or have none are listed for the user to fix. `options` is how it reads now, in this form; a tab a draft leaves out isn't read.",
   settle,
   guess,
   draw,
@@ -437,6 +503,7 @@ export const sheetsReview = {
     label: fieldLabels[name],
     required: required.includes(name),
   })),
+  outline,
   current,
   edit,
   said,

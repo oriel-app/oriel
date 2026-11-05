@@ -88,7 +88,8 @@ export type Tag =
   // its review step read, and its draft or Oriel's guess applied.
   | { kind: "browserBegun"; of: string }
   | { kind: "onboarded"; of: string; connection: string }
-  | { kind: "reviewed"; of: string; connection: string }
+  | { kind: "reviewed"; of: string; connection: string; tab?: string }
+  | { kind: "orielAsked"; connection: string }
   | { kind: "reviewApplied"; of: string; connection: string; beside?: string }
   | { kind: "reviewRedrawn"; connection: string }
   // In Settings, by a connection's ID: its options set, or that undone; its

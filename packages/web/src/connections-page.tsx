@@ -13,10 +13,10 @@ import { useEffect, useState } from "preact/hooks";
 import { ConnectSteps, ReviewStep } from "./connect-steps.tsx";
 import { type ConnectionsModel, type ConnectionsMsg, formOf, settingOf } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
-import { type Dispatch, plural, useStamp } from "./parts.tsx";
+import { type Dispatch, Folded, plural, useStamp } from "./parts.tsx";
 import { Switch } from "./provider-row.tsx";
 import { Choices } from "./settings-page.tsx";
-import type { ConnectionView, ConnectorView, OptionField } from "./view.ts";
+import type { ConnectionView, ConnectorView, OptionField, ReviewOutline } from "./view.ts";
 
 // How often a connection syncs while Oriel is open, by minutes.
 const everyNames: { value: string; label: string }[] = [
@@ -369,11 +369,13 @@ function Options(props: {
   );
 }
 
-// How a connection's tables feed Oriel's fields (OA-232): its connector's
-// review step, the one a connect shows, filled with the mapping it reads
-// with now, or, while it waits for one, the draft or guess to apply. A
-// change is the person's own, applied with an Undo, and the step says
-// before then what it does to the items the connection has.
+// How a connection's tables feed Oriel's fields (OA-232): while it waits,
+// its connector's review step, the one a connect shows, with the draft or
+// guess to apply. Once it reads, one line a table it reads, each with Ask
+// Oriel, which drafts a change in the window chat, and Edit by hand, which
+// opens the review step's editor on that table alone; the tables it doesn't
+// read fold into one line. A change is the person's own, applied with an
+// Undo, and says before then what it does to the items the connection has.
 function MappingOption(props: {
   field: Extract<OptionField, { kind: "mapping" }>;
   connection: ConnectionView;
@@ -384,6 +386,7 @@ function MappingOption(props: {
   const { field, connection, connector, connections, send } = props;
   const review = connections.reviews[connection.id] ?? null;
   const setting = settingOf(connections, connection.id);
+  const editing = connections.edits[connection.id] ?? null;
   // Drawn again whenever its options change, wherever they were set.
   const options = JSON.stringify(connection.options);
   useEffect(() => {
@@ -393,21 +396,84 @@ function MappingOption(props: {
   // One just made shows it in its connect steps, below, until it applies.
   if (step?.kind !== "review" || formOf(connections, connection.kind).made === connection.id)
     return null;
+  const reviewStep = (
+    <ReviewStep
+      connector={connector}
+      step={step}
+      connection={connection.id}
+      review={review}
+      editing={editing}
+      pending={setting.pending}
+      problem={review === null ? setting.unread : null}
+      send={send}
+      beside={field.name}
+    />
+  );
+  const outline = review?.outline ?? null;
+  const tab = (entry: ReviewOutline, ask: string) => (
+    <>
+      <span class="mapping-tab">
+        <span class="mapping-name">{entry.name}</span>
+        {entry.reads && <span class="mapping-reads">{entry.reads}</span>}
+      </span>
+      <span class="mapping-actions">
+        <button
+          type="button"
+          class="quiet-action"
+          disabled={setting.pending}
+          onClick={() =>
+            send({ type: "askOrielClicked", connection: connection.id, tab: entry.at })
+          }
+        >
+          {ask}
+        </button>
+        <button
+          type="button"
+          class="quiet-action"
+          disabled={setting.pending}
+          onClick={() =>
+            send({
+              type: "handEditClicked",
+              kind: connection.kind,
+              connection: connection.id,
+              tab: entry.at,
+            })
+          }
+        >
+          {entry.reads ? "Edit by hand" : "By hand"}
+        </button>
+      </span>
+      {editing?.only === entry.at && reviewStep}
+    </>
+  );
+  const read = outline?.filter((entry) => entry.reads !== null) ?? [];
+  const unread = outline?.filter((entry) => entry.reads === null) ?? [];
   return (
     <div class="settings-field connection-mapping">
       <span class="settings-field-name">{field.label}</span>
       <span class="settings-field-about">{field.about}</span>
-      <ReviewStep
-        connector={connector}
-        step={step}
-        connection={connection.id}
-        review={review}
-        editing={connections.edits[connection.id] ?? null}
-        pending={setting.pending}
-        problem={review === null ? setting.unread : null}
-        send={send}
-        beside={field.name}
-      />
+      {outline === null ? (
+        reviewStep
+      ) : (
+        <>
+          {read.length === 0 ? (
+            <p class="settings-field-about">No tab is read yet.</p>
+          ) : (
+            <ul class="mapping-tabs">
+              {read.map((entry) => (
+                <li key={entry.at}>{tab(entry, "Ask Oriel to fix this")}</li>
+              ))}
+            </ul>
+          )}
+          <Folded
+            label={`${read.length > 0 ? `${unread.length} more` : unread.length} ${unread.length === 1 ? "tab" : "tabs"} not read`}
+            entries={unread}
+            find="Find a tab"
+          >
+            {(entry) => <div class="mapping-row">{tab(entry, "Ask Oriel to read it")}</div>}
+          </Folded>
+        </>
+      )}
     </div>
   );
 }

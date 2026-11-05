@@ -44,6 +44,9 @@ export type OpenVia = {
 // Why a new connection waits, as one of a connector with a preview does
 // while its options don't check out (decision 0051).
 export const noOptionsYet = "It has no options yet.";
+// What preview() says of a connection that reads, whose options the agent
+// drafts only when the person asks for a change (OA-232).
+export const readsNow = "It reads with these options. Draft a change only when the user asks.";
 
 // Why a connection can't open: its options no longer fit its source, such
 // as a channel they name gone, so it waits for its options (decision 0051),

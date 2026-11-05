@@ -68,7 +68,7 @@ export type ViewDeps = {
   drafted: (draft: Draft) => { over: unknown; name: string } | null;
   // A draft as Oriel draws it from its source, when its connector drafts in
   // its own form; null otherwise.
-  drawn?: (draft: Draft) => ReviewTable[] | null;
+  drawn?: (draft: Draft) => { tables: ReviewTable[]; said: string[] } | null;
   writable: boolean;
   // Where a sketch's frame comes from: this URL plus `<thread>/<sketch>`.
   sketchBase: URL;
@@ -463,12 +463,14 @@ export function views(deps: ViewDeps) {
             .filter(([option, value]) => JSON.stringify(was[option]) !== JSON.stringify(value))
             .map(([option, value]) => ({ option, was: was[option] ?? null, drafted: value }))
         : [];
+      const drawn = outcome === null ? (deps.drawn?.(draft) ?? null) : null;
       return {
         ...at,
         kind: "draft",
         connection: now && typeof id === "string" ? { id, name: now.name } : null,
         changes,
-        tables: outcome === null ? (deps.drawn?.(draft) ?? null) : null,
+        tables: drawn?.tables ?? null,
+        said: drawn?.said ?? [],
         stale: now === null || JSON.stringify(now.over) !== JSON.stringify(over),
         outcome,
       };

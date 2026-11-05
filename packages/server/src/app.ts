@@ -18,6 +18,7 @@ import {
   type FieldReader,
   noOptionsYet,
   type PreviewTable,
+  readsNow,
   type ReviewEdit,
   type ReviewTable,
   type IndexRecord,
@@ -1040,24 +1041,59 @@ export async function createApp(options: AppOptions): Promise<App> {
       const why = whyWaits(connection);
       return why === null ? [] : [{ connection, why }];
     });
+  // The connections whose options the agent may draft (OA-232): those that
+  // wait, and those open whose connector drafts in its own form, made in
+  // the window, which the person may ask to change, by a tab's Ask Oriel or
+  // in their own words.
+  const draftable = (): { connection: Connection; why: string }[] => {
+    const waiting = waitingConnections();
+    const open = opens().flatMap(({ connection }) => {
+      const declaration = declared(connection.kind);
+      return !declaration.review ||
+        !declaration.preview ||
+        byFlag.has(connection.id) ||
+        waiting.some((each) => each.connection.id === connection.id)
+        ? []
+        : [{ connection, why: readsNow }];
+    });
+    return [...waiting, ...open];
+  };
+  // The tab each connection's last Ask Oriel named, by its `at`, which its
+  // preview reads first.
+  const asked = new Map<Ulid, string>();
+  const askedOf = (connection: Connection): string[] => {
+    const tab = asked.get(connection.id);
+    return tab ? [tab] : [];
+  };
   // Each waiting connection's preview as last read, while its options are
   // the same, for 5 minutes at most: the review step asks again while the
   // agent drafts, and each read is requests to the source, under its quota.
   // A draft is drawn from it.
+  // `first`: tables it must hold, read before any other. Settings' list of
+  // a connection's tables is its names alone, kept the same way, apart.
   const previews = new Map<Ulid, { options: string; at: number; tables: PreviewTable[] }>();
-  const previewOf = async (connection: Connection, fresh = false): Promise<PreviewTable[]> => {
+  const listed = new Map<Ulid, { options: string; at: number; tables: PreviewTable[] }>();
+  const previewOf = async (
+    connection: Connection,
+    fresh = false,
+    first: readonly string[] = [],
+    names = false,
+  ): Promise<PreviewTable[]> => {
     const declaration = declared(connection.kind);
     const key = JSON.stringify(connection.options);
-    const had = previews.get(connection.id);
+    const kept = names ? listed : previews;
+    const had = kept.get(connection.id);
     const at = Date.parse(now());
-    if (!fresh && had?.options === key && at - had.at < 5 * 60_000) return had.tables;
+    const holds = first.every((place) => had?.tables.some((table) => table.at === place));
+    if (!fresh && had?.options === key && at - had.at < 5 * 60_000 && holds) return had.tables;
     const secret = await connections.secret(connection);
     const via = openVia(connection.kind, connection.id, {
       kept: true,
       fetch: windows.viaFor(connection.kind).fetch,
     });
-    const tables = (await declaration.preview?.({ ...connection, secret }, via)) ?? [];
-    previews.set(connection.id, { options: key, at, tables });
+    const ask = names ? { names: true as const } : { first };
+    const tables = (await declaration.preview?.({ ...connection, secret }, via, ask)) ?? [];
+    kept.set(connection.id, { options: key, at, tables });
     return tables;
   };
   // A draft of `source.configure` whose connector drafts in its own form,
@@ -1070,13 +1106,26 @@ export async function createApp(options: AppOptions): Promise<App> {
     return connection && review ? { connection, review } : null;
   };
   // A held draft as Oriel draws it from its source, from the preview the
-  // agent read; null when it's no longer there to draw from.
-  const drawn = (draft: Draft): ReviewTable[] | null => {
+  // agent read, with what applying it does to the items the connection has;
+  // null when it's no longer there to draw from. For a connection that
+  // reads, only the tables it changes (OA-232).
+  const drawn = (draft: Draft): { tables: ReviewTable[]; said: string[] } | null => {
     const of = reviewed(draft);
     const tables = of && previews.get(of.connection.id)?.tables;
     const given = draft.input["options"];
     if (!of || !tables || !isRecord(given)) return null;
-    return of.review.draw(given, tables);
+    const { connection, review } = of;
+    const drafted = review.draw(given, tables);
+    const settled = review.settle(given, tables, connection.options);
+    const said = "problem" in settled ? [] : review.said(connection.options, settled, tables);
+    if (whyWaits(connection) !== null) return { tables: drafted, said };
+    const now = review.draw(review.current(connection.options, tables), tables);
+    const reads = (table: ReviewTable) =>
+      JSON.stringify(now.find((each) => each.at === table.at)?.reads ?? null);
+    return {
+      tables: drafted.filter((table) => JSON.stringify(table.reads) !== reads(table)),
+      said,
+    };
   };
   // A draft's input as its action takes it: one in its connector's own form
   // settles into options against its source as it is now, such as each
@@ -1085,7 +1134,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     const of = reviewed(draft);
     const given = draft.input["options"];
     if (!of) return draft.input;
-    const tables = await previewOf(of.connection, true);
+    const tables = await previewOf(of.connection, true, askedOf(of.connection));
     const settled = of.review.settle(isRecord(given) ? given : {}, tables, of.connection.options);
     if ("problem" in settled) throw new ActionError("refused", String(settled.problem));
     return { ...draft.input, options: settled };
@@ -1106,16 +1155,26 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Oriel's guess, drawn and settled, with no model; the agent's draft once
   // its turn holds one, drawn; and whether that turn still runs. Once it
   // reads, its options as they read now, drawn the same way (OA-232).
-  const review = async (id: Ulid, fresh = false): Promise<OptionsReviewView> => {
+  const review = async (id: Ulid, fresh = false, tab?: string): Promise<OptionsReviewView> => {
     const { connection, of } = reviewing(id);
     const waits = waitingConnections().some((each) => each.connection.id === id);
-    const tables = await previewOf(connection, fresh);
     const { fields } = of;
+    // Once it reads: each of its tables in a line, from their names alone;
+    // and, for the one the person edits by hand, how it reads now, drawn.
     if (!waits) {
-      const given = of.current(connection.options, tables);
-      const current = { given, tables: of.draw(given, tables) };
-      return { waits, guess: null, draft: null, drafting: null, current, fields };
+      const outline = of.outline(connection.options, await previewOf(connection, fresh, [], true));
+      const first = tab === undefined ? null : await previewOf(connection, fresh, [tab]);
+      const given = first && of.current(connection.options, first);
+      const current =
+        first && given
+          ? {
+              given,
+              tables: of.draw(given, first).filter((table) => table.at === tab),
+            }
+          : null;
+      return { waits, guess: null, draft: null, drafting: null, current, fields, outline };
     }
+    const tables = await previewOf(connection, fresh);
     // What applying a draft does to what the connection read before it
     // waited, such as a tab whose mapped column was renamed.
     const said = (given: Record<string, unknown>) => {
@@ -1160,6 +1219,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       drafting: thread && conversation.running(thread) ? { thread } : null,
       current: null,
       fields,
+      outline: null,
     };
   };
   // A review's draft with one of the person's edits made, against the
@@ -1168,7 +1228,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   // applying them is `source.configure`, or the held draft's own Apply.
   const redraw = async (id: Ulid, given: unknown, edit: ReviewEdit): Promise<ReviewRedrawn> => {
     const { connection, of } = reviewing(id);
-    const tables = await previewOf(connection);
+    const tables = await previewOf(connection, false, [edit.table]);
     const next = of.edit(isRecord(given) ? given : {}, edit, tables);
     if ("problem" in next) throw new ActionError("invalid", String(next.problem));
     const settled = of.settle(next, tables, connection.options);
@@ -1209,8 +1269,9 @@ export async function createApp(options: AppOptions): Promise<App> {
   // for its options' type and a draft's check.
   const waitingFor = (): Waiting | null =>
     waitingOf(
-      waitingConnections().map(({ connection, why }) => {
+      draftable().map(({ connection, why }) => {
         const declaration = declared(connection.kind);
+        const { review } = declaration;
         return {
           id: connection.id,
           kind: connection.kind,
@@ -1218,11 +1279,12 @@ export async function createApp(options: AppOptions): Promise<App> {
           why,
           options: connection.options,
           validator: declaration.options,
-          ...(declaration.review
-            ? { draft: { validator: declaration.review.draft, doc: declaration.review.doc } }
+          ...(review
+            ? { draft: { validator: review.draft, doc: review.doc, current: review.current } }
             : {}),
-          // The agent's read is always live.
-          preview: () => previewOf(connection, true),
+          // The agent's read is always live, with the tab the person asked
+          // about.
+          preview: () => previewOf(connection, true, askedOf(connection)),
         };
       }),
     );
@@ -1979,18 +2041,32 @@ export async function createApp(options: AppOptions): Promise<App> {
       choices: (id, query) => windows.choices(live(id as Ulid), query),
       folderStep: (kind) => windows.folderStep(kind),
       begin: (kind) => windows.begin(kind),
-      review: (id, fresh) => review(id as Ulid, fresh),
+      review: (id, fresh, tab) => review(id as Ulid, fresh, tab),
       redraw: (id, given, edit) => redraw(id as Ulid, given, edit),
       // The words that start a waiting connection's onboarding turn, when the
-      // agent may draft and none has started for it; null otherwise.
-      onboard: (id) => {
+      // agent may draft and none has started for it; or, with a table, its
+      // connector's words asking for a change to it, by its place, when the
+      // agent may draft for the connection (OA-232); null otherwise.
+      onboard: async (id, tab) => {
         const connection = live(id as Ulid);
         const step = declared(connection.kind).connect?.steps.find(
           (each) => each.kind === "review",
         );
+        if (step?.kind !== "review" || !drafts()) return null;
+        if (tab !== undefined) {
+          const may = draftable().some((each) => each.connection.id === connection.id);
+          // Only one of its own tables, so the words name nothing else.
+          const listed = may ? await previewOf(connection, false, [], true) : [];
+          if (!listed.some((table) => table.at === tab))
+            throw new ActionError(
+              "invalid",
+              "Oriel can't ask about that table of this connection.",
+            );
+          asked.set(connection.id, tab);
+          return step.fix.replace("{at}", tab);
+        }
         const waits = waitingConnections().some((each) => each.connection.id === connection.id);
-        if (step?.kind !== "review" || !waits || !drafts() || onboarding.has(connection.id))
-          return null;
+        if (!waits || onboarding.has(connection.id)) return null;
         return step.ask;
       },
       onboarded: (id, thread) => void onboarding.set(id as Ulid, thread as Ulid),

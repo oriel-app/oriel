@@ -5,7 +5,7 @@
 // Source text (titles, content) is always text here, never HTML.
 import type { ChartBlock } from "@oriel/core/block-charts";
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
-import type { ReviewField, ReviewTable } from "@oriel/core/connect";
+import type { ReviewField, ReviewOutline, ReviewTable } from "@oriel/core/connect";
 import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
@@ -20,6 +20,7 @@ export type {
   OptionField,
   ReviewEdit,
   ReviewField,
+  ReviewOutline,
   ReviewTable,
 } from "@oriel/core/connect";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
@@ -210,6 +211,8 @@ export type OptionsReviewView = {
   drafting: { thread: string } | null;
   current: { given: Record<string, unknown>; tables: ReviewTable[] } | null;
   fields: readonly ReviewField[];
+  // Once it reads, each of its tables in a line, for Settings (OA-232).
+  outline: ReviewOutline[] | null;
 };
 
 // A review's draft with the person's edits made: in its connector's form,
@@ -605,6 +608,8 @@ export type ChatEntry = { seq: number; at: string } & (
       // While it waits, the draft as Oriel draws it from its source, for a
       // connector that drafts in its own form, such as columns by letter.
       tables: ReviewTable[] | null;
+      // What applying it does to the items the connection has (OA-232).
+      said: string[];
       stale: boolean;
       outcome: "applied" | "discarded" | null;
     }

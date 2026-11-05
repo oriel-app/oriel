@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { instant, type PreviewTable, ulid } from "@oriel/core";
+import { instant, type PreviewAsk, type PreviewTable, ulid } from "@oriel/core";
 import { sheetsDeclaredFixture } from "./declared-fixture.ts";
 import { loadSheetsFixture } from "./fixture.ts";
 import { sheetsOptions } from "./mapping.ts";
+import { fixtureGoogle } from "./stand-in.ts";
 import { sheetsReview } from "./preview.ts";
 
 const fixture = loadSheetsFixture();
@@ -351,4 +352,57 @@ test("before it applies, a new mapping says which rows it takes from the window"
   );
   // Nothing mapped before, nothing goes.
   assert.deepEqual(sheetsReview.said(picked, before, tables), []);
+});
+
+test("Settings' list is every tab's name and place, from one request a spreadsheet, and the tab asked about is read first", async () => {
+  const google = fixtureGoogle(fixture);
+  const asked: string[] = [];
+  const counting: typeof fetch = (input, init) => {
+    asked.push(String(input instanceof Request ? input.url : input));
+    return google.fetch(input, init);
+  };
+  const viaCounting = { ...via, fetch: counting };
+  const ask = (preview: PreviewAsk) =>
+    sheetsDeclaredFixture.preview?.(connection, viaCounting, preview) ?? Promise.resolve([]);
+  const listed = await ask({ names: true });
+  assert.equal(asked.length, 2);
+  assert.ok(listed.every((table) => table.rows.length === 0 && table.columns.length === 0));
+  assert.deepEqual(
+    listed.map((table) => table.at),
+    (await preview()).map((table) => table.at),
+  );
+  // Read first, the asked tab is there however many come before it; the
+  // tables keep the sheet's order.
+  const raidAt = `${raid}/4100`;
+  const first = await ask({ first: [raidAt] });
+  assert.ok(first.some((table) => table.at === raidAt && table.rows.length > 0));
+});
+
+test("a connection's tables sum up in a line each, by their headers, a key that is the title said once", async () => {
+  const tables = await preview();
+  const mapped = await mappedNow(tables);
+  const outline = sheetsReview.outline(mapped, tables);
+  assert.deepEqual(
+    outline.map((entry) => entry.at),
+    tables.map((table) => table.at),
+  );
+  assert.equal(
+    outline.find((entry) => entry.at === trackerDraft.at)?.reads,
+    "key ID · title Story · status Status · assignee Owner · estimate Estimate · link Link",
+  );
+  assert.ok(
+    outline.filter((entry) => entry.at !== trackerDraft.at).every((entry) => entry.reads === null),
+  );
+  const same = sheetsReview.settle({ tabs: [{ ...trackerDraft, key: "C" }] }, tables, picked);
+  assert.ok(!("problem" in same));
+  assert.match(
+    sheetsReview.outline(same, tables).find((entry) => entry.at === trackerDraft.at)?.reads ?? "",
+    /^key and title Story · status/,
+  );
+  // A mapped tab gone from the sheet is still listed, by its place.
+  assert.deepEqual(sheetsReview.outline(mapped, [])[0], {
+    at: trackerDraft.at,
+    name: "Tab 1100",
+    reads: outline.find((entry) => entry.at === trackerDraft.at)?.reads,
+  });
 });

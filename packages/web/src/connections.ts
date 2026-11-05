@@ -67,9 +67,11 @@ export type ConnectionSetting = {
 // A review step's draft as the person edits it: the agent's held draft it
 // began as, by where it's held, or null for Oriel's guess or the options the
 // connection has; then as the server last drew it with their edits; and
-// whether an edit is on its way.
+// whether an edit is on its way. `only`: the one table edited by hand in
+// Settings, by its place (OA-232).
 export type ReviewEditing = {
   held: { thread: string; seq: number } | null;
+  only: string | null;
   redrawn: ReviewRedrawn;
   pending: boolean;
 };
@@ -112,6 +114,10 @@ export type ConnectionsMsg =
   // A review step's draft, read again while the agent drafts; and applied:
   // the agent's, held in its thread, or Oriel's guess.
   | { type: "reviewAsked"; kind: string; connection: string; fresh?: true }
+  // In Settings, one of a connection's tables: edited by hand, or asked of
+  // Oriel in the window chat, by its place (OA-232).
+  | { type: "handEditClicked"; kind: string; connection: string; tab: string }
+  | { type: "askOrielClicked"; connection: string; tab: string }
   // In Settings, `beside` names the option it sets, where its Undo shows.
   | { type: "reviewApplied"; kind: string; connection: string; beside?: string }
   // A review step edited: begun from what it shows, one change made, which
@@ -300,6 +306,9 @@ const reviewing = (kind: string, connection: string, fresh = false): Effect =>
     connection,
   });
 
+// What Settings' Ask Oriel tells a person who has no AI to ask.
+export const noAiToAsk = "Oriel needs your AI to draft this. Edit it by hand instead.";
+
 // A connect's tag, with where its review step is, if it has one, which a
 // connection that waits for its options goes on to.
 const connectedTag = (kind: string, steps: readonly ConnectStep[]) => {
@@ -450,6 +459,29 @@ export function updateConnections(
         [applying],
       );
     }
+    case "handEditClicked":
+      return [
+        withEditing(model, msg.connection, null),
+        [
+          get(`/api/connections/${msg.connection}/review?tab=${encodeURIComponent(msg.tab)}`, {
+            kind: "reviewed",
+            of: msg.kind,
+            connection: msg.connection,
+            tab: msg.tab,
+          }),
+        ],
+      ];
+    case "askOrielClicked": {
+      const setting = settingOf(model, msg.connection);
+      if (setting.pending) return [model, []];
+      return withSetting(model, msg.connection, { ...setting, problem: null }, [
+        post(
+          `/api/connections/${msg.connection}/draft`,
+          { tab: msg.tab },
+          { kind: "orielAsked", connection: msg.connection },
+        ),
+      ]);
+    }
     case "reviewEditClicked": {
       const review = model.reviews[msg.connection];
       const shown = review && reviewShown(review);
@@ -465,7 +497,12 @@ export function updateConnections(
         problem: null,
       };
       return [
-        withEditing(model, msg.connection, { held: shown.held, redrawn, pending: false }),
+        withEditing(model, msg.connection, {
+          held: shown.held,
+          only: null,
+          redrawn,
+          pending: false,
+        }),
         [],
       ];
     }
@@ -628,6 +665,22 @@ export function connectionsReplied(
       }
       const review = msg.body as OptionsReviewView;
       const reviews = { ...model.reviews, [tag.connection]: review };
+      // Asked to edit one table by hand: its editor opens on it, as it reads.
+      const hand: ReviewEditing | null =
+        "tab" in tag && tag.tab !== undefined && review.current
+          ? {
+              held: null,
+              only: tag.tab,
+              pending: false,
+              redrawn: {
+                given: review.current.given,
+                tables: review.current.tables,
+                options: null,
+                said: [],
+                problem: null,
+              },
+            }
+          : null;
       const unread = model.settings[tag.connection]?.unread ?? null;
       const settings =
         unread === null
@@ -640,7 +693,7 @@ export function connectionsReplied(
       // Its options applied elsewhere, as in the window chat: done here too.
       const done = !review.waits && form.made === tag.connection;
       const next = {
-        ...model,
+        ...(hand ? withEditing(model, tag.connection, hand) : model),
         reviews,
         settings,
         ...(done ? { forms: { ...model.forms, [tag.of]: blankForm } } : {}),
@@ -697,6 +750,28 @@ export function connectionsReplied(
           ? { ...formed, view: withConnection(formed.view, body.connection) }
           : formed,
         synced: true,
+      };
+    }
+    // Asked in the window chat: the overview opens on it. With no AI to ask,
+    // the person is told to edit it by hand.
+    case "orielAsked": {
+      const setting = settingOf(model, tag.connection);
+      const thread = msg.ok ? (msg.body as { thread: string | null }).thread : null;
+      if (thread === null)
+        return {
+          model: withSetting(model, tag.connection, {
+            ...setting,
+            problem: msg.ok ? noAiToAsk : errorOf(msg.body),
+          })[0],
+          synced: false,
+        };
+      return {
+        model,
+        synced: false,
+        effects: [
+          { type: "navigate", route: { page: "overview" } },
+          { type: "after", ms: 0, msg: { type: "chat", msg: { type: "openClicked" } } },
+        ],
       };
     }
     case "reviewRedrawn": {

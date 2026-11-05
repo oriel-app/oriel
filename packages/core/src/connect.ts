@@ -117,6 +117,10 @@ export type ConnectStep =
       // that drafts the options, which name nothing synced (decision 0051).
       reading: string;
       ask: string;
+      // The person's words that start the window chat's turn that drafts a
+      // change to how it reads one table, named by its `at`, `{at}` (OA-232):
+      // an ID, never a name anyone wrote.
+      fix: string;
     };
 
 // How Settings draws one of a connector's options. `pick`: one from the list
@@ -351,6 +355,16 @@ export type ReviewReads = {
   fields: Readonly<Record<string, string>>;
 };
 
+// What a preview reads (OA-232): `first`, tables by their `at`, read
+// before any other, so one the person asks about is always there; `names`,
+// each table's name and place alone, with no row, as Settings lists them.
+export type PreviewAsk = { first?: readonly string[]; names?: true };
+
+// One table as Settings sums it up (OA-232): its name and place, and how it
+// reads in one line, such as "key ID · title Story", or null when it isn't
+// read.
+export type ReviewOutline = { at: string; name: string; reads: string | null };
+
 // One change a person makes to a draft in the review step, to a table by
 // its `at`: whether it's read; which column feeds a field, by the column's
 // name in the source, or none; its header row; where it ends; whether rows
@@ -402,6 +416,11 @@ export type ReviewOf = {
   draw(draft: Readonly<Record<string, unknown>>, tables: readonly PreviewTable[]): ReviewTable[];
   // What a column can feed, in the order the review step lists them.
   fields: readonly ReviewField[];
+  // Each table, from the preview's names, and how the options read it.
+  outline(
+    options: Readonly<Record<string, unknown>>,
+    tables: readonly PreviewTable[],
+  ): ReviewOutline[];
   // The draft that reads as a connection's options do now, from its
   // preview, for the review step to show and the person to change: a table
   // whose mapping no longer fits what its source shows is left out.

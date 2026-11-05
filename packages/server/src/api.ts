@@ -150,12 +150,15 @@ export type ApiDeps = {
   // person's browser, and the ID its connect names to finish it.
   begin(kind: string): Promise<{ url: string; attempt: string } | { problem: string }>;
   // A waiting connection's review step (decision 0051).
-  review(id: string, fresh: boolean): Promise<OptionsReviewView>;
+  // A connection's review step (decision 0051), and in Settings, with the
+  // table the person edits by hand (OA-232).
+  review(id: string, fresh: boolean, tab?: string): Promise<OptionsReviewView>;
   // A review's draft with one of the person's edits made, drawn again.
   redraw(id: string, given: unknown, edit: ReviewEdit): Promise<ReviewRedrawn>;
-  // The words that start a waiting connection's onboarding turn, or null
-  // when no turn should start; and that its turn started in `thread`.
-  onboard(id: string): string | null;
+  // The words that start a waiting connection's onboarding turn, or the
+  // turn that drafts a change to one of its tables, or null when no turn
+  // should start; and that its onboarding turn started in `thread`.
+  onboard(id: string, tab?: string): Promise<string | null>;
   onboarded(id: string, thread: string): void;
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
@@ -289,6 +292,12 @@ const windowWorkstream = refine(
   "expected a cluster or picked items",
 );
 const tinyBody = 256;
+// A source's table by its place, as a preview gives it: IDs, never a name.
+const tableAt = refine(
+  string,
+  (at) => /^[A-Za-z0-9_-]{1,100}\/[A-Za-z0-9_-]{1,40}$/.test(at),
+  "expected a table's place",
+);
 const count = refine(number, (n) => Number.isSafeInteger(n) && n >= 0, "expected a count");
 const windowEvent = union(
   object({
@@ -759,8 +768,12 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "GET",
       path: at("/connections/:id/review"),
       // Try again reads the source afresh; the window's own polling doesn't.
-      run: async ([id = ""], _request, url) =>
-        json(200, await deps.review(id, url.searchParams.get("fresh") === "1")),
+      run: async ([id = ""], _request, url) => {
+        const tab = url.searchParams.get("tab");
+        if (tab !== null && !tableAt(tab).ok) throw new Refused(400, "expected a table's place");
+        const fresh = url.searchParams.get("fresh") === "1";
+        return json(200, await deps.review(id, fresh, tab ?? undefined));
+      },
     },
     {
       // The review step's draft with one of the person's edits made, such
@@ -783,15 +796,16 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       // The onboarding turn of a connection just made (decision 0051): one
       // turn of the window chat, the person's, from the connector's own
       // words, which name nothing synced. None when the agent can't draft,
-      // or one started already.
+      // or one started already. With a table, by its `at`, an ID, the
+      // person's Ask Oriel about it in Settings, in the same way (OA-232).
       method: "POST",
       path: at("/connections/:id/draft"),
       async run([id = ""], request) {
-        await readJson(request, tinyBody, emptyBody);
-        const text = deps.onboard(id);
+        const { tab } = await readJson(request, tinyBody, object({ tab: optional(tableAt) }));
+        const text = await deps.onboard(id, tab);
         if (text === null) return json(200, { thread: null });
         const { thread } = await windowChatThread();
-        deps.onboarded(id, thread);
+        if (tab === undefined) deps.onboarded(id, thread);
         await deps.dispatch("thread.say", { thread, text }, user);
         return json(201, { thread });
       },

@@ -8,7 +8,13 @@
 //
 // Everything the agent can see must be the same on every run and every disk,
 // or cassettes won't replay, and each fixture's connection is.
-import { type ItemDocs, type Namespaces, type Waiting, waitingOf } from "@oriel/bindings";
+import {
+  type ItemDocs,
+  type Namespaces,
+  type Waiting,
+  type WaitingOne,
+  waitingOf,
+} from "@oriel/bindings";
 import {
   type ChangeLogEntry,
   type Cluster,
@@ -29,8 +35,12 @@ import {
   findThreads,
   noThreads,
   noOptionsYet,
+  type OpenVia,
   OptionsUnfit,
   type OrielReads,
+  readsNow,
+  type SourceDeclaration,
+  type ToOpen,
   type Ulid,
   ulid,
   type WorkstreamMember,
@@ -184,7 +194,9 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   };
 
   const window = input.window;
-  const waiting = window ? await waitingIn(fixtures, input.unfit ?? {}, window.now) : null;
+  const waiting = window
+    ? await waitingIn(fixtures, input.unfit ?? {}, window.now, [...connections.keys()])
+    : null;
   return {
     region,
     reader,
@@ -257,11 +269,15 @@ export function orielOf(workspace: OrielWorkspace | undefined): OrielReads {
 // The case's waiting connections, each its kind's fixture connection with
 // the options the case gives, as the server builds them (decision 0051):
 // why each waits is what opening it says, and its preview is read through
-// the fixture's stand-in.
+// the fixture's stand-in. Then, as the server has them too, each other
+// connected kind whose connector drafts in its own form, which reads with
+// its fixture's options, and whose options the person may ask to change
+// (OA-232).
 async function waitingIn(
   fixtures: Fixtures,
   unfit: Readonly<Record<string, Record<string, unknown>>>,
   now: Instant,
+  connected: readonly string[],
 ): Promise<Waiting | null> {
   const via = { kept: true, log: () => {}, now: () => now };
   const waiting = await Promise.all(
@@ -290,20 +306,44 @@ async function waitingIn(
               (error: unknown) =>
                 error instanceof OptionsUnfit ? error.message : Promise.reject(error),
             );
-      const { review } = declaration;
-      return {
-        id,
-        kind,
-        source: declaration.name,
-        why,
-        options,
-        validator: declaration.options,
-        ...(review ? { draft: { validator: review.draft, doc: review.doc } } : {}),
-        preview: async () => (await declaration.fixture.preview?.(connection, via)) ?? [],
-      };
+      return waitingOne(declaration, connection, why, via);
     }),
   );
-  return waitingOf(waiting);
+  const reading = connected.flatMap((kind) => {
+    const declaration = fixtures.get(kind)?.declaration;
+    if (!declaration?.review || !declaration.fixture.preview || kind in unfit) return [];
+    const connection = {
+      ...declaration.fixture.connection(),
+      id: waitingConnectionId(kind),
+      number: 1,
+      prefix: kind,
+      secret: null,
+    };
+    return [waitingOne(declaration, connection, readsNow, via)];
+  });
+  return waitingOf([...waiting, ...reading]);
+}
+
+// One connection whose options the agent may draft, over its fixture.
+function waitingOne(
+  declaration: SourceDeclaration,
+  connection: ToOpen,
+  why: string,
+  via: OpenVia,
+): WaitingOne {
+  const { review } = declaration;
+  return {
+    id: connection.id,
+    kind: declaration.kind,
+    source: declaration.name,
+    why,
+    options: connection.options,
+    validator: declaration.options,
+    ...(review
+      ? { draft: { validator: review.draft, doc: review.doc, current: review.current } }
+      : {}),
+    preview: async () => (await declaration.fixture.preview?.(connection, via)) ?? [],
+  };
 }
 
 // The ID of a window chat case's `i`th workstream.

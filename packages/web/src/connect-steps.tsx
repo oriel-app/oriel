@@ -284,12 +284,12 @@ export function BrowserStep(props: StepProps<"browser">) {
 }
 
 // A review step (decision 0051): the connection's options as the agent
-// drafted them, or Oriel's guess until then, or with no AI, or, once it
-// reads, as it reads now; each drawn from the source by Oriel, for the
-// person to apply, or to edit and apply (OA-232). It says whose it is, and,
-// before Apply, what applying does to the items the connection has. The
-// same step shows wherever a connection is made, and in Settings, where
-// `beside` names the option it sets.
+// drafted them, or Oriel's guess until then, or with no AI; each drawn from
+// the source by Oriel, for the person to apply, or to edit and apply
+// (OA-232). It says whose it is, and, before Apply, what applying does to
+// the items the connection has. The same step shows wherever a connection
+// is made, and in Settings, where `beside` names the option it sets, and
+// where it edits one table by hand, as it reads now.
 export function ReviewStep(props: {
   connector: ConnectorView;
   step: Step<"review">;
@@ -338,7 +338,8 @@ export function ReviewStep(props: {
         : review.guess
           ? "Oriel's guess, from the first row and the first column with a value in every row."
           : "How Oriel reads it now.";
-  const tables = editing?.redrawn.tables ?? shown?.tables ?? [];
+  const drawn = editing?.redrawn.tables ?? shown?.tables ?? [];
+  const tables = editing?.only ? drawn.filter((table) => table.at === editing.only) : drawn;
   const said = editing?.redrawn.said ?? review.draft?.said ?? review.guess?.said ?? [];
   const apply = () =>
     send({
@@ -407,15 +408,6 @@ export function ReviewStep(props: {
           </>
         ) : !shown ? (
           again
-        ) : review.current ? (
-          <button
-            type="button"
-            class="button"
-            disabled={props.pending}
-            onClick={() => send({ type: "reviewEditClicked", connection })}
-          >
-            Change
-          </button>
         ) : (
           <>
             <button

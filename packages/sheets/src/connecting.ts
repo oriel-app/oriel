@@ -163,6 +163,7 @@ export const sheetsConnect = {
       lede: "Each row becomes an item, under the columns below. Nothing is read until you apply it.",
       reading: "Reading the headers",
       ask: "Draft how Oriel should read the spreadsheets just picked.",
+      fix: "Draft a change to how Oriel reads the tab at {at}.",
     },
   ],
   offer: {

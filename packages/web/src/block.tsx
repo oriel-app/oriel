@@ -8,7 +8,7 @@
 import type { ComponentChildren } from "preact";
 import { atLeast, named, PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
-import { Chip, ItemListContext } from "./parts.tsx";
+import { Chip, Folded, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, ReviewTable, SketchView } from "./view.ts";
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -45,82 +45,91 @@ export function BlockFigure({ block, compact }: { block: BlockView; compact?: bo
 export function ReviewTables(props: {
   tables: readonly ReviewTable[];
   // What the person changes of each table, under it, while they edit
-  // (OA-232); then a table not read shows too, in its place, to read it.
+  // (OA-232); then the tables not read, folded into one line past a few,
+  // to read one.
   controls?: ((table: ReviewTable) => ComponentChildren) | null | false;
 }) {
   const { tables, controls } = props;
   const unread = tables.filter((table) => table.columns.length === 0);
-  const shown = controls ? tables : tables.filter((table) => table.columns.length > 0);
+  const read = tables.filter((table) => table.columns.length > 0);
   return (
     <div class="review-tables">
-      {shown.map((table, i) =>
-        table.columns.length === 0 ? (
-          <section key={i} class="review-table">
-            <p class="review-name">{table.name}</p>
-            {controls && controls(table)}
-          </section>
-        ) : (
-          <section key={i} class="review-table">
-            <div class="review-scroll">
-              <table class="block-table">
-                <caption>{table.name}</caption>
-                <thead>
-                  <tr>
-                    {table.columns.map((column) => (
-                      <th
-                        key={column.at}
-                        scope="col"
-                        data-feeds={column.feeds !== null || undefined}
-                      >
-                        {column.at}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    {table.columns.map((column) => (
-                      <th
-                        key={column.at}
-                        scope="col"
-                        data-feeds={column.feeds !== null || undefined}
-                      >
-                        {column.header ?? "—"}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr class="review-feeds">
-                    {table.columns.map((column) => (
-                      <td key={column.at} data-feeds={column.feeds !== null || undefined}>
-                        {column.feeds ?? "Content"}
-                      </td>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {table.rows.map((row, r) => (
-                    <tr key={r}>
-                      {table.columns.map((column, j) => (
-                        <td key={column.at}>{cellText(row[j] ?? null)}</td>
-                      ))}
-                    </tr>
+      {read.map((table, i) => (
+        <section key={i} class="review-table">
+          <div class="review-scroll">
+            <table class="block-table">
+              <caption>{table.name}</caption>
+              <thead>
+                <tr>
+                  {table.columns.map((column) => (
+                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
+                      {column.at}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <ul class="review-lines">
-              {table.lines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-            {controls && controls(table)}
+                </tr>
+                <tr>
+                  {table.columns.map((column) => (
+                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
+                      {column.header ?? "—"}
+                    </th>
+                  ))}
+                </tr>
+                <tr class="review-feeds">
+                  {table.columns.map((column) => (
+                    <td key={column.at} data-feeds={column.feeds !== null || undefined}>
+                      {column.feeds ?? "Content"}
+                    </td>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, r) => (
+                  <tr key={r}>
+                    {table.columns.map((column, j) => (
+                      <td key={column.at}>{cellText(row[j] ?? null)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul class="review-lines">
+            {table.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {controls && controls(table)}
+        </section>
+      ))}
+      {controls && unread.length <= 3 ? (
+        unread.map((table, i) => (
+          <section key={`unread-${i}`} class="review-table">
+            <p class="review-name">{table.name}</p>
+            {controls(table)}
           </section>
-        ),
-      )}
-      {!controls && unread.length > 0 && (
-        <p class="review-unread">Not read: {unread.map((table) => table.name).join(", ")}.</p>
+        ))
+      ) : controls ? (
+        <Folded label={`${unread.length} tabs not read`} entries={unread} find="Find a tab">
+          {(table) => (
+            <section class="review-table">
+              <p class="review-name">{table.name}</p>
+              {controls(table)}
+            </section>
+          )}
+        </Folded>
+      ) : (
+        unread.length > 0 && <p class="review-unread">{notRead(unread)}</p>
       )}
     </div>
   );
 }
+
+// What a draft doesn't read, in a line: a few by name, and how many more.
+const notRead = (unread: readonly ReviewTable[]): string => {
+  const named = unread.slice(0, 3).map((table) => table.name);
+  const more = unread.length - named.length;
+  return `Not read: ${named.join(", ")}${more > 0 ? `, and ${more} more ${more === 1 ? "tab" : "tabs"}` : ""}.`;
+};
 
 // A sketch under the agent's reply (decision 0033): its HTML, framed from
 // the sketch origin, in a frame with no sandbox token, at one of three
