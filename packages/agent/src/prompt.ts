@@ -166,7 +166,8 @@ export const capturedRules = [
 
 // How the user undoes Oriel's actions, wherever the agent meets them: in the
 // result of the run that recorded them, and in the thread's history.
-export const actionRules = "The user undoes one with Undo under your reply, if one shows, not Revert.";
+export const actionRules =
+  "The user undoes one with Undo under your reply, if one shows, not Revert.";
 
 const actions = (count: number) =>
   count === 1 ? "1 of Oriel's actions" : `${count} of Oriel's actions`;

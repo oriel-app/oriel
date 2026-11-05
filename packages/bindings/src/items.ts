@@ -96,8 +96,7 @@ export const searchFn: Fn = {
   }),
 };
 
-const itemDoc =
-  "An item read live, from any source: its title and its text.";
+const itemDoc = "An item read live, from any source: its title and its text.";
 
 // What `items` and `search()` add to the declarations: `Item` says what the
 // items of each source the region holds are, one line per source.
