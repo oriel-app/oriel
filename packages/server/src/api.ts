@@ -166,7 +166,7 @@ export type ApiDeps = {
   settings: SettingsService;
   // The outside tools the person connected, and what each called, with its
   // Undo (OA-75).
-  tools?: Pick<OutsideTools, "list" | "calls" | "undone">;
+  tools?: Pick<OutsideTools, "list" | "calls" | "take" | "restore">;
   // The desktop app's first run and its commands for the person's CLI.
   setup: Setup;
   log: Log;
@@ -1067,19 +1067,29 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
         const at = linePlace(url.searchParams);
-        // One of an outside tool's calls, from the list of them, names it.
+        // One of an outside tool's calls, from the list of them, names it: its
+        // own Undo runs, whatever the body says, once.
         const called = url.searchParams.get("call");
-        const by = called === null ? undefined : deps.tools?.calls().find((c) => c.id === called);
-        if (called !== null && (!by || by.undone)) throw new Refused(409, "that call was undone");
+        if (called !== null) {
+          const by = at ? null : (deps.tools?.take(called, "user") ?? null);
+          if (!by?.undo || by.undo.action !== name) {
+            if (by) deps.tools?.restore(by.id);
+            throw new Refused(409, "that call has no Undo now");
+          }
+          try {
+            const done = await deps.dispatch.untyped(name, by.undo.input, user, {
+              kind: "tool",
+              name: by.tool,
+            });
+            return json(200, { undo: done.undo });
+          } catch (error) {
+            deps.tools?.restore(by.id);
+            throw error;
+          }
+        }
         const done = at
           ? await deps.undoLine(at, { action: name, input } as Call, user)
-          : await deps.dispatch.untyped(
-              name,
-              input,
-              user,
-              by ? { kind: "tool", name: by.tool } : undefined,
-            );
-        if (by) deps.tools?.undone(by.id, "user");
+          : await deps.dispatch.untyped(name, input, user);
         // What went wrong after it applied, such as a connection's options
         // that don't fit its source (decision 0051), is said too.
         const { problem } = done as { problem?: unknown };

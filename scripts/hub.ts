@@ -27,7 +27,7 @@
 import { setTimeout as wait } from "node:timers/promises";
 import type { ThreadSummaryView, ThreadView } from "../packages/web/src/view.ts";
 import { awaiting, exits, type Outcome, parseAwait, settle } from "./drive-await.ts";
-import { call, type Door, read, Refused, updates } from "./mcp-client.ts";
+import { call, type Door, NotFound, read, Refused, updates } from "./mcp-client.ts";
 
 const line = (value: Record<string, unknown>) => console.log(JSON.stringify(value));
 
@@ -87,7 +87,7 @@ const thread = async (door: Door, id: string): Promise<ThreadView | null> => {
   try {
     return await read<ThreadView>(door, `oriel://threads/${id}`);
   } catch (error) {
-    if (error instanceof Refused) return null;
+    if (error instanceof NotFound) return null;
     throw error;
   }
 };

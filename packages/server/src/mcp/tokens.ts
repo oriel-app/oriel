@@ -3,7 +3,9 @@
 // tool is who the person named when they connected it, never what the tool
 // says of itself; it reads, reads and acts, or speaks for the person too,
 // and the person can revoke it. Its names are unique among the tools not
-// revoked, so every record's name is one tool.
+// revoked, so no two tools the person has connected now share one; what a
+// tool called is kept by its ID, so one connected later under a revoked
+// tool's name never takes back that tool's calls.
 // Kept in memory for the spike: the OA-72 story keeps them in the database.
 import { createHash, randomBytes } from "node:crypto";
 import { type Call, type Instant, toolName, type Ulid } from "@oriel/core";
@@ -28,6 +30,7 @@ export type ConnectedTool = {
 // undoes it: null for one with no Undo, or once undone.
 export type ToolCall = {
   id: Ulid;
+  toolId: Ulid;
   tool: string;
   action: string;
   input: unknown;
@@ -94,10 +97,11 @@ export function outsideTools(deps: { now(): Instant; newId(): Ulid }) {
     list: (): ConnectedTool[] => [...byHash.values()],
 
     // A call a tool made, kept with its Undo, newest last.
-    called(tool: string, action: string, input: unknown, undo: Call | null): ToolCall {
+    called(by: ConnectedTool, action: string, input: unknown, undo: Call | null): ToolCall {
       const call: ToolCall = {
         id: deps.newId(),
-        tool,
+        toolId: by.id,
+        tool: by.name,
         action,
         input,
         at: deps.now(),
@@ -105,17 +109,28 @@ export function outsideTools(deps: { now(): Instant; newId(): Ulid }) {
         undone: null,
       };
       calls.push(call);
-      const own = calls.filter((each) => each.tool === tool);
+      const own = calls.filter((each) => each.toolId === by.id);
       if (own.length > keptCalls) calls.splice(calls.indexOf(own[0] as ToolCall), 1);
       return call;
     },
-    // The calls tools made, newest first: one tool's, or every tool's.
-    calls: (tool?: string): ToolCall[] =>
-      calls.filter((call) => tool === undefined || call.tool === tool).toReversed(),
-    // A call undone, by the tool or the person: its Undo is spent.
-    undone(id: Ulid, by: "tool" | "user"): void {
+    // The calls tools made, newest first: one tool's, by its ID, or every
+    // tool's.
+    calls: (toolId?: Ulid): ToolCall[] =>
+      calls.filter((call) => toolId === undefined || call.toolId === toolId).toReversed(),
+    // A call to undo, by the tool (its ID) or the person, marked spent at
+    // once so a second Undo, or one racing it, finds it spent; null when
+    // there's no such call of theirs, it has no Undo, or it's spent.
+    take(id: string, by: { tool: Ulid } | "user"): ToolCall | null {
       const call = calls.find((each) => each.id === id);
-      if (call) call.undone = { at: deps.now(), by };
+      if (!call?.undo || call.undone) return null;
+      if (by !== "user" && call.toolId !== by.tool) return null;
+      call.undone = { at: deps.now(), by: by === "user" ? "user" : "tool" };
+      return call;
+    },
+    // A call whose Undo failed: it can be undone again.
+    restore(id: Ulid): void {
+      const call = calls.find((each) => each.id === id);
+      if (call) call.undone = null;
     },
   };
 }

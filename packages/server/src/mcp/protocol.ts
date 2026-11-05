@@ -86,20 +86,22 @@ const templates = windowReads
     mimeType: "application/json",
   }));
 
-// Whether what the window's streams carried may change what a URI reads: a
-// thread's or a workstream's own page only for its own changes, a diff only
-// for its change set's, and every list, the overview and Browse for any.
+// Whether what the window's streams carried may change what a URI reads:
+// a thread's page only its own changes; a workstream's page its own, and
+// any thread's, as it lists its threads' states; a diff its change set's,
+// and a sync's, as it reads the source; an item only a sync; and every
+// list, the overview and Browse anything.
 function touches(uri: string, heard: Heard): boolean {
   const own = /^oriel:\/\/(threads|workstreams|change-sets|items)\/([^/?]+)/.exec(uri);
   if (!own) return true;
   const [, kind, id] = own;
-  if (heard === null) return kind === "items";
+  if (heard === null) return kind !== "threads";
   if (kind === "threads")
     return (
       ("thread" in heard && heard.thread === id) ||
       ("deleted" in heard && Array.isArray(heard.deleted) && heard.deleted.includes(id as Ulid))
     );
-  if (kind === "workstreams") return "workstream" in heard && heard.workstream === id;
+  if (kind === "workstreams") return "workstream" in heard ? heard.workstream === id : true;
   if (kind === "change-sets") return "changeSet" in heard && heard.changeSet === id;
   return false;
 }
@@ -183,8 +185,8 @@ export function mcpServer(deps: McpDeps) {
     const asked = readOf(uri);
     if (!asked) return null;
     if (asked.item !== undefined && !outside.indexed(asked.item as ItemId)) return null;
-    const method = asked.read.route.startsWith("POST ") ? "POST" : "GET";
-    const answer = await outside.window(method, asked.path);
+    if (asked.read.own === "diff") return outside.diff(asked.id as Ulid);
+    const answer = await outside.window(asked.path);
     if (answer.status >= 400) return null;
     return asked.read.pick ? asked.read.pick(answer.body) : answer.body;
   }
@@ -294,8 +296,13 @@ export function mcpServer(deps: McpDeps) {
         return ok({ resourceTemplates: templates, ...cached });
       case "resources/read": {
         const uri = params["uri"];
-        if (typeof uri !== "string" || !allowed(by, false))
+        if (typeof uri !== "string")
           return fail(codes.invalidParams, "Resource not found", { uri });
+        if (!allowed(by, false))
+          return fail(
+            codes.invalidRequest,
+            "Too many calls this minute. Wait a minute, then try again.",
+          );
         const value = await readResource(uri);
         if (value === null) return fail(codes.invalidParams, "Resource not found", { uri });
         return ok({

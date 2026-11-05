@@ -806,6 +806,13 @@ const handlers = {
   // name, in which no action of the agent's applies (OA-75).
   "thread.say": async ({ thread: id, text }, actor, deps) => {
     const thread = mustThread(deps, id);
+    // The window chat is the user's own conversation with the window
+    // (decision 0027): a tool opens a thread of its own.
+    if (
+      actor.kind === "tool" &&
+      deps.workstreams.get(thread.workstreamId)?.origin.kind === "window"
+    )
+      throw new ActionError("refused", "The window chat is the user's; open a thread of your own.");
     if (actor.kind === "tool" && deps.speaks?.(actor.name)) {
       const { seq } = deps.turns.sayAsTool(thread.id, actor.name, text);
       return { output: { seq }, undo: null, changed: null, events: "counted" };

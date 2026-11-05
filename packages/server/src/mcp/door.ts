@@ -22,9 +22,13 @@ export type Outside = {
   indexed(id: ItemId): boolean;
   // The tools the person connected, and what each called.
   tools: OutsideTools;
-  // One of the window's read routes (reads.ts), answered as the window's
-  // page is: its status, and its JSON. `path` is under /api.
-  window(method: "GET" | "POST", path: string): Promise<{ status: number; body: unknown }>;
+  // One of the window's read routes (reads.ts), a GET, answered as the
+  // window's page is: its status, and its JSON. `path` is under /api.
+  window(path: string): Promise<{ status: number; body: unknown }>;
+  // A change set's diff as the window shows it, read from its source now,
+  // without keeping what it read as what the person approves against; null
+  // when there's none.
+  diff(id: Ulid): Promise<unknown | null>;
   // Calls `listener` with everything the window's streams carry, until the
   // call it gives back stops it.
   watch(listener: (heard: Heard) => void): () => void;

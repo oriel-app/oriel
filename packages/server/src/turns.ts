@@ -636,7 +636,11 @@ export function turns(deps: TurnDeps) {
     // start a turn, as the user's would, under its name. The turn is the
     // tool's, so none of the agent's actions apply in it (decision 0024),
     // and only the user approves what it proposes.
-    sayAsTool(threadId: Ulid, name: string, text: string): { seq: number } {
+    // What shows as nothing is dropped, as from a held message, so what the
+    // user reads under its name is all the agent hears.
+    sayAsTool(threadId: Ulid, name: string, words: string): { seq: number } {
+      const text = words.replace(hidden, "");
+      if (text.trim() === "") throw new RangeError("Nothing to say: the words show as nothing.");
       const { seq, at, workspaceId } = start(threadId, text, { kind: "tool", name });
       deps.emit({ name: "question.asked", at, workspaceId, threadId });
       return { seq };

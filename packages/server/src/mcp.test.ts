@@ -326,9 +326,12 @@ test("a revoked tool's open subscription ends as it is revoked", async (t) => {
 });
 
 // Each turn proposes a new title for SYN-23, which only the user approves.
+// It also asks to take SYN-10 out of the workstream, which applies only in a
+// turn the user started (decision 0024).
 const rename: Script = async () => ({
   value: null,
   writes: [["jira.setSummary", ["jira:SYN-23", "A program asked"]]],
+  intents: [["workstream.remove", [{ items: ["jira:SYN-10"] }]]],
 });
 const proposing = {
   plan: () => [{ run: "rename" }, { text: "I proposed a new title." }],
@@ -391,6 +394,9 @@ test("a program reads what the window reads, from the window's own routes", asyn
     `oriel://threads/${thread}/deletion`,
     "oriel://browse?grouping=epic&token=x",
     "oriel://items/jira%3ASYN-9999",
+    "oriel://items/%E0%A4%A",
+    // The workspace's event stream is no thread: a read never opens one.
+    "oriel://threads/events",
   ]) {
     const refused = await app.call(app.reading.token, "resources/read", { uri });
     assert.equal(refused.error?.code, -32602, uri);
@@ -483,11 +489,26 @@ test("every call a tool makes that changes something has an Undo, the tool's and
     409,
   );
   assert.equal((await act("undo", { call: latest.id })).result.isError, true);
-  // And another tool can't take back this one's calls.
-  const other = app.connected.connect("Another tool", "act");
+  // The person's Undo of a call runs that call's own Undo, never another.
+  const reopened = await act("workstream_rename", { workstream: app.workstream, name: "Again" });
+  const again = (reopened.result.structuredContent as unknown as { call: string }).call;
+  const wrong = await app.post(`/api/actions/workstream.add?call=${again}`, {
+    workstream: app.workstream,
+    items: ["jira:SYN-10"],
+  });
+  assert.equal(wrong.status, 409);
+  // A name the person gave since stays: the tool's Undo is refused.
+  await app.post(`/api/workstreams/${app.workstream}/rename`, { name: "The person's" });
+  const stale = await act("undo", { call: again });
+  assert.match(stale.result.content[0]?.text ?? "", /name changed since/);
+  assert.equal(await name(), "The person's");
+  // And no other tool takes back this one's calls, not even one connected
+  // later under its name.
+  app.connected.revoke(app.acting.tool.id);
+  const other = app.connected.connect("Claude Code", "act");
   const theirs = await app.call(other.token, "tools/call", {
     name: "undo",
-    arguments: { call: listed.calls[1]?.id },
+    arguments: { call: again },
   });
   assert.equal(theirs.result.isError, true);
 });
@@ -513,6 +534,18 @@ test("a tool the person lets speak for them starts a turn under its own name, an
   const [set] = page.changeSets;
   assert.equal(set?.status, "open");
   assert.ok(page.entries.some((each) => each.kind === "text"));
+  // The turn was the tool's, so the agent's action didn't apply: SYN-10 stays.
+  const members = json<WorkstreamView>(await app.get(`/api/workstreams/${app.workstream}`));
+  assert.ok(members.members.some((member) => member.ref.id === "jira:SYN-10"));
+  // Not in the window chat, which is the person's own.
+  await app.post("/api/window-chat/messages", { text: "What's stuck?" });
+  await app.app.settled();
+  const chat = json<{ thread: string }>(await app.get("/api/window-chat")).thread;
+  const refused = await app.call(speaking.token, "tools/call", {
+    name: "thread_say",
+    arguments: { thread: chat, text: "Rename SYN-23" },
+  });
+  assert.match(refused.result.content[0]?.text ?? "", /window chat is the user's/);
   // One that only acts still has its words held.
   await app.call(app.acting.token, "tools/call", {
     name: "thread_say",

@@ -71,7 +71,7 @@ const actionTools: Tool[] = (Object.keys(actions) as ActionName[]).flatMap((acti
         const input = notTheUsers(action, args);
         const { undo, ...output } = await outside.dispatch.untyped(action, input, actorOf(by));
         // Kept, with its Undo, for the window to list and the tool to take back.
-        const call = outside.tools.called(by.name, action, input, undo);
+        const call = outside.tools.called(by, action, input, undo);
         return { ...output, call: call.id, undoable: undo !== null };
       },
     },
@@ -99,19 +99,34 @@ const undoTool: Tool = {
   },
   acts: true,
   call: async (args, by, outside) => {
-    const made = outside.tools.calls(by.name).find((each) => each.id === args["call"]);
+    const id = typeof args["call"] === "string" ? args["call"] : "";
+    const made = outside.tools.calls(by.id).find((each) => each.id === id);
     if (!made) throw new TypeError("$.call: expected one of your own calls");
-    if (made.undone) throw new TypeError("That call was undone already.");
-    if (!made.undo) throw new TypeError(`${made.action} has no Undo.`);
-    const { undo, ...output } = await outside.dispatch.untyped(
-      made.undo.action,
-      made.undo.input,
-      actorOf(by),
-      actorOf(by),
-    );
-    outside.tools.undone(made.id, "tool");
-    const call = outside.tools.called(by.name, made.undo.action, made.undo.input, undo);
-    return { ...output, call: call.id, undoable: undo !== null };
+    const undo = made.undo;
+    if (!undo) throw new TypeError(`${made.action} has no Undo.`);
+    // A name the user gave since stays: a tool's Undo gives a workstream's
+    // name back only while the name it gave stands.
+    if (made.action === "workstream.rename") {
+      const { workstream, name } = made.input as { workstream: string; name: string };
+      const now = (await outside.reads.workstreams()).find((each) => each.id === workstream);
+      if (now?.name !== name.trim())
+        throw new TypeError("The name changed since, so only the user can put it back.");
+    }
+    if (!outside.tools.take(made.id, { tool: by.id }))
+      throw new TypeError("That call was undone already.");
+    try {
+      const { undo: redo, ...output } = await outside.dispatch.untyped(
+        undo.action,
+        undo.input,
+        actorOf(by),
+        actorOf(by),
+      );
+      const call = outside.tools.called(by, undo.action, undo.input, redo);
+      return { ...output, call: call.id, undoable: redo !== null };
+    } catch (error) {
+      outside.tools.restore(made.id);
+      throw error;
+    }
   },
 };
 

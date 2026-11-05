@@ -11,6 +11,8 @@ export type Door = { url: string; token: string };
 
 // A refusal the door gave: a JSON-RPC error, or a tool's error.
 export class Refused extends Error {}
+// A resource the door has no such thing for, as a thread that's gone.
+export class NotFound extends Refused {}
 
 let id = 0;
 const headers = (door: Door, method: string, name?: string): Record<string, string> => ({
@@ -52,7 +54,10 @@ export async function request(
     result?: Record<string, unknown>;
     error?: { message: string };
   };
-  if (answer.error) throw new Refused(answer.error.message);
+  if (answer.error)
+    throw answer.error.message === "Resource not found"
+      ? new NotFound(answer.error.message)
+      : new Refused(answer.error.message);
   return answer.result ?? {};
 }
 

@@ -4,7 +4,8 @@
 // can't drift. `oriel://threads/{id}` is GET /api/threads/{id}: the thread
 // as its page shows it, entries, blocks, change sets and next steps. Two are
 // a view of a route, as the window's sidebar draws Needs you and the Done
-// page from the one list of threads. The window's event streams are the
+// page from the one list of threads, and the diff is the door's own render
+// of the diff's view, which keeps nothing. The window's event streams are the
 // door's subscriptions (protocol.ts). What a program may not read, and why,
 // is in parity.ts.
 import { type ThreadSummaryView, waitsOnUser } from "@oriel/web/view";
@@ -19,6 +20,10 @@ export type WindowRead = {
   route: string;
   // Only part of what the route answers, as the window draws it.
   pick?: (answer: unknown) => unknown;
+  // Served by the door's own read of the same view, not the route: the
+  // diff, whose route keeps what it read as what the person approves
+  // against.
+  own?: "diff";
   // Listed in `resources/list`, as one resource: it has no variables.
   listed?: true;
 };
@@ -112,6 +117,7 @@ export const windowReads: readonly WindowRead[] = [
       "What a change set would write, field by field, read from its source now, as the user reviews it. Only the user approves it.",
     uriTemplate: "oriel://change-sets/{id}/diff",
     route: "POST /change-sets/:id/diff",
+    own: "diff",
   },
   {
     name: "search",
@@ -168,19 +174,28 @@ export const windowReads: readonly WindowRead[] = [
   },
 ];
 
-// A template as a pattern for the URIs it names: each path variable one
-// segment, and the query only the names it lists.
+// What each path variable matches: an ID is a ULID, as the route's own
+// pattern has it, so `oriel://threads/events` names no thread, and an item
+// is one segment, whose ID the door checks the index has.
+const variables: Record<string, string> = { id: "([0-9A-HJKMNP-TV-Z]{26})", item: "([^/?#]+)" };
+
+// A template as a pattern for the URIs it names: each path variable as
+// above, and the query only the names it lists.
 function pattern(template: string): { path: RegExp; query: Set<string> } {
   const [, base = template, names = ""] =
     /^([^{?]*(?:\{[a-z]+\}[^{?]*)*)(?:\{\?([a-z,-]+)\})?$/.exec(template) ?? [];
-  const path = base.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{[a-z]+\}/g, "([^/?#]+)");
+  const path = base
+    .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
+    .replace(/\{([a-z]+)\}/g, (_, name: string) => variables[name] ?? "(?!)");
   return { path: new RegExp(`^${path}$`), query: new Set(names.split(",").filter(Boolean)) };
 }
 const patterns = new Map(windowReads.map((read) => [read, pattern(read.uriTemplate)]));
 
 // The read a URI names, and the window's path it reads, with its query;
 // null when no read names it, or it asks for what its route doesn't read.
-export function readOf(uri: string): { read: WindowRead; path: string; item?: string } | null {
+export function readOf(
+  uri: string,
+): { read: WindowRead; path: string; id?: string; item?: string } | null {
   const url = URL.parse(uri);
   if (url?.protocol !== "oriel:") return null;
   // `oriel://threads/x`: the host is the route's first segment.
@@ -193,10 +208,17 @@ export function readOf(uri: string): { read: WindowRead; path: string; item?: st
     // The route's own `:x`s, in order, from the URI's variables.
     let n = 1;
     const filled = route.replace(/:[a-z]+/g, () => matched[n++] ?? "");
-    const item = read.uriTemplate.includes("{item}") ? decodeURIComponent(matched[1] ?? "") : null;
+    let item: string | null = null;
+    try {
+      if (read.uriTemplate.includes("{item}")) item = decodeURIComponent(matched[1] ?? "");
+    } catch {
+      return null;
+    }
+    const id = read.uriTemplate.includes("{id}") ? matched[1] : undefined;
     return {
       read,
       path: `/api${filled}${url.search}`,
+      ...(id === undefined ? {} : { id }),
       ...(item === null ? {} : { item }),
     };
   }

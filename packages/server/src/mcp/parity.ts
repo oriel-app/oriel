@@ -64,6 +64,6 @@ export const windowRoutes: Record<string, ProgramWay> = {
   "POST /threads": { door: "workstream_create thread_open thread_say" },
   "POST /workstreams/:id/threads": { door: "thread_open thread_say" },
   "POST /window-chat/messages": {
-    not: "The window chat is the person's own conversation with the window (decision 0027); a program opens a thread of its own.",
+    not: "The window chat is the person's own conversation with the window (decision 0027), and thread_say refuses a tool there; a program opens a thread of its own.",
   },
 };

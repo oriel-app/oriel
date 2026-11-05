@@ -205,7 +205,7 @@ if (values.check) {
   );
   tools.revoke(acting.tool.id);
   show("tools/list, once revoked", await call(acting.token, "tools/list"));
-  const page = await app.outside.window("GET", `/api/workstreams/${workstream.workstream}`);
+  const page = await app.outside.window(`/api/workstreams/${workstream.workstream}`);
   show(
     "the workstream's latest version, as the window shows it",
     (page.body as { changes: unknown[] }).changes[0],

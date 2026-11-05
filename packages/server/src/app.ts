@@ -94,7 +94,13 @@ import type { KeyCheck, Provider, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
-import { ActionError, blankWorkstreamName, type Changed, dispatcher } from "./actions.ts";
+import {
+  ActionError,
+  blankWorkstreamName,
+  type Changed,
+  dispatcher,
+  liveChangeSet,
+} from "./actions.ts";
 import type { Outside } from "./mcp/door.ts";
 import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
@@ -2121,22 +2127,30 @@ export async function createApp(options: AppOptions): Promise<App> {
       reader,
       indexed: (id) => records().some((record) => record.id === id),
       tools: connectedTools,
-      // The window's own route, past the window's guard, which the door
-      // stands in for with its own (mcp/http.ts).
-      window: async (method, path) => {
+      // One of the window's own read routes, past the window's guard, which
+      // the door stands in for with its own (mcp/http.ts): a GET only, and
+      // never an event stream, which a door's read would leave open.
+      window: async (path) => {
         const url = new URL(path, "http://door/");
         const reply = await built.api(
-          {
-            method,
-            url: url.pathname + url.search,
-            headers: { "content-type": "application/json" },
-            body: async () => "{}",
-          },
+          { method: "GET", url: url.pathname + url.search, headers: {} },
           url,
         );
+        if (reply?.stream) {
+          await reply.stream[Symbol.asyncIterator]().return?.();
+          return { status: 404, body: null };
+        }
         if (!reply) return { status: 404, body: null };
         const text = typeof reply.body === "string" ? reply.body : "";
         return { status: reply.status, body: text ? JSON.parse(text) : null };
+      },
+      // A change set's diff as the window shows it, rendered from the source
+      // now without keeping it: what the person approves against stays what
+      // they were shown, whatever a program read since (decision 0050).
+      diff: async (id) => {
+        const set = await liveChangeSet({ changeSets: sets, threads, workspaceId, now }, id);
+        if (!set) return null;
+        return viewer.diff(await sets.look(set.id), set, sets.applying(set.id));
       },
       // What each of Oriel's actions changed, and every thread that moved in
       // a turn, as the window's streams hear them.
