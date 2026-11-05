@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { RunResult, Ulid } from "@oriel/core";
 import type { ChatMessage } from "./contract.ts";
 import {
+  actionRules,
   capturedRules,
   roundClosed,
   runResultText,
@@ -176,6 +177,13 @@ test("a run's result carries what its writes are and what to do when it fails", 
     0,
   );
   for (const rule of capturedRules) assert.ok(captured.includes(rule), rule);
+  const recorded = runResultText(
+    result({
+      intents: [{ action: "thread.done", input: { thread: "01J00000000000000000000000" } }],
+    }),
+    0,
+  );
+  assert.ok(recorded.includes(actionRules));
   const failed = (hint?: string) =>
     runResultText(
       result({

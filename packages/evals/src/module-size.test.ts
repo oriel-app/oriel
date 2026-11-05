@@ -36,6 +36,9 @@ const budgets = {
   // its bars sum by label: 4,668 to 4,829. Rose by about 610 for history()
   // and the chart forms (decision 0053): 5,439. Rose by 15 for show()'s
   // type naming `from` (climbs show-from and show-from-2): 5,448.
+  // Fell by 857 in climb module-shrink (OA-241), which said each thing once
+  // and moved the actions' Undo rule into their run's result: 4,591. The
+  // budget stays, as room for the agent stories that waited on it.
   tool: 600,
   base: 5_450,
 };

@@ -164,6 +164,11 @@ export const capturedRules = [
   "Nothing is sent until the user approves: say you proposed them, never that they're done.",
 ];
 
+// How the user undoes Oriel's actions, wherever the agent meets them: in the
+// result of the run that recorded them, and in the thread's history.
+export const actionRules =
+  "The user undoes one with Undo under your reply, if one shows, not Revert.";
+
 const actions = (count: number) =>
   count === 1 ? "1 of Oriel's actions" : `${count} of Oriel's actions`;
 
@@ -214,6 +219,7 @@ export function runResultText(
       replacedIntents
         ? `They replace the ${actions(replacedIntents)} an earlier run in this turn recorded, and apply when this turn ends.`
         : "They apply when this turn ends, unless a later run in this turn records actions instead.",
+      actionRules,
     );
   }
   if (drafted) {

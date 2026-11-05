@@ -5,6 +5,7 @@
 // list under the reply says what it did.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
+import { actionRules } from "@oriel/agent";
 import { type Actor, type IndexRecord, instant, ulid } from "@oriel/core";
 import {
   ensureWorkspace,
@@ -538,7 +539,7 @@ test("the agent may reopen another thread marked done; one that isn't is refused
   assert.equal(view.state, "working");
 });
 
-test("the agent's history says which of its actions the user undid", () => {
+test("the agent's history says which of its actions the user undid, and how the user undoes one", () => {
   const thread = ulid(2, new Uint8Array(10));
   const call = { action: "thread.done" as const, input: { thread } };
   const lines = [
@@ -555,7 +556,30 @@ test("the agent's history says which of its actions the user undid", () => {
     () => "",
   );
   assert.deepEqual(told, [
-    { role: "actions", text: `applied ${JSON.stringify(call)}, which the user then undid`, at: t0 },
+    {
+      role: "actions",
+      text: `applied ${JSON.stringify(call)}, which the user then undid\n${actionRules}`,
+      at: t0,
+    },
+  ]);
+  // A refusal applied nothing, so there is nothing to undo.
+  const refused = history(
+    [
+      {
+        seq: 1,
+        at: t0,
+        role: "agent",
+        event: {
+          kind: "actions",
+          runId: thread,
+          lines: [{ call, touched: lines[0]!.touched, applied: false, why: "it is done" }],
+        },
+      },
+    ],
+    () => "",
+  );
+  assert.deepEqual(refused, [
+    { role: "actions", text: `refused ${JSON.stringify(call)}: it is done`, at: t0 },
   ]);
 });
 

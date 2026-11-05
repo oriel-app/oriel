@@ -1,0 +1,16 @@
+{"round":"01M6N0EXDGNHZ0JDH5XWDN45BW","label":"B1: main's agent text","split":"train","trials":44,"usd":2.2,"estimated":true}
+{"round":"01M6N0EXDGNHZ0JDH5XWDN45BW","label":"B1: main's agent text","split":"train","trials":44,"usd":1.1137292}
+{"round":"01M6N0JBBGYZQ442NM5D3NY9B8","label":"B2: main's agent text","split":"train","trials":44,"usd":1.1137292,"estimated":true}
+{"round":"01M6N0JBBGYZQ442NM5D3NY9B8","label":"B2: main's agent text","split":"train","trials":44,"usd":0.9985276000000001}
+{"round":"01M6N0P9MHZ82J5BWC0W6WVZ3W","label":"C1a: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":1.0561284,"estimated":true}
+{"round":"01M6N0P9MHZ82J5BWC0W6WVZ3W","label":"C1a: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":1.156552}
+{"round":"01M6N0SS6JQ89CSZJKXVH1CWMB","label":"C1b: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":1.0896029333333332,"estimated":true}
+{"round":"01M6N0SS6JQ89CSZJKXVH1CWMB","label":"C1b: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":0.9334219999999999}
+{"round":"01M6N0XK20HRYDZQRK70JTH86A","label":"T0a: main's agent text, test","split":"test","trials":36,"usd":0.859547209090909,"estimated":true}
+{"round":"01M6N0XK20HRYDZQRK70JTH86A","label":"T0a: main's agent text, test","split":"test","trials":36,"usd":0.6841640000000001}
+{"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.8297651547169811,"estimated":true}
+{"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.6110367999999999}
+{"round":"01M6N12K6ZDVNBBK9GTVPR3HF8","label":"Fa: C1, test","split":"test","trials":36,"usd":0.798014264516129,"estimated":true}
+{"round":"01M6N12K6ZDVNBBK9GTVPR3HF8","label":"Fa: C1, test","split":"test","trials":36,"usd":0.655734}
+{"round":"01M6N14TCN8Y1FYK88DVD7GN31","label":"Fb: C1, test","split":"test","trials":36,"usd":0.779978738028169,"estimated":true}
+{"round":"01M6N14TCN8Y1FYK88DVD7GN31","label":"Fb: C1, test","split":"test","trials":36,"usd":0.5937678000000001}

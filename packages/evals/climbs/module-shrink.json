@@ -1,0 +1,87 @@
+{
+  "cap": 10,
+  "reps": 4,
+  "cases": {
+    "chart-moved-by-workstream": {
+      "hash": "d3f37e9fb468ab712efc8c89ef751d57c9e24a6cca86df5a806299531b3d827f",
+      "group": "blocks"
+    },
+    "delete-workstream-on-its-page": {
+      "hash": "246f2247fae1387d31a202b2a3d0b9a25a8588a6eed9fddc43a6c3f647c89e2f",
+      "group": "oriel"
+    },
+    "estimate-unestimated-checkout": {
+      "hash": "5cc6412b2ca3c4aa2d52d8e16c5b4e8cbc0c6affc31886ccf7a4ae6b26c208d3",
+      "group": "changes"
+    },
+    "find-approved-slack-post": {
+      "hash": "14a5e81b1d39ade4e24f4f021dd121c8e052373af0e5452d7f1243cda0aea935",
+      "group": "oriel"
+    },
+    "injection-file-name": {
+      "hash": "ab28d146cdb10293dfee1814c4b02f341188d03275233837c314264957b4392d",
+      "group": "injection"
+    },
+    "injection-meeting-notes-catchup": {
+      "hash": "975b6f2c1b52ddc41e79bb1da67f5620c3fd9b928f3b02f27df90e300f7a337f",
+      "group": "injection"
+    },
+    "injection-meeting-notes": {
+      "hash": "c6a9efc8c90950bdce7c4499e35899a2fc5998dfbd7c197117d61cc9b4273438",
+      "group": "injection"
+    },
+    "injection-slack-message": {
+      "hash": "dcc66742f30fbdd62c2b6a674d10a20f3a9e28d76b089eb2afdeb63a511ed15f",
+      "group": "injection"
+    },
+    "injection-slack-reply-done": {
+      "hash": "d9d931dc8a311c861f0b55e110dca2f6f71db972453df1f6bcef2b01f08e3e1c",
+      "group": "injection"
+    },
+    "injection-syn45-description": {
+      "hash": "3575d9b609cc7f66f9a31b2f733d962753ae995ef8e5510082e8049ebd199362",
+      "group": "injection"
+    },
+    "injection-syn98-comments": {
+      "hash": "cc43368945c574ae865e41e083f6fe4dc48e8c7d0e8bd2b2b07250e37e8f68c1",
+      "group": "injection"
+    },
+    "injection-window-overview": {
+      "hash": "472baaa05c81a03dc1392be75195d32d92a780d22d44d3fa4d2fb3bc1f792c7f",
+      "group": "injection"
+    },
+    "no-manual-epic": {
+      "hash": "a5c8b16a4e84adeae4a834b47972295f1fe46082c1e28a842c55de21e8bcc23e",
+      "group": "oriel"
+    },
+    "remove-done-boarding": {
+      "hash": "c9ac3bdc5b64fea5f161de89e73244d9d3d7a40f44ba9bbe09a8cde2e4994e97",
+      "group": "oriel"
+    },
+    "revert-not-manual-cleanup": {
+      "hash": "7c6d7c16e09c655f7be0974c3825bc020a51a99bdc70e9047686334f61e0aa48",
+      "group": "oriel"
+    },
+    "scope-off-region-question": {
+      "hash": "a3732db4f93c89f52586c70c992105885a8551c5fd0221ab075df23475653e0c",
+      "group": "scope"
+    },
+    "scope-promo-codes": {
+      "hash": "a88bd92e4444ff1290c798973abe688e73c7d4ec90fc1c5660287688c13d9878",
+      "group": "scope"
+    },
+    "table-weather-stories": {
+      "hash": "b2106850e63f4484884a82cce26e7670e3a45a55da3b3c0ef92e37ab3ca5d812",
+      "group": "blocks"
+    },
+    "table-workstreams-quiet": {
+      "hash": "96543cfc0f64930bf10f22d9e990e154ec9b1e16e2a1ca9c55da421d7d4137d4",
+      "group": "blocks"
+    },
+    "tombstones-deleted-and-renamed": {
+      "hash": "f930f71cd8dbd2d96feaa4b24c8c90933b89b28c976d445156706ec25c19f54f",
+      "group": "reading"
+    }
+  },
+  "subset": true
+}
