@@ -1,0 +1,102 @@
+/* PROPOSAL: the switch, redrawn (Controls lab, /lab/switch). Not in Oriel
+   yet. One class, .switch-track, draws the track and its knob (::before) on
+   either element: today's <button role="switch" aria-checked> (the
+   recommendation, so Enter and Space both still flip it), or a checkbox
+   with role="switch" and `appearance: none`.
+
+   What changes from window.css:5443-5475: off is drawn as an outline in
+   --text-faint, which clears 3:1 against the surface in every theme, where
+   today's --line-strong track doesn't, and the off knob is --text-faint,
+   not --on-accent, which is dark in the dark schemes and vanishes on the
+   dark track. On is still the accent, your choice made. Locked
+   (aria-disabled) looks as disabled does today, but stays in the tab order
+   so its reason can be heard. Focus is window.css's :focus-visible ring
+   (window.css:273). */
+
+.switch-track {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 2.25rem;
+  height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  border: var(--border-thin) solid var(--text-faint);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  vertical-align: middle;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--duration-quick) var(--ease-out),
+    border-color var(--duration-quick) var(--ease-out);
+}
+
+/* Its place in a settings field: a stand-in for `.settings-switch .switch`
+   (window.css:5491), which a proposal can't name. It does nothing outside
+   a grid, and goes when this becomes `.switch`. */
+.switch-track {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+}
+
+/* The knob: where today's .switch-knob sits, less the track's border. */
+.switch-track::before {
+  content: "";
+  position: absolute;
+  top: calc(0.1875rem - var(--border-thin));
+  left: calc(0.1875rem - var(--border-thin));
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition:
+    transform var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick) var(--ease-out);
+}
+
+.switch-track:hover:not(:disabled, [aria-disabled="true"]) {
+  border-color: var(--text-muted);
+}
+
+.switch-track:hover:not(:disabled, [aria-disabled="true"])::before {
+  background: var(--text-muted);
+}
+
+.switch-track:is([aria-checked="true"], :checked),
+.switch-track:is([aria-checked="true"], :checked):hover {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.switch-track:is([aria-checked="true"], :checked)::before,
+.switch-track:is([aria-checked="true"], :checked):hover::before {
+  background: var(--on-accent);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(1rem);
+}
+
+/* Locked by its source, as for a spreadsheet the person can only view
+   (window.css:5511), or disabled. */
+.switch-track:is(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Windows' high-contrast colours drop backgrounds, which would leave an
+   empty outline (and today's switch, which has no border, nothing at all):
+   there the knob is a ring, in the system's text colour, and where it sits
+   says on or off. */
+@media (forced-colors: active) {
+  .switch-track::before {
+    border: var(--border-thick) solid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-track::before {
+    transition: none;
+  }
+}

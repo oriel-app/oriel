@@ -1,0 +1,94 @@
+/* PROPOSAL: ChatInput (drift report, D3). One framed field for the four
+   places a person asks: the overview's ask bar, the window chat, the
+   thread composer and the workstream's Ask box. Not in Oriel yet.
+
+   Written to Oriel's rules, so it can be pasted into window.css: tokens
+   only (Oriel's own theme check judges this file in `pnpm check`), and no
+   class Oriel already has. The frame shows focus the way the sidebar's
+   search field does today (window.css:483): its border and a ring in
+   --focus, so the field inside needs no outline. */
+
+.chat-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.chat-input:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 var(--border-thin) var(--focus);
+}
+
+/* Marked with the theme's --ask-mark: Broadsheet rules the ask bar's start
+   edge, Graphite leaves it. */
+.chat-input[data-marked] {
+  border-inline-start: var(--ask-mark);
+}
+
+.chat-input[data-elevation="raised"] {
+  box-shadow: var(--shadow);
+}
+
+.chat-input[data-elevation="raised"]:focus-within {
+  box-shadow:
+    0 0 0 var(--border-thin) var(--focus),
+    var(--shadow);
+}
+
+.chat-input-field {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: none;
+  line-height: var(--leading);
+}
+
+.chat-input-field:focus-visible {
+  outline: none;
+}
+
+.chat-input-field::placeholder {
+  color: var(--text-faint);
+}
+
+/* Grows with what's written, up to a limit, then scrolls. */
+.chat-input[data-lines="grow"] .chat-input-field {
+  min-height: 2.5rem;
+  max-height: 12rem;
+  resize: none;
+  field-sizing: content;
+}
+
+/* One line, as the ask bar is (decision 0041: Enter always asks there). */
+.chat-input[data-lines="one"] {
+  align-items: center;
+  padding-block: var(--space-1);
+}
+
+.chat-input[data-size="lg"] .chat-input-field {
+  min-height: 1.875rem;
+  font-size: var(--text-lg);
+}
+
+/* Off: no AI set up. The field can't be used, and the frame says why. */
+.chat-input[data-off] .chat-input-field {
+  opacity: 0.5;
+}
+
+.chat-input[data-off] {
+  background: var(--surface-sunk);
+}
+
+.chat-input-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}

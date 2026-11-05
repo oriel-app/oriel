@@ -83,6 +83,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/design-system: {}
+
   packages/desktop:
     devDependencies:
       '@oriel/server':

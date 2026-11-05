@@ -1,0 +1,48 @@
+/* A specimen's frame: only how the specimen sits in it. Everything the
+   specimen looks like is Oriel's window.css (and, where marked, the
+   proposals). Classes here start with ws-. */
+
+/* Oriel's body is a container, so its background doesn't reach the
+   canvas: a frame taller than its specimen would show the browser's white
+   below it in a dark scheme. The root paints it instead. */
+html:has(> body.ws-frame) {
+  background: var(--bg);
+}
+
+html:has(> body.ws-frame[data-ws-bg="surface"]) {
+  background: var(--surface);
+}
+
+body.ws-frame {
+  min-height: 0;
+}
+
+body.ws-frame[data-ws-bg="surface"] {
+  background: var(--surface);
+}
+
+body.ws-frame[data-ws-pad="1"] .ws-frame-main {
+  padding: var(--space-4);
+}
+
+.ws-frame-main {
+  display: block;
+}
+
+/* Several specimens of one state in a row, as a strip. */
+.ws-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ws-stack > * + * {
+  margin-top: var(--space-3);
+}
+
+.ws-note {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
