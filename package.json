@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts && pnpm -r --if-present run evals:ci",
     "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell && tsc -p packages/desktop/probe",
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
@@ -21,6 +21,7 @@
     "desktop:server": "pnpm --filter @oriel/web build && node scripts/desktop-server.ts",
     "drive": "node scripts/drive.ts",
     "shots": "pnpm --filter @oriel/web build && node scripts/shots.ts",
+    "shots:diff": "node scripts/shots-diff.ts",
     "perf": "pnpm --filter @oriel/web build && node scripts/perf.ts",
     "desktop": "node packages/desktop/src/bundle.ts",
     "desktop:try": "node scripts/desktop-try.ts",

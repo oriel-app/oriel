@@ -1,14 +1,25 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   agentToken,
+  type Annotation,
+  type CheckRun,
   enqueue,
+  git,
   headRefusal,
   leaksSecret,
   nextDecision,
   parse,
   published,
+  shotPaths,
+  shotsPush,
   usage,
+  waitFor,
+  waitLimitMs,
+  type Watched,
 } from "./github.ts";
 
 test("only the agent token from .env is accepted", () => {
@@ -285,4 +296,233 @@ test("the next decision number follows the highest on main and in open PRs", () 
     ]),
     "0050",
   );
+});
+
+test("pr-wait takes one PR, and shots-push a branch and PNGs", () => {
+  assert.deepEqual(parse(["pr-wait", "184"]), { op: "pr-wait", number: 184 });
+  assert.deepEqual(parse(["shots-push", "agent-drafts", "a.png", "after/b.png"]), {
+    op: "shots-push",
+    branch: "agent-drafts",
+    pngs: ["a.png", "after/b.png"],
+  });
+  for (const args of [
+    ["pr-wait"],
+    ["pr-wait", "0"],
+    ["pr-wait", "7", "8"],
+    ["shots-push", "agent-drafts"],
+    ["shots-push", "shots/agent-drafts", "a.png"],
+    ["shots-push", "one-two-three-four", "a.png"],
+    ["shots-push", "agent-drafts", "a.jpg"],
+    ["shots-push", "agent-drafts", "--force.png"],
+  ])
+    assert.ok("error" in parse(args), JSON.stringify(args));
+  assert.match(usage, /pr-wait <number>/);
+  assert.match(usage, /shots-push <branch> <png>\.\.\./);
+});
+
+// A PR as GitHub tells pr-wait of it, open and in the queue unless told.
+const watched = (over: Partial<Watched> = {}): Watched => ({
+  state: "OPEN",
+  headRefOid: "head",
+  isInMergeQueue: true,
+  mergeQueueEntry: { headCommit: { oid: "group" } },
+  autoMergeRequest: null,
+  mergeCommit: null,
+  ...over,
+});
+const passed = (name: string): CheckRun => ({
+  id: 1,
+  name,
+  status: "completed",
+  conclusion: "success",
+});
+
+// A stand-in GitHub that answers each look with the next PR in `looks`
+// (the last one again once they run out), on a clock only pauses move.
+function watching(
+  looks: Watched[],
+  runs: Record<string, CheckRun[]> = {},
+  notes: Record<number, Annotation[]> = {},
+) {
+  let now = 0;
+  let looked = 0;
+  const pauses: number[] = [];
+  const reads = {
+    pullRequest: async () => looks[Math.min(looked++, looks.length - 1)] as Watched,
+    checkRuns: async (sha: string) => runs[sha] ?? [],
+    annotations: async (id: number) => notes[id] ?? [],
+  };
+  const pause = async (ms: number) => {
+    pauses.push(ms);
+    now += ms;
+  };
+  return { wait: () => waitFor(reads, () => now, pause), pauses, looks: () => looked };
+}
+
+test("pr-wait says MERGED with the merge commit once the queue merges it", async () => {
+  const github = watching([
+    watched(),
+    watched(),
+    watched({ state: "MERGED", isInMergeQueue: false, mergeCommit: { oid: "57cd1f09" } }),
+  ]);
+  assert.equal(await github.wait(), "MERGED 57cd1f09");
+  assert.equal(github.pauses.length, 2);
+});
+
+test("pr-wait says DROPPED for an open PR neither queued nor armed, or a closed one", async () => {
+  const out = { isInMergeQueue: false, mergeQueueEntry: null };
+  assert.match(await watching([watched(out)]).wait(), /^DROPPED: open, not in the merge queue/);
+  // Armed to enter the queue once CI passes, it's still on its way.
+  const armed = watching([watched({ ...out, autoMergeRequest: { enabledAt: "x" } }), watched(out)]);
+  assert.match(await armed.wait(), /^DROPPED/);
+  assert.equal(armed.looks(), 2);
+  assert.match(await watching([watched({ ...out, state: "CLOSED" })]).wait(), /^DROPPED: closed/);
+});
+
+test("pr-wait says FAILED with the check and its annotations", async () => {
+  const lint: CheckRun = { id: 9, name: "check", status: "completed", conclusion: "failure" };
+  const notes = {
+    9: [
+      {
+        path: "scripts/github.ts",
+        start_line: 12,
+        annotation_level: "failure",
+        title: "lint",
+        message: "unused import\nremove it",
+      },
+    ],
+  };
+  // On the head, as auto-merge waits for CI.
+  const armed = watched({
+    isInMergeQueue: false,
+    mergeQueueEntry: null,
+    autoMergeRequest: { enabledAt: "x" },
+  });
+  assert.equal(
+    await watching([armed], { head: [passed("build"), lint] }, notes).wait(),
+    "FAILED check\n  failure scripts/github.ts:12 lint: unused import\n    remove it",
+  );
+  // On the queue's group, which drops the PR: the group seen before still counts.
+  const dropped = watched({ isInMergeQueue: false, mergeQueueEntry: null });
+  const github = watching([watched(), dropped], { head: [passed("check")], group: [lint] }, {});
+  assert.equal(await github.wait(), "FAILED check");
+});
+
+test("a cancelled or unfinished check isn't a failure", async () => {
+  const runs = {
+    head: [{ id: 2, name: "check", status: "completed", conclusion: "cancelled" }],
+    group: [{ id: 3, name: "check", status: "in_progress", conclusion: null }],
+  };
+  assert.equal(await watching([watched()], runs).wait(), "WAITING");
+});
+
+test("pr-wait says WAITING inside its time limit", async () => {
+  const github = watching([watched()]);
+  assert.equal(await github.wait(), "WAITING");
+  const waited = github.pauses.reduce((sum, ms) => sum + ms, 0);
+  assert.ok(waited < waitLimitMs && waited > waitLimitMs - 60_000, String(waited));
+});
+
+test("shots-push paths stay inside where it runs, once each", () => {
+  assert.deepEqual(shotPaths("/w", ["a.png", "./before/b.png", "/w/after/b.png"]), [
+    "a.png",
+    "before/b.png",
+    "after/b.png",
+  ]);
+  for (const pngs of [["../a.png"], ["/tmp/a.png"], ["a.png", "./a.png"]])
+    assert.ok("error" in shotPaths("/w", pngs), JSON.stringify(pngs));
+});
+
+// A checkout with a bare repository as its origin, on disk, as GitHub
+// stands in for nothing here.
+async function checkout() {
+  const root = mkdtempSync(join(tmpdir(), "oriel-shots-push-test-"));
+  const origin = join(root, "origin.git");
+  const work = join(root, "work");
+  const at = (dir: string) => (args: readonly string[], env?: Record<string, string>) =>
+    git(["-C", dir, ...args], env);
+  await git(["init", "--quiet", "--bare", origin]);
+  await git(["init", "--quiet", work]);
+  const run = at(work);
+  for (const [key, value] of [
+    ["user.name", "Builder"],
+    ["user.email", "builder@example.com"],
+    ["remote.origin.url", origin],
+  ])
+    await run(["config", key ?? "", value ?? ""]);
+  const png = (path: string, tail: string) => {
+    mkdirSync(join(work, path, ".."), { recursive: true });
+    writeFileSync(
+      join(work, path),
+      Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), Buffer.from(tail)]),
+    );
+  };
+  return { root, work, run, remote: at(origin), png };
+}
+
+test("shots-push pushes an images-only commit, then one on top of it", async () => {
+  const { root, work, run, remote, png } = await checkout();
+  try {
+    png("before/ask bar.png", "one");
+    png("after/ask bar.png", "two");
+    const first = (
+      await shotsPush(run, work, "ask-bar", ["before/ask bar.png", "after/ask bar.png"])
+    ).split("\n");
+    const tip = await remote(["rev-parse", "refs/heads/shots/ask-bar"]);
+    assert.deepEqual(first, [
+      `https://raw.githubusercontent.com/oriel-app/oriel/${tip}/before/ask%20bar.png`,
+      `https://raw.githubusercontent.com/oriel-app/oriel/${tip}/after/ask%20bar.png`,
+    ]);
+    assert.equal(await remote(["log", "-1", "--format=%s|%P", tip]), "shots: ask-bar|");
+    assert.equal(
+      await remote(["ls-tree", "-r", "--name-only", tip]),
+      "after/ask bar.png\nbefore/ask bar.png",
+    );
+    // Nothing of the checkout's own changed.
+    assert.equal(await run(["status", "--porcelain", "--untracked-files=no"]), "");
+
+    png("third.png", "three");
+    const [again] = (await shotsPush(run, work, "ask-bar", ["third.png"])).split("\n");
+    const next = await remote(["rev-parse", "refs/heads/shots/ask-bar"]);
+    assert.equal(again, `https://raw.githubusercontent.com/oriel-app/oriel/${next}/third.png`);
+    assert.equal(await remote(["log", "-1", "--format=%P", next]), tip);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("shots-push refuses a branch it didn't make, a file that isn't a PNG, and an empty commit ID", async () => {
+  const { root, work, run, remote, png } = await checkout();
+  try {
+    png("a.png", "a");
+    writeFileSync(join(work, "fake.png"), "not a png");
+    await assert.rejects(shotsPush(run, work, "fake", ["fake.png"]), /fake\.png isn't a PNG/);
+
+    // Someone's branch: a code commit, and an images commit named for another branch.
+    writeFileSync(join(work, "code.ts"), "export {};\n");
+    await run(["add", "code.ts"]);
+    await run(["commit", "--quiet", "-m", "shots: theirs"]);
+    await run(["push", "--quiet", "origin", "HEAD:refs/heads/shots/theirs"]);
+    await shotsPush(run, work, "other", ["a.png"]);
+    const other = await remote(["rev-parse", "refs/heads/shots/other"]);
+    await remote(["update-ref", "refs/heads/shots/mine", other]);
+    for (const branch of ["theirs", "mine"]) {
+      const was = await remote(["rev-parse", `refs/heads/shots/${branch}`]);
+      await assert.rejects(shotsPush(run, work, branch, ["a.png"]), /is someone else's/);
+      assert.equal(await remote(["rev-parse", `refs/heads/shots/${branch}`]), was);
+    }
+
+    // A git that answers commit-tree with nothing: no push, so no deleted branch.
+    const pushed: string[][] = [];
+    const blank = async (args: readonly string[], env?: Record<string, string>) => {
+      if (args[0] === "commit-tree") return "";
+      if (args[0] === "push") pushed.push([...args]);
+      return run(args, env);
+    };
+    await assert.rejects(shotsPush(blank, work, "other", ["a.png"]), /made the commit as ""/);
+    assert.deepEqual(pushed, []);
+    assert.equal(await remote(["rev-parse", "refs/heads/shots/other"]), other);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

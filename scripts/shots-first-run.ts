@@ -108,6 +108,8 @@ export type FirstRunOptions = {
   // Google Sheets offered too, as the Sheets fixture's stand-in for Google
   // answers, with a made-up client of Oriel's (decision 0051).
   sheets?: true;
+  // A database to start on, without a data folder.
+  db?: string;
 };
 
 type Start = (
@@ -297,7 +299,7 @@ export async function firstRunServer(
   if (options.state) state.set({ ...state.get(), ...options.state });
 
   const serving = await start(0, {
-    db: options.data ? join(options.data, "oriel.db") : ":memory:",
+    db: options.data ? join(options.data, "oriel.db") : (options.db ?? ":memory:"),
     secrets,
     sources: {
       jira: { mode: "window", fetch: fetchJira },
