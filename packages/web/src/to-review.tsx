@@ -19,22 +19,35 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
       const set = document.getElementById(changeSetAnchor(id));
       if (set) of.set(set, id);
     }
-    const sides = new Map<string, Side>();
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        const id = of.get(entry.target);
-        if (id === undefined) continue;
-        if (entry.isIntersecting) sides.delete(id);
-        else
-          sides.set(
-            id,
-            entry.boundingClientRect.bottom <= (entry.rootBounds?.top ?? 0) ? "above" : "below",
-          );
-      }
-      setOut(Object.fromEntries(sides));
-    });
-    for (const set of of.keys()) observer.observe(set);
-    return () => observer.disconnect();
+    // Two crossings tell where each is: into the window, and into the
+    // window with everything above it. A jump past the window, as with
+    // End, crosses the second, so nothing is left on the wrong side.
+    const seen = new Map<string, { inView: boolean; upTo: boolean }>();
+    const watch = (key: "inView" | "upTo", rootMargin: string) =>
+      new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const id = of.get(entry.target);
+            if (id === undefined) continue;
+            seen.set(id, {
+              inView: false,
+              upTo: false,
+              ...seen.get(id),
+              [key]: entry.isIntersecting,
+            });
+          }
+          const sides: Record<string, Side> = {};
+          for (const [id, { inView, upTo }] of seen)
+            if (!inView) sides[id] = upTo ? "above" : "below";
+          setOut(sides);
+        },
+        { rootMargin },
+      );
+    const observers = [watch("inView", "0px"), watch("upTo", "1000000px 0px 0px 0px")];
+    for (const observer of observers) for (const set of of.keys()) observer.observe(set);
+    return () => {
+      for (const observer of observers) observer.disconnect();
+    };
   }, [watched]);
   const above = ids.filter((id) => out[id] === "above");
   const below = ids.filter((id) => out[id] === "below");
