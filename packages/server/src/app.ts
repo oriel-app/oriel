@@ -70,6 +70,7 @@ import {
   type StoredEvent,
   telemetryStore,
   threadStore,
+  outsideToolStore,
 } from "@oriel/db";
 import { createSandbox } from "@oriel/sandbox";
 import {
@@ -96,6 +97,7 @@ import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, type Changed, dispatcher } from "./actions.ts";
 import type { Outside } from "./mcp/door.ts";
+import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -293,6 +295,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // A second look left running when Oriel last stopped never finishes.
   looks.abandonRunning(now());
   const telemetry = telemetryStore(db);
+  // The outside tools the person connected to the MCP door (OA-72).
+  const tools = outsideTools({ store: outsideToolStore(db), workspaceId, now, newId });
   const emit = (event: Parameters<typeof telemetry.record>[0]) => telemetry.record(event, newId());
   const connections = connectionsOf({
     db,
@@ -2111,6 +2115,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
     outside: {
       workspaceId,
+      tools,
       dispatch,
       reads,
       reader,

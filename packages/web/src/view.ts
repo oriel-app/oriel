@@ -1177,3 +1177,32 @@ export type SetupView = {
   codex: CliView | null;
   firstRun: FirstRunView | null;
 };
+
+// Settings, Outside tools (OA-72): the programs the person connected to
+// Oriel's MCP door, and the ones asking to sign in.
+export type OutsideToolView = {
+  id: string;
+  name: string;
+  mode: "read" | "act";
+  // How it signs in: a token pasted into its config, or OAuth.
+  how: "pasted" | "signed-in";
+  // What it said it is when it signed in, never trusted.
+  says: string | null;
+  connectedAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+};
+// A client waiting for the person to let it in, with the code its browser
+// page shows too.
+export type ToolAskView = { id: string; says: string; code: string; returnsTo: string };
+// What to paste into one client: a command, or none where the steps say it.
+export type HowToView = { client: string; steps: string[]; command: string | null };
+export type OutsideToolsView = {
+  door: string | null;
+  // Why the door isn't open, when it isn't.
+  problem: string | null;
+  tools: OutsideToolView[];
+  asks: ToolAskView[];
+  signIn: HowToView[];
+};
+export type ToolAddedView = { tool: OutsideToolView; token: string; howTo: HowToView[] };

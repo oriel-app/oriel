@@ -13,7 +13,7 @@ import type { SetupOptions } from "../setup/setup.ts";
 import { legacySecret, type Secrets } from "../connection.ts";
 import { type Serving, serve } from "../serve.ts";
 import { channel, type Shell } from "./channel.ts";
-import { keepPort, keptPort, portsFrom } from "./port.ts";
+import { doorPorts, keepPort, keptPort, portsFrom } from "./port.ts";
 import { launchCookie } from "./protocol.ts";
 
 export type DesktopOptions = {
@@ -29,6 +29,8 @@ export type DesktopOptions = {
   signals: { once(signal: "SIGTERM" | "SIGINT", listener: () => void): unknown };
   // The port the first launch tries; 0 lets the OS pick, as tests do.
   firstPort: number;
+  // The MCP door's, the same way; absent, the door doesn't open.
+  firstDoorPort?: number;
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
@@ -123,6 +125,23 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
     },
     {
       launch: { cookie: launchCookie, secret },
+      // The MCP door for outside tools, on its own listener, with its port
+      // kept beside the window's, where a client's config and the stdio shim
+      // find it. Once kept, it never moves: a client keeps sending its token
+      // to the port its config names, so a door that moved would leave it
+      // with whoever took the old one. A client asking to sign in brings
+      // the window forward, where the person lets it in.
+      ...(options.firstDoorPort === undefined
+        ? {}
+        : {
+            door: {
+              ports: doorPorts(keptPort(data, "mcp-port"), options.firstDoorPort),
+              listening: (at: number) => {
+                if (keptPort(data, "mcp-port") !== at) keepPort(data, at, "mcp-port");
+              },
+              asked: () => void lines.shell.ask({ kind: "window.focus" }).catch(() => {}),
+            },
+          }),
       listening(url) {
         port = Number(new URL(url).port);
         lines.ready(url);

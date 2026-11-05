@@ -59,7 +59,6 @@ import { devPlan, scriptedAgent, type Step } from "../packages/server/src/script
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
-import { outsideTools } from "../packages/server/src/mcp/tokens.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
 import { memorySecrets } from "../packages/server/src/connection.ts";
@@ -1293,10 +1292,7 @@ const toolDoor = mcpServer({
   version: "shots",
   clock: () => 0,
 });
-const claudeCode = outsideTools({
-  now: () => instant(new Date()),
-  newId: () => ulid(Date.now()),
-}).connect("Claude Code", "act").tool;
+const claudeCode = tooling.app.outside.tools.connect("Claude Code", "act").tool;
 const toolRemoves = async (page: Page) => {
   await post(`/api/workstreams/${tooled.id}/add`, { items: ["jira:SYN-23"] }, tooling);
   await toolDoor.handle(

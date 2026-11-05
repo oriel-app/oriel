@@ -14,4 +14,9 @@ At Oriel `85a125e9` every other class window.css styles and every component pack
 - `.folded-*`: a long list folded into one line, which opens to its first few with a search, such as the tabs a connection doesn't read.
 - `Folded` in `packages/web/src/parts.tsx`: the same.
 
+### Settings, Outside tools (the mcp-connect spike, OA-72)
+
+- `.outside-tool-*` and `.outside-tools`: a program asking to sign in, with its code; what to paste into each client; the token shown once; and each tool connected, with Revoke. A spike's surface: its story documents it on the Settings page, or drops it.
+- `OutsideTools` in `packages/web/src/outside-tools-page.tsx`: the same.
+
 A gone class, one Oriel dropped that a page held for a review still cites, goes under a "Gone from Oriel" heading of its own, and only until that page is reviewed.

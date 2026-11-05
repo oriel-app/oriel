@@ -9,6 +9,7 @@
 import { useState } from "preact/hooks";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import { Connections } from "./connections-page.tsx";
+import { OutsideTools } from "./outside-tools-page.tsx";
 import type { ConnectionsModel } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
@@ -31,6 +32,7 @@ import type {
 const sections: { id: SettingsSection; name: string }[] = [
   { id: "providers", name: "Providers" },
   { id: "connections", name: "Connections" },
+  { id: "tools", name: "Outside tools" },
   { id: "general", name: "General" },
   { id: "appearance", name: "Appearance" },
   { id: "asking", name: "Asking" },
@@ -80,6 +82,8 @@ export function SettingsPage(props: {
               connectors={props.connectors}
               dispatch={dispatch}
             />
+          ) : section === "tools" ? (
+            <OutsideTools />
           ) : view === null ? (
             <p class="loading">Loading…</p>
           ) : section === "providers" ? (

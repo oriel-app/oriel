@@ -7,9 +7,12 @@
 import type { ItemId, OrielReads, Reader, Ulid } from "@oriel/core";
 import type { WorkstreamView } from "@oriel/web/view";
 import type { Changed, Dispatch } from "../actions.ts";
+import type { OutsideTools } from "./tokens.ts";
 
 export type Outside = {
   workspaceId: Ulid;
+  // The tools the person connected, and their tokens.
+  tools: OutsideTools;
   dispatch: Dispatch;
   reads: OrielReads;
   reader: Reader;

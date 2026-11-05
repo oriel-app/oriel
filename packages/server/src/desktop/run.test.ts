@@ -2,8 +2,8 @@
 // its stdin and stdout, and the server on a loopback port the OS picks.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -38,6 +38,7 @@ function start(
   data: string,
   firstPort = 0,
   given?: { secrets: Map<string, string>; model: DesktopOptions["model"] },
+  firstDoorPort?: number,
 ) {
   const input = new PassThrough();
   const out: ServerLine[] = [];
@@ -70,6 +71,7 @@ function start(
     log: (message, fields = {}) => logged.push({ message, fields }),
     signals,
     firstPort,
+    ...(firstDoorPort === undefined ? {} : { firstDoorPort }),
     jiraFetch: site.fetch,
     app: {
       now: () => instant(new Date(t0)),
@@ -109,6 +111,76 @@ test("desktop mode names its URL first, answers only with the cookie, and quits 
   open(join(data, "oriel.db"), { exclusive: true }).close();
   const after = await testApp(t, { db: join(data, "oriel.db") });
   assert.equal((await after.post("/api/review/open", { token })).status, 404);
+});
+
+test("the MCP door listens apart from the window, keeps its port, and a tool the window adds gets in", async (t) => {
+  const data = folder(t);
+  const shell = start(data, 0, undefined, 0);
+  const { serving, exited } = await shell.running;
+  assert.ok(serving.door);
+  assert.notEqual(serving.door.port, serving.port);
+  assert.equal(keptPort(data, "mcp-port"), serving.door.port);
+  // The window's cookie opens nothing at the door, and the door's routes
+  // aren't the window's.
+  const bare = await fetch(serving.door.url, { method: "POST", headers: { cookie }, body: "{}" });
+  assert.equal(bare.status, 401);
+  assert.equal((await fetch(new URL("/api/outside-tools", serving.door.url))).status, 404);
+  assert.equal((await fetch(new URL("api/outside-tools", serving.url))).status, 403);
+  const added = await send(serving.url, "/api/outside-tools", {
+    name: "Claude Code",
+    mode: "read",
+  });
+  const { token } = (await added.json()) as { token: string };
+  const listed = await fetch(serving.door.url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/list",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
+    }),
+  });
+  assert.equal(listed.status, 200);
+  // A program asking to sign in brings the window forward.
+  const registered = await fetch(new URL("/register", serving.door.url), {
+    method: "POST",
+    body: JSON.stringify({ redirect_uris: ["http://127.0.0.1/cb"], client_name: "Codex" }),
+  });
+  const { client_id } = (await registered.json()) as { client_id: string };
+  const query = new URLSearchParams({
+    response_type: "code",
+    client_id,
+    code_challenge: "c".repeat(43),
+    code_challenge_method: "S256",
+  });
+  assert.equal((await fetch(new URL(`/authorize?${query}`, serving.door.url))).status, 200);
+  assert.ok(shell.out.some((line) => "kind" in line && line.kind === "window.focus"));
+  shell.input.end();
+  assert.equal(await exited, 0);
+});
+
+test("a kept door port another program holds leaves the door closed, never moved, and the window up", async (t) => {
+  const data = folder(t);
+  const squatter = createServer();
+  await new Promise<void>((resolve) => squatter.listen(0, "127.0.0.1", resolve));
+  t.after(() => squatter.close());
+  const taken = (squatter.address() as AddressInfo).port;
+  mkdirSync(data, { recursive: true });
+  keepPort(data, taken, "mcp-port");
+  const shell = start(data, 0, undefined, 0);
+  const { serving, exited } = await shell.running;
+  assert.equal(serving.door, null);
+  assert.equal(keptPort(data, "mcp-port"), taken);
+  const listed = await send(serving.url, "/api/outside-tools");
+  assert.match(await listed.text(), /taken by another program/);
+  shell.input.end();
+  assert.equal(await exited, 0);
 });
 
 test("SIGTERM quits as stdin's end does", async (t) => {

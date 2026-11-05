@@ -4,12 +4,11 @@
 // that reads only, or was revoked, or comes from a page, is refused.
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { type ActionDeclaration, type ActionName, actions, instant, ulid } from "@oriel/core";
+import { type ActionDeclaration, type ActionName, actions } from "@oriel/core";
 import type { ThreadView, WorkstreamView } from "@oriel/web/view";
 import { tools, toolNameOf } from "./mcp/catalogue.ts";
 import { mcpHandler, type McpRequest } from "./mcp/http.ts";
 import { instructions, mcpServer, modern, perMinute } from "./mcp/protocol.ts";
-import { outsideTools } from "./mcp/tokens.ts";
 import { json, testApp } from "./testing.ts";
 
 // What a test reads of an answer: a result, or an error.
@@ -30,9 +29,7 @@ const port = 4319;
 
 async function door(t: TestContext) {
   const app = await testApp(t);
-  const at = instant(new Date(Date.UTC(2026, 10, 5)));
-  let n = 0;
-  const connected = outsideTools({ now: () => at, newId: () => ulid(Date.UTC(2026, 10, 5) + ++n) });
+  const connected = app.app.outside.tools;
   const acting = connected.connect("Claude Code", "act");
   const reading = connected.connect("A reader", "read");
   let clock = 0;

@@ -37,6 +37,7 @@ export type Page =
 export const settingsSections = [
   "providers",
   "connections",
+  "tools",
   "general",
   "appearance",
   "asking",

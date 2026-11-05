@@ -62,7 +62,7 @@ import { databaseName, inWindow } from "./modes.ts";
 import { models as findModels } from "./model.ts";
 import { settingsFile } from "./settings.ts";
 import { usageFile } from "./usage.ts";
-import { firstPort } from "./desktop/port.ts";
+import { doorPorts, firstDoorPort, firstPort, keepPort, keptPort } from "./desktop/port.ts";
 import { runDesktop, Stopped, takeStdout } from "./desktop/run.ts";
 import { killDescendants, parentPort, portPipes, watchChildren } from "./desktop/utility.ts";
 import { anthropicSigned, installerTrust, withLocalBin } from "./setup/signature.ts";
@@ -204,6 +204,7 @@ if (pipes && values.data) {
     log: (message, fields) => console.error(JSON.stringify({ message, ...fields })),
     signals: process,
     firstPort,
+    firstDoorPort,
     async model(secrets) {
       const log: Log = (message, fields) => console.error(JSON.stringify({ message, ...fields }));
       const data = values.data ?? "";
@@ -319,25 +320,43 @@ const models =
         counts: usageFile(join(dir, "usage.json"), log),
       });
 await models?.look(settings.get());
-const serving = await serve(port, {
-  db: join(dir, `${named}.db`),
-  sources: modes,
-  clients,
-  ...(inWindow(modes, "jira")
-    ? {
-        legacyJira: legacyFile(
-          join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json"),
-        ),
-      }
-    : {}),
-  // Each database's connections keep their secrets in a folder named for it
-  // (decision 0049).
-  secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), named)),
-  ...(models ? { models } : {}),
-  settings,
-  log,
-});
+const serving = await serve(
+  port,
+  {
+    db: join(dir, `${named}.db`),
+    sources: modes,
+    clients,
+    ...(inWindow(modes, "jira")
+      ? {
+          legacyJira: legacyFile(
+            join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), "jira.json"),
+          ),
+        }
+      : {}),
+    // Each database's connections keep their secrets in a folder named for it
+    // (decision 0049).
+    secrets: fileSecrets(join(root, "secrets", ...(fresh ? ["fresh", fresh] : []), named)),
+    ...(models ? { models } : {}),
+    settings,
+    log,
+  },
+  {
+    // The MCP door for outside tools: the port after the window's, or the
+    // one kept from before, which `.oriel/mcp-port` names for the stdio shim.
+    door: {
+      ports: port === 0 ? [0] : doorPorts(keptPort(dir, "mcp-port"), port + 1),
+      listening: (at) => keepPort(dir, at, "mcp-port"),
+      shim: [
+        process.execPath,
+        fileURLToPath(new URL("mcp/shim.ts", import.meta.url)),
+        "--data",
+        dir,
+      ],
+    },
+  },
+);
 console.log(`Oriel is running at ${serving.url}`);
+if (serving.door) console.log(`Outside tools: ${serving.door.url} (Settings, Outside tools)`);
 // Each connector, as this start made it.
 const shown = serving.app.connections();
 for (const kind of sourceKinds) {

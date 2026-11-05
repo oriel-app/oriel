@@ -18,6 +18,7 @@ import { bodyReader, listen, send } from "../serve.ts";
 import type { Reply } from "../site.ts";
 import { channel } from "../stream.ts";
 import { codes, type McpServer, type Message, modern, versionOf } from "./protocol.ts";
+import type { OAuth } from "./oauth.ts";
 import type { ConnectedTool, OutsideTools } from "./tokens.ts";
 
 export type McpRequest = {
@@ -49,17 +50,27 @@ const json = (status: number, value: unknown, headers: Record<string, string> = 
 const refused = (status: number, code: number, message: string, headers = {}): Reply =>
   json(status, { jsonrpc: "2.0", id: null, error: { code, message } }, headers);
 
-// Why the request is refused before its body is read, or the tool it is.
-export function door(
-  request: McpRequest,
-  port: number,
-  tools: Pick<OutsideTools, "who">,
-): Reply | ConnectedTool {
+// Whether the request reaches the door at all: it names this listener, and
+// no page sent it.
+function admitted(request: McpRequest, port: number): Reply | null {
   const host = header(request, "host")?.toLowerCase();
   if (host === undefined || !ownHosts(port).includes(host))
     return refused(403, codes.invalidRequest, "Host is not this server");
   if (header(request, "origin") !== undefined)
     return refused(403, codes.invalidRequest, "A web page may not reach Oriel's MCP door");
+  return null;
+}
+
+// Why the request is refused before its body is read, or the tool it is.
+// `signIn`: where a 401 points a client that signs in with OAuth.
+export function door(
+  request: McpRequest,
+  port: number,
+  tools: Pick<OutsideTools, "who">,
+  signIn?: string,
+): Reply | ConnectedTool {
+  const refusal = admitted(request, port);
+  if (refusal) return refusal;
   if (new URL(request.url, "http://door").pathname !== "/mcp")
     return refused(404, codes.notFound, "Oriel's MCP endpoint is /mcp");
   if (request.method !== "POST") return { status: 405, headers: { allow: "POST" }, body: "" };
@@ -67,7 +78,9 @@ export function door(
   const tool = bearer === undefined ? null : tools.who(bearer);
   if (!tool)
     return refused(401, codes.invalidRequest, "Connect this tool in Oriel's Settings first", {
-      "www-authenticate": 'Bearer realm="oriel"',
+      "www-authenticate": signIn
+        ? `Bearer realm="oriel", resource_metadata="${signIn}", scope="oriel"`
+        : 'Bearer realm="oriel"',
     });
   return tool;
 }
@@ -92,6 +105,9 @@ export function mcpHandler(deps: {
   server: McpServer;
   tools: Pick<OutsideTools, "who" | "onRevoke">;
   port: number;
+  // Signing in with OAuth, with the consent in the window; absent, a tool
+  // signs in only with a pasted token.
+  oauth?: Pick<OAuth, "handle" | "resourceMetadata">;
   // Writes the stream's keep-alive, every so often, until it is stopped.
   keepAlive?: (beat: () => void) => () => void;
 }) {
@@ -102,7 +118,18 @@ export function mcpHandler(deps: {
     streams.delete(id);
   });
   return async (request: McpRequest): Promise<Reply> => {
-    const tool = door(request, deps.port, deps.tools);
+    if (deps.oauth) {
+      const refusal = admitted(request, deps.port);
+      if (refusal) return refusal;
+      const signing = await deps.oauth.handle(
+        request.method,
+        new URL(request.url, "http://door"),
+        () => request.body(64_000),
+        header(request, "sec-fetch-site"),
+      );
+      if (signing) return signing;
+    }
+    const tool = door(request, deps.port, deps.tools, deps.oauth?.resourceMetadata);
     if ("status" in tool) return tool;
     const text = await request.body(maxBody);
     if (text === null) return refused(413, codes.invalidRequest, "Too large");

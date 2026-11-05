@@ -193,6 +193,10 @@ export const exemptRoutes: Record<string, string> = {
   // OA-232: a mapping redrawn as the person edits it; applying it dispatches.
   "/connections/:id/review":
     "a draft redrawn from the source with the person's edit, which keeps nothing",
+  // OA-72: who may use the MCP door is the person's call alone.
+  "/outside-tools": "the person connecting an outside tool, which no agent or tool may do",
+  "/outside-tools/:id/revoke": "the person revoking an outside tool, which no agent or tool may do",
+  "/outside-tools/asks/:ask": "the person letting a program in, which no agent or tool may do",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

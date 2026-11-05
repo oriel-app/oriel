@@ -9,8 +9,19 @@ import { themeNames } from "@oriel/web/themes";
 import { type App, type AppOptions, createApp } from "./app.ts";
 import { handler, type Reply, type Request, type Site } from "./site.ts";
 import { sketchHandler, sketchStyle } from "./sketch-site.ts";
+import { mcpHandler, serveMcp } from "./mcp/http.ts";
+import { type Ask, type OAuth, oauth } from "./mcp/oauth.ts";
+import { mcpServer } from "./mcp/protocol.ts";
+import { outsideToolsApi } from "./mcp/window-api.ts";
 
-export type Serving = { url: string; port: number; app: App; close(): Promise<void> };
+export type Serving = {
+  url: string;
+  port: number;
+  app: App;
+  // The MCP door for outside tools, when it was asked for.
+  door: { url: string; port: number } | null;
+  close(): Promise<void>;
+};
 
 // The web app's files.
 export function webFiles(): Pick<Site, "dist" | "entry" | "assets" | "vendor"> {
@@ -76,6 +87,16 @@ export type ServeOptions = {
   listening?: (url: string) => void;
   // Runs once the app is built, before any request reaches it.
   beforeRequests?: (app: App) => Promise<void>;
+  // The MCP door for outside tools (decision 0024), on a loopback listener
+  // of its own, on the first of `ports` that's free. `asked` hears each
+  // client that asks to sign in, for the window to come forward. `shim`
+  // starts the stdio shim, for clients that only start commands.
+  door?: {
+    ports: readonly number[];
+    asked?: (ask: Ask) => void;
+    listening?: (port: number) => void;
+    shim?: string[] | null;
+  };
 };
 
 // Answers each request on `server` with the handler `built` resolves to;
@@ -136,6 +157,8 @@ export async function serve(
   serving.listening?.(url);
   const files = webFiles();
   let app: App | null = null;
+  let door: Awaited<ReturnType<typeof serveMcp>> | null = null;
+  let doorProblem: string | null = null;
   try {
     // Read once: window.css is the web app's build, which doesn't change
     // while the server runs.
@@ -150,14 +173,52 @@ export async function serve(
     });
     await serving.beforeRequests?.(app);
     const launch = serving.launch ? { launch: serving.launch } : {};
-    const { setup } = app;
+    const { setup, outside } = app;
+    let signIn: OAuth | null = null;
+    // A door that can't open, its kept port taken, leaves the window up,
+    // and Settings says why.
+    door = serving.door
+      ? await serveMcp(serving.door.ports, (port) => {
+          signIn = oauth({
+            tools: outside.tools,
+            origin: `http://127.0.0.1:${port}`,
+            clock: Date.now,
+            ...(serving.door?.asked ? { asked: serving.door.asked } : {}),
+          });
+          return mcpHandler({
+            server: mcpServer({ outside, window: new URL(url), version: "0", clock: Date.now }),
+            tools: outside.tools,
+            port,
+            oauth: signIn,
+            keepAlive: (beat) => {
+              const timer = setInterval(beat, 25_000);
+              timer.unref();
+              return () => clearInterval(timer);
+            },
+          });
+        }).catch((error: unknown) => {
+          doorProblem = `Its port is taken by another program. Quit that program, then restart Oriel.`;
+          options.log?.("door: not open", { error: String(error) });
+          return null;
+        })
+      : null;
+    if (door) serving.door?.listening?.(door.port);
+    const opened = door;
+    const tools = outsideToolsApi({
+      tools: outside.tools,
+      oauth: signIn,
+      door: () => opened?.url ?? null,
+      problem: () => doorProblem,
+      shim: serving.door?.shim ?? null,
+    });
+    const api = app.api;
     built.resolve(
       handler({
         ...files,
         port: address.port,
         look: app.settings.page,
         firstRun: () => setup.firstRun(),
-        api: app.api,
+        api: async (request, at) => (await api(request, at)) ?? tools(request, at),
         sketches: sketchOrigin,
         ...launch,
       }),
@@ -184,17 +245,23 @@ export async function serve(
   } catch (error) {
     built.reject(error);
     sketchBuilt.reject(error);
-    await Promise.all([closing(server), sketches.listening ? closing(sketches) : null]);
+    await Promise.all([
+      closing(server),
+      sketches.listening ? closing(sketches) : null,
+      door?.close(),
+    ]);
     await app?.close();
     throw error;
   }
   const started = app;
+  const open = door;
   return {
     url,
     port: address.port,
     app: started,
+    door: open && { url: open.url, port: open.port },
     close: async () => {
-      await Promise.all([closing(server), closing(sketches)]);
+      await Promise.all([closing(server), closing(sketches), open?.close()]);
       await started.close();
     },
   };

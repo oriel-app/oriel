@@ -7,17 +7,22 @@ import { join } from "node:path";
 // The first launch's choice: clear of `pnpm dev`'s 4310 and of the ports
 // the OS hands out for outgoing connections.
 export const firstPort = 4320;
+// The MCP door's, clear of every port the window's scan may take, since a
+// client's config names it.
+export const firstDoorPort = 4430;
 // How far up from the kept port the server looks for a free one.
 const scan = 100;
 
-const file = (data: string) => join(data, "port");
+// `port` is the window's; `mcp-port`, the MCP door's.
+export type PortName = "port" | "mcp-port";
+const file = (data: string, name: PortName) => join(data, name);
 
 // The port the folder keeps, or null before the first launch. A file that
 // doesn't hold one counts as none.
-export function keptPort(data: string): number | null {
+export function keptPort(data: string, name: PortName = "port"): number | null {
   let text: string;
   try {
-    text = readFileSync(file(data), "utf8");
+    text = readFileSync(file(data, name), "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -27,10 +32,10 @@ export function keptPort(data: string): number | null {
 }
 
 // Written whole and renamed into place.
-export function keepPort(data: string, port: number): void {
-  const next = `${file(data)}.${process.pid}.tmp`;
+export function keepPort(data: string, port: number, name: PortName = "port"): void {
+  const next = `${file(data, name)}.${process.pid}.tmp`;
   writeFileSync(next, `${port}\n`);
-  renameSync(next, file(data));
+  renameSync(next, file(data, name));
 }
 
 // The ports to try, in order: the kept one, then upward from it. Port 0
@@ -40,3 +45,9 @@ export function portsFrom(start: number): number[] {
   const last = Math.min(65_535, start + scan);
   return Array.from({ length: last - start + 1 }, (_, i) => start + i);
 }
+
+// The MCP door's ports to try: the kept one alone, since a client's config
+// names it and sends its token there; or, before the first, upward from
+// `first`.
+export const doorPorts = (kept: number | null, first: number): number[] =>
+  kept === null ? portsFrom(first) : [kept];

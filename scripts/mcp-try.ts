@@ -5,7 +5,7 @@
 // with its token shown here once: one that reads and acts, and one that
 // reads only. It writes a client config for each, with its token, into a
 // temporary folder, for `claude -p --mcp-config <file> --strict-mcp-config`,
-// and logs every request the door answers to stderr: who, what and how.
+// and logs each client that asks to sign in, with its code, to stderr.
 //
 // `--check` runs Oriel's own small client against it instead, prints what
 // each call answered, and stops: it lists the tools, reads, removes an item
@@ -16,11 +16,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { instant, ulid } from "../packages/core/src/ids.ts";
 import { serve } from "../packages/server/src/serve.ts";
-import { mcpHandler, type McpRequest, serveMcp } from "../packages/server/src/mcp/http.ts";
-import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
-import { outsideTools } from "../packages/server/src/mcp/tokens.ts";
+import { modern } from "../packages/server/src/mcp/protocol.ts";
 
 const { values } = parseArgs({
   options: {
@@ -30,62 +27,22 @@ const { values } = parseArgs({
   },
 });
 
-const serving = await serve(0);
+const serving = await serve(0, undefined, {
+  door: {
+    ports: [Number(values.port)],
+    asked: (ask) => console.error(JSON.stringify({ asks: ask.says, code: ask.code })),
+  },
+});
 const { app } = serving;
-const now = () => instant(new Date());
-const tools = outsideTools({ now, newId: () => ulid(Date.now()) });
+const tools = app.outside.tools;
 const acting = tools.connect(values.name, "act");
 const reading = tools.connect("Read-only probe", "read");
-const server = mcpServer({
-  outside: app.outside,
-  window: new URL(serving.url),
-  version: "spike",
-  clock: Date.now,
-});
+if (!serving.door) throw new Error("the door didn't open");
+const door = serving.door;
 const workstream = await app.outside.dispatch(
   "workstream.create",
   { kind: "cluster", grouping: "epic", cluster: "10001" },
   { kind: "user" },
-);
-
-// Who asked for what, as the door saw it, never the token.
-const logged =
-  (handle: (request: McpRequest) => ReturnType<ReturnType<typeof mcpHandler>>) =>
-  async (request: McpRequest) => {
-    const text = await request.body(1_000_000);
-    const reply = await handle({ ...request, body: async () => text });
-    let said: { method?: string; params?: Record<string, unknown> } = {};
-    try {
-      said = JSON.parse(text ?? "{}");
-    } catch {}
-    const meta = (said.params?.["_meta"] ?? {}) as Record<string, unknown>;
-    const client = meta["io.modelcontextprotocol/clientInfo"] ?? said.params?.["clientInfo"];
-    console.error(
-      JSON.stringify({
-        status: reply.status,
-        method: said.method ?? request.method,
-        name: said.params?.["name"] ?? said.params?.["uri"],
-        version: request.headers["mcp-protocol-version"] ?? null,
-        ...(said.params?.["notifications"] ? { listens: said.params["notifications"] } : {}),
-        client: client ?? null,
-      }),
-    );
-    return reply;
-  };
-
-const door = await serveMcp([Number(values.port)], (port) =>
-  logged(
-    mcpHandler({
-      server,
-      tools,
-      port,
-      keepAlive: (beat) => {
-        const timer = setInterval(beat, 25_000);
-        timer.unref();
-        return () => clearInterval(timer);
-      },
-    }),
-  ),
 );
 
 const config = (token: string) =>
@@ -207,6 +164,5 @@ if (values.check) {
   show("tools/list, once revoked", await call(acting.token, "tools/list"));
   const page = await app.outside.workstream(workstream.workstream);
   show("the workstream's latest version, as the window shows it", page?.changes[0]);
-  await door.close();
   await serving.close();
 }
