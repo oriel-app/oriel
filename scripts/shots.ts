@@ -264,6 +264,16 @@ const sheetsDraftScript = [
   "}] } });",
   "return waiting.tables.length;",
 ].join("\n");
+// Ask Oriel about the tracker's tab (OA-232): its key moved to its stories,
+// every other tab kept, from what preview() gives of the connection that
+// reads.
+const sheetsFixScript = [
+  'const reads = (await source.preview()).find((c) => c.why.startsWith("It reads"));',
+  "if (!reads) return null;",
+  'const tabs = reads.options.tabs.map((tab) => tab.at.endsWith("/1100") ? { ...tab, key: "C" } : tab);',
+  "source.configure({ connection: reads.connection, options: { tabs } });",
+  "return tabs.length;",
+].join("\n");
 // A PM's change: acceptance criteria drafted for a few of the region's stories.
 const criteriaScript = [
   'const stories = (await jira.listItems()).filter((item) => !item.gone && item.issueType === "Story").slice(0, 3);',
@@ -290,6 +300,13 @@ await show({ read: "jira.listStories", form: "bars", label: "assignee.name", val
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  if (/^Draft a change to how Oriel reads the tab at\b/.test(input.text))
+    return [
+      { run: sheetsFixScript },
+      {
+        text: "Each story is an item now, keyed by its name, so the rows that share an ID or have none are read too. Nothing changes until you apply it.",
+      },
+    ];
   if (/^Draft how Oriel should read\b/.test(input.text))
     return [
       { run: sheetsDraftScript },
@@ -3278,6 +3295,21 @@ const useProject = async (page: Page) => {
 };
 const continueWithClaude = (page: Page) =>
   page.getByRole("button", { name: "Continue with Claude Code" }).click();
+// Google Sheets connected from Settings, past Google's page, and the agent's
+// draft of its mapping applied there: the connection's row shows its mapping.
+const sheetsMapped = async (page: Page) => {
+  await googleSignsIn(page.context());
+  const add = page.locator("#settings-add-connection ~ .provider-rows .provider-row", {
+    hasText: "Google Sheets",
+  });
+  await add.getByRole("button", { name: "Connect" }).click();
+  const popup = page.waitForEvent("popup");
+  await add.getByRole("link", { name: "Continue to Google" }).click();
+  await (await popup).close();
+  await add.getByText("Oriel's draft.").waitFor();
+  await add.getByRole("button", { name: "Apply" }).click();
+  await page.locator(".connection-mapping .mapping-tabs").waitFor();
+};
 // Google Sheets' row in the first run (decision 0051): its consent line, then,
 // past Google's page, its review in the row.
 const toSheets = async (page: Page) => {
@@ -3305,7 +3337,7 @@ scenes.push(
       const popup = page.waitForEvent("popup");
       await page.getByRole("link", { name: "Continue to Google" }).click();
       await (await popup).close();
-      await page.getByText("The agent drafted how Oriel reads them.").waitFor();
+      await page.getByText("Oriel's draft.").waitFor();
     },
   },
 );
@@ -3620,6 +3652,54 @@ scenes.push(
         .getByRole("button", { name: "Connect" })
         .click();
       await page.locator(".path-form").waitFor();
+    },
+  },
+  // Google Sheets connected in Settings and its draft applied (OA-232), on a
+  // tracker with 40 more tabs: each tab it reads in a line, the rest folded;
+  // the fold opened; the tracker edited by hand, with what a new key does
+  // said before Apply; and Ask Oriel's draft in the window chat, saying the
+  // same.
+  {
+    name: "settings-connections-mapping",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    act: sheetsMapped,
+  },
+  {
+    name: "settings-connections-mapping-folded",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    act: async (page) => {
+      await sheetsMapped(page);
+      await page.getByRole("button", { name: /tabs Oriel isn't reading/ }).click();
+      await page.locator(".folded-list li").first().waitFor();
+    },
+  },
+  {
+    name: "settings-connections-mapping-edit",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    act: async (page) => {
+      await sheetsMapped(page);
+      const mapping = page.locator(".connection-mapping");
+      await mapping.getByRole("button", { name: "Edit by hand" }).first().click();
+      const tracker = mapping.getByRole("group", { name: /› Tracker$/ });
+      await tracker.getByRole("combobox", { name: "Row ID" }).selectOption("C");
+      await mapping.locator(".connect-said").waitFor();
+    },
+  },
+  {
+    name: "settings-connections-mapping-ask",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
+    act: async (page) => {
+      await sheetsMapped(page);
+      await page
+        .locator(".connection-mapping")
+        .getByRole("button", { name: "Ask Oriel to fix this" })
+        .first()
+        .click();
+      await page.locator(".draft-card .connect-said").waitFor();
     },
   },
 );

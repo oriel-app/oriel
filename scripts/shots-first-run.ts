@@ -108,6 +108,9 @@ export type FirstRunOptions = {
   // Google Sheets offered too, as the Sheets fixture's stand-in for Google
   // answers, with a made-up client of Oriel's (decision 0051).
   sheets?: true;
+  // That many more tabs in the tracker, made here, each a small table of
+  // its own, as a tracker with a tab a week has (OA-232).
+  sheetsTabs?: number;
   // A database to start on, without a data folder.
   db?: string;
 };
@@ -267,7 +270,18 @@ export async function firstRunServer(
   };
   // Google: the Sheets fixture's stand-in, and a token endpoint granting
   // its token for any code.
-  const google = fixtureGoogle(loadSheetsFixture());
+  const sheetsFixture = loadSheetsFixture();
+  const tracker = sheetsFixture.spreadsheets.find((s) => s.slug === "tracker");
+  for (let n = 1; n <= (options.sheetsTabs ?? 0); n++)
+    tracker?.tabs.push({
+      sheetId: 9000 + n,
+      title: `Week ${n}`,
+      rows: [
+        ["Day", "Note"],
+        ["Mon", "Stand-up moved"],
+      ],
+    });
+  const google = fixtureGoogle(sheetsFixture);
   const fetchSheets: typeof fetch = async (input, init) =>
     String(input instanceof Request ? input.url : input) === tokenEndpoint
       ? Response.json({
@@ -496,7 +510,7 @@ export async function timedSheets(
   // Back in Oriel: the headers read, then the draft, in the row.
   const asked = performance.now();
   await row.locator(".connect-review").waitFor();
-  await row.getByText("The agent drafted how Oriel reads them.").waitFor();
+  await row.getByText("Oriel's draft.").waitFor();
   const draftMs = performance.now() - asked;
   await count("review");
   await row.getByRole("button", { name: "Apply" }).click();

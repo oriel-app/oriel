@@ -11,14 +11,17 @@ import type { Instant } from "./ids.ts";
 import type { ToOpen } from "./open.ts";
 import type { Log } from "./run.ts";
 import {
+  boolean,
   type Described,
   type Infer,
+  literal,
   nullable,
   number,
   object,
   optional,
   refine,
   string,
+  union,
 } from "./validate.ts";
 
 // One field the person types, in the words the window shows: its label, an
@@ -114,18 +117,25 @@ export type ConnectStep =
       // that drafts the options, which name nothing synced (decision 0051).
       reading: string;
       ask: string;
+      // The person's words that start the window chat's turn that drafts a
+      // change to how it reads one table, named by its `at`, `{at}` (OA-232):
+      // an ID, never a name anyone wrote.
+      fix: string;
     };
 
 // How Settings draws one of a connector's options. `pick`: one from the list
 // its pick step fetches, for the connection's own account. `list`: names the
 // person types, such as Slack's channels. `read-only`: its
 // `readOnly` option, on a connector that writes, drawn as whether Oriel may
-// propose changes. More kinds come with the connectors that need them
-// (decision 0049 lists them).
+// propose changes. `mapping`: how the source's tables feed Oriel's fields,
+// drawn by the connector's review step, filled with the mapping it has, which
+// the person changes and applies (OA-232). More kinds come with the
+// connectors that need them (decision 0049 lists them).
 export type OptionField =
   | { kind: "pick"; name: string; label: string }
   | { kind: "list"; name: string; label: string; about: string }
-  | { kind: "read-only"; name: "readOnly" };
+  | { kind: "read-only"; name: "readOnly" }
+  | { kind: "mapping"; name: string; label: string; about: string };
 
 // Whether a connection's options make it read-only: anything but off, or no
 // option at all, is, so a malformed option can't open writes. No writer is
@@ -325,12 +335,60 @@ export const settingNames = [
 // each column by its name in the source, such as its letter, the header the
 // source has there and the field it would feed, if any; the first rows as
 // the source shows them; and what it reads and leaves out, in lines.
+//
+// `at` is the table's place in its source, as its preview gives it, which an
+// edit names it by. `reads` is how it reads, for the review step's controls:
+// its header row, where it ends, whether rows hidden by hand are read, and
+// each field's column by its name in the source; null when it isn't read.
 export type ReviewTable = {
   name: string;
+  at: string | null;
   columns: readonly { at: string; header: string | null; feeds: string | null }[];
   rows: readonly (readonly (string | null)[])[];
   lines: readonly string[];
+  reads: ReviewReads | null;
 };
+export type ReviewReads = {
+  header: number;
+  end: "blank" | "grid";
+  hidden: boolean;
+  fields: Readonly<Record<string, string>>;
+};
+
+// What a preview reads (OA-232): `first`, tables by their `at`, read
+// before any other, so one the person asks about is always there; `names`,
+// each table's name and place alone, with no row, as Settings lists them.
+export type PreviewAsk = { first?: readonly string[]; names?: true };
+
+// One table as Settings sums it up (OA-232): its name and place, and how it
+// reads in one line, such as "key ID · title Story", or null when it isn't
+// read.
+export type ReviewOutline = { at: string; name: string; reads: string | null };
+
+// One change a person makes to a draft in the review step, to a table by
+// its `at`: whether it's read; which column feeds a field, by the column's
+// name in the source, or none; its header row; where it ends; whether rows
+// hidden by hand are read.
+const ofTable = { table: refine(string, (at) => at.length <= 200, "expected a table's `at`") };
+export const reviewEdit = union(
+  object({ ...ofTable, read: boolean }),
+  object({
+    ...ofTable,
+    field: refine(string, (name) => /^[a-z]{1,20}$/.test(name), "expected a field's name"),
+    column: nullable(refine(string, (at) => /^[A-Z]{1,3}$/.test(at), "expected a column")),
+  }),
+  object({
+    ...ofTable,
+    header: refine(number, (n) => Number.isInteger(n) && n >= 1, "expected a row number"),
+  }),
+  object({ ...ofTable, end: union(literal("blank"), literal("grid")) }),
+  object({ ...ofTable, hidden: boolean }),
+);
+export type ReviewEdit = Infer<typeof reviewEdit>;
+
+// A field a column can feed, by its name, with its label; every table
+// read maps the `required` ones.
+export type ReviewField = { name: string; label: string; required: boolean };
 
 // How Oriel helps a person set a connection's options while it waits for
 // them (decision 0051), from its preview. A draft names what it reads the
@@ -356,4 +414,33 @@ export type ReviewOf = {
   // no AI set up, or before the agent's draft arrives; null when it has none.
   guess(tables: readonly PreviewTable[]): Record<string, unknown> | null;
   draw(draft: Readonly<Record<string, unknown>>, tables: readonly PreviewTable[]): ReviewTable[];
+  // What a column can feed, in the order the review step lists them.
+  fields: readonly ReviewField[];
+  // Each table, from the preview's names, and how the options read it.
+  outline(
+    options: Readonly<Record<string, unknown>>,
+    tables: readonly PreviewTable[],
+  ): ReviewOutline[];
+  // The draft that reads as a connection's options do now, from its
+  // preview, for the review step to show and the person to change: a table
+  // whose mapping no longer fits what its source shows is left out.
+  current(
+    options: Readonly<Record<string, unknown>>,
+    tables: readonly PreviewTable[],
+  ): Record<string, unknown>;
+  // A draft with one of the person's edits made; or why it can't be.
+  edit(
+    draft: Readonly<Record<string, unknown>>,
+    edit: ReviewEdit,
+    tables: readonly PreviewTable[],
+  ): Record<string, unknown> | { problem: string };
+  // What options set over those a connection has do to the items it
+  // synced, in plain sentences, said before they apply: such as a new key,
+  // which makes every row a new item (decision 0050). None when nothing
+  // synced goes.
+  said(
+    before: Readonly<Record<string, unknown>>,
+    after: Readonly<Record<string, unknown>>,
+    tables: readonly PreviewTable[],
+  ): string[];
 };

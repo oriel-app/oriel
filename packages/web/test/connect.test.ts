@@ -12,6 +12,7 @@ import {
   connectState,
   formOf,
   initConnections,
+  noAiToAsk,
   offered,
   openOf,
   settingOf,
@@ -357,6 +358,7 @@ const signingIn: readonly ConnectStep[] = [
     lede: "Apply it.",
     reading: "Reading the headers",
     ask: "Draft how Oriel should read it.",
+    fix: "Draft a change to how Oriel reads the tab at {at}.",
   },
 ];
 const id = "01JBZ0000000000000000000S1";
@@ -480,4 +482,208 @@ test("a review step asks again while the agent drafts, and applies its draft, or
   );
   assert.equal(done.synced, true);
   assert.deepEqual(formOf(done.model, "sheets"), blankForm);
+});
+
+// A review step's draft edited (OA-232): begun from what it shows, each
+// change drawn again by the server, and applied as the person's own: the
+// agent's draft as edited, or the options the edits settle into.
+const table = (at: string) => ({
+  name: "Tracker",
+  at,
+  columns: [{ at: "A", header: "ID", feeds: "Row ID and Title" }],
+  rows: [],
+  lines: [],
+  reads: { header: 1, end: "blank" as const, hidden: false, fields: { key: "A", title: "A" } },
+});
+const fields = [{ name: "key", label: "Key", required: true }];
+const redrawn = (given: Record<string, unknown>, said: string[] = []) => ({
+  given,
+  tables: [table("s/1")],
+  options: { spreadsheets: [{ id: "s", tabs: [given] }] },
+  said,
+  problem: null,
+});
+
+test("Settings edits one table by hand, as it reads now, and a change applies only once edited, beside its option, with an Undo", () => {
+  const settings = {
+    ...loaded(["sheets"]),
+    view: {
+      ...loaded(["sheets"]).view!,
+      connections: [{ ...connectionView(), id, kind: "sheets" }],
+    },
+  };
+  const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
+  const outline = [{ at: "s/1", name: "Tracker", reads: "Row ID and title: “ID”" }];
+  const summed = {
+    waits: false,
+    guess: null,
+    draft: null,
+    drafting: null,
+    current: null,
+    fields,
+    outline,
+  };
+  const listed = connectionsReplied(settings, replied(tag, true, summed)).model;
+  // Summed up, nothing is edited, and nothing applies.
+  assert.equal(listed.edits[id], undefined);
+  assert.deepEqual(
+    updateConnections(listed, {
+      type: "reviewApplied",
+      kind: "sheets",
+      connection: id,
+      beside: "spreadsheets",
+    })[1],
+    [],
+  );
+  // Edit by hand asks for that table as it reads, and its editor opens on it.
+  const [opening, ask] = updateConnections(listed, {
+    type: "handEditClicked",
+    kind: "sheets",
+    connection: id,
+    tab: "s/1",
+  });
+  const byHand = { ...tag, tab: "s/1" };
+  assert.deepEqual(ask, [get(`/api/connections/${id}/review?tab=s%2F1`, byHand)]);
+  const current = { given: { tabs: [] }, tables: [table("s/1")] };
+  const shown = connectionsReplied(opening, replied(byHand, true, { ...summed, current }));
+  assert.deepEqual(
+    [shown.model.edits[id]?.only, shown.model.edits[id]?.redrawn.given],
+    ["s/1", current.given],
+  );
+  const edit = { table: "s/1", field: "key", column: "A" };
+  const editing = shown.model;
+  assert.deepEqual(
+    updateConnections(editing, {
+      type: "reviewApplied",
+      kind: "sheets",
+      connection: id,
+      beside: "spreadsheets",
+    })[1],
+    [],
+  );
+  const [asking, asked] = updateConnections(editing, {
+    type: "reviewEdited",
+    connection: id,
+    edit,
+  });
+  const redraw = { kind: "reviewRedrawn" as const, connection: id };
+  assert.deepEqual(asked, [
+    post(`/api/connections/${id}/review`, { given: current.given, edit }, redraw),
+  ]);
+  // One change at a time.
+  assert.deepEqual(
+    updateConnections(asking, { type: "reviewEdited", connection: id, edit })[1],
+    [],
+  );
+  // A change refused keeps the draft as it was, and says why.
+  const refused = connectionsReplied(
+    asking,
+    replied(redraw, false, { error: "Choose a title column." }),
+  ).model;
+  assert.deepEqual(
+    [refused.edits[id]?.redrawn.given, refused.edits[id]?.redrawn.problem],
+    [current.given, "Choose a title column."],
+  );
+  const said = ["Changing the row ID column of Tracker makes every row a new item. …"];
+  const drawn = redrawn({ at: "s/1", key: "A" }, said);
+  const ready = connectionsReplied(asking, replied(redraw, true, drawn)).model;
+  assert.deepEqual(ready.edits[id]?.redrawn.said, said);
+  const applied = {
+    kind: "reviewApplied" as const,
+    of: "sheets",
+    connection: id,
+    beside: "spreadsheets",
+  };
+  const [applying, apply] = updateConnections(ready, {
+    type: "reviewApplied",
+    kind: "sheets",
+    connection: id,
+    beside: "spreadsheets",
+  });
+  // Only the mapping: a switch set meanwhile stays as it was set.
+  assert.deepEqual(apply, [
+    post(
+      `/api/connections/${id}/options`,
+      { options: { spreadsheets: drawn.options.spreadsheets } },
+      applied,
+    ),
+  ]);
+  // In Settings, never the connect steps' form.
+  assert.deepEqual(formOf(applying, "sheets"), formOf(ready, "sheets"));
+  assert.deepEqual(settingOf(applying, id).said, {
+    what: "its mapping",
+    field: "spreadsheets",
+    undo: null,
+  });
+  const undo = { action: "source.configure", input: { connection: id, options: {} } };
+  const done = connectionsReplied(
+    applying,
+    replied(applied, true, { connection: { ...connectionView(), id, kind: "sheets" }, undo }),
+  );
+  assert.equal(done.synced, true);
+  assert.equal(done.model.edits[id], undefined);
+  assert.deepEqual(settingOf(done.model, id).said, {
+    what: "its mapping",
+    field: "spreadsheets",
+    undo,
+  });
+  // Cancel leaves it as it was.
+  assert.equal(
+    updateConnections(ready, { type: "reviewEditCancelled", connection: id })[0].edits[id],
+    undefined,
+  );
+});
+
+test("the agent's draft, edited, applies as the held draft it is, with the person's edit", () => {
+  const steps = updateConnections(loaded(["sheets"]), { type: "opened", kind: "sheets" })[0];
+  const reviewing: ConnectionsModel = {
+    ...steps,
+    forms: { sheets: { ...blankForm, open: true, step: 1, made: id } },
+  };
+  const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
+  const given = { tabs: [{ at: "s/1", key: "A", title: "A" }] };
+  const draft = { thread: "t", seq: 4, given, tables: [table("s/1")], said: [] };
+  const drafted = connectionsReplied(
+    reviewing,
+    replied(tag, true, { waits: true, guess: null, draft, drafting: null, current: null, fields }),
+  ).model;
+  const [editing] = updateConnections(drafted, { type: "reviewEditClicked", connection: id });
+  assert.deepEqual(editing.edits[id]?.held, { thread: "t", seq: 4 });
+  const edited = { tabs: [{ at: "s/1", key: "A", title: "A", hidden: true }] };
+  const ready = connectionsReplied(
+    { ...editing, edits: { [id]: { ...editing.edits[id]!, pending: true } } },
+    replied({ kind: "reviewRedrawn", connection: id }, true, redrawn(edited)),
+  ).model;
+  const applied = { kind: "reviewApplied" as const, of: "sheets", connection: id };
+  const [applying, apply] = updateConnections(ready, {
+    type: "reviewApplied",
+    kind: "sheets",
+    connection: id,
+  });
+  assert.deepEqual(apply, [
+    post("/api/threads/t/held/4/apply", { edit: { options: edited } }, applied),
+  ]);
+  assert.equal(formOf(applying, "sheets").pending, "applying");
+  const done = connectionsReplied(
+    applying,
+    replied(applied, true, { connection: { ...connectionView(), id, kind: "sheets" } }),
+  );
+  assert.deepEqual([formOf(done.model, "sheets"), done.model.edits[id]], [blankForm, undefined]);
+});
+
+test("Ask Oriel about a table starts the window chat's turn, which the overview opens on; with no AI, it says to edit by hand", () => {
+  const model = loaded(["sheets"]);
+  const [, effects] = updateConnections(model, {
+    type: "askOrielClicked",
+    connection: id,
+    tab: "s/1",
+  });
+  const tag = { kind: "orielAsked" as const, connection: id };
+  assert.deepEqual(effects, [post(`/api/connections/${id}/draft`, { tab: "s/1" }, tag)]);
+  assert.deepEqual(connectionsReplied(model, replied(tag, true, { thread: "t" })).effects, [
+    { type: "navigate", route: { page: "overview" } },
+    { type: "after", ms: 0, msg: { type: "chat", msg: { type: "openClicked" } } },
+  ]);
+  const none = connectionsReplied(model, replied(tag, true, { thread: null }));
+  assert.equal(settingOf(none.model, id).problem, noAiToAsk);
 });

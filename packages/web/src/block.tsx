@@ -5,9 +5,10 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
+import type { ComponentChildren } from "preact";
 import { atLeast, named, PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
-import { Chip, ItemListContext } from "./parts.tsx";
+import { Chip, Folded, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, ReviewTable, SketchView } from "./view.ts";
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -41,9 +42,16 @@ export function BlockFigure({ block, compact }: { block: BlockView; compact?: bo
 // header the source has there and the field it feeds, then its first rows
 // and what it reads and leaves out. Every word in it is the source's or
 // Oriel's, never the drafter's; what isn't read is named in one line.
-export function ReviewTables({ tables }: { tables: readonly ReviewTable[] }) {
-  const read = tables.filter((table) => table.columns.length > 0);
+export function ReviewTables(props: {
+  tables: readonly ReviewTable[];
+  // What the person changes of each table, under it, while they edit
+  // (OA-232); then the tables not read, folded into one line past a few,
+  // to read one.
+  controls?: ((table: ReviewTable) => ComponentChildren) | null | false;
+}) {
+  const { tables, controls } = props;
   const unread = tables.filter((table) => table.columns.length === 0);
+  const read = tables.filter((table) => table.columns.length > 0);
   return (
     <div class="review-tables">
       {read.map((table, i) => (
@@ -90,14 +98,42 @@ export function ReviewTables({ tables }: { tables: readonly ReviewTable[] }) {
               <li key={line}>{line}</li>
             ))}
           </ul>
+          {controls && controls(table)}
         </section>
       ))}
-      {unread.length > 0 && (
-        <p class="review-unread">Not read: {unread.map((table) => table.name).join(", ")}.</p>
+      {controls && unread.length <= 3 ? (
+        unread.map((table, i) => (
+          <section key={`unread-${i}`} class="review-table">
+            <p class="review-name">{table.name}</p>
+            {controls(table)}
+          </section>
+        ))
+      ) : controls ? (
+        <Folded
+          label={`${unread.length} tabs Oriel isn't reading`}
+          entries={unread}
+          find="Find a tab"
+        >
+          {(table) => (
+            <section class="review-table">
+              <p class="review-name">{table.name}</p>
+              {controls(table)}
+            </section>
+          )}
+        </Folded>
+      ) : (
+        unread.length > 0 && <p class="review-unread">{notRead(unread)}</p>
       )}
     </div>
   );
 }
+
+// What a draft doesn't read, in a line: a few by name, and how many more.
+const notRead = (unread: readonly ReviewTable[]): string => {
+  const named = unread.slice(0, 3).map((table) => table.name);
+  const more = unread.length - named.length;
+  return `Not read: ${named.join(", ")}${more > 0 ? `, and ${more} more ${more === 1 ? "tab" : "tabs"}` : ""}.`;
+};
 
 // A sketch under the agent's reply (decision 0033): its HTML, framed from
 // the sketch origin, in a frame with no sandbox token, at one of three

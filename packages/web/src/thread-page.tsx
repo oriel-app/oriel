@@ -503,7 +503,8 @@ function HeldMessage(props: {
 // A draft of the agent's (decision 0051): one of the user's own actions,
 // which only they apply, as it is or edited, or discard. Oriel draws it from
 // its own data: the connection it sets, by name, and each option it
-// changes, as it is and as drafted, never the agent's words.
+// changes, as it is and as drafted, never the agent's words; and, before
+// Apply, what applying it does to the items the connection has (OA-232).
 function DraftCard(props: {
   block: Extract<Entry, { kind: "draft" }>;
   model: ThreadModel;
@@ -560,6 +561,13 @@ function DraftCard(props: {
           ))}
         </dl>
       )}
+      {waits &&
+        !block.stale &&
+        block.said.map((line) => (
+          <p key={line} class="connect-said">
+            {line}
+          </p>
+        ))}
       {waits && block.stale ? (
         <div class="held-actions">
           <span class="held-note">

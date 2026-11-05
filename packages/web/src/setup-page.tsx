@@ -503,9 +503,12 @@ function YourWork(props: {
                 <ReviewStep
                   connector={connector}
                   step={reviews}
-                  form={form}
-                  send={sendConnections}
+                  connection={form.made ?? ""}
                   review={model.connections.reviews[form.made ?? ""] ?? null}
+                  editing={model.connections.edits[form.made ?? ""] ?? null}
+                  pending={form.pending !== null}
+                  problem={form.problem}
+                  send={sendConnections}
                 />
               )}
               <Failed source={source} model={model} dispatch={dispatch} send={send} show={show} />

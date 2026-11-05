@@ -4,10 +4,6 @@
   "kind": 8,
   "region": "weather-epic",
   "prompt": "Can passengers save a card for next time yet?",
-  "failing": {
-    "grader": "judge",
-    "why": "known flaky (judged): in round 01M6N6MW88FFGGS6KTT7A08D3V the judge found the reply's 'story' and 'epic' labels for SYN-99 and SYN-1 in no search hit, though it saw each hit's excerpt (OA-242); round 01M6N630QF0TT9ZCFFXCVC655C passed"
-  },
   "expect": [
     {
       "grader": "judge",

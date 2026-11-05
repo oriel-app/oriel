@@ -113,10 +113,11 @@ export const sheetsDeclaredFixture: SourceFixture<SheetsContext, unknown, Sheets
       { ...connection, secret: fixtureSecret },
       { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
     ),
-  preview: (connection, via) =>
+  preview: (connection, via, ask) =>
     sheetsPreview(
       { ...connection, secret: fixtureSecret },
       { ...via, fetch: via.fetch ?? fixtureGoogle(loadSheetsFixture()).fetch },
+      ask,
     ),
 };
 

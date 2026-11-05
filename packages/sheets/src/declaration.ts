@@ -45,10 +45,19 @@ export const sheetsDeclaration = {
   // setField and addRow (OA-223): 835 bytes.
   budget: 900,
   open: openSheets,
-  // The spreadsheets the person picked, each tab's mapping, and whether
-  // it is read-only.
+  // The spreadsheets the person picked, each tab's mapping, which Settings
+  // draws with its review step, and whether it is read-only.
   options: sheetsOptions,
-  optionFields: [{ kind: "read-only", name: "readOnly" }],
+  optionFields: [
+    {
+      kind: "mapping",
+      name: "spreadsheets",
+      label: "How Oriel reads each tab",
+      about:
+        "Oriel turns each row into an item. Choose which columns give each item its title, status and other fields.",
+    },
+    { kind: "read-only", name: "readOnly" },
+  ],
   // Each picked tab's first rows, which the agent drafts a mapping from,
   // naming columns by letter, and Oriel's own guess (decision 0051).
   preview: sheetsPreview,

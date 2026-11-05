@@ -5,13 +5,14 @@
 // one from a list the source gives; a folder step's path, from the folder picker or
 // by its typed path; a sign-in on the source's own page, in the person's
 // browser; and the options Oriel or the agent drafts, drawn from the source,
-// to apply. A refusal names its fields and keeps the help on screen
+// to apply or edit. A refusal names its fields and keeps the help on screen
 // (OA-125). And what the window says of a connector it offers, or of a
 // connection that read nothing.
 import type { ComponentChildren } from "preact";
 import { useEffect } from "preact/hooks";
 import { ReviewTables } from "./block.tsx";
 import {
+  appliesEdited,
   type ConnectForm,
   type ConnectionsModel,
   type ConnectionsMsg,
@@ -21,12 +22,21 @@ import {
   formOf,
   openConnections,
   pickedChoice,
+  type ReviewEditing,
   stepOf,
   typedAll,
 } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import { type Dispatch, Link, plural, useStamp } from "./parts.tsx";
-import type { ConnectField, ConnectorView, ConnectStep, OptionsReviewView } from "./view.ts";
+import type {
+  ConnectField,
+  ConnectorView,
+  ConnectStep,
+  OptionsReviewView,
+  ReviewEdit,
+  ReviewField,
+  ReviewTable,
+} from "./view.ts";
 
 type Step<K extends ConnectStep["kind"]> = Extract<ConnectStep, { kind: K }>;
 
@@ -274,64 +284,248 @@ export function BrowserStep(props: StepProps<"browser">) {
 }
 
 // A review step (decision 0051): the connection's options as the agent
-// drafted them, or Oriel's guess until then, or with no AI, each drawn from
-// the source by Oriel, for the person to apply. It says whose it is.
-export function ReviewStep(props: StepProps<"review"> & { review: OptionsReviewView | null }) {
-  const { connector, step, form, send, review } = props;
+// drafted them, or Oriel's guess until then, or with no AI; each drawn from
+// the source by Oriel, for the person to apply, or to edit and apply
+// (OA-232). It says whose it is, and, before Apply, what applying does to
+// the items the connection has. The same step shows wherever a connection
+// is made, and in Settings, where `beside` names the option it sets, and
+// where it edits one table by hand, as it reads now.
+export function ReviewStep(props: {
+  connector: ConnectorView;
+  step: Step<"review">;
+  connection: string;
+  review: OptionsReviewView | null;
+  editing: ReviewEditing | null;
+  pending: boolean;
+  problem: string | null;
+  send(msg: ConnectionsMsg): void;
+  beside?: string;
+  actions?: ComponentChildren;
+}) {
+  const { connector, step, connection, review, editing, send } = props;
   const { kind } = connector;
-  const connection = form.made ?? "";
-  const shown = review?.draft ?? review?.guess ?? null;
+  const shown = review?.draft ?? review?.guess ?? review?.current ?? null;
+  const problem = editing?.redrawn.problem ?? props.problem;
+  const again = (
+    <button
+      type="button"
+      class="button"
+      onClick={() => send({ type: "reviewAsked", kind, connection, fresh: true })}
+    >
+      Try again
+    </button>
+  );
   if (!review || (!shown && review.drafting))
-    return (
+    return problem && !review ? (
+      <div class="connect-review">
+        <p class="connect-problem" role="alert">
+          {problem}
+        </p>
+        <div class="connect-actions">{again}</div>
+      </div>
+    ) : (
       <p class="cli-line cli-waiting" role="status">
         <span class="spinner" aria-hidden="true" />
         {step.reading}
       </p>
     );
-  const whose = review.draft
-    ? "The agent drafted how Oriel reads them."
-    : review.drafting
-      ? "Oriel's guess, while the agent drafts a better one."
-      : "Oriel's guess, from the first row and the first column with a value in every row.";
+  const whose = editing
+    ? "Your draft."
+    : review.draft
+      ? "Oriel's draft."
+      : review.drafting
+        ? "A first guess. Oriel is drafting."
+        : review.guess
+          ? "Oriel's first guess. Check the columns below."
+          : "How Oriel reads it now.";
+  const drawn = editing?.redrawn.tables ?? shown?.tables ?? [];
+  const tables = editing?.only ? drawn.filter((table) => table.at === editing.only) : drawn;
+  const said = editing?.redrawn.said ?? review.draft?.said ?? review.guess?.said ?? [];
+  const apply = () =>
+    send({
+      type: "reviewApplied",
+      kind,
+      connection,
+      ...(props.beside ? { beside: props.beside } : {}),
+    });
   return (
     <div class="connect-review" role="group" aria-label={step.label}>
       <p class="connect-note">
-        <strong>{whose}</strong> {step.lede}
+        <strong>{whose}</strong>{" "}
+        {editing ? "Nothing changes until you apply." : review.current ? "" : step.lede}
       </p>
       {shown ? (
-        <ReviewTables tables={shown.tables} />
+        <ReviewTables
+          tables={tables}
+          controls={
+            editing &&
+            ((table) => (
+              <TableControls
+                table={table}
+                fields={review.fields}
+                disabled={editing.pending || props.pending}
+                onEdit={(edit) => send({ type: "reviewEdited", connection, edit })}
+              />
+            ))
+          }
+        />
       ) : (
         <p class="connect-none">
           Oriel couldn't guess: no column has a different value in every row. Add one, such as an
           ID, in the sheet, then try again.
         </p>
       )}
-      {form.problem && (
+      {said.map((line) => (
+        <p key={line} class="connect-said">
+          {line}
+        </p>
+      ))}
+      {problem && (
         <p class="connect-problem" role="alert">
-          {form.problem}
+          {problem}
         </p>
       )}
       <div class="connect-actions">
         {props.actions}
-        {shown ? (
-          <button
-            type="button"
-            class="button primary"
-            disabled={form.pending !== null}
-            onClick={() => send({ type: "reviewApplied", kind, connection })}
-          >
-            {form.pending === "applying" ? "Reading…" : "Apply"}
-          </button>
+        {editing ? (
+          <>
+            <button
+              type="button"
+              class="quiet-action"
+              disabled={props.pending}
+              onClick={() => send({ type: "reviewEditCancelled", connection })}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="button primary"
+              disabled={props.pending || !appliesEdited(editing)}
+              onClick={apply}
+            >
+              {props.pending ? "Reading…" : "Apply"}
+            </button>
+          </>
+        ) : !shown ? (
+          again
         ) : (
-          <button
-            type="button"
-            class="button"
-            onClick={() => send({ type: "reviewAsked", kind, connection, fresh: true })}
-          >
-            Try again
-          </button>
+          <>
+            <button
+              type="button"
+              class="button"
+              disabled={props.pending}
+              onClick={() => send({ type: "reviewEditClicked", connection })}
+            >
+              Edit
+            </button>
+            <button type="button" class="button primary" disabled={props.pending} onClick={apply}>
+              {props.pending ? "Reading…" : "Apply"}
+            </button>
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Where a table ends, in the review step's words.
+const ends = [
+  { value: "blank", label: "At its first blank row" },
+  { value: "grid", label: "At the end of the sheet, skipping blank rows" },
+] as const;
+
+// What the person changes of one table in a review step (OA-232): whether
+// it's read; each field's column, by its letter and the header the sheet
+// has there; its header row; where it ends; and whether rows hidden by hand
+// are read. Each change is drawn again from the source by the server.
+function TableControls(props: {
+  table: ReviewTable;
+  fields: readonly ReviewField[];
+  disabled: boolean;
+  onEdit(edit: ReviewEdit): void;
+}) {
+  const { table, fields, disabled, onEdit } = props;
+  const { at, reads } = table;
+  if (at === null) return null;
+  return (
+    <div class="review-controls" role="group" aria-label={`How Oriel reads ${table.name}`}>
+      <label class="choice">
+        <input
+          type="checkbox"
+          checked={reads !== null}
+          disabled={disabled}
+          onChange={(event) => onEdit({ table: at, read: event.currentTarget.checked })}
+        />
+        Read this tab
+      </label>
+      {reads && (
+        <div class="review-fields">
+          {fields.map((field) => (
+            <label key={field.name} class="review-field">
+              <span>{field.label}</span>
+              <select
+                class="select"
+                value={reads.fields[field.name] ?? ""}
+                disabled={disabled}
+                onChange={(event) =>
+                  onEdit({
+                    table: at,
+                    field: field.name,
+                    column: event.currentTarget.value || null,
+                  })
+                }
+              >
+                {!field.required && <option value="">None</option>}
+                {table.columns.map((column) => (
+                  <option key={column.at} value={column.at}>
+                    {column.header ? `${column.at} · ${column.header}` : column.at}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <label class="review-field">
+            <span>Header row</span>
+            <input
+              class="input"
+              type="number"
+              min={1}
+              value={reads.header}
+              disabled={disabled}
+              onChange={(event) => {
+                const header = Number(event.currentTarget.value);
+                if (Number.isInteger(header) && header >= 1) onEdit({ table: at, header });
+              }}
+            />
+          </label>
+          <label class="review-field">
+            <span>Stop reading</span>
+            <select
+              class="select"
+              value={reads.end}
+              disabled={disabled}
+              onChange={(event) =>
+                onEdit({ table: at, end: event.currentTarget.value === "grid" ? "grid" : "blank" })
+              }
+            >
+              {ends.map((end) => (
+                <option key={end.value} value={end.value}>
+                  {end.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="choice">
+            <input
+              type="checkbox"
+              checked={reads.hidden}
+              disabled={disabled}
+              onChange={(event) => onEdit({ table: at, hidden: event.currentTarget.checked })}
+            />
+            Read rows hidden by hand
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -489,9 +683,12 @@ export function ConnectSteps(props: {
         <ReviewStep
           connector={connector}
           step={step}
-          form={form}
-          send={send}
+          connection={form.made ?? ""}
           review={connections.reviews[form.made ?? ""] ?? null}
+          editing={connections.edits[form.made ?? ""] ?? null}
+          pending={form.pending !== null}
+          problem={form.problem}
+          send={send}
         />
       );
     case folderStep: {

@@ -5355,6 +5355,7 @@ a.replies:hover {
 
 .review-tables {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   min-width: 0;
 }
@@ -5378,6 +5379,54 @@ a.replies:hover {
   color: var(--text-faint);
   font-size: var(--text-xs);
   white-space: nowrap;
+}
+
+/* What the person changes of a table while they edit a review step
+   (OA-232), under it: whether it's read, each field's column, its header
+   row and where it ends. */
+.review-controls {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.review-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.review-field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.review-field .select {
+  max-width: 14rem;
+}
+
+.review-field .input {
+  width: 5rem;
+}
+
+.review-name {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* What applying a review does to the items a connection has, before Apply. */
+.connect-said {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-thin) solid var(--derived-line);
+  border-radius: var(--radius-sm);
+  background: var(--derived-soft);
+  font-size: var(--text-sm);
 }
 
 .review-lines,
@@ -6399,8 +6448,88 @@ button.overview-title:hover {
    connection, under it, and what its last sync left out. */
 .connection-options {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+
+/* A connection's mapping, in its review step (OA-232): a wide sheet
+   scrolls inside the row, never past it. */
+.connection-mapping,
+.connection-mapping .connect-review {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.connection-mapping .connect-review {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Each table a connection reads, in a line, with Ask Oriel and Edit by
+   hand (OA-232); the editor opens under the one being edited. */
+.mapping-tabs,
+.folded-list ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mapping-tabs > li,
+.mapping-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.mapping-tabs .connect-review,
+.mapping-row .connect-review {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.mapping-tab {
+  display: grid;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.mapping-reads {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* A long list folded into one line, which opens to its first few. */
+.folded-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-self: start;
+}
+
+.folded-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.folded-list .input {
+  max-width: 20rem;
+}
+
+.folded-more {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
 }
 
 .connection-options .input {

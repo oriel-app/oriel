@@ -1,6 +1,6 @@
 import type { PreviewTable } from "./block.ts";
 import type { DeclaredFacets } from "./change-log.ts";
-import type { ConnectOf, LiveOf, OptionField, ReviewOf } from "./connect.ts";
+import type { ConnectOf, LiveOf, OptionField, PreviewAsk, ReviewOf } from "./connect.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
@@ -62,10 +62,12 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   // with it: the options its `open` reads. Its checks never quote a value.
   options: Described<Record<string, unknown>>;
   // What the agent reads to draft those options, while a connection waits
-  // for them (decision 0051): read live from the source, as tables of text,
-  // such as a workspace's channels and when each was last active. Without
-  // it, the agent drafts none of its options.
-  preview?: (connection: ToOpen, via: OpenVia) => Promise<PreviewTable[]>;
+  // for them or the person asks to change them (decision 0051): read live
+  // from the source, as tables of text, such as a workspace's channels and
+  // when each was last active. Without it, the agent drafts none of its
+  // options. `ask` may name tables to read first, or ask for their names
+  // alone, as Settings lists them (OA-232).
+  preview?: (connection: ToOpen, via: OpenVia, ask?: PreviewAsk) => Promise<PreviewTable[]>;
   // How a draft of those options reads against the preview, which the agent
   // drafts in place of options, and Oriel's own guess. Without it, a draft
   // is options.

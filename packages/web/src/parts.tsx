@@ -637,6 +637,61 @@ export function Mark() {
   );
 }
 
+// A long list folded into one line, such as "12 tabs Oriel isn't reading", which
+// opens to its first few, with a search past a few (OA-232): long lists are
+// designed away, not drawn. Each entry's name is matched as text.
+const foldedShown = 8;
+export function Folded<T extends { name: string }>(props: {
+  label: string;
+  entries: readonly T[];
+  find: string;
+  children(entry: T): ComponentChildren;
+}) {
+  const { entries } = props;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  if (entries.length === 0) return null;
+  const words = query.trim().toLowerCase();
+  const found = entries.filter((entry) => entry.name.toLowerCase().includes(words));
+  const shown = found.slice(0, foldedShown);
+  return (
+    <div class="folded">
+      <button
+        type="button"
+        class="quiet-action folded-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Chevron />
+        {props.label}
+      </button>
+      {open && (
+        <div class="folded-list">
+          {entries.length > foldedShown && (
+            <input
+              class="input"
+              type="search"
+              value={query}
+              aria-label={props.find}
+              placeholder={props.find}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+            />
+          )}
+          <ul>
+            {shown.map((entry, i) => (
+              <li key={i}>{props.children(entry)}</li>
+            ))}
+          </ul>
+          {found.length > shown.length && (
+            <p class="folded-more">{found.length - shown.length} more: search to find one.</p>
+          )}
+          {found.length === 0 && <p class="folded-more">None matches.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

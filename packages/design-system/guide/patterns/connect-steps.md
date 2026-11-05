@@ -144,13 +144,13 @@ On the desktop app the folder comes from the system's picker (**Choose a folderâ
 
 ### Review a draft
 
-A spreadsheet doesn't say which column is an item's key or title. Oriel guesses from the first row, the agent drafts something better in the background (decision 0051), and the person applies one. The step says whose it is: "Oriel's guess, while the agent drafts a better one.", "The agent drafted how Oriel reads them.", or, with no AI, "Oriel's guess, from the first row and the first column with a value in every row." The columns that are read are in the accent.
+A spreadsheet doesn't say which column is an item's key or title. Oriel guesses from the first row, the agent drafts something better in the background (decision 0051), and the person applies one. The step says whose it is: "A first guess. Oriel is drafting.", "Oriel's draft.", or, with no AI, "Oriel's first guess. Check the columns below." The columns that are read are in the accent.
 
 ```html specimen id=review title="A review step: Oriel's guess, to apply"
 <div role="group" aria-label="How Oriel reads your spreadsheets">
   <p class="connect-note">
-    <strong>Oriel's guess, while the agent drafts a better one.</strong> Each row becomes an item,
-    under the columns below. Nothing is read until you apply it.
+    <strong>A first guess. Oriel is drafting.</strong> Each row becomes an item, under the columns
+    below. Nothing is read until you apply it.
   </p>
   <div class="review-tables">
     <section class="review-table">
@@ -171,7 +171,7 @@ A spreadsheet doesn't say which column is an item's key or title. Oriel guesses 
               <th scope="col">Notes</th>
             </tr>
             <tr class="review-feeds">
-              <td data-feeds>Key</td>
+              <td data-feeds>Row ID</td>
               <td data-feeds>Title</td>
               <td>Content</td>
             </tr>
@@ -191,8 +191,11 @@ A spreadsheet doesn't say which column is an item's key or title. Oriel guesses 
         </table>
       </div>
       <ul class="review-lines">
-        <li>Each row from row 2 is an item, to the end of the sheet.</li>
-        <li>Columns that feed nothing are the item's content.</li>
+        <li>
+          Oriel reads rows from row 2 to the end of the sheet, skipping blank rows. Each becomes an
+          item.
+        </li>
+        <li>Other columns become the item's content.</li>
       </ul>
     </section>
     <p class="review-unread">Not read: Archive.</p>

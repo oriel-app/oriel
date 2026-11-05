@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTool, systemPrompt } from "@oriel/agent";
 import { bindingsFor, typecheck, waitingOf } from "@oriel/bindings";
+import { readsNow } from "@oriel/core";
 import { loadFixtures } from "./fixtures.ts";
 import { moduleOf, moduleSize, regionOf, shape } from "./module-size.ts";
 
@@ -155,4 +156,40 @@ test("a waiting Sheets connection's draft, in its own form, typechecks in the wi
     "}] } });",
   ].join("\n");
   assert.equal(await typecheck(script, dts), null);
+});
+
+test("a Sheets connection's preview and draft, offered in every window chat while one reads, add within their budget, and nothing to the base", async () => {
+  // OA-232: the person may ask to change how a connection reads, so the
+  // window chat offers Sheets' preview and draft while one reads, not only
+  // while one waits. Measured at 1,527 bytes: Sheets' draft type and its doc
+  // line, about 87 of them saying `options` is how it reads now.
+  const sheetsDrafting = 1_550;
+  const sheets = fixtures.get("sheets")?.declaration;
+  assert.ok(sheets?.review);
+  const region = regionOf([]);
+  const reader = { read: async () => [], search: async () => [] };
+  const overview = async () => ({ view: null, items: [] });
+  const chat = bindingsFor(region, { reader, namespaces: {}, overview }).dts;
+  const waiting = waitingOf([
+    {
+      id: "01JC0NNECT10N0000000000000",
+      kind: "sheets",
+      source: sheets.name,
+      why: readsNow,
+      options: {},
+      validator: sheets.options,
+      draft: {
+        validator: sheets.review.draft,
+        doc: sheets.review.doc,
+        current: sheets.review.current,
+      },
+      preview: async () => [],
+    },
+  ]);
+  assert.ok(waiting);
+  const drafted = bindingsFor(region, { reader, namespaces: {}, overview, waiting }).dts;
+  const added = shape(drafted) - shape(chat);
+  assert.ok(added > 0 && added <= sheetsDrafting, `Sheets' drafting adds ${added} bytes`);
+  // A region's module, outside the window chat, has none of it.
+  assert.doesNotMatch(bindingsFor(region, { reader, namespaces: {} }).dts, /declare const source/);
 });

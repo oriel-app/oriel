@@ -190,6 +190,9 @@ export const exemptRoutes: Record<string, string> = {
   // Decision 0050: a browser step's sign-in, on the source's own page.
   "/connections/browser":
     "a sign-in begun on the source's page, which keeps nothing until the person's connect",
+  // OA-232: a mapping redrawn as the person edits it; applying it dispatches.
+  "/connections/:id/review":
+    "a draft redrawn from the source with the person's edit, which keeps nothing",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex

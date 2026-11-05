@@ -173,6 +173,8 @@ test("no connector's options use the names every connection has beside them, and
       );
       // Only a connector that writes may be set read-only.
       if (field.kind === "read-only") assert.ok(sources[kind].specs, kind);
+      // A mapping is drawn and changed by its connector's review step.
+      if (field.kind === "mapping") assert.ok(sources[kind].review, kind);
     }
   }
 });
