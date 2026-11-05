@@ -410,8 +410,14 @@ export function updateConnections(
         connection: msg.connection,
         ...(msg.beside ? { beside: msg.beside } : {}),
       };
-      const options = (options: unknown) =>
-        post(`/api/connections/${msg.connection}/options`, { options }, tag);
+      // In Settings, only the option it sets, merged over the rest as they
+      // are then, so a switch changed meanwhile stays as it was set.
+      const options = (options: Record<string, unknown> | null) =>
+        post(
+          `/api/connections/${msg.connection}/options`,
+          { options: msg.beside ? { [msg.beside]: options?.[msg.beside] } : options },
+          tag,
+        );
       const held = (at: { thread: string; seq: number }, edited?: Record<string, unknown>) =>
         post(
           `/api/threads/${at.thread}/held/${at.seq}/apply`,

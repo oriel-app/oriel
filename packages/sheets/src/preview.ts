@@ -332,7 +332,13 @@ function edit(
   if ("read" in change) {
     if (!change.read) return placed(others);
     if (tab) return placed(draft.tabs);
-    const [guessed] = (guess([table])?.["tabs"] ?? []) as DraftedTab[];
+    // Oriel's guess, under the first header row it finds one under, as a
+    // title row may sit above the table.
+    const guessed = table.rows.slice(0, 10).flatMap((_, at): DraftedTab[] => {
+      const [under] = (guess([{ ...table, rows: table.rows.slice(at) }])?.["tabs"] ??
+        []) as DraftedTab[];
+      return under ? [{ ...under, header: at + 1 }] : [];
+    })[0];
     if (!guessed)
       return {
         problem: `${table.name}: no column has a value in every row, different in each, to name its rows by. Add one, such as an ID, in the sheet.`,

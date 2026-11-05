@@ -296,6 +296,24 @@ test("the person edits a draft a change at a time: a field's column, a tab read 
     [rows.tabs[0]?.["header"], rows.tabs[0]?.["end"], rows.tabs[0]?.["hidden"]],
     [2, "grid", true],
   );
+  // A tab whose table sits under a title row is read from the header row
+  // its guess finds.
+  const titled = {
+    name: "Plan › Q4",
+    at: `${tracker}/9`,
+    columns: ["A", "B"],
+    rows: [
+      ["Q4 plan", null],
+      [null, null],
+      ["ID", "Feature"],
+      ["P-1", "Search"],
+      ["P-2", "Export"],
+    ],
+  };
+  const read = sheetsReview.edit({ tabs: [] }, { table: titled.at, read: true }, [titled]);
+  assert.deepEqual(read, {
+    tabs: [{ at: titled.at, header: 3, end: "blank", hidden: false, key: "A", title: "A" }],
+  });
   // A tab not read, read, is Oriel's guess at it; left out, it isn't read.
   const raidAt = `${raid}/4100`;
   const both = edited(draft, { table: raidAt, read: true });

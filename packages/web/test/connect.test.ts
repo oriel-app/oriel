@@ -580,8 +580,13 @@ test("Settings shows a mapping as it reads now, and a change applies only once e
     connection: id,
     beside: "spreadsheets",
   });
+  // Only the mapping: a switch set meanwhile stays as it was set.
   assert.deepEqual(apply, [
-    post(`/api/connections/${id}/options`, { options: drawn.options }, applied),
+    post(
+      `/api/connections/${id}/options`,
+      { options: { spreadsheets: drawn.options.spreadsheets } },
+      applied,
+    ),
   ]);
   // In Settings, never the connect steps' form.
   assert.deepEqual(formOf(applying, "sheets"), formOf(ready, "sheets"));
