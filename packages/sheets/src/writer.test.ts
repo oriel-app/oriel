@@ -376,6 +376,124 @@ test("Google refusing the write changed nothing, and says so", async () => {
   );
 });
 
+// A writer whose requests are counted, so a test can stop the write at one
+// before it goes out: by its time running out, or its sign-in failing.
+// Google can turn the first post away too, as a 429 does, unprocessed.
+function stoppable(options: { busy?: boolean } = {}) {
+  const standIn = fixtureGoogle(fixture);
+  let made = 0;
+  let stop: { at: number; how: "time" | "sign-in" } | null = null;
+  // Whether the write stops here, once.
+  const stops = (how: "time" | "sign-in") => {
+    if (stop?.how !== how || made !== stop.at) return false;
+    stop = null;
+    return true;
+  };
+  let busy = options.busy ?? false;
+  const writer = sheetsWriter(
+    {
+      credential: {
+        headers: async () => {
+          if (stops("sign-in")) throw new Error("Google Sheets needs signing in again");
+          return { Authorization: `Bearer ${standInToken}` };
+        },
+      },
+      picks: fixturePicks(fixture),
+      prefix: "sheets",
+      fetch: async (input, init) => {
+        made += 1;
+        if (busy && init?.method === "POST") {
+          busy = false;
+          return new Response("", { status: 429 });
+        }
+        return standIn.fetch(input, init);
+      },
+      wait: async () => {},
+    },
+    () => {},
+  );
+  const limit = { left: () => (stops("time") ? 0 : 60_000) };
+  const writes = () => standIn.calls.filter((c) => c.method === "POST");
+  const keyed = (key: string) =>
+    (standIn.spreadsheet(tracker).tabs.find((t) => t.sheetId === 1100)?.rows ?? []).filter(
+      (r) => r[0] === key,
+    );
+  return {
+    writer,
+    limit,
+    writes,
+    keyed,
+    stopAt: (at: number, how: "time" | "sign-in") => (stop = { at, how }),
+  };
+}
+
+// Which request of a write is its post, counted from 0, as a run of it shows.
+async function postOf(op: string, target: Parameters<typeof request>[1], args: unknown) {
+  const { standIn, writer } = setup();
+  await writer.apply(request(op, target, args));
+  return standIn.calls.findIndex((c) => c.method === "POST");
+}
+
+test("a write whose time or sign-in runs out before it goes out sent nothing, and sent again it goes once", async () => {
+  const post = await postOf("addRow", null, night);
+  for (const [how, said] of [
+    ["time", /took longer than Oriel waits on a write/],
+    ["sign-in", /needs signing in again/],
+  ] as const) {
+    const { writer, limit, writes, keyed, stopAt } = stoppable();
+    stopAt(post, how);
+    await assert.rejects(writer.apply(request("addRow", null, night), limit), refused(false, said));
+    assert.deepEqual(writes(), []);
+    await writer.apply(request("addRow", null, night), limit);
+    assert.equal(writes().length, 1);
+    assert.equal(keyed("FW-110").length, 1);
+  }
+  // An edit and a deleted row, likewise.
+  for (const [op, target, args] of [
+    ["setField", fw102, { field: "status", value: "Done" }],
+    ["deleteRow", fw102, {}],
+  ] as const) {
+    const at = await postOf(op, target, args);
+    const { writer, limit, writes, stopAt } = stoppable();
+    stopAt(at, "sign-in");
+    await assert.rejects(writer.apply(request(op, target, args), limit), refused(false, /signing/));
+    assert.deepEqual(writes(), []);
+  }
+});
+
+test("a post Google turned away, whose retry can't sign in, changed nothing", async () => {
+  const post = await postOf("addRow", null, night);
+  const { writer, limit, writes, keyed, stopAt } = stoppable({ busy: true });
+  stopAt(post + 1, "sign-in");
+  await assert.rejects(
+    writer.apply(request("addRow", null, night), limit),
+    refused(true, /needs signing in again/),
+  );
+  assert.deepEqual(writes(), []);
+  assert.deepEqual(keyed("FW-110"), []);
+});
+
+test("a write that went out and then ran out of time may have landed, and sent again adds no second row", async () => {
+  const post = await postOf("addRow", null, night);
+  const { writer, limit, writes, keyed, stopAt } = stoppable();
+  // The read back after the post.
+  stopAt(post + 1, "time");
+  await assert.rejects(
+    writer.apply(request("addRow", null, night), limit),
+    (error: unknown) =>
+      !(error instanceof SourceRefused) &&
+      error instanceof Error &&
+      /took longer than Oriel waits on a write/.test(error.message),
+  );
+  assert.equal(writes().length, 1);
+  await assert.rejects(
+    writer.apply(request("addRow", null, night), limit),
+    refused(false, /has that key already/),
+  );
+  assert.equal(writes().length, 1);
+  assert.equal(keyed("FW-110").length, 1);
+});
+
 // The golden diffs, as a thread would capture them, apply against the
 // fixture, each checked against the cells a diff would show.
 for (const name of ["sheets-edit-status", "sheets-add-row"])

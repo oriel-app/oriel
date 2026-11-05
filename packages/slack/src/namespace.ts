@@ -15,7 +15,7 @@ import {
   string,
   write,
 } from "@oriel/core";
-import { keyParts, slackOps } from "./ops.ts";
+import { keyParts, messageText, slackOps } from "./ops.ts";
 
 // What only the composition root knows: the channels the server reads, by
 // ID, and who Oriel posts as, by user ID. Absent while Slack isn't connected,
@@ -83,7 +83,8 @@ export function slackNamespace(context: SlackContext): NamespaceSpec {
           doc: "Reply in a conversation, likewise, once a run.",
           op: "reply",
           creates: false,
-          params: [param("id", "SlackId", string), param("text", "string", string)],
+          // Checked here, so a refused reply doesn't use up the conversation's one.
+          params: [param("id", "SlackId", string), param("text", "string", messageText)],
           build: ([id, text], host) => {
             postable(id, host, channels);
             if (replied.has(id))

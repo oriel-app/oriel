@@ -13,6 +13,7 @@ import {
   optional,
   requestMs,
   retryMs,
+  SourceRefused,
   string,
   type WriteLimit,
 } from "@oriel/core";
@@ -94,10 +95,13 @@ export function methodsApi<M extends string>(
       throw new Error(`refusing a method ${side} doesn't use: ${method}`);
     for (let attempt = 1; ; attempt++) {
       const ms = requestMs(timeoutMs, limit, "Slack");
-      // The credential's own message stays out of the error, in case it names
-      // a secret.
+      // Without its credentials the call never goes out. The credential's own
+      // message stays out of the error, in case it names a secret.
       const credentials = await options.credential.headers().catch((error: unknown) => {
-        throw new Error("Oriel couldn't get its credentials for Slack", { cause: error });
+        throw new SourceRefused("Oriel couldn't get its credentials for Slack", {
+          sent: false,
+          cause: error,
+        });
       });
       const response = await send(`https://slack.com/api/${method}`, {
         method: "POST",

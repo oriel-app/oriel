@@ -228,6 +228,35 @@ test("every call of a write keeps within its limit, and a stalled post itself se
   assert.ok(asked.length > 1 && asked.every((ms) => ms === 20_000));
 });
 
+test("a write whose credentials fail never goes out, and the failure names no secret", async () => {
+  const workspace = fixtureApi(fixture);
+  // Who the token is for is signed; the post itself can't be.
+  let signed = 0;
+  const writer = slackWriter({
+    api: writeApi({
+      credential: {
+        headers: async () => {
+          signed += 1;
+          if (signed > 1) throw new Error("token xoxp-abc123 has expired");
+          return {};
+        },
+      },
+      fetch: workspace.fetch,
+    }),
+    channels: [weather],
+    log: () => {},
+  });
+  await assert.rejects(
+    writer.apply(request("postMessage", null, { channel: weather, text: "Hi", author: amara })),
+    (error) => refused(false, /credentials/)(error) && !String(error).includes("abc123"),
+  );
+  assert.equal(signed, 2);
+  assert.deepEqual(
+    workspace.calls.filter((c) => c.method === "chat.postMessage"),
+    [],
+  );
+});
+
 test("a conversation reads as the source reads it: mentions named, as the window titles it", async () => {
   const { writer } = setup();
   // Bastian's question, which mentions someone.

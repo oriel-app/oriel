@@ -214,6 +214,24 @@ export class SourceRefused extends Error {
   }
 }
 
+// One write's `apply`, so what it throws says whether its request went out.
+// `write` calls `sent()` just before the request's bytes leave, once nothing
+// can stop them (the reads and checks before it, the time left, the
+// sign-in). A failure before then sent nothing, and is thrown as a
+// SourceRefused; one after may have landed, and is thrown as it is.
+export async function noteSent<T>(write: (sent: () => void) => Promise<T>): Promise<T> {
+  let went = false;
+  try {
+    return await write(() => {
+      went = true;
+    });
+  } catch (error) {
+    if (went || error instanceof SourceRefused) throw error;
+    const said = error instanceof Error ? error.message : String(error);
+    throw new SourceRefused(said, { sent: false, cause: error });
+  }
+}
+
 // How long a write may still take, in ms by the engine's clock: each request
 // `apply` makes for it, their retries and the waits between them.
 export type WriteLimit = { left(): number };

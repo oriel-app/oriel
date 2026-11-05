@@ -20,6 +20,7 @@ import {
   type ItemId,
   itemId,
   type Log,
+  noteSent,
   object,
   parseItemId,
   SourceRefused,
@@ -75,7 +76,7 @@ export type SlackWriterOptions = {
 };
 
 const auth = object({ user_id: string });
-const sent = object({ ts: string });
+const answered = object({ ts: string });
 
 // Slack's codes for a write it made no change for, in a person's words.
 const refusals: Record<string, string> = {
@@ -305,32 +306,36 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
     // A target must come with the stable ID it is expected to have, and a
     // post with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }, limit) =>
-      withinLimit(limit, async () => {
-        const state = { sent: false };
-        // The one request that writes. Slack refusing it made no change.
-        const send: Send = async (method, params) => {
-          state.sent = true;
-          let body: unknown;
-          try {
-            body = await api(method, params);
-          } catch (error) {
-            // Never sent, or turned away unprocessed: none of it landed.
-            if (error instanceof WriteStalled)
-              throw new SourceRefused(error.message, { sent: false, cause: error });
-            if (error instanceof SlackError)
-              throw new SourceRefused(refusals[error.code] ?? `Slack refused it (${error.code})`, {
-                sent: true,
-                cause: error,
-              });
-            throw error;
-          }
-          if (method === "chat.delete") return "";
-          const made = sent(body);
-          if (!made.ok || !isTs(made.value.ts))
-            throw new Error("chat.postMessage: Slack's answer had no ts");
-          return made.value.ts;
-        };
-        try {
+      withinLimit(limit, () =>
+        noteSent(async (sent) => {
+          // The one request that writes. Slack refusing it made no change, and
+          // the API throws what stops it going out (the time left, the
+          // credentials) as sending nothing.
+          const send: Send = async (method, params) => {
+            sent();
+            let body: unknown;
+            try {
+              body = await api(method, params);
+            } catch (error) {
+              // Never sent, or turned away unprocessed: none of it landed.
+              if (error instanceof WriteStalled)
+                throw new SourceRefused(error.message, { sent: false, cause: error });
+              if (error instanceof SlackError)
+                throw new SourceRefused(
+                  refusals[error.code] ?? `Slack refused it (${error.code})`,
+                  {
+                    sent: true,
+                    cause: error,
+                  },
+                );
+              throw error;
+            }
+            if (method === "chat.delete") return "";
+            const made = answered(body);
+            if (!made.ok || !isTs(made.value.ts))
+              throw new Error("chat.postMessage: Slack's answer had no ts");
+            return made.value.ts;
+          };
           if (!isSlackOp(op)) throw new Error(`not a Slack operation: ${op}`);
           if ((target === null) !== (expectedStableId === null))
             throw new Error(
@@ -344,12 +349,8 @@ export function slackWriter(options: SlackWriterOptions): SourceWriter<"slack"> 
               : { id: target, stableId: expectedStableId },
             args,
           );
-        } catch (error) {
-          if (state.sent || error instanceof SourceRefused) throw error;
-          const said = error instanceof Error ? error.message : String(error);
-          throw new SourceRefused(said, { sent: false, cause: error });
-        }
-      }),
+        }),
+      ),
     current: async (id, fields) => {
       const found = await values(id, fields);
       return found === "gone" ? "gone" : found.values;

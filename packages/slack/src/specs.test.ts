@@ -153,6 +153,19 @@ test("the namespace posts as the context's person, beside the region's conversat
   );
 });
 
+test("a refused reply, blank or too long, leaves the conversation's one reply unused", () => {
+  const reply = writes({ channels: [weather], author: "U0FWAMARA1" }).get(
+    "reply",
+  ) as NamespaceWrite;
+  const region = host([conversation]);
+  for (const text of ["  ", "x".repeat(4_001)])
+    assert.throws(() => reply.build([conversation, text], region), /expected 1 to 4000 characters/);
+  assert.deepEqual(reply.build([conversation, "On it."], region).args, {
+    text: "On it.",
+    author: "U0FWAMARA1",
+  });
+});
+
 test("with Slack not connected, the namespace offers nothing and declares nothing", () => {
   const spec = slackNamespace(undefined);
   assert.deepEqual(spec.fns({ ids: [conversation], anchor: null }), []);

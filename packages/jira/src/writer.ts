@@ -16,6 +16,7 @@ import {
   type ItemId,
   itemId,
   type Log,
+  noteSent,
   number,
   object,
   optional,
@@ -128,13 +129,13 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
 
   // Each write is one request, its `send`. A 4xx to it is Jira refusing it,
   // having made no change; any other failure of it may have landed. Each
-  // apply gets its own, which notes when the write went out: anything that
-  // fails before then (a read, a check, the request's credentials) sent
-  // nothing.
-  const sender = () => {
-    const state = { sent: false };
-    const send: Send = async (request) => {
-      state.sent = true;
+  // apply gets its own, which notes when the write goes out: the transport
+  // throws what stops it before then (the time left, the request's
+  // credentials) as sending nothing.
+  const sender =
+    (sent: () => void): Send =>
+    async (request) => {
+      sent();
       const response = await transport(request).catch((error: unknown) => {
         // Never sent, or turned away unprocessed: none of it landed.
         if (error instanceof WriteStalled)
@@ -146,8 +147,6 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
       if (response.status < 200 || response.status > 299) throw failure(request, response);
       return response;
     };
-    return { send, state };
-  };
 
   const boards =
     options.boards ??
@@ -504,9 +503,9 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
     // A target must come with the stable ID it is expected to have, and a
     // create with none. A failure before the write went out sent nothing.
     apply: ({ op, target, expectedStableId, args }, limit) =>
-      withinLimit(limit, async () => {
-        const { send, state } = sender();
-        try {
+      withinLimit(limit, () =>
+        noteSent(async (sent) => {
+          const send = sender(sent);
           if (!isJiraOp(op)) throw new Error(`not a Jira operation: ${op}`);
           if (target === null) {
             if (expectedStableId !== null) throw new Error(`${op}: a stable ID needs a target`);
@@ -515,12 +514,8 @@ export function jiraWriter(options: JiraWriterOptions): SourceWriter<"jira"> {
           if (expectedStableId === null)
             throw new Error(`${op}: no stable ID to check ${target} against`);
           return await write(send, op, { id: target, stableId: expectedStableId }, args);
-        } catch (error) {
-          if (state.sent || error instanceof SourceRefused) throw error;
-          const said = error instanceof Error ? error.message : String(error);
-          throw new SourceRefused(said, { sent: false, cause: error });
-        }
-      }),
+        }),
+      ),
     current: async (id, fields) => {
       const found = await values(keyOf(id), fields);
       return found === "gone" ? "gone" : found.values;
