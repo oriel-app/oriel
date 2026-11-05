@@ -321,7 +321,7 @@ The lines themselves have no states; their actions have their buttons' states. F
 
 - Empty: `.rail-empty`, `.sidebar .rail-empty`, `.search-results .rail-empty:empty`, `.rail-note`, `.window-chat-empty`, `.no-items`, `.no-matches`, `.overview-quiet`, `.panel-empty` and `.connect-none` in `window.css`.
 - Loading: `.loading`, `.more-items`, `.working`, `.working-dot` and `.spinner` in `window.css`. `Waiting` in `packages/web/src/cli-row.tsx`, copied into `BrowserStep` and `ReviewStep` in `packages/web/src/connect-steps.tsx`, and `YourWork` in `packages/web/src/setup-page.tsx`.
-- Error: `.failed`, `.notice`, `.source-problem`, `.selection-notice`, `.composer-notice`, `.run-error`, `.line-error`, `.apply-errors`, `.change-set-problem`, `.panel-problem`, `.overview-problem`, `.ask-problem`, `.settings-problem`, `.setup-problem` and `.cli-box` in `window.css`; `.connect-problem` twice in `window.css`; `.connection-problem` twice in `window.css`.
+- Error: `.failed`, `.notice`, `.source-problem`, `.selection-notice`, `.composer-notice`, `.run-error`, `.line-error`, `.apply-errors`, `.change-set-problem`, `.panel-problem`, `.overview-problem`, `.ask-problem`, `.settings-problem`, `.setup-problem` and `.cli-box` in `window.css`; `.connect-problem` in `window.css`; `.connection-problem` twice in `window.css`.
 
 ## Drift
 
@@ -333,7 +333,7 @@ Status **drifting**.
   - Three colours: `--danger` text, `--danger` on `--danger-soft`, and muted grey for a load that failed (`.failed`, `.overview-problem`, `.more-items[data-state=failed]`), even though they're `role="alert"`.
   - Four retry styles: a `.button` Try again (Browse), a `.quiet-action` Try again (the overview, the item panel), no retry at all ("This thread didn't load.", "This workstream didn't load."), and Dismiss.
   - `.failed` is also used for "This thread was deleted." with `role="status"`: not a failure.
-  - `.settings-problem` and `.setup-problem` are the same rule twice. `.connect-problem` and `.connection-problem` are each declared twice.
+  - `.settings-problem` and `.setup-problem` are the same rule twice. `.connection-problem` is declared twice.
   - "That's already in this workstream." shows in the error colour.
 
 **Which to copy today**, until `Empty`, `Busy` and `Problem` components land:

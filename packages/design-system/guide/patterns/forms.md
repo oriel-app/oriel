@@ -162,6 +162,6 @@ The [text field lab](/lab/text-field) proposes `:user-invalid` for the look, so 
 
 - Where an error shows differs by form: under the fields (connect steps, the first run's key), at the top of Settings (the path, the key in Settings), under the card (the review link). There are about a dozen classes for the one job (`.connect-problem`, `.settings-problem`, `.change-set-problem`, `.confirm-problem`, `.composer-notice`…).
 - Only the connect steps and the first run's key set `aria-invalid`; Settings' path and key, a folder's typed path and the review link's name don't.
-- `.connect-problem` is written twice (`.connect-problem` twice in `window.css`), and `.connect-field input` is styled twice over: by its own rule and again by `.connect-details .input`, which always wins (`.connect-field input` and `.connect-details .input` in `window.css`).
+- `.connect-field input` is styled twice over: by its own rule and again by `.connect-details .input`, which always wins (`.connect-field input` and `.connect-details .input` in `window.css`).
 
 Until a Field component settles it, **copy `FieldsStep`**: visible labels, hints, submit disabled until typed, the server's sentence in a `role="alert"` paragraph under the fields, and `aria-invalid` on the fields it names.

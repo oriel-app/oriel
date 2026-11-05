@@ -161,7 +161,7 @@ Tabs and radios both pick one of a few. The difference is what picking does: a t
 
 ## Where the app uses it
 
-- CSS: `.tabs`, `.tabs button`, `.tabs button:hover` and `.tabs button[aria-pressed="true"]` in `window.css`; `.tabs a { text-decoration: none }` again further down; `.done-tabs` and `.view-tabs` in `window.css`.
+- CSS: `.tabs`, `.tabs button`, `.tabs button:hover` and `.tabs button[aria-pressed="true"]` in `window.css`; `.done-tabs` and `.view-tabs` in `window.css`.
 - Group by: `Tabs` in `packages/web/src/window-page.tsx`, which `WindowPage` puts in Browse's head.
 - Overview and Browse: `ViewTabs` in `packages/web/src/overview-page.tsx`, used by `OverviewPage` there and by `WindowPage` in `packages/web/src/window-page.tsx`.
 - Done and Dropped: `DonePage` in `packages/web/src/other-pages.tsx`.
@@ -172,7 +172,6 @@ Tabs and radios both pick one of a few. The difference is what picking does: a t
 Status **drifting**, as part of "pick one of a few" (cms:B1 in [the drift report](/drift)):
 
 - One `.tabs` rule styles two controls, buttons and links, by element (`.tabs button`, `.tabs a`), with no class of their own.
-- `text-decoration: none` is set on `.tabs a` twice in `window.css`: beside `.tabs button`, and again on its own.
 - The padding is a raw `0.25rem` (`.tabs button` in `window.css`), like `.button`'s.
 - Settings' section list is the same idea with the sidebar's look, shadow included, and turns from a column into a wrapped row at 760px.
 - Radios are drawn two more ways (`.choices` and `.choice-rows`), and the first run fakes a third picked look (`.cli-picked`).

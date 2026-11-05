@@ -370,7 +370,6 @@ Once connected, a connection that read nothing says so in Browse, in the card's 
 ### Drift
 
 - **Three arrangements of one step set.** `ConnectSteps` in Settings; `ConnectCard` on the overview (fields and pick only, no Cancel); and the first run, which arranges the parts itself and never uses `FolderStep` (a folder is a button in its row).
-- **`.connect-actions` is written twice** with two layouts: one wraps, the other spreads with the primary pushed right (`.connect-actions` twice in `window.css`). `.connect-problem` and `.connect-fields` are each written twice too.
 - **Two pick lists.** Settings' **Change** of a picked option draws a plainer list (`.choices`, drawn by `PickOption` in `packages/web/src/connections-page.tsx`) than the pick step's rows.
 - **Failure shapes differ by place**: a `.connect-problem` line in a step, a `.cli-box[data-tone="danger"]` with Try again, Change and Copy details in the first run, `.connection-problem` in Settings.
 - `.connect-review`, `.connect-browser` and `.connect-consent` have no rules of their own.

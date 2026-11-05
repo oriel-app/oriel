@@ -335,7 +335,7 @@ There is no generated summary in the rail. It holds the title line, at most one 
 - **Rest** is the title and the list. The rows aren't hover targets: only the key is a link, and it turns accent and underlined on hover (`.source-link:hover` in `window.css`). **Focus-visible** on a key or on Sync now is the global ring.
 - **Hover** on Sync now is `--surface-hover` behind `--text`, only while it can act (`.sync-now:hover:not([aria-disabled])` in `window.css`).
 - **Disabled** is `aria-disabled="true"` on Sync now, at 0.5, while a turn runs or a sync is under way (`.sync-now[aria-disabled]` in `window.css`). It stays in the tab order so its tooltip can say why; clicks do nothing.
-- **Busy**: syncing sets `aria-busy="true"` too, and the icon pulses at 1.2s (`.sync-now[aria-busy] .icon` in `window.css`), and holds still under reduced motion. The tooltip says "Syncing…".
+- **Busy**: syncing sets `aria-busy="true"` too, and the icon pulses (`.sync-now[aria-busy] .icon` in `window.css`), and holds still under reduced motion. The tooltip says "Syncing…".
 - **Stale** is the behind note itself: the region's version is older than the workstream's.
 - **Empty**: "No items yet. What a change set here creates joins this workstream." under "0 items · v1". A new thread's rail says "No items" and "No workstream yet: your first message makes one, with this thread. What a change set here creates joins it." The behind note wins over the empty one.
 - **Error** and **loading** have no look of their own: the rail comes with the thread's page, which has its own loading and error lines.

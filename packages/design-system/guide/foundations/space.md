@@ -1,7 +1,7 @@
 ---
 title: Space, shape and elevation
 order: 30
-summary: The space scale, row density per theme, three radii, two border widths, two shadows and the scrim. Plus the z-index values Oriel uses today, with no scale yet.
+summary: The space scale, row density per theme, three radii, two border widths, two shadows and the scrim. Plus the layer scale, what stacks over what.
 ---
 
 # Space, shape and elevation
@@ -188,23 +188,21 @@ tokens elevation
 
 ## Layers (z-index)
 
-There's no z-index scale. window.css has 11 literal values:
+What stacks over what is one scale of shared tokens on `html` (`--layer-raised` in `window.css`), lowest first. A rule's `z-index` is always one of them, never a number:
 
-| Value | What                                          | Where                                               |
-| ----- | --------------------------------------------- | --------------------------------------------------- |
-| 1     | Browse's anchor pick; the bead over its edges | `.anchor-pick` and `.bead` in `window.css`          |
-| 3     | The narrow screen's bar                       | `.bar` in `window.css`                              |
-| 4     | The selection bar                             | `.selection-bar` in `window.css`                    |
-| 5     | The sidebar, sticky                           | `.sidebar` in `window.css`                          |
-| 18    | The window chat                               | `.window-chat` in `window.css`                      |
-| 19    | The item panel                                | `.item-panel` in `window.css`                       |
-| 20    | The drawer's scrim, and the drop veil         | `.drawer-backdrop` and `.drop-veil` in `window.css` |
-| 21    | The sidebar as a drawer                       | `.sidebar` in `window.css`                          |
-| 22    | The bead                                      | `.bead-wrap` in `window.css`                        |
+| Token            | Value | What                                     | Where                                               |
+| ---------------- | ----- | ---------------------------------------- | --------------------------------------------------- |
+| `--layer-raised` | 1     | A part over its sibling inside one thing | `.anchor-pick` and `.bead` in `window.css`          |
+| `--layer-bar`    | 3     | The narrow screen's bar                  | `.bar` in `window.css`                              |
+| `--layer-float`  | 4     | The selection bar                        | `.selection-bar` in `window.css`                    |
+| `--layer-sticky` | 5     | The sidebar, sticky                      | `.sidebar` in `window.css`                          |
+| `--layer-sheet`  | 18    | The window chat                          | `.window-chat` in `window.css`                      |
+| `--layer-panel`  | 19    | The item panel, over the window chat     | `.item-panel` in `window.css`                       |
+| `--layer-veil`   | 20    | The drawer's scrim, and the drop veil    | `.drawer-backdrop` and `.drop-veil` in `window.css` |
+| `--layer-drawer` | 21    | The sidebar as a drawer                  | `.sidebar` in `window.css`                          |
+| `--layer-toast`  | 22    | The bead, over everything in the window  | `.bead-wrap` in `window.css`                        |
 
-Menus and tooltips need none: they open in the top layer, as popovers. A new layer should too, if it can.
-
-**Suggested:** a `--layer-*` set on the shared `html` block, so the order is written once and a new layer has a name to sit between. For example `--layer-raised: 1`, `--layer-bar: 3`, `--layer-sticky: 5`, `--layer-sheet: 18`, `--layer-panel: 19`, `--layer-scrim: 20`, `--layer-drawer: 21`, `--layer-toast: 22`. It's a maintainer's call: z-index isn't a theme value, so the theme check doesn't need it.
+`--layer-raised` only orders things inside one stacking context, such as the bead over its under-layer; the rest order the window's own layers. Menus, tooltips and dialogs need none: they open in the top layer, as popovers or a modal. A new layer should too, if it can. z-index isn't a theme value, so no theme sets these.
 
 ## Rules
 
@@ -215,4 +213,4 @@ Menus and tooltips need none: they open in the top layer, as popovers. A new lay
 - **Don't** write a literal radius (but a dot's 50%), border width or shadow. The theme check fails it.
 - **Don't** add a pill radius. Square corners are three tokens.
 - **Don't** give a card on the page a shadow to make it stand out. Use a hairline or space.
-- **Don't** add a z-index without placing it in the table above, and prefer the top layer.
+- **Don't** write a z-index as a number. Use a `--layer-*` token, add one between two if nothing fits, and prefer the top layer.

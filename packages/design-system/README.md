@@ -85,7 +85,7 @@ The cost: a specimen's markup can fall behind a component's. Each page names the
    - a CSS rule by one of its selectors, as written: `` `.connect-actions` in `window.css` ``, `` `.quiet-action:hover:not(:disabled)` in `window.css` ``; an at-rule, `` `@keyframes pulse` ``, or a token, `` `--accent` ``;
    - code by a top-level declaration: `` `FieldsStep` in `packages/web/src/connect-steps.tsx` ``;
    - several in one file: `` `.button`, `.button.primary` and `.button.danger` in `window.css` ``;
-   - a rule written more than once, with a count the check holds it to: `` `.connect-actions` twice in `window.css` ``.
+   - a rule written more than once, with a count the check holds it to: `` `.connection-problem` twice in `window.css` ``.
 
    A file on its own, `` `packages/web/src/menu.tsx` ``, is fine too. Each name links to the source viewer at the line it's on today. The check fails if a name isn't in its file, if the count is wrong, or if a page cites a `file:line`. `pnpm -s ds where <name> [file]` prints where a name is, with its line.
 

@@ -219,7 +219,7 @@ The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines 
 - **Empty:** a status bar with no items is `.status-bar.empty`, hidden but keeping its space. A quiet spark (`data-quiet`) draws a flat `--line-strong` line. The plan meter isn't drawn when the CLI didn't say: "Claude Code didn't say how much of your plan is used. Check again."
 - **Loading:** a `<progress>` with no `value` is indeterminate. The install bar always is.
 - **Warning and error:** only the plan meter has them, by its `low` and `high`: a danger mix from 70%, `--danger` over 90%. A failed read or install says so in a line, not on the bar.
-- **Motion:** `.cli-bar`'s slug moves on a 1.8s loop, and the spinner beside it turns. **Reduced motion doesn't stop the install bar.** The reduced-motion block sets `.cli-bar { animation: none }`, but the animation is on `.cli-bar::after` in `window.css`, so the slug keeps moving. The fix is one selector: `.cli-bar::after` in that list. The native indeterminate `<progress>` follows the browser's own reduced-motion handling.
+- **Motion:** `.cli-bar`'s slug moves on a 1.8s loop, and the spinner beside it turns. Under reduced motion the slug holds still (`@media (prefers-reduced-motion: reduce)` in `window.css`). The native indeterminate `<progress>` follows the browser's own reduced-motion handling.
 
 ## Keyboard and ARIA
 
@@ -251,7 +251,7 @@ The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines 
 Status **drifting**: five bars, each written once, with no shared track, height or colour rule.
 
 - **Four tracks:** `--todo-soft`, `--line`, `--accent-soft`, and the browser's own. **Three heights:** 0.375rem, 6px and the block's 0.625rem. **Two corners:** `--radius-lg` and `--radius-sm`.
-- **Two indeterminate bars:** the native `<progress>` in the first run, and the hand-made `.cli-bar` on the same page, which ignores reduced motion.
+- **Two indeterminate bars:** the native `<progress>` in the first run, and the hand-made `.cli-bar` on the same page.
 - **One nameless control:** the reading `<progress>` has no accessible name.
 - **Firefox:** the plan meter styles only WebKit's pseudo-elements (no `::-moz-meter-bar`), so Firefox would draw its own. Settings only opens in the desktop app, so this doesn't reach anyone today; don't copy it into a page the review link can reach.
 

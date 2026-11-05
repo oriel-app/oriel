@@ -239,7 +239,6 @@ While the first sync runs, a source's row carries a progress line (`.setup-readi
 
 Status **drifting**.
 
-- **A dead card.** `.setup-box`, written with `.setup-card` and given three rules of its own, is never drawn. Drift report D1 removes it.
 - **Back is two buttons.** In the first run it's a `.link-action` in the foot or in the step's actions; Settings' Add a connection says Back as a `.quiet-action` (see [Connect steps](/patterns/connect-steps#drift)).
 - **"Nothing changes in your files."** The lede joins every offered source's `changes` with "or", so with a folder offered it reads "Nothing changes in Jira or your files or Google Sheets until you approve it", while the folder's own row says "Oriel only reads them" (`changesIn` in `packages/web/src/setup-page.tsx`).
 - **Copy says nothing.** The Terminal steps' Copy copies the line and shows no sign it did: its message, `lineCopied`, only copies (`OtherWays` in `packages/web/src/setup-page.tsx`).
