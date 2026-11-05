@@ -28,6 +28,7 @@ import {
   buildBlock,
   checkSketch,
   declaredFields,
+  ignoredKeys,
   isChart,
   isSketchHeight,
   maxBlocksPerTurn,
@@ -40,6 +41,7 @@ import {
   type Sketch,
   type SketchRefusal,
   sketchTokens,
+  specProblems,
   type Ulid,
 } from "@oriel/core";
 import type { AgentEvent } from "./contract.ts";
@@ -66,33 +68,14 @@ const searchHits = array(
   }),
 );
 
-// The keys a spec holds that no form of block takes, which show() ignores,
-// for a refusal: the agent's guesses at `from` and the like.
-const specKeys = new Set([
-  "read",
-  "args",
-  "from",
-  "form",
-  "where",
-  "label",
-  "value",
-  "columns",
-  "at",
-  "every",
-  "running",
-  "fit",
-  "start",
-  "end",
-  "due",
-  "by",
-  "rows",
-]);
+// The keys a spec held that its form doesn't take, which show() ignored,
+// named as keys alone and capped: Oriel's note to the agent, whether the
+// block shows or not, so a guess such as `filter` is never taken as done.
 const ignored = (input: unknown): string => {
-  if (typeof input !== "object" || input === null) return "";
-  const keys = Object.keys(input).filter((key) => !specKeys.has(key));
+  const keys = ignoredKeys(input);
   if (!keys.length) return "";
   const named = keys.slice(0, 5).map((key) => `\`${key.slice(0, 40)}\``);
-  return ` show() ignores ${named.join(", ")}${keys.length > 5 ? " and more" : ""}.`;
+  return ` show() ignored ${named.join(", ")}${keys.length > 5 ? " and more" : ""}: Oriel writes each block's caption and order, and only \`where\` keeps some rows.`;
 };
 
 // What a turn shows under its reply, in the order its runs asked for it.
@@ -142,7 +125,8 @@ export function turnShown(newId: () => Ulid) {
           return `Oriel refused a block: ${why}${ignored(input)}`;
         };
         const checked = blockSpec(input);
-        if (!checked.ok) return refuse(`${blockSpecHelp}${declared(input)}`);
+        if (!checked.ok)
+          return refuse(`${specProblems(input)}. In full: ${blockSpecHelp}${declared(input)}`);
         const spec = checked.value;
         const key = readKey(spec.read, spec.args);
         if (!answered.has(key))
@@ -153,19 +137,22 @@ export function turnShown(newId: () => Ulid) {
         const built = read ? buildBlock(spec, read) : null;
         if (!built?.ok) return refuse(`${built?.why ?? "its read is gone"}.`);
         const blocks = all("block");
+        // What it ignored, said whether it shows, or shows already.
+        const extra = ignored(input);
+        const every = extra && !spec.where ? " This one keeps every row." : "";
         if (
           blocks.some(
             (k) => k.kind === "block" && JSON.stringify(k.block.spec) === JSON.stringify(spec),
           )
         )
-          return `Oriel already shows that block from ${key}.`;
+          return `Oriel already shows that block from ${key}.${extra}${every}`;
         // What search() found shows as the escape hatch's block already.
         if (spec.read === "search" && spec.form === "rows")
-          return `Oriel already shows what ${key} found, under the run.`;
+          return `Oriel already shows what ${key} found, under the run.${extra}${every}`;
         if (blocks.length >= maxBlocksPerTurn)
           return refuse(`a reply shows at most ${maxBlocksPerTurn} blocks you ask for.`);
         shown.push({ kind: "block", block: built.block });
-        const said = `Oriel shows a ${spec.form} block from ${key} under your reply.`;
+        const said = `Oriel shows a ${spec.form} block from ${key} under your reply.${extra}${every}`;
         // A chart's caption holds figures Oriel computed, such as a forecast,
         // which the reply should use rather than work out again.
         return isChart(spec) ? `${said} Its caption: ${built.block.caption}.` : said;

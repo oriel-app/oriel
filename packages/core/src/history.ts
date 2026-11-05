@@ -43,7 +43,7 @@ export type HistoryItem = {
 export type History = { asOf: Instant; since: Instant; items: HistoryItem[] };
 
 // What a block can show of it (decision 0030): the items, by these labels,
-// over the change log's dates. It holds no content, so a chart of it isn't
+// over the change log's dates. It holds no content, so no block of it is
 // the escape hatch, though it reads outside the region (decision 0053).
 export const historyFields: ResultFields = {
   source: "the index and its change log",
