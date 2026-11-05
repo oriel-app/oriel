@@ -46,7 +46,7 @@ const listItems: Fn = {
     name: "list",
     doc: "Every item in this region, in RegionId order.",
     params: [],
-    returns: "(Item | Gone)[]",
+    returns: "readonly (Item | Gone)[]",
     run: (_, host: Host) => host.read(host.ids, itemView),
   }),
 };
@@ -82,7 +82,7 @@ export const searchFn: Fn = {
     name: "search",
     doc: "Anything indexed, in this region or outside it, by key or title words.",
     params: [param("query", "string", string), optionalParam("limit", "number", number)],
-    returns: "Found[]",
+    returns: "readonly Found[]",
     run: async ([query, limit], host: Host) => {
       const count = Math.min(Math.max(Math.trunc(limit ?? 20), 1), 50);
       const records = await host.search(query, count);

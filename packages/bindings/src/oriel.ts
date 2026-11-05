@@ -35,7 +35,7 @@ const listWorkstreams: Fn = {
     name: "list",
     doc: "Every workstream, newest first, with its items' IDs.",
     params: [],
-    returns: "OrielWorkstream[]",
+    returns: "readonly OrielWorkstream[]",
     run: (_, host: Host) => host.oriel.workstreams(),
   }),
 };
@@ -51,7 +51,7 @@ const listThreads: Fn = {
     name: "list",
     doc: "Every thread, most recently active first.",
     params: [],
-    returns: "OrielThread[]",
+    returns: "readonly OrielThread[]",
     run: (_, host: Host) => host.oriel.threads(),
   }),
 };
@@ -63,7 +63,7 @@ const changeSets: Fn = {
     name: "changeSets",
     doc: "A thread's change sets, or every thread's, newest first: what each wrote where.",
     params: [optionalParam("thread", "string", threadId)],
-    returns: "OrielChangeSet[]",
+    returns: "readonly OrielChangeSet[]",
     run: ([thread], host: Host) => host.oriel.changeSets(thread ?? null),
   }),
 };
@@ -75,7 +75,7 @@ const findThreads: Fn = {
     name: "find",
     doc: "Threads and change sets by name, what was said and what was written, best first.",
     params: [param("query", "string", string), optionalParam("limit", "number", number)],
-    returns: "ThreadFound[]",
+    returns: "readonly ThreadFound[]",
     run: ([query, limit], host: Host) =>
       host.oriel.find(query, Math.min(Math.max(Math.trunc(limit ?? 10), 1), 50)),
   }),
