@@ -5,16 +5,9 @@
   "region": "weather-epic",
   "prompt": "Draw me a chart of story points by assignee",
   "expect": [
-    {
-      "grader": "blocks",
-      "form": "bars",
-      "read": ["jira.listStories", "jira.listItems"]
-    },
-    {
-      "grader": "no-sketch"
-    },
-    {
-      "grader": "zero-mutations"
-    }
+    { "grader": "blocks", "form": "bars", "read": ["jira.listStories", "jira.listItems"] },
+    { "grader": "no-refused-block" },
+    { "grader": "no-sketch" },
+    { "grader": "zero-mutations" }
   ]
 }

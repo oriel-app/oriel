@@ -1,0 +1,35 @@
+{
+  "cap": 25,
+  "reps": 8,
+  "cases": {
+    "chart-in-progress-by-person": {
+      "hash": "7241c774c240bb51035f9db1905ae3c8d225814153d5beca42f4b1cc409e93ef",
+      "group": "overview"
+    },
+    "chart-moved-by-workstream": {
+      "hash": "d3f37e9fb468ab712efc8c89ef751d57c9e24a6cca86df5a806299531b3d827f",
+      "group": "overview"
+    },
+    "chart-points-by-assignee": {
+      "hash": "2cee0bd64258c1b5cb22625d105bfbab608694aca58a973270f915220076ad9b",
+      "group": "region"
+    },
+    "chart-workstream-sizes": {
+      "hash": "48ed4a3f98e72cff4c115f8aed87f64729e50711f1bfe04393c14d981b0fd0ff",
+      "group": "overview"
+    },
+    "rows-checkout-stories": {
+      "hash": "d0a8a61281da84e9a0e09e2865605b3548bdceef48dc3a1c7a44eb5e2cd71acb",
+      "group": "region"
+    },
+    "table-weather-stories": {
+      "hash": "b2106850e63f4484884a82cce26e7670e3a45a55da3b3c0ef92e37ab3ca5d812",
+      "group": "region"
+    },
+    "table-workstreams-quiet": {
+      "hash": "96543cfc0f64930bf10f22d9e990e154ec9b1e16e2a1ca9c55da421d7d4137d4",
+      "group": "overview"
+    }
+  },
+  "subset": true
+}

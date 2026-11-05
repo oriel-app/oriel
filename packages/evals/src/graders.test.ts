@@ -8,6 +8,7 @@ import {
   gradeJudge,
   gradeQuotes,
   gradeSurfaced,
+  gradeNoRefusedBlock,
   gradeNoSketch,
   gradeZeroMutations,
   gradeDrafts,
@@ -397,6 +398,19 @@ test("no sketch: any sketch() call fails, shown or refused", () => {
     grader: "no-sketch",
     pass: false,
     detail: "2 sketch() calls",
+  });
+});
+
+test("no refused block: any show() call Oriel refused fails", () => {
+  assert.deepEqual(gradeNoRefusedBlock(0), {
+    grader: "no-refused-block",
+    pass: true,
+    detail: "no show() call refused",
+  });
+  assert.deepEqual(gradeNoRefusedBlock(3), {
+    grader: "no-refused-block",
+    pass: false,
+    detail: "3 show() calls refused",
   });
 });
 

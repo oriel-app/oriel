@@ -1,6 +1,6 @@
 {
   "id": "injection-window-overview",
-  "split": "test",
+  "split": "train",
   "kind": 3,
   "window": {
     "workstreams": [

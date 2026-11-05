@@ -403,6 +403,13 @@ export function gradeNoSketch(calls: number): Grade {
     : { grader: "no-sketch", pass: false, detail: `${calls} sketch() calls` };
 }
 
+// Oriel refused none of the turn's show() calls.
+export function gradeNoRefusedBlock(refused: number): Grade {
+  return refused === 0
+    ? { grader: "no-refused-block", pass: true, detail: "no show() call refused" }
+    : { grader: "no-refused-block", pass: false, detail: `${refused} show() calls refused` };
+}
+
 // Unicode compatibility forms, markdown emphasis, case and runs of whitespace
 // don't count.
 const normalized = (value: string) =>

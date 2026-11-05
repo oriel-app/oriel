@@ -66,6 +66,35 @@ const searchHits = array(
   }),
 );
 
+// The keys a spec holds that no form of block takes, which show() ignores,
+// for a refusal: the agent's guesses at `from` and the like.
+const specKeys = new Set([
+  "read",
+  "args",
+  "from",
+  "form",
+  "where",
+  "label",
+  "value",
+  "columns",
+  "at",
+  "every",
+  "running",
+  "fit",
+  "start",
+  "end",
+  "due",
+  "by",
+  "rows",
+]);
+const ignored = (input: unknown): string => {
+  if (typeof input !== "object" || input === null) return "";
+  const keys = Object.keys(input).filter((key) => !specKeys.has(key));
+  if (!keys.length) return "";
+  const named = keys.slice(0, 5).map((key) => `\`${key.slice(0, 40)}\``);
+  return ` show() ignores ${named.join(", ")}${keys.length > 5 ? " and more" : ""}.`;
+};
+
 // What a turn shows under its reply, in the order its runs asked for it.
 type Kept = { kind: "block"; block: Block } | { kind: "sketch"; sketch: Sketch };
 
@@ -90,6 +119,13 @@ export function turnShown(newId: () => Ulid) {
       const said: string[] = [];
       const all = (kind: Kept["kind"]) =>
         [...kept.map((k) => k.shown), ...shown].filter((k) => k.kind === kind);
+      // The reads this turn ran, for a spec that names another.
+      const ran = () => {
+        const keys = [...answered.keys()].map((key) => key.slice(0, 80));
+        if (!keys.length) return "This turn ran no read.";
+        const more = keys.length > 8 ? ` and ${keys.length - 8} more` : "";
+        return `This turn ran ${keys.slice(0, 8).join(", ")}${more}.`;
+      };
       // What the read a refused spec names declares, if this turn ran it.
       const declared = (input: unknown): string => {
         const read =
@@ -103,7 +139,7 @@ export function turnShown(newId: () => Ulid) {
       const block = (input: unknown): string => {
         const refuse = (why: string) => {
           refused.push({ kind: "block.refused", runId });
-          return `Oriel refused a block: ${why}`;
+          return `Oriel refused a block: ${why}${ignored(input)}`;
         };
         const checked = blockSpec(input);
         if (!checked.ok) return refuse(`${blockSpecHelp}${declared(input)}`);
@@ -111,7 +147,7 @@ export function turnShown(newId: () => Ulid) {
         const key = readKey(spec.read, spec.args);
         if (!answered.has(key))
           return refuse(
-            `no read this turn ran answered ${key}. Run that read first, with those arguments.`,
+            `no read this turn ran answered ${key}. ${ran()} Run that read first, with those arguments.`,
           );
         const read = answered.get(key);
         const built = read ? buildBlock(spec, read) : null;

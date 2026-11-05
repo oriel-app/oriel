@@ -17,7 +17,7 @@ export const showFn: Fn = {
     params: [
       param(
         "b",
-        '{ read: string; args?: unknown[]; form: "rows" | "bars" | "table" | "series" | "timeline" | "spread" | "pivot"; [k: string]: unknown }',
+        '{ read: string; args?: unknown[]; from?: string; form: "rows" | "bars" | "table" | "series" | "timeline" | "spread" | "pivot"; [k: string]: unknown }',
         unknown,
       ),
     ],

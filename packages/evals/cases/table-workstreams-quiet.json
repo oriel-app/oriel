@@ -1,0 +1,21 @@
+{
+  "id": "table-workstreams-quiet",
+  "split": "test",
+  "kind": 2,
+  "window": {
+    "workstreams": [
+      { "name": "Boarding", "region": "boarding-epic" },
+      { "name": "Checkout", "region": "checkout-epic" },
+      { "name": "Weather", "region": "weather-epic" },
+      { "name": "Picked", "region": "picked" }
+    ],
+    "at": "2026-10-01T12:00:00.000Z"
+  },
+  "prompt": "Put the workstreams in a table: how big each one is and how many days it's been quiet",
+  "expect": [
+    { "grader": "blocks", "form": "table", "read": "window.overview" },
+    { "grader": "no-refused-block" },
+    { "grader": "no-sketch" },
+    { "grader": "zero-mutations" }
+  ]
+}
