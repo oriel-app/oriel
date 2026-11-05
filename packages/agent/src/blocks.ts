@@ -137,20 +137,22 @@ export function turnShown(newId: () => Ulid) {
         const built = read ? buildBlock(spec, read) : null;
         if (!built?.ok) return refuse(`${built?.why ?? "its read is gone"}.`);
         const blocks = all("block");
+        // What it ignored, said whether it shows, or shows already.
+        const extra = ignored(input);
+        const every = extra && !spec.where ? " This one keeps every row." : "";
         if (
           blocks.some(
             (k) => k.kind === "block" && JSON.stringify(k.block.spec) === JSON.stringify(spec),
           )
         )
-          return `Oriel already shows that block from ${key}.`;
+          return `Oriel already shows that block from ${key}.${extra}${every}`;
         // What search() found shows as the escape hatch's block already.
         if (spec.read === "search" && spec.form === "rows")
-          return `Oriel already shows what ${key} found, under the run.`;
+          return `Oriel already shows what ${key} found, under the run.${extra}${every}`;
         if (blocks.length >= maxBlocksPerTurn)
           return refuse(`a reply shows at most ${maxBlocksPerTurn} blocks you ask for.`);
         shown.push({ kind: "block", block: built.block });
-        const extra = ignored(input);
-        const said = `Oriel shows a ${spec.form} block from ${key} under your reply.${extra}${extra && !spec.where ? " This one keeps every row." : ""}`;
+        const said = `Oriel shows a ${spec.form} block from ${key} under your reply.${extra}${every}`;
         // A chart's caption holds figures Oriel computed, such as a forecast,
         // which the reply should use rather than work out again.
         return isChart(spec) ? `${said} Its caption: ${built.block.caption}.` : said;

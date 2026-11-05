@@ -140,7 +140,10 @@ test("a block shown from a spec with keys its form doesn't take says it ignored 
         scripts: [
           `await workstream.list();
 await show({ read: "workstream.list", form: "bars", label: "name", value: "threads", filter: { done: false }, title: "Threads" });
-await show({ read: "workstream.list", form: "table", columns: ["name"], where: { done: false }, sort: "desc" });`,
+await show({ read: "workstream.list", form: "table", columns: ["name"], where: { done: false }, sort: "desc" });
+await show({ read: "workstream.list", form: "table", columns: ["name"], where: { done: false }, sort: "asc" });
+await search("weather", 5);
+await show({ read: "search", args: ["weather", 5], form: "rows", filter: { kind: "bug" } });`,
         ],
       },
       { text: ["Here."] },
@@ -156,6 +159,15 @@ await show({ read: "workstream.list", form: "table", columns: ["name"], where: {
   assert.match(
     content,
     /Oriel shows a bars block from workstream\.list\(\) under your reply\. show\(\) ignored `filter`, `title`: Oriel writes each block's caption and order, and only `where` keeps some rows\. This one keeps every row\./,
+  );
+  // Asked again, or for what search() found, it still says what it ignored.
+  assert.match(
+    content,
+    /Oriel already shows that block from workstream\.list\(\)\. show\(\) ignored `sort`/,
+  );
+  assert.match(
+    content,
+    /Oriel already shows what search\("weather",5\) found, under the run\. show\(\) ignored `filter`[^\n]*This one keeps every row\./,
   );
   // A table with `where` kept only some rows, so it isn't told it kept all.
   assert.match(
