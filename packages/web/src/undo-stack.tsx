@@ -169,6 +169,10 @@ export function UndoStack(props: {
   else if (last.current) leaving.current = last.current;
   last.current = face;
   const showing = face ?? leaving.current;
+  // Arriving from nothing, until it has grown: it holds as the dot a moment,
+  // and its words wait for the shape.
+  const arriving = useRef(true);
+  if (showing === null) arriving.current = true;
   // Going, it lets go: no leave event comes from a bead that isn't there.
   useLayoutEffect(() => {
     if (face !== null) return;
@@ -259,6 +263,7 @@ export function UndoStack(props: {
           data-open={(open && showing.count > 1) || undefined}
           data-held={open || undefined}
           data-leaving={face === null || undefined}
+          data-arriving={arriving.current || undefined}
           onMouseEnter={() => hold("pointer", true)}
           onMouseLeave={() => hold("pointer", false)}
           onFocusIn={() => hold("focus", true)}
@@ -272,7 +277,12 @@ export function UndoStack(props: {
           <div
             class="bead"
             onTransitionEnd={(event) => {
-              if (event.target !== event.currentTarget || event.propertyName !== "opacity") return;
+              if (event.target !== event.currentTarget) return;
+              if (event.propertyName === "width" && arriving.current) {
+                arriving.current = false;
+                redraw(0);
+              }
+              if (event.propertyName !== "opacity") return;
               if (last.current !== null || leaving.current === null) return;
               leaving.current = null;
               fading.current = [];

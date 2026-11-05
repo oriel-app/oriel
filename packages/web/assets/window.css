@@ -4417,15 +4417,24 @@ a.replies:hover {
   }
 }
 
+/* Arriving, it shows as the dot for a moment before it grows, and its
+   words wait for the shape to settle. */
+.bead-wrap[data-arriving] .bead {
+  transition-delay:
+    calc(var(--duration-quick) * 2 / 3), calc(var(--duration-quick) * 2 / 3),
+    calc(var(--duration-quick) * 2 / 3), 0s;
+}
+
 /* A failure settles without the spring: good news may bounce, bad news
    doesn't. Going, its words go first, then it shrinks to the dot and fades. */
 .bead-wrap[data-tone="problem"],
 .bead-wrap[data-leaving] {
   --bead-ease: var(--ease-out);
-  --bead-time: var(--duration-move);
+  --bead-time: calc(var(--duration-move) + var(--duration-quick) * 2 / 3);
 }
 
 .bead-wrap[data-leaving] {
+  --bead-time: calc(2 * var(--duration-quick));
   pointer-events: none;
 }
 
@@ -4436,7 +4445,7 @@ a.replies:hover {
   opacity: 0;
   transition-delay:
     calc(var(--duration-quick) / 2), calc(var(--duration-quick) / 2),
-    calc(var(--duration-quick) / 2), var(--duration-move);
+    calc(var(--duration-quick) / 2), calc(var(--duration-move) + var(--duration-quick) * 3 / 4);
 }
 
 /* Two or three notes: the ones behind show as edges under the bead. */
@@ -4480,14 +4489,21 @@ a.replies:hover {
   min-height: var(--head-row);
   padding: 0.3125rem 0.375rem 0.3125rem var(--space-3);
   font-size: var(--text-md);
-  line-height: var(--leading-tight);
+  line-height: 1.35;
   transform: translateX(-50%);
 }
 
-/* Its words come in as its shape settles, and go faster than they came. */
+/* Its words come in as its shape settles, and go faster than they came.
+   Arriving, they wait longer and grow a little as they come. */
 .bead-row > * {
-  animation: bead-words-in var(--duration-move) var(--ease-out) calc(var(--duration-quick) / 2)
-    backwards;
+  animation: bead-words-in calc(var(--duration-move) + var(--duration-quick) / 3) var(--ease-out)
+    calc(var(--duration-quick) * 2 / 3) backwards;
+}
+
+.bead-wrap[data-arriving] .bead-row > * {
+  --bead-words-from: translateY(2px) scale(0.94);
+  animation-duration: calc(2 * var(--duration-quick));
+  animation-delay: var(--duration-move);
 }
 
 .bead-layer[data-gone] {
@@ -4502,7 +4518,7 @@ a.replies:hover {
   from {
     opacity: 0;
     filter: blur(2px);
-    transform: translateY(3px);
+    transform: var(--bead-words-from, translateY(3px));
   }
 }
 
@@ -4536,7 +4552,7 @@ a.replies:hover {
   flex: none;
   padding: var(--space-1) var(--space-2);
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--bead-radius);
   background: none;
   color: var(--bead-accent);
   font-size: var(--text-md);
@@ -4591,7 +4607,7 @@ a.replies:hover {
   font-size: var(--text-xs);
   font-weight: var(--weight-strong);
   font-variant-numeric: tabular-nums;
-  animation: bead-pop var(--duration-move) var(--ease-spring);
+  animation: bead-pop calc(var(--duration-quick) * 8 / 3) var(--ease-spring);
 }
 
 @keyframes bead-pop {
@@ -4652,7 +4668,8 @@ a.replies:hover {
   stroke-linejoin: round;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: bead-draw var(--duration-move) var(--ease-out) var(--duration-quick) forwards;
+  animation: bead-draw calc(var(--duration-quick) * 8 / 3) var(--ease-out)
+    calc(var(--duration-quick) * 4 / 3) forwards;
 }
 
 .bead-mark[data-mark="problem"] circle {
@@ -4706,11 +4723,11 @@ a.replies:hover {
 }
 
 .bead-pane:nth-child(2) {
-  animation-delay: calc(var(--duration-morph) + 2 * var(--duration-quick));
+  animation-delay: calc(var(--duration-morph) + var(--duration-quick) * 11 / 6);
 }
 
 .bead-pane:nth-child(3) {
-  animation-delay: calc(var(--duration-morph) + 3 * var(--duration-quick));
+  animation-delay: calc(var(--duration-morph) + var(--duration-quick) * 8 / 3);
 }
 
 @keyframes bead-pane {
@@ -4729,8 +4746,8 @@ a.replies:hover {
     transparent 70%
   );
   transform: translateX(-110%);
-  animation: bead-glint calc(var(--duration-morph) + 2 * var(--duration-move)) var(--ease-out)
-    calc(2 * var(--duration-morph)) forwards;
+  animation: bead-glint calc(2 * var(--duration-morph) - var(--duration-quick)) var(--ease-out)
+    calc(2 * var(--duration-morph) - var(--duration-quick) / 2) forwards;
   pointer-events: none;
 }
 
@@ -7261,6 +7278,10 @@ a.button.primary {
   .bead,
   .bead-under {
     transition-property: opacity;
+  }
+
+  .bead-wrap[data-arriving] .bead {
+    transition-delay: 0s;
   }
 
   .bead-wrap[data-leaving] .bead {

@@ -51,7 +51,7 @@ Drawn here in a frame of its own, centred on it. In the window it centres on the
     aria-keyshortcuts="F8"
     data-tone="note"
     data-count="1"
-    style="--w: 205px; --h: 34px"
+    style="--w: 205px; --h: 36px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -77,9 +77,9 @@ Drawn here in a frame of its own, centred on it. In the window it centres on the
 
 - **The wrap** (`.bead-wrap`, `role="region"`, "Notes"): fixed, `--inset-top` from the top, at the centre of what's left of the page column. It has no size of its own; the bead hangs from it. `data-tone` is the face's tone (`note`, `applying`, `applied`, `caught-up` or `problem`), `data-count` how many it holds, up to 3.
 - **The bead** (`.bead`): `--bead` ink, `--bead-radius`, `--shadow`, and in the dark a `--line-strong` hairline (`--bead-ring`). A dot (`--bead-dot`) at rest, `--w` by `--h` with a note, centred on the top line (`--head-row`); taller faces hang from it.
-- **A face** (`.bead-layer`): what it says, laid out at its own width (`max-content`, up to `--bead-max`, 28rem) and centred, so as the bead's edges move its words don't. `--text-md`, `--leading-tight`.
+- **A face** (`.bead-layer`): what it says, laid out at its own width (`max-content`, up to `--bead-max`, 28rem) and centred, so as the bead's edges move its words don't. `--text-md`, a little more open than `--leading-tight` (1.35), so one line is 36px tall.
 - **A row** (`.bead-row`): the mark, the sentence (`.bead-said`) and the action.
-- **The action** (`.bead-action`): Undo, Back or Dismiss, in `--bead-accent`, medium weight, with its key in a `kbd`, faint, hidden on touch.
+- **The action** (`.bead-action`): Undo, Back or Dismiss, in `--bead-accent`, medium weight, rounded as the bead is (`--bead-radius`), with its key in a `kbd`, faint, hidden on touch.
 - **Why not** (`.bead-cannot`): faint, `--text-sm`, in the action's place.
 - **Time left** (`.bead-time`): a hairline at its foot that drains over the note's 8 seconds (`--bead-life`), and stops while the bead is held. A failure has none.
 
@@ -124,7 +124,7 @@ With After you approve set to go on, approving moves the page to the next thread
     aria-keyshortcuts="F8"
     data-tone="applying"
     data-count="1"
-    style="--w: 449px; --h: 43px"
+    style="--w: 449px; --h: 45px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -162,7 +162,7 @@ With After you approve set to go on, approving moves the page to the next thread
     aria-keyshortcuts="F8"
     data-tone="applied"
     data-count="1"
-    style="--w: 394px; --h: 34px"
+    style="--w: 394px; --h: 36px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -246,7 +246,7 @@ With more than one, the bead shows the newest, with a count (`.bead-count`) that
     aria-keyshortcuts="F8"
     data-tone="note"
     data-count="3"
-    style="--w: 238px; --h: 34px"
+    style="--w: 238px; --h: 36px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -329,7 +329,7 @@ What failed: a danger mark, the problem and Dismiss, with no spring and no time 
     aria-keyshortcuts="F8"
     data-tone="problem"
     data-count="1"
-    style="--w: 381px; --h: 34px"
+    style="--w: 381px; --h: 36px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -362,7 +362,7 @@ In the narrow bar it sits centred in the bar, clear of the menu and its count, o
     aria-keyshortcuts="F8"
     data-tone="note"
     data-count="1"
-    style="--w: 271px; --h: 43px"
+    style="--w: 271px; --h: 45px"
   >
     <div class="bead-under" data-depth="2"></div>
     <div class="bead-under" data-depth="1"></div>
@@ -401,7 +401,7 @@ The bead may cover the crumb's row, a page title on the top line, and on a phone
     data-tone="note"
     data-count="1"
     data-held
-    style="--w: 205px; --h: 34px"
+    style="--w: 205px; --h: 36px"
   >
     <div class="bead">
       <div class="bead-layer" tabindex="-1">
@@ -426,7 +426,7 @@ The bead may cover the crumb's row, a page title on the top line, and on a phone
     data-tone="note"
     data-count="1"
     data-held
-    style="--w: 205px; --h: 34px"
+    style="--w: 205px; --h: 36px"
   >
     <div class="bead">
       <div class="bead-layer" tabindex="-1">
@@ -455,7 +455,7 @@ The bead may cover the crumb's row, a page title on the top line, and on a phone
     data-tone="note"
     data-count="1"
     data-held
-    style="--w: 348px; --h: 34px"
+    style="--w: 348px; --h: 36px"
   >
     <div class="bead">
       <div class="bead-layer" tabindex="-1">
@@ -477,7 +477,7 @@ The bead may cover the crumb's row, a page title on the top line, and on a phone
 ```
 
 - **Rest:** a dot, not drawn while there's nothing to say: the bead is only in the page while it has a note.
-- **Arriving:** it grows from the dot on a spring (`--duration-morph`, `--ease-spring`), and its words come in with a 2px blur as its shape settles.
+- **Arriving:** it shows as the dot for a moment, then grows on a spring (`--duration-morph`, `--ease-spring`), and its words come in with a 2px blur, growing a little, once its shape has nearly settled. `data-arriving` is on the wrap until it has grown (`UndoStack` in `packages/web/src/undo-stack.tsx`).
 - **Changing:** a new face's words come in as the last one's go, faster than they came; a note that keeps its key changes in place.
 - **Held:** while the pointer is on it or focus is in it, nothing runs out and its hairline stops (`data-held`). When both let go, every note still showing gets its full 8 seconds again (`undoMs` in `packages/web/src/undos.ts`). Clicking an Undo lets go of the keyboard's hold.
 - **Open:** held with more than one note, it opens as the list (`data-open`); the edges and the hairline hide.
