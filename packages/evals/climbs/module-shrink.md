@@ -132,7 +132,13 @@ I read train transcripts only. Test runs once; if it misses the bar I report it 
 
 ## Deviations
 
-None to the plan. One note on mechanics: a climb round records the cassettes of its cases' first trials into `tests/cassettes/`, on whichever agent text it ran. Between rounds I restored `tests/` to the branch's commit, so no round's recording reached a commit; the cassettes in the PR are the final re-recording's.
+1. **After the final step: `readonly` is back on the six array returns.**
+   - What the review found (sol-loop round 1, S1): the guest deep-freezes every read's result (`packages/bindings/src/shim.ts`). So the plan's premise, that a result is a copy and `readonly` only refuses a `sort()`, was wrong. Without it, an in-place sort typechecked, then threw as it ran.
+   - The change: `items.list()`, `search()`, `workstream.list()`, `thread.list()`, `thread.changeSets()` and `thread.find()` return `readonly` arrays again, main's text on those six lines. A unit test pins it. The property-level `readonly` on `Item`, `Gone`, `FoundId` and `Found` stays cut.
+   - The shipped base is 4,591 bytes, not C1's 4,537: −857 against main.
+   - Not measured as a climb round. It moves six lines back to the baseline's text, which both train arms had in common with main. The cassettes are recorded on it.
+
+One note on mechanics: a climb round records the cassettes of its cases' first trials into `tests/cassettes/`, on whichever agent text it ran. Between rounds I restored `tests/` to the branch's commit, so no round's recording reached a commit; the cassettes in the PR are the final re-recording's.
 
 ## Log
 
@@ -154,7 +160,7 @@ C2 didn't run: C1 was kept.
 ## Result
 
 - **Kept: C1.**
-- **Sizes:** the module base is 5,448 → 4,537 bytes (−911), in every connector's region; its budget stays 5,450, so 913 bytes are free. The system prompt is unchanged, 2,400 of 2,450. The run tool's own text is unchanged, 476.
+- **Sizes:** the module base is 5,448 → 4,591 bytes (−857) in every connector's region: C1's 4,537 plus deviation 1's 54. Its budget stays 5,450, so 859 bytes are free. The system prompt is unchanged, 2,400 of 2,450. The run tool's own text is unchanged, 476.
 - **Train,** `compare B1+B2 C1a+C1b --trim`: 88/88 → 87/88, bound −7.0 points.
 
   | group     | baseline | C1    |
@@ -177,14 +183,22 @@ C2 didn't run: C1 was kept.
 
   The target group, injection, is unchanged on test, so its p is 1.
 
-- **Re-recording,** plain `pnpm evals` runs on the final text, outside the ledger:
-  - `01M6N192RS9YTX7ZD9GGZF4V8A`, on `f3524d07`: train 30/31, test 15/17, $1.68. It went stale when #194 (OA-235), which is agent-facing, merged first.
-  - `01M6N1J0XABP9DGEHHQEACEJ5B`, after rebasing onto `1f48ce0b`: train 30/31, test 16/17, $1.37.
-    - `chart-finish-checkout` and `draft-sheets-tracker`, both known flaky, passed. #194's `failing` mark on `chart-finish-checkout` comes off; `evals:ci` fails on an unexpected pass.
+- **Re-recording,** plain `pnpm evals` runs, outside the ledger:
+  - `01M6N192RS9YTX7ZD9GGZF4V8A`, C1 on `f3524d07`: train 30/31, test 15/17, $1.68. It went stale when #194 (OA-235), which is agent-facing, merged first.
+  - `01M6N1J0XABP9DGEHHQEACEJ5B`, C1 rebased onto `1f48ce0b`: train 30/31, test 16/17, $1.37. It went stale with deviation 1.
+  - `01M6N212W1GPWZ0EZZ9VJWMRS4`, the final text: train 29/31, test 16/17, $1.85. These are the committed cassettes.
+    - `chart-finish-checkout`, known flaky, missed its judge. Its `failing` mark from #194 stays.
     - The three runnable `look-*` cases passed; `look-long-crossings` missed, as its mark expects.
-    - `chart-in-progress-by-person`, not in the climb, missed: the agent wrote `filter`, which show() refuses, then drew a pivot from `history()` instead of bars from `window.overview()`. A probe of that case alone, 4 trials an arm in a throwaway subset climb: main's agent text 3/4 (the same miss), this branch 4/4, $0.21. It is a flake of main's text, not of the trim. The branch's probe round re-recorded its cassette.
+    - `chart-in-progress-by-person`, not in the climb, missed; see below.
   - `evals:ci` exits 0.
-- **Spend:** $6.75 of the $10 cap, in 8 rounds and 320 trials. Outside the cap: $1.68 for the first recording, $1.37 for the recording after #194, and $0.21 for the probe. $10.01 in all.
+- **`chart-in-progress-by-person`,** a train case outside the climb.
+  - The grader wants bars from `window.overview()`. Every miss instead counted in-progress items by assignee from `history()` and drew a pivot: a fair answer, from the other read. No missed script sorted anything, so deviation 1 isn't in play.
+  - Its draws, from the recordings and two probes of that case alone in a throwaway subset climb at 4 trials:
+    - main's agent text: 3/4.
+    - C1: 4/4, then 0/1 in a recording.
+    - The final text: 0/1 in a recording, then 1/4. The probe's first trial passed and recorded its cassette.
+  - Pooled over the branch's two texts, which differ only in six lines no missed script reads: 5/10, against main's 3/4. Too few to call, and the money was spent, so it is reported, not chased.
+- **Spend:** $6.75 of the $10 cap, in 8 rounds and 320 trials. Outside the cap: recordings $1.68, $1.37 and $1.85, and probes $0.21 and $0.13. $11.99 in all.
 - **What the method can't see:**
   - A drop confined to one or two cases, below the margin, can be kept.
   - The `look-*` cases ran once, in the re-recording, not in the climb.
