@@ -265,6 +265,17 @@ export function threadStore(db: DatabaseSync) {
     where c.thread_id = ? group by c.id
     having count(*) = sum(m.status = 'applied')
     order by at desc, handed_off desc limit 1`);
+  // A change set still awaiting review or being applied: something in it
+  // hasn't applied, and nobody rejected or dismissed it, by its latest
+  // decision. While one does, an apply settles nothing (OA-259).
+  const selectAwaiting = db.prepare(`
+    select 1 from change_sets c
+    where c.thread_id = ?
+      and exists (select 1 from mutations m where m.change_set_id = c.id and m.status != 'applied')
+      and coalesce((
+        select d.kind from decisions d where d.change_set_id = c.id order by d.seq desc limit 1
+      ), 'open') != 'rejected'
+    limit 1`);
 
   // What the thread's change sets did to a source. A change that landed
   // counts as reverted once an applied reverse mutation undid it; a revert's
@@ -458,13 +469,14 @@ export function threadStore(db: DatabaseSync) {
   // The thread as of `now`. Done (a change set applied in full, or the
   // user's mark), handed off (an applied assignee change or attached link)
   // or, failing those, dropped after 7 idle days; anything else is working.
-  // A message from the person after it settled makes it working again; of
-  // two settlings, the later counts.
+  // An apply settles it only once none of its change sets awaits review or
+  // is being applied. A message from the person after it settled makes it
+  // working again; of two settlings, the later counts.
   const get = (id: Ulid, now: Instant): Thread | null => {
     const row = load(id);
     if (!row) return null;
     const since = at(lastMessage, id);
-    const appliedRaw = lastApplied.get(id);
+    const appliedRaw = selectAwaiting.get(id) ? undefined : lastApplied.get(id);
     const applied = appliedRaw ? appliedRow(appliedRaw) : null;
     const set = applied?.ok ? applied.value : null;
     const settled = [

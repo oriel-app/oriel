@@ -20,6 +20,7 @@ import type {
   ThreadView,
   UndoView,
 } from "./view.ts";
+import { toReview } from "./view.ts";
 
 export type ThreadModel = {
   id: string;
@@ -89,6 +90,9 @@ export type ThreadMsg =
   // A rejected change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
+  // The pill for a change set to review out of view, clicked: the page
+  // goes to the nearest one.
+  | { type: "toReviewClicked"; changeSetId: string }
   // A change set's second look (decision 0054): asked for, first or again
   // once stale or failed; or a change it suggested, added to the change set.
   | { type: "secondLookClicked"; changeSetId: string }
@@ -349,6 +353,8 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         : [...model.unfolded, changeSetId];
       return [{ ...model, unfolded }, []];
     }
+    case "toReviewClicked":
+      return goingTo(model, msg.changeSetId);
     case "lineRemoved": {
       const { changeSetId, mutationId } = msg;
       if (model.busy.includes(changeSetId) || !removable(model, changeSetId).includes(mutationId))
@@ -568,6 +574,26 @@ const nearLatest = 40;
 // Sending one, or a held message, takes them there from anywhere.
 // Once it renders, the page is asked again, so a user who scrolled up
 // meanwhile, or is reading a run they opened, stays where they are.
+// The page glides to one of the thread's change sets, as to the next to
+// review, and so leaves its latest entry: what arrives meanwhile doesn't
+// pull it back down.
+export function goingTo(model: ThreadModel, changeSetId: string): [ThreadModel, Effect[]] {
+  return [{ ...model, atLatest: false }, [{ type: "showChangeSet", changeSetId, smooth: true }]];
+}
+
+// The change set awaiting review nearest after `from` in the thread, or
+// else nearest before it, leaving out `from`; null when there's none.
+export function nextToReview(view: ThreadView, from: string): string | null {
+  const sets = view.changeSets;
+  const at = sets.findIndex((set) => set.id === from);
+  const waiting = (set: ChangeSetView) => set.id !== from && toReview(set);
+  return (
+    sets.slice(at + 1).find(waiting)?.id ??
+    sets.slice(0, Math.max(at, 0)).findLast(waiting)?.id ??
+    null
+  );
+}
+
 export function keptAtLatest(before: ThreadModel | null, after: ThreadModel): Effect[] {
   const opening = after.at !== null && !after.at.shown;
   if (after.view === null || (!after.atLatest && !opening)) return [];

@@ -15,17 +15,19 @@ test("only open change sets are awaiting review", () => {
 });
 
 test("the wait goes on while any change set it waits on is undecided or applying", () => {
-  for (const status of ["open", "approved", "applying"])
-    assert.equal(
-      settle(
-        [a, b],
-        [
-          { id: a, status: "rejected" },
-          { id: b, status },
-        ],
-      ),
-      null,
-    );
+  // Whatever the other came to: one applied leaves its thread working (OA-259).
+  for (const other of ["rejected", "applied"])
+    for (const status of ["open", "approved", "applying"])
+      assert.equal(
+        settle(
+          [a, b],
+          [
+            { id: a, status: other },
+            { id: b, status },
+          ],
+        ),
+        null,
+      );
 });
 
 test("applied and rejected end the wait with 0, one line each", () => {

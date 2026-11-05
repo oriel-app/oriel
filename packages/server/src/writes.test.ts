@@ -376,11 +376,38 @@ test("leaving out the last unapplied change completes the set, and the thread is
   assert.ok(line);
   const edited = await app.act("edit", { remove: [line.mutationId] });
   assert.equal(edited.body.changeSet.status, "applied");
+  // The message's turn proposed again: while that awaits review, the
+  // thread works on (OA-259).
+  const again = (await app.view()).changeSets.find((set) => set.id !== app.changeSetId);
+  assert.equal(again?.status, "open");
+  assert.equal((await app.view()).state, "working");
+  app.advance(1000);
+  assert.equal(
+    (await app.act("reject", { hash: (await app.diff(again.id)).hash }, again.id)).status,
+    200,
+  );
   // Done as of the edit that completed it, not as of the apply before the message.
   const thread = await app.view();
   assert.deepEqual([thread.state, thread.doneBy], ["done", "applied"]);
   const applied = app.app.telemetry().filter((e) => e.name === "changeset.applied");
   assert.equal(applied.length, 1);
+});
+
+test("of two change sets awaiting review, approving the later keeps the thread in Needs you for the earlier", async (t) => {
+  const app = await proposed(t);
+  app.advance(1000);
+  await app.post(`/api/threads/${app.threadId}/messages`, { text: "And the rest?" });
+  await app.app.settled();
+  const later = (await app.view()).changeSets.find((set) => set.id !== app.changeSetId);
+  assert.equal(later?.status, "open");
+  const waiting = async () =>
+    json<{ threads: ThreadSummaryView[] }>(await app.get("/api/threads")).threads.find(
+      (thread) => thread.id === app.threadId,
+    )?.waitingOn;
+  assert.equal((await app.approve(later.id)).body.changeSet.status, "applied");
+  assert.deepEqual([(await app.view()).state, await waiting()], ["working", "review"]);
+  assert.equal((await app.approve()).body.changeSet.status, "applied");
+  assert.deepEqual([(await app.view()).state, await waiting()], ["done", null]);
 });
 
 test("a revert that drops unsent changes completes the set it reverts", async (t) => {
@@ -391,6 +418,11 @@ test("a revert that drops unsent changes completes the set it reverts", async (t
   const reverted = await app.act("revert");
   assert.equal(reverted.body.changeSet.status, "applied");
   assert.equal(app.app.telemetry().filter((e) => e.name === "changeset.applied").length, 1);
+  // The revert awaits review, so the thread works on until it applies (OA-259).
+  assert.deepEqual((await app.view()).state, "working");
+  const revertId = reverted.body.revert;
+  assert.ok(revertId);
+  assert.equal((await app.approve(revertId)).body.changeSet.status, "applied");
   assert.deepEqual((await app.view()).state, "done");
 });
 

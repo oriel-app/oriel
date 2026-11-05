@@ -181,3 +181,14 @@ test("a scroll that changes nothing changes nothing on screen", () => {
   const [shown] = run(init({ page: "thread", id })[0], loaded);
   assert.equal(update(shown, scrolled(0, false))[0], shown);
 });
+
+test("the pill for a change set to review out of view glides to it, and new entries leave the page there", () => {
+  const [shown] = run(init({ page: "thread", id })[0], loaded);
+  const [going, effects] = update(shown, {
+    type: "thread",
+    msg: { type: "toReviewClicked", changeSetId: setId },
+  });
+  assert.deepEqual(effects, [{ type: "showChangeSet", changeSetId: setId, smooth: true }]);
+  const [more] = update(going, entry(3));
+  assert.equal(scrolls(more), false);
+});
