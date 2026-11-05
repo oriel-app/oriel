@@ -42,7 +42,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { chromium, type Page, type Route } from "playwright-core";
+import { chromium, type Locator, type Page, type Route } from "playwright-core";
 import { defaultTheme, themeNames } from "../packages/web/themes.ts";
 import { type TextSize, textSizes } from "../packages/web/src/view.ts";
 import { type Instant, instant, type Ulid, ulid } from "../packages/core/src/ids.ts";
@@ -94,8 +94,11 @@ type Scene = {
   // The window as the user sees it, not the whole page: what's fixed or
   // sticky to the window (the sidebar, the panel beside the page) spans it.
   window?: true;
+  // It shows a sketch, whose sandbox refuses the pinned clock's script.
+  sketch?: true;
 };
 
+const shootStarted = Date.now();
 const asked = parseArgs({
   options: {
     width: { type: "string", multiple: true },
@@ -568,7 +571,7 @@ const noticing = (then?: (on: Serving) => Promise<void>) => async (): Promise<Se
   const on = await start(0, {
     db: ":memory:",
     sources: { jira: { mode: "fixture" }, slack: { mode: "fixture" } },
-    agent: (deps) => scriptedAgent(deps, planning),
+    agent: (deps) => scripted(deps, planning),
     noticer: async () => ({ provider: replayNoticer(), model: "claude-sonnet-5-5" }),
   });
   for (const cluster of ["10001", "10002", "10003"])
@@ -747,7 +750,7 @@ const historied = await (async () => {
       },
     },
     now: () => instant(new Date(base + Date.now() - mark)),
-    agent: (deps) => scriptedAgent(deps, planning),
+    agent: (deps) => scripted(deps, planning),
   });
   for (let k = 0; k <= weeks; k += 1) {
     base = Date.parse(weekAt(k)) + (k === 0 ? 3_600_000 : 0);
@@ -1101,10 +1104,7 @@ const lookedAt = async (
     db: ":memory:",
     sources: { jira: { mode: "fixture", fetch: site.fetch }, slack: { mode: "fixture" } },
     agent: (deps) =>
-      scriptedAgent(deps, () => [
-        { text: "Here's the change for you to review." },
-        { run: propose },
-      ]),
+      scripted(deps, () => [{ text: "Here's the change for you to review." }, { run: propose }]),
     challenger: (deps) =>
       then === "held"
         ? {
@@ -1113,7 +1113,7 @@ const lookedAt = async (
               yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
             },
           }
-        : scriptedAgent(deps, () => [
+        : scripted(deps, () => [
             {
               run: `await challenge.diff();
 await items.read("jira:SYN-45");
@@ -1428,6 +1428,16 @@ async function answerLate(page: Page, path: string): Promise<void> {
 }
 
 // On a narrow screen the sources are in the sidebar's drawer.
+// The pointer to the window's top corner, where nothing answers a hover. A
+// click leaves it where it clicked, and whatever then moves under it shows
+// its hover, or doesn't, as the frames fall.
+const pointerAway = (page: Page) => page.mouse.move(1, 1);
+
+// Shot mid-gesture, a swiped row is as far as the wheel's events had got;
+// once the wheel is idle it settles on its stop, the same each time.
+const swipeSettled = (row: Locator) =>
+  row.and(row.page().locator(".swipe[data-open]:not([data-dragging])")).waitFor();
+
 async function openSidebar(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) > 760) return;
   await page.getByRole("button", { name: "Open the sidebar" }).click();
@@ -1700,6 +1710,15 @@ const scenes: Scene[] = [
     act: async (page) => {
       await approveIt(page);
       await page.locator(beadSays, { hasText: "Couldn't apply" }).waitFor();
+      // The room the bead makes grows the page as its padding glides in,
+      // and the thread's own scroll lands wherever the glide had got to, so
+      // once the padding is still the page goes to its top.
+      await page.evaluate(`(async () => {
+        await new Promise((frame) => requestAnimationFrame(() => requestAnimationFrame(frame)));
+        const main = document.querySelector(".shell-main");
+        await Promise.all(main.getAnimations().map((glide) => glide.finished));
+        scrollTo(0, 0);
+      })()`);
     },
   },
   {
@@ -2122,6 +2141,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await shown(page, "stuck");
       await openAll(page);
+      await pointerAway(page);
     },
   },
   {
@@ -2547,6 +2567,7 @@ const scenes: Scene[] = [
         await page.waitForTimeout(16);
       }
       await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
+      await swipeSettled(row);
     },
   },
   // The bead with one note, its Undo and ⌘Z; with three, the newest, a
@@ -2682,6 +2703,7 @@ const scenes: Scene[] = [
       await page.locator(".bead").hover();
       await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
       await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
+      await pointerAway(page);
     },
   },
   {
@@ -2754,6 +2776,7 @@ const scenes: Scene[] = [
         await page.waitForTimeout(16);
       }
       await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
+      await swipeSettled(row);
     },
   },
   {
@@ -2923,6 +2946,8 @@ const scenes: Scene[] = [
       await page.keyboard.press("Shift");
       await page.locator(".sidebar .sidebar-new").focus();
       await page.locator(".tooltip:popover-open").waitFor();
+      // A shot as soon as the tooltip shows can beat the sidebar's lists.
+      await page.locator(".sidebar .nav-waiting-link").first().waitFor();
     },
   },
   {
@@ -2946,6 +2971,7 @@ const scenes: Scene[] = [
   {
     name: "thread-sketch",
     path: `/threads/${sketched}`,
+    sketch: true,
     act: async (page) => {
       await page
         .frameLocator(".answer-sketch iframe")
@@ -3040,6 +3066,7 @@ const scenes: Scene[] = [
       await hang(page, "/approve");
       await page.getByRole("button", { name: "Approve and apply" }).click();
       await page.locator('.change-set[data-status="applying"]').waitFor();
+      await pointerAway(page);
       await openSidebar(page);
     },
   },
@@ -3052,6 +3079,7 @@ const scenes: Scene[] = [
       await hang(page, "/reject");
       await page.getByRole("button", { name: "Reject" }).click();
       await page.locator('.change-set[data-status="rejected"]').waitFor();
+      await pointerAway(page);
       await openSidebar(page);
     },
   },
@@ -3152,11 +3180,13 @@ const scenes: Scene[] = [
     window: true,
     act: async (page) => {
       await page.locator(".to-review-pill").click();
-      // Glided there: its heading near the top of the window.
+      // Glided there: its heading near the top of the window, and still, so
+      // the shot isn't taken partway through the glide.
       const heading = page.locator(".change-set-head h2:focus");
       await heading.waitFor();
       const top = async () => (await heading.boundingBox())?.y ?? -1;
-      for (let y = await top(); y < 0 || y > 400; y = await top()) await page.waitForTimeout(50);
+      for (let was = -2, y = await top(); y < 0 || y > 400 || y !== was; was = y, y = await top())
+        await page.waitForTimeout(50);
     },
   },
   {
@@ -3834,25 +3864,37 @@ const problems: string[] = [];
 try {
   for (const scheme of schemes) {
     for (const width of widths) {
-      const context = await browser.newContext({
-        viewport: { width, height: width < 600 ? 844 : 800 },
-        deviceScaleFactor: 2,
-        colorScheme: scheme,
-        locale: "en-US",
-        timezoneId: "UTC",
-      });
-      const page = await context.newPage();
       let scene: Scene | null = null;
-      page.on("console", (message) => {
-        const expected = scene?.refused && message.text().includes(`status of ${scene.refused}`);
-        if ((message.type() === "error" || message.type() === "warning") && !expected) {
-          problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
-        }
-      });
-      page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
+      // The window says how long ago things were by the browser's clock. Held
+      // at the shoot's start, what the setup made reads "just now" in every
+      // scene, however long the shoot has run; timers still run. The clock
+      // is a script in every frame, which a sketch's sandbox refuses, so a
+      // scene with a sketch has a page on the real clock.
+      const opened = async (pinned: boolean) => {
+        const context = await browser.newContext({
+          viewport: { width, height: width < 600 ? 844 : 800 },
+          deviceScaleFactor: 2,
+          colorScheme: scheme,
+          locale: "en-US",
+          timezoneId: "UTC",
+        });
+        if (pinned) await context.clock.setFixedTime(shootStarted);
+        const page = await context.newPage();
+        page.on("console", (message) => {
+          const expected = scene?.refused && message.text().includes(`status of ${scene.refused}`);
+          if ((message.type() === "error" || message.type() === "warning") && !expected) {
+            problems.push(`${scheme} ${width}: console ${message.type()}: ${message.text()}`);
+          }
+        });
+        page.on("pageerror", (error) => problems.push(`${scheme} ${width}: ${error.message}`));
+        return { context, page };
+      };
+      const pinned = await opened(true);
+      const unpinned = await opened(false);
       for (scene of onlyOnboarding ? [] : scenes) {
         const { name } = scene;
         if (picked.length > 0 && !picked.some((start) => name.startsWith(start))) continue;
+        const { page } = scene.sketch ? unpinned : pinned;
         const on = scene.make ? await scene.make() : (scene.on ?? server);
         if (on.app.settings.page().theme !== theme) await on.app.settings.change({ theme });
         if (textSize !== undefined && on.app.settings.page().textSize !== textSize)
@@ -3885,7 +3927,8 @@ try {
         await page.unrouteAll({ behavior: "ignoreErrors" });
         console.log(path);
       }
-      await context.close();
+      await pinned.context.close();
+      await unpinned.context.close();
     }
   }
   // The onboarding's timed runs are the default theme's.
