@@ -9,6 +9,7 @@ import { readAt, readIn, readShown } from "./files.ts";
 let outside = "";
 let checkout = "";
 let commit = "";
+let leaked = "";
 
 const git = (...args: string[]) =>
   execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8" }).trim();
@@ -30,6 +31,11 @@ before(() => {
   git("add", ".gitignore", "packages", "out-link", "env-link");
   git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "one");
   commit = git("rev-parse", "HEAD");
+  git("add", "-f", ".env");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a mistake");
+  leaked = git("rev-parse", "HEAD");
+  git("rm", "-q", "--cached", ".env");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "undone");
   writeFileSync(join(checkout, "packages/web/new.ts"), "export const x = 1;\n");
 });
 
@@ -55,6 +61,12 @@ test("never shows a file outside the checkout, by a path or a link", () => {
 test("reads a file at a full or short hex commit", () => {
   assert.equal(readAt(checkout, "packages/web/window.css", commit), ".button {}\n");
   assert.equal(readAt(checkout, "packages/web/window.css", commit.slice(0, 7)), ".button {}\n");
+});
+
+test("never reads what git ignores today, even at a commit that has it", () => {
+  assert.equal(readAt(checkout, ".env", leaked), null);
+  assert.equal(readAt(checkout, "secrets/jira", leaked), null);
+  assert.equal(readShown(checkout, ".env"), null);
 });
 
 test("refuses any commit that isn't hex, and any path that leaves the tree", () => {

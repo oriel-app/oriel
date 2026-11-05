@@ -45,10 +45,26 @@ export function readShown(checkout: string, path: string): string | null {
 // A file as it was at a commit, by a read-only `git show`. Only a full or
 // short hex commit and a plain relative path get through, so nothing git
 // reads as an option, a revision range or a path outside the tree reaches it.
+// Nor a path git ignores today: a `.env` committed by mistake and amended
+// away still has its object.
 export function readAt(checkout: string, path: string, commit: string): string | null {
   if (!/^[0-9a-f]{7,40}$/.test(commit) || !/^[\w.-]+(\/[\w.-]+)*$/.test(path)) return null;
   if (path.split("/").some((part) => part === "." || part === "..")) return null;
+  if (!notIgnored(checkout, path)) return null;
   return git(checkout, ["show", `${commit}:${path}`]);
+}
+
+// `git check-ignore` exits 1 for a path no ignore rule matches, 0 for one
+// that is ignored, and 128 when it can't say.
+function notIgnored(checkout: string, path: string): boolean {
+  try {
+    execFileSync("git", ["-C", checkout, "check-ignore", "-q", "--no-index", "--", path], {
+      stdio: "ignore",
+    });
+    return false;
+  } catch (error) {
+    return (error as { status?: number }).status === 1;
+  }
 }
 
 function git(checkout: string, args: string[]): string | null {
