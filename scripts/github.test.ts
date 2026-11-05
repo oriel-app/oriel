@@ -371,12 +371,27 @@ test("pr-wait says MERGED with the merge commit once the queue merges it", async
 
 test("pr-wait says DROPPED for an open PR neither queued nor armed, or a closed one", async () => {
   const out = { isInMergeQueue: false, mergeQueueEntry: null };
-  assert.match(await watching([watched(out)]).wait(), /^DROPPED: open, not in the merge queue/);
+  const dropped = watching([watched(out)]);
+  assert.match(await dropped.wait(), /^DROPPED: open, not in the merge queue/);
+  // Looked at three times, ten seconds apart, before it's called dropped.
+  assert.deepEqual(dropped.pauses, [10_000, 10_000]);
   // Armed to enter the queue once CI passes, it's still on its way.
   const armed = watching([watched({ ...out, autoMergeRequest: { enabledAt: "x" } }), watched(out)]);
   assert.match(await armed.wait(), /^DROPPED/);
-  assert.equal(armed.looks(), 2);
+  assert.equal(armed.looks(), 4);
   assert.match(await watching([watched({ ...out, state: "CLOSED" })]).wait(), /^DROPPED: closed/);
+});
+
+test("a PR out of the queue but not yet marked merged isn't called dropped", async () => {
+  // GitHub takes it off the queue a moment before it marks it MERGED (#199).
+  const out = watched({ isInMergeQueue: false, mergeQueueEntry: null });
+  const merged = watched({
+    state: "MERGED",
+    isInMergeQueue: false,
+    mergeCommit: { oid: "602e63aa" },
+  });
+  assert.equal(await watching([watched(), out, merged]).wait(), "MERGED 602e63aa");
+  assert.equal(await watching([out, out, merged]).wait(), "MERGED 602e63aa");
 });
 
 test("pr-wait says FAILED with the check and its annotations", async () => {

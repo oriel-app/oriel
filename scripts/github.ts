@@ -295,6 +295,10 @@ const failing = (run: CheckRun) =>
 
 export const waitLimitMs = 9 * 60_000;
 const lookEveryMs = 20_000;
+// A PR leaves the queue a moment before GitHub marks it merged, so one
+// that looks dropped is looked at again, sooner, before it's called so.
+const dropLooks = 3;
+const dropLookEveryMs = 10_000;
 
 // Looks at a PR until it merges, fails a check, leaves the queue or the
 // time is up, whichever comes first. The checks it reads are its head's and
@@ -307,6 +311,7 @@ export async function waitFor(
 ): Promise<string> {
   const deadline = clock() + waitLimitMs;
   let queued: string | null = null;
+  let outLooks = 0;
   for (;;) {
     const pr = await reads.pullRequest();
     if (pr.state === "MERGED") return `MERGED ${pr.mergeCommit?.oid ?? "(no merge commit)"}`;
@@ -321,10 +326,12 @@ export async function waitFor(
       return [`FAILED ${failed.name}`, ...notes].join("\n");
     }
     if (pr.state === "CLOSED") return "DROPPED: closed without merging";
-    if (!pr.isInMergeQueue && !pr.autoMergeRequest)
+    outLooks = !pr.isInMergeQueue && !pr.autoMergeRequest ? outLooks + 1 : 0;
+    if (outLooks >= dropLooks)
       return "DROPPED: open, not in the merge queue, and no auto-merge armed";
-    if (clock() + lookEveryMs >= deadline) return "WAITING";
-    await pause(lookEveryMs);
+    const every = outLooks > 0 ? dropLookEveryMs : lookEveryMs;
+    if (clock() + every >= deadline) return "WAITING";
+    await pause(every);
   }
 }
 
