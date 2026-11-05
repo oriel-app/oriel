@@ -174,7 +174,8 @@ function series(spec: Extract<ChartSpec, { form: "series" }>, input: ChartInput)
   const since = Date.parse(time.since);
   const asOf = Date.parse(time.asOf);
   // A sum over time can't say which of its points holds a lower bound.
-  if (spec.value !== undefined && input.bound(spec.value))
+  const bounded = spec.value === undefined ? null : input.bound(spec.value);
+  if (bounded && rows.some(bounded))
     return refuse(
       `${JSON.stringify(spec.value)} in ${where} is only a lower bound in some rows, so it isn't summed over time`,
     );
@@ -416,15 +417,17 @@ function pivot(spec: Extract<ChartSpec, { form: "pivot" }>, input: ChartInput): 
   // read says they add up, and none is only a lower bound, which a grid's
   // cell can't say.
   const distinct = new Map<string, number>();
+  const boundIn = (name: string) => {
+    const bounded = input.bound(name);
+    return bounded !== null && rows.some(bounded);
+  };
   const kinds = new Map(
     names.map((name) => {
       const values = flat.map((row) => row[name]).filter((v) => v !== null && v !== undefined);
       if (values.length && values.every((v) => typeof v === "number" && Number.isFinite(v)))
         return [
           name,
-          (input.sums === null || input.sums.includes(name)) && !input.bound(name)
-            ? "measure"
-            : "none",
+          (input.sums === null || input.sums.includes(name)) && !boundIn(name) ? "measure" : "none",
         ] as const;
       distinct.set(name, new Set(values.map(String)).size);
       return [

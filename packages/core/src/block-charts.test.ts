@@ -316,6 +316,12 @@ test("a series or a pivot never sums a number that is only a lower bound, which 
     pivot.block.measures.map((m) => m.field),
     ["estimate", "daysSinceUpdate"],
   );
+  // Rows that are all exact sum as any number does.
+  const exact = buildBlock(
+    spec({ form: "series", at: "stateSince", value: "daysInState", where: { id: "jira:SYN-3" } }),
+    answered,
+  );
+  assert.ok(exact.ok, exact.ok ? "" : exact.why);
   const summed = buildBlock(
     spec({ form: "pivot", rows: "state", value: "daysInState" }),
     everything,
