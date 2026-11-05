@@ -129,8 +129,39 @@ await show({ read: "search", args: ["weather", 5], form: "table", columns: ["nop
     content,
     /refused a block: search declares no list a block can show in its field "nope"/,
   );
-  // Keys no block takes, as guesses at `from` are, are named as ignored.
-  assert.match(content, /show\(\) ignores `path`, `title`\./);
+  // Keys its form doesn't take, as guesses at `from` are, are named as ignored.
+  assert.match(content, /show\(\) ignored `path`, `title`: Oriel writes each block's caption/);
+});
+
+test("a block shown from a spec with keys its form doesn't take says it ignored them, so a misnamed filter isn't taken as done", async () => {
+  const { turn, model } = harness(
+    [
+      {
+        scripts: [
+          `await workstream.list();
+await show({ read: "workstream.list", form: "bars", label: "name", value: "threads", filter: { done: false }, title: "Threads" });
+await show({ read: "workstream.list", form: "table", columns: ["name"], where: { done: false }, sort: "desc" });`,
+        ],
+      },
+      { text: ["Here."] },
+    ],
+    options,
+  );
+  const events = await turn({ region: weather });
+  // The bars and the table show, with every workstream in the bars.
+  const [bars, table] = blocks(events);
+  assert.ok(bars?.form === "bars" && bars.bars.length === 3);
+  assert.ok(table?.form === "table");
+  const content = contentOf(model);
+  assert.match(
+    content,
+    /Oriel shows a bars block from workstream\.list\(\) under your reply\. show\(\) ignored `filter`, `title`: Oriel writes each block's caption and order, and only `where` keeps some rows\. This one keeps every row\./,
+  );
+  // A table with `where` kept only some rows, so it isn't told it kept all.
+  assert.match(
+    content,
+    /block from workstream\.list\(\) under your reply\. show\(\) ignored `sort`: [^\n]*rows\.(?! This one)/,
+  );
 });
 
 test("a run that fails shows no block, and the agent is told", async () => {
@@ -182,7 +213,7 @@ return "went on";`,
   const content = contentOf(model);
   assert.match(
     content,
-    /Oriel refused a block: a block names `read`.*Bars take `label` and `value`.*Oriel sums the rows that share a label/,
+    /Oriel refused a block: a bars block needs `label` and `value`\. In full: a block names `read`.*Bars take `label` and `value`.*Oriel sums the rows that share a label/,
   );
   // It names what the read it named declares, as the turn ran it.
   assert.match(content, /workstream\.list declares its result: "name", "threads", "done"\./);

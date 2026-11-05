@@ -66,7 +66,7 @@ export type ResultFields = {
   atLeast?: Readonly<Record<string, string>>;
   // The number fields that add up, which a pivot may sum; without it, all.
   sums?: readonly string[];
-  // It holds IDs and facets, never content, so a chart of it isn't the
+  // It holds IDs and facets, never content, so no block of it is the
   // escape hatch, even read from outside the region (decision 0053).
   contentFree?: true;
 };
@@ -123,6 +123,52 @@ export const blockSpec = union(
   }),
 );
 export type BlockSpec = Infer<typeof blockSpec>;
+
+// The keys each form's spec takes, by its form, read from `blockSpec`.
+const formKeys = new Map(
+  (blockSpec.shape.kind === "union" ? blockSpec.shape.alternatives : []).flatMap((option) =>
+    option.kind === "object" && option.fields["form"]?.kind === "literal"
+      ? [[option.fields["form"].value, Object.keys(option.fields)] as const]
+      : [],
+  ),
+);
+
+// The keys a spec holds that its form doesn't take, or no form does if it
+// names none, which `blockSpec` drops: the agent's guesses, such as `filter`
+// for `where`, or a `title`, where Oriel writes the caption.
+export function ignoredKeys(input: unknown): string[] {
+  if (!isRecord(input)) return [];
+  const taken = formKeys.get(input["form"] as BlockForm) ?? [...formKeys.values()].flat();
+  return Object.keys(input).filter((key) => !taken.includes(key));
+}
+
+// What a spec `blockSpec` refuses lacks or gets wrong, by key, for the form
+// it names, so a second try can fix just that.
+export function specProblems(input: unknown): string {
+  if (!isRecord(input)) return "show() takes one object";
+  const form = input["form"];
+  if (!formKeys.has(form as BlockForm))
+    return `\`form\` is one of ${[...formKeys.keys()].map((name) => `"${name}"`).join(", ")}`;
+  const checked = blockSpec(input);
+  if (checked.ok) return "";
+  const keyOf = (path: string) => /^\$\.([^.[]+)/.exec(path)?.[1] ?? "";
+  const keys = [...new Set(checked.issues.map((issue) => keyOf(issue.path)))];
+  const missing = keys.filter((key) => input[key] === undefined);
+  // One line a field, its alternatives joined, as `every`'s "day" or "week".
+  const wrong = new Map<string, string[]>();
+  for (const issue of checked.issues)
+    if (!missing.includes(keyOf(issue.path)))
+      wrong.set(issue.path, [
+        ...(wrong.get(issue.path) ?? []),
+        issue.message.replace(/^expected /, ""),
+      ]);
+  return [
+    ...(missing.length
+      ? [`a ${String(form)} block needs ${missing.map((key) => `\`${key}\``).join(" and ")}`]
+      : []),
+    ...[...wrong].map(([path, what]) => `\`${path.slice(2)}\` takes ${what.join(" or ")}`),
+  ].join("; ");
+}
 
 // What search() declares of its result: its hits, as rows or a table.
 export const searchFields: ResultFields = {
@@ -456,7 +502,9 @@ export function buildBlock(
     : "";
   const caption = (what: string) =>
     `Computed by Oriel from ${fields.source}${only}${what ? `: ${what}` : ""}`;
-  const base = { spec, outside: read.outside && !(fields.contentFree && isChart(spec)) };
+  // Where its data came from, whatever its form: a content-free read is
+  // Oriel's own computing, never an item reached outside (decision 0053).
+  const base = { spec, outside: read.outside && !fields.contentFree };
   const values = (row: unknown, names: readonly string[]) =>
     isRecord(row) ? names.map((name) => fieldOf(row, name)) : null;
   const field = (row: unknown, name: string) => (isRecord(row) ? fieldOf(row, name) : undefined);

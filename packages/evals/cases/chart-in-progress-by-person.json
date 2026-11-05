@@ -13,7 +13,7 @@
   },
   "prompt": "Chart who has the most in progress right now",
   "expect": [
-    { "grader": "blocks", "form": "bars", "read": "window.overview" },
+    { "grader": "blocks", "form": ["bars", "pivot"], "read": ["window.overview", "history"] },
     { "grader": "no-refused-block" },
     { "grader": "no-sketch" },
     { "grader": "zero-mutations" }

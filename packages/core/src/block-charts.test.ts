@@ -112,20 +112,25 @@ test("a pivot groups by a field it was asked for, however many values it has", (
   assert.equal(built.block.tables["assignee|"]?.rows.at(-1), "Other");
 });
 
-test("a block of history() isn't the escape hatch: it holds no content", () => {
-  const built = buildBlock(spec({ form: "spread", value: "daysInState" }), answered);
-  assert.ok(built.ok);
-  assert.equal(built.block.outside, false);
+test("no block of history() is the escape hatch, in any form: it holds no content", () => {
+  for (const form of [
+    spec({ form: "spread", value: "daysInState" }),
+    spec({ form: "bars", label: "assignee", value: "estimate" }),
+    spec({ form: "table", columns: ["id", "state"] }),
+    spec({ form: "rows" }),
+  ]) {
+    const built = buildBlock(form, answered);
+    assert.ok(built.ok && !built.block.outside, form.form);
+  }
   // A read that holds content, from outside the region, still is.
   const { contentFree: _free, ...withContent } = historyFields;
-  const outside = buildBlock(spec({ form: "spread", value: "daysInState" }), {
-    ...answered,
-    fields: withContent,
-  });
-  assert.ok(outside.ok && outside.block.outside);
-  // Rows of it show each item's title, so they are still marked outside.
-  const rows = buildBlock(spec({ form: "rows" }), answered);
-  assert.ok(rows.ok && rows.block.outside);
+  for (const form of [
+    spec({ form: "spread", value: "daysInState" }),
+    spec({ form: "table", columns: ["id", "state"] }),
+  ]) {
+    const outside = buildBlock(form, { ...answered, fields: withContent });
+    assert.ok(outside.ok && outside.block.outside, form.form);
+  }
 });
 
 test("a running series of done dates from history: its caption says the method and what it can't know", () => {

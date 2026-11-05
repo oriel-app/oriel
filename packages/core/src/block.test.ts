@@ -5,11 +5,13 @@ import {
   type BlockSpec,
   blockSpec,
   buildBlock,
+  ignoredKeys,
   maxBars,
   maxRows,
   readKey,
   searchFields,
   type ResultFields,
+  specProblems,
 } from "./block.ts";
 
 const spec = (input: unknown): BlockSpec => {
@@ -268,4 +270,36 @@ test("a field the read doesn't declare, holding exactly one it does, is that one
     refused.ok ? "" : refused.why,
     /"assignee" isn't a field jira\.listStories declares/,
   );
+});
+
+test("a spec's ignored keys are those its form doesn't take, or no form takes when it names none", () => {
+  assert.deepEqual(
+    ignoredKeys({ read: "history", form: "bars", label: "id", filter: {}, title: "x", rows: "y" }),
+    ["filter", "title", "rows"],
+  );
+  assert.deepEqual(ignoredKeys({ read: "history", form: "pivot", rows: "assignee" }), []);
+  assert.deepEqual(ignoredKeys({ read: "history", form: "chart", rows: "a", sort: "desc" }), [
+    "sort",
+  ]);
+  assert.deepEqual(ignoredKeys("bars"), []);
+});
+
+test("a refused spec is told what its form lacks and what it got wrong, by key", () => {
+  assert.equal(
+    specProblems({ read: "history", form: "bars", title: "x" }),
+    "a bars block needs `label` and `value`",
+  );
+  assert.equal(
+    specProblems({ read: "w", form: "table", columns: [] }),
+    "`columns` takes 1 to 5 columns",
+  );
+  assert.equal(
+    specProblems({ read: "w", form: "series", at: "doneAt", every: "year" }),
+    `\`every\` takes "day" or "week"`,
+  );
+  assert.match(
+    specProblems({ read: "w", form: "chart" }),
+    /^`form` is one of "bars", "table", "rows",/,
+  );
+  assert.equal(specProblems([]), "show() takes one object");
 });
