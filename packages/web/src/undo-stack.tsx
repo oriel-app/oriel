@@ -34,8 +34,8 @@ const hint = mac ? "⌘Z" : "Ctrl+Z";
 export const holdUndos = (dispatch: Dispatch) => (by: Hold, held: boolean) =>
   dispatch({ type: "undoHeld", by, held });
 
-// What the bead says: what failed, then the notes, newest first. The
-// first is its face; the rest show as a count until it opens.
+// What the bead says, newest first: the notes, and what failed among them.
+// The first is its face; the rest show as a count until it opens.
 type Said =
   | { kind: "problem"; key: string; problem: UndoProblem }
   | { kind: "note"; key: string; note: UndoNote };
@@ -51,9 +51,15 @@ export function UndoStack(props: {
   dispatch: Dispatch;
 }) {
   const { problem } = props;
+  // What it says, in the order each first showed, what failed among the
+  // notes: whatever is newest is the bead's face.
   const shown = useRef<readonly string[]>([]);
-  const notes = inShowingOrder(shown.current, props.notes);
-  shown.current = notes.map((note) => note.key);
+  const said: Said[] = inShowingOrder(shown.current, [
+    ...props.notes.map((note) => ({ kind: "note" as const, key: note.key, note })),
+    ...(problem ? [{ kind: "problem" as const, key: problem.key ?? "problem", problem }] : []),
+  ]).toReversed();
+  shown.current = said.map((each) => each.key).toReversed();
+  const notes = said.flatMap((each) => (each.kind === "note" ? [each.note] : [])).toReversed();
   // What holds the bead now, and the latest `onHold`, for letting go after
   // it has gone. Held, it opens; let go, its countdown starts again.
   const held = useRef<Held>(notHeld);
@@ -137,10 +143,6 @@ export function UndoStack(props: {
     return () => document.removeEventListener("keydown", onKey);
   }, [any]);
 
-  const said: Said[] = [
-    ...(problem ? [{ kind: "problem" as const, key: problem.key ?? "problem", problem }] : []),
-    ...notes.toReversed().map((note) => ({ kind: "note" as const, key: note.key, note })),
-  ];
   const first = said[0];
   const face: Face | null = first
     ? {
@@ -193,6 +195,15 @@ export function UndoStack(props: {
   // Held open, it may hang over the page; otherwise it makes room for what
   // it would cover.
   const opened = open && said.length > 1;
+  // What its size follows: measured again only when this changes, or the
+  // words reflow.
+  const shape =
+    face &&
+    [
+      opened,
+      face.count,
+      ...face.said.map((each) => (each.kind === "note" ? each.note.said : each.problem.said)),
+    ].join("\n");
   useLayoutEffect(() => {
     const at = layer.current;
     const box = wrap.current;
@@ -212,7 +223,7 @@ export function UndoStack(props: {
       watching.disconnect();
       removeEventListener("resize", size);
     };
-  });
+  }, [face?.key, shape]);
   useLayoutEffect(() => {
     if (face === null) noRoom();
   }, [face === null]);

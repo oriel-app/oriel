@@ -137,7 +137,7 @@ export function answered(model: ApprovedModel, msg: Msg): [ApprovedModel, Effect
 
 // Why an apply that answered stopped short of applied, or null if it didn't.
 function stopped(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
+  if (typeof body !== "object" || body === null) return "It stopped before all of it applied.";
   const problem = "problem" in body && typeof body.problem === "string" ? body.problem : null;
   const status =
     "changeSet" in body &&

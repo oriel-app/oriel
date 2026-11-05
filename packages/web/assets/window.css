@@ -4385,8 +4385,8 @@ a.replies:hover {
 
 .bead-wrap {
   --bead-max: max(
-    14rem,
-    min(28rem, calc(100vw - var(--sidebar) - var(--bead-beside) - 2 * var(--space-6)))
+    10rem,
+    min(28rem, calc(100vw - var(--sidebar) - var(--bead-beside) - 2 * var(--space-2)))
   );
   --bead-ease: var(--ease-spring);
   --bead-time: var(--duration-morph);
@@ -4508,7 +4508,7 @@ a.replies:hover {
 }
 
 .bead-layer[data-gone] {
-  animation: bead-words-out var(--duration-quick) ease-in forwards;
+  animation: bead-words-out var(--duration-quick) var(--ease-out) forwards;
 }
 
 .bead-layer[data-gone] .bead-row > * {
