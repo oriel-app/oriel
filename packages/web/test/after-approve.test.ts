@@ -2,7 +2,8 @@
 // once Oriel accepts the approval it goes on to the next thread in Needs
 // you, the one with a change set to review first, with a note that links
 // back; with nothing else needing the user it stays and says so. Only
-// Approve on a thread's own page moves it.
+// Approve on a thread's own page moves it. The approval's answer says how
+// its apply ended: Applied, or what stopped it, until dismissed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approvedText, approvedUndos } from "../src/approved.ts";
@@ -123,7 +124,8 @@ const answer = replied(
 );
 const navigations = (effects: Effect[]) =>
   effects.flatMap((effect) => (effect.type === "navigate" ? [effect.route] : []));
-const said = (model: Model) => approvedUndos(model.approved).notes.map((note) => note.said);
+const undos = (model: Model) => approvedUndos(model.approved, () => {});
+const said = (model: Model) => undos(model).notes.map((note) => note.said);
 
 const needing = [
   summary(second, "reply", "2026-11-03T11:00:00.000Z"),
@@ -136,7 +138,7 @@ test("going on, the page moves once the apply starts, to the next change set to 
   assert.deepEqual(said(approving), []);
   const [moved, effects] = step(approving, applying);
   assert.deepEqual(navigations(effects), [{ page: "thread", id: third }]);
-  const notes = approvedUndos(moved.approved).notes;
+  const notes = undos(moved).notes;
   assert.deepEqual(
     notes.map((note) => [note.said, note.link?.route, note.link?.label]),
     [
@@ -188,7 +190,7 @@ test("with nothing else needing the user, the page stays and says so, once", () 
   const [stayed, effects] = step(approve(onPage("next", [])), applying);
   assert.deepEqual(navigations(effects), []);
   assert.deepEqual(said(stayed), ["All caught up."]);
-  assert.equal(approvedUndos(stayed.approved).notes[0]?.link, undefined);
+  assert.equal(undos(stayed).notes[0]?.link, undefined);
   // Once it runs out, the approval's answer doesn't say it again.
   const expired = after(stayed, {
     type: "approved",
@@ -231,10 +233,103 @@ test("the note says it in words and the sidebar's list is what it reads", () => 
       to: { id: second, title: null },
       arrived: false,
       focused: false,
+      applied: false,
     }),
     {
       said: "You approved “New thread”. Applying…",
       heard: "Now on “New thread”, the next thread that needs you.",
+      mark: "applying",
     },
+  );
+});
+
+const marks = (model: Model) => undos(model).notes.map((note) => [note.key, note.mark]);
+
+test("once the apply ends, the same note says Applied, keeping its key, its link and a full time", () => {
+  const [moved] = step(approve(onPage("next", needing)), applying);
+  const arrived = after(moved, { type: "routed", route: { page: "thread", id: third } });
+  assert.deepEqual(marks(arrived), [[`approved-${setId}`, "applying"]]);
+  const [applied, effects] = step(arrived, answer);
+  assert.deepEqual(said(applied), ["Applied “Estimate the launch”."]);
+  assert.deepEqual(marks(applied), [[`approved-${setId}`, "applied"]]);
+  assert.deepEqual(undos(applied).notes[0]?.link?.route, { page: "thread", id });
+  // Its countdown starts again: the one from before no longer hides it.
+  assert.ok(applied.approved.countdown > arrived.approved.countdown);
+  assert.ok(effects.some((effect) => effect.type === "after"));
+  const early = after(applied, {
+    type: "approved",
+    msg: { type: "expired", countdown: arrived.approved.countdown },
+  });
+  assert.deepEqual(said(early), ["Applied “Estimate the launch”."]);
+});
+
+test("an apply that stops, or an approval refused after it was accepted, becomes the problem, until dismissed", () => {
+  const [moved] = step(approve(onPage("next", needing)), applying);
+  const stopped = replied(
+    { kind: "changeSet", threadId: id, changeSetId: setId },
+    {
+      changeSet: changeSetView({ id: setId, status: "partial" }),
+      problem: "OA-41 changed in Jira since it was proposed.",
+    },
+  );
+  const failed = after(moved, stopped);
+  assert.deepEqual(said(failed), []);
+  assert.deepEqual(
+    [undos(failed).problem?.key, undos(failed).problem?.said],
+    [
+      `approved-${setId}`,
+      "Couldn't apply “Estimate the launch”. OA-41 changed in Jira since it was proposed.",
+    ],
+  );
+  // It stays as the page goes elsewhere, and no countdown hides it.
+  const away = after(failed, { type: "routed", route: { page: "overview" } });
+  const ran = after(away, {
+    type: "approved",
+    msg: { type: "expired", countdown: away.approved.countdown },
+  });
+  assert.ok(undos(ran).problem);
+  let dismissed: Msg | null = null;
+  approvedUndos(ran.approved, (msg) => {
+    dismissed = { type: "approved", msg };
+  }).problem?.onDismiss();
+  assert.ok(dismissed);
+  assert.equal(undos(after(ran, dismissed)).problem, null);
+  // Refused once the stream said it was applying: the problem says why.
+  const refused = replied(
+    { kind: "changeSet", threadId: id, changeSetId: setId },
+    { error: "Jira couldn't be reached." },
+    false,
+  );
+  assert.equal(
+    undos(after(moved, refused)).problem?.said,
+    "Couldn't apply “Estimate the launch”. Jira couldn't be reached.",
+  );
+});
+
+test("an answer that comes after the note ran out says nothing; the thread is in Needs you as before", () => {
+  const [moved] = step(approve(onPage("next", needing)), applying);
+  const ran = after(moved, {
+    type: "approved",
+    msg: { type: "expired", countdown: moved.approved.countdown },
+  });
+  const stopped = replied(
+    { kind: "changeSet", threadId: id, changeSetId: setId },
+    { changeSet: changeSetView({ id: setId, status: "stopped" }), problem: "No." },
+  );
+  assert.deepEqual(undos(after(ran, stopped)), { notes: [], problem: null });
+  assert.deepEqual(undos(after(ran, answer)), { notes: [], problem: null });
+});
+
+test("caught up, the note stays All caught up once applied, and a stop still becomes the problem", () => {
+  const [stayed] = step(approve(onPage("next", [])), applying);
+  assert.deepEqual(marks(stayed), [[`approved-${setId}`, "caught-up"]]);
+  assert.deepEqual(said(after(stayed, answer)), ["All caught up."]);
+  const stopped = replied(
+    { kind: "changeSet", threadId: id, changeSetId: setId },
+    { changeSet: changeSetView({ id: setId, status: "stopped" }), problem: null },
+  );
+  assert.equal(
+    undos(after(stayed, stopped)).problem?.said,
+    "Couldn't apply “Estimate the launch”. It stopped before all of it applied.",
   );
 });

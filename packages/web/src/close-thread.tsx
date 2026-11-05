@@ -7,6 +7,7 @@ import { type CloseVia } from "./closing.ts";
 import { ContextMenu, type MenuItem } from "./menu.tsx";
 import { Swipeable } from "./swipe.tsx";
 import { ConnectorsContext, type Dispatch } from "./parts.tsx";
+import type { UndoProblem } from "./undos.ts";
 import type { ThreadSummaryView } from "./view.ts";
 
 // A thread's row with its menu: Mark done, unless it is done, and Delete.
@@ -47,8 +48,7 @@ export function ThreadMenu(props: {
   );
 }
 
-// Asks once before a delete, saying what it would lose; and says when a
-// close failed.
+// Asks once before a delete, saying what it would lose.
 export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Dispatch }) {
   const send = (msg: ClosingMsg) => dispatch({ type: "closing", msg });
   const connectors = useContext(ConnectorsContext);
@@ -72,20 +72,18 @@ export function Closing({ model, dispatch }: { model: ClosingModel; dispatch: Di
         onConfirm={() => send({ type: "deleteConfirmed" })}
         onCancel={() => send({ type: "deleteCancelled" })}
       />
-      {!asked && model.problem && (
-        <p class="closing-problem" role="alert">
-          {model.problem}
-          <button
-            type="button"
-            class="quiet-action"
-            onClick={() => send({ type: "problemDismissed" })}
-          >
-            Dismiss
-          </button>
-        </p>
-      )}
     </>
   );
+}
+
+// A close from a list that failed, said in the bead until dismissed; while
+// the question is open, it says it there instead.
+export function closingProblem(model: ClosingModel, dispatch: Dispatch): UndoProblem | null {
+  if (model.asking !== null || model.problem === null) return null;
+  return {
+    said: model.problem,
+    onDismiss: () => dispatch({ type: "closing", msg: { type: "problemDismissed" } }),
+  };
 }
 
 // The one question a delete asks first, as a modal the keyboard can answer:

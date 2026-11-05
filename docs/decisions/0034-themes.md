@@ -1,6 +1,6 @@
 # 0034 Themes are sets of values over one stylesheet
 
-Accepted 2026-11-02 (OA-112). Amends 0033. Changes SPEC §2. Amended by 0041: the preference is kept in the data folder's settings.json, with the text size.
+Accepted 2026-11-02 (OA-112). Amends 0033. Changes SPEC §2. Amended by 0041: the preference is kept in the data folder's settings.json, with the text size. Amended by 0056: the bead's radius, ink and spring are tokens.
 
 Adds: none
 

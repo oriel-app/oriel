@@ -15,7 +15,7 @@ import {
 } from "./parts.tsx";
 import { ItemPanel } from "./item-panel.tsx";
 import { MenuIcon, needsYouId, Sidebar } from "./sidebar.tsx";
-import { Closing } from "./close-thread.tsx";
+import { Closing, closingProblem } from "./close-thread.tsx";
 import { Endings } from "./end-workstream.tsx";
 import type { Program } from "./program.ts";
 import type { Effect } from "./http.ts";
@@ -120,10 +120,15 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
         <SetupPage model={model} dispatch={dispatch} />
       </TimeFormatContext.Provider>
     );
-  // The panel's adds, and where an approval took the page, as notes in
-  // whichever stack of Undos is on screen.
+  // The panel's adds, where an approval took the page and how its apply
+  // ended, and a close that failed, as notes in whichever stack of Undos is
+  // on screen: the bead.
   const adds = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
-  const added = { ...adds, notes: [...adds.notes, ...approvedUndos(model.approved).notes] };
+  const approved = approvedUndos(model.approved, (msg) => dispatch({ type: "approved", msg }));
+  const added = {
+    notes: [...adds.notes, ...approved.notes],
+    problem: adds.problem ?? approved.problem ?? closingProblem(model.closing, dispatch),
+  };
   return (
     <SendKeyContext.Provider value={sendKey(model.settings)}>
       <TimeFormatContext.Provider value={timeFormat(model.settings)}>
