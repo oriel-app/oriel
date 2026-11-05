@@ -925,6 +925,31 @@ const handOff = async (then: "propose" | "approve" | "revert") => {
   }
   return { serving, workstreamId, threadId, setId, review: new URL(review.url).pathname };
 };
+// A comment on SYN-45, whose description carries an injected note: the
+// diff adds a comment and leaves the description alone. Proposed, and
+// approved, each on a server of its own.
+const commentOn = async (then: "propose" | "approve") => {
+  const { serving } = await writing();
+  const { id: workstreamId } = await post<{ id: string }>(
+    "/api/workstreams",
+    { kind: "picked", name: "Rebooking", items: ["jira:SYN-45"] },
+    serving,
+  );
+  const threadId = await ask(
+    "comment: The waived fare difference ships on 14 August, not 31 July: the payment provider's refund API slipped a fortnight.",
+    serving,
+    workstreamId,
+  );
+  const setId = await changeSetOf(serving, threadId);
+  const review = await post<{ url: string }>(`/api/change-sets/${setId}/review-link`, {}, serving);
+  if (then === "approve") {
+    const { hash } = await post<{ hash: string }>(`/api/change-sets/${setId}/diff`, {}, serving);
+    await post(`/api/change-sets/${setId}/approve`, { hash }, serving);
+  }
+  return { serving, threadId, review: new URL(review.url).pathname };
+};
+const commenting = await commentOn("propose");
+const commented = await commentOn("approve");
 const handing = await handOff("propose");
 const handed = await handOff("approve");
 const handedBack = await handOff("revert");
@@ -1783,6 +1808,27 @@ const scenes: Scene[] = [
       await page.locator(".run summary").first().click();
       await page.locator(".run[open] .output").first().waitFor();
     },
+  },
+  {
+    name: "thread-comment",
+    path: `/threads/${commenting.threadId}`,
+    on: commenting.serving,
+    act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    name: "review-comment",
+    path: commenting.review,
+    on: commenting.serving,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Show the change" }).click();
+      await page.locator(".review-card .diff").waitFor();
+    },
+  },
+  {
+    name: "thread-comment-applied",
+    path: `/threads/${commented.threadId}`,
+    on: commented.serving,
+    act: (page) => page.getByRole("button", { name: "Revert" }).waitFor(),
   },
   {
     name: "thread-handoff",

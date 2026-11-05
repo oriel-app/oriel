@@ -763,3 +763,52 @@ test("a writer sharing the source's boards follows a board's estimation from the
   assert.deepEqual(boards.unestimating(), new Set());
   assert.equal((await estimate(8)).after.points, 8);
 });
+
+test("addComment posts plain text as rich text and reports the comment by ID; removeComment undoes it, and only Oriel's own", async () => {
+  const memory = memorySite(loadJiraFixture(), instant(new Date(Date.UTC(2026, 9, 29, 9))));
+  const credential = { headers: async () => ({}) };
+  const transport = restTransport({ site: memorySiteOrigin, credential, fetch: memory.fetch });
+  const w = jiraWriter({ transport, project: "SYN", log: () => {} });
+  const body = "The date moved to 14 August: the operator's crew rota slipped.";
+  const added = await w.apply(request("addComment", "jira:SYN-45", { body }));
+  const posted = memory.issue("SYN-45")?.comments.at(-1);
+  assert.ok(posted);
+  const field = `comment:${posted.id}`;
+  assert.deepEqual(added.before, { [field]: null });
+  assert.deepEqual(added.after, { [field]: body, updated: memory.issue("SYN-45")?.updated });
+  // The description is untouched, injected note and all.
+  assert.equal(
+    memory.issue("SYN-45")?.description,
+    loadJiraFixture().issues.find((i) => i.key === "SYN-45")?.description,
+  );
+  const sent = memory.calls.filter((c) => c.method !== "GET");
+  assert.deepEqual(sent, [{ method: "POST", path: "/rest/api/3/issue/SYN-45/comment" }]);
+
+  // A comment a teammate wrote isn't the connected account's, so it stays.
+  const theirs = memory.issue("SYN-98")?.comments[0];
+  assert.ok(theirs);
+  await assert.rejects(
+    w.apply(request("removeComment", "jira:SYN-98", { commentId: theirs.id })),
+    (error) =>
+      error instanceof SourceRefused &&
+      !error.sent &&
+      /isn't the connected account's own/.test(error.message),
+  );
+  assert.equal(memory.issue("SYN-98")?.comments.length, 2);
+
+  const removed = await w.apply(request("removeComment", "jira:SYN-45", { commentId: posted.id }));
+  assert.deepEqual(removed.before, { [field]: body });
+  assert.deepEqual(removed.after, { [field]: null, updated: memory.issue("SYN-45")?.updated });
+  assert.deepEqual(memory.issue("SYN-45")?.comments, []);
+  await assert.rejects(
+    w.apply(request("removeComment", "jira:SYN-45", { commentId: posted.id })),
+    /has no comment/,
+  );
+  // A comment ID that could steer the path is refused before any request.
+  const before = memory.calls.length;
+  await assert.rejects(
+    w.apply(request("removeComment", "jira:SYN-45", { commentId: "1/../../SYN-98" })),
+    /bad arguments/,
+  );
+  assert.equal(memory.calls.length, before);
+});

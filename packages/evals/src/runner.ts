@@ -53,6 +53,7 @@ import {
   gradeBlocks,
   gradeExactDiff,
   gradeIntents,
+  gradeWrites,
   gradeJudge,
   gradeAvoids,
   gradeMentions,
@@ -354,6 +355,13 @@ async function grade(
       if (!loaded.golden) throw new Error(`${expectation.golden} was not loaded`);
       grades.push(gradeExactDiff(loaded.golden, output.mutations));
     }
+    if (expectation.grader === "writes")
+      grades.push(
+        gradeWrites(
+          expectation.calls.map(({ item, ...call }) => ({ ...call, item: named(loaded, item) })),
+          output.mutations,
+        ),
+      );
     if (expectation.grader === "zero-mutations")
       grades.push(gradeZeroMutations(output.mutations, output.intents ?? [], output.drafts ?? []));
     if (expectation.grader === "drafts")

@@ -164,6 +164,12 @@ const [first] = ids;
 if (first) slack.${fn}(first, ${JSON.stringify(text)});
 return first ?? null;`;
 const slackAsk = /^\s*(post|reply)\b[:\s]*([\s\S]*)$/i;
+const commentScript = (text: string) => `const [first] = (await items.list())
+  .map((item) => item.id)
+  .filter((id): id is JiraId => id.startsWith("jira:"));
+if (first) jira.addComment(first, ${JSON.stringify(text)});
+return first ?? null;`;
+const commentAsk = /^\s*comment\b[:\s]*([\s\S]*)$/i;
 
 const searchAsk = /\b(?:search|find|look)\s+(?:for\s+)?(.+)/i;
 const threadsAsk = /^\s*where\b/i;
@@ -206,8 +212,8 @@ const filler = new Set([
 // something happened, a search when asked to find something, an estimate
 // change when asked about estimates, the finished stories taken out of the
 // workstream when asked to (and the thread closed, if asked), a Slack post
-// or reply when asked to "post: …" or "reply: …", and otherwise a read of
-// every item in the region.
+// or reply when asked to "post: …" or "reply: …", a Jira comment when asked
+// to "comment: …", and otherwise a read of every item in the region.
 export function devPlan(input: TurnInput): Step[] {
   if (threadsAsk.test(input.text))
     return [
@@ -230,6 +236,18 @@ export function devPlan(input: TurnInput): Step[] {
       },
       { run: slackScript(fn, text) },
       { text: "The proposed change is below. Nothing is posted until you approve it." },
+    ];
+  }
+  const commentAsked = commentAsk.exec(input.text);
+  if (commentAsked) {
+    const jira = input.region.items.some((item) => parseItemId(item.id)?.kind === "jira");
+    if (!jira)
+      return [{ text: "Nothing in this workstream is in Jira, so there's nothing to comment on." }];
+    const text = commentAsked[1]?.trim() || "A smoke test from Oriel's dev server.";
+    return [
+      { text: "I'll comment on this workstream's first Jira item." },
+      { run: commentScript(text) },
+      { text: "The proposed comment is below. Nothing is posted until you approve it." },
     ];
   }
   const query = searchAsk

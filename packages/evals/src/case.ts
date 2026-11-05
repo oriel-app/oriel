@@ -104,6 +104,14 @@ const expectations = {
     grader: literal("intents"),
     calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemName)) })),
   }),
+  // The mutations the run captured, in any order: one of each `op` on
+  // `item`, whose text arguments hold every one of `text`, ignoring case;
+  // and no other, so a note that should be a comment can't also rewrite a
+  // description.
+  writes: object({
+    grader: literal("writes"),
+    calls: atLeastOne(object({ op: text, item: itemName, text: optional(atLeastOne(text)) })),
+  }),
   // A block of `form` from `read`, or from one of them, was shown, and every
   // block shown is the one Oriel builds from what its read answered
   // (decision 0030).
@@ -307,6 +315,8 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "a golden diff and zero mutations contradict" });
   if (graders.includes("intents") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "intents and zero mutations contradict" });
+  if (graders.includes("writes") && graders.includes("zero-mutations"))
+    found.push({ path: "$.expect", message: "writes and zero mutations contradict" });
   if (graders.includes("drafts") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "drafts and zero mutations contradict" });
   if (graders.includes("drafts") && evalCase.unfit === undefined)
@@ -450,6 +460,8 @@ export function holding(
       e.calls.forEach((call, c) =>
         call.items?.forEach((item, n) => resolve(item, `$.expect[${i}].calls[${c}].items[${n}]`)),
       );
+    if (e.grader === "writes")
+      e.calls.forEach((call, c) => resolve(call.item, `$.expect[${i}].calls[${c}].item`));
     if (e.grader !== "surfaced") return;
     const id = resolve(e.item, `$.expect[${i}].item`);
     // The window chat's overview shows what no workstream holds yet. A

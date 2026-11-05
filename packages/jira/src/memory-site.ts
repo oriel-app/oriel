@@ -9,7 +9,9 @@
 // field, as a team-managed board without one doesn't; `estimation` changes
 // that later. `statuses` adds to the workflow statuses SYN doesn't use, such
 // as a column for stories ready to pick up. `projects` lists more projects
-// beside SYN, which hold nothing this site serves.
+// beside SYN, which hold nothing this site serves. Whoever signs in, the
+// site answers as Amara Okafor's account, as the Slack fixture's workspace
+// does: the comments Oriel adds are hers.
 // Exported as `@oriel/jira/testing`.
 import type { Instant } from "@oriel/core";
 import { instant } from "@oriel/core";
@@ -19,6 +21,7 @@ import { applySourceEdits, type FixtureIssue, type JiraFixture } from "./fixture
 export const memorySiteOrigin = "https://oriel.atlassian.net";
 const pointsField = "customfield_10016";
 const searchPath = "/rest/api/3/search/jql";
+const self = "amara";
 
 type Issue = {
   id: string;
@@ -30,8 +33,9 @@ type Issue = {
   // above is what Oriel writes and reads back.
   document?: unknown;
   labels: string[];
-  // Each as rich text too, when a teammate wrote it in Jira's editor.
-  comments: (FixtureIssue["comments"][number] & { document?: unknown })[];
+  // Each with the ID Jira gives it, and as rich text too, when a teammate
+  // wrote it in Jira's editor.
+  comments: (FixtureIssue["comments"][number] & { id: string; document?: unknown })[];
   epic: string | null;
   assignee: string | null;
   points: number | null;
@@ -53,6 +57,8 @@ export function memorySite(
   } = {},
 ) {
   const { issues: start } = applySourceEdits(fixture, fixture.edits.length);
+  let nextComment = 10001;
+  const commentId = () => String(nextComment++);
   const issues = new Map<string, Issue>(
     start.map((issue) => [
       issue.key,
@@ -63,7 +69,7 @@ export function memorySite(
         summary: issue.summary,
         description: issue.description,
         labels: [...issue.labels],
-        comments: issue.comments.map((comment) => ({ ...comment })),
+        comments: issue.comments.map((comment) => ({ ...comment, id: commentId() })),
         epic: issue.epic,
         assignee: issue.assignee,
         points: issue.points,
@@ -163,7 +169,8 @@ export function memorySite(
       });
     if (method === "GET" && path === `/rest/api/3/issue/createmeta/${project}/issuetypes`)
       return json(200, { issueTypes: [type("Epic"), type("Story")] });
-    if (method === "GET" && path === "/rest/api/3/myself") return json(200, { timeZone: "UTC" });
+    if (method === "GET" && path === "/rest/api/3/myself")
+      return json(200, { accountId: self, timeZone: "UTC" });
     // SYN with how many issues it holds and when one last changed, then the
     // others listed, as Jira's project search pages them.
     const own = () => ({
@@ -237,12 +244,12 @@ export function memorySite(
       return json(201, { id: issue.id, key: issue.key });
     }
     const match =
-      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/transitions|\/comment|\/remotelink(?:\/([0-9]+))?)?$/.exec(
+      /^\/rest\/api\/3\/issue\/([A-Z][A-Z0-9_]*-[0-9]+)(\/assignee|\/transitions|\/comment(?:\/([0-9]+))?|\/remotelink(?:\/([0-9]+))?)?$/.exec(
         path,
       );
     const issue = match?.[1] ? issues.get(match[1]) : undefined;
     if (!match || !issue) return missing();
-    const [, key = "", sub, linkId] = match;
+    const [, key = "", sub, commentAt, linkId] = match;
     if (method !== "GET" && refused.has(key))
       return json(400, { errorMessages: [`${key} can't be changed right now`], errors: {} });
     if (sub === undefined) {
@@ -270,16 +277,40 @@ export function memorySite(
       issue.updated = tick();
       return json(204);
     }
+    const commentView = (comment: Issue["comments"][number]) => ({
+      id: comment.id,
+      author: {
+        accountId: comment.author,
+        displayName: people.get(comment.author) ?? comment.author,
+      },
+      body: comment.document ?? textToAdf(comment.body),
+      created: comment.at,
+    });
     if (sub === "/comment" && method === "GET")
       return json(200, {
         startAt: 0,
         total: issue.comments.length,
-        comments: issue.comments.map((comment) => ({
-          author: { displayName: people.get(comment.author) ?? comment.author },
-          body: comment.document ?? textToAdf(comment.body),
-          created: comment.at,
-        })),
+        comments: issue.comments.map(commentView),
       });
+    if (sub === "/comment" && method === "POST") {
+      const document = (body as { body: unknown }).body;
+      const at = tick();
+      const made = { id: commentId(), author: self, body: adfToText(document), at };
+      issue.comments.push(made);
+      issue.updated = at;
+      return json(201, commentView(made));
+    }
+    if (sub?.startsWith("/comment/")) {
+      const comment = issue.comments.find((c) => c.id === commentAt);
+      if (!comment)
+        return json(404, { errorMessages: ["Can not find a comment for the id."], errors: {} });
+      if (method === "GET") return json(200, commentView(comment));
+      if (method === "DELETE") {
+        issue.comments = issue.comments.filter((c) => c !== comment);
+        issue.updated = tick();
+        return json(204);
+      }
+    }
     if (sub === "/transitions" && method === "GET")
       return json(200, { transitions: transitions(issue) });
     if (sub === "/transitions" && method === "POST") {
@@ -447,8 +478,15 @@ export function memorySite(
       const issue = issues.get(key);
       if (!issue) throw new Error(`no issue ${key}`);
       const at = tick();
-      issue.comments.push({ author, body: adfToText(document), at, document });
+      issue.comments.push({ id: commentId(), author, body: adfToText(document), at, document });
       issue.updated = at;
+    },
+    // A teammate rewrites a comment in Jira, as plain text.
+    editComment(key: string, id: string, body: string) {
+      const comment = issues.get(key)?.comments.find((c) => c.id === id);
+      if (!comment) throw new Error(`no comment ${id} on ${key}`);
+      Object.assign(comment, { body });
+      delete comment.document;
     },
   };
 }

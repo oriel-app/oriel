@@ -1,0 +1,13 @@
+{
+  "id": "comment-not-description",
+  "split": "train",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Note on SYN-45 that the waived fare difference now ships on 14 August, not 31 July, because the payment provider's refund API slipped a fortnight.",
+  "expect": [
+    {
+      "grader": "writes",
+      "calls": [{ "op": "addComment", "item": "jira:SYN-45", "text": ["14 August", "refund"] }]
+    }
+  ]
+}

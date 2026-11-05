@@ -1,4 +1,5 @@
 import {
+  type Conflict,
   type FieldValues,
   isItemId,
   isNewRef,
@@ -19,6 +20,7 @@ import { issueFields, type JiraOp, jiraOps } from "./ops.ts";
 // - `summary`, `description` ("" when empty), `points`, `epic` (an item ID),
 //   `assignee` (an account ID) and `status` (its name in the workflow);
 // - `link:<linkId>`: a remote link as `{ url, title }`, or null once removed;
+// - `comment:<commentId>`: a comment's text, or null once deleted;
 // - `updated`: the item's last update time, an instant. Every `after` carries
 //   it except deleteItem's, and `current(id, ["updated"])` returns it.
 // A set op's one argument sets one field, so its revert restores
@@ -68,8 +70,8 @@ async function who(context: LineContext, accountId: string): Promise<string> {
   return (await context.name(accountId)) ?? "a person Oriel can't name";
 }
 
-function linkField(values: FieldValues): string | null {
-  return Object.keys(values).find((field) => field.startsWith("link:")) ?? null;
+function fieldOf(values: FieldValues, prefix: string): string | null {
+  return Object.keys(values).find((field) => field.startsWith(prefix)) ?? null;
 }
 
 // A set op's revert: the same op, with the value the source reported before.
@@ -193,7 +195,7 @@ const ops: Record<JiraOp, OpSpec> = {
     describe: (a, context) =>
       `Add the link ${quoted(a.title)} (${destination(a.url)}) to ${named(context.subject)}.`,
     undo: (_a, applied) => {
-      const field = linkField(applied.after);
+      const field = fieldOf(applied.after, "link:");
       if (field === null) return { refused: "Jira didn't report which link it added" };
       return { op: "removeLink", args: { linkId: field.slice("link:".length) } };
     },
@@ -215,6 +217,23 @@ const ops: Record<JiraOp, OpSpec> = {
     },
     undo: () => ({ refused: "a removed link can't be put back by a revert" }),
   }),
+  // A comment adds to an item without touching what's in it. Jira names it
+  // when it posts it; until then it is `comment:new`.
+  addComment: op(jiraOps.addComment, {
+    after: (a) => ({ "comment:new": a.body }),
+    describe: (_a, context) => `Comment on ${named(context.subject)}.`,
+    undo: (_a, applied) => {
+      const field = fieldOf(applied.after, "comment:");
+      if (field === null) return { refused: "Jira didn't report which comment it added" };
+      return { op: "removeComment", args: { commentId: field.slice("comment:".length) } };
+    },
+  }),
+  removeComment: op(jiraOps.removeComment, {
+    after: (a) => ({ [`comment:${a.commentId}`]: null }),
+    describe: (_a, context) =>
+      `Delete the comment Oriel added to ${named(context.subject)}. People may already have read it.`,
+    undo: () => ({ refused: "a deleted comment can't be posted again by a revert" }),
+  }),
   deleteItem: op(jiraOps.deleteItem, {
     deletes: true,
     after: () => ({}),
@@ -223,6 +242,18 @@ const ops: Record<JiraOp, OpSpec> = {
   }),
 };
 
+// Why a revert stopped, for a comment Oriel added; Oriel's own words for
+// the rest.
+function explain(conflict: Conflict, title: string | null): string | null {
+  if (!conflict.field.startsWith("comment:")) return null;
+  const on = title === null ? key(conflict.target) : `${quoted(title)} (${key(conflict.target)})`;
+  if (conflict.expected === undefined)
+    return `Oriel is missing the comment it added to ${on}, so it can't tell whether anyone changed it`;
+  return conflict.actual === null
+    ? `the comment Oriel added to ${on} is gone`
+    : `the comment Oriel added to ${on} was edited since`;
+}
+
 // What the composition root hands change sets for Jira.
 export const jiraSpecs: OpSpecs = {
   name: "Jira",
@@ -230,4 +261,5 @@ export const jiraSpecs: OpSpecs = {
   updatedField: "updated",
   fields: Object.fromEntries(issueFields.map((f) => [f, f === "epic" ? "item" : "value"])),
   ops,
+  explain,
 };

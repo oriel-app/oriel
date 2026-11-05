@@ -16,8 +16,18 @@ export const isSummary = (text: string): boolean =>
   text.trim() !== "" && [...text].length <= maxSummary;
 
 const summary = refine(string, isSummary, `expected 1 to ${maxSummary} characters`);
-// Remote link IDs are numbers; anything else could steer the request path.
+// Remote link and comment IDs are numbers; anything else could steer the
+// request path.
 const linkId = refine(string, (id) => /^[1-9][0-9]*$/.test(id), "a link ID is a number");
+const commentId = refine(string, (id) => /^[1-9][0-9]*$/.test(id), "a comment ID is a number");
+
+// Jira's limit on a comment, in characters.
+export const maxComment = 32_767;
+export const commentBody = refine(
+  string,
+  (text) => text.trim() !== "" && [...text].length <= maxComment,
+  `expected 1 to ${maxComment} characters`,
+);
 const httpsUrl = refine(
   string,
   (url) => URL.canParse(url) && new URL(url).protocol === "https:",
@@ -33,8 +43,9 @@ export const issueFields = ["summary", "description", "points", "assignee", "epi
 
 // Jira's catalogue of write operations. Bindings validate captured arguments
 // with these, the writer applies them, diffs describe them and revert inverts
-// them. The last two exist only as reverts: removeLink undoes addLink,
-// deleteItem undoes createStory and createEpic.
+// them. Three exist only as reverts: removeLink undoes addLink,
+// removeComment undoes addComment, and deleteItem undoes createStory and
+// createEpic.
 export const jiraOps = {
   createEpic: {
     args: object({ summary, description: optional(string) }),
@@ -58,6 +69,9 @@ export const jiraOps = {
   setStatus: { args: object({ status: statusName }), revertOnly: false },
   addLink: { args: object({ url: httpsUrl, title: string }), revertOnly: false },
   removeLink: { args: object({ linkId }), revertOnly: true },
+  // A comment, as plain text: it adds to an item and changes nothing in it.
+  addComment: { args: object({ body: commentBody }), revertOnly: false },
+  removeComment: { args: object({ commentId }), revertOnly: true },
   deleteItem: { args: object({}), revertOnly: true },
 } as const satisfies OpCatalogue;
 
