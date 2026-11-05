@@ -253,7 +253,9 @@ export type ConnectOf<G = unknown, P = unknown> = {
   // Oriel's own client of the source, such as Google's, by the `.env` names
   // `pnpm dev` reads it from; the desktop app has it once its release build
   // does. Without it, the window says `absent` and doesn't connect it.
-  client?: { env: readonly string[]; absent: string };
+  // `optional` names are given when set, and their absence isn't missed:
+  // Google's client works without its secret.
+  client?: { env: readonly string[]; optional?: readonly string[]; absent: string };
   // Signed in again, its options, from those it had and those the steps
   // gave; those it had, with the steps' over them, when absent. Sheets keeps
   // its mappings and adds any spreadsheet picked anew.

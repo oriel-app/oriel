@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ConnectVia, instant, ulid } from "@oriel/core";
-import { sheetsConnect, type SignedIn } from "./connecting.ts";
+import { secretRefused, sheetsConnect, type SignedIn } from "./connecting.ts";
 import { loadSheetsFixture } from "./fixture.ts";
 import { scope, tokenEndpoint } from "./oauth.ts";
 import { openSheets } from "./open-connection.ts";
@@ -17,7 +17,8 @@ const picked = fixture.spreadsheets.slice(0, 2).map((s) => s.id);
 
 // Google: its token endpoint, granting the stand-in's token, and Drive's
 // `about` through the stand-in, its email left out when `email` is false.
-function google(options: { email?: boolean; refused?: boolean } = {}) {
+// With `wantsSecret`, it refuses a code's exchange sent with no secret.
+function google(options: { email?: boolean; refused?: boolean; wantsSecret?: boolean } = {}) {
   const standIn = fixtureGoogle(fixture);
   const asked: string[] = [];
   const send: typeof fetch = async (input, init) => {
@@ -26,6 +27,11 @@ function google(options: { email?: boolean; refused?: boolean } = {}) {
     if (url.href === tokenEndpoint) {
       const form = new URLSearchParams(String(init?.body));
       if (options.refused) return Response.json({ error: "invalid_grant" }, { status: 400 });
+      if (options.wantsSecret && !form.has("client_secret"))
+        return Response.json(
+          { error: "invalid_request", error_description: "client_secret is missing." },
+          { status: 400 },
+        );
       return Response.json({
         access_token: standInToken,
         expires_in: 3599,
@@ -113,12 +119,34 @@ test("a sign-in Google refuses, or with nothing picked, connects nothing and say
   }
 });
 
-test("without Oriel's Google client, no sign-in begins", async () => {
+test("without Oriel's Google client's ID, no sign-in begins", async () => {
   const { send, asked } = google();
-  const begun = await sheetsConnect.browser.begin(via(send, { GOOGLE_CLIENT_ID: "only-an-id" }));
+  const begun = await sheetsConnect.browser.begin(
+    via(send, { GOOGLE_CLIENT_SECRET: "only-a-secret" }),
+  );
   assert.ok("problem" in begun);
   assert.match(begun.problem, /Google sign-in/);
   assert.deepEqual(asked, []);
+});
+
+test("with the client's ID alone, a sign-in sends no secret, and says so plainly if Google wants one", async () => {
+  const idOnly = { GOOGLE_CLIENT_ID: client.GOOGLE_CLIENT_ID };
+  const taken = await sheetsConnect.browser.begin(via(google().send, idOnly));
+  assert.ok("url" in taken);
+  await finish(taken.url, { code: "4/fake-code", scope, picked_file_ids: picked[0] ?? "" });
+  assert.equal(((await taken.done) as SignedIn).picked.length, 1);
+
+  const logged: string[] = [];
+  const begun = await sheetsConnect.browser.begin({
+    ...via(google({ wantsSecret: true }).send, idOnly),
+    log: (message) => logged.push(message),
+  });
+  assert.ok("url" in begun);
+  await finish(begun.url, { code: "4/fake-code", scope, picked_file_ids: picked[0] ?? "" });
+  assert.deepEqual(await begun.done, { problem: secretRefused });
+  assert.deepEqual(logged, [
+    "sheets: Google refused the code's exchange without the client's secret",
+  ]);
 });
 
 const kept = (tokens: Record<string, unknown>) => ({

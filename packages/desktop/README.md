@@ -24,6 +24,12 @@ It prints the URL, the PID, and a `curl` line for the API. `-H @<folder>/headers
 
 The shell's flags behind it: `--background`, `--data <dir>`, and `--launch-file`, which writes `Shell/launch.json` (the URL, the cookie, the shell's PID) in the data folder. With `--background` or `--launch-file`, secrets stay in memory.
 
+## Releasing
+
+Release builds come from a workflow the maintainer starts, in an environment only they can approve (decision 0036).
+
+- **Google's desktop client** (decision 0050, amended by OA-224). The client is Oriel's: the release writes its ID into the app it builds, from that environment, and it is never in the repo. Forks and `pnpm dev` bring their own through `.env` (`env.example`). To rotate it: make a new Desktop app client in the Cloud console, ship a release with it, and revoke the old one once that release has spread, since every installed copy signs in with the client it was built with.
+
 ## Before a pilot
 
 Each build that goes to a pilot passes all three, on the build itself, after any bump of Electron.

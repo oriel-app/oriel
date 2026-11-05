@@ -239,10 +239,7 @@ test("without Oriel's Google client, the window says why it can't connect Google
     await it.get("/api/connections"),
   );
   assert.equal(listed.connectable.includes("sheets"), false);
-  assert.match(
-    listed.refused["sheets"] ?? "",
-    /Google sign-in.*Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in \.env\./,
-  );
+  assert.match(listed.refused["sheets"] ?? "", /Google sign-in.*Set GOOGLE_CLIENT_ID in \.env\./);
   assert.equal((await it.post("/api/connections/browser", { kind: "sheets" })).status, 400);
 });
 

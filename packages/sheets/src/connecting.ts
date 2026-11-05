@@ -22,7 +22,14 @@ import {
   refine,
   string,
 } from "@oriel/core";
-import { googleClientEnv, googleClientOf, refresh, signIn, type Tokens } from "./oauth.ts";
+import {
+  googleClientEnv,
+  googleClientOf,
+  googleClientOptional,
+  refresh,
+  signIn,
+  type Tokens,
+} from "./oauth.ts";
 import { picksOf, tokensOf } from "./open-connection.ts";
 import { driveOrigin } from "./stand-in.ts";
 
@@ -81,6 +88,11 @@ const clockOf = (via: ConnectVia) => (via.now ? () => Date.parse(via.now?.() ?? 
 
 const tryAgain = "Google's sign-in didn't finish, so nothing was connected. Try again.";
 
+// Google refused a sign-in sent without the client's secret: trying again
+// won't help, as this copy of Oriel has none.
+export const secretRefused =
+  "Google refused the sign-in because this copy of Oriel has no client secret for Google, so nothing was connected.";
+
 // Begins a sign-in: a loopback listener and Google's page's address, which
 // the window opens; `done` settles once the person finishes there, or the
 // listener closes after 5 minutes.
@@ -99,6 +111,12 @@ async function begin(
     now,
   }).then(async (result): Promise<SignedIn | ConnectRefusal> => {
     if (result.status === "failed") {
+      if (result.needsSecret) {
+        via.log("sheets: Google refused the code's exchange without the client's secret", {
+          problem: result.problem,
+        });
+        return { problem: secretRefused };
+      }
       via.log("sheets: the sign-in didn't finish", { problem: result.problem });
       return {
         problem: result.problem.includes("5 minutes")
@@ -162,7 +180,7 @@ export const sheetsConnect = {
   },
   given,
   browser: { begin },
-  client: { env: googleClientEnv, absent },
+  client: { env: googleClientEnv, optional: googleClientOptional, absent },
   identify: async (signedIn) => signedIn.account.permissionId,
   taken: (_first, live): ConnectRefusal => ({
     problem: live

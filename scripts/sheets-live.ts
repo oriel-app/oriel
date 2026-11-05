@@ -4,21 +4,29 @@
 // Drive version are printed, then what Google answered to the reads 0050
 // marks Unsure, by HTTP status alone. Last, it revokes the grant and refreshes
 // once more, which Google must refuse, so nothing is left signed in.
-// Usage: pnpm sheets:live [--env <path>]
+// Usage: pnpm sheets:live [--env <path>] [--no-secret]
 // --env names the .env holding GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
 // (default: the repo root's). It is opened checked, only those two are read,
 // and nothing in it is printed.
+// --no-secret runs the same with the client's ID alone, never sending its
+// secret, and ends on a one-line verdict: whether Google took the exchange
+// and the refresh without it (OA-224).
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs, parseEnv } from "node:util";
 import { type GoogleClient, refresh, signIn, type SignInIo } from "../packages/sheets/src/index.ts";
 import { readEnv } from "./env.ts";
 
-// Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and nothing else. Messages
-// never include a value.
-export function googleEnv(envFile: string | null): GoogleClient | { error: string } {
+// Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and nothing else, or with
+// `noSecret` the ID alone. Messages never include a value.
+export function googleEnv(
+  envFile: string | null,
+  { noSecret = false } = {},
+): GoogleClient | { error: string } {
   const env = envFile ? parseEnv(envFile) : {};
   const id = env.GOOGLE_CLIENT_ID;
+  if (noSecret)
+    return id ? { id, secret: null } : { error: "GOOGLE_CLIENT_ID must be set in .env" };
   const secret = env.GOOGLE_CLIENT_SECRET;
   if (!id || !secret)
     return { error: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must both be set in .env" };
@@ -26,11 +34,11 @@ export function googleEnv(envFile: string | null): GoogleClient | { error: strin
 }
 
 // The client, from the .env `--env` names, or else the repo root's.
-export async function liveEnv(env: string | undefined, rootEnv: URL) {
+export async function liveEnv(env: string | undefined, rootEnv: URL, { noSecret = false } = {}) {
   const read = await readEnv(env ?? fileURLToPath(rootEnv));
   if ("problem" in read) return { error: read.problem };
   if (env !== undefined && read.text === null) return { error: `no file at ${env}` };
-  return googleEnv(read.text);
+  return googleEnv(read.text, { noSecret });
 }
 
 const drive = "https://www.googleapis.com/drive/v3";
@@ -41,9 +49,16 @@ export async function live(
   client: GoogleClient,
   io: SignInIo & { log: (line: string) => void },
 ): Promise<number> {
+  const noSecret = client.secret === null;
   const signedIn = await signIn(client, io);
   if (signedIn.status === "failed") {
     io.log(`sign-in failed: ${signedIn.problem}`);
+    if (noSecret)
+      io.log(
+        signedIn.needsSecret
+          ? "verdict: Google refused the exchange without the secret"
+          : "verdict: none (the sign-in failed before Google judged the exchange)",
+      );
     return 1;
   }
   const { tokens, picked } = signedIn;
@@ -87,7 +102,10 @@ export async function live(
     );
   }
   io.log(`about: ${await answered(`${drive}/about?fields=user(permissionId)`)}`);
-  io.log(`refresh: ${(await refresh(client, tokens.refresh, io)).status}`);
+  const refreshed = await refresh(client, tokens.refresh, io);
+  io.log(
+    `refresh: ${refreshed.status}${refreshed.status === "failed" ? ` (${refreshed.problem})` : ""}`,
+  );
   let revoked: string;
   try {
     const response = await io.fetch(revokeEndpoint, {
@@ -101,6 +119,16 @@ export async function live(
   }
   io.log(`revoke: ${revoked}`);
   io.log(`refresh after revoke: ${(await refresh(client, tokens.refresh, io)).status}`);
+  if (noSecret) {
+    io.log(
+      refreshed.status === "refreshed"
+        ? "verdict: Google accepted the exchange and refresh without the secret"
+        : refreshed.status === "failed" && refreshed.needsSecret
+          ? "verdict: Google accepted the exchange without the secret, but refused the refresh"
+          : `verdict: Google accepted the exchange without the secret; the refresh was ${refreshed.status}, so try again`,
+    );
+    if (refreshed.status !== "refreshed") code = 1;
+  }
   return code;
 }
 
@@ -113,8 +141,12 @@ export const openBrowser = (url: string) =>
   );
 
 if (import.meta.main) {
-  const { values } = parseArgs({ options: { env: { type: "string" } } });
-  const env = await liveEnv(values.env, new URL("../.env", import.meta.url));
+  const { values } = parseArgs({
+    options: { env: { type: "string" }, "no-secret": { type: "boolean", default: false } },
+  });
+  const env = await liveEnv(values.env, new URL("../.env", import.meta.url), {
+    noSecret: values["no-secret"],
+  });
   if ("error" in env) {
     console.error(env.error);
     process.exit(1);

@@ -36,12 +36,20 @@ test("--env names the .env holding the client, a regular file with one link; els
   writeFileSync(join(dir, "partial.env"), `GOOGLE_CLIENT_SECRET=${client.secret}\n`);
   const partial = await liveEnv(join(dir, "partial.env"), root);
   assert.ok("error" in partial && !partial.error.includes(client.secret));
+  // --no-secret reads the ID alone, even where the secret is set.
+  assert.deepEqual(await liveEnv(path, root, { noSecret: true }), { id: client.id, secret: null });
+  assert.deepEqual(await liveEnv(join(dir, "partial.env"), root, { noSecret: true }), {
+    error: "GOOGLE_CLIENT_ID must be set in .env",
+  });
 });
 
-// Google, from the token endpoint to Drive: signed in until revoked.
-function google() {
+// Google, from the token endpoint to Drive: signed in until revoked. With
+// `wantsSecret`, it refuses a token request with no secret, as Google says
+// it may not, once it has taken `allowed` of them.
+function google({ wantsSecret = false, allowed = 0 } = {}) {
   let revoked = false;
-  const fetch: Fetch = async (input) => {
+  let taken = 0;
+  const fetch: Fetch = async (input, init) => {
     const url = new URL(String(input));
     const json = (status: number, body: unknown) =>
       new Response(JSON.stringify(body), {
@@ -52,6 +60,16 @@ function google() {
       revoked = true;
       return json(200, {});
     }
+    if (
+      url.href === "https://oauth2.googleapis.com/token" &&
+      wantsSecret &&
+      !new URLSearchParams(String(init?.body)).has("client_secret") &&
+      taken++ >= allowed
+    )
+      return json(400, {
+        error: "invalid_request",
+        error_description: "client_secret is missing.",
+      });
     if (url.href === "https://oauth2.googleapis.com/token")
       return revoked
         ? json(400, { error: "invalid_grant" })
@@ -68,24 +86,32 @@ function google() {
   return fetch;
 }
 
-test("it prints each picked spreadsheet's ID and version, and statuses, never a value", async () => {
+const never: After = () => () => {};
+
+// The person signs in and picks one spreadsheet.
+const open = async (address: string) => {
+  const authorize = new URL(address);
+  const back = new URL(authorize.searchParams.get("redirect_uri") ?? "");
+  back.searchParams.set("code", "4/fake-code");
+  back.searchParams.set("state", authorize.searchParams.get("state") ?? "");
+  back.searchParams.set("picked_file_ids", "1AbC-sheet");
+  await (await fetch(back)).text();
+};
+
+const run = async (as: typeof client | { id: string; secret: null }, answers: Fetch) => {
   const lines: string[] = [];
-  const never: After = () => () => {};
-  const open = async (address: string) => {
-    const authorize = new URL(address);
-    const back = new URL(authorize.searchParams.get("redirect_uri") ?? "");
-    back.searchParams.set("code", "4/fake-code");
-    back.searchParams.set("state", authorize.searchParams.get("state") ?? "");
-    back.searchParams.set("picked_file_ids", "1AbC-sheet");
-    await (await fetch(back)).text();
-  };
-  const code = await live(client, {
-    fetch: google(),
+  const code = await live(as, {
+    fetch: answers,
     open,
     now: () => 0,
     after: never,
     log: (line) => lines.push(line),
   });
+  return { code, lines };
+};
+
+test("it prints each picked spreadsheet's ID and version, and statuses, never a value", async () => {
+  const { code, lines } = await run(client, google());
   assert.equal(code, 0);
   assert.deepEqual(lines, [
     "1AbC-sheet version 42",
@@ -99,4 +125,36 @@ test("it prints each picked spreadsheet's ID and version, and statuses, never a 
   const printed = lines.join("\n");
   for (const value of [client.id, client.secret, tokens.access, tokens.refresh, "4/fake-code"])
     assert.ok(!printed.includes(value));
+});
+
+test("--no-secret ends on whether Google took the exchange and refresh without it", async () => {
+  const idOnly = { id: client.id, secret: null };
+  const accepted = await run(idOnly, google());
+  assert.equal(accepted.code, 0);
+  assert.equal(
+    accepted.lines.at(-1),
+    "verdict: Google accepted the exchange and refresh without the secret",
+  );
+
+  const exchange = await run(idOnly, google({ wantsSecret: true }));
+  assert.equal(exchange.code, 1);
+  assert.deepEqual(exchange.lines, [
+    "sign-in failed: Google refused the token request without the client's secret (400 invalid_request)",
+    "verdict: Google refused the exchange without the secret",
+  ]);
+
+  const refreshed = await run(idOnly, google({ wantsSecret: true, allowed: 1 }));
+  assert.equal(refreshed.code, 1);
+  assert.ok(
+    refreshed.lines.includes(
+      "refresh: failed (Google refused the token request without the client's secret (400 invalid_request))",
+    ),
+  );
+  assert.equal(
+    refreshed.lines.at(-1),
+    "verdict: Google accepted the exchange without the secret, but refused the refresh",
+  );
+
+  // With the secret, no verdict is printed.
+  assert.ok(!(await run(client, google())).lines.some((line) => line.startsWith("verdict")));
 });

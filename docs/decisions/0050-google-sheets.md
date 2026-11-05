@@ -124,3 +124,15 @@ Quotes are from Google's pages as fetched on 2026-11-03. **Unsure** marks what t
 - **Whether the index is a cached copy** (Terms): a question of Google's terms, which no run settles. The privacy policy says what the index keeps.
 
 The run also checked what 0050 assumed without marking it. The Sheets API reads a picked spreadsheet under `drive.file` (`spreadsheets.get` answered 200). A refresh works, and a refresh after the grant is revoked is refused, which Oriel reads as signed out.
+
+**Amended by OA-224, 2026-11-04.** The client's secret, settling its **Unsure**. The maintainer's call: a released Oriel app may carry Google's desktop client, written in at release time and never committed.
+
+- **The reading.**
+  - Terms §4(b)(1)'s "embedded in open source projects" is read as the source: the repository and its source releases, not an app built from them (<https://developers.google.com/terms>).
+  - The policies' one hard rule, "You must never commit client credentials into publicly available code repositories", is kept (<https://developers.google.com/identity/protocols/oauth2/policies>).
+  - This is the Chromium model: no keys in the source, official builds get them at build time, and "Software distribution with keys acquired for yourself is allowed" (<https://www.chromium.org/developers/how-tos/api-keys/>).
+  - Google treats a desktop client's secret as non-confidential: "Desktop apps are public clients and cannot keep secrets confidential", and marks `client_secret` **Optional** for the exchange and the refresh (<https://developers.google.com/identity/protocols/oauth2/native-app>).
+- **The secret is optional.** With `GOOGLE_CLIENT_ID` and no `GOOGLE_CLIENT_SECRET`, `packages/sheets` leaves `client_secret` out of the exchange and the refresh, and PKCE does its work. A refusal for want of it is said plainly to the person and named in the log, never read as signed out. `pnpm sheets:live --no-secret` settles whether Google takes it; if it does, a release carries the client's ID alone, which every consent URL shows anyway.
+- **Reasonable efforts against reuse** (§4(b)(1)): nothing in the repo; a "don't reuse this client" notice where it is read (`packages/sheets/src/oauth.ts`); forks and `pnpm dev` bring their own through `.env`; neither value logged; PKCE on every sign-in; and `drive.file`, which reaches only files a person picks on a consent screen naming Oriel.
+- **Rotating the client** is in the release runbook (`packages/desktop/README.md`): a new client, a release, then the old one revoked once the release has spread. If Google disables an abused client, Sheets stops in every installed copy until then.
+- **Brand verification** of the consent screen comes before the public release, the maintainer's, in Google's console; its review is also where to ask Google if certainty is wanted.

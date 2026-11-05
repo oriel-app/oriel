@@ -38,6 +38,7 @@ export {
   type Fetch,
   type GoogleClient,
   googleClientEnv,
+  googleClientOptional,
   googleClientOf,
   pickedFiles,
   refresh,

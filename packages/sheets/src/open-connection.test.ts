@@ -3,8 +3,9 @@ import { test } from "node:test";
 import { instant, ulid } from "@oriel/core";
 import { fixturePicks } from "./declared-fixture.ts";
 import { loadSheetsFixture } from "./fixture.ts";
-import { SheetsError } from "./google.ts";
+import { SecretRefused, SheetsError } from "./google.ts";
 import { sheetsDeclaration } from "./declaration.ts";
+import { tokenEndpoint } from "./oauth.ts";
 import { openSheets, sheetsProblem } from "./open-connection.ts";
 import { fixtureGoogle, standInToken } from "./stand-in.ts";
 
@@ -53,6 +54,47 @@ test("an expired or missing token fails the whole sync, read as signed out", asy
     assert.ok(failed instanceof SheetsError, String(secret));
     assert.match(sheetsProblem(failed), /signing in again/);
   }
+});
+
+test("a refresh Google refuses for want of the client's secret fails the whole sync, and says so", async () => {
+  const google = fixtureGoogle(fixture);
+  const forms: URLSearchParams[] = [];
+  const logged: string[] = [];
+  const sheets = await openSheets(
+    {
+      id: ulid(1, new Uint8Array(10)),
+      number: 1,
+      prefix: "sheets",
+      identity: fixture.user.permissionId,
+      options: fixturePicks(fixture),
+      secret: JSON.stringify({ access: standInToken, refresh: "r", expiresAt: Date.parse(now) }),
+    },
+    {
+      fetch: async (input, init) => {
+        if (String(input) !== tokenEndpoint) return google.fetch(input, init);
+        forms.push(new URLSearchParams(String(init?.body)));
+        return Response.json(
+          { error: "invalid_request", error_description: "client_secret is missing." },
+          { status: 400 },
+        );
+      },
+      client: { GOOGLE_CLIENT_ID: "fake-client.apps.googleusercontent.com" },
+      kept: true,
+      log: (message) => logged.push(message),
+      now: () => now,
+    },
+  );
+  const failed = await drain(sheets.source).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  assert.ok(failed instanceof SecretRefused);
+  assert.match(sheetsProblem(failed), /no client secret for Google/);
+  assert.equal(sheets.signedOut?.(), false);
+  assert.ok(forms.length > 0 && forms.every((form) => !form.has("client_secret")));
+  assert.ok(
+    logged.includes("sheets: Google refused the token's refresh without the client's secret"),
+  );
 });
 
 const live = JSON.stringify({ access: standInToken, expiresAt: Date.parse(now) + 60_000 });

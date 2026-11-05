@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { After } from "./loopback.ts";
 import {
   authorizeUrl,
+  googleClientOf,
   type Fetch,
   pickedFiles,
   refresh,
@@ -253,4 +254,72 @@ test("signing in without the Picker asks for the same one scope and no pick", ()
   assert.equal(asked.searchParams.get("scope"), "https://www.googleapis.com/auth/drive.file");
   for (const name of ["trigger_onepick", "allow_multiple", "mimetypes"])
     assert.equal(asked.searchParams.get(name), null);
+});
+
+test("the client is its ID, and its secret only if set", () => {
+  assert.deepEqual(googleClientOf({ GOOGLE_CLIENT_ID: " id ", GOOGLE_CLIENT_SECRET: " s " }), {
+    id: "id",
+    secret: "s",
+  });
+  assert.deepEqual(googleClientOf({ GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: " " }), {
+    id: "id",
+    secret: null,
+  });
+  assert.equal(googleClientOf({ GOOGLE_CLIENT_SECRET: "s" }), null);
+  assert.equal(googleClientOf(undefined), null);
+});
+
+const idOnly = { id: client.id, secret: null };
+const missing = { error: "invalid_request", error_description: "client_secret is missing." };
+
+test("with the ID alone, the exchange and the refresh send no secret", async () => {
+  const google = tokenEndpoint(200, granted);
+  const person = browser((authorize) => ({
+    code: "4/fake-code",
+    state: authorize.searchParams.get("state") ?? "",
+    scope,
+  }));
+  assert.equal((await signIn(idOnly, io(google.fetch, person.open))).status, "signed-in");
+  assert.equal(
+    (await refresh(idOnly, "fake-refresh-token", { fetch: google.fetch, now })).status,
+    "refreshed",
+  );
+  assert.equal(google.calls.length, 2);
+  for (const call of google.calls) {
+    assert.equal(call.form.get("client_id"), client.id);
+    assert.equal(call.form.has("client_secret"), false);
+  }
+});
+
+test("Google refusing a request for want of the secret says so, never as signed out", async () => {
+  for (const [status, body] of [
+    [400, missing],
+    [401, { error: "invalid_client", error_description: "Unauthorized" }],
+    // A description naming the secret, whatever the error.
+    [400, { error: "invalid_grant", error_description: "client_secret is missing." }],
+  ] as const) {
+    const google = tokenEndpoint(status, body);
+    const person = browser((authorize) => ({
+      code: "4/fake-code",
+      state: authorize.searchParams.get("state") ?? "",
+      scope,
+    }));
+    const problem = `Google refused the token request without the client's secret (${status} ${body.error})`;
+    assert.deepEqual(await signIn(idOnly, io(google.fetch, person.open)), {
+      status: "failed",
+      problem,
+      needsSecret: true,
+    });
+    assert.deepEqual(await refresh(idOnly, "fake-refresh-token", { fetch: google.fetch, now }), {
+      status: "failed",
+      problem,
+      needsSecret: true,
+    });
+  }
+  // With the secret sent, the same refusal is any other.
+  const google = tokenEndpoint(400, missing);
+  assert.deepEqual(await refresh(client, "fake-refresh-token", { fetch: google.fetch, now }), {
+    status: "failed",
+    problem: "Google refused the token request (400 invalid_request)",
+  });
 });
