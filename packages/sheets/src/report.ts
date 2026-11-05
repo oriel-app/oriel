@@ -1,5 +1,5 @@
 // What a Sheets connection's last sync left out, as Settings lists it under
-// the connection (decision 0050): rows that share a key or have none, by
+// the connection (decision 0050): rows that share a Row ID or have none, by
 // row number as the sheet shows them, for the person to fix in the sheet;
 // rows hidden by hand that weren't read; a tab past the row cap; a tab or a
 // spreadsheet that couldn't be read, and picks past the caps. A title is the
@@ -21,10 +21,14 @@ export function reportLines(report: SheetsReport): string[] {
       if (tab.stopped !== undefined) return [`${where}: not read, since ${tab.stopped}.`];
       return [
         ...(tab.duplicates.length > 0
-          ? [`${where}: ${rows(tab.duplicates)} share a key, so none of them is an item yet.`]
+          ? [`${where}: ${rows(tab.duplicates)} share a Row ID, so none of them is an item yet.`]
           : []),
         ...(tab.keyless.length > 0
-          ? [`${where}: ${rows(tab.keyless)} have no key, so they aren't items yet.`]
+          ? [
+              tab.keyless.length === 1
+                ? `${where}: ${rows(tab.keyless)} has no Row ID, so it isn't an item yet.`
+                : `${where}: ${rows(tab.keyless)} have no Row ID, so they aren't items yet.`,
+            ]
           : []),
         ...(tab.hidden > 0
           ? [`${where}: ${tab.hidden} hidden ${tab.hidden === 1 ? "row" : "rows"} not read.`]
