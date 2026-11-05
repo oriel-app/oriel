@@ -377,6 +377,11 @@ export type WorkstreamChangeView = {
   cause: "user" | "agent" | "tool" | "review-link" | "change-set" | "sync";
   // The thread whose agent made it, when the agent did.
   thread?: { id: string; title: string | null };
+  // The outside tool that made it, by the name the user gave it, and, while
+  // it is the workstream's latest version, the call that undoes it
+  // (decision 0058).
+  tool?: string;
+  undo?: UndoView | null;
 };
 
 export type ThreadSummaryView = {

@@ -48,6 +48,8 @@ export type WorkstreamMsg =
   | { type: "askClicked" }
   | { type: "memberRemoved"; id: string }
   | { type: "undoClicked"; version: number }
+  // The Undo of an outside tool's change, in the workstream's history.
+  | { type: "toolUndoClicked"; version: number }
   | { type: "undoHeld"; by: Hold; held: boolean }
   | { type: "undoExpired"; workstreamId: string; version: number; countdown: number }
   | { type: "nameEdited"; name: string }
@@ -114,6 +116,11 @@ export function updateWorkstream(
         { ...released, notice: null },
         [undoing(undone.undo, { kind: "restored", id: model.id }), ...restarts],
       ];
+    }
+    case "toolUndoClicked": {
+      const undo = model.view?.changes.find((each) => each.version === msg.version)?.undo;
+      if (!undo) return [model, []];
+      return [{ ...model, notice: null }, [undoing(undo, { kind: "restored", id: model.id })]];
     }
     case "undoHeld":
       return hold(model, msg.by, msg.held, again);

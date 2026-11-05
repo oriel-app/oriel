@@ -331,7 +331,7 @@ test("every action is declared with a doc, its class and, if closed, why", () =>
   // A direct action open to every door is open to the agent and tools.
   const agent: Actor = { kind: "agent", threadId: id(2) as Ulid };
   assert.equal(refusal("workstream.remove", agent), null);
-  assert.equal(refusal("thread.done", { kind: "tool", name: "a chat bot" }), null);
+  assert.equal(refusal("workstream.remove", { kind: "tool", name: "a chat bot" }), null);
   // One declaration gives the type an action's input has.
   assert.equal(
     typeText(shapeOf(actions["workstream.remove"].input)),

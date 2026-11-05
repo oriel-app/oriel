@@ -861,6 +861,34 @@ A workstream's page, opened from the sidebar, where it is the current row with i
 </div>
 ```
 
+## An outside tool's change
+
+A program the person connected to Oriel's MCP door (decision 0058) changes a workstream as itself. Its version names the tool, by the name the person gave it, as "by Codex, an outside tool". While it is the workstream's latest version, the versions are open, and Undo sits beside it: what the tool added comes out, or what it took out goes back, as the person's own change. Once anything changes the workstream after it, the Undo goes, and the versions fold as usual.
+
+```html specimen id=tool-change title="A tool's latest change, with its Undo"
+<details class="history" open>
+  <summary>2 versions</summary>
+  <ol class="changes">
+    <li>
+      <span>v2</span>
+      <span
+        >Removed SYN-23 · by Codex, an outside tool
+        <button type="button" class="quiet-action">Undo</button></span
+      >
+      <span><time datetime="2026-11-05T09:10:00Z" title="Thu, Nov 5, 09:10">just now</time></span>
+    </li>
+    <li>
+      <span>v1</span>
+      <span>Made with 14 items</span>
+      <span><time datetime="2026-11-01T09:00:00Z" title="Sun, Nov 1, 09:00">4 days ago</time></span>
+    </li>
+  </ol>
+</details>
+```
+
+- **Where:** `History` in `packages/web/src/workstream-page.tsx` draws it, and `updateWorkstream` in `packages/web/src/workstream.ts` runs its Undo, which the server's `views` in `packages/server/src/views.ts` gives the version.
+- **The words:** "· by {name}, an outside tool". Never what the tool says of itself, only the name the person gave it.
+
 ## Built from
 
 - [Sidebar](/components/sidebar): the shell, Needs you, the current workstream with its threads and "5 more", Done, Sources and Settings; and at 390, the bar with its menu.
