@@ -4799,10 +4799,11 @@ a.replies:hover {
   padding-top: calc(var(--bead-room) + var(--space-2));
 }
 
-/* In the narrow bar: centred, clear of the menu, over the brand. */
+/* In the narrow bar: centred, clear of the menu and its count, over the
+   brand. */
 @media (max-width: 760px) {
   .bead-wrap {
-    --bead-max: calc(100vw - 6.5rem);
+    --bead-max: calc(100vw - 7.5rem);
     top: calc((var(--bar-height) - var(--head-row)) / 2);
   }
 }
