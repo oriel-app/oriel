@@ -119,11 +119,11 @@ export function spreadValues(chart: Of<"spread">): ValueTable {
   const bound = atLeast(spread.atLeast);
   return {
     caption: chart.label,
-    head: [chart.label, "Rows"],
+    head: [chart.label, "Value"],
     rows: [
       ...spread.bins.map((bin) => [
         `${number(bin.from)}–${number(bin.to)}`,
-        `${bin.count}${bin.atLeast ? `, ${bin.atLeast} of them at least this` : ""}`,
+        `${bin.count} ${bin.count === 1 ? "row" : "rows"}${bin.atLeast ? `, ${bin.atLeast} of them at least this` : ""}`,
       ]),
       ["Median", `${bound}${number(spread.median)}`],
       ["90th percentile", `${bound}${number(spread.p90)}`],

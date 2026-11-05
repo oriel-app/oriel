@@ -766,7 +766,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M33,174V152.7Q33,148.7 37,148.7H93.2Q97.2,148.7 97.2,152.7V174Z"
       >
-        <title>15–20: 1</title>
+        <title>15–20: 1 row</title>
       </path>
     </g>
     <g>
@@ -774,7 +774,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M99.2,174V127.3Q99.2,123.3 103.2,123.3H159.4Q163.4,123.3 163.4,127.3V174Z"
       >
-        <title>20–25: 2</title>
+        <title>20–25: 2 rows</title>
       </path>
     </g>
     <g>
@@ -782,7 +782,7 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M165.4,174V127.3Q165.4,123.3 169.4,123.3H225.7Q229.7,123.3 229.7,127.3V174Z"
       >
-        <title>25–30: 2</title>
+        <title>25–30: 2 rows</title>
       </path>
     </g>
     <g>
@@ -790,12 +790,12 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M231.7,174V127.3Q231.7,123.3 235.7,123.3H291.9Q295.9,123.3 295.9,127.3V174Z"
       >
-        <title>30–35: 2</title>
+        <title>30–35: 2 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M297.9,174V102Q297.9,98 301.9,98H358.1Q362.1,98 362.1,102V174Z">
-        <title>35–40: 3</title>
+        <title>35–40: 3 rows</title>
       </path>
     </g>
     <g>
@@ -803,22 +803,22 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
         class="chart-column"
         d="M364.1,174V152.7Q364.1,148.7 368.1,148.7H424.3Q428.3,148.7 428.3,152.7V174Z"
       >
-        <title>40–45: 1</title>
+        <title>40–45: 1 row</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M430.3,174V102Q430.3,98 434.3,98H490.6Q494.6,98 494.6,102V174Z">
-        <title>45–50: 3</title>
+        <title>45–50: 3 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M496.6,174V102Q496.6,98 500.6,98H556.8Q560.8,98 560.8,102V174Z">
-        <title>50–55: 3</title>
+        <title>50–55: 3 rows</title>
       </path>
     </g>
     <g>
       <path class="chart-column" d="M562.8,174V26Q562.8,22 566.8,22H623Q627,22 627,26V174Z">
-        <title>55–60: 6, 2 of them at least this</title>
+        <title>55–60: 6 rows, 2 of them at least this</title>
       </path>
       <path class="chart-bound" d="M562.8,72.7V26Q562.8,22 566.8,22H623Q627,22 627,26V72.7Z" />
     </g>
@@ -848,45 +848,45 @@ Columns over bins of a readable width, touching but for a hairline. A bin holdin
     <thead>
       <tr>
         <th scope="col">Days in its state</th>
-        <th scope="col">Rows</th>
+        <th scope="col">Value</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <th scope="row">15–20</th>
-        <td>1</td>
+        <td>1 row</td>
       </tr>
       <tr>
         <th scope="row">20–25</th>
-        <td>2</td>
+        <td>2 rows</td>
       </tr>
       <tr>
         <th scope="row">25–30</th>
-        <td>2</td>
+        <td>2 rows</td>
       </tr>
       <tr>
         <th scope="row">30–35</th>
-        <td>2</td>
+        <td>2 rows</td>
       </tr>
       <tr>
         <th scope="row">35–40</th>
-        <td>3</td>
+        <td>3 rows</td>
       </tr>
       <tr>
         <th scope="row">40–45</th>
-        <td>1</td>
+        <td>1 row</td>
       </tr>
       <tr>
         <th scope="row">45–50</th>
-        <td>3</td>
+        <td>3 rows</td>
       </tr>
       <tr>
         <th scope="row">50–55</th>
-        <td>3</td>
+        <td>3 rows</td>
       </tr>
       <tr>
         <th scope="row">55–60</th>
-        <td>6, 2 of them at least this</td>
+        <td>6 rows, 2 of them at least this</td>
       </tr>
       <tr>
         <th scope="row">Median</th>

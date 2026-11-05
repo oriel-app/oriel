@@ -165,10 +165,10 @@ test("a spread's table has a row per bin, then the median and the 90th percentil
     },
   });
   assert.equal(table.caption, "Days in its state");
-  assert.deepEqual(table.head, ["Days in its state", "Rows"]);
+  assert.deepEqual(table.head, ["Days in its state", "Value"]);
   assert.deepEqual(table.rows, [
-    ["0–5", "3"],
-    ["5–10", "4, 2 of them at least this"],
+    ["0–5", "3 rows"],
+    ["5–10", "4 rows, 2 of them at least this"],
     ["Median", "≥ 5"],
     ["90th percentile", "≥ 9.3"],
   ]);
