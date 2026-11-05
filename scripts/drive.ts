@@ -17,6 +17,16 @@
 //   shot [name]              a full-page screenshot
 //   threads [id]             each thread as JSON lines, newest last; `person` lines are the maintainer's
 //   close                    close Chrome
+//   await <thread> [--timeout <minutes>]
+//                            wait, 60 minutes by default, until a person decides
+//                            each of the thread's change sets awaiting review;
+//                            no Chrome. Prints `<status> <id>` for each, and exits
+//                            0 when all are applied or rejected, 4 when none was
+//                            awaiting review, 5 when one stopped applying or went
+//                            with its thread, 6 on timing out, 7 when the server
+//                            stays gone. Run it in the background after proposing.
+//
+// Every command exits 2 on a usage error and 3 when it refuses (decision 0003).
 //
 // ORIEL_URL, ORIEL_DRIVE_PORT and ORIEL_CHROME_PROFILE (a folder under
 // `.oriel/`) drive a second window, e.g. a fresh run on another port.
@@ -25,6 +35,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } f
 import { setTimeout as wait } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { awaitDecision, parseAwait } from "./drive-await.ts";
 
 const root = new URL("../", import.meta.url);
 const port = Number(process.env.ORIEL_DRIVE_PORT ?? 9333);
@@ -239,6 +250,7 @@ const commands = [
   "shot",
   "threads",
   "close",
+  "await",
 ];
 const [command = "look", ...args] = process.argv.slice(2);
 // What each command needs, checked before Chrome opens.
@@ -251,7 +263,17 @@ if (!commands.includes(command)) {
   console.error(`${command} needs ${needs[command]} argument(s); see scripts/drive.ts`);
   process.exitCode = 2;
 } else if (command === "threads") await threads(args[0]);
-else if (command === "close") {
+else if (command === "await") {
+  const asked = parseAwait(args);
+  if (typeof asked === "string") {
+    console.error(asked);
+    process.exitCode = 2;
+  } else {
+    const { code, lines } = await awaitDecision(app, asked);
+    for (const line of lines) console.log(line);
+    process.exitCode = code;
+  }
+} else if (command === "close") {
   // Only a running Chrome; nothing running is already closed.
   const running = await attach();
   if (running) await (await running.newBrowserCDPSession()).send("Browser.close");
