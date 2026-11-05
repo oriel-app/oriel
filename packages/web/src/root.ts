@@ -4,6 +4,7 @@
 import {
   accepted,
   approvedIn,
+  answered,
   type ApprovedModel,
   type ApprovedMsg,
   arriving,
@@ -480,9 +481,10 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
 function movedOn(before: Model, msg: Msg, after: Model, effects: Effect[]): [Model, Effect[]] {
   const next = { ...after, approved: sending(after.approved, msg) };
   const changeSetId = accepted(before, msg);
-  if (changeSetId === null) return [next.approved === after.approved ? after : next, effects];
-  const [moved, going] = approvedIn(before, next, changeSetId);
-  return [moved, [...effects, ...going]];
+  const [moved, going] = changeSetId === null ? [next, []] : approvedIn(before, next, changeSetId);
+  const [approved, told] = answered(moved.approved, msg);
+  if (approved === after.approved) return [after, effects];
+  return [{ ...moved, approved }, [...effects, ...going, ...told]];
 }
 
 function focused(model: Model, effects: Effect[]): [Model, Effect[]] {

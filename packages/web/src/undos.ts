@@ -1,10 +1,11 @@
-// What every Undo note in the window's stack shares (OA-142): how long one
-// shows while the user isn't on the stack, and what holds it meanwhile.
+// What every Undo note in the window's stack, the bead, shares (OA-142): how
+// long one shows while the user isn't on it, and what holds it meanwhile.
 import type { Effect } from "./http.ts";
 import type { Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 
-// A note in the stack (undo-stack.tsx): what was done, and its Undo.
+// A note in the stack, shown in the bead (undo-stack.tsx): what was done,
+// and its Undo.
 export type UndoNote = {
   key: string;
   said: string;
@@ -18,10 +19,14 @@ export type UndoNote = {
   heard?: string;
   // A link in place of an Undo, as back to the thread a page moved on from.
   link?: { text: string; label: string; route: Route };
+  // What the bead draws beside it, for an approval: its apply under way,
+  // done, or nothing else needing the user. Never read from `said`.
+  mark?: "applying" | "applied" | "caught-up";
 };
 
-// What last failed, said at the foot of the stack until dismissed.
-export type UndoProblem = { said: string; onDismiss(): void };
+// What last failed, said in the bead until dismissed. `key`: the note it
+// takes the place of, if any, so the one shape changes.
+export type UndoProblem = { said: string; onDismiss(): void; key?: string };
 
 // Notes for the stack from one part of the window, and what last failed there.
 export type Undos = { notes: UndoNote[]; problem: UndoProblem | null };

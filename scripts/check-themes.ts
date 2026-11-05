@@ -1,8 +1,9 @@
 // What every theme must pass (decision 0034), judged on window.css itself:
 //
 // - Contrast. Every text token on every background, a state or `--derived`
-//   on its own `-soft`, and `--on-accent` on each fill it's written on, is
-//   at least 4.5:1 (WCAG AA), in light and dark.
+//   on its own `-soft`, `--on-accent` on each fill it's written on, and what
+//   the bead writes on its ink, is at least 4.5:1 (WCAG AA), in light and
+//   dark.
 // - The five states a PM scans for stay apart: any two differ by at least
 //   10 in CIEDE2000, and by at least 4 under protanopia, deuteranopia and
 //   tritanopia. The method is pinned: Machado 2009's matrices at full
@@ -246,6 +247,15 @@ export const backgrounds = ["--bg", "--surface", "--surface-hover", "--surface-s
 export const onSoft = ["--accent", "--todo", "--in-progress", "--done", "--danger", "--derived"];
 // The fills `--on-accent` is written on.
 export const onAccent = ["--accent", "--done", "--danger"];
+// What the bead writes on its ink (decision 0056).
+export const onBead = [
+  "--bead-text",
+  "--bead-faint",
+  "--bead-accent",
+  "--bead-working",
+  "--bead-done",
+  "--bead-danger",
+];
 // The five states a PM scans for: your move, in progress, an error or a
 // stall, done, and an Oriel rule.
 export const scanned = ["--accent", "--in-progress", "--danger", "--done", "--derived"];
@@ -283,6 +293,7 @@ export const colourTokens = [
   "--type-other",
   "--avatar",
   "--avatar-text",
+  "--bead",
 ];
 export const themeTokens = [
   ...colourTokens,
@@ -318,13 +329,16 @@ export const themeTokens = [
   "--radius-sm",
   "--radius",
   "--radius-lg",
+  "--bead-radius",
   "--border-thin",
   "--border-thick",
   "--shadow-sm",
   "--shadow",
   "--duration-quick",
   "--duration-move",
+  "--duration-morph",
   "--ease-out",
+  "--ease-spring",
 ];
 
 const schemes: Scheme[] = ["light", "dark"];
@@ -348,6 +362,7 @@ export function colourProblems(css: string, theme: string, scheme: Scheme): stri
     ...textTokens.flatMap((fg) => backgrounds.map((bg): [string, string] => [fg, bg])),
     ...onSoft.map((fg): [string, string] => [fg, soft(fg)]),
     ...onAccent.map((bg): [string, string] => ["--on-accent", bg]),
+    ...onBead.map((fg): [string, string] => [fg, "--bead"]),
   ];
   for (const [fg, bg] of pairs) {
     const ratio = contrast(colour(fg), colour(bg));

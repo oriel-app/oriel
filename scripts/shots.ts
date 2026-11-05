@@ -1213,7 +1213,10 @@ const trimmed = await post<{ id: string }>(
   },
   picking,
 );
-const trim = async (page: Page) => {
+// What the bead says now, row by row: not a face it showed before, whose
+// words are fading.
+const beadSays = ".bead-layer:not([data-gone]) .bead-row";
+const trim = async (page: Page, keys = ["SYN-23", "SYN-99"]) => {
   await post(
     `/api/workstreams/${trimmed.id}/add`,
     { items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-99", "jira:SYN-104"] },
@@ -1221,9 +1224,9 @@ const trim = async (page: Page) => {
   );
   await page.reload();
   await page.locator(".workstream-page .members").waitFor();
-  for (const key of ["SYN-23", "SYN-99"]) {
+  for (const key of keys) {
     await page.getByRole("button", { name: `Remove ${key}` }).click();
-    await page.locator(".undo", { hasText: key }).waitFor();
+    await page.locator(beadSays, { hasText: key }).waitFor();
   }
 };
 
@@ -1356,6 +1359,16 @@ async function hang(page: Page, path: string): Promise<void> {
   });
 }
 
+// A request the server answers, whose answer the page hears only once the
+// shot is taken, if ever: so it shows what the server did meanwhile, as an
+// approval's apply under way.
+async function answerLate(page: Page, path: string): Promise<void> {
+  await page.route(`**${path}`, async (route) => {
+    await route.fetch();
+    hung.push(route);
+  });
+}
+
 // On a narrow screen the sources are in the sidebar's drawer.
 async function openSidebar(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) > 760) return;
@@ -1458,6 +1471,16 @@ const goingOn = (others: boolean) => async () => {
   const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
   if (others) await ask("Plan gift cards", serving, workstreamId);
   approvingIn = await ask("Estimate what's missing", serving, workstreamId);
+  return serving;
+};
+// The same, with Jira refusing one of its writes, so the apply stops.
+const stoppingOn = async () => {
+  const { site, serving } = await writing();
+  await post("/api/settings", { afterApprove: "next" }, serving);
+  const { id: workstreamId } = await post<{ id: string }>("/api/workstreams", checkout, serving);
+  await ask("Plan gift cards", serving, workstreamId);
+  approvingIn = await ask("Estimate what's missing", serving, workstreamId);
+  site.refuse("SYN-99");
   return serving;
 };
 const approveIt = async (page: Page) => {
@@ -1580,8 +1603,9 @@ const scenes: Scene[] = [
     path: "/",
     make: goingOn(true),
     act: async (page) => {
+      await answerLate(page, "/approve");
       await approveIt(page);
-      await page.locator(".undo", { hasText: "Applying…" }).waitFor();
+      await page.locator(beadSays, { hasText: "Applying…" }).waitFor();
       await page.locator(".thread-title:focus").waitFor();
     },
   },
@@ -1592,7 +1616,32 @@ const scenes: Scene[] = [
     make: goingOn(false),
     act: async (page) => {
       await approveIt(page);
-      await page.getByText("All caught up.").waitFor();
+      await page.locator(beadSays, { hasText: "All caught up." }).waitFor();
+    },
+  },
+  // The bead (decision 0056), in each of its states. Once approved and
+  // applied: the same note, now with a check.
+  {
+    name: "bead-applied",
+    window: true,
+    path: "/",
+    make: goingOn(true),
+    act: async (page) => {
+      await approveIt(page);
+      await page.locator(beadSays, { hasText: "Applied" }).waitFor();
+      await page.locator(".thread-title:focus").waitFor();
+    },
+  },
+  // Once approved, the apply stopped: the note becomes the problem, which
+  // stays until dismissed.
+  {
+    name: "bead-failed",
+    window: true,
+    path: "/",
+    make: stoppingOn,
+    act: async (page) => {
+      await approveIt(page);
+      await page.locator(beadSays, { hasText: "Couldn't apply" }).waitFor();
     },
   },
   {
@@ -1810,7 +1859,7 @@ const scenes: Scene[] = [
       const row = page.locator(".overview-candidate", { hasText: "Cancellation alert sent" });
       await row.hover();
       await row.getByRole("button", { name: /^Make a workstream of / }).click();
-      await page.locator(".undos button", { hasText: "Undo" }).waitFor();
+      await page.locator(`${beadSays} button`, { hasText: "Undo" }).waitFor();
     },
   },
   {
@@ -2286,9 +2335,9 @@ const scenes: Scene[] = [
         .click();
       await page.locator(".item-panel .panel-facts").waitFor();
       await page.getByRole("button", { name: "Add to workstream" }).click();
-      await page.locator(".undos .undo", { hasText: "Added" }).waitFor();
+      await page.locator(beadSays, { hasText: "Added" }).waitFor();
       await page.locator("body").press("ControlOrMeta+z");
-      await page.locator(".undos .undo").waitFor({ state: "detached" });
+      await page.locator(beadSays).waitFor({ state: "detached" });
       await page.getByRole("button", { name: "Add to workstream" }).waitFor();
     },
   },
@@ -2307,7 +2356,7 @@ const scenes: Scene[] = [
     name: "workstream-undo",
     path: `/workstreams/${trimmed.id}`,
     on: picking,
-    act: trim,
+    act: (page) => trim(page),
   },
   {
     // The header's endings: Mark done, and Delete…
@@ -2335,7 +2384,7 @@ const scenes: Scene[] = [
     act: async (page) => {
       await unend(page);
       await page.getByRole("button", { name: "Mark done" }).click();
-      await page.locator(".undo", { hasText: "done, with" }).waitFor();
+      await page.locator(beadSays, { hasText: "done, with" }).waitFor();
       await openSidebar(page);
     },
   },
@@ -2365,7 +2414,7 @@ const scenes: Scene[] = [
       await unend(page);
       await page.locator(".workstream-actions .head-action[data-danger]").click();
       await page.locator("dialog[open]").getByRole("button", { name: "Delete" }).click();
-      await page.locator(".undo", { hasText: "Deleted" }).waitFor();
+      await page.locator(beadSays, { hasText: "Deleted" }).waitFor();
       await openSidebar(page);
     },
   },
@@ -2395,7 +2444,7 @@ const scenes: Scene[] = [
       await openSidebar(page);
       await page.locator(".nav-workstream-menu .nav-link").first().click({ button: "right" });
       await page.getByRole("menuitem", { name: "Mark done" }).click();
-      await page.locator(".undo", { hasText: "done, with" }).waitFor();
+      await page.locator(beadSays, { hasText: "done, with" }).waitFor();
     },
   },
   {
@@ -2415,6 +2464,128 @@ const scenes: Scene[] = [
       await row.locator('.swipe-action[tabindex="0"]', { hasText: "Delete" }).waitFor();
     },
   },
+  // The bead with one note, its Undo and ⌘Z; with three, the newest, a
+  // count and edges beneath; and held, open as a list, newest first.
+  {
+    name: "bead-note",
+    window: true,
+    path: `/workstreams/${trimmed.id}`,
+    on: picking,
+    act: (page) => trim(page, ["SYN-23"]),
+  },
+  {
+    name: "bead-several",
+    window: true,
+    path: `/workstreams/${trimmed.id}`,
+    on: picking,
+    act: (page) => trim(page, ["SYN-23", "SYN-99", "SYN-104"]),
+  },
+  {
+    name: "bead-held",
+    window: true,
+    path: `/workstreams/${trimmed.id}`,
+    on: picking,
+    act: async (page) => {
+      await trim(page, ["SYN-23", "SYN-99", "SYN-104"]);
+      await page.locator(".bead").hover();
+      await page.locator(".bead-layer[data-list]").waitFor();
+    },
+  },
+  // Browse with items picked, and a workstream marked done from the
+  // sidebar: the bead at the top, the bar for picked items at the foot.
+  {
+    name: "bead-browse",
+    window: true,
+    path: "/?grouping=epic",
+    on: ending,
+    act: async (page) => {
+      await reset();
+      await page.reload();
+      await shown(page, "epic");
+      await openFirstCluster(page);
+      const boxes = page.locator('.item input[type="checkbox"]');
+      await boxes.nth(0).check();
+      await boxes.nth(1).check();
+      await page.locator(".selection-bar").waitFor();
+      await openSidebar(page);
+      await page.locator(".nav-workstream-menu .nav-link").first().click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark done" }).click();
+      await page.locator(beadSays, { hasText: "done, with" }).waitFor();
+      if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+    },
+  },
+  // The bead on each page's top line, with a workstream marked done from
+  // the sidebar: what it covers there, for the note's life.
+  ...(
+    [
+      ["bead-on-overview", "/"],
+      ["bead-on-thread", `/threads/${estimating}`],
+      ["bead-on-new-thread", "/threads/new"],
+      ["bead-on-settings", "/settings/general"],
+      ["bead-on-done", "/done"],
+    ] as const
+  ).map(([name, path]): Scene => ({
+    name,
+    path,
+    on: ending,
+    window: true,
+    act: async (page) => {
+      await reset();
+      await page.reload();
+      await page.locator(".nav-workstream-menu .nav-link").first().waitFor({ state: "attached" });
+      await openSidebar(page);
+      await page.locator(".nav-workstream-menu .nav-link").first().click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark done" }).click();
+      await page.locator(beadSays, { hasText: "done, with" }).waitFor();
+      if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+    },
+  })),
+  // A close from a list that failed: the problem, in the bead.
+  {
+    name: "bead-closing",
+    window: true,
+    path: `/workstreams/${mixed.id}`,
+    refused: 409,
+    act: async (page) => {
+      await page.route("**/api/threads/*/done", (route) =>
+        route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "The thread changed since this page loaded." }),
+        }),
+      );
+      await openSidebar(page);
+      await page.locator(".nav-waiting-link").first().click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark done" }).click();
+      await page.locator(beadSays, { hasText: "changed since" }).waitFor();
+      if ((page.viewportSize()?.width ?? 0) <= 760) await page.keyboard.press("Escape");
+    },
+  },
+  // Added from the panel: the bead centres on the page the panel leaves.
+  {
+    name: "bead-panel",
+    window: true,
+    path: `/?grouping=epic&addTo=${revisited.id}`,
+    on: revisiting,
+    act: async (page) => {
+      // Each pass adds it again; a first pass finds it not there yet.
+      await post(
+        `/api/workstreams/${revisited.id}/remove`,
+        { items: ["jira:SYN-21"] },
+        revisiting,
+      ).catch(() => {});
+      await page.reload();
+      await shown(page, "epic");
+      await page.locator(".cluster-toggle", { hasText: "Checkout" }).first().click();
+      await page
+        .locator(".item a.key", { hasText: /^SYN-21$/ })
+        .first()
+        .click();
+      await page.locator(".item-panel .panel-facts").waitFor();
+      await page.getByRole("button", { name: "Add to workstream" }).click();
+      await page.locator(beadSays, { hasText: "Added" }).waitFor();
+    },
+  },
   {
     // One of them undone: back where it was.
     name: "workstream-undone",
@@ -2422,6 +2593,8 @@ const scenes: Scene[] = [
     on: picking,
     act: async (page) => {
       await trim(page);
+      // The older note is behind the newest until the bead is held open.
+      await page.locator(".bead").hover();
       await page.getByRole("button", { name: "Undo removing SYN-23" }).click();
       await page.locator('.members [data-item="jira:SYN-23"]').waitFor();
     },
