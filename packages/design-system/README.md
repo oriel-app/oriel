@@ -119,4 +119,4 @@ Each check prints how long it took. The checks before the browser take about 1.5
 
 ## Not yet
 
-Components Oriel doesn't use, left out on purpose: a modal dialog beyond the one confirm, toasts that aren't the undo stack, date and time pickers, a combobox or autocomplete, pagination controls (Browse pages in place with "Show N more"), breadcrumbs, avatars beyond an assignee's initials, a data grid (a block's table is read-only), file upload (drops go through the window's drop zone), a stepper beyond the first run's column, and a tree view (Browse's clusters are one level deep).
+Components Oriel doesn't use, left out on purpose: a modal dialog beyond the one confirm, toasts that aren't the bead, date and time pickers, a combobox or autocomplete, pagination controls (Browse pages in place with "Show N more"), breadcrumbs, avatars beyond an assignee's initials, a data grid (a block's table is read-only), file upload (drops go through the window's drop zone), a stepper beyond the first run's column, and a tree view (Browse's clusters are one level deep).

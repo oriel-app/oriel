@@ -3,7 +3,7 @@ title: Connection and provider rows
 status: drifting
 group: Rows
 order: 52
-classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice
+classes: provider-rows, provider-row, provider-icon, provider-main, provider-name, provider-badge, provider-about, provider-preview, provider-status, provider-mark, provider-state, provider-uses, provider-side, connection-row, connection-options, connection-said, connection-problem, connection-report, cli-line, cli-waiting, spinner, cli-size, cli-note, cli-small, cli-box, cli-actions, cli-log, cli-picked, cli-progress, cli-bar, cli-training, provider-path-open, provider-key-actions, provider-key-note, switch, switch-knob, settings, settings-sections, settings-body, settings-section, settings-head, settings-title, settings-lede, settings-problem, settings-field, settings-switch, settings-field-name, settings-field-about, input, choices, choice
 summary: One thing Oriel uses or reads, as a row with its mark, name, what it is, its state and the one thing to do next. Settings' providers and connections and the first run draw it; four hand copies today.
 ---
 
@@ -112,6 +112,79 @@ The row is a flex line, top-aligned, `--space-4` apart, padded `--space-3` `--sp
 ```
 
 The status line's third part is `<span class="provider-detail">` in the app (`ProviderRow` in `packages/web/src/provider-row.tsx`). window.css has no rule for that class, so the specimens leave it off; it looks the same.
+
+### A path and a key, in Settings
+
+Under a CLI's row in Settings › Providers, **Use a Claude Code at another path** (`.provider-path-open`, a quiet action pulled left to line up with the words) opens a path field, for a CLI that isn't on the PATH Oriel started with. Under the API key's row, once a key is set, **Use another key** and **Remove the key** sit side by side (`.provider-key-actions`); typing a key shows a note under the field (`.provider-key-note`, `--text-sm` in `--text-muted`, a whole line of its own) on where to make one and how it's billed and kept.
+
+```html specimen id=path-and-key title="Another path, a key that's set, and a key being typed" width=390
+<div class="settings">
+  <div class="settings-body">
+    <ul class="provider-rows">
+      <li class="provider-row" data-status="ready">
+        <span class="provider-icon" aria-hidden="true">C</span>
+        <div class="provider-main">
+          <span class="provider-name">Claude Code</span>
+          <span class="provider-about"
+            >For Claude Pro and Max · Anthropic's assistant for your Mac</span
+          >
+          <span class="provider-status"
+            ><span class="provider-mark" aria-hidden="true"></span
+            ><span class="provider-state">Ready</span><span>Signed in · version 2.1.314</span></span
+          >
+          <button type="button" class="quiet-action provider-path-open">
+            Use a Claude Code at another path
+          </button>
+        </div>
+      </li>
+      <li id="provider-api" class="provider-row" data-status="ready">
+        <span class="provider-icon" aria-hidden="true">A</span>
+        <div class="provider-main">
+          <span class="provider-name">API key</span>
+          <span class="provider-about">Anthropic bills each question</span>
+          <span class="provider-status"
+            ><span class="provider-mark" aria-hidden="true"></span
+            ><span class="provider-state">Ready</span
+            ><span>A key is kept in the OS secret store</span></span
+          >
+          <span class="provider-key-actions"
+            ><button type="button" class="quiet-action">Use another key</button
+            ><button type="button" class="quiet-action">Remove the key</button></span
+          >
+        </div>
+      </li>
+      <li class="provider-row" data-status="no-key">
+        <span class="provider-icon" aria-hidden="true">A</span>
+        <div class="provider-main">
+          <span class="provider-name">API key</span>
+          <span class="provider-about">Anthropic bills each question</span>
+          <form class="provider-path">
+            <label class="provider-path-label"
+              ><span>API key</span
+              ><input
+                type="password"
+                class="input"
+                placeholder="sk-ant-…"
+                spellcheck="false"
+                autocomplete="off"
+            /></label>
+            <button type="submit" class="button" disabled>Save</button>
+            <span class="provider-key-note"
+              >Make one on
+              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer"
+                >Anthropic's console</a
+              >. Anthropic bills each question, and you can set a monthly limit there. Oriel keeps
+              the key in your system's secret store.</span
+            >
+          </form>
+        </div>
+      </li>
+    </ul>
+  </div>
+</div>
+```
+
+The path and key fields themselves are on [Text field](/components/text-field#settings-path). Removing says "Removing…" while it runs; saving a key says "Checking…" while Anthropic checks it.
 
 ### The status line
 
@@ -305,6 +378,35 @@ Downloaded 112 MB of 310 MB</pre>
 ```
 
 The app gives the unpicked mark the same `aria-label="Picked"` as the picked one (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), so a screen reader hears "Picked" on both. The specimen says "Not picked"; see Drift.
+
+A ready row signed in with a personal plan says one more line under its status: the plan may let its vendor train on the person's chats, with a link to the setting (`.cli-training`). Oriel can't read that setting, so the line says "may" and never says training is off. There's none for a Team, Business, Enterprise or Edu plan, or an API key (`trainingNotice` in `packages/web/src/training.ts`).
+
+```html specimen id=cli-training title="Ready on a personal plan: the training line"
+<ul class="provider-rows">
+  <li id="provider-claude-code" class="provider-row" data-status="ready">
+    <span class="provider-icon" aria-hidden="true">C</span>
+    <div class="provider-main">
+      <span class="provider-name">Claude Code</span>
+      <span class="provider-about"
+        >For Claude Pro and Max · Anthropic's assistant for your Mac</span
+      >
+      <span class="provider-status"
+        ><span class="provider-mark" aria-hidden="true"></span
+        ><span class="provider-state">Ready</span
+        ><span>· Pro · amara.okafor@example.com</span></span
+      >
+      <p class="cli-training">
+        Your plan may let Anthropic train on your chats.
+        <a href="https://claude.ai/settings/data-privacy-controls" target="_blank" rel="noreferrer"
+          >Check your setting</a
+        >
+      </p>
+    </div>
+  </li>
+</ul>
+```
+
+`.cli-training` shares `.cli-note`'s look: `--text-sm` in `--text-faint`, at `--leading-prose`.
 
 ### Connections (Settings › Connections), in the Settings frame
 
@@ -762,6 +864,7 @@ The row itself has no hover, focus or pressed look: it isn't a control. Its cont
 - Claude Code and Codex: `ClaudeCodeRow` and `CodexRow` in `packages/web/src/cli-row.tsx`; the waiting line, `Waiting` in `packages/web/src/cli-row.tsx`; the failure box, `Failed` in `packages/web/src/cli-row.tsx`. Placed in Settings by `Providers` in `packages/web/src/settings-page.tsx`, and in the first run by `YourAi` in `packages/web/src/setup-page.tsx`.
 - Connections: the row, its status line and Sync, `ConnectionRow` in `packages/web/src/connections-page.tsx`; options, `Options` in `packages/web/src/connections-page.tsx`; said and Undo, `Said` in `packages/web/src/connections-page.tsx`; Disconnect and its question, `Disconnect` in `packages/web/src/connections-page.tsx`. Add a connection: `AddConnection` in `packages/web/src/connections-page.tsx`.
 - First run: `SourceRow` and `connected` in `packages/web/src/setup-page.tsx`; Reading's Done line, `Reading` in `packages/web/src/setup-page.tsx`.
+- The training line: `TrainingLine` in `packages/web/src/cli-row.tsx`, from `trainingNotice` in `packages/web/src/training.ts`. Settings' other path and key: `CliPath` and `ApiKey` in `packages/web/src/settings-page.tsx`; CSS `.provider-path-open`, `.provider-key-actions` and `.provider-key-note` in `window.css`, and `.cli-training` with `.cli-note` in `window.css`.
 - Settings frame, its sections and body: `SettingsPage` in `packages/web/src/settings-page.tsx`; a section head with its action, `Providers` in `packages/web/src/settings-page.tsx`.
 - CSS: `.provider-rows`, `.provider-row`, `.provider-main`, `.provider-name`, `.provider-badge`, `.provider-preview`, `.provider-status`, `.provider-uses`, `.switch` and `.settings-field` in `window.css`; the status line's colours, `.provider-row[data-status="ready"] .provider-mark` and `.provider-row:is([data-status="checking"], [data-off]) .provider-mark` in `window.css`; connections, `.connection-options`, `.connection-row .provider-side`, `.connection-report` and `.connection-said` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`. The rest of the shell is in the first-run block: `.provider-icon`, `.provider-about`, `.provider-side`, `.provider-row[data-picked]` and `.provider-status[data-connected] .provider-mark` in `window.css`; the CLI pieces, `.cli-picked`, `.cli-line`, `.cli-waiting`, `.cli-note`, `.cli-size`, `.cli-box`, `.cli-actions`, `.cli-log`, `.cli-progress`, `.cli-bar` and `.spinner` in `window.css`. The Settings frame: `.settings`, `.settings-sections`, `.settings-body`, `.settings-section`, `.settings-head`, `.settings-title` and `.settings-lede` in `window.css`.
 - The sidebar's source rows read the same connections but are nav rows: `Sources` in `packages/web/src/sidebar.tsx`. See [Sidebar](/components/sidebar).
@@ -774,7 +877,7 @@ Status **drifting**. One shape, four authors, and a status line written seven ti
 - **The status line is written inline** in `provider-row.tsx`, `connections-page.tsx`, `cli-row.tsx` (twice) and `setup-page.tsx` (twice). The detail is a `.provider-detail` span in one, a bare `<span>· …</span>` in others.
 - **Green is reached three ways**: the row's `data-status="ready"` (providers, connections, Claude Code's ready line), and `data-connected` on the line (the first run). Anything else falls back to `--danger`, so a status line moved out of a ready row turns red, and a state nobody gave a tone reads as an error.
 - **Connection states don't map to tones.** A connection is "ready" when it's open with no problem, so "Syncing…" and "Not synced yet" are green like "Synced". With a standing problem, its next "Syncing…" is drawn in danger red. "Waiting for options that fit" is red too, though nothing is wrong. Nothing uses the faint "checking" tone here.
-- **Dead classes**: `connection-rows`, `setup-rows`, `settings-page` and `provider-detail` have no CSS; `[data-locked]` has none either. They're hooks only.
+- **Dead classes**: `connection-rows`, `settings-page` and `provider-detail` have no CSS (`setup-rows` has one rule now, keeping a first-run row's side action at the top); `[data-locked]` has none either. They're hooks only.
 - **The unpicked pick mark** says "Picked" to a screen reader (`ClaudeCodeRow` in `packages/web/src/cli-row.tsx`), the same as the picked one.
 - `.cli-box` is also the Disconnect question and the first run's source failure, well beyond the CLI rows.
 

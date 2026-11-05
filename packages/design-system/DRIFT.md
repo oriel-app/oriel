@@ -1,48 +1,50 @@
 ---
-surveyed: 5ee7a339
+surveyed: 85a125e9
 ---
 
 # Drift report
 
 Where Oriel's window has several versions of one thing, and how to make each one thing once. The counts below are recounted live on the [web page](/drift#the-counts).
 
-**A dated snapshot.** Surveyed on 2026-11-04 at Oriel `5ee7a339`, on `main`; by this note main was at `d8080831`, seven commits on. Every `file:line` here is that commit's: a line link opens the file as it was then, and `pnpm check` doesn't check them, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
+**A dated snapshot.** First surveyed on 2026-11-04 at Oriel `5ee7a339`; re-surveyed on 2026-11-05 at `85a125e9`, on `main`, after Noticed (0052), chart blocks (0053), the second look (0054) and the bead (0056). Every `file:line` here is `85a125e9`'s, and a line link opens the file as it was then; D1 alone keeps `5ee7a339`'s lines, untouched while OA-251 works it, so find its places by name. `pnpm check` doesn't check line links, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
 
 Each proposal below is written to be pasted into a story: why, where, what differs, the proposed component with its API and classes, a migration, a size, and what to watch for. They're ranked by value for effort. Value is how much drift a person sees, plus bugs fixed, plus what it unblocks. Effort is **S** (under a day: a few files, no component API), **M** (a component and a sweep of its call sites) or **L**.
 
 ## The ranking
 
-| #   | Proposal                                                                                                          | Value    | Effort | Size                                              |
-| --- | ----------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------------------------------------------- |
-| 1   | [Clear dead and split CSS, and the reduced-motion miss](#d1-clear-dead-and-split-css-and-the-reduced-motion-miss) | High     | S      | 1 file, ~45 CSS lines removed                     |
-| 2   | [One disabled look, and one button-kind rule](#d2-one-disabled-look-and-one-button-kind-rule)                     | High     | S      | 2 TSX files, ~25 CSS lines removed, 6 added       |
-| 3   | [One ChatInput for the four places a person asks](#d3-one-chatinput-for-the-four-places-a-person-asks)            | High     | M      | 5 TSX files, ~70 CSS lines removed, ~45 added     |
-| 4   | [One focus for fields, and a ring for menu items](#d4-one-focus-for-fields-and-a-ring-for-menu-items)             | Med–High | S      | 0–2 TSX files, ~25 CSS lines removed, 8 added     |
-| 5   | [One SearchField](#d5-one-searchfield)                                                                            | High     | S      | 2–4 TSX files, ~32 CSS lines removed              |
-| 6   | [ProviderRow everywhere, with one StatusLine](#d6-providerrow-everywhere-with-one-statusline)                     | High     | S      | 5 TSX files, ~25 CSS and ~40 TSX lines removed    |
-| 7   | [One ListFrame that follows the theme](#d7-one-listframe-that-follows-the-theme)                                  | High     | S      | 6–8 TSX files, ~35 CSS lines removed, 12 added    |
-| 8   | [One state-to-colour map](#d8-one-state-to-colour-map)                                                            | High     | M      | 8 TSX files, ~60 CSS lines removed, 25 added      |
-| 9   | [One IconButton, and an SVG close](#d9-one-iconbutton-and-an-svg-close)                                           | High     | M      | 7 TSX files, ~150 CSS lines removed, 35 added     |
-| 10  | [One Problem line](#d10-one-problem-line)                                                                         | High     | M      | 13 TSX files, ~90 CSS lines removed, 25 added     |
-| 11  | [One Field: label, hint and error, tied together](#d11-one-field-label-hint-and-error-tied-together)              | High     | M      | ~8 TSX files, ~60 CSS lines removed               |
-| 12  | [One Empty line](#d12-one-empty-line)                                                                             | Medium   | S      | 9 TSX files, ~40 CSS lines removed                |
-| 13  | [One reveal-on-hover rule](#d13-one-reveal-on-hover-rule)                                                         | Medium   | S      | 5 TSX files, ~35 CSS lines removed, 6 added       |
-| 14  | [Customizable selects](#d14-customizable-selects)                                                                 | Medium   | S      | 2 TSX files, ~30 CSS lines replaced               |
-| 15  | [Layer and spacing tokens](#d15-layer-and-spacing-tokens)                                                         | Low–Med  | S      | 1 file; 11 z-index and ~30 rem literals to tokens |
+| #   | Proposal                                                                                                          | Value    | Effort | Size                                              | Decided 2026-11-05                    |
+| --- | ----------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------------------------------------------- | ------------------------------------- |
+| 1   | [Clear dead and split CSS, and the reduced-motion miss](#d1-clear-dead-and-split-css-and-the-reduced-motion-miss) | High     | S      | 1 file, ~45 CSS lines removed                     | OA-251: one pulse speed               |
+| 2   | [One disabled look, and one button-kind rule](#d2-one-disabled-look-and-one-button-kind-rule)                     | High     | S      | 2 TSX files, ~25 CSS lines removed, 6 added       | OA-252: one label for Approve         |
+| 3   | [One ChatInput for the four places a person asks](#d3-one-chatinput-for-the-four-places-a-person-asks)            | High     | M      | 5 TSX files, ~70 CSS lines removed, ~45 added     |                                       |
+| 4   | [One focus for fields, and a ring for menu items](#d4-one-focus-for-fields-and-a-ring-for-menu-items)             | Med–High | S      | 0–2 TSX files, ~25 CSS lines removed, 8 added     | OA-253: an inset ring on menu items   |
+| 5   | [One SearchField](#d5-one-searchfield)                                                                            | High     | S      | 2–4 TSX files, ~32 CSS lines removed              |                                       |
+| 6   | [ProviderRow everywhere, with one StatusLine](#d6-providerrow-everywhere-with-one-statusline)                     | High     | S      | 5 TSX files, ~25 CSS and ~40 TSX lines removed    |                                       |
+| 7   | [One ListFrame that follows the theme](#d7-one-listframe-that-follows-the-theme)                                  | High     | S      | 6–8 TSX files, ~35 CSS lines removed, 12 added    | Yes, not yet filed                    |
+| 8   | [One state-to-colour map](#d8-one-state-to-colour-map)                                                            | High     | M      | 8 TSX files, ~60 CSS lines removed, 25 added      | OA-255: draft and reply in the accent |
+| 9   | [One IconButton, and an SVG close](#d9-one-iconbutton-and-an-svg-close)                                           | High     | M      | 7 TSX files, ~150 CSS lines removed, 35 added     |                                       |
+| 10  | [One Problem line](#d10-one-problem-line)                                                                         | High     | M      | 13 TSX files, ~90 CSS lines removed, 25 added     |                                       |
+| 11  | [One Field: label, hint and error, tied together](#d11-one-field-label-hint-and-error-tied-together)              | High     | M      | ~8 TSX files, ~60 CSS lines removed               |                                       |
+| 12  | [One Empty line](#d12-one-empty-line)                                                                             | Medium   | S      | 11 TSX files, ~45 CSS lines removed               |                                       |
+| 13  | [One reveal-on-hover rule](#d13-one-reveal-on-hover-rule)                                                         | Medium   | S      | 5 TSX files, ~35 CSS lines removed, 6 added       |                                       |
+| 14  | [Customizable selects](#d14-customizable-selects)                                                                 | Medium   | S      | 2–3 TSX files, ~40 CSS lines replaced             | “Add to…” stays a select              |
+| 15  | [Layer and spacing tokens](#d15-layer-and-spacing-tokens)                                                         | Low–Med  | S      | 1 file; 11 z-index and ~30 rem literals to tokens | OA-251: a `--layer-*` scale           |
 
 Suggested order: 1 and 2 first (no visible change but fixes), then 4 with 3 (focus first, so ChatInput uses the frame), then 5–7, then 8, then 9 with a `Button` component, then 10 and 11, then the rest. Smaller drift that didn't make a story is [at the end](#also-seen).
+
+The maintainer decided six questions these proposals asked on 2026-11-05; each is marked **Decided** where it's asked, with the story that carries it.
 
 ## The counts
 
 Oriel's own theme check already holds colours, font sizes, weights, radii, border widths, shadows and durations to tokens (decision 0034), and window.css has **no** literal colour outside a theme block. Spacing literals are allowed by 0034, and that's where copies of one thing drift apart: not as literals, mostly, but as different choices of token (`--radius` against `--radius-sm`, `--text-muted` against `--text-faint`, `--text-sm` against `--text-md`).
 
-On 2026-11-04:
+On 2026-11-05, at `85a125e9` (2026-11-04's counts in brackets):
 
-- 31 raw `px` values outside token blocks (11 are 1px or 2px hairline gaps);
-- 55 raw `rem` values in padding, margin, gap or inset that aren't a `--space-*` token;
-- 11 `z-index` literals, with no scale: 20 and 22 are each used twice;
-- 4 selectors written as two top-level rules, far apart: `.shell`, `.shell-main`, `.connect-actions`, `.connect-problem`;
-- 2 classes styled but never named in the app: `.section-count`, `.setup-box`.
+- 36 raw `px` values outside token blocks (31; 11 are still 1px or 2px hairline gaps). New: the timeline's bars, due and today marks (`window.css:3217`, `window.css:3244`, `window.css:3253`), the bead's inset ring (`window.css:4580`) and its mark's panes (`window.css:4720`);
+- 59 raw `rem` values in padding, margin, gap or inset that aren't a `--space-*` token (55). New: the timeline's due and today marks (`window.css:3242` to `window.css:3252`), `.bead-layer` (`window.css:4506`) and `.noticed-pinned` (`window.css:5725`); gone with the undo stack: its lift over the selection bar;
+- 11 `z-index` literals, with no scale (11): 20 and 1 are each used twice. The bead's 22 (`window.css:4404`) and 1 (`window.css:4425`) replace the undo stack's and the closing problem's two 22s;
+- 5 selectors written as more than one top-level rule (4): `.shell` and `.shell-main`, three times each now that the bead adds one to each (`window.css:4384`, `window.css:4802`); `.connect-actions`; `.connect-problem`; and `.timeline-count`, twice in a row (`window.css:3183`, `window.css:3187`);
+- 2 classes styled but never named in the app (2): `.section-count`, `.setup-box`.
 
 ```live
 census
@@ -81,16 +83,18 @@ census
 
 **Why.** Three controls look live while they're disabled. A person clicks and nothing happens.
 
-> **The bead (decision 0056) merged as `f3524d07`, after this survey.** It replaces the stack of Undo notes (`.undos`, `.undo`, `.undo-note`) with the bead. It keeps `.undo-action`: checked on `main` at `c0a9735a`, `UndoButton` and the thread's two Undos still draw it, its hover is still unguarded, and it still has no disabled look outside the action lines. So D2 stands; only "Dismiss" as an `.undo-action` in the stack should be re-read against the bead before starting.
+**Decided 2026-11-05** (OA-252): one label for Approve wherever it does the same thing. The thread says **Approve and apply**, the review link page **Approve** (`packages/web/src/other-pages.tsx:350`); OA-252 makes them one.
+
+The bead (0056) replaced the stack of Undo notes. Its own action, `.bead-action` (`window.css:4560`), has what this asks for: a hover guarded with `:not(:disabled)` (`window.css:4574`) and a disabled look (`window.css:4583`). `.undo-action` still lacks both, and `UndoButton` and a reply's two Undos still draw it beside the change they undo, so D2 stands.
 
 **Places.**
 
 - Disabled with no disabled look:
-  - `.undo-action` outside the action lines: `packages/web/src/undo-stack.tsx:141`, `packages/web/src/thread-page.tsx:606`. Its hover (`window.css:4034`) isn't guarded either, so a disabled Undo still lights up.
-  - `.remove-line`, the change set line's ×: `disabled={props.busy}` at `packages/web/src/thread-page.tsx:1128`, no rule, and a danger hover that isn't guarded (`window.css:2357`).
-  - `.ask-question`, the questions under the ask bar: disabled while asking (`packages/web/src/window-chat-view.tsx:82`), but its own `color` (`window.css:5142`) stops the browser's grey.
-- Five disabled looks where there are disabled rules: opacity 0.5 (`window.css:308`, `window.css:330`, `window.css:2285`, `window.css:5831`), 0.35 (`window.css:4279`), 0.5 with a not-allowed cursor (`window.css:5512`), and a colour change only (`window.css:2865`).
-- Button kinds chosen per page: "Try again" is a `.button`, a `.button.primary` and a `.quiet-action`; "Cancel" is `.button`, `.quiet-action` and `.link-action`; "Dismiss" is `.quiet-action`, and `.undo-action` in the undo stack. See [Button](/components/button#drift).
+  - `.undo-action` outside the action lines: `packages/web/src/undo-stack.tsx:553`, `packages/web/src/thread-page.tsx:613`. Its hover (`window.css:4833`) isn't guarded either, so a disabled Undo still lights up.
+  - `.remove-line`, the change set line's ×: `disabled={props.busy}` at `packages/web/src/thread-page.tsx:1194`, no rule, and a danger hover that isn't guarded (`window.css:2421`).
+  - `.ask-question`, the questions under the ask bar: disabled while asking (`packages/web/src/window-chat-view.tsx:82`), but its own `color` (`window.css:6062`) stops the browser's grey.
+- Five disabled looks where there are disabled rules: opacity 0.5 (`window.css:370`, `window.css:392`, `window.css:2349`, `window.css:6796`), 0.35 (`window.css:5073`), 0.5 with a not-allowed cursor (`window.css:6432`), and a colour change only (`window.css:2929`).
+- Button kinds chosen per page: "Try again" is a `.button`, a `.button.primary` and a `.quiet-action`; "Cancel" is `.button`, `.quiet-action` and `.link-action`; "Dismiss" is a `.quiet-action` (a Noticed card's, too), and a `.bead-action` in the bead, which is the bead's own ink and fine. See [Button](/components/button#drift).
 
 ```html specimen id=disabled-today title="Disabled today: these four are all disabled" side=today
 <div class="ws-row">
@@ -117,15 +121,15 @@ Every hover rule becomes `:hover:not(:disabled, [aria-disabled="true"])`. And on
 
 **Migration.**
 
-1. Add the token to the shared `html` block (`window.css:3`) and the rule to the Buttons section (`window.css:278`).
+1. Add the token to the shared `html` block (`window.css:3`) and the rule to the Buttons section (`window.css:340`).
 2. Delete the per-class disabled rules listed above. Decide whether the panel steps keep 0.35 and whether a locked switch keeps not-allowed.
 3. Guard the hovers: `.undo-action`, `.remove-member`/`.remove-line`, `.window-chat-close`, `.panel-close`, `.fold-toggle`, `.cluster-toggle`.
-4. Replace the hand-rolled Undo at `packages/web/src/thread-page.tsx:380` with `UndoButton`.
+4. Replace the hand-rolled Undo at `packages/web/src/thread-page.tsx:387` with `UndoButton`.
 5. Move the "Try again", "Cancel" and "Dismiss" call sites onto the rule.
 
 **Size.** 2 TSX files, ~25 CSS lines removed, 6 added.
 
-**Watch for.** `.overview-make` starts at opacity 0 and is revealed on hover (`window.css:5016`): reveal and disabled both use `opacity`, so do D13 with this, or reveal with `visibility`.
+**Watch for.** `.overview-make` starts at opacity 0 and is revealed on hover (`window.css:5936`): reveal and disabled both use `opacity`, so do D13 with this, or reveal with `visibility`.
 
 ---
 
@@ -135,9 +139,9 @@ Every hover rule becomes `:hover:not(:disabled, [aria-disabled="true"])`. And on
 
 **Places.**
 
-1. The overview's ask bar: `packages/web/src/window-chat-view.tsx:49`, CSS `window.css:5093` to `window.css:5157`, off state `window.css:6171`.
+1. The overview's ask bar: `packages/web/src/window-chat-view.tsx:49`, CSS `window.css:6013` to `window.css:6077`, off state `window.css:7136`.
 2. The window chat's composer: `Composer` used twice, `packages/web/src/window-chat-view.tsx:176` and `packages/web/src/window-chat-view.tsx:187`.
-3. A thread's composer: `Composer` at `packages/web/src/thread-page.tsx:1145`, CSS `window.css:2461` to `window.css:2500`, sticky at `window.css:3442`.
+3. A thread's composer: `Composer` at `packages/web/src/thread-page.tsx:1211`, CSS `window.css:2525` to `window.css:2564`, sticky at `window.css:3859`.
 4. A workstream's Ask box, a hand copy of `Composer`: `packages/web/src/workstream-page.tsx:162`.
 
 Today, from the app (`pnpm shots`, Graphite light):
@@ -167,7 +171,7 @@ The same four, with today's markup and Oriel's live CSS beside the proposal, in 
 | Accessible name | "Ask about your window"          | "Message"                                           | "Message"               | "Ask about this workstream"   |
 | Theme mark      | Broadsheet's `--ask-mark`        | none                                                | none                    | none                          |
 
-Two hidden couplings: the workstream's form is `class="composer ask"`, so it takes the overview's `.ask` section margin (`window.css:5093`); and the ask bar and the window chat's first composer edit one draft, so both show and mirror each other after New chat.
+Two hidden couplings: the workstream's form is `class="composer ask"`, so it takes the overview's `.ask` section margin (`window.css:6013`); and the ask bar and the window chat's first composer edit one draft, so both show and mirror each other after New chat.
 
 **Proposal.** `ChatInput`, in a new file of its own, chat-input.tsx beside the pages, so no page imports another. Its CSS is written and judged by Oriel's own literal rule in this workshop: `assets/proposals/chat-input.css`.
 
@@ -208,13 +212,13 @@ export type ChatInputProps = {
 
 **Migration.**
 
-1. Add `chat-input.tsx` and its CSS where "Composers: where the user asks" starts (`window.css:2459`). Keep `composer` as a second class for now: `packages/web/src/effects.ts:104` and the sticky rule select it.
+1. Add `chat-input.tsx` and its CSS where "Composers: where the user asks" starts (`window.css:2523`). Keep `composer` as a second class for now: `packages/web/src/effects.ts:104` and the sticky rule select it.
 2. Make `Composer` a thin wrapper of `ChatInput lines="grow"`, move its four call sites, and drop the cross-page import at `packages/web/src/window-chat-view.tsx:9`.
 3. Replace the workstream's copy with `ChatInput label="Ask about this workstream" submitLabel="Ask"`. Give it its own margin and drop `ask` from its class.
 4. Replace the ask bar's two forms with `ChatInput lines="one" size="lg" marked`, and the no-AI form with `off`.
 5. Show one error line in the window chat.
 6. Use one placeholder rule: `askPrompt` (`packages/web/src/workstream.ts:279`) for threads and workstreams alike. This changes thread shots' text; ask first.
-7. Delete `window.css:2461` to `window.css:2500`, `window.css:5099` to `window.css:5125` and `window.css:6170` to `window.css:6173`.
+7. Delete `window.css:2525` to `window.css:2564`, `window.css:6019` to `window.css:6045` and `window.css:7135` to `window.css:7138`.
 8. `pnpm shots` both themes, light and dark, 1280 and 390, and the first run.
 
 **Size.** 5 TSX files (one new), about −70 and +80 TSX lines; ~70 CSS lines removed, ~45 added.
@@ -223,25 +227,28 @@ export type ChatInputProps = {
 
 - Decision 0041: the ask bar stays one line, and Enter always asks. Don't run it through `sends()`.
 - `--ask-mark` is a theme token; `packages/web/test/themes.test.ts` asserts a sketch's sheet never carries it. Apply it through `marked`.
-- Shots find `.ask-input`, the button named exactly "Ask", the textbox "Message" and the label "Ask about this workstream" (`scripts/shots.ts:1143`, `scripts/shots.ts:2186`, `scripts/shots.ts:2988`). Keep those names; keep `ask-input` as a class on the field.
+- Shots find `.ask-input`, the button named exactly "Ask", the textbox "Message" and the label "Ask about this workstream" (`scripts/shots.ts:1555`, `scripts/shots.ts:2921`, `scripts/shots.ts:3752`). Keep those names; keep `ask-input` as a class on the field.
 - Keep `ChatInput` fully controlled: two of them share one draft on the overview.
-- The keyboard path skips the button's `disabled`; the reducers guard empty and busy sends (`packages/web/src/thread.ts:272`). Keep the guard there.
+- The keyboard path skips the button's `disabled`; the reducers guard empty and busy sends (`packages/web/src/thread.ts:280`). Keep the guard there.
 
 ---
 
 ## D4. One focus for fields, and a ring for menu items
 
+**Decided 2026-11-05** (OA-253): keyboard focus on a menu item is an inset ring, distinct from hover.
+
 **Why.** Accessibility. A field shows focus five ways, and the composer's is a 1px border tint, barely visible. In the context menu, keyboard focus looks exactly like the pointer's hover, so with the pointer on one item and the arrows on another, two items are lit and nothing says which one Enter picks.
 
 **Places.**
 
-- The global ring: `window.css:273`, 2px of `--focus`, 2px out.
-- `.ask-input:focus` (on `:focus`, not `:focus-visible`), ring 1px in: `window.css:5122`.
-- `.composer:focus-within`, a border mixed halfway to the accent, with `outline: none` on the textarea: `window.css:2473`, `window.css:2487`.
-- `.sidebar-search-field:focus-within` and `.filter-search:focus-within`: border and a 1px ring, written twice: `window.css:483`, `window.css:1619`.
-- `.workstream-title:focus`: a border only: `window.css:2229`.
-- `.settings` fields: the ring at offset 0: `window.css:5439`.
-- `.context-menu-item:is(:hover, :focus-visible)`: one fill for both, `outline: none`: `window.css:3901`.
+- The global ring: `window.css:335`, 2px of `--focus`, 2px out.
+- `.ask-input:focus` (on `:focus`, not `:focus-visible`), ring 1px in: `window.css:6042`.
+- `.composer:focus-within`, a border mixed halfway to the accent, with `outline: none` on the textarea: `window.css:2537`, `window.css:2551`.
+- `.sidebar-search-field:focus-within` and `.filter-search:focus-within`: border and a 1px ring, written twice: `window.css:545`, `window.css:1681`.
+- `.workstream-title:focus`: a border only: `window.css:2293`.
+- `.settings` fields: the ring at offset 0: `window.css:6359`.
+- `.context-menu-item:is(:hover, :focus-visible)`: one fill for both, `outline: none`: `window.css:4318`.
+- The bead's actions already draw the inset ring this proposes, in the bead's own accent, with a literal offset: `.bead-action:focus-visible` (`window.css:4578`).
 
 **Proposal.** Tokens on the shared `html` block, the global ring rewritten with them, one field-frame rule, and an inset ring for full-width rows:
 
@@ -268,11 +275,11 @@ html {
 
 The field frame is the sidebar search's look today, the strongest of the five, and the one [ChatInput](/components/chat-input#proposed-focus) and the [text field lab](/lab/text-field) use.
 
-**Migration.** Add the tokens. Replace the five field focus rules with the frame rule as D3, D5 and D11 land; until then, change `.composer:focus-within` to the frame look (two lines). Drop `outline: none` from `.context-menu-item` and give it the inset ring. Leave the programmatic focus targets (`.change-set:focus`, `.panel-title:focus`) ring-less.
+**Migration.** Add the tokens. Replace the five field focus rules with the frame rule as D3, D5 and D11 land; until then, change `.composer:focus-within` to the frame look (two lines). Drop `outline: none` from `.context-menu-item` and give it the inset ring. Leave the programmatic focus targets (`.change-set:focus`, `.panel-title:focus`) ring-less. Move `.bead-action:focus-visible` onto `--focus-inset`, keeping its colour.
 
 **Size.** 0–2 TSX files, ~25 CSS lines removed, 8 added.
 
-**Watch for.** A 2px outside ring on the sticky composer can clip against the window chat's scrolling column; the frame's border-and-ring stays inside. Broadsheet's `--ask-mark` sits beside the ask bar's ring: check both together in Broadsheet light and dark. **Decision:** the inset ring on menu items changes how the context menu looks (see [Menu](/components/menu)).
+**Watch for.** A 2px outside ring on the sticky composer can clip against the window chat's scrolling column; the frame's border-and-ring stays inside. Broadsheet's `--ask-mark` sits beside the ask bar's ring: check both together in Broadsheet light and dark. The inset ring on menu items changes how the context menu looks (see [Menu](/components/menu)); decided, as above.
 
 ---
 
@@ -280,7 +287,7 @@ The field frame is the sidebar search's look today, the strongest of the five, a
 
 **Why.** Two searches with byte-identical CSS, written twice.
 
-**Places.** The sidebar's thread search: `packages/web/src/sidebar.tsx:178`, CSS `window.css:469` to `window.css:500`. Browse's item search: `packages/web/src/window-page.tsx:154`, CSS `window.css:1605` to `window.css:1636`. Two more searches without the icon frame: `packages/web/src/connect-steps.tsx:166`, `packages/web/src/connections-page.tsx:467`.
+**Places.** The sidebar's thread search: `packages/web/src/sidebar.tsx:178`, CSS `window.css:531` to `window.css:562`. Browse's item search: `packages/web/src/window-page.tsx:154`, CSS `window.css:1667` to `window.css:1698`. Two more searches without the icon frame: `packages/web/src/connect-steps.tsx:166`, `packages/web/src/connections-page.tsx:467`.
 
 ```html specimen id=search-sidebar title="The sidebar's search (.sidebar-search-field)" side=today
 <label class="sidebar-search-field">
@@ -339,11 +346,11 @@ type SearchFieldProps = {
 
 Markup `label.search-field > svg.icon + span.visually-hidden + input`. The class and its CSS are in the [text field lab](/lab/text-field) (`assets/proposals/field.css`).
 
-**Migration.** Add `.search-field` as a copy of `window.css:469`. Swap both labels' classes. Delete `window.css:1605` to `window.css:1636`. Optionally move the two picker searches onto it.
+**Migration.** Add `.search-field` as a copy of `window.css:531`. Swap both labels' classes. Delete `window.css:1667` to `window.css:1698`. Optionally move the two picker searches onto it.
 
 **Size.** 2–4 TSX files, ~32 CSS lines removed.
 
-**Watch for.** The folded sidebar hides its search by class (`window.css:1032`): keep a sidebar hook, or scope by `.sidebar`.
+**Watch for.** The folded sidebar hides its search by class (`window.css:1094`): keep a sidebar hook, or scope by `.sidebar`.
 
 ---
 
@@ -351,7 +358,7 @@ Markup `label.search-field > svg.icon + span.visually-hidden + input`. The class
 
 **Why.** One row shape, written by hand four more times, and a visible bug: a connection that is "Syncing…" or "Signed out" draws its status in danger red, because only a row that sets `data-status="ready"` escapes the default.
 
-**Places.** The component: `ProviderRow` at `packages/web/src/provider-row.tsx:63`. Hand copies: `ConnectionRow` (`packages/web/src/connections-page.tsx:88`), the add-a-connection row (`packages/web/src/connections-page.tsx:528`), the first run's `SourceRow` (`packages/web/src/setup-page.tsx:372`). The status line written inline again at `packages/web/src/connections-page.tsx:103`, `packages/web/src/setup-page.tsx:387`, `packages/web/src/cli-row.tsx:214` and `packages/web/src/cli-row.tsx:377`. "Ready" is coloured twice: `window.css:5372` and `window.css:5867`.
+**Places.** The component: `ProviderRow` at `packages/web/src/provider-row.tsx:63`. Hand copies: `ConnectionRow` (`packages/web/src/connections-page.tsx:88`), the add-a-connection row (`packages/web/src/connections-page.tsx:528`), the first run's `SourceRow` (`packages/web/src/setup-page.tsx:372`). The status line written inline again at `packages/web/src/connections-page.tsx:103`, `packages/web/src/setup-page.tsx:387`, `packages/web/src/cli-row.tsx:214` and `packages/web/src/cli-row.tsx:377`. "Ready" is coloured twice: `window.css:6292` and `window.css:6832`.
 
 Seen side by side: [Connection and provider rows](/components/connection-row#status-tones).
 
@@ -374,19 +381,21 @@ type SettingRowProps = {
 
 Markup stays `li.provider-row > .provider-icon + .provider-main + .provider-side`; colour keys off `.provider-status[data-tone]`, so it works wherever the line sits.
 
-**Migration.** Add `StatusLine` and move the colour rules to `[data-tone]`. Make `SettingRow` from `ProviderRow`'s JSX. Replace the three hand rows and four hand status lines. Delete `window.css:5372` to `window.css:5386` and `window.css:5867` to `window.css:5874`, and move `window.css:5837` beside `window.css:5300`.
+**Migration.** Add `StatusLine` and move the colour rules to `[data-tone]`. Make `SettingRow` from `ProviderRow`'s JSX. Replace the three hand rows and four hand status lines. Delete `window.css:6292` to `window.css:6306` and `window.css:6832` to `window.css:6839`, and move `window.css:6802` beside `window.css:6220`.
 
 **Size.** 5 TSX files, ~25 CSS lines and ~40 TSX lines removed.
 
-**Watch for.** The first run's shots wait on `.provider-status[data-connected]` (`scripts/shots-first-run.ts:501`): keep it as an alias or update the script. `scripts/check-repo.ts` fails any web file that names a source kind, so the row takes every name from the connector. Syncing in green, not red, is a visible change: say so in the PR.
+**Watch for.** The first run's shots wait on `.provider-status[data-connected]` (`scripts/shots-first-run.ts:503`): keep it as an alias or update the script. `scripts/check-repo.ts` fails any web file that names a source kind, so the row takes every name from the connector. Syncing in green, not red, is a visible change: say so in the PR.
 
 ---
 
 ## D7. One ListFrame that follows the theme
 
+**Decided 2026-11-05** (not yet filed): Broadsheet's lists follow `--list-frame` everywhere, Browse's and a workstream's included.
+
 **Why.** Broadsheet's "open lists on the page" (`--list-frame: none`, `--list-bg: var(--bg)`) reaches the overview and Settings but not Browse or a workstream's items, which keep a frame and a white surface. Three ways of writing a rule between rows, in two strengths.
 
-**Places.** Following the theme: `.overview-rows` (`window.css:4764`), `.provider-rows` (`window.css:5300`), `.choice-rows` (`window.css:6106`), `.setup-card` (`window.css:5740`). Not: `.members` (`window.css:2290`) and `.clusters` (`window.css:1707`), each with a hard-coded `--line` frame and `--surface`.
+**Places.** Following the theme: `.overview-rows` (`window.css:5558`), `.provider-rows` (`window.css:6220`), `.choice-rows` (`window.css:7071`), `.setup-card` (`window.css:6705`), and since the survey Noticed's cards, `.noticed-card` (`window.css:5648`). Not: `.members` (`window.css:2354`) and `.clusters` (`window.css:1769`), each with a hard-coded `--line` frame and `--surface`; nor a second look's suggested additions, `.second-look .suggested li` (`window.css:3505`), framed in `--line` on `--surface` inside a dashed, sunk box.
 
 Seen in Broadsheet: [the overview's rows](/components/list-row?theme=broadsheet#workstream-rows) against [a workstream's items](/components/list-row?theme=broadsheet#members).
 
@@ -419,19 +428,21 @@ type ListFrameProps = {
 };
 ```
 
-**Migration.** Add the class beside `.overview-rows`. Add it to the six lists, keeping their own classes for shape and for shots. Delete the duplicated frames and the four separator rules. **Decide** whether `.members` and `.clusters` follow the theme; if so, Browse and workstream pages change in Broadsheet.
+**Migration.** Add the class beside `.overview-rows`. Add it to the six lists, keeping their own classes for shape and for shots. Delete the duplicated frames and the four separator rules. `.members` and `.clusters` follow the theme (decided), so Browse and workstream pages change in Broadsheet: say so in the PR. A second look's suggestions sit in a box of their own; leave them framed unless they read as a list on the page.
 
 **Size.** 6–8 TSX files (class additions), ~35 CSS lines removed, 12 added.
 
-**Watch for.** `.clusters` needs `overflow: clip` for its radius. `.members.compact` in the right rail (`window.css:3505`) has no frame: leave it off. `.overview-candidates` is a `div` of `ul`s; the separator rule must not reach its groups.
+**Watch for.** `.clusters` needs `overflow: clip` for its radius. `.members.compact` in the right rail (`window.css:3922`) has no frame: leave it off. `.overview-candidates` is a `div` of `ul`s; the separator rule must not reach its groups.
 
 ---
 
 ## D8. One state-to-colour map
 
+**Decided 2026-11-05** (OA-255): "Draft to apply" and "Your turn" take the accent, as part of one state-to-colour map.
+
 **Why.** Five maps turn a state into a colour, and they disagree. The accent means "your move" (decision 0034), yet a thread waiting on a draft to apply, or on the person's reply ("Your turn"), is drawn in the in-progress blue in the sidebar and its state chip, while "Needs review" and "Message held" take the accent. A dropped thread's state chip has no rule and shows as to-do grey.
 
-**Places.** `.state-chip` (`window.css:1263`), `.state-dot` (`window.css:769`), the sidebar's waiting word (`window.css:747`), the chip's state (`window.css:1345`, map in `packages/web/src/chip.ts:47`), `.status` (`window.css:2077`), the provider mark (`window.css:5358`). `waitingNames` at `packages/web/src/parts.tsx:571`.
+**Places.** `.state-chip` (`window.css:1325`), `.state-dot` (`window.css:831`), the sidebar's waiting word (`window.css:809`), the chip's state (`window.css:1407`, map in `packages/web/src/chip.ts:47`), `.status` (`window.css:2141`), the provider mark (`window.css:6278`). `waitingNames` at `packages/web/src/parts.tsx:571`. Since the survey, the bead keeps a sixth, on its ink: `--bead-working`, `--bead-done`, `--bead-danger` and `--bead-accent` (`window.css:45` to `window.css:48`), each a state colour mixed toward the paper. It follows the same states, so it should read from the same tones (`--tone` on ink), not a parallel list.
 
 Seen side by side: [State chip, status and counts](/components/badge#state-chip).
 
@@ -463,11 +474,11 @@ export function changeSetTone(state: ChangeSetState): Tone;
 
 Every pill, dot and status reads `var(--tone)` and `var(--tone-soft)`. `data-pulse` stays separate.
 
-**Migration.** Add `tone.ts` with a unit test that pins today's mapping. **Decide** `draft` and `reply` (the accent, if "your move" holds) and the dropped pill. Move `StateChip` and the dots first, keeping `data-state` and `data-waiting` for shots; then the chip, `.status` and the provider rows (with D6). Delete the per-class maps.
+**Migration.** Add `tone.ts` with a unit test that pins today's mapping. Put `draft` and `reply` on the accent (decided); **decide** the dropped pill. Move `StateChip` and the dots first, keeping `data-state` and `data-waiting` for shots; then the chip, `.status` and the provider rows (with D6). Delete the per-class maps.
 
 **Size.** 8 TSX files (one new), ~60 CSS lines removed, 25 added.
 
-**Watch for.** The five scanned states must stay apart (decision 0034's CIEDE2000 check); a tone map doesn't add colours, so it can't break that. Shots read `.reply .chip[data-state]` (`scripts/shots.ts:2472`). Moving draft and reply to the accent is a visible change.
+**Watch for.** The five scanned states must stay apart (decision 0034's CIEDE2000 check); a tone map doesn't add colours, so it can't break that. Shots read `.reply .chip[data-state]` (`scripts/shots.ts:3204`). Moving draft and reply to the accent is a visible change.
 
 ---
 
@@ -475,7 +486,7 @@ Every pill, dot and status reads `var(--tone)` and `var(--tone-soft)`. `data-pul
 
 **Why.** Nine square icon buttons in five sizes, two radii, three rest colours and three disabled looks. The item panel's close and the window chat's close sit on the same header line at different sizes, and only one answers Esc. Closes are a "×" character, so their weight follows the font.
 
-**Places.** `.sidebar-fold` and `.bar-menu` (`packages/web/src/sidebar.tsx:61`, `packages/web/src/app.tsx:305`), `.head-action` (`packages/web/src/end-workstream.tsx:62`), `.panel-step` and `.panel-close` (`packages/web/src/item-panel.tsx:91`, `packages/web/src/item-panel.tsx:123`), `.window-chat-close` (`packages/web/src/window-chat-view.tsx:136`), `.sync-now` (`packages/web/src/thread-page.tsx:1225`), `.remove-member` and `.remove-line` (`packages/web/src/parts.tsx:708`, `packages/web/src/thread-page.tsx:1128`).
+**Places.** `.sidebar-fold` and `.bar-menu` (`packages/web/src/sidebar.tsx:61`, `packages/web/src/app.tsx:312`), `.head-action` (`packages/web/src/end-workstream.tsx:62`), `.panel-step` and `.panel-close` (`packages/web/src/item-panel.tsx:91`, `packages/web/src/item-panel.tsx:123`), `.window-chat-close` (`packages/web/src/window-chat-view.tsx:136`), `.sync-now` (`packages/web/src/thread-page.tsx:1291`), `.remove-member` and `.remove-line` (`packages/web/src/parts.tsx:708`, `packages/web/src/thread-page.tsx:1194`).
 
 Seen side by side, at rest and in every state: [Icon button](/components/icon-button#all-today).
 
@@ -510,7 +521,7 @@ type IconButtonProps = {
 
 **Migration.** Add the component and one `.icon-button` rule (~20 lines). Move `.head-action` first (the one to copy today), then the steps, the closes, Sync now, the fold and the menu, then the removes. Keep old classes as hooks where scripts or code select them. Settle the window chat's close at `--head-row` and give it Esc.
 
-**Size.** 7 TSX files, ~150 CSS lines removed (`window.css:429` to `window.css:449`, `window.css:2263` to `window.css:2288`, `window.css:2323` to `window.css:2361`, `window.css:3476` to `window.css:3503`, `window.css:4180` to `window.css:4197`, `window.css:4261` to `window.css:4282`, `window.css:5200` to `window.css:5213`), ~35 added.
+**Size.** 7 TSX files, ~150 CSS lines removed (`window.css:491` to `window.css:511`, `window.css:2327` to `window.css:2352`, `window.css:2387` to `window.css:2425`, `window.css:3893` to `window.css:3920`, `window.css:4974` to `window.css:4991`, `window.css:5055` to `window.css:5076`, `window.css:6120` to `window.css:6133`), ~35 added.
 
 **Watch for.** `.remove-member` is how the workstream page moves focus between rows (`packages/web/src/workstream-page.tsx:62`); shots select `.sync-now`, `.head-action[data-danger]` and `.window-chat-close`. Moving `disabled` to `aria-disabled` puts buttons back in the tab order: guard their clicks. `.bar-count` sits on the fold and the menu; keep `position: relative`.
 
@@ -520,7 +531,7 @@ type IconButtonProps = {
 
 **Why.** About 22 classes say something went wrong, in three colours, with four kinds of retry, and several aren't read out. A load failure is grey in two places and red everywhere else.
 
-**Places.** Inline lines: `.ask-problem`, `.composer-notice`, `.notice[data-tone="error"]`, `.connect-problem`, `.connection-problem`, `.source-problem`, `.selection-notice`, `.panel-problem`, `.confirm-problem`, `.run-error`, `.line-error`, `.apply-errors`, `.overview-problem`. Boxes: `.failed`, `.settings-problem` and `.setup-problem` (identical), `.change-set-problem`, `.closing-problem`. No `role="alert"` on `packages/web/src/connections-page.tsx:204`, `.run-error` or `.apply-errors`.
+**Places.** Inline lines: `.ask-problem`, `.composer-notice`, `.notice[data-tone="error"]`, `.connect-problem`, `.connection-problem`, `.source-problem`, `.selection-notice`, `.panel-problem`, `.confirm-problem`, `.run-error`, `.line-error`, `.apply-errors`, `.overview-problem`. Boxes: `.failed`, `.settings-problem` and `.setup-problem` (identical), `.change-set-problem`. The bead (0056) took `.closing-problem`: a close from a list that failed is a bead failure now, with Dismiss. Since the survey: Noticed's load failure reuses `.overview-problem`; a second look that didn't finish says so in `.second-look-note` (`packages/web/src/second-look.tsx:60`), faint and not read out, on purpose, since 0054 keeps the second look out of the danger colours. No `role="alert"` on `packages/web/src/connections-page.tsx:204`, `.run-error` or `.apply-errors`.
 
 ```html specimen id=problems-today title="Four error lines today: red, red, red with a retry, and grey with a retry" side=today
 <div class="ws-stack">
@@ -560,11 +571,11 @@ export function Problem(props: {
 </p>
 ```
 
-**Migration.** Merge the duplicated problem selectors (D1). Add `.problem`. Port the inline lines, then the boxes and bands. **Decide** whether a page that "didn't load" is red and always offers Try again (the thread and workstream models need a retry message). Move "This thread was deleted." (`packages/web/src/thread-page.tsx:104`) off `.failed`: it isn't an error.
+**Migration.** Merge the duplicated problem selectors (D1). Add `.problem`. Port the inline lines, then the boxes and bands. **Decide** whether a page that "didn't load" is red and always offers Try again (the thread and workstream models need a retry message). Move "This thread was deleted." (`packages/web/src/thread-page.tsx:111`) off `.failed`: it isn't an error.
 
 **Size.** 13 TSX files, ~90 CSS lines removed, 25 added.
 
-**Watch for.** Wording is product copy: only the shell changes. `.closing-problem` keeps its floating position as a wrapper.
+**Watch for.** Wording is product copy: only the shell changes. Leave the bead's failure in the bead. Give the second look's "It didn't finish" `role="alert"` but keep it neutral, as 0054 asks: a `look="quiet"`, or leave it out.
 
 ---
 
@@ -585,21 +596,21 @@ type FieldProps = {
 };
 ```
 
-It uses `:user-invalid` beside `[aria-invalid]` (Baseline), `field-sizing: content` for growing text (replacing the JS row count at `packages/web/src/thread-page.tsx:530`), and the field-frame focus from D4.
+It uses `:user-invalid` beside `[aria-invalid]` (Baseline), `field-sizing: content` for growing text (replacing the JS row count at `packages/web/src/thread-page.tsx:537`), and the field-frame focus from D4.
 
 **Migration.** Add `Field`. Move the connect fields first (they already set `aria-invalid`), then Settings, the review page's name and reason, and the held message. The review page opens in any browser: check it degrades (it does; see the lab).
 
 **Size.** ~8 TSX files, ~60 CSS lines removed.
 
-**Watch for.** Shots find fields by label ("Path to Claude Code", `scripts/shots.ts:1167`): keep the labels.
+**Watch for.** Shots find fields by label ("Path to Claude Code", `scripts/shots.ts:1579`): keep the labels.
 
 ---
 
 ## D12. One Empty line
 
-**Why.** Nine classes for "there's nothing here", muted or faint and small or not with no rule for which. `.rail-empty`, a right-rail name, is used on main pages, in the sidebar, for search status and for a deleted page.
+**Why.** Eleven classes for "there's nothing here", muted or faint and small or not with no rule for which. `.rail-empty`, a right-rail name, is used on main pages, in the sidebar, for search status and for a deleted page.
 
-**Places.** `.rail-empty` (`window.css:1219`), `.rail-note` (`window.css:3464`), `.window-chat-empty` (`window.css:5222`), `.no-items` (`window.css:1949`), `.no-matches` (`window.css:1654`), `.overview-quiet` (`window.css:4705`), `.panel-empty`, `.connect-none` (`window.css:6100`), and `.settings-field-about` borrowed for "Nothing is connected yet." (`packages/web/src/connections-page.tsx:46`).
+**Places.** `.rail-empty` (`window.css:1281`), `.rail-note` (`window.css:3881`), `.window-chat-empty` (`window.css:6142`), `.no-items` (`window.css:2013`), `.no-matches` (`window.css:1716`), `.overview-quiet` (`window.css:5499`), `.panel-empty`, `.connect-none` (`window.css:7065`), and `.settings-field-about` borrowed for "Nothing is connected yet." (`packages/web/src/connections-page.tsx:46`). Since the survey: `.noticed-none` (`window.css:5730`), faint and small, for both "Nothing Oriel found needs you now." and a pin whose read is gone; and `.second-look-none` (`window.css:3451`), muted and full size, for a second look that raised nothing.
 
 Seen side by side: [Empty, loading and error](/components/states#empty).
 
@@ -607,9 +618,9 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 
 **Migration.** Add `.empty`. Replace the per-place classes; keep `.no-items`'s band padding as `data-band`. Move search status and "Deleted…" to a status line. Delete `.rail-empty` last.
 
-**Size.** 9 TSX files, ~40 CSS lines removed.
+**Size.** 11 TSX files, ~45 CSS lines removed.
 
-**Watch for.** Shots read `.workstream-page .rail-empty` (`scripts/shots.ts:1770`) and rely on `.rail-empty:empty` hiding search status.
+**Watch for.** Shots read `.workstream-page .rail-empty` (`scripts/shots.ts:2369`) and rely on `.rail-empty:empty` hiding search status.
 
 ---
 
@@ -617,7 +628,7 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 
 **Why.** Four versions of "show this action when the row is pointed at": one with a transition, some on `:focus-within`, some only on the button's own focus, and 1, 0.6 or 0.7 on touch. The overview's and Browse's "Make a workstream" sit next to each other and reveal differently, and are worded differently ("Make workstream" in Browse).
 
-**Places.** `.make-workstream` (`window.css:1755`), `.overview-make` (`window.css:5016`), `.source-sync` (`window.css:965`), `.remove-member` and `.remove-line` (`window.css:2334`), and the `.pick` checkbox (`window.css:2001`).
+**Places.** `.make-workstream` (`window.css:1819`), `.overview-make` (`window.css:5936`), `.source-sync` (`window.css:1027`), `.remove-member` and `.remove-line` (`window.css:2398`), and the `.pick` checkbox (`window.css:2065`).
 
 **Proposal.** A pair of attributes, not a component:
 
@@ -642,15 +653,17 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 
 ## D14. Customizable selects
 
-**Why.** Three native selects with three borders and a focus override, and "Add to…" is a menu wearing a select.
+**Decided 2026-11-05** (no story): "Add to…" stays a select.
 
-**Places.** Browse's filters (`packages/web/src/window-page.tsx:126`, `window.css:1638`), "Add to…" (`packages/web/src/window-page.tsx:620`, `window.css:2191`), the Settings model picker (`packages/web/src/settings-page.tsx:424`, `window.css:5426`).
+**Why.** Four native selects with four borders, three heights and a focus override.
+
+**Places.** Browse's filters (`packages/web/src/window-page.tsx:126`, `window.css:1700`), "Add to…" (`packages/web/src/window-page.tsx:620`, `window.css:2255`), the Settings model picker (`packages/web/src/settings-page.tsx:424`, `window.css:6346`), and since the survey a pivot block's two picks (`packages/web/src/charts.tsx:377`, `.pivot-pick select` at `window.css:3279`), 1.75rem high with a `--radius` border of its own.
 
 **Proposal.** `appearance: base-select` with Oriel's picker, a native fallback styled like Oriel's fields, and rich options (a state dot per status, a count per workstream, a line per model). Built and tested in the [select lab](/lab/select); the [controls report](/controls) has the verdict.
 
-**Migration.** Add `.dropdown` from `assets/proposals/select.css`; move the three selects; replace the JS-set `data-set` with `:has(option[value=""]:checked)`. **Decide** whether "Add to…" stays a select or becomes a menu button.
+**Migration.** Add `.dropdown` from `assets/proposals/select.css`; move the four selects, "Add to…" included (it stays a select); replace the JS-set `data-set` with `:has(option[value=""]:checked)`. A pivot block never reaches the review link page, so its picks may take the base-select too.
 
-**Size.** 2 TSX files, ~30 CSS lines replaced.
+**Size.** 2–3 TSX files, ~40 CSS lines replaced.
 
 **Watch for.** Don't put `label=` on a rich option (it hides the content). A base-select sizes to the chosen option, so give filters a min-width.
 
@@ -658,9 +671,11 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 
 ## D15. Layer and spacing tokens
 
-**Why.** 11 `z-index` literals with no scale (20 and 22 each used twice), and the same small paddings written as rem literals over and over (0.125rem thirteen times).
+**Decided 2026-11-05** (OA-251, with D1): a `--layer-*` scale.
 
-**Proposal.** A `--layer-*` set on the shared `html` block (`--layer-sticky`, `--layer-bar`, `--layer-panel`, `--layer-drawer`, `--layer-veil`, `--layer-toast`), and `--space-0_5: 0.125rem` beside the space scale, with the 0.25rem, 0.5rem and 1rem literals moved onto existing `--space-*` tokens. See [Space, shape and elevation](/foundations/space).
+**Why.** 11 `z-index` literals with no scale (20 and 1 each used twice; the bead's 22 at `window.css:4404` is the top one now), and the same small paddings written as rem literals over and over (0.125rem fourteen times, `.noticed-pinned` the newest).
+
+**Proposal.** A `--layer-*` set on the shared `html` block (`--layer-sticky`, `--layer-bar`, `--layer-panel`, `--layer-drawer`, `--layer-veil`, `--layer-toast` for the bead), and `--space-0_5: 0.125rem` beside the space scale, with the 0.25rem, 0.5rem and 1rem literals moved onto existing `--space-*` tokens. See [Space, shape and elevation](/foundations/space).
 
 **Size.** 1 file; brings the census to 0 z-index literals and about 25 rem literals.
 
@@ -673,13 +688,16 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 Smaller drift, worth a line in a story that's nearby:
 
 - **Two section heads.** The overview's `.overview-head` follows the theme's section tokens; `.section-title` on every other page doesn't ([Overview sections](/components/overview-section)).
-- **Approve's label.** The thread says **Approve and apply**; the review link page hard-codes **Approve** (`packages/web/src/other-pages.tsx:350`).
+- **Approve's label.** The thread says **Approve and apply**; the review link page hard-codes **Approve** (`packages/web/src/other-pages.tsx:350`). **Decided 2026-11-05** (OA-252): one label wherever it does the same thing. See D2.
 - **Destructive confirmation.** Delete asks in a modal with Cancel focused; Disconnect asks inline with Disconnect first ([Confirm dialog](/components/confirm)).
 - **"N more"** has four shapes ([Long lists](/patterns/long-lists)).
-- **The pulse** runs at 1.6s on a state dot and 1.2s on the working dot and Sync now ([Motion](/foundations/motion)).
+- **The pulse** runs at 1.6s on a state dot (`window.css:846`) and 1.2s on the working dot, Sync now and now the bead's applying dot (`window.css:2812`, `window.css:3919`, `window.css:4665`) ([Motion](/foundations/motion)). **Decided 2026-11-05** (OA-251): one pulse speed.
 - **Disclosures**: chevron buttons with the rotation written three times, and `<summary>` with the browser's own triangle (drift research B6).
-- **Link-shaped buttons** in six looks: `.link-action`, `.overview-more`, `.overview-stat`, `.item-link`, `.line-error .quiet-action`, `.undo-action`.
+- **Link-shaped buttons** in seven looks: `.link-action`, `.overview-more`, `.overview-stat`, `.item-link`, `.line-error .quiet-action`, `.undo-action`, and the bead's `.bead-action` on its ink.
 - **Item rows** drawn three ways; Browse's skips the shared `TypeMark` and `ItemKey` ([List rows](/components/list-row)).
 - **The switch** in dark schemes: an off switch's knob is `--on-accent`, dark on a dark track ([Switch lab](/lab/switch)).
-- **The connect steps' radios** have no `accent-color` and show the browser's blue (one line to fix; [Checkbox and radio lab](/lab/checkbox-radio)).
+- **A quote from a source** is drawn three ways. In a reply, a left rule in the accent when the check found it word for word, in danger when not (`window.css:2716`, `window.css:2720`). In a second look, always `--line-strong` (`window.css:3493`), as 0054 keeps it neutral. On a Noticed card, no rule at all: `.reply blockquote` doesn't reach the overview, so the card's `<blockquote>` takes the browser's indent and only the accent colour of a rule it doesn't have (`packages/web/src/noticed-strip.tsx:115`). One `.quote-from` rule outside `.reply` would give all three the same frame.
+- **Small capitals** written six times, each with its own size, weight and colour: `.rail-title`, `.derived-tag`, `.search-label`, `.line-mark`, `.overview-headline-label` (`window.css:5775`), and since the survey `.noticed-kind` (`window.css:5667`), a copy of the headline label but for its cursor.
+- **An information mark** as a character: a Noticed card's "Oriel's rule" and "About Dismiss" are each an ⓘ in a focusable `<span>` (`.noticed-rule-mark`, `packages/web/src/noticed-strip.tsx:92`, `packages/web/src/noticed-strip.tsx:160`), not an icon; its weight follows the font, as the "×" closes do (D9).
+- **The accent on checkboxes and radios** is set three times: #173 put `accent-color` on `html` (`window.css:294`), and `.pick input` (`window.css:2074`) and `.choice input` (`window.css:6503`) still set it again. The connect steps' radios, which showed the browser's blue at the survey, take the accent now.
 - **Accessibility**: item chips have only a `title`, no `aria-label`; the first run's `.cli-picked` says "Picked" whether or not the row is picked; the reading `<progress>` has no name.

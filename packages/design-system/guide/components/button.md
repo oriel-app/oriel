@@ -18,7 +18,7 @@ A control that does something now: sends, approves, connects, deletes. Oriel has
 - **Danger** (`.button.danger`): the danger fill, only for the confirm step of something that can't be taken back by Undo: Delete in the one question a delete asks, Disconnect.
 - **Quiet action** (`.quiet-action`): "text until hovered" (`.quiet-action` in `window.css`). For actions that sit beside content and shouldn't compete with it: Mark done, Share review link, Dismiss, Open as a thread.
 - **Link action** (`.link-action`): an underlined accent word, for "a way on that isn't the step's own" (`.link-action` in `window.css`), as in the first run: Set up later, Pay Anthropic per question instead.
-- **Undo action** (`.undo-action`): the accent word in a note: Undo, Open it.
+- **Undo action** (`.undo-action`): the accent word beside a change it undoes: Undo, Redo. In the bead, the same Undo is a `.bead-action` (see [Undo](/components/undo)).
 
 ## When to use it
 
@@ -57,10 +57,12 @@ A button is its label, optionally after a 1rem `.icon`. Padding is `0.25rem var(
 <div class="ws-stack">
   <p class="ws-note">A link action, for a way on that isn't the step's own:</p>
   <button type="button" class="link-action">Set up later</button>
-  <p class="ws-note">An undo action, in a note:</p>
-  <p class="undo">
-    <span>Removed SYN-12</span>
-    <button type="button" class="undo-action" aria-label="Undo: Removed SYN-12">Undo</button>
+  <p class="ws-note">An undo action, beside what it undoes:</p>
+  <p class="panel-added">
+    <span>Added to “Checkout v2: phone wallets and saved cards”.</span>
+    <button type="button" class="undo-action" aria-label="Undo: Added to “Checkout v2”.">
+      Undo
+    </button>
   </p>
 </div>
 ```
@@ -152,7 +154,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 - Focus shows the global ring: `--border-thick` in `--focus` (the accent), 2px out (`:focus-visible` in `window.css`).
 - A button that shows and hides something sets `aria-expanded` (Show details, the overview's counts). Its label may change (Show/Hide), but the look doesn't: `[aria-expanded="true"]` isn't styled.
 - A button whose label is only an icon or a `×` needs `aria-label`, written as the action and its object: "Remove SYN-12", "Close the panel".
-- The bottom Undo in the undo stack carries `aria-keyshortcuts="Meta+Z"` and answers ⌘Z (Ctrl+Z) when focus isn't in a field (`UndoStack` in `packages/web/src/undo-stack.tsx`).
+- The newest Undo in the bead carries `aria-keyshortcuts="Meta+Z"` and answers ⌘Z (Ctrl+Z) when focus isn't in a field (`UndoStack` in `packages/web/src/undo-stack.tsx`). F8 takes the keyboard to it (see [The bead](/components/bead)).
 
 ## Content
 
@@ -168,7 +170,7 @@ Hover and focus here are forced: the workshop copies window.css's own `:hover` a
 - `.button.danger` in `window.css`. The confirm: `Confirm` in `packages/web/src/close-thread.tsx`. Disconnect: `Disconnect` in `packages/web/src/connections-page.tsx`.
 - `.quiet-action` in `window.css`. Mark done: `ThreadPage` in `packages/web/src/thread-page.tsx`. Share review link: `ChangeSet` in `packages/web/src/thread-page.tsx`. Open as a thread and New chat: `WindowChat` in `packages/web/src/window-chat-view.tsx`.
 - `.link-action` in `window.css`. The first run's `link()`: `link` in `packages/web/src/setup-page.tsx`; the CLI row's `quiet()`: `ClaudeCodeRow` in `packages/web/src/cli-row.tsx`.
-- `.undo-action` in `window.css`. The undo stack: `UndoButton` in `packages/web/src/undo-stack.tsx`.
+- `.undo-action` in `window.css`, drawn by `UndoButton` in `packages/web/src/undo-stack.tsx`, which the bead draws as a `.bead-action`.
 - `.setup-next` in `window.css`, drawn by `YourAi` in `packages/web/src/setup-page.tsx`.
 
 ## Drift

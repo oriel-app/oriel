@@ -42,7 +42,7 @@ One renderer, `ChatEntryItem` in `packages/web/src/thread-page.tsx`, draws every
 - Not for the agent's data. A table, bars or rows Oriel built from a read is a [block](/components/block), not a markdown table in the reply.
 - Not for a decision. A change set is its own entry with its own steps; a reply never carries a button.
 - Not for anything the person must act on that the agent wrote. If someone other than the person wrote it, it's a held message, and only the person sends it on.
-- Not as a toast. What the person did (removed an item, made a workstream) shows in the [undo stack](/components/undo), not in the chat.
+- Not as a toast. What the person did (removed an item, made a workstream) shows as a note in the [bead](/components/bead), not in the chat.
 
 ## Anatomy and variants
 
@@ -579,6 +579,36 @@ A draft of the agent's (decision 0051): one of the person's own actions, such as
 
 The drafted value is `<span class="draft-to">` in the app (`DraftCard` in `packages/web/src/thread-page.tsx`); that class has no rules, so it's left off here.
 
+### The window chat's head
+
+The window chat draws its entries with the same renderer, in its own panel at the window's right (`aside.window-chat`, the item panel's width, on `--surface`). Its head (`.window-chat-head`) is one `--head-row` line: the title, **Ask about your window** (`h2.window-chat-title`, `--text-lg` at `--weight-strong`, taking the room), then **Open as a thread** once there's a chat to open, **New chat**, and the close (see [Icon button](/components/icon-button)). The entries follow in `ol.chat.window-chat-entries`, which scrolls; its composer is on [Chat input](/components/chat-input).
+
+```html specimen id=window-chat-head title="The window chat, before the first question" width=390 height=260
+<aside class="window-chat" aria-label="Ask about your window">
+  <header class="window-chat-head">
+    <h2 class="window-chat-title">Ask about your window</h2>
+    <button type="button" class="quiet-action" disabled>New chat</button>
+    <button type="button" class="window-chat-close" aria-label="Close the chat">×</button>
+  </header>
+  <ol class="chat window-chat-entries">
+    <li class="window-chat-empty">
+      Ask about what changed, what needs you, or what should become a workstream.
+    </li>
+  </ol>
+</aside>
+```
+
+```html specimen id=window-chat-head-open title="With a chat: Open as a thread, and New chat live" width=390 height=120
+<aside class="window-chat" aria-label="Ask about your window">
+  <header class="window-chat-head">
+    <h2 class="window-chat-title">Ask about your window</h2>
+    <a href="/threads/t-41" class="quiet-action">Open as a thread</a>
+    <button type="button" class="quiet-action">New chat</button>
+    <button type="button" class="window-chat-close" aria-label="Close the chat">×</button>
+  </header>
+</aside>
+```
+
 ## States
 
 ```html specimen id=state-working title="Working: the agent is answering" state=busy
@@ -639,7 +669,7 @@ The drafted value is `<span class="draft-to">` in the app (`DraftCard` in `packa
 
 ## Where the app uses it
 
-- `ChatEntryItem` in `packages/web/src/thread-page.tsx`. The thread page's chat and Working…: `ThreadPage` in `packages/web/src/thread-page.tsx`. The window chat's: `WindowChat` in `packages/web/src/window-chat-view.tsx`.
+- `ChatEntryItem` in `packages/web/src/thread-page.tsx`. The thread page's chat and Working…: `ThreadPage` in `packages/web/src/thread-page.tsx`. The window chat's, with its head: `WindowChat` in `packages/web/src/window-chat-view.tsx`; CSS `.window-chat-head` and `.window-chat-title` in `window.css`.
 - The thread's head: `ThreadPage` in `packages/web/src/thread-page.tsx`. CSS: `.thread-layout` and `.thread` in `window.css`; the head, `.thread-head`, `.crumb`, `.thread-title-row`, `.thread-title` and `.thread-title-row .quiet-action` in `window.css`.
 - `.chat` and `.user-message` in `window.css`. `.reply` and its markdown: `.reply`, `.reply :is(p, ul, ol, blockquote, pre, hr)`, `.reply :is(h3, h4, h5, h6)`, `.reply :is(ul, ol)`, `.reply blockquote`, `.reply code`, `.reply pre`, `.reply a`, `.reply hr`, `.table-scroll` and `.reply table` in `window.css`; `Markdown` in `packages/web/src/parts.tsx`, its tables drawn by `block` in `packages/web/src/parts.tsx`.
 - `.quote-from`: `QuoteFrom` in `packages/web/src/parts.tsx`; CSS `.reply .quote-from` in `window.css`.

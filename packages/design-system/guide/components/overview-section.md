@@ -281,7 +281,7 @@ The top strip (tabs and counts) is on [Page head](/components/page-head), and th
 </main>
 ```
 
-- `main.overview` is a grid with `--space-4` between its parts, padded `--inset-top` and `--space-6` (`--space-3` under 760px), and 6rem at the foot so the undo stack never covers the last row.
+- `main.overview` is a grid with `--space-4` between its parts, padded `--inset-top` and `--space-6` (`--space-3` under 760px), and 6rem at the foot, which kept the old Undo stack off the last row; the bead (0056) shows at the top now, so the 6rem is only room under the last row.
 - `.overview-main` and `.overview-side` are grids with `--space-6` between sections. In the app the overview sits in `.shell-main` beside the [sidebar](/components/sidebar); pins, when there are any, go between the headlines and Workstreams.
 - The ask bar's questions and the counts strip belong to [Chat input](/components/chat-input) and [Page head](/components/page-head).
 

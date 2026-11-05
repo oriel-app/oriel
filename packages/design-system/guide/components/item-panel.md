@@ -714,6 +714,7 @@ else hide(button);</code></pre>
 ## Where the app uses it
 
 - `ItemPanel` in `packages/web/src/item-panel.tsx` draws the steps, the head, and the failure and read lines; the shell renders it once, from `App` in `packages/web/src/app.tsx`. Add to, notes, blocks and messages: `AddTo`, `PanelBody`, `Block` and `Messages` in `packages/web/src/item-panel.tsx`.
+- The body's text as the source wrote it: rich text and its blocks by `ProseBlocks` in `packages/web/src/parts.tsx`, and a paragraph's runs, mentions and links by `Inlines` in `packages/web/src/parts.tsx`. They render what a source has already read, as text, never as markup; their look is the body's and `.mention`'s.
 - Opened by `ItemLink` in `packages/web/src/parts.tsx`; which workstream it adds to: `currentWorkstream` in `packages/web/src/root.ts`; when it's behind: `behind` in `packages/web/src/panel.ts`.
 - CSS: the panel and its widths `.shell`, `.item-panel`, `.item-panel > *`, `.shell-main` and `.shell[data-panel]` in `window.css`; the head `.panel-head` in `window.css`; the steps `.panel-steps` in `window.css`; the status lines `.panel-read` in `window.css`; the body `.panel-body` in `window.css`; `.mention` in `window.css`; messages `.panel-message` in `window.css`; `.item-link` in `window.css`.
 - The window chat's panel shares its width and look (`.window-chat` in `window.css`) but not its behaviour; see [Message](/components/message).

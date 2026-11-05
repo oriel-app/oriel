@@ -4,7 +4,7 @@ status: drifting
 group: Thread
 order: 65
 classes: answer-block, search-label, block-more, block-bars, block-bar-label, block-bar-track, block-bar, block-bar-value, block-table, num, block-rows, in-region, block-preview, answer-sketch, chip, chip-link, chip-lead, chip-icon, chip-key, chip-name, chip-state
-summary: What Oriel draws under the agent's reply from a read's result (bars, a table, rows of items, a waiting connection's preview), and the agent's own sketch, framed and captioned. Pins aren't built.
+summary: What Oriel draws under the agent's reply from a read's result (bars, a table, rows of items, a waiting connection's preview, and the charts), and the agent's own sketch, framed and captioned; and a block pinned to the overview.
 ---
 
 # Block
@@ -13,7 +13,7 @@ summary: What Oriel draws under the agent's reply from a read's result (bars, a 
 
 A block is a figure under the agent's reply that **Oriel** built from the result of a read the agent ran (decision 0030). The agent asks for one and says which read and which fields; Oriel draws it from the data. So its figures can't be made up, every text in it (a synced title included) renders as text, and its caption, written by Oriel, says where it came from.
 
-There are four forms, and one more thing that sits in the same place:
+There are four forms here, four [charts](/components/chart) from `history()` (a series, a timeline, a spread and a pivot, decision 0053) on a page of their own, and one more thing that sits in the same place:
 
 - **Bars:** one series, ranked, each value labelled.
 - **A table:** up to 5 columns and 20 rows.
@@ -303,9 +303,176 @@ The agent's HTML, framed from the sketch origin in an `<iframe sandbox="">` (no 
 
 The app sets `src` to the sketch origin (`http://127.0.0.1:<sketch port>/sketches/<thread>/<sketch>`); the specimen uses `srcdoc` to stand in for the agent's page.
 
-### Pins: not built
+### Pins
 
-Decision 0030 lets a block be pinned to the overview: a Pinned strip under the counts, each pin rerun on each look, keeping its form, top 3, labelled "rerun each time you look", with Unpin; at most 4, a fifth asking which to replace. When this page was surveyed (Oriel `5ee7a339`), none of it was in the app: the overview kept an empty slot for it. Pins have landed since, in `PinnedStrip` in `packages/web/src/noticed-strip.tsx`, drawn with `.pinned-blocks` and `.pinned-block` in `window.css`, each a compact `BlockFigure` with an Unpin `.quiet-action`. This page doesn't document them yet: they need a specimen and a re-read of decision 0030 against what shipped.
+A block can be pinned to the overview (decision 0030): its read, its arguments and its form are kept, and the block is rerun on each look, with no model and no source call. Today a pin comes from a [Noticed](/components/noticed) card's **Pin** (decision 0052); 0030's `pin.add` for the agent isn't built yet.
+
+The Pinned strip is an [overview section](/components/overview-section) under the headlines, its head **Pinned** with "rerun each time you look" (`.noticed-by`). Its pins sit in a grid at least 15rem wide each (`.pinned-blocks`). Each pin (`.pinned-block`) is the block drawn **compact** (`data-compact`, `--space-2` padding, and no "Outside this workstream" label), at its first 3 rows (bars at 5), its whole caption kept, with **Unpin** (`.quiet-action`) under it. A [chart](/components/chart) keeps every mark, in its own compact drawing; a pivot keeps the grouping it was pinned with. A pin whose read names nothing there now says so.
+
+```html specimen id=pins title="The Pinned strip: a running series, a pivot, and a pin whose read is gone"
+<section class="overview-section" data-section="pinned" aria-label="Pinned">
+  <h2 class="overview-head">Pinned <span class="noticed-by">rerun each time you look</span></h2>
+  <div class="pinned-blocks">
+    <div class="pinned-block">
+      <figure class="answer-block" data-form="series" data-compact>
+        <svg class="chart" viewBox="0 0 420 120" role="img" aria-label="Done">
+          <line class="chart-axis" x1="8" x2="376" y1="102" y2="102" />
+          <text class="chart-tick" x="8" y="116" text-anchor="middle">Sep 7</text>
+          <text class="chart-tick" x="143.4" y="116" text-anchor="middle">Oct 19</text>
+          <text class="chart-tick" x="278.8" y="116" text-anchor="middle">Nov 30</text>
+          <g class="chart-total">
+            <line x1="8" x2="376" y1="14" y2="14" />
+            <text x="380" y="14" dy="0.32em">40 in all</text>
+          </g>
+          <polyline
+            class="chart-line"
+            points="8,99.8 30.6,93.2 53.1,88.8 75.7,80 98.3,73.4 120.8,69 143.4,62.4 165.9,58 188.5,55.8"
+          />
+          <circle class="chart-hit" cx="8" cy="99.8" r="8"><title>Week of Sep 7: 1</title></circle>
+          <circle class="chart-hit" cx="30.6" cy="93.2" r="8">
+            <title>Week of Sep 14: 4</title>
+          </circle>
+          <circle class="chart-hit" cx="53.1" cy="88.8" r="8">
+            <title>Week of Sep 21: 6</title>
+          </circle>
+          <circle class="chart-hit" cx="75.7" cy="80" r="8">
+            <title>Week of Sep 28: 10</title>
+          </circle>
+          <circle class="chart-hit" cx="98.3" cy="73.4" r="8">
+            <title>Week of Oct 5: 13</title>
+          </circle>
+          <circle class="chart-hit" cx="120.8" cy="69" r="8">
+            <title>Week of Oct 12: 15</title>
+          </circle>
+          <circle class="chart-hit" cx="143.4" cy="62.4" r="8">
+            <title>Week of Oct 19: 18</title>
+          </circle>
+          <circle class="chart-hit" cx="165.9" cy="58" r="8">
+            <title>Week of Oct 26: 20</title>
+          </circle>
+          <circle class="chart-hit" cx="188.5" cy="55.8" r="8">
+            <title>Week of Nov 2: 21</title>
+          </circle>
+          <circle class="chart-dot" cx="188.5" cy="55.8" r="4" />
+          <line class="chart-fit" x1="8" y1="99.2" x2="188.5" y2="50.8">
+            <title>Least-squares line, R² 0.99</title>
+          </line>
+          <g class="chart-forecast">
+            <rect class="chart-range" x="333.7" width="42.3" y="9" height="10" rx="3">
+              <title>80% range: Dec 17 to Dec 30</title>
+            </rect>
+            <line x1="196.2" y1="55.8" x2="352.1" y2="14" />
+            <circle class="chart-dot" cx="352.1" cy="14" r="4" />
+            <text x="352.1" y="4" text-anchor="middle">Dec 22</text>
+          </g>
+          <g class="chart-today"><line x1="196.2" x2="196.2" y1="8" y2="102" /></g>
+          <text class="chart-end" x="196.5" y="55.8" dy="0.32em">21</text>
+        </svg>
+        <figcaption>
+          Computed by Oriel from the index and its change log: Done, counted by week, running, since
+          Sep 7. Least-squares line over 7 whole weeks, R² 0.99, 2.8 a week. At that rate the 19
+          left get there around Dec 22 (Dec 17 – Dec 30, 80%), if no more are added
+        </figcaption>
+      </figure>
+      <button type="button" class="quiet-action">Unpin</button>
+    </div>
+    <div class="pinned-block">
+      <figure class="answer-block" data-form="pivot" data-compact>
+        <div>
+          <p class="pivot-shows">Count by Assignee and State</p>
+          <div class="pivot-scroll">
+            <table class="block-table pivot-table">
+              <thead>
+                <tr>
+                  <th scope="col">Assignee \ State</th>
+                  <th scope="col" class="num">To do</th>
+                  <th scope="col" class="num">Done</th>
+                  <th scope="col" class="num">In progress</th>
+                  <th scope="col" class="num">All</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">—</th>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 22%, transparent)"
+                  >
+                    8
+                  </td>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 26%, transparent)"
+                  >
+                    10
+                  </td>
+                  <td class="num"></td>
+                  <td class="num pivot-total">18</td>
+                </tr>
+                <tr>
+                  <th scope="row">Chen Yuting</th>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 19%, transparent)"
+                  >
+                    7
+                  </td>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 19%, transparent)"
+                  >
+                    7
+                  </td>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 8%, transparent)"
+                  >
+                    2
+                  </td>
+                  <td class="num pivot-total">16</td>
+                </tr>
+                <tr>
+                  <th scope="row">Esme Whitlock</th>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 19%, transparent)"
+                  >
+                    7
+                  </td>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 15%, transparent)"
+                  >
+                    5
+                  </td>
+                  <td
+                    class="num"
+                    style="background: color-mix(in srgb, var(--accent) 11%, transparent)"
+                  >
+                    3
+                  </td>
+                  <td class="num pivot-total">15</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <figcaption>
+          Computed by Oriel from the index and its change log, where Type is story: Count by
+          Assignee and State, of 94 rows
+        </figcaption>
+      </figure>
+      <button type="button" class="quiet-action">Unpin</button>
+    </div>
+    <div class="pinned-block">
+      <p class="noticed-none">What this pin read isn't there any more.</p>
+      <button type="button" class="quiet-action">Unpin</button>
+    </div>
+  </div>
+</section>
+```
+
+The overview holds 4 pins at most. A fifth is refused, "The overview holds 4 pins already; unpin one first." (`maxPins` in `packages/db/src/noticed.ts`), shown as the Noticed strip's problem line, where 0030 asked which to replace.
 
 ## States
 
@@ -384,11 +551,11 @@ Decision 0030 lets a block be pinned to the overview: a Pinned strip under the c
 
 ## Where the app uses it
 
-- `BlockFigure`, `BlockBody` and `SketchFigure` in `packages/web/src/block.tsx`. `BlockBody` draws the forms: bars, table, preview and rows.
+- `BlockFigure`, `BlockBody` and `SketchFigure` in `packages/web/src/block.tsx`. `BlockBody` draws the forms: bars, table, preview and rows here, and the charts through `SeriesChart`, `TimelineChart`, `SpreadChart` and `PivotChart` in `packages/web/src/charts.tsx` (see [Chart](/components/chart)).
 - In a thread and the window chat: through `ChatEntryItem` in `packages/web/src/thread-page.tsx`.
 - The caps, `maxBars`, `maxRows` and `maxColumns` in `packages/core/src/block.ts`; the captions, made by `buildBlock` there; the escape hatch's source, `searchFields` in `packages/core/src/block.ts`.
 - CSS: `.search-label`, `.answer-block`, `.answer-block[data-outside]`, `.answer-sketch`, `.block-more`, `.block-bars`, `.block-table`, `.block-rows`, `.in-region` and `.block-preview` in `window.css`.
-- Pins: `PinnedStrip` in `packages/web/src/noticed-strip.tsx`.
+- Pins: `PinnedStrip` in `packages/web/src/noticed-strip.tsx`, each a compact `BlockFigure`; CSS `.pinned-blocks`, `.pinned-block` and `.answer-block[data-compact]` in `window.css`. A pin's rows: `topOf` in `packages/web/src/noticed-strip.tsx`.
 
 ## Drift
 

@@ -151,7 +151,7 @@ tokens shape
 Two shadows and a scrim. Most of Oriel is flat: things sit on the page, divided by hairlines. Elevation is only for what floats over the page.
 
 - `--shadow-sm`: barely lifted. The current page's nav link (`.nav-link[aria-current="page"]` in `window.css`) and the switch's knob (`.switch-knob` in `window.css`).
-- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat (`.window-chat` in `window.css`), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the undo stack (`.undo` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.composer` in `window.css`).
+- `--shadow`: floats over the page. The item panel over the page (`.item-panel` in `window.css`; it loses it when it sits beside the page at 1100px and up), the window chat (`.window-chat` in `window.css`), the narrow screen's drawer, a context menu (`.context-menu` in `window.css`), a tooltip (`.tooltip` in `window.css`), the delete question (`.confirm` in `window.css`), the bead (`.bead` in `window.css`), the selection bar (`.selection-bar` in `window.css`) and a thread's composer (`.composer` in `window.css`).
 - `--scrim`: dims the page under the drawer (`.drawer-backdrop`) and the delete question (`.confirm::backdrop` in `window.css`). The ink at 32% in light, the paper at 40% in dark.
 
 Shadows are shared values today: neither theme sets its own, but each scheme does. Dark shadows are much heavier, since a soft shadow doesn't show on a dark page.
@@ -190,17 +190,17 @@ tokens elevation
 
 There's no z-index scale. window.css has 11 literal values:
 
-| Value | What                                    | Where                                               |
-| ----- | --------------------------------------- | --------------------------------------------------- |
-| 1     | Browse's anchor pick                    | `.anchor-pick` in `window.css`                      |
-| 3     | The narrow screen's bar                 | `.bar` in `window.css`                              |
-| 4     | The selection bar                       | `.selection-bar` in `window.css`                    |
-| 5     | The sidebar, sticky                     | `.sidebar` in `window.css`                          |
-| 18    | The window chat                         | `.window-chat` in `window.css`                      |
-| 19    | The item panel                          | `.item-panel` in `window.css`                       |
-| 20    | The drawer's scrim, and the drop veil   | `.drawer-backdrop` and `.drop-veil` in `window.css` |
-| 21    | The sidebar as a drawer                 | `.sidebar` in `window.css`                          |
-| 22    | The closing problem, and the undo stack | `.closing-problem` and `.undos` in `window.css`     |
+| Value | What                                          | Where                                               |
+| ----- | --------------------------------------------- | --------------------------------------------------- |
+| 1     | Browse's anchor pick; the bead over its edges | `.anchor-pick` and `.bead` in `window.css`          |
+| 3     | The narrow screen's bar                       | `.bar` in `window.css`                              |
+| 4     | The selection bar                             | `.selection-bar` in `window.css`                    |
+| 5     | The sidebar, sticky                           | `.sidebar` in `window.css`                          |
+| 18    | The window chat                               | `.window-chat` in `window.css`                      |
+| 19    | The item panel                                | `.item-panel` in `window.css`                       |
+| 20    | The drawer's scrim, and the drop veil         | `.drawer-backdrop` and `.drop-veil` in `window.css` |
+| 21    | The sidebar as a drawer                       | `.sidebar` in `window.css`                          |
+| 22    | The bead                                      | `.bead-wrap` in `window.css`                        |
 
 Menus and tooltips need none: they open in the top layer, as popovers. A new layer should too, if it can.
 

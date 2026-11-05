@@ -25,7 +25,7 @@ Two things use it: deleting a thread from a list (its context menu or swipe), an
 
 ## When not to
 
-- Not for something Undo can take back cheaply, such as removing an item from a workstream or marking a thread done. Do it, and put a note with Undo in the [undo stack](/components/undo).
+- Not for something Undo can take back cheaply, such as removing an item from a workstream or marking a thread done. Do it, and put a note with Undo in [the bead](/components/bead).
 - Not for a question that isn't destructive ("Are you sure you want to send?"). Just do it.
 - Not as a general modal for forms or details. Oriel has no other dialog; details open in the [item panel](/components/item-panel).
 - Not with a second question after the first. One question per delete.
@@ -161,9 +161,9 @@ Disconnecting a connection asks a question of the same kind, but not in the dial
 - **Ready:** Delete is live. Enter deletes, since Delete is the form's submit.
 - **Focus:** Cancel has focus when the dialog opens (`autofocus`), so a stray Enter on opening doesn't delete. Then the buttons show the global ring.
 - **Busy:** Delete is disabled and reads "Deleting…". Cancel stays live.
-- **Error:** `.confirm-problem` in `--danger`, `role="alert"`, above the buttons. The dialog stays open, so the person can try again or cancel. A failure after the dialog has closed shows as `.closing-problem` instead (see [Undo and notes](/components/undo)).
+- **Error:** `.confirm-problem` in `--danger`, `role="alert"`, above the buttons. The dialog stays open, so the person can try again or cancel. A failure after the dialog has closed shows as a failure in [the bead](/components/bead) instead, with Dismiss.
 - **Hover:** the buttons' own. **Active, empty:** don't apply.
-- **Closing:** a thread's dialog closes once the delete is done. A thread delete leaves no Undo (decision 0024); a workstream delete leaves "Deleted “Gift cards”, with its 2 threads." with Undo in the stack.
+- **Closing:** a thread's dialog closes once the delete is done. A thread delete leaves no Undo (decision 0024); a workstream delete leaves "Deleted “Gift cards”, with its 2 threads." with Undo in the bead.
 
 ## Keyboard and ARIA
 

@@ -3,7 +3,7 @@ title: List rows
 status: drifting
 group: Rows
 order: 50
-classes: overview-rows, overview-row, overview-title, overview-sub, overview-workstream, overview-workstream-name, overview-spark, overview-moved, overview-quiet, overview-last, overview-workstream-detail, overview-moved-items, overview-signal, overview-candidates, overview-group, overview-rule, derived-tag, overview-candidate, overview-make, overview-person, overview-more, status-bar, segment, done, in-progress, todo, empty, clusters, stale, cluster, cluster-head, picked, pick, anchor-pick, cluster-toggle, chevron, cluster-name, cluster-label, cluster-details, origin, derived, cluster-meta, count, points-sum, unestimated, make-workstream, items, item, title, points, idle, assignee, none, avatar, replies, more-items, more-count, no-items, items-loading, members, member, member-title, gone, remove-member, type, key, source-link, status, state-chip, thread-list, thread-link, thread-link-title, thread-link-workstream, thread-link-at, pager, pager-where, history, changes, quiet-action, tooltip
+classes: overview-rows, overview-row, overview-title, overview-sub, overview-workstream, overview-workstream-name, overview-spark, overview-moved, overview-quiet, overview-last, overview-workstream-detail, overview-moved-items, overview-signal, overview-candidates, overview-group, overview-rule, derived-tag, derived-note, overview-candidate, overview-make, overview-person, overview-more, status-bar, segment, done, in-progress, todo, empty, clusters, stale, cluster, cluster-head, picked, pick, anchor-pick, cluster-toggle, chevron, cluster-name, cluster-label, cluster-details, origin, derived, cluster-meta, count, points-sum, unestimated, make-workstream, items, item, title, points, idle, assignee, none, avatar, replies, more-items, more-count, no-items, items-loading, members, member, member-title, gone, remove-member, type, key, source-link, status, state-chip, thread-list, thread-link, thread-link-title, thread-link-workstream, thread-link-at, pager, pager-where, history, changes, quiet-action, tooltip
 summary: One line per thing in a list: a workstream on the overview, a candidate under its rule, a person, a Browse cluster and its items, a workstream's items, and threads. Several shapes, each for one kind of list.
 ---
 
@@ -262,7 +262,7 @@ Grouped under the rule that found them. The list is a `div.overview-rows.overvie
 </div>
 ```
 
-The second row is **making** ("Making…", disabled). While one is making, every other row's button is disabled too, and a made row's stays disabled; disabled shows at 0.5 even without hover (`.overview-candidate .overview-make:disabled` in `window.css`). The made workstream's Undo goes on the overview's one undo stack: "Made the workstream {name}, of {N} items." (see [Undo](/components/undo)).
+The second row is **making** ("Making…", disabled). While one is making, every other row's button is disabled too, and a made row's stays disabled; disabled shows at 0.5 even without hover (`.overview-candidate .overview-make:disabled` in `window.css`). The made workstream's Undo is a note in the [bead](/components/bead): "Made the workstream {name}, of {N} items." (see [Undo](/components/undo)).
 
 ### Person rows: "In progress, by person"
 
@@ -485,13 +485,14 @@ The name opens Browse by assignee, filtered to in progress. The sub is right-ali
 - `.clusters` is the frame: a `--line` border on `--surface`, in every theme (see Drift). `data-anchored` makes every heading leave room for the anchor's checkbox, so chevrons line up.
 - The **toggle** is one button: chevron, name and key, then `.cluster-details` (`display: contents`) with the origin pill and `.cluster-meta`, whose count sits over the status bar in the items' status column and whose points sit over their assignee column (`.cluster-meta` in `window.css`).
 - **Origin**: `.origin` names the source; `.origin.derived` is a dashed pill with the rule, for a cluster "Oriel made; the source doesn't have it".
+- When any cluster is Oriel's, one line above the clusters says what the tag means (`.derived-note`): "**Oriel rule** marks a cluster Oriel made, which the source doesn't have. Each one shows its rule." (`Body` in `packages/web/src/window-page.tsx`).
 - **Points**: "29 pts · 3 unestimated". A cluster of files shows none, "which isn't zero" (`ClusterPoints` in `packages/web/src/window-page.tsx`).
 - **Make workstream** "waits on the row's right until the row is pointed at" (`.make-workstream` in `window.css`), absolutely placed in the 7rem the toggle reserves. Its tooltip says exactly what it copies.
 - The anchor checkbox (`label.pick.anchor-pick`) picks the epic itself, "not its items". It shows on the heading's hover.
 
 ### Item rows, in Browse
 
-Shown open above. A grid of `1.25rem 5.75rem minmax(0,1fr) 6.5rem 9rem 2rem 2.5rem` (`.item` in `window.css`): pick, key (with its type mark inside the link), title, status, assignee, points, idle. Row height is `--row`. The rows sit on `--surface-sunk`, split by a 60% `--line` hairline. Columns come from the connector: without an assignee, a message's replies (`a.replies`) take that cell; without an estimate, the points cell is empty. Points read "–" with the title "Unestimated".
+Shown open above. A grid of `1.25rem 5.75rem minmax(0,1fr) 6.5rem 9rem 2rem 2.5rem` (`.item` in `window.css`): pick, key (with its type mark inside the link), title, status, assignee, points, idle. Row height is `--row`. The rows sit on `--surface-sunk`, split by a 60% `--line` hairline. Columns come from the connector: without an assignee, a message's replies (`a.replies`, "3 replies", a link to the message drawn by `Replies` in `packages/web/src/parts.tsx`) take that cell; without an estimate, the points cell is empty. Points read "–" with the title "Unestimated".
 
 ```html specimen id=item-picked title="Picking: the checkboxes show once anything is picked" state=picked
 <div class="clusters" data-picking>
@@ -1074,7 +1075,7 @@ Hover and focus here are forced with the workshop's `ws-` classes, which copy wi
 - **Cluster toggle**: a button with `aria-expanded` and `aria-controls` pointing at the items' list; the loading and empty paragraphs keep that id, so its target always exists. Enter or Space opens it.
 - **Make a workstream** has the label "Make a workstream of {name}", since the visible words don't name the cluster. Browse's Make workstream relies on its tooltip for that (see Drift).
 - **Pick** checkboxes are named "Pick {title}"; the anchor's title says "Pick SYN-1 itself, not its items".
-- **Remove ×** is named "Remove {key}". When a row is removed with its × focused, focus moves to the next row's ×, else the previous one's, else Add from the window; after Undo, it returns to the restored row's × (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`). The undo stack comes after the list "so the keyboard reaches them from the last row".
+- **Remove ×** is named "Remove {key}". When a row is removed with its × focused, focus moves to the next row's ×, else the previous one's, else Add from the window; after Undo, it returns to the restored row's × (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`). The window's Undo notes (`WindowUndos` in `packages/web/src/end-workstream.tsx`) come after the list in the page "so the keyboard reaches them from the last row".
 - **Items open in the item panel** on a plain click (a modified click goes to the source); with the list as context, ↑ and ↓ step through it. See [Item panel](/components/item-panel).
 - **Thread rows** carry a context menu: right-click, the Menu key or Shift+F10, with Mark done and Delete…. See [Menu](/components/menu).
 - Rules and dates live in `title` attributes ("Oriel rule: …", "Latest member update or thread activity"), which a keyboard can't reach. Say anything that matters in the row's words.

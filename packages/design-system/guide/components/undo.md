@@ -1,140 +1,37 @@
 ---
-title: Undo and notes
+title: Undo
 status: drifting
 group: Feedback
 order: 65
-classes: undos, undo, undo-action, undo-note, closing-problem, panel-added
-summary: The one stack of notes at the foot of the window, each saying what was just done, with its Undo; ⌘Z undoes the newest. Oriel's only toast.
+classes: undo-action, panel-added
+summary: The one word that takes back what was just done. In the bead for the window's notes, and beside the change for a reply's actions, an applied draft and the panel's add; ⌘Z undoes the newest note.
 ---
 
-# Undo and notes
+# Undo
 
 ## What it is
 
-"The one stack of Undo notes at the foot of the window (OA-142): what was done, each with its Undo or why it can't be undone, in the order they showed, newest at the bottom, read out as each shows, and what last failed. None runs out while the pointer or focus is on them, and ⌘Z or Ctrl+Z undoes the one at the bottom" (`packages/web/src/undo-stack.tsx`).
+Undo takes back what Oriel just did without asking (decision 0024). It's one component, `UndoButton` in `packages/web/src/undo-stack.tsx`: "A note's Undo, in the bead or beside the change it undoes". It shows in two places:
 
-It's one component, `UndoStack`, over one model of time, `undos.ts`. A note (`p.undo`) is a sentence and one action:
+- **In the bead**, the window's one stack of notes at the top of the page column, as `.bead-action`, with its key. That's where a removal, a made, ended or deleted workstream, a panel's add and an approval say what happened. See [The bead](/components/bead).
+- **Beside the change**, as `.undo-action`, with no countdown: under an agent's reply, after a draft is applied, in the item panel after Add to workstream, and beside a connection's option.
 
-- **Undo** (`.undo-action`), which takes back what the sentence says;
-- or a **link** in Undo's place, such as Back to the thread an approval moved on from;
-- or, when it can't be undone, **why not** (`.undo-note`, faint);
-- or nothing, when there's no Undo and no reason to give.
-
-What last failed sits at the foot of the stack as one more note, `role="alert"`, with **Dismiss**.
-
-The stack floats over the page, centred between the sidebar and the item panel, `--space-4` from the bottom (above Browse's picked-items bar when that shows). There's no toast in Oriel other than this, and one line that shares its spot: `.closing-problem`, for a close from a list that failed.
+One model of time, `undos.ts`, runs every note in the bead. An Undo beside its change stays as long as what it undoes does.
 
 ## When to use it
 
-- After an action the person may want back, that Oriel did at once without asking: removing an item from a workstream, making a workstream, marking a workstream done or reopening it, deleting a workstream, adding an item from the panel.
-- When an action moved the person somewhere else, to say what happened and offer the way back: "You approved “Pay with a phone wallet on the website”. Applying…" with Back.
-- For what failed while doing or undoing one of these, with Dismiss.
+- After an action the person may want back, that Oriel did at once without asking. Give its note to the page's bead through `undos.ts`; don't draw a stack of your own.
+- Beside the change, when what it undoes stays on screen to be read: a reply's action line ("Added SYN-23 to Checkout v2"), a draft "Applied. Jira reads this way now.", the panel's "Added to “Checkout v2: phone wallets and saved cards”."
 
 ## When not to
 
 - Not for something that can't be taken back and loses work. Ask first, with the [confirm dialog](/components/confirm).
-- Not for an error that belongs to a control or a form. That goes beside it (see [Empty, loading and error](/components/states)).
-- Not for confirming a setting changed. Settings shows the new value; a connection's option says "Set its project." beside it, with its own Undo.
-- Not for news the person didn't cause, such as a sync that found new items. That shows where it happened (the sidebar's sources).
+- Not as a second note for a change the bead already says. The panel's add is said beside the item and noted in the bead, and the page shows the bead's note only once (`Endings` in `packages/web/src/end-workstream.tsx`).
+- Not for a field's own typing: a text field undoes that itself, and ⌘Z leaves it alone.
 
 ## Anatomy and variants
 
-The notes, drawn here as a plain list so they sit in the frame. In the stack each note is only as wide as its words, centred:
-
-```html specimen id=notes title="Every kind of note, oldest first"
-<div class="ws-stack">
-  <p class="undo">
-    <span>Removed SYN-10</span>
-    <span class="undo-note">It's no longer in the window, so it can't come back.</span>
-  </p>
-  <p class="undo">
-    <span
-      >You approved “Pay with a phone wallet on the website”. Applying…<span
-        class="visually-hidden"
-      >
-        Now on “Weather alerts”, the next thread that needs you.</span
-      ></span
-    >
-    <a
-      class="undo-action"
-      href="/threads/t-23"
-      aria-label="Back to “Pay with a phone wallet on the website”"
-      >Back</a
-    >
-  </p>
-  <p class="undo">
-    <span>Made the workstream Gift cards, of 4 items.</span>
-    <button type="button" class="undo-action" aria-label="Undo making Gift cards">Undo</button>
-  </p>
-  <p class="undo">
-    <span>Removed SYN-8</span>
-    <button
-      type="button"
-      class="undo-action"
-      aria-label="Undo removing SYN-8"
-      aria-keyshortcuts="Meta+Z"
-    >
-      Undo
-    </button>
-  </p>
-  <p class="undo" role="alert">
-    <span>Oriel can't be reached. Is it still running?</span>
-    <button type="button" class="undo-action">Dismiss</button>
-  </p>
-</div>
-```
-
-- **The stack** (`.undos`, `role="status"`): fixed, a centred grid of notes with `--space-2` between them, as wide as its widest note and no wider than the page. It's always in the page, empty or not, so the live region exists before the first note arrives.
-- **A note** (`.undo`): `--surface`, `--line` border, `--radius-lg`, `--shadow`, `--text-md`. The sentence, then its action at the end.
-- **Undo** (`.undo-action`): accent text, medium weight, an `--accent-soft` fill on hover.
-- **Why not** (`.undo-note`): faint, `--text-sm`.
-
-In place, on a narrow page (the stack centres on the page, and a long note wraps):
-
-```html specimen id=in-place title="The stack, fixed at the foot of the page" width=390 height=220
-<div class="shell">
-  <div class="undos" role="status">
-    <p class="undo">
-      <span>Deleted “Gift cards”, with its 2 threads.</span>
-      <button
-        type="button"
-        class="undo-action"
-        aria-label="Undo: Deleted “Gift cards”, with its 2 threads."
-      >
-        Undo
-      </button>
-    </p>
-    <p class="undo">
-      <span>Added SYN-23 to “Checkout v2: phone wallets and saved cards”.</span>
-      <button
-        type="button"
-        class="undo-action"
-        aria-label="Undo: Added SYN-23 to “Checkout v2: phone wallets and saved cards”."
-        aria-keyshortcuts="Meta+Z"
-      >
-        Undo
-      </button>
-    </p>
-  </div>
-</div>
-```
-
-### A close that failed
-
-When Mark done or Delete… on a thread's row fails after the question has closed, one line says so at the same spot, in `--danger`, until it's dismissed. It isn't part of the stack.
-
-```html specimen id=closing-problem title="A close from a list that failed (.closing-problem)" width=390 height=120
-<div class="shell">
-  <p class="closing-problem" role="alert">
-    Oriel can't be reached. Is it still running?
-    <button type="button" class="quiet-action">Dismiss</button>
-  </p>
-</div>
-```
-
-### Undo beside the change
-
-Some Undos sit beside what they undo, with no countdown: under an agent's reply, after a draft is applied, in the item panel after Add to workstream, and beside a connection's option.
+Beside the change, the Undo is an accent word at the end of the line that says what was done:
 
 ```html specimen id=beside title="In the item panel, after Add to workstream (.panel-added)"
 <p class="panel-added" role="status">
@@ -149,88 +46,131 @@ Some Undos sit beside what they undo, with no countdown: under an agent's reply,
 </p>
 ```
 
+```html specimen id=reply title="Under a reply: Undo, and Redo once undone"
+<ul class="action-lines">
+  <li>
+    <span class="action-text">Added SYN-23 to Checkout v2</span>
+    <button type="button" class="undo-action">Undo</button>
+  </li>
+  <li data-undone="yes">
+    <span class="action-text">Added SYN-24 to Checkout v2</span>
+    <button type="button" class="undo-action">Redo</button>
+  </li>
+</ul>
+```
+
+- **Undo** (`.undo-action`): accent text, medium weight, `--text-md`, `--radius-sm`, an `--accent-soft` fill on hover. Under a reply it's `--text-sm` (`.action-lines .undo-action` in `window.css`).
+- **The line it ends** says what was done: `.panel-added` in the panel, `--text-sm`, muted; a reply's `.action-lines`; a draft's `.held-note`.
+
+In the bead the same `UndoButton` takes the class `.bead-action` and, on the note ⌘Z undoes, shows the key:
+
+```html specimen id=in-bead title="The same Undo, in the bead" height=96
+<div class="shell" style="--sidebar: 0rem">
+  <div
+    class="bead-wrap"
+    role="region"
+    aria-label="Notes"
+    aria-keyshortcuts="F8"
+    data-tone="note"
+    data-count="1"
+    data-held
+    style="--w: 205px; --h: 34px"
+  >
+    <div class="bead">
+      <div class="bead-layer" tabindex="-1">
+        <div class="bead-row">
+          <span class="bead-said">Removed SYN-23</span>
+          <button
+            type="button"
+            class="bead-action"
+            aria-label="Undo removing SYN-23"
+            aria-keyshortcuts="Meta+Z"
+          >
+            Undo<kbd>⌘Z</kbd>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
 ## States
 
 ```html specimen id=state-hover title="Hover: an accent-soft fill" state=hover
-<p class="undo">
-  <span>Removed SYN-8</span>
-  <button type="button" class="undo-action ws-hover" aria-label="Undo removing SYN-8">Undo</button>
-</p>
-```
-
-```html specimen id=state-focus title="Focus visible" state=focus-visible
-<p class="undo">
-  <span>Removed SYN-8</span>
-  <button type="button" class="undo-action ws-focus-visible" aria-label="Undo removing SYN-8">
+<p class="panel-added">
+  <span>Added to “Checkout v2: phone wallets and saved cards”.</span>
+  <button type="button" class="undo-action ws-hover" aria-label="Undo: Added to “Checkout v2”.">
     Undo
   </button>
 </p>
 ```
 
-```html specimen id=state-busy title="Undoing: disabled, but it looks the same" state=busy
-<p class="undo">
-  <span>Marked “Gift cards” done, with its thread.</span>
+```html specimen id=state-focus title="Focus visible" state=focus-visible
+<p class="panel-added">
+  <span>Added to “Checkout v2: phone wallets and saved cards”.</span>
   <button
     type="button"
-    class="undo-action"
-    aria-label="Undo: Marked “Gift cards” done, with its thread."
-    disabled
+    class="undo-action ws-focus-visible"
+    aria-label="Undo: Added to “Checkout v2”."
   >
     Undo
   </button>
 </p>
 ```
 
-```html specimen id=state-error title="Error: what last failed, at the foot of the stack" state=error
-<p class="undo" role="alert">
-  <span>Couldn't undo adding SYN-23: Oriel can't be reached. Is it still running?</span>
-  <button type="button" class="undo-action">Dismiss</button>
-</p>
+```html specimen id=state-busy title="Undoing: disabled; faint only under a reply" state=busy
+<div class="ws-stack">
+  <p class="panel-added">
+    <span>Added to “Checkout v2: phone wallets and saved cards”.</span>
+    <button type="button" class="undo-action" aria-label="Undo: Added to “Checkout v2”." disabled>
+      Undo
+    </button>
+  </p>
+  <ul class="action-lines">
+    <li>
+      <span class="action-text">Added SYN-23 to Checkout v2</span>
+      <button type="button" class="undo-action" disabled>Undo</button>
+    </li>
+  </ul>
+</div>
 ```
 
-- **Rest:** a note shows for 8 seconds (`undoMs` in `packages/web/src/undos.ts`).
-- **Held:** while the pointer is over the stack or focus is in it, nothing runs out. When both let go, every note still showing gets its full 8 seconds again. Clicking an Undo lets go of the keyboard's hold.
-- **Hover:** `.undo-action` gets `--accent-soft` (`.undo-action` in `window.css`). It isn't guarded by `:not(:disabled)`.
+- **Hover:** `.undo-action` gets `--accent-soft` (`.undo-action:hover` in `window.css`). It isn't guarded by `:not(:disabled)`.
 - **Focus visible:** the global ring (`:focus-visible` in `window.css`).
-- **Busy:** an Undo in flight is disabled. In the stack, a disabled Undo looks exactly like a live one: only `.action-lines .undo-action:disabled` is styled (`.action-lines .undo-action:disabled` in `window.css`).
-- **Error:** the problem note, `role="alert"`, with Dismiss. There's one at a time.
-- **Empty:** the stack is there with no notes, and takes no room.
+- **Busy:** an Undo in flight is disabled. Beside the change, a disabled Undo looks exactly like a live one, except under a reply: only `.action-lines .undo-action:disabled` in `window.css` is styled. In the bead it's faint.
+- **Undone:** under a reply the line goes muted and its Undo becomes **Redo** (`li[data-undone="yes"]`).
+- **Error:** a failed Undo says so in the bead ("Couldn't undo adding SYN-23: {why}"), and beside the change in the panel's `.panel-problem`.
 - **Active:** not styled.
 
 ## Keyboard and ARIA
 
-- ⌘Z on a Mac, Ctrl+Z elsewhere, undoes the newest note that can be undone, from anywhere in the window. Not with Shift or Alt held, and not while typing in a field: "A text field undoes its own typing" (`UndoStack` in `packages/web/src/undo-stack.tsx`).
-- That note's Undo carries `aria-keyshortcuts="Meta+Z"` (or `"Control+Z"`), and only that one.
-- The stack is `role="status"`, so each new note is read out politely. The problem note is `role="alert"`.
-- Every Undo's accessible name is what it undoes: "Undo removing SYN-8", "Undo: Deleted “Gift cards”, with its 2 threads.". The visible word is always "Undo".
-- A note may carry words for a screen reader only, in a `.visually-hidden` span, such as where an approval moved the page to.
-- On a workstream's page the stack comes after the member list in the page, "so the keyboard reaches them from the last row" (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`).
-- The Undo and Redo under an agent's reply have no `aria-label`, so each is only "Undo" or "Redo".
+- ⌘Z on a Mac, Ctrl+Z elsewhere, undoes the bead's newest note that can be undone, from anywhere in the window. Not with Shift or Alt held, and not while typing in a field (`UndoStack` in `packages/web/src/undo-stack.tsx`). That Undo carries `aria-keyshortcuts="Meta+Z"` (or `"Control+Z"`), and only that one. An Undo beside its change has no key.
+- F8 takes the keyboard to the bead's newest action, and Escape back (see [The bead](/components/bead#keyboard-and-aria)).
+- `UndoButton`'s accessible name is what it undoes: "Undo removing SYN-8", "Undo: Added to “Checkout v2: phone wallets and saved cards”.". The visible word is always "Undo".
+- The Undo and Redo under an agent's reply, and a draft's Undo, have no `aria-label`, so each is only "Undo" or "Redo".
+- The panel's line is `role="status"`, so the add and its Undo are read as they show.
 
 ## Content
 
-- Say what was done, in the past tense, naming what it was done to: "Removed SYN-8", "Made the workstream Gift cards, of 4 items.", "Deleted “Gift cards”, with its 2 threads."
-- Name a workstream or thread in curly quotes; an item by its key.
-- When it can't be undone, say why in one sentence: "It's no longer in the window, so it can't come back."
-- The action is one word: **Undo**, **Back**, **Dismiss**.
-- A failure says what couldn't be done and why: "Couldn't undo adding SYN-23: {why}".
+- The word is **Undo**, or **Redo** once undone under a reply. Nothing else: not "Revert", not "Take back".
+- The line before it says what was done, in the past tense, naming what it was done to: "Added to “Checkout v2: phone wallets and saved cards”.", "Applied. Jira reads this way now."
+- Its label is "Undo: {what was done}", or "Undo removing {key}" for a removal.
 
 ## Where the app uses it
 
-- `UndoStack` and `UndoButton` in `packages/web/src/undo-stack.tsx`. The time model: `undoMs` and `inShowingOrder` in `packages/web/src/undos.ts`. ⌘Z: `UndoStack` in `packages/web/src/undo-stack.tsx`.
-- CSS: `.undos` in `window.css`, raised above the picked-items bar by `.shell:has(.selection-bar) .undos` in `window.css`; `.undo`, `.undo-action` and `.undo-note` in `window.css`.
-- Notes: removals `removed` in `packages/web/src/workstream-page.tsx`; made on the overview `OverviewPage` in `packages/web/src/overview-page.tsx`; mark done, reopen and delete `endedText` in `packages/web/src/ending.ts`; the panel's adds `addUndos` in `packages/web/src/panel-adds.ts`; approval `approvedText` in `packages/web/src/approved.ts`.
-- `.closing-problem`: `Closing` in `packages/web/src/close-thread.tsx`, CSS `.closing-problem` in `window.css`.
-- Undo beside the change: under a reply `ActionLines` in `packages/web/src/thread-page.tsx`, the panel `AddTo` in `packages/web/src/item-panel.tsx`, a connection's option `Said` in `packages/web/src/connections-page.tsx`.
+- `UndoButton` in `packages/web/src/undo-stack.tsx`; in the bead, `UndoStack` in `packages/web/src/undo-stack.tsx`, which passes it `.bead-action`.
+- CSS: `.undo-action` and `.undo-action:hover` in `window.css`; under a reply, `.action-lines .undo-action` and `.action-lines .undo-action:disabled` in `window.css`; the panel's line, `.panel-added` in `window.css`.
+- Beside the change: under a reply `ActionLines` in `packages/web/src/thread-page.tsx`; an applied draft `DraftCard` in `packages/web/src/thread-page.tsx`; the panel `AddTo` in `packages/web/src/item-panel.tsx`; a connection's option `Said` in `packages/web/src/connections-page.tsx`.
+- The time model for the bead's notes: `undoMs` and `inShowingOrder` in `packages/web/src/undos.ts`.
 
 ## Drift
 
-Status **drifting**. The stack is one component; what drifts is around it:
+Status **drifting**. The bead fixed the stack's own drift: a disabled Undo in the bead is faint, its hover is guarded, a close from a list that failed is a failure in the bead with the same Dismiss rather than a box of its own, and nothing overlaps it. What still drifts is beside the change:
 
-- **Dismiss** is an `.undo-action` in the stack's problem note and a `.quiet-action` in `.closing-problem`. The problem note's text is `--text`; the closing line's is `--danger`.
-- `.closing-problem` sits where the stack sits, so with both on screen they overlap, and it doesn't move up above Browse's picked-items bar as the stack does.
-- A connection's option has its own Undo, drawn as a `.quiet-action`, not an `.undo-action` (`Said` in `packages/web/src/connections-page.tsx`).
-- No disabled look on `.undo-action` outside a reply's action lines.
-- Note copy: "Removed SYN-8" has no full stop and doesn't quote; the others do. Undo's label is "Undo removing X" for removals and makes, "Undo: {sentence}" for the rest.
+- A connection's option has its own Undo, drawn as a `.quiet-action`, not an `.undo-action` or `UndoButton` (`Said` in `packages/web/src/connections-page.tsx`).
+- No disabled look on `.undo-action` outside a reply's action lines, and its hover isn't guarded.
+- A reply's and a draft's Undo are hand-written buttons with no label, not `UndoButton`.
+- Note copy: "Removed SYN-8" has no full stop and doesn't quote; the others do. Undo's label is "Undo removing X" for removals, "Undo: {sentence}" for the rest.
 
-**Copy the stack as it is**: give a new note to the page's `UndoStack` through `undos.ts`, as an `UndoNote` with `said`, `label` and `onUndo`; don't draw a second stack or a toast. For an Undo beside its change, use `UndoButton` in `packages/web/src/undo-stack.tsx`. Put a failure in the stack's `problem`, not in a `.closing-problem` of its own.
+**Copy `UndoButton`**: for a note, give it to the page's bead through `undos.ts`, as an `UndoNote` with `said`, `label` and `onUndo`; beside its change, render `UndoButton` with its `label`. Put a failure in the bead's `problem`, not a box of its own. See [the drift report](/drift#d2-one-disabled-look-and-one-button-kind-rule).

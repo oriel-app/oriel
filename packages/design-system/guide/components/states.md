@@ -32,7 +32,7 @@ Most error text comes from the server: `errorOf` in `packages/web/src/http.ts` s
 - Not an empty state where the section can simply not show. "When nothing waits, nothing shows" (`NeedsYou` in `packages/web/src/sidebar.tsx`): Needs you is absent, not empty.
 - Not "Loading…" for something quick inside a control. A busy button changes its label instead ("Connecting…"); see [Button](/components/button).
 - Not an error colour for something that isn't wrong. "That's already in this workstream." is news, not a failure.
-- Not a toast for an error. Oriel's only floating note is the [undo stack](/components/undo), and its problem row is for what failed there.
+- Not a toast for an error. Oriel's only floating note is [the bead](/components/bead), and its failure is for what failed doing or undoing what it notes, or a close from a list.
 - Not a generic sentence. "Something went wrong" is the fallback, never what to write.
 
 ## Anatomy and variants
@@ -200,15 +200,15 @@ Inline lines, under or beside what failed, in `--danger` at `--text-sm` unless n
 
 Boxes and bands:
 
-| Class                            | Where                       | Oriel's words                                                                                                                                                         | Look                                   |
-| -------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `.failed`                        | a page that didn't load     | "The window didn't load." + Try again (`Body` in `packages/web/src/window-page.tsx`); "This thread didn't load." (`ThreadPage` in `packages/web/src/thread-page.tsx`) | **muted** text in a bordered box       |
-| `.more-items[data-state=failed]` | a page of a cluster's items | "These items didn't load." + Try again (`More` in `packages/web/src/window-page.tsx`)                                                                                 | **muted**, sunk band                   |
-| `.settings-problem`              | the top of Settings         | the server's (`SettingsPage` in `packages/web/src/settings-page.tsx`)                                                                                                 | danger on `--danger-soft`              |
-| `.setup-problem`                 | the first run               | the server's (`SetupPage` in `packages/web/src/setup-page.tsx`)                                                                                                       | the same as `.settings-problem`        |
-| `.change-set-problem`            | a change set's foot         | "Type your name first." on a review link (`updateReview` in `packages/web/src/review.ts`)                                                                             | danger on `--danger-soft`, a band      |
-| `.cli-box[data-tone=danger]`     | a CLI step, a first sync    | "Stopped after {read} of {n} {noun}: {problem}" (`Failed` in `packages/web/src/setup-page.tsx`)                                                                       | a bordered `--danger-soft` box         |
-| `.closing-problem`               | a close from a list         | the server's, with Dismiss (`Closing` in `packages/web/src/close-thread.tsx`)                                                                                         | floating; see [Undo](/components/undo) |
+| Class                            | Where                       | Oriel's words                                                                                                                                                         | Look                                                 |
+| -------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `.failed`                        | a page that didn't load     | "The window didn't load." + Try again (`Body` in `packages/web/src/window-page.tsx`); "This thread didn't load." (`ThreadPage` in `packages/web/src/thread-page.tsx`) | **muted** text in a bordered box                     |
+| `.more-items[data-state=failed]` | a page of a cluster's items | "These items didn't load." + Try again (`More` in `packages/web/src/window-page.tsx`)                                                                                 | **muted**, sunk band                                 |
+| `.settings-problem`              | the top of Settings         | the server's (`SettingsPage` in `packages/web/src/settings-page.tsx`)                                                                                                 | danger on `--danger-soft`                            |
+| `.setup-problem`                 | the first run               | the server's (`SetupPage` in `packages/web/src/setup-page.tsx`)                                                                                                       | the same as `.settings-problem`                      |
+| `.change-set-problem`            | a change set's foot         | "Type your name first." on a review link (`updateReview` in `packages/web/src/review.ts`)                                                                             | danger on `--danger-soft`, a band                    |
+| `.cli-box[data-tone=danger]`     | a CLI step, a first sync    | "Stopped after {read} of {n} {noun}: {problem}" (`Failed` in `packages/web/src/setup-page.tsx`)                                                                       | a bordered `--danger-soft` box                       |
+| `.bead-wrap[data-tone=problem]`  | a close from a list         | the server's, in the bead, with Dismiss (`closingProblem` in `packages/web/src/close-thread.tsx`)                                                                     | the bead's failure; see [The bead](/components/bead) |
 
 ```html specimen id=error-lines title="Inline error lines"
 <div class="ws-stack">

@@ -246,6 +246,101 @@ In the app this group is `<div class="connect-review">`; that class has no rules
 </ul>
 ```
 
+### In the window: the card, and a connection that read nothing
+
+While the window may connect a connector it offers, the overview and Browse show a card for it above everything else (`.connect-card`): the step's title as an `h2`, one line on what it brings, then the fields or pick step itself. The card is `--surface`, `--line` bordered, `--radius-lg`, 40rem at most, padded `--space-6`. There's no Cancel: the card stays until the connector is connected. If only read-only connections are open, the line says what connecting this one adds instead.
+
+```html specimen id=window-card title="The overview's card for Jira"
+<section class="connect-card" aria-labelledby="connect-jira-title">
+  <h2 id="connect-jira-title">Connect Jira</h2>
+  <p class="connect-note">
+    Your epics and stories show here. Oriel changes them only when you approve a change.
+  </p>
+  <form class="connect-details" aria-label="Your Jira account">
+    <div class="connect-fields">
+      <label class="connect-field"
+        ><span class="connect-label">Your Jira address</span
+        ><input
+          class="input"
+          name="site"
+          type="text"
+          autocomplete="url"
+          spellcheck="false"
+          autocapitalize="off"
+          placeholder="yourteam.atlassian.net"
+        /><span class="connect-hint"
+          >The start of the address in your browser when Jira is open.</span
+        ></label
+      >
+      <label class="connect-field"
+        ><span class="connect-label">The email you sign in to Jira with</span
+        ><input
+          class="input"
+          name="email"
+          type="email"
+          autocomplete="email"
+          spellcheck="false"
+          autocapitalize="off"
+          placeholder="you@company.com"
+      /></label>
+      <label class="connect-field"
+        ><span class="connect-label">API token</span
+        ><input
+          class="input"
+          name="token"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          autocapitalize="off"
+          placeholder="Paste it here"
+      /></label>
+    </div>
+    <div class="connect-help">
+      <p>
+        Atlassian lets you make these for apps like Oriel. One has your Jira access and no more,
+        Oriel changes Jira only when you approve, and you can delete it on Atlassian's page any
+        time.
+      </p>
+      <ol>
+        <li>
+          <a
+            href="https://id.atlassian.com/manage-profile/security/api-tokens"
+            target="_blank"
+            rel="noreferrer"
+            >Open Atlassian's page for them</a
+          >
+          (it opens in your browser).
+        </li>
+        <li>
+          Click <strong>Create</strong>, name it <strong>Oriel</strong>, pick when it expires (a
+          year is fine), and click <strong>Create</strong>.
+        </li>
+        <li>Click <strong>Copy</strong>, then paste it above. Atlassian shows it only once.</li>
+      </ol>
+    </div>
+    <div class="connect-actions">
+      <button type="submit" class="button primary" disabled>Connect</button>
+    </div>
+  </form>
+</section>
+```
+
+The help's bold words and its link are the connector's own words with a little markup, `**text**` and `[text](https://…)`, drawn by `Inline` in `packages/web/src/connect-steps.tsx`. It reads only a connector's declaration, reviewed code, never anything typed or synced. A connection its source signed out adds a line under the note: "{name} is signed out. Sign in to it again here, or disconnect it in Settings."
+
+Once connected, a connection that read nothing says so in Browse, in the card's place, so the window doesn't look as if it failed (`.connected-empty`): a green dot (`.connected-dot`, `--done`) and "{name} is connected", then what it reads in bold and the connector's sentence for an empty source.
+
+```html specimen id=connected-empty title="Browse: Jira connected to a project with no issues yet"
+<section class="connected-empty" aria-labelledby="empty-c1-title">
+  <h2 id="empty-c1-title">
+    <span class="connected-dot" aria-hidden="true"></span>Jira is connected
+  </h2>
+  <p class="connect-note">
+    <strong>SYN</strong> has no issues yet. Epics and stories made there show here when Oriel syncs
+    Jira.
+  </p>
+</section>
+```
+
 ## Do
 
 - Declare a new connector's steps as data, in its words, and let `ConnectSteps` draw them. Use the step kinds there are.
@@ -268,6 +363,7 @@ In the app this group is `<div class="connect-review">`; that class has no rules
 - The declarations: Jira's, `jiraConnect` in `packages/jira/src/connecting.ts`; a folder's, `folderConnect` in `packages/folder/src/connecting.ts`; Google Sheets', `sheetsConnect` in `packages/sheets/src/connecting.ts`.
 - The first run's screens: `Connect` in `packages/web/src/setup-page.tsx`, which imports the steps and arranges them itself.
 - Settings: `AddConnection` in `packages/web/src/connections-page.tsx`.
+- The window: a card for each connector it may connect, `ConnectCards` in `packages/web/src/connect-steps.tsx`, on the overview (`OverviewPage` in `packages/web/src/overview-page.tsx`); in Browse, `ConnectNotices` in `packages/web/src/connect-steps.tsx`, the cards and then a `.connected-empty` for each connection that read nothing, placed by `Page` in `packages/web/src/app.tsx`. A help's markup: `Inline` in `packages/web/src/connect-steps.tsx`. CSS: `.connect-card`, `.connect-card h2`, `.connected-empty`, `.connected-empty h2` and `.connected-dot` in `window.css`.
 - The draft's tables: `ReviewTables` in `packages/web/src/block.tsx`.
 - CSS: `.connect-details`, `.connect-help`, `.connect-actions`, `.choice-rows`, `.path-form` and `.review-tables` in `window.css`.
 
@@ -278,5 +374,6 @@ In the app this group is `<div class="connect-review">`; that class has no rules
 - **Two pick lists.** Settings' **Change** of a picked option draws a plainer list (`.choices`, drawn by `PickOption` in `packages/web/src/connections-page.tsx`) than the pick step's rows.
 - **Failure shapes differ by place**: a `.connect-problem` line in a step, a `.cli-box[data-tone="danger"]` with Try again, Change and Copy details in the first run, `.connection-problem` in Settings.
 - `.connect-review`, `.connect-browser` and `.connect-consent` have no rules of their own.
+- **Two cards, two frames.** The window's `.connect-card` is a `--surface` card with a `--line` border in every theme; the first run's `.setup-card` follows `--list-frame`, so in Broadsheet one is framed and the other isn't.
 
 Until they're one, copy `ConnectSteps` for a new place a connection is made.
