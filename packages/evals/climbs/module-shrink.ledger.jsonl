@@ -6,3 +6,7 @@
 {"round":"01M6N0P9MHZ82J5BWC0W6WVZ3W","label":"C1a: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":1.156552}
 {"round":"01M6N0SS6JQ89CSZJKXVH1CWMB","label":"C1b: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":1.0896029333333332,"estimated":true}
 {"round":"01M6N0SS6JQ89CSZJKXVH1CWMB","label":"C1b: trim C1, repeats and after-the-call hints out of the base","split":"train","trials":44,"usd":0.9334219999999999}
+{"round":"01M6N0XK20HRYDZQRK70JTH86A","label":"T0a: main's agent text, test","split":"test","trials":36,"usd":0.859547209090909,"estimated":true}
+{"round":"01M6N0XK20HRYDZQRK70JTH86A","label":"T0a: main's agent text, test","split":"test","trials":36,"usd":0.6841640000000001}
+{"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.8297651547169811,"estimated":true}
+{"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.6110367999999999}
