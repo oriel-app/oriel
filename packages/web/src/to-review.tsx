@@ -16,16 +16,10 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
   const [out, setOut] = useState<Readonly<Record<string, Side>>>({});
   const watched = ids.join();
   useEffect(() => {
-    const of = new Map<Element, string>();
-    for (const id of ids) {
+    const sets = ids.flatMap((id): [Element, string][] => {
       const set = document.getElementById(changeSetAnchor(id));
-      if (set) of.set(set, id);
-    }
-    // Two observers tell where each is: in the window above the composer,
-    // and in the window with everything above it. A jump past the window, as
-    // with End, crosses the second, so nothing is left on the wrong side.
-    const composer = document.querySelector(".thread .composer");
-    const hidden = composer ? Math.max(0, innerHeight - composer.getBoundingClientRect().top) : 0;
+      return set ? [[set, id]] : [];
+    });
     const seen = new Map<string, { view: Side | "shown" | "gone"; upTo: boolean }>();
     const settle = () => {
       const sides: Record<string, Side> = {};
@@ -33,41 +27,59 @@ export function ToReview(props: { ids: readonly string[]; onShow(changeSetId: st
         if (view !== "shown") sides[id] = view === "gone" ? (upTo ? "above" : "below") : view;
       setOut(sides);
     };
-    const at = (entry: IntersectionObserverEntry) =>
-      seen.get(of.get(entry.target) ?? "") ?? { view: "gone" as const, upTo: false };
-    const steps = Array.from({ length: 21 }, (_, i) => i / 20);
-    const view = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = of.get(entry.target);
-          if (id === undefined) continue;
-          const { boundingClientRect: box, intersectionRect: shows, rootBounds } = entry;
-          const room = rootBounds?.height ?? innerHeight;
-          const mostly = shows.height * 2 >= Math.min(box.height, room);
-          const side: Side = box.top < (rootBounds?.top ?? 0) ? "above" : "below";
-          seen.set(id, {
-            ...at(entry),
-            view: !entry.isIntersecting ? "gone" : mostly ? "shown" : side,
-          });
-        }
-        settle();
-      },
-      { rootMargin: `0px 0px -${hidden}px 0px`, threshold: steps },
-    );
+    const mark = (id: string, change: Partial<{ view: Side | "shown" | "gone"; upTo: boolean }>) =>
+      seen.set(id, { view: "gone", upTo: false, ...seen.get(id), ...change });
+    // In the window with everything above it: a jump past the window, as
+    // with End, crosses it, so nothing is left on the wrong side.
     const upTo = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          const id = of.get(entry.target);
-          if (id !== undefined) seen.set(id, { ...at(entry), upTo: entry.isIntersecting });
+          const id = sets.find(([set]) => set === entry.target)?.[1];
+          if (id !== undefined) mark(id, { upTo: entry.isIntersecting });
         }
         settle();
       },
       { rootMargin: "1000000px 0px 0px 0px" },
     );
-    const observers = [view, upTo];
-    for (const observer of observers) for (const set of of.keys()) observer.observe(set);
+    for (const [set] of sets) upTo.observe(set);
+    // In the window above the composer, mostly: one observer each, whose
+    // threshold is where half of it, or half the screen, shows. Measured
+    // again as the sets, the composer or the window change size.
+    const composer = document.querySelector(".thread .composer");
+    let views: IntersectionObserver[] = [];
+    const measure = () => {
+      for (const view of views) view.disconnect();
+      const hidden = composer ? Math.max(0, innerHeight - composer.getBoundingClientRect().top) : 0;
+      views = sets.map(([set, id]) => {
+        const half = Math.min(
+          0.5,
+          innerHeight / (2 * Math.max(1, set.getBoundingClientRect().height)),
+        );
+        const view = new IntersectionObserver(
+          ([entry]) => {
+            if (!entry) return;
+            const { boundingClientRect: box, intersectionRect: shows, rootBounds } = entry;
+            const mostly = shows.height * 2 >= Math.min(box.height, innerHeight);
+            const side: Side = box.top < (rootBounds?.top ?? 0) ? "above" : "below";
+            mark(id, { view: !entry.isIntersecting ? "gone" : mostly ? "shown" : side });
+            settle();
+          },
+          { rootMargin: `0px 0px -${hidden}px 0px`, threshold: [0, half] },
+        );
+        view.observe(set);
+        return view;
+      });
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    for (const [set] of sets) resized.observe(set);
+    if (composer) resized.observe(composer);
+    addEventListener("resize", measure);
     return () => {
-      for (const observer of observers) observer.disconnect();
+      upTo.disconnect();
+      resized.disconnect();
+      removeEventListener("resize", measure);
+      for (const view of views) view.disconnect();
     };
   }, [watched]);
   const above = ids.filter((id) => out[id] === "above");
