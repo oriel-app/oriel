@@ -286,6 +286,8 @@ function world(startedBy: Actor | null = { kind: "user" }) {
     workstreams,
     title: () => "Busy one",
     startedBy: () => startedBy,
+    scope: () => null,
+    workstreamOf: () => null,
   });
   const thread = threads.get(mine, t0);
   assert.ok(thread);

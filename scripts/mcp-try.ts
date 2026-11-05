@@ -12,47 +12,133 @@
 // from the workstream as the tool that acts, hears the workstream change on
 // a subscription, and is refused as the tool that reads only, and as the
 // tool that acts once revoked.
+//
+// For the agent-to-agent loop (the mcp-agents spike), Jira writes land on a
+// SYN site in memory, so an approved change set applies:
+// - `--trust`: the tool that acts is trusted in the workstream, so its
+//   words start turns (20 a day, 200,000 tokens);
+// - `--second <name>`: one more tool that acts, as trusted as the first,
+//   with its own config, `second.json`;
+// - `--person approve|reject` and `--after <seconds>`: a stand-in for the
+//   person, which sends each tool's held words on, and decides each change
+//   set, that many seconds after it appears, through the window's own
+//   routes, as the person's clicks would;
+// - `--tasks`: the door offers the tasks extension;
+// - `--progress`: a wait answers as a stream, with progress every 20 s;
+// - `--elicit`: a tool's first wait asks its user a question by elicitation,
+//   and what comes back is logged.
+// Every request the door answers is logged to stderr as one JSON line.
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { instant, ulid } from "../packages/core/src/ids.ts";
+import { instant } from "../packages/core/src/ids.ts";
 import { serve } from "../packages/server/src/serve.ts";
 import { mcpHandler, type McpRequest, serveMcp } from "../packages/server/src/mcp/http.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
-import { outsideTools } from "../packages/server/src/mcp/tokens.ts";
+import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
+import { memorySite } from "../packages/jira/src/memory-site.ts";
 
 const { values } = parseArgs({
   options: {
     check: { type: "boolean" },
     port: { type: "string", default: "0" },
     name: { type: "string", default: "Claude Code" },
+    verbose: { type: "boolean" },
+    trust: { type: "boolean" },
+    second: { type: "string" },
+    person: { type: "string" },
+    after: { type: "string", default: "20" },
+    tasks: { type: "boolean" },
+    progress: { type: "boolean" },
+    elicit: { type: "boolean" },
   },
 });
 
-const serving = await serve(0);
-const { app } = serving;
-const now = () => instant(new Date());
-const tools = outsideTools({ now, newId: () => ulid(Date.now()) });
-const acting = tools.connect(values.name, "act");
-const reading = tools.connect("Read-only probe", "read");
-const server = mcpServer({
-  outside: app.outside,
-  window: new URL(serving.url),
-  version: "spike",
-  clock: Date.now,
+const site = memorySite(loadJiraFixture(), instant(new Date()));
+const serving = await serve(0, {
+  db: ":memory:",
+  sources: { jira: { mode: "fixture", fetch: site.fetch } },
 });
+const { app } = serving;
+const tools = app.outside.tools;
 const workstream = await app.outside.dispatch(
   "workstream.create",
   { kind: "cluster", grouping: "epic", cluster: "10001" },
   { kind: "user" },
 );
+const trust = values.trust
+  ? { workstreams: [workstream.workstream], turnsPerDay: 20, tokensPerDay: 200_000 }
+  : null;
+const acting = tools.connect(values.name, "act", trust);
+const reading = tools.connect("Read-only probe", "read");
+const second = values.second ? tools.connect(values.second, "act", trust) : null;
+const server = mcpServer({
+  outside: app.outside,
+  window: new URL(serving.url),
+  version: "spike",
+  clock: Date.now,
+  ...(values.tasks ? { tasks: true } : {}),
+  ...(values.elicit
+    ? { elicitProbe: (answered: unknown) => console.error(JSON.stringify({ elicited: answered })) }
+    : {}),
+});
+
+// The stand-in person: through the window's routes, as their clicks are, it
+// sends each held message on, and decides each change set, `--after`
+// seconds after it appears.
+if (values.person === "approve" || values.person === "reject") {
+  const decision = values.person;
+  const delay = Number(values.after) * 1000;
+  const seen = new Set<string>();
+  const window = (path: string, body: unknown = {}) =>
+    fetch(new URL(path, serving.url), {
+      method: "POST",
+      headers: { origin: serving.url.replace(/\/$/, ""), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const look = async (thread: string) => {
+    const view = (await (await fetch(new URL(`api/threads/${thread}`, serving.url))).json()) as {
+      entries: { kind: string; seq: number; outcome?: string | null; from?: unknown }[];
+      changeSets: { id: string; status: string }[];
+      running: boolean;
+    };
+    for (const entry of view.entries)
+      if (entry.kind === "held" && entry.from && !entry.outcome && !seen.has(`h${entry.seq}`)) {
+        seen.add(`h${entry.seq}`);
+        setTimeout(async () => {
+          const sent = await window(`api/threads/${thread}/held/${entry.seq}/send`);
+          console.error(
+            JSON.stringify({ person: "sent held words on", thread, status: sent.status }),
+          );
+        }, delay).unref();
+      }
+    for (const set of view.changeSets)
+      if (set.status === "open" && !seen.has(set.id)) {
+        seen.add(set.id);
+        setTimeout(async () => {
+          const diff = (await (await window(`api/change-sets/${set.id}/diff`)).json()) as {
+            hash: string;
+          };
+          const done = await window(`api/change-sets/${set.id}/${decision}`, { hash: diff.hash });
+          console.error(
+            JSON.stringify({ person: `${decision}d`, changeSet: set.id, status: done.status }),
+          );
+        }, delay).unref();
+      }
+  };
+  const looking = setInterval(async () => {
+    for (const thread of await app.outside.reads.threads()) await look(thread.id).catch(() => {});
+  }, 1_000);
+  looking.unref();
+}
 
 // Who asked for what, as the door saw it, never the token.
 const logged =
   (handle: (request: McpRequest) => ReturnType<ReturnType<typeof mcpHandler>>) =>
   async (request: McpRequest) => {
     const text = await request.body(1_000_000);
+    const began = Date.now();
     const reply = await handle({ ...request, body: async () => text });
     let said: { method?: string; params?: Record<string, unknown> } = {};
     try {
@@ -62,12 +148,24 @@ const logged =
     const client = meta["io.modelcontextprotocol/clientInfo"] ?? said.params?.["clientInfo"];
     console.error(
       JSON.stringify({
+        at: new Date(began).toISOString(),
+        ms: Date.now() - began,
         status: reply.status,
         method: said.method ?? request.method,
         name: said.params?.["name"] ?? said.params?.["uri"],
         version: request.headers["mcp-protocol-version"] ?? null,
         ...(said.params?.["notifications"] ? { listens: said.params["notifications"] } : {}),
         client: client ?? null,
+        ...(values.verbose
+          ? {
+              capabilities:
+                meta["io.modelcontextprotocol/clientCapabilities"] ??
+                said.params?.["capabilities"] ??
+                null,
+              progress: meta["progressToken"] ?? null,
+              headers: Object.keys(request.headers),
+            }
+          : {}),
       }),
     );
     return reply;
@@ -79,6 +177,14 @@ const door = await serveMcp([Number(values.port)], (port) =>
       server,
       tools,
       port,
+      ...(values.progress
+        ? {
+            progress: (beat: () => void) => {
+              const timer = setInterval(beat, 20_000);
+              return () => clearInterval(timer);
+            },
+          }
+        : {}),
       keepAlive: (beat) => {
         const timer = setInterval(beat, 25_000);
         timer.unref();
@@ -101,6 +207,7 @@ const config = (token: string) =>
 const folder = mkdtempSync(join(tmpdir(), "oriel-mcp-"));
 writeFileSync(join(folder, "acting.json"), config(acting.token), { mode: 0o600 });
 writeFileSync(join(folder, "reading.json"), config(reading.token), { mode: 0o600 });
+if (second) writeFileSync(join(folder, "second.json"), config(second.token), { mode: 0o600 });
 
 console.log(`window: ${serving.url}`);
 console.log(`workstream: ${serving.url}workstreams/${workstream.workstream}`);

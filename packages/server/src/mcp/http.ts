@@ -25,6 +25,8 @@ export type McpRequest = {
   url: string;
   headers: Readonly<Record<string, string | string[] | undefined>>;
   body: (limit: number) => Promise<string | null>;
+  // Aborts once the client leaves, which ends a wait it asked for.
+  signal?: AbortSignal;
 };
 
 const maxBody = 1_000_000;
@@ -94,10 +96,13 @@ export function mcpHandler(deps: {
   port: number;
   // Writes the stream's keep-alive, every so often, until it is stopped.
   keepAlive?: (beat: () => void) => () => void;
+  // Sends a wait's progress, every so often, until it is stopped; without
+  // it, a wait answers with JSON once it is done.
+  progress?: (beat: () => void) => () => void;
 }) {
   // Each tool's open streams, which end as it is revoked.
   const streams = new Map<string, Set<() => void>>();
-  deps.tools.onRevoke((id) => {
+  deps.tools.onRevoke(({ id }) => {
     for (const end of streams.get(id) ?? []) end();
     streams.delete(id);
   });
@@ -150,7 +155,53 @@ export function mcpHandler(deps: {
         stream: events.iterator,
       };
     }
-    const response = await deps.server.handle(message, tool, said);
+    // A wait, from a client that gave a progress token and takes a stream:
+    // the answer comes as an event stream, with a progress notification
+    // every so often until it is ready, so a client that resets its timeout
+    // on progress keeps the call open (the mcp-agents spike).
+    const token = (message.params?.["_meta"] as { progressToken?: unknown } | undefined)
+      ?.progressToken;
+    const takesStream = String(header(request, "accept") ?? "").includes("text/event-stream");
+    if (
+      deps.progress &&
+      message.method === "tools/call" &&
+      message.params?.["name"] === "thread_wait" &&
+      (typeof token === "string" || typeof token === "number") &&
+      takesStream
+    ) {
+      const events = channel<string>(() => stop());
+      const sent = (value: unknown) => events.push(`data: ${JSON.stringify(value)}\n\n`);
+      let beats = 0;
+      const stop = deps.progress(() =>
+        sent({
+          jsonrpc: "2.0",
+          method: "notifications/progress",
+          params: { progressToken: token, progress: ++beats, message: "Still waiting." },
+        }),
+      );
+      void deps.server
+        .handle(message, tool, said, request.signal)
+        .catch((error: unknown) => {
+          console.error(error);
+          return {
+            jsonrpc: "2.0" as const,
+            id: message.id ?? null,
+            error: { code: -32603, message: "Internal error" },
+          };
+        })
+        .then((response) => {
+          stop();
+          sent(response);
+          events.end();
+        });
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "cache-control": "no-store" },
+        body: "",
+        stream: events.iterator,
+      };
+    }
+    const response = await deps.server.handle(message, tool, said, request.signal);
     if (response === null) return { status: 202, headers: {}, body: "" };
     if ("error" in response) {
       const status =
@@ -175,7 +226,10 @@ export async function serveMcp(
   const handle = make(port);
   server.on("request", (req, res) => {
     const method = req.method ?? "GET";
-    handle({ method, url: req.url ?? "/", headers: req.headers, body: bodyReader(req) })
+    const left = new AbortController();
+    res.once("close", () => left.abort());
+    const { signal } = left;
+    handle({ method, url: req.url ?? "/", headers: req.headers, body: bodyReader(req), signal })
       .then((reply) => send(res, method, reply))
       .catch((error: unknown) => {
         console.error(error);

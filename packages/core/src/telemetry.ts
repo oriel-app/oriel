@@ -87,6 +87,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       threadId: Ulid;
       rejected?: Ulid;
       held?: { from: HeldSender["kind"]; edited: boolean };
+      // An outside tool the user trusts asked it (the mcp-agents spike).
+      by?: "tool";
     }
   // The user discarded a held message, so it never reached the agent.
   | { name: "held-message.discarded"; threadId: Ulid; from: HeldSender["kind"] }

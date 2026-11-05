@@ -256,6 +256,17 @@ export function ChatEntryItem(props: {
   const { entry } = props;
   switch (entry.kind) {
     case "user":
+      // An outside tool's words, which the user trusts to start a turn:
+      // never in the user's own place, and always under its name.
+      if (entry.by !== undefined)
+        return (
+          <li class="tool-message">
+            <p class="tool-message-by">
+              <strong>{entry.by}</strong>, an outside tool you trust, asked:
+            </p>
+            <p class="tool-message-text">{entry.text}</p>
+          </li>
+        );
       return <li class="user-message">{entry.text}</li>;
     case "reply":
       return (

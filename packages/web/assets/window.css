@@ -2630,6 +2630,39 @@ a.replies:hover {
   overflow-wrap: anywhere;
 }
 
+/* What an outside tool the user trusts said, which started a turn: on the
+   agent's side, not the user's, under the tool's name (the mcp-agents
+   spike). Solid, unlike a held message, since it reached the agent. */
+.tool-message {
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.tool-message-by {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.tool-message-by strong {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+.tool-message-text {
+  margin: 0;
+  font-size: var(--text-lg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .reply {
   font-size: var(--text-lg);
   line-height: 1.55;

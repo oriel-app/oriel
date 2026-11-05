@@ -577,57 +577,60 @@ export type SketchView = { src: string; height: 240 | 400 | 640 };
 // over and as drafted, each as JSON values.
 export type DraftChange = { option: string; was: unknown; drafted: unknown };
 
-export type ChatEntry = { seq: number; at: string } & (
-  | { kind: "user"; text: string }
-  // `ownAgent`: this thread's agent made every change it covers.
-  // `fromLine`: the user made every change it covers by an Undo or Redo
-  // under this thread's agent's reply.
-  | {
-      kind: "marker";
-      from: number;
-      to: number;
-      added: ItemRef[];
-      removed: ItemRef[];
-      ownAgent?: true;
-      fromLine?: true;
-    }
-  | { kind: "text"; text: string }
-  | { kind: "run.started"; runId: string; script: string }
-  | { kind: "run.finished"; runId: string; run: RunView }
-  // A table, bars or rows of items Oriel built from a read the agent ran,
-  // or what a run found outside the workstream (the escape hatch).
-  | { kind: "block"; block: BlockView }
-  | { kind: "sketch"; sketch: SketchView }
-  | { kind: "change-set"; changeSetId: string }
-  // What Oriel did with the actions the agent asked for, under its reply.
-  | { kind: "actions"; lines: ActionLineView[] }
-  // A message from anyone but the user, which only they can send to the
-  // agent, edited or not. `outcome` is null while it waits on them.
-  | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
-  // A draft of the agent's (decision 0051): one of the user's own actions,
-  // which only they apply, as it is or edited, or discard. Oriel draws it
-  // from its own data: the connection it sets, by name, and each option it
-  // changes, as it was drafted over and as drafted. `stale`: the options
-  // have moved since, or the connection is gone, so it can't be applied.
-  // `outcome` is null while it waits on them.
-  | {
-      kind: "draft";
-      connection: { id: string; name: string } | null;
-      changes: DraftChange[];
-      // While it waits, the draft as Oriel draws it from its source, for a
-      // connector that drafts in its own form, such as columns by letter.
-      tables: ReviewTable[] | null;
-      // What applying it does to the items the connection has (OA-232).
-      said: string[];
-      stale: boolean;
-      outcome: "applied" | "discarded" | null;
-    }
-  // Oriel's own line about what someone did, never the agent's (OA-91).
-  | { kind: "note"; note: NoteView }
-  | { kind: "limit"; reason: string }
-  | { kind: "error"; message: string }
-  | { kind: "done" }
-);
+export type ChatEntry = { seq: number; at: string } &
+  // `by`: an outside tool the user trusts, whose words started the turn,
+  // by the name the user gave it (the mcp-agents spike).
+  (
+    | { kind: "user"; text: string; by?: string }
+    // `ownAgent`: this thread's agent made every change it covers.
+    // `fromLine`: the user made every change it covers by an Undo or Redo
+    // under this thread's agent's reply.
+    | {
+        kind: "marker";
+        from: number;
+        to: number;
+        added: ItemRef[];
+        removed: ItemRef[];
+        ownAgent?: true;
+        fromLine?: true;
+      }
+    | { kind: "text"; text: string }
+    | { kind: "run.started"; runId: string; script: string }
+    | { kind: "run.finished"; runId: string; run: RunView }
+    // A table, bars or rows of items Oriel built from a read the agent ran,
+    // or what a run found outside the workstream (the escape hatch).
+    | { kind: "block"; block: BlockView }
+    | { kind: "sketch"; sketch: SketchView }
+    | { kind: "change-set"; changeSetId: string }
+    // What Oriel did with the actions the agent asked for, under its reply.
+    | { kind: "actions"; lines: ActionLineView[] }
+    // A message from anyone but the user, which only they can send to the
+    // agent, edited or not. `outcome` is null while it waits on them.
+    | { kind: "held"; from: HeldFrom; text: string; outcome: "sent" | "discarded" | null }
+    // A draft of the agent's (decision 0051): one of the user's own actions,
+    // which only they apply, as it is or edited, or discard. Oriel draws it
+    // from its own data: the connection it sets, by name, and each option it
+    // changes, as it was drafted over and as drafted. `stale`: the options
+    // have moved since, or the connection is gone, so it can't be applied.
+    // `outcome` is null while it waits on them.
+    | {
+        kind: "draft";
+        connection: { id: string; name: string } | null;
+        changes: DraftChange[];
+        // While it waits, the draft as Oriel draws it from its source, for a
+        // connector that drafts in its own form, such as columns by letter.
+        tables: ReviewTable[] | null;
+        // What applying it does to the items the connection has (OA-232).
+        said: string[];
+        stale: boolean;
+        outcome: "applied" | "discarded" | null;
+      }
+    // Oriel's own line about what someone did, never the agent's (OA-91).
+    | { kind: "note"; note: NoteView }
+    | { kind: "limit"; reason: string }
+    | { kind: "error"; message: string }
+    | { kind: "done" }
+  );
 
 // Where a change set stands. "open": awaiting a decision; "stopped":
 // approved, and apply stopped before anything landed; "partial": some of it

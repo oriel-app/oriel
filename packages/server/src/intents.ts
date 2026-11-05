@@ -2,7 +2,9 @@
 // captured: the calls they plan out as (`planned`) go through the one
 // dispatcher, in order, as the thread's agent, and each comes back as a line
 // the host shows under the agent's reply: applied, with its Undo, or refused,
-// and why. They apply only in a turn the user started. The user's Undo of a
+// and why. They apply only in a turn the user started, or one an outside
+// tool the user trusts started, within the workstreams they trust it with
+// (the mcp-agents spike). The user's Undo of a
 // line, and their redo of it, go through the same dispatcher, and the line
 // then says so.
 import {
@@ -29,6 +31,10 @@ export type IntentDeps = {
   // Who started the thread's turn now running: the user, whose message it
   // answers, or a message they sent on (decision 0024).
   startedBy(threadId: Ulid): Actor | null;
+  // The workstreams an outside tool the user trusts may change through its
+  // turns, or null for one they don't trust.
+  scope(name: string): readonly Ulid[] | null;
+  workstreamOf(threadId: Ulid): Ulid | null;
 };
 
 // A line under the agent's reply, by its place: the thread, the list's seq in
@@ -65,7 +71,17 @@ export function intentsOf(deps: IntentDeps) {
     ): Promise<ActionLine[]> {
       const { thread } = turn;
       const actor: Actor = { kind: "agent", threadId: thread.id };
-      const theirs = deps.startedBy(thread.id)?.kind === "user";
+      const by = deps.startedBy(thread.id);
+      const theirs = by?.kind === "user";
+      // A trusted tool's turn applies what stays within its workstreams.
+      const scope = by?.kind === "tool" ? deps.scope(by.name) : null;
+      const outside = (call: Intent): boolean => {
+        if (!scope) return false;
+        const at = touched(call, null);
+        const workstream =
+          at.kind === "workstream" ? at.id : at.id ? deps.workstreamOf(at.id) : thread.workstreamId;
+        return workstream === null || !scope.includes(workstream);
+      };
       const lines: ActionLine[] = [];
       for (const call of planned(intents, { thread: thread.id })) {
         const refused = (why: string): ActionLine => ({
@@ -74,8 +90,12 @@ export function intentsOf(deps: IntentDeps) {
           applied: false,
           why,
         });
-        if (!theirs) {
+        if (!theirs && !scope) {
           lines.push(refused("this turn wasn't started by you, so Oriel applied none of it"));
+          continue;
+        }
+        if (by?.kind === "tool" && outside(call)) {
+          lines.push(refused(`it reaches outside the workstreams you trust ${by.name} with`));
           continue;
         }
         if (

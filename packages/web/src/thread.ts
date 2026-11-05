@@ -981,7 +981,7 @@ export function newThreadReplied(model: NewThreadModel, msg: Replied): [NewThrea
 // start and finish are one entry. ("Block" is the glossary's word for what
 // Oriel builds from a read, which is one kind of entry here; decision 0030.)
 export type Entry =
-  | { kind: "user"; seq: number; text: string }
+  | { kind: "user"; seq: number; text: string; by?: string }
   | { kind: "reply"; seq: number; text: string }
   | {
       kind: "marker";
@@ -1023,7 +1023,12 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
     const last = out.at(-1);
     switch (entry.kind) {
       case "user":
-        out.push({ kind: "user", seq: entry.seq, text: entry.text });
+        out.push({
+          kind: "user",
+          seq: entry.seq,
+          text: entry.text,
+          ...(entry.by === undefined ? {} : { by: entry.by }),
+        });
         break;
       case "text":
         if (last?.kind === "reply") last.text += entry.text;

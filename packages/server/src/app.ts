@@ -96,6 +96,7 @@ import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, type Changed, dispatcher } from "./actions.ts";
 import type { Outside } from "./mcp/door.ts";
+import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -1457,6 +1458,10 @@ export async function createApp(options: AppOptions): Promise<App> {
     saved: () => guarding?.changed(),
     picked: (theme) => emit({ name: "theme.picked", at: now(), workspaceId, theme }),
   });
+  // The outside tools the user connected to the MCP door (OA-72): a
+  // revoked one's turns stop as it is revoked.
+  const outsiders = outsideTools({ now, newId });
+  outsiders.onRevoke((tool) => conversation.stopStartedBy(tool.name));
   const conversation = turns({
     threads,
     workstreams,
@@ -1476,6 +1481,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     newId,
     log,
     alsoSpent: (threadId) => looks.usage(threadId),
+    toolTurn: (name) => outsiders.started(name),
   });
   told = () => conversation.synced();
   // Second looks (decision 0054), with an agent of their own, or the
@@ -1612,6 +1618,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     // Made once the overview's reads are, below; no action runs before.
     noticed: () => noticed,
     turns: conversation,
+    whyHeld: (name, workstream) => outsiders.whyHeld(name, workstream),
     changeSets: sets,
     ...(secondLooks
       ? {
@@ -1728,6 +1735,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     workstreams,
     title: viewer.title,
     startedBy: conversation.startedBy,
+    scope: (name) => outsiders.scope(name),
+    workstreamOf: (thread) => threads.get(thread, now())?.workstreamId ?? null,
   });
   const undoLine = lineUndo({
     dispatch,
@@ -2111,6 +2120,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
     outside: {
       workspaceId,
+      tools: outsiders,
       dispatch,
       reads,
       reader,
@@ -2122,6 +2132,12 @@ export async function createApp(options: AppOptions): Promise<App> {
           watchers.delete(listener);
         };
       },
+      chat: (id) => {
+        const thread = threads.get(id, now());
+        if (!thread || thread.workspaceId !== workspaceId) return null;
+        return { thread, messages: threads.messages(id), turn: conversation.startedBy(id) };
+      },
+      watchThread: (id, listener) => conversation.watch(id, listener),
     },
     // Stops every turn, waits for the last sync, and closes the database.
     // Closing twice does nothing more.

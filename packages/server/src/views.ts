@@ -480,7 +480,13 @@ export function views(deps: ViewDeps) {
   ): ChatEntry | null => {
     const workstreamId = own.workstream;
     const at = { seq: message.seq, at: message.at };
-    if (message.role === "user") return { ...at, kind: "user", text: message.text };
+    if (message.role === "user")
+      return {
+        ...at,
+        kind: "user",
+        text: message.text,
+        ...(message.by && { by: message.by.name }),
+      };
     if (message.role === "held" && "draft" in message) {
       // Drawn from Oriel's own data: the connection by its name, and each
       // option the draft changes, as it was drafted over and as drafted.

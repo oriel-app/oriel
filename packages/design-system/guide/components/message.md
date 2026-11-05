@@ -3,7 +3,7 @@ title: Thread messages
 status: stable
 group: Thread
 order: 60
-classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
+classes: thread-layout, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, chat, user-message, tool-message, tool-message-by, tool-message-text, reply, table-scroll, quote-from, marker, ref-title, key, source-link, run, run-body, code, output, run-error, hint, working, working-dot, notice, oriel-note, actions-block, action-lines, action-text, held-block, held-message, held-by, held-text, held-field, held-actions, held-note, draft-changes, draft-was, visually-hidden
 summary: What a thread's conversation holds, entry by entry: the person's message, the agent's reply, its runs, Oriel's own lines, held messages and drafts, and "Working…".
 ---
 
@@ -20,6 +20,7 @@ One renderer, `ChatEntryItem` in `packages/web/src/thread-page.tsx`, draws every
 | Entry                   | Markup                                         | Whose words                                               |
 | ----------------------- | ---------------------------------------------- | --------------------------------------------------------- |
 | The person's message    | `li.user-message`                              | the person's                                              |
+| A trusted tool's words  | `li.tool-message`                              | an outside tool's, which the person trusts to start turns |
 | The agent's reply       | `li.reply`, markdown                           | the agent's                                               |
 | A run                   | `li` > `details.run`                           | Oriel's record of the agent's run                         |
 | A block, a sketch       | `li` > `figure.answer-block`, `.answer-sketch` | Oriel's (see [Block](/components/block))                  |
@@ -154,6 +155,19 @@ A bubble on the right, at most 85% wide (92% in a narrow page), on `--surface-ho
   <!-- prettier-ignore -->
   <li class="user-message">I'm meeting the payments team on Thursday.
 Which of these need a decision from them first?</li>
+</ol>
+```
+
+### A trusted tool's words
+
+What an outside tool the person trusts said, which started a turn as the person's message would (the mcp-agents spike). It is on the agent's side, never the person's, in a solid box (it reached the agent, unlike a held message), under the tool's name as the person gave it. Its text is exactly what was sent.
+
+```html specimen id=tool-message title="A trusted tool's words"
+<ol class="chat">
+  <li class="tool-message">
+    <p class="tool-message-by"><strong>Claude Code</strong>, an outside tool you trust, asked:</p>
+    <p class="tool-message-text">Please estimate the unestimated stories in this workstream.</p>
+  </li>
 </ol>
 ```
 

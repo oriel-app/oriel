@@ -18,7 +18,19 @@ import {
 import { agentShapes, type Host, notTheUsers, orielFns, type ReadFn } from "@oriel/bindings";
 import { refusal } from "../actions.ts";
 import type { Outside } from "./door.ts";
+import {
+  decodeCursor,
+  encodeCursor,
+  type Later,
+  type ThreadNews,
+  threadNews,
+  waitForNews,
+} from "./threads.ts";
 import type { ConnectedTool } from "./tokens.ts";
+
+// What a call reaches besides the app: where the window is, for links, and
+// whether the client left, which ends a wait.
+export type CallContext = { window: URL; signal?: AbortSignal; later?: Later };
 
 export type Tool = {
   name: string;
@@ -33,7 +45,39 @@ export type Tool = {
   // Whether it changes Oriel's data, which only a tool connected to read
   // and act may.
   acts: boolean;
-  call(args: Record<string, unknown>, by: ConnectedTool, outside: Outside): Promise<unknown>;
+  call(
+    args: Record<string, unknown>,
+    by: ConnectedTool,
+    outside: Outside,
+    context: CallContext,
+  ): Promise<unknown>;
+  // Oriel's own words on what a call's result means and what to do next,
+  // before the result; never anything a person, a source or the agent wrote.
+  told?(result: unknown, by: ConnectedTool): string;
+};
+
+// What a program is told of a thread, by what it waits on.
+const toldNews = (news: unknown): string => {
+  const { waitingOn, heard, timedOut } = news as ThreadNews & { timedOut?: boolean };
+  const replied = heard.some((each) => each.kind === "reply" && each.to === "you");
+  const lead = timedOut
+    ? "Nothing new yet."
+    : replied
+      ? "The agent answered you."
+      : heard.length
+        ? "Here is what happened."
+        : "Nothing new.";
+  if (waitingOn.startsWith("nobody"))
+    return `${lead} The thread waits on ${waitingOn}, and nothing more happens in it unless someone says something.`;
+  return `${lead} The thread waits on ${waitingOn}. A person may take hours: call thread_wait again with this cursor, or end your work and come back later with the thread's ID and cursor.`;
+};
+
+// What a program is told when it said something in a thread.
+const toldSaid = (result: unknown, by: ConnectedTool): string => {
+  const said = result as { started?: true; held?: true; why?: string };
+  if (said.started)
+    return `Your words started a turn in the thread, shown in Oriel's window as ${by.name}'s. Call thread_wait with this cursor to hear the agent's answer. Only the user approves a change set it proposes.`;
+  return `Your words wait in the thread for the user: ${said.why ?? "they send them on"}. They send them on, edit them, or discard them in Oriel's window, which may take hours. Call thread_wait with this cursor to hear what becomes of them.`;
 };
 
 // Who a tool is to the dispatcher and every record: the name the user gave it.
@@ -67,17 +111,83 @@ const actionTools: Tool[] = (Object.keys(actions) as ActionName[]).flatMap((acti
         openWorldHint: false,
       },
       acts: true,
-      call: async (args, by, outside) => {
+      call: async (args, by, outside, { window }) => {
+        // Where the thread stood before the words, so a wait from it hears
+        // what they started.
+        const thread = action === "thread.say" && typeof args["thread"] === "string";
+        const before = thread
+          ? await threadNews(outside, window, args["thread"] as never, by, decodeCursor(null))
+          : null;
         const { undo: _undo, ...output } = await outside.dispatch.untyped(
           action,
           notTheUsers(action, args),
           actorOf(by),
         );
-        return output;
+        const opened = action === "thread.open" && (output as { thread?: string }).thread;
+        return {
+          ...output,
+          ...(before ? { cursor: before.cursor } : {}),
+          ...(opened ? { link: new URL(`threads/${opened}`, window).href } : {}),
+        };
       },
+      ...(action === "thread.say"
+        ? { told: toldSaid }
+        : action === "thread.open"
+          ? {
+              told: () =>
+                "The thread is open, and empty. Say what you ask in it with thread_say: the user sees your words in Oriel's window under your name.",
+            }
+          : {}),
     },
   ];
 });
+
+const maxWaitSeconds = 600;
+
+// A thread as a program hears it: what happened since its cursor, waiting
+// for news up to `seconds` (the mcp-agents spike).
+const waitTool: Tool = {
+  name: "thread_wait",
+  description: `What happened in a thread since \`after\`, a cursor an earlier thread_say or thread_wait gave you: who asked what, the agent's answer to each turn once it ends, each change set and the user's decision on it, and what the thread waits on now. Waits up to \`seconds\` (default 50, at most ${maxWaitSeconds}) for news. Without \`after\`, it answers at once with the thread so far.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      thread: { type: "string", description: "expected a thread ID" },
+      after: { type: "string", description: "a cursor from an earlier call" },
+      seconds: { type: "number" },
+    },
+    required: ["thread"],
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  acts: false,
+  call: async (args, by, outside, { window, signal, later }) => {
+    const id = args["thread"];
+    if (typeof id !== "string") throw new TypeError("$.thread: expected a thread ID");
+    const seconds = typeof args["seconds"] === "number" ? args["seconds"] : 50;
+    const after = args["after"] === undefined ? null : decodeCursor(args["after"]);
+    const ms = after === null ? 0 : Math.min(Math.max(seconds, 0), maxWaitSeconds) * 1000;
+    const news = await waitForNews(
+      outside,
+      window,
+      id as never,
+      by,
+      after ?? decodeCursor(null),
+      ms,
+      signal,
+      later,
+    );
+    if (!news) throw new TypeError("$.thread: expected a thread the window has");
+    return news;
+  },
+  told: toldNews,
+};
+export { encodeCursor };
 
 // A read's parameters as one object's fields, by name.
 const paramsSchema = (fn: ReadFn): JsonSchema =>
@@ -99,7 +209,7 @@ const readTools: Tool[] = orielFns.flatMap((fn) =>
             openWorldHint: false,
           },
           acts: false,
-          call: (args, _by, outside) =>
+          call: (args, _by, outside, _context) =>
             fn.run(
               fn.params.map((p) => args[p.name]),
               { oriel: outside.reads } as unknown as Host,
@@ -154,7 +264,7 @@ const itemTools: Tool[] = [
   },
 ];
 
-export const tools: readonly Tool[] = [...readTools, ...itemTools, ...actionTools];
+export const tools: readonly Tool[] = [...readTools, ...itemTools, waitTool, ...actionTools];
 
 // The tools a connected tool may list and call.
 export const toolsFor = (by: ConnectedTool): readonly Tool[] =>

@@ -95,8 +95,20 @@ export type ActionDeps = {
   // turn; a message held in it, whoever it is from; and its running turn.
   turns: Pick<
     Turns,
-    "say" | "holdFromTool" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld"
+    | "say"
+    | "sayAs"
+    | "holdFromTool"
+    | "rejected"
+    | "unrejected"
+    | "stop"
+    | "sendHeld"
+    | "discardHeld"
+    | "startedBy"
   >;
+  // Why an outside tool's words in a thread of `workstream` wait for the
+  // user, or null when the user trusts it to start a turn there now (the
+  // mcp-agents spike). Absent, every tool's words wait.
+  whyHeld?(name: string, workstream: Ulid): string | null;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
   // asks, changes one suggested, added, and one dismissed (OA-257). Absent
@@ -788,11 +800,30 @@ const handlers = {
   // The turn counts the question, and tells the thread's pages. An outside
   // tool's words wait in the thread for the user, and start no turn: a turn
   // costs the user's model, and its words would steer the agent (OA-73).
+  // Unless the user trusts the tool there, within its caps: then they start
+  // a turn under its name (the mcp-agents spike). One turn at a time: a
+  // trusted tool that speaks while one runs is told whose it is, and waits.
   "thread.say": async ({ thread: id, text }, actor, deps) => {
     const thread = mustThread(deps, id);
     if (actor.kind === "tool") {
-      deps.turns.holdFromTool(thread.id, actor.name, text);
-      return { output: { held: true }, undo: null, changed: null, events: [] };
+      const why = deps.whyHeld
+        ? deps.whyHeld(actor.name, thread.workstreamId)
+        : "the user sends it on";
+      if (why === null) {
+        const busy = deps.turns.startedBy(thread.id);
+        if (busy) {
+          const whose =
+            busy.kind === "tool" ? (busy.name === actor.name ? "yours" : busy.name) : "the user's";
+          throw new ActionError(
+            "conflict",
+            `a turn is running in this thread (${whose}): wait for it to end, then say it again`,
+          );
+        }
+        const { seq } = deps.turns.sayAs(thread.id, text, actor.name);
+        return { output: { started: true, seq }, undo: null, changed: null, events: "counted" };
+      }
+      const seq = deps.turns.holdFromTool(thread.id, actor.name, text);
+      return { output: { held: true, seq, why }, undo: null, changed: null, events: [] };
     }
     const { seq } = deps.turns.say(thread.id, text);
     return { output: { seq }, undo: null, changed: null, events: "counted" };

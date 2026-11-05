@@ -148,7 +148,16 @@ export type TurnDeps = {
   // Tokens spent on a thread outside its chat: its second looks' (decision
   // 0054), which the per-thread cap counts too (SPEC §9).
   alsoSpent?: (threadId: Ulid) => { inputTokens: number; outputTokens: number };
+  // A turn an outside tool the user trusts started (the mcp-agents spike),
+  // counted against its own caps; the call it gives back hears the tokens
+  // the turn spent, once it ends.
+  toolTurn?: (name: string) => (tokens: number) => void;
 };
+
+// What the agent reads of words an outside tool the user trusts said, so it
+// knows who it answers, and that the user may not be watching.
+export const fromTool = (name: string, text: string): string =>
+  `${JSON.stringify(name)}, an outside tool the user trusts, says:\n\n${text}`;
 
 const maxSummaryChars = 2_000;
 
@@ -218,7 +227,8 @@ export function history(
   let capturing: Extract<ChatMessage, { role: "run" }> | null = null;
   for (const message of messages) {
     if (message.role === "user") {
-      out.push({ role: "user", text: message.text, at: message.at });
+      const text = message.by ? fromTool(message.by.name, message.text) : message.text;
+      out.push({ role: "user", text, at: message.at });
       continue;
     }
     if (message.role === "marker") {
@@ -470,14 +480,22 @@ export function turns(deps: TurnDeps) {
     }
     const first = !earlier.some((m) => m.role === "user");
     const now = deps.now();
-    const said = threads.say(threadId, text, { marker: deps.newId(), message: deps.newId() }, now);
+    const tool = by.kind === "tool" ? { kind: "tool" as const, name: by.name } : undefined;
+    const ids = { marker: deps.newId(), message: deps.newId() };
+    const said = threads.say(threadId, text, ids, now, tool);
     if (said.move) published(threadId, said.move.seq);
     published(threadId, said.seq);
     const thread = threads.get(threadId, now);
     if (!thread) throw new RangeError(`no thread ${threadId}`);
     const controller = new AbortController();
-    const done = run(thread, text, said.seq, controller.signal).finally(() => {
+    const ended = tool ? deps.toolTurn?.(tool.name) : undefined;
+    const asked = tool ? fromTool(tool.name, text) : text;
+    const done = run(thread, asked, said.seq, controller.signal).finally(() => {
       running.delete(threadId);
+      if (ended) {
+        const used = spent(threads.messages(threadId, said.seq));
+        ended(used.inputTokens + used.outputTokens);
+      }
       publish(threadId, { type: "status", running: false });
     });
     running.set(threadId, { controller, done, by });
@@ -512,13 +530,15 @@ export function turns(deps: TurnDeps) {
   // the turn or the caps: the one way such words reach the agent, once the
   // user sends them (decision 0024). What shows as nothing is dropped, and
   // words that are nothing else hold nothing.
-  const hold = (threadId: Ulid, from: HeldSender, words: string): void => {
+  const hold = (threadId: Ulid, from: HeldSender, words: string): number | null => {
     const text = words.replace(hidden, "");
-    if (text.trim() === "") return;
+    if (text.trim() === "") return null;
     const held = { role: "held" as const, from, text };
-    published(threadId, threads.append(threadId, held, deps.newId(), deps.now()));
+    const seq = threads.append(threadId, held, deps.newId(), deps.now());
+    published(threadId, seq);
     // It waits on the user now: every list hears.
     publish(threadId, { type: "status", running: running.has(threadId) });
+    return seq;
   };
 
   // A turn's drafts, held in the thread for the user under its reply, each
@@ -626,8 +646,28 @@ export function turns(deps: TurnDeps) {
     // An outside tool's words (OA-73), held in the thread for the user as
     // a review link's holder's reason is: they reach the agent only as the
     // user sends them on.
-    holdFromTool(threadId: Ulid, name: string, text: string): void {
-      hold(threadId, { kind: "tool", name }, text);
+    holdFromTool(threadId: Ulid, name: string, text: string): number | null {
+      return hold(threadId, { kind: "tool", name }, text);
+    },
+
+    // Words of an outside tool the user trusts (the mcp-agents spike): they
+    // start a turn as the user's would, under the tool's name, within the
+    // per-thread caps. The tool's own caps are the caller's to check.
+    sayAs(threadId: Ulid, text: string, name: string): { seq: number } {
+      const { seq, at, workspaceId } = start(threadId, text, { kind: "tool", name });
+      deps.emit({ name: "question.asked", at, workspaceId, threadId, by: "tool" });
+      return { seq };
+    },
+
+    // Stops every turn the tool called `name` started, as it is revoked.
+    stopStartedBy(name: string): number {
+      let stopped = 0;
+      for (const turn of running.values())
+        if (turn.by.kind === "tool" && turn.by.name === name) {
+          turn.controller.abort(new Error("Stopped: the tool was revoked."));
+          stopped++;
+        }
+      return stopped;
     },
 
     // A change set of the thread was rejected. The thread says so and asks
