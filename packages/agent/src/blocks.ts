@@ -28,6 +28,7 @@ import {
   buildBlock,
   checkSketch,
   declaredFields,
+  isChart,
   isSketchHeight,
   maxBlocksPerTurn,
   maxSketchesPerTurn,
@@ -131,9 +132,7 @@ export function turnShown(newId: () => Ulid) {
         const said = `Oriel shows a ${spec.form} block from ${key} under your reply.`;
         // A chart's caption holds figures Oriel computed, such as a forecast,
         // which the reply should use rather than work out again.
-        return ["series", "timeline", "spread", "pivot"].includes(spec.form)
-          ? `${said} Its caption: ${built.block.caption}.`
-          : said;
+        return isChart(spec) ? `${said} Its caption: ${built.block.caption}.` : said;
       };
       const sketch = (html: unknown, height: unknown): string => {
         const refuse = (reason: SketchRefusal, why: string) => {

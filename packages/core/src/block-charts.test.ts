@@ -123,6 +123,9 @@ test("a block of history() isn't the escape hatch: it holds no content", () => {
     fields: withContent,
   });
   assert.ok(outside.ok && outside.block.outside);
+  // Rows of it show each item's title, so they are still marked outside.
+  const rows = buildBlock(spec({ form: "rows" }), answered);
+  assert.ok(rows.ok && rows.block.outside);
 });
 
 test("a running series of done dates from history: its caption says the method and what it can't know", () => {

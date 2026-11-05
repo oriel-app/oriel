@@ -98,6 +98,12 @@ export type ChartSpec =
   | { form: "spread"; value: string }
   | { form: "pivot"; rows: string; columns?: string | undefined; value?: string | undefined };
 
+// The forms a chart's builder draws. A chart shows Oriel's figures, not an
+// item's content, so only these drop the outside label for a content-free read.
+export const chartForms: readonly ChartSpec["form"][] = ["series", "timeline", "spread", "pivot"];
+export const isChart = <S extends { form: string }>(spec: S): spec is S & ChartSpec =>
+  (chartForms as readonly string[]).includes(spec.form);
+
 // What a chart's builder is handed: the rows, the declared labels, the
 // read's clock if it declares one, and its lower bounds.
 export type ChartInput = {

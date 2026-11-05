@@ -10,7 +10,7 @@
 // again by running its read with no model. A block is typed data, never
 // HTML: whatever text it holds renders as text. The chart forms (a series
 // over time, a timeline, a spread, a pivot) are built in block-charts.ts.
-import { buildChart, builtCharts, type ChartBlock } from "./block-charts.ts";
+import { buildChart, builtCharts, type ChartBlock, isChart } from "./block-charts.ts";
 import { chartSteps } from "./chart.ts";
 import { isInstant, isItemId, type ItemId } from "./ids.ts";
 import type { SearchHit } from "./source.ts";
@@ -65,7 +65,7 @@ export type ResultFields = {
   atLeast?: Readonly<Record<string, string>>;
   // The number fields that add up, which a pivot may sum; without it, all.
   sums?: readonly string[];
-  // It holds IDs and facets, never content, so a block of it isn't the
+  // It holds IDs and facets, never content, so a chart of it isn't the
   // escape hatch, even read from outside the region (decision 0053).
   contentFree?: true;
 };
@@ -383,16 +383,11 @@ export function buildBlock(
     : "";
   const caption = (what: string) =>
     `Computed by Oriel from ${fields.source}${only}${what ? `: ${what}` : ""}`;
-  const base = { spec, outside: read.outside && !fields.contentFree };
+  const base = { spec, outside: read.outside && !(fields.contentFree && isChart(spec)) };
   const values = (row: unknown, names: readonly string[]) =>
     isRecord(row) ? names.map((name) => fieldOf(row, name)) : null;
 
-  if (
-    spec.form === "series" ||
-    spec.form === "timeline" ||
-    spec.form === "spread" ||
-    spec.form === "pivot"
-  ) {
+  if (isChart(spec)) {
     const since = fields.time ? at(read.value, fields.time.since) : undefined;
     const asOf = fields.time ? at(read.value, fields.time.asOf) : undefined;
     const time =
