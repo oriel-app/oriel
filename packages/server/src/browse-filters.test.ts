@@ -154,15 +154,17 @@ test("a cluster's page under a search shows its title hits first, each in the cl
     record("SYN-3", "Receipts"),
     record("SYN-4", "Fare bands"),
   ];
-  const texts: Record<string, string> = {
-    "jira:SYN-1": "keep the fare",
-    "jira:SYN-3": "fare waived",
-  };
+  // What search() finds for "fare": two titles, and two items by their text.
+  const found = new Map<ItemId, "title" | "text">([
+    ["jira:SYN-1", "text"],
+    ["jira:SYN-2", "title"],
+    ["jira:SYN-3", "text"],
+    ["jira:SYN-4", "title"],
+  ]);
   const keep = keepOf(
     { q: "fare" },
     () => () => false,
-    new Set(["jira"]),
-    () => (id) => texts[id] ?? "",
+    () => found,
   );
   const [cluster] = groupings.assignee.group(records, now, byItemId);
   assert.ok(cluster);

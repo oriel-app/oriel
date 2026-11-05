@@ -13,6 +13,7 @@
     "@oriel/agent": "workspace:*",
     "@oriel/bindings": "workspace:*",
     "@oriel/core": "workspace:*",
+    "@oriel/db": "workspace:*",
     "@oriel/sandbox": "workspace:*",
     "@oriel/server": "workspace:*",
     "@oriel/sources": "workspace:*",

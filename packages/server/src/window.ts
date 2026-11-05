@@ -5,9 +5,7 @@ import {
   type IndexRecord,
   type Instant,
   type ItemId,
-  matchOf,
   parseItemId,
-  searchTerms,
 } from "@oriel/core";
 import {
   assigneeGrouping,
@@ -41,22 +39,21 @@ export const groupings: Record<GroupingId, Grouping> = {
 // title or text, as search() matches; the source; the status category; the
 // assignee; none an open workstream holds (`held`). A kept item is "title"
 // unless only its text matched, so a page shows title hits first. Null when
-// nothing is filtered. `text` is each item's text as search() matches it.
+// nothing is filtered. `matches` is what search() finds for a query: every
+// item it matches, by ID.
 export type Keep = (record: IndexRecord) => "title" | "text" | null;
 export function keepOf(
   filter: BrowseFilter,
   held: () => (record: IndexRecord) => boolean,
-  prefixes: ReadonlySet<string>,
-  text: () => (id: ItemId) => string,
+  matches: (query: string) => ReadonlyMap<ItemId, "title" | "text">,
 ): Keep | null {
-  const { terms } = searchTerms(filter.q ?? "", prefixes);
   const { q, source, status, assignee, workstream } = filter;
   if (!q && !source && !status && !assignee && !workstream) return null;
-  // Only a filter that asks reads what the workstreams hold, or the texts.
+  // Only a filter that asks reads what the workstreams hold, or searches.
   const holds = workstream ? held() : () => false;
-  const textOf = q ? text() : () => "";
   // A query with no terms, such as "jira:" alone, finds nothing, as with
   // search().
+  const found = q ? matches(q) : null;
   return (record) => {
     const kept =
       (!source || parseItemId(record.id)?.kind === source) &&
@@ -64,7 +61,7 @@ export function keepOf(
       (!assignee || assigneeOf(record)?.id === assignee) &&
       (!workstream || !holds(record));
     if (!kept) return null;
-    return q ? matchOf(record, textOf(record.id), terms) : "title";
+    return found ? (found.get(record.id) ?? null) : "title";
   };
 }
 

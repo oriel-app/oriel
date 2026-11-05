@@ -29,8 +29,6 @@ import {
   type ReadResult,
   type Region,
   type SearchHit,
-  searchFold,
-  searchRecords,
   searchedOf,
   findThreads,
   noThreads,
@@ -45,6 +43,7 @@ import {
   ulid,
   type WorkstreamMember,
 } from "@oriel/core";
+import { searchOnly } from "@oriel/db";
 import { historyRead } from "@oriel/server/history";
 import { pastOf, pastWeeks } from "./past-weeks.ts";
 import { overviewItems, overviewView } from "@oriel/server/overview";
@@ -170,9 +169,10 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const items: ItemDocs = Object.fromEntries(
     [...fixtures].map(([kind, { declaration }]) => [kind, declaration.itemDoc]),
   );
-  // Each item's text as the index keeps it, as written and folded.
+  // Each item's text as the index keeps it, in an index of its own, made
+  // on the first search.
   const texts = new Map([...connections.values()].flatMap((c) => [...c.texts]));
-  const folded = new Map([...texts].map(([id, text]) => [id, searchFold(text)]));
+  let index: ReturnType<typeof searchOnly> | undefined;
 
   const reader: Reader = {
     async read(ids) {
@@ -184,12 +184,10 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
       return ids.map((id): ReadResult => byId.get(id) ?? { id, status: "gone", reason: "deleted" });
     },
-    // As the index searches, by key, title or text, title hits first.
+    // As the app's index searches, by key, title or text, title hits first.
     async search(query, limit) {
-      return searchRecords(records, query, limit, {
-        folded: (id) => folded.get(id) ?? "",
-        written: (id) => texts.get(id),
-      }).map(searchedOf);
+      index ??= searchOnly(records, texts);
+      return index.search(query, limit).map(searchedOf);
     },
   };
 
@@ -237,6 +235,7 @@ export async function buildWorld(input: WorldInput): Promise<World> {
     },
     close: () => {
       for (const connection of connections.values()) connection.close();
+      index?.close();
     },
   };
 }

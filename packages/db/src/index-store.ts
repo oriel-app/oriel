@@ -15,11 +15,16 @@ import {
   nullable,
   number,
   object,
-  parseItemId,
+  type Found,
+  indexFold,
+  matchQuery,
   maxSearchText,
+  parseItemId,
+  prefixesOf,
+  ranked,
   refine,
   searchFold,
-  searchRecords,
+  searchTerms,
   type SourceKind,
   string,
   type IndexPage,
@@ -57,6 +62,17 @@ const countsRow = object({
 });
 const versionRow = object({ version: nullable(number) });
 const textRow = object({ item_id: string, text: string });
+const searchedRow = object({
+  row: number,
+  item_id: string,
+  title: string,
+  text: nullable(string),
+});
+const liveRow = object({
+  row: number,
+  item_id: refine(string, isItemId, "expected an item ID"),
+});
+const matchedRow = object({ row: number });
 const stableIdRow = object({ stable_id: string });
 const referenceRow = object({
   source: string,
@@ -83,6 +99,11 @@ function frozen<T>(value: T): T {
 
 export type IndexStore = ReturnType<typeof indexStore>;
 
+type Searchable = {
+  byRow: ReadonlyMap<number, Omit<Found<IndexRecord>, "matched">>;
+  prefixes: ReadonlySet<string>;
+};
+
 // What a source's last sync changed: items new to the index or back from
 // gone, items it changed, and items gone from the source. A disconnect
 // isn't a sync, and counts none.
@@ -95,9 +116,12 @@ export function indexStore(db: DatabaseSync) {
   const retireHandle = db.prepare(`
     update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
+  // A new item comes with its text, if the page gives one, so search's index
+  // takes it in one write (migration 0028); an item already there takes it
+  // from `keepText`.
   const upsert = db.prepare(`
-    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot, added_in)
-    values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+    insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot, added_in, text)
+    values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?12)
     on conflict (workspace_id, source, stable_id) do update set
       item_id = excluded.item_id, title = excluded.title, location = excluded.location,
       updated_at = excluded.updated_at, facets = excluded.facets, attrs = excluded.attrs,
@@ -152,15 +176,51 @@ export function indexStore(db: DatabaseSync) {
   const keepText = db.prepare(`
     update items set text = ? where workspace_id = ? and source = ? and stable_id = ?
       and text is not ?`);
-  const selectTexts = db.prepare(`
-    select item_id, text from items
-    where workspace_id = ? and gone_at is null and text is not null`);
+  // Each live item's rowid, which search's index finds it by, and the rows
+  // a query matches there (migration 0028).
+  const selectRows = db.prepare(
+    "select rowid as row, item_id from items where workspace_id = ? and gone_at is null",
+  );
+  const selectMatched = db.prepare(
+    "select rowid as row from item_search where item_search match ?",
+  );
   const selectText = db.prepare(`
     select item_id, text from items
     where workspace_id = ? and item_id = ? and gone_at is null and text is not null`);
   const tombstone = db.prepare(`
     update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
+  // Search's full-text index (migration 0028), written in the same
+  // transaction as the items it follows, after them, one row a statement: a
+  // live item is in it as it ends up, and a gone one isn't. The table
+  // flushes what it holds at every later statement in the transaction that
+  // could stop partway, as an upsert, a trigger or an insert from a select
+  // can, so writing it any other way doubles a full sync's time.
+  const searchInsert = db.prepare(
+    "insert into item_search (rowid, key, title, text) values (?, ?, ?, ?)",
+  );
+  const searchDelete = db.prepare("delete from item_search where rowid = ?");
+  const selectSearched = db.prepare(`
+    select rowid as row, item_id, title, text from items
+    where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
+  const searchAdd = (row: number | bigint, id: string, title: string, text: string | null) =>
+    searchInsert.run(
+      row,
+      indexFold(parseItemId(id)?.key ?? ""),
+      indexFold(title),
+      indexFold(text ?? ""),
+    );
+  // A live item, as search's index has it.
+  const searched = (workspaceId: Ulid, source: SourceKind, stableId: string) => {
+    const raw = selectSearched.get(workspaceId, source, stableId);
+    if (!raw) return null;
+    const row = searchedRow(raw);
+    if (!row.ok) throw new Error(`corrupt index row: ${JSON.stringify(row.issues)}`);
+    return row.value;
+  };
+  const searchForget = db.prepare(`
+    delete from item_search where rowid in
+      (select rowid from items where workspace_id = ? and source = ? and gone_at is null)`);
   // The version of a source's last sync that finished and changed something:
   // what its syncs since tagged, a crashed one's too, is theirs to claim.
   const selectSince = db.prepare(
@@ -271,35 +331,15 @@ export function indexStore(db: DatabaseSync) {
   // them; each gets its own array.
   const read = new Map<string, WeakMap<Validator<unknown>, readonly IndexRecord[]>>();
   const logged = new Map<string, readonly ChangeLogEntry[]>();
-  const folded = new Map<string, ReadonlyMap<string, string>>();
+  const searchable = new Map<string, Searchable>();
   const written = () => {
     read.clear();
     logged.clear();
-    folded.clear();
+    searchable.clear();
   };
-  // Each live item's text, folded, by its ID: read and folded on the first
-  // search after a write, since a window that never searches needn't hold it.
-  const foldedTexts = (workspaceId: Ulid): ReadonlyMap<string, string> => {
-    const kept = folded.get(workspaceId);
-    if (kept) return kept;
-    const texts = new Map<string, string>();
-    for (const raw of selectTexts.all(workspaceId)) {
-      const row = textRow(raw);
-      if (!row.ok) throw new Error(`corrupt item text: ${JSON.stringify(row.issues)}`);
-      texts.set(row.value.item_id, searchFold(row.value.text));
-    }
-    folded.set(workspaceId, texts);
-    return texts;
-  };
-  const searchTexts = (workspaceId: Ulid) => {
-    const texts = foldedTexts(workspaceId);
-    return {
-      folded: (id: ItemId) => texts.get(id) ?? "",
-      written: (id: ItemId) => {
-        const row = textRow(selectText.get(workspaceId, id));
-        return row.ok ? row.value.text : undefined;
-      },
-    };
+  const writtenText = (workspaceId: Ulid) => (id: ItemId) => {
+    const row = textRow(selectText.get(workspaceId, id));
+    return row.ok ? row.value.text : undefined;
   };
   const live = <A>(
     workspaceId: Ulid,
@@ -319,6 +359,54 @@ export function indexStore(db: DatabaseSync) {
     });
     read.set(key, (read.get(key) ?? new WeakMap()).set(attrs, records));
     return [...records];
+  };
+
+  // What search ranks the live records by, by the rowid search's index
+  // finds each by, and their prefixes: read on the first search after a
+  // write, as the records are. Keys and titles only; texts stay on disk.
+  const searchableOf = (workspaceId: Ulid): Searchable => {
+    const kept = searchable.get(workspaceId);
+    if (kept) return kept;
+    const records = new Map(live(workspaceId, null, unknown).map((record) => [record.id, record]));
+    const byRow = new Map<number, Omit<Found<IndexRecord>, "matched">>();
+    for (const raw of selectRows.all(workspaceId)) {
+      const row = liveRow(raw);
+      if (!row.ok) throw new Error(`corrupt index row: ${JSON.stringify(row.issues)}`);
+      const record = records.get(row.value.item_id);
+      if (record)
+        byRow.set(row.value.row, {
+          record,
+          key: searchFold(parseItemId(record.id)?.key ?? ""),
+          title: searchFold(record.title),
+        });
+    }
+    const made = { byRow, prefixes: prefixesOf([...records.values()]) };
+    searchable.set(workspaceId, made);
+    return made;
+  };
+  const rowsMatching = (match: string) =>
+    selectMatched.all(match).map((raw) => {
+      const row = matchedRow(raw);
+      if (!row.ok) throw new Error(`corrupt search row: ${JSON.stringify(row.issues)}`);
+      return row.value.row;
+    });
+  // Every live item that matches `query`, as `Found`, read from item_search
+  // rather than any copy of the texts held here, with the terms it was
+  // matched by. Only the `sources` given, when given.
+  const found = (workspaceId: Ulid, query: string, sources?: readonly SourceKind[]) => {
+    const { byRow, prefixes } = searchableOf(workspaceId);
+    const terms = searchTerms(query, prefixes);
+    const match = matchQuery(terms.terms);
+    const hits: Found<IndexRecord>[] = [];
+    if (!match) return { terms, hits };
+    const titled = new Set(rowsMatching(match.titled));
+    for (const row of rowsMatching(match.any)) {
+      const item = byRow.get(row);
+      const source = item && parseItemId(item.record.id)?.prefix;
+      if (!item || (sources && (source === undefined || !sources.includes(source)))) continue;
+      hits.push({ ...item, matched: titled.has(row) ? "title" : "text" });
+    }
+    return { terms, hits };
   };
 
   const readChanges = (workspaceId: Ulid): readonly ChangeLogEntry[] =>
@@ -403,13 +491,34 @@ export function indexStore(db: DatabaseSync) {
         apply(page: IndexPage): void {
           check(source, attrs, page);
           written();
+          const given = page.texts ?? {};
+          const textOf = (stableId: string) =>
+            Object.hasOwn(given, stableId) ? (given[stableId] ?? "").slice(0, maxSearchText) : null;
           transaction(db, () => {
+            // What search's index drops, by rowid, and adds as it ends up,
+            // by stable ID, once everything else is written. An item new or
+            // back from gone in this page isn't in it to drop.
+            const drops = new Set<number>();
+            const adds = new Set<string>();
+            const fresh = new Set<string>();
+            const drop = (stableId: string) => {
+              const item = fresh.has(stableId) ? null : searched(workspaceId, source, stableId);
+              if (item) drops.add(item.row);
+            };
             for (const r of page.records) {
               const holder = selectHolder.get(workspaceId, r.id, r.stableId);
-              retireHandle.run(now, version, workspaceId, r.id, r.stableId);
               const retired = holder && stableIdRow(holder);
+              if (retired?.ok) drop(retired.value.stable_id);
+              retireHandle.run(now, version, workspaceId, r.id, r.stableId);
               if (retired?.ok) gone(source, retired.value.stable_id);
               const stored = selectStored.get(workspaceId, source, r.stableId);
+              // New, or back from gone; or live, with a new key or title.
+              const was = stored && itemRow(stored);
+              if (!was) fresh.add(r.stableId);
+              if (!was || !was.ok || was.value.item_id !== r.id || was.value.title !== r.title) {
+                drop(r.stableId);
+                adds.add(r.stableId);
+              }
               upsert.run(
                 workspaceId,
                 source,
@@ -422,6 +531,7 @@ export function indexStore(db: DatabaseSync) {
                 JSON.stringify(r.attrs),
                 version,
                 since,
+                textOf(r.stableId),
               );
               // Compared as the index reads both back.
               const changed =
@@ -437,9 +547,12 @@ export function indexStore(db: DatabaseSync) {
                   0,
                 );
             }
-            for (const [stableId, given] of Object.entries(page.texts ?? {})) {
-              const text = given.slice(0, maxSearchText);
-              keepText.run(text, workspaceId, source, stableId, text);
+            for (const stableId of Object.keys(given)) {
+              const text = textOf(stableId);
+              if (keepText.run(text, workspaceId, source, stableId, text).changes) {
+                drop(stableId);
+                adds.add(stableId);
+              }
             }
             for (const r of page.records) {
               const handle = parseItemId(r.id)?.key ?? "";
@@ -471,8 +584,14 @@ export function indexStore(db: DatabaseSync) {
             }
             for (const stableId of page.gone) {
               forgetReferences.run(workspaceId, source, stableId);
+              drop(stableId);
               if (tombstone.run(now, version, workspaceId, source, stableId).changes)
                 gone(source, stableId);
+            }
+            for (const row of drops) searchDelete.run(row);
+            for (const stableId of adds) {
+              const item = searched(workspaceId, source, stableId);
+              if (item) searchAdd(item.row, item.item_id, item.title, item.text);
             }
           });
         },
@@ -512,10 +631,10 @@ export function indexStore(db: DatabaseSync) {
       return kept.filter((entry) => entry.seq > after);
     },
 
-    // The escape hatch, across every source, as core's `searchRecords`
-    // finds: by key, title or text, title hits first, a text hit with its
-    // excerpt. Only the `sources` given, when given: a source the workspace
-    // no longer reads is left out before ranking, so it can't crowd out the
+    // The escape hatch, across every source: by key, title or text, title
+    // hits first, a text hit with its excerpt, as core's `ranked` orders
+    // them. Only the `sources` given, when given: a source the workspace no
+    // longer reads is left out before ranking, so it can't crowd out the
     // rest.
     search(
       workspaceId: Ulid,
@@ -523,17 +642,14 @@ export function indexStore(db: DatabaseSync) {
       limit: number,
       sources?: readonly SourceKind[],
     ): (IndexRecord<SourceKind, unknown> & { excerpt?: string })[] {
-      const all = live(workspaceId, null, unknown).filter((record) => {
-        const source = parseItemId(record.id)?.prefix;
-        return !sources || (source !== undefined && sources.includes(source));
-      });
-      return searchRecords(all, query, limit, searchTexts(workspaceId));
+      const { terms, hits } = found(workspaceId, query, sources);
+      return ranked(hits, terms, limit, writtenText(workspaceId));
     },
 
-    // Each live item's text as search matches it, folded: Browse's item
-    // search reads it (decision 0027).
-    searchText(workspaceId: Ulid): (id: ItemId) => string {
-      return searchTexts(workspaceId).folded;
+    // Every live item `query` finds, as search() finds them, by its ID, and
+    // whether only its text matched: Browse's item search (decision 0027).
+    matches(workspaceId: Ulid, query: string): ReadonlyMap<ItemId, "title" | "text"> {
+      return new Map(found(workspaceId, query).hits.map((hit) => [hit.record.id, hit.matched]));
     },
 
     // For the sync worker's full sweep: whatever the source no longer returns is gone.
@@ -559,6 +675,7 @@ export function indexStore(db: DatabaseSync) {
         waitAgain.run(workspaceId, source, now);
         forgetChanges.run(workspaceId, source);
         forgetState.run(workspaceId, source);
+        searchForget.run(workspaceId, source);
         const version = snapshot(workspaceId);
         if (forgetItems.run(workspaceId, source).changes === 0) return version;
         insertSnapshot.run(workspaceId, version + 1, source, now);

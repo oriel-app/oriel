@@ -36,7 +36,6 @@ import {
   OptionsUnfit,
   parseItemId,
   prefixOf,
-  prefixesOf,
   type Reader,
   readOnlyOf,
   record,
@@ -2012,8 +2011,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             keepOf(
               filter,
               () => heldBy(openWorkstreams()),
-              prefixesOf(records()),
-              () => index.searchText(workspaceId),
+              (query) => index.matches(workspaceId, query),
             ),
           ),
         page: (grouping, cluster, from, filter) =>
@@ -2027,8 +2025,7 @@ export async function createApp(options: AppOptions): Promise<App> {
             keepOf(
               filter,
               () => heldBy(openWorkstreams()),
-              prefixesOf(records()),
-              () => index.searchText(workspaceId),
+              (query) => index.matches(workspaceId, query),
             ),
           ),
       },

@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { indexFold } from "@oriel/core";
 
 // One connection per process. `:memory:` gives each test its own database.
 // `exclusive` holds SQLite's exclusive lock from the start until close, so no
@@ -8,6 +9,10 @@ import { DatabaseSync } from "node:sqlite";
 export function open(path: string, options: { exclusive?: boolean } = {}): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec("pragma foreign_keys = on;");
+  // Search's fold, which fills its full-text index (migration 0028).
+  db.function("search_fold", { deterministic: true }, (text) =>
+    indexFold(typeof text === "string" ? text : ""),
+  );
   if (options.exclusive) {
     // Before WAL is first used, so the WAL needs no shared memory, and taken
     // now, not at the first write.

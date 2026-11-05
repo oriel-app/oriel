@@ -15,11 +15,13 @@ function fresh() {
   return { db, workspaceId };
 }
 
-test("every table except the runner's own carries workspace_id", () => {
+// Search's full-text index and its own tables are keyed by an item's rowid,
+// so each row is its item's workspace's (migration 0028).
+test("every table except the runner's own and search's index carries workspace_id", () => {
   const { db } = fresh();
   const tables = db
     .prepare(
-      "select name from sqlite_master where type = 'table' and name not in ('workspaces', 'schema_migrations')",
+      "select name from sqlite_master where type = 'table' and name not in ('workspaces', 'schema_migrations') and name not like 'item_search%'",
     )
     .all()
     .map((row) => String(row.name));

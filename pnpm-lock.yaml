@@ -102,6 +102,9 @@ importers:
       '@oriel/core':
         specifier: workspace:*
         version: link:../core
+      '@oriel/db':
+        specifier: workspace:*
+        version: link:../db
       '@oriel/sandbox':
         specifier: workspace:*
         version: link:../sandbox
