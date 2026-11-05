@@ -57,8 +57,8 @@ const placeOf = (at: string): { id: string; sheetId: number } | null => {
 };
 
 // The tables read first, then the tabs mapped, then the rest while there's
-// room: a tab the person asks about, and one the options read, is always
-// there (OA-232). With `names`, each tab's name and place alone, from one
+// room, in that order: a tab the person asks about, and one the options
+// read, is always there, and first (OA-232). With `names`, each tab's name and place alone, from one
 // request a spreadsheet, as Settings lists them; a connection may have
 // hundreds.
 export async function sheetsPreview(
@@ -90,7 +90,7 @@ export async function sheetsPreview(
     .toSorted((a, b) => rank(a.at) - rank(b.at) || a.i - b.i)
     .filter((each, n) => rank(each.at) < 2 || n < maxTabs);
   const tables: PreviewTable[] = [];
-  for (const each of read.toSorted((a, b) => a.i - b.i)) {
+  for (const each of read) {
     const grid = await google.rows(each.pick, each.tab, 0, Math.min(each.tab.rows, maxPreviewRows));
     if (grid === "gone") continue;
     const rows = grid.rows.map((row) =>

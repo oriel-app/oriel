@@ -371,11 +371,12 @@ test("Settings' list is every tab's name and place, from one request a spreadshe
     listed.map((table) => table.at),
     (await preview()).map((table) => table.at),
   );
-  // Read first, the asked tab is there however many come before it; the
-  // tables keep the sheet's order.
+  // Read first, the asked tab is there however many come before it, and
+  // first.
   const raidAt = `${raid}/4100`;
   const first = await ask({ first: [raidAt] });
-  assert.ok(first.some((table) => table.at === raidAt && table.rows.length > 0));
+  assert.equal(first[0]?.at, raidAt);
+  assert.ok((first[0]?.rows.length ?? 0) > 0);
 });
 
 test("a connection's tables sum up in a line each, by their headers, a key that is the title said once", async () => {

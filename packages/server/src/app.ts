@@ -1119,11 +1119,14 @@ export async function createApp(options: AppOptions): Promise<App> {
     const settled = review.settle(given, tables, connection.options);
     const said = "problem" in settled ? [] : review.said(connection.options, settled, tables);
     if (whyWaits(connection) !== null) return { tables: drafted, said };
+    // How a table reads, and what it says of itself, its states among it.
     const now = review.draw(review.current(connection.options, tables), tables);
-    const reads = (table: ReviewTable) =>
-      JSON.stringify(now.find((each) => each.at === table.at)?.reads ?? null);
+    const reads = (table: ReviewTable | undefined) =>
+      JSON.stringify([table?.reads ?? null, table?.lines ?? []]);
     return {
-      tables: drafted.filter((table) => JSON.stringify(table.reads) !== reads(table)),
+      tables: drafted.filter(
+        (table) => reads(table) !== reads(now.find((each) => each.at === table.at)),
+      ),
       said,
     };
   };
@@ -1159,9 +1162,12 @@ export async function createApp(options: AppOptions): Promise<App> {
     const { connection, of } = reviewing(id);
     const waits = waitingConnections().some((each) => each.connection.id === id);
     const { fields } = of;
-    // Once it reads: each of its tables in a line, from their names alone;
-    // and, for the one the person edits by hand, how it reads now, drawn.
-    if (!waits) {
+    // Once it has read: each of its tables in a line, from their names
+    // alone; and, for the one the person edits by hand, how it reads now,
+    // drawn. So too while a mapping it had no longer fits its source, to
+    // fix a table by asking or by hand; only one never mapped shows the
+    // onboarding's guess and draft.
+    if (!waits || !of.waits(connection.options)) {
       const outline = of.outline(connection.options, await previewOf(connection, fresh, [], true));
       const first = tab === undefined ? null : await previewOf(connection, fresh, [tab]);
       const given = first && of.current(connection.options, first);

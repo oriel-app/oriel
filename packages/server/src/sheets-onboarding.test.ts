@@ -88,8 +88,10 @@ const drafting: Script = async (bindings) => {
 };
 
 // Asked to change a tab of a connection that reads (OA-232): its options,
-// as preview() gives them, by letter, with that tab's key moved to its ID
-// column, and every other tab kept.
+// as preview() gives them, by letter, with the tracker's tab changed as
+// `fix` says, by default its key moved to its ID column, and every other
+// tab kept.
+let fix = (tab: { key: string }): object => ({ ...tab, key: "A" });
 const fixing: Script = async (bindings) => {
   const [reads] = (await bindings.read("source.preview", [])).value as {
     connection: string;
@@ -97,9 +99,7 @@ const fixing: Script = async (bindings) => {
     options: { tabs: { at: string; key: string }[] };
     tables: { at?: string }[];
   }[];
-  const tabs = reads?.options.tabs.map((tab) =>
-    tab.at === `${tracker}/1100` ? { ...tab, key: "A" } : tab,
-  );
+  const tabs = reads?.options.tabs.map((tab) => (tab.at === `${tracker}/1100` ? fix(tab) : tab));
   return {
     value: { why: reads?.why, first: reads?.tables[0]?.at, tabs: reads?.options.tabs.length },
     drafts: [["source.configure", [{ connection: reads?.connection, options: { tabs } }]]],
@@ -240,6 +240,11 @@ test("its review shows Oriel's guess, then the agent's draft, each drawn from th
   const waits = await it.connection("sheets");
   assert.equal(waits?.state, "waiting");
   assert.match(waits?.problem ?? "", /the status column, "Status", isn't in the header row/);
+  // Settings still sums up what it read, to fix by asking or by hand, not
+  // the onboarding's guess (OA-232).
+  const broken = await review();
+  assert.equal(broken.guess, null);
+  assert.ok(broken.outline?.some((entry) => entry.reads?.includes("status Status")));
 });
 
 test("Oriel's guess applies as the person's own options, with no draft", async (t) => {
@@ -522,4 +527,34 @@ test("Ask Oriel about a tab drafts a change in the window chat, from fixed words
     ],
     "ID",
   );
+});
+
+test("a draft that changes only which status values mean which state still draws its table", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  await it.post(`/api/connections/${sheets.id}/draft`);
+  await it.app.settled();
+  const { draft } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  assert.ok(draft);
+  await it.post(`/api/threads/${draft.thread}/held/${draft.seq}/apply`, {});
+  fix = (tab) => ({
+    ...tab,
+    states: { todo: ["To do", "Blocked"], "in-progress": ["In progress"], done: ["Done"] },
+  });
+  t.after(() => {
+    fix = (tab) => ({ ...tab, key: "A" });
+  });
+  const asked = json<{ thread: string }>(
+    await it.post(`/api/connections/${sheets.id}/draft`, { tab: `${tracker}/1100` }),
+  );
+  await it.app.settled();
+  const view = json<ThreadView>(await it.get(`/api/threads/${asked.thread}`));
+  const card = view.entries.findLast((entry) => entry.kind === "draft");
+  assert.ok(card?.kind === "draft");
+  assert.deepEqual(
+    card.tables?.map((table) => table.at),
+    [`${tracker}/1100`],
+  );
+  assert.ok(card.tables?.[0]?.lines.some((line) => /To do, Blocked are to do/.test(line)));
+  assert.deepEqual(card.said, []);
 });
