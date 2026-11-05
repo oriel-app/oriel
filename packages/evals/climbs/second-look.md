@@ -17,3 +17,4 @@ One round over both splits, to record the cassettes CI replays and to report pas
 
 - The spike's three rounds (ledger): $1.39 in all, the last train 6/6, test 3/6.
 - 01M6KMYNSD5F2MR57643QRVAJ4, "on demand (decision 0054)": the shipping story, with the ask and module unchanged and the look now taken only when the person presses Second look. Train 6/6, test 3/6, the 3 failures all `look-long-crossings` (marked failing: search() never reaches the folder's open questions). $0.63, median 17 s a look (13 to 38). The climb has spent $2.02 of $15.
+- 01M6MR21HHP5GASF2NX4AR0HRK, "rebased on charts and Jira comments": cassettes recorded again after #191 and #188 changed the region's module. Train 6/6, test 3/6, the same 3 `look-long-crossings` failures. $0.62, median 18 s a look (12 to 25). The climb has spent $2.63 of $15.
