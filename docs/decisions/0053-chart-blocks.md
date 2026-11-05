@@ -1,6 +1,6 @@
 # 0053 Chart blocks: a series with a fitted line, a timeline, a spread and a pivot, from history()
 
-Accepted 2026-11-04, from the chart-blocks spike's draft (2026-11-03). Amends 0030. Changes SPEC §1, §2, §7 and §8.
+Accepted 2026-11-04, from the chart-blocks spike's draft (2026-11-03). Amended by OA-240. Amends 0030. Changes SPEC §1, §2, §7 and §8.
 
 Adds: none
 
@@ -13,7 +13,7 @@ Adds: none
   - **Pivot:** a grid of a read's rows by one field, or two, counted or summed, which the person regroups in the window with no model call. Oriel computes every grouping of up to 5 of the read's fields when it builds the block, so regrouping only picks one. It is its own form: bars stay, for "who's busiest" from `window.overview()`.
   - Every form takes `where`, equality on declared fields, so the agent never has to filter rows in code before showing them. Its values are the read's own: a row holds each, or the block is refused. The caption says it.
 - **One read with dates: `history(of?)`.** Items from the index with when the change log saw each start, finish and change state: an epic's children, a workstream's members, or every item. It reads the index and the change log only, never a source or a model, so its blocks can be pinned. `of` is the agent's text, so an item's ID in it must be a declared kind's.
-  - **It holds no content.** An item and its epic are their IDs, and their facets (kind, state, assignee, estimate) and dates; never a title. Oriel draws a label that is an item's ID with the item's name from the index, as a chip draws one (0032). A read that declares itself content-free (`contentFree`) makes no escape-hatch block, though it reads outside the region: its charts drop "Outside this workstream · read-only". A rows, table or bars block of it still carries the label, since it shows each item's title. This amends 0030, under which every block from a read outside the region was the escape hatch's. Nothing it returns can be read or written through, since `search()`'s hits alone open that door.
+  - **It holds no content.** An item and its epic are their IDs, and their facets (kind, state, assignee, estimate) and dates; never a title. Oriel draws a label that is an item's ID with the item's name from the index, as a chip draws one (0032). A read that declares itself content-free (`contentFree`) makes no escape-hatch block, though it reads outside the region: its charts drop "Outside this workstream · read-only". A rows, table or bars block of it still carries the label, since it shows each item's title (amended by OA-240 below: no block of it does). This amends 0030, under which every block from a read outside the region was the escape hatch's. Nothing it returns can be read or written through, since `search()`'s hits alone open that door.
   - A read with dates declares `time: { asOf, since }`. A chart never reads the machine's clock: today is the read's `asOf`. Before `since`, the start of the change log, Oriel knows that something happened, not when. A date at `since` means "by then".
   - A number can be declared a lower bound (`atLeast`), as days in a state that began before the log are. A spread says its median and 90th percentile are "at least"; a bar shows "≥".
   - Which numbers add up is declared (`sums`); a pivot never offers the sum of days.
@@ -48,3 +48,5 @@ Adds: none
 - Pins rerun `history()` once per look, shared by every pin, and build only the pinned grouping of a pivot, to stay inside the overview's 50 ms.
 - The judge in evals sees the captions of the blocks Oriel showed.
 - Telemetry: a block shown, by form, already covers the new forms; `block.regrouped` counts a pivot regrouped, by nothing but that it was.
+
+**Amended by OA-240, 2026-11-05.** No block of a content-free read carries "Outside this workstream · read-only", in any form: rows, table and bars lose it as the charts did. Whether a block is the escape hatch's now follows where its data came from, not its form. A content-free read is Oriel's own computing over the index and change log, never an item reached outside the region, and the titles a rows, table or bars block shows are drawn by Oriel from the index, as a chip draws them (0032); the agent still reads none. A rows block of it also drops its in-workstream markers, with the frame. `base` in packages/core/src/block.ts.
