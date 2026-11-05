@@ -1143,6 +1143,14 @@ export function folded(model: ThreadModel, set: ChangeSetView): boolean {
   return set.status === "rejected" || !model.seenUnapplied.includes(set.id);
 }
 
+// A link to a change set on the page shown opens it, and the one it sits in.
+export function unfolding(model: ThreadModel, changeSetId: string): ThreadModel {
+  const outer = model.view?.changeSets.filter((set) => set.reverts.includes(changeSetId)) ?? [];
+  const folds = { ...model.folds, [changeSetId]: false };
+  for (const set of outer) folds[set.id] = false;
+  return { ...model, folds };
+}
+
 // Whether a change set can fold at all: nothing on it, or on an Undo of it,
 // waits on anyone.
 export function foldable(model: ThreadModel, set: ChangeSetView): boolean {

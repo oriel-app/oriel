@@ -7,6 +7,7 @@ import { test } from "node:test";
 import type { Effect } from "../src/http.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
 import type { Route } from "../src/route.ts";
+import { folded } from "../src/thread.ts";
 import type { SearchView } from "../src/view.ts";
 import { changeSetView, searchResult, threadView, workstreamView } from "../testing.ts";
 
@@ -53,6 +54,30 @@ test("a link to a change set of the thread already open only scrolls to it", () 
     clicked({ page: "thread", id: threadId, changeSet: setId }),
   );
   assert.deepEqual(effects, [{ type: "showChangeSet", changeSetId: setId }]);
+});
+
+test("a link to a folded Undo of the thread already open opens it, and the change set it sits in", () => {
+  const undoId = "01JBZ0000000000000000000C2";
+  const applied = { status: "applied" as const, nextSteps: [] };
+  const sets = [
+    changeSetView({ id: setId, ...applied, reverts: [undoId] }),
+    changeSetView({ id: undoId, ...applied, revertOf: setId }),
+  ];
+  const [model] = update(init({ page: "thread", id: threadId })[0], {
+    type: "replied",
+    tag: { kind: "thread", id: threadId },
+    ok: true,
+    body: threadView({ id: threadId, changeSets: sets }),
+  });
+  const thread = model.thread;
+  assert.ok(thread && sets.every((set) => folded(thread, set)));
+  const [after, effects] = update(
+    model,
+    clicked({ page: "thread", id: threadId, changeSet: undoId }),
+  );
+  const shown = after.thread;
+  assert.ok(shown && sets.every((set) => !folded(shown, set)));
+  assert.deepEqual(effects, [{ type: "showChangeSet", changeSetId: undoId }]);
 });
 
 test("a search result for the thread already open, or its change set, opens nothing", () => {

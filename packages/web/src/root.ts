@@ -151,6 +151,7 @@ import {
   threadReplied,
   updateNewThread,
   updateThread,
+  unfolding,
 } from "./thread.ts";
 import {
   init as initWindow,
@@ -568,14 +569,17 @@ function onScreen(model: Model, route: Route): boolean {
 // nothing and only scrolls to the change set the route names, if any. Back,
 // Forward and the address bar still load it again (`routed`).
 function staying(next: Model, effects: Effect[]): [Model, Effect[]] {
+  let shown = next;
   const here = (effect: Effect): Effect[] => {
     if (effect.type !== "navigate" || effect.stay || !onScreen(next, effect.route)) return [effect];
     const { route } = effect;
-    return route.page === "thread" && route.changeSet !== undefined
-      ? [{ type: "showChangeSet", changeSetId: route.changeSet }]
-      : [];
+    if (route.page !== "thread" || route.changeSet === undefined || !shown.thread) return [];
+    // Folded, it opens first, and so does the change set it sits in.
+    shown = { ...shown, thread: unfolding(shown.thread, route.changeSet) };
+    return [{ type: "showChangeSet", changeSetId: route.changeSet }];
   };
-  return [next, effects.flatMap(here)];
+  const kept = effects.flatMap(here);
+  return [shown, kept];
 }
 
 function updated(model: Model, msg: Msg): [Model, Effect[]] {
