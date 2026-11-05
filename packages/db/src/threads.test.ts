@@ -65,7 +65,16 @@ function fresh() {
               }),
         ),
     );
+    return changeSetId;
   };
+  let decided = 0;
+  // A decision on a change set, as the change set engine records one.
+  const decide = (changeSetId: Ulid, kind: "approved" | "rejected", at: Instant) =>
+    db
+      .prepare(
+        "insert into decisions (id, workspace_id, change_set_id, seq, kind, via, review_link, by_name, hash, at) values (?, ?, ?, ?, ?, 'thread', null, '', '', ?)",
+      )
+      .run(id(500 + ++decided), workspaceId, changeSetId, decided, kind, at);
   const state = (now: Instant) => {
     const thread = threads.get(threadId, now);
     return [thread?.state, thread?.doneBy];
@@ -79,6 +88,7 @@ function fresh() {
     workspaceId,
     message,
     changeSet,
+    decide,
     state,
   };
 }
@@ -100,15 +110,64 @@ test("a new thread is working, in its workstream's latest version", () => {
   );
 });
 
-test("a change set applied in full makes it done; one partly applied doesn't", () => {
-  const { changeSet, state } = fresh();
-  changeSet([
+test("a change set applied in full makes it done; one partly applied doesn't, until it's dismissed", () => {
+  const { changeSet, decide, state } = fresh();
+  const partly = changeSet([
     { after: { points: 3 }, at: after(1000) },
     { after: { points: 5 }, at: null },
   ]);
+  decide(partly, "approved", after(500));
   assert.deepEqual(state(after(2000)), ["working", null]);
+  // The rest of the first still awaits review, so the second settles nothing.
   changeSet([{ after: { points: 3, updated: after(3000) }, at: after(3000) }]);
-  assert.deepEqual(state(after(4000)), ["done", "applied"]);
+  assert.deepEqual(state(after(4000)), ["working", null]);
+  decide(partly, "rejected", after(5000));
+  assert.deepEqual(state(after(6000)), ["done", "applied"]);
+});
+
+test("of two change sets, applying one leaves the thread working while the other awaits review", () => {
+  const pending = { after: { points: 3 }, at: null };
+  const apply = (db: ReturnType<typeof fresh>["db"], changeSetId: Ulid, at: Instant) =>
+    db.prepare("update mutations set status = 'applied', applied = ? where change_set_id = ?").run(
+      JSON.stringify({
+        item: { id: "jira:SYN-1", stableId: "10001" },
+        before: {},
+        after: { points: 3 },
+        at,
+      }),
+      changeSetId,
+    );
+  // Decided in either order: done only once both have applied.
+  for (const order of ["earlier first", "later first"]) {
+    const { db, changeSet, decide, state } = fresh();
+    const earlier = changeSet([pending]);
+    const later = changeSet([pending]);
+    const [first, second] = order === "earlier first" ? [earlier, later] : [later, earlier];
+    decide(first, "approved", after(1000));
+    apply(db, first, after(1500));
+    assert.deepEqual(state(after(2000)), ["working", null], order);
+    decide(second, "approved", after(3000));
+    // Decided and not yet applied: it is being applied.
+    assert.deepEqual(state(after(3200)), ["working", null], order);
+    apply(db, second, after(3500));
+    assert.deepEqual(state(after(4000)), ["done", "applied"], order);
+  }
+  // One approved, the other rejected, in either order: done.
+  for (const order of ["reject first", "approve first"]) {
+    const { db, changeSet, decide, state } = fresh();
+    const kept = changeSet([pending]);
+    const dropped = changeSet([pending]);
+    const approve = (at: number) => {
+      decide(kept, "approved", after(at));
+      apply(db, kept, after(at + 500));
+    };
+    if (order === "reject first") decide(dropped, "rejected", after(1000));
+    else approve(1000);
+    assert.deepEqual(state(after(2000)), ["working", null], order);
+    if (order === "reject first") approve(3000);
+    else decide(dropped, "rejected", after(3000));
+    assert.deepEqual(state(after(4000)), ["done", "applied"], order);
+  }
 });
 
 test("the user can mark it done, and a later message makes it working again", () => {

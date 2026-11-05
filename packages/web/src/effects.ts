@@ -95,9 +95,10 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
     case "showChangeSet": {
       const set = document.getElementById(changeSetAnchor(effect.changeSetId));
       if (!set) return;
-      set.scrollIntoView({ block: "start" });
-      // Readers start there too.
-      set.focus({ preventScroll: true });
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      set.scrollIntoView({ block: "start", behavior: effect.smooth && !still ? "smooth" : "auto" });
+      // Readers start there too, at its heading.
+      (set.querySelector<HTMLElement>(".change-set-head h2") ?? set).focus({ preventScroll: true });
       return;
     }
     case "focusComposer":

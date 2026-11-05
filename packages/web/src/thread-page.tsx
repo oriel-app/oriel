@@ -27,6 +27,7 @@ import { changeSetAnchor } from "./route.ts";
 import { planPrompt } from "./workstream.ts";
 import { sends } from "./settings.ts";
 import { Tooltip } from "./tooltip.tsx";
+import { ToReview } from "./to-review.tsx";
 import { SecondLook } from "./second-look.tsx";
 import { lines, type Piece } from "./text-diff.ts";
 import {
@@ -55,6 +56,7 @@ import {
   type RunView,
   type ThreadView,
   holding,
+  toReview,
   waitingOn,
 } from "./view.ts";
 
@@ -184,6 +186,12 @@ export function ThreadPage({ model, dispatch }: { model: ThreadModel; dispatch: 
             )}
           </ol>
           <Composer
+            above={
+              <ToReview
+                ids={view.changeSets.filter(toReview).map((set) => set.id)}
+                onShow={(changeSetId) => send({ type: "toReviewClicked", changeSetId })}
+              />
+            }
             draft={model.draft}
             sending={model.sending}
             running={view.running}
@@ -745,7 +753,7 @@ function ChangeSet(props: {
         tabIndex={-1}
       >
         <header class="change-set-head">
-          <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
+          <h2 tabIndex={-1}>{set.revertOf ? "Undo" : "Proposed change"}</h2>
           <span class="change-set-status" role="status">
             {statusNames[set.status]}
             {set.decision?.via === "review-link" && ` by ${set.decision.by} via review link`}
@@ -772,7 +780,7 @@ function ChangeSet(props: {
       tabIndex={-1}
     >
       <header class="change-set-head">
-        <h2>{set.revertOf ? "Undo" : "Proposed change"}</h2>
+        <h2 tabIndex={-1}>{set.revertOf ? "Undo" : "Proposed change"}</h2>
         {/* Announced as it moves, as when Approve and apply turns it to applying. */}
         <span class="change-set-status" role="status">
           {set.stalled ? waitingNames.stalled : statusNames[set.status]}
@@ -1217,6 +1225,9 @@ export function Diff(props: {
 }
 
 export function Composer(props: {
+  // What floats over it, such as the pill for a change set to review out
+  // of view.
+  above?: ComponentChildren;
   draft: string;
   sending: boolean;
   running: boolean;
@@ -1235,6 +1246,7 @@ export function Composer(props: {
         props.onSend();
       }}
     >
+      {props.above}
       <textarea
         rows={2}
         value={props.draft}

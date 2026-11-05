@@ -1,14 +1,17 @@
 // After an approval in a thread, as Settings' "After you approve" says: the
 // page stays, or once Oriel accepts the approval, before its apply ends, it
-// goes on to the next thread that needs the user (`nextNeedingYou`), with a
-// note in the bead that links back. With nothing else needing them, it
-// stays and says so. Only Approve on a thread's own page moves it: no other
+// goes on to what needs the user next: the next change set to review in the
+// same thread (`nextToReview`), or else the next thread that needs them
+// (`nextNeedingYou`), with a note in the bead that links back. With nothing
+// else needing them, this thread included, it stays and says so. Only Approve on a thread's own page moves it: no other
 // page sends one from the window. While the note shows, the approval's own
 // answer says how the apply ended: Applied, or the problem, which stays
 // until dismissed. Either way it reaches the thread left as it would have
 // anyway, in Needs you.
 import { errorOf, type Effect } from "./http.ts";
 import { nav, nextNeedingYou } from "./nav.ts";
+import { expected, goingTo, nextToReview } from "./thread.ts";
+import { holding, waitingOn, waitsOnUser } from "./view.ts";
 import type { Model, Msg } from "./root.ts";
 import type { Route } from "./route.ts";
 import { afterApprove } from "./settings.ts";
@@ -27,8 +30,12 @@ export type ApprovedNote = {
   changeSetId: string;
   // The thread it was approved in.
   left: { id: string; title: string | null };
-  // The thread the page went to, or null when nothing else needed the user.
+  // The thread the page went to, or null when it stayed.
   to: { id: string; title: string | null } | null;
+  // The change set in the same thread the page went to, next to review.
+  next: string | null;
+  // Whether nothing else needed the user, this thread included.
+  caughtUp: boolean;
   // Whether the page is there yet, and its heading has taken focus.
   arrived: boolean;
   focused: boolean;
@@ -107,18 +114,31 @@ export function sending(model: ApprovedModel, msg: Msg): ApprovedModel {
 export function approvedIn(before: Model, next: Model, changeSetId: string): [Model, Effect[]] {
   const left = before.thread;
   if (left === null || afterApprove(next.settings) === "stay") return [next, []];
-  const to = nextNeedingYou(nav(before).waiting, left.id);
+  // The thread as the decision leaves it: another change set in it to
+  // review comes first.
+  const ahead = expected(left);
+  const here = ahead && nextToReview(ahead, changeSetId);
+  const to = here === null ? nextNeedingYou(nav(before).waiting, left.id) : null;
+  const waits =
+    ahead !== null &&
+    waitsOnUser(
+      waitingOn({ ...ahead, held: holding(ahead.entries), windowChat: ahead.windowChat === true }),
+    );
   const note: ApprovedNote = {
     changeSetId,
     left: { id: left.id, title: left.view?.title ?? null },
     to: to && { id: to.id, title: to.title },
+    next: here,
+    caughtUp: here === null && to === null && !waits,
     arrived: false,
     focused: false,
     applied: false,
   };
+  const [thread, scrolling] =
+    here !== null && next.thread ? goingTo(next.thread, here) : [next.thread, []];
   const going: Effect[] = to ? [{ type: "navigate", route: { page: "thread", id: to.id } }] : [];
   const [approved, expiry] = restart({ ...next.approved, note, last: changeSetId }, expired);
-  return [{ ...next, approved }, [...going, ...expiry]];
+  return [{ ...next, thread, approved }, [...scrolling, ...going, ...expiry]];
 }
 
 // The approval's answer, once the apply ends, while its note shows: the
@@ -195,20 +215,24 @@ const expired = (countdown: number): Msg => ({
 const named = (title: string | null) => `“${title ?? "New thread"}”`;
 
 // What the note says: the change set approved, by its thread's name as its
-// chip names it, applying and then applied, and a link back; or that
-// nothing else needs the user. A screen reader hears where the page went,
-// too.
+// chip names it, applying and then applied, and a link back when the page
+// left the thread; or that nothing else needs the user. A screen reader
+// hears where the page went, too.
 export function approvedText(note: ApprovedNote): {
   said: string;
   heard: string | null;
   mark: NonNullable<UndoNote["mark"]>;
 } {
-  if (note.to === null) return { said: "All caught up.", heard: null, mark: "caught-up" };
+  if (note.caughtUp) return { said: "All caught up.", heard: null, mark: "caught-up" };
   if (note.applied)
     return { said: `Applied ${named(note.left.title)}.`, heard: null, mark: "applied" };
   return {
     said: `You approved ${named(note.left.title)}. Applying…`,
-    heard: `Now on ${named(note.to.title)}, the next thread that needs you.`,
+    heard: note.to
+      ? `Now on ${named(note.to.title)}, the next thread that needs you.`
+      : note.next !== null
+        ? "Now on the next change set to review in this thread."
+        : null,
     mark: "applying",
   };
 }

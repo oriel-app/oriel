@@ -951,6 +951,21 @@ const toReject = await post<{ url: string }>(
   {},
 );
 
+// Two change sets awaiting review in one thread: opened at the later, the
+// earlier is out of view above, and a pill says so (OA-260).
+const twoToReview = await (async () => {
+  const threadId = await ask("Plan gift cards");
+  for (const text of [
+    "What's in here?",
+    "Which stories here still need estimates?",
+    'And plan only "Pay with a gift card" too.',
+  ]) {
+    await post(`/api/threads/${threadId}/messages`, { text });
+    await server.app.settled();
+  }
+  return threadId;
+})();
+
 // Without credentials: change sets can be reviewed and rejected only.
 const readOnlyWorkstream = await post<{ id: string }>("/api/workstreams", checkout, readOnly);
 const readOnlyThread = await ask("Which stories need estimates?", readOnly, readOnlyWorkstream.id);
@@ -3058,6 +3073,27 @@ const scenes: Scene[] = [
     name: "thread-revised",
     path: `/threads/${revised}`,
     act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
+  },
+  {
+    // Two change sets awaiting review: the earlier, out of view, gets the pill.
+    name: "thread-to-review",
+    path: `/threads/${twoToReview}`,
+    window: true,
+    act: (page) => page.locator(".to-review-pill").waitFor(),
+  },
+  {
+    // The pill clicked: the page goes to the earlier, its heading focused.
+    name: "thread-to-review-shown",
+    path: `/threads/${twoToReview}`,
+    window: true,
+    act: async (page) => {
+      await page.locator(".to-review-pill").click();
+      // Glided there: its heading near the top of the window.
+      const heading = page.locator(".change-set-head h2:focus");
+      await heading.waitFor();
+      const top = async () => (await heading.boundingBox())?.y ?? -1;
+      for (let y = await top(); y < 0 || y > 400; y = await top()) await page.waitForTimeout(50);
+    },
   },
   {
     // Rejected from a review link with a reason, held for the person.

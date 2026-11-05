@@ -10,7 +10,8 @@ import { approvedText, approvedUndos } from "../src/approved.ts";
 import type { Effect, Replied } from "../src/http.ts";
 import { nav, nextNeedingYou } from "../src/nav.ts";
 import { init, type Model, type Msg, update } from "../src/root.ts";
-import type { AfterApprove, ThreadSummaryView } from "../src/view.ts";
+import { nextToReview } from "../src/thread.ts";
+import type { AfterApprove, ChangeSetView, ChatEntry, ThreadSummaryView } from "../src/view.ts";
 import {
   changeSetView,
   diffView,
@@ -25,6 +26,7 @@ const second = "01JBZ0000000000000000000T2";
 const third = "01JBZ0000000000000000000T3";
 const workstreamId = "01JBZ0000000000000000000G1";
 const setId = "01JBZ0000000000000000000C1";
+const otherSet = "01JBZ0000000000000000000C2";
 
 const summary = (
   threadId: string,
@@ -75,20 +77,35 @@ const replied = (tag: Replied["tag"], body: unknown, ok = true): Msg => ({
 const step = (model: Model, msg: Msg): [Model, Effect[]] => update(model, msg);
 const after = (model: Model, msg: Msg): Model => step(model, msg)[0];
 
-const view = (threadId: string, title: string) =>
+const view = (
+  threadId: string,
+  title: string,
+  changeSets: ChangeSetView[] = [changeSetView({ id: setId, status: "open" })],
+  entries: ChatEntry[] = [],
+) =>
   threadView({
     id: threadId,
     title,
     workstream: { id: workstreamId, name: "Launch", version: 1 },
-    changeSets: threadId === id ? [changeSetView({ id: setId, status: "open" })] : [],
+    changeSets: threadId === id ? changeSets : [],
+    entries,
   });
 
 // On the thread's page, its change set diffed, with the setting picked and
-// the sidebar's lists: the page's thread and `others` in Needs you.
-function onPage(setting: AfterApprove, others: ThreadSummaryView[]): Model {
+// the sidebar's lists: the page's thread and `others` in Needs you. The
+// thread holds `changeSets` and `entries` when given.
+function onPage(
+  setting: AfterApprove,
+  others: ThreadSummaryView[],
+  changeSets?: ChangeSetView[],
+  entries?: ChatEntry[],
+): Model {
   let model = init({ page: "thread", id })[0];
   model = after(model, replied({ kind: "settings" }, settingsView({ afterApprove: setting })));
-  model = after(model, replied({ kind: "thread", id }, view(id, "Estimate the launch")));
+  model = after(
+    model,
+    replied({ kind: "thread", id }, view(id, "Estimate the launch", changeSets, entries)),
+  );
   model = after(
     model,
     replied({ kind: "diff", changeSetId: setId }, diffView({ changeSetId: setId })),
@@ -231,6 +248,8 @@ test("the note says it in words and the sidebar's list is what it reads", () => 
       changeSetId: setId,
       left: { id, title: null },
       to: { id: second, title: null },
+      next: null,
+      caughtUp: false,
       arrived: false,
       focused: false,
       applied: false,
@@ -338,4 +357,83 @@ test("caught up, the note stays All caught up once applied, and a stop still bec
     undos(after(stayed, stopped)).problem?.said,
     "Couldn't apply “Estimate the launch”. It stopped before all of it applied.",
   );
+});
+
+const scrolls = (effects: Effect[]) =>
+  effects.flatMap((effect) => (effect.type === "showChangeSet" ? [effect] : []));
+const awaiting = (changeSetId: string) => changeSetView({ id: changeSetId, status: "open" });
+const applied = (changeSetId: string) =>
+  changeSetView({ id: changeSetId, status: "applied", nextSteps: [{ kind: "revert" }] });
+
+test("next to review in a thread is the nearest after the one approved, or else before it", () => {
+  const third = "01JBZ0000000000000000000C3";
+  const sets = (...each: ChangeSetView[]) => view(id, "T", each);
+  assert.equal(nextToReview(sets(awaiting(setId), awaiting(otherSet)), setId), otherSet);
+  assert.equal(nextToReview(sets(awaiting(otherSet), awaiting(setId)), setId), otherSet);
+  assert.equal(
+    nextToReview(sets(awaiting(otherSet), awaiting(setId), awaiting(third)), setId),
+    third,
+  );
+  // Applied ones offer only a revert, which isn't a review.
+  assert.equal(nextToReview(sets(applied(otherSet), awaiting(setId)), setId), null);
+});
+
+test("going on, another change set to review in the same thread comes first: the page glides to it and stays", () => {
+  for (const sets of [
+    [awaiting(otherSet), awaiting(setId)],
+    [awaiting(setId), awaiting(otherSet)],
+  ]) {
+    const [moved, effects] = step(approve(onPage("next", needing, sets)), applying);
+    assert.deepEqual(navigations(effects), []);
+    assert.deepEqual(scrolls(effects), [
+      { type: "showChangeSet", changeSetId: otherSet, smooth: true },
+    ]);
+    // What arrives meanwhile doesn't pull the page back down to the latest.
+    assert.equal(moved.thread?.atLatest, false);
+    const notes = undos(moved).notes;
+    assert.deepEqual(
+      notes.map((note) => [note.said, note.link, note.heard]),
+      [
+        [
+          "You approved “Estimate the launch”. Applying…",
+          undefined,
+          "Now on the next change set to review in this thread.",
+        ],
+      ],
+    );
+    assert.deepEqual(said(after(moved, answer)), ["Applied “Estimate the launch”."]);
+  }
+});
+
+test("going on, with no change set left to review here, the page goes to the next thread", () => {
+  const [, effects] = step(
+    approve(onPage("next", needing, [applied(otherSet), awaiting(setId)])),
+    applying,
+  );
+  assert.deepEqual(scrolls(effects), []);
+  assert.deepEqual(navigations(effects), [{ page: "thread", id: third }]);
+});
+
+test("staying, the page doesn't move to the other change set", () => {
+  const [stayed, effects] = step(
+    approve(onPage("stay", [], [awaiting(otherSet), awaiting(setId)])),
+    applying,
+  );
+  assert.deepEqual([scrolls(effects), navigations(effects), said(stayed)], [[], [], []]);
+});
+
+test("with this thread still waiting on the user, nothing is all caught up", () => {
+  const held: ChatEntry = {
+    kind: "held",
+    seq: 3,
+    at: "2026-11-03T12:00:00.000Z",
+    from: { kind: "review-link", by: "Amara", changeSetId: otherSet },
+    text: "Not this sprint.",
+    outcome: null,
+  };
+  const [stayed, effects] = step(approve(onPage("next", [], undefined, [held])), applying);
+  assert.deepEqual([scrolls(effects), navigations(effects)], [[], []]);
+  assert.deepEqual(marks(stayed), [[`approved-${setId}`, "applying"]]);
+  assert.deepEqual(said(stayed), ["You approved “Estimate the launch”. Applying…"]);
+  assert.equal(undos(stayed).notes[0]?.link, undefined);
 });

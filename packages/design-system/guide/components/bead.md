@@ -113,7 +113,7 @@ Every colour on the ink is the bead's own, derived on `html` from the theme: `--
 
 ### An approval
 
-With After you approve set to go on, approving moves the page to the next thread that needs the person, and the bead says what happened, with Back. The mark comes from the approval's own answer, never from the words (`approvedText` in `packages/web/src/approved.ts`).
+With After you approve set to go on, approving moves the page to the next change set to review in the same thread, or, with none left there, to the next thread that needs the person, and the bead says what happened, with Back when the page left the thread. All caught up only when nothing needs them, that thread included. The mark comes from the approval's own answer, never from the words (`approvedText` in `packages/web/src/approved.ts`).
 
 ```html specimen id=applying title="Applying: a breathing dot, and Back" height=120
 <div class="shell" style="--sidebar: 0rem">

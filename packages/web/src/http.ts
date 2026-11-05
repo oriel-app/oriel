@@ -141,8 +141,10 @@ export type Effect =
   | { type: "navigate"; route: Route; replace?: true; stay?: true }
   // Scrolls a thread's page to its latest entry.
   | { type: "showLatest" }
-  // Scrolls a thread's page to one of its change sets, at the top.
-  | { type: "showChangeSet"; changeSetId: string }
+  // Scrolls a thread's page to one of its change sets, at the top, and
+  // puts focus on its heading. `smooth`: it glides there, unless the person
+  // asked for reduced motion.
+  | { type: "showChangeSet"; changeSetId: string; smooth?: true }
   // Puts the cursor in a thread's message box, as after Reject, so what
   // was wrong is the user's next message.
   | { type: "focusComposer" }

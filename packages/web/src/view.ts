@@ -280,6 +280,11 @@ export const holding = (entries: readonly ChatEntry[]): boolean =>
     (entry) => (entry.kind === "held" || entry.kind === "draft") && entry.outcome === null,
   );
 
+// Whether a change set awaits review: it offers a step besides a revert,
+// which any applied one offers.
+export const toReview = (set: { nextSteps: readonly { kind: string }[] }): boolean =>
+  set.nextSteps.some((step) => step.kind !== "revert");
+
 // A window chat waits on the user only for a held message or a change set:
 // an answer to a question asked from the overview isn't the user's turn
 // (decision 0027), or every question would add itself to Needs you.
@@ -299,9 +304,7 @@ export function waitingOn(thread: {
   if (thread.running) return "agent";
   if (thread.held) return "held";
   if (thread.drafted) return "draft";
-  const open = (set: (typeof thread.changeSets)[number]) =>
-    set.nextSteps.some((step) => step.kind !== "revert");
-  if (thread.changeSets.some(open)) return "review";
+  if (thread.changeSets.some(toReview)) return "review";
   const applying = thread.changeSets.filter((set) => set.status === "applying");
   if (applying.some((set) => set.stalled)) return "stalled";
   if (applying.length > 0) return "apply";
