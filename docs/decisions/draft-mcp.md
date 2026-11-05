@@ -1,6 +1,6 @@
 # Draft: Oriel's MCP door, what outside tools may do, and who they are
 
-Draft 2026-11-06, for the maintainer to approve, amend or turn down (OA-75, with the approach OA-71, OA-72 and OA-73 follow). Amends 0024. The spike is branch `mcp-spike`; `node scripts/mcp-try.ts --check` runs it.
+Draft 2026-11-06, for the maintainer to approve, amend or turn down (OA-75, with the approach OA-71, OA-72 and OA-73 follow). Amends 0024. The spike is branch `mcp-door`; `node scripts/mcp-try.ts --check` runs it.
 
 Adds: none
 
