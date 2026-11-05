@@ -332,9 +332,13 @@ function edit(
   if ("read" in change) {
     if (!change.read) return placed(others);
     if (tab) return placed(draft.tabs);
-    // Oriel's guess, under the first header row it finds one under, as a
-    // title row may sit above the table.
-    const guessed = table.rows.slice(0, 10).flatMap((_, at): DraftedTab[] => {
+    // Oriel's guess, under the first header row it finds one under: the
+    // first row, or one after a blank row, as a title may sit above the
+    // table; never a row of the table itself.
+    const blank = (row: readonly (string | null)[] | undefined) =>
+      row?.every((cell) => text(cell) === "") ?? false;
+    const guessed = table.rows.slice(0, 10).flatMap((row, at): DraftedTab[] => {
+      if (at > 0 && (blank(row) || !blank(table.rows[at - 1]))) return [];
       const [under] = (guess([{ ...table, rows: table.rows.slice(at) }])?.["tabs"] ??
         []) as DraftedTab[];
       return under ? [{ ...under, header: at + 1 }] : [];

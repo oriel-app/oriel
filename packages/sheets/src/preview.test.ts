@@ -314,6 +314,9 @@ test("the person edits a draft a change at a time: a field's column, a tab read 
   assert.deepEqual(read, {
     tabs: [{ at: titled.at, header: 3, end: "blank", hidden: false, key: "A", title: "A" }],
   });
+  // Never a row of the table itself, even when no column is unique.
+  const same = { ...titled, rows: [["ID", "Feature"], ...Array(3).fill(["P-1", "Search"])] };
+  assert.ok("problem" in sheetsReview.edit({ tabs: [] }, { table: titled.at, read: true }, [same]));
   // A tab not read, read, is Oriel's guess at it; left out, it isn't read.
   const raidAt = `${raid}/4100`;
   const both = edited(draft, { table: raidAt, read: true });
