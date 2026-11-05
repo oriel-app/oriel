@@ -4,3 +4,9 @@
 {"round":"01M6N4D7X0ZX7PN26AX4B6P8ET","label":"F2: bars count rows without value, train","split":"train","trials":32,"usd":0.8756224000000001}
 {"round":"01M6N4HD25TBQTR90206KEW888","label":"B2: starting state (F1), train","split":"train","trials":32,"usd":1.0001419,"estimated":true}
 {"round":"01M6N4HD25TBQTR90206KEW888","label":"B2: starting state (F1), train","split":"train","trials":32,"usd":0.9683082}
+{"round":"01M6N4MRZNN558KV4QVMRQZFYT","label":"T0a: main's agent text, test","split":"test","trials":24,"usd":0.277135}
+{"round":"01M6N4NKJYN86TG7CCH1XEFWDF","label":"T0b: main's agent text, test","split":"test","trials":24,"usd":0.24378060000000001}
+{"round":"01M6N4PP4GCRF4ZVYWZ3XRP894","label":"Ft1: final state (F1+F2), test","split":"test","trials":24,"usd":0.742148,"estimated":true}
+{"round":"01M6N4PP4GCRF4ZVYWZ3XRP894","label":"Ft1: final state (F1+F2), test","split":"test","trials":24,"usd":0.2412006}
+{"round":"01M6N4QHFNKE4DVTFMKWA2KKW7","label":"Ft2: final state (F1+F2), test","split":"test","trials":24,"usd":0.64195852,"estimated":true}
+{"round":"01M6N4QHFNKE4DVTFMKWA2KKW7","label":"Ft2: final state (F1+F2), test","split":"test","trials":24,"usd":0.2416366}

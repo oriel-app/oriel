@@ -76,7 +76,25 @@ I read train transcripts only. Test runs once per arm, at the end.
    - The one miss, read from `F2`'s train transcript: `chart-bugs-in-progress` asked for `form: "rows"` with `columns`, `sort` and `caption`; Oriel showed rows and named the three keys as ignored, and the agent answered from it. F2 changes only bars with no `value`. The same miss was seen on #181's branch ("asked for rows, not a table", `show-from-2.md`).
    - `F2` cost $0.88, not $1.12, and the test step costs less without `Fall`, so the frozen plan's `B2` fits the cap again. `B2` runs the starting state (`68f5a19a`'s core), and `F2` is judged once more, against `B1+B2`, by the same rule. That verdict is final: no more rounds of either arm. Running `B2` after seeing a near miss is optional stopping on the baseline's side; the report says so.
 
+3. **The test step's ledger lines for `T0a` and `T0b` were rebuilt.** A `git checkout -- packages` between arms reverted them before they were committed. Each round's own `summary.json` holds its trials and spend, and the two lines were rebuilt from those, without their pre-round estimates. The cap check was unaffected: both rounds ran before it was lost.
+4. **Attributing the test step's two misses, read after the verdict and acted on in no way.** Both `table-workstreams-quiet` misses were the turn's first `show()` call, asking for a table with a column `id` that the overview doesn't declare. That's `buildBlock`'s field check, which this branch doesn't change. Before that call the agent had read no text this branch changes: the module, the system prompt and `show()`'s declaration are main's. So the misses are draws of main's behaviour. The verdict stands as the rule gives it.
+
 ## Log
 
-| round | state | trials | verdict | cost |
-| ----- | ----- | ------ | ------- | ---- |
+| round                                                                  | state                           | trials | verdict                                                                                                          | cost  |
+| ---------------------------------------------------------------------- | ------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- | ----- |
+| `B1` `01M6N46Q0AY0NEWQ3Q5H3EY0D1`                                      | the starting state (F1)         | 32     | baseline: target 3/8, blocks 24/24                                                                               | $1.12 |
+| `F2` `01M6N4D7X0ZX7PN26AX4B6P8ET`                                      | F2                              | 32     | against `B1`: target 8/8, blocks 23/24, p = 0.077, **revert** (deviation 2)                                      | $0.88 |
+| `B2` `01M6N4HD25TBQTR90206KEW888`                                      | the starting state (F1)         | 32     | baseline: target 2/8, blocks 24/24                                                                               | $0.97 |
+| (`F2`)                                                                 | F2                              |        | against `B1+B2`: target 5/16 → 8/8, blocks 48/48 → 23/24 (p(worse) 0.33), all 53/64 → 31/32, p = 0.019, **keep** |       |
+| `T0a` `01M6N4MRZNN558KV4QVMRQZFYT`, `T0b` `01M6N4NKJYN86TG7CCH1XEFWDF` | main's agent text, test         | 48     | test baseline: 48/48                                                                                             | $0.52 |
+| `Ft1` `01M6N4PP4GCRF4ZVYWZ3XRP894`, `Ft2` `01M6N4QHFNKE4DVTFMKWA2KKW7` | the final state (F1 + F2), test | 48     | against `T0a+T0b`, `--trim`: 46/48, bound −11.3 points, overview p(worse) 0.24, **misses the bar** (deviation 4) | $0.48 |
+
+## Result
+
+- **Kept on train: F2.** Bars with no `value` count the rows that share a label, as a series and a pivot already do. No module or prompt bytes: `show()`'s declaration is main's, and the help changed is a refusal's text.
+- **The target, train:** `chart-in-progress-by-person` 5/16 (31%) on the starting state → 8/8 on F2. Every starting-state miss was the one path F2 opens: bars from `history()` with no `value`, refused, then a pivot.
+- **The done bar:** 8 of 8 on `F2`; the re-record's draw is in the PR.
+- **Test:** missed the trim bar, 48/48 → 46/48. Both misses were in `table-workstreams-quiet`, the first `show()` of their turn, refused by code this branch doesn't change, before any text it changes was read (deviation 4). The method can't tell a draw from a drop at 48 trials an arm with a baseline of 48/48: one miss bounds it near −6, and two near −11.
+- **Spend:** $3.97 of the $6 cap, in 7 rounds and 200 trials. Re-recording comes on top.
+- **What the method can't see:** F2's keep came after `B2` was restored on seeing a near miss (deviation 2), which raises the chance of a false keep above 5%. The target's own move, 5/16 → 8/8, is p ≈ 0.001 alone. A drop confined to one or two cases, below the margin, can be kept.
