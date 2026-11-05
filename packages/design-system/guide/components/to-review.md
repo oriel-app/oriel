@@ -4,14 +4,14 @@ status: stable
 group: Thread
 order: 67
 classes: to-review, to-review-pill
-summary: A small pill floating over a thread's composer while a change set awaiting review is above or below what's on screen; it goes to the nearest one.
+summary: A small pill floating over a thread's composer while a change set awaiting review is mostly above or below what's on screen; it goes to the nearest one.
 ---
 
 # Change set to review, out of view
 
 ## What it is
 
-A thread can hold several change sets, and one awaiting review can sit far above or below what's on screen. The pill says so: "1 change set to review above", or below, floating just over the thread's composer. A click glides the page to the nearest one and puts focus on its heading. It goes as soon as none is out of view (OA-260).
+A thread can hold several change sets, and one awaiting review can sit far above or below what's on screen. While one is mostly out of view (less than half of it shows, or less than half the screen for one taller than it, and what's behind the composer doesn't show), the pill says so: "1 change set to review above", or below, floating just over the thread's composer. A click glides the page to the nearest one and puts focus on its heading. It goes as soon as none is mostly out of view (OA-260).
 
 It's drawn by `ToReview` in `packages/web/src/to-review.tsx`. Where each change set is comes from an IntersectionObserver over the change sets awaiting review (`toReview` in `packages/web/src/view.ts`), never from scroll events.
 
