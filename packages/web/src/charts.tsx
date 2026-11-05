@@ -4,29 +4,61 @@
 // places them. Thin marks in the theme's tokens, one series colour, hairline
 // axes; a dashed line is a projection (the fitted line and the forecast),
 // never a grid. Each mark carries its value in a tooltip, and the caption
-// under the block says how it was computed. `compact` is a pin's: smaller,
-// with fewer labels, the same marks.
+// under the block says how it was computed. A drawing is hidden from a screen
+// reader, which reads a visually hidden table of the same values instead
+// (chart-values.ts). `compact` is a pin's: smaller, with fewer labels, the
+// same marks.
 import { useContext, useState } from "preact/hooks";
 import type { ChartBlock } from "@oriel/core/block-charts";
+import {
+  atLeast,
+  dateLabel,
+  fitLine,
+  forecastRange,
+  laneText,
+  laneValues,
+  named,
+  number,
+  seriesValues,
+  spreadValues,
+  timelineValues,
+  type ValueTable,
+} from "./chart-values.ts";
 import { ItemLinksContext } from "./parts.tsx";
 import type { BlockView } from "./view.ts";
 
 type Of<F extends ChartBlock["form"]> = Extract<BlockView, { form: F }>;
 
-// A label as every block shows it: an item's name when it is an item's ID.
-export const named = (block: { names?: Readonly<Record<string, string>> }, label: string) =>
-  (block.names && Object.hasOwn(block.names, label) ? block.names[label] : undefined) ?? label;
-// The mark every block puts before a figure that is only a lower bound.
-export const atLeast = (bound: unknown) => (bound ? "≥ " : "");
-
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const day = 86_400_000;
-const dateLabel = (at: number) => {
-  const date = new Date(at);
-  return `${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
-};
-const number = (value: number) =>
-  (Math.round(value * 10) / 10).toLocaleString("en-US", { maximumFractionDigits: 1 });
+
+// What a screen reader reads in a drawing's place: its values as a table,
+// out of sight.
+function Values({ table }: { table: ValueTable }) {
+  return (
+    <table class="visually-hidden">
+      {table.caption && <caption>{table.caption}</caption>}
+      <thead>
+        <tr>
+          {table.head.map((name, j) => (
+            <th key={j} scope="col">
+              {name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {table.rows.map(([name, ...cells], i) => (
+          <tr key={i}>
+            <th scope="row">{name}</th>
+            {cells.map((cell, j) => (
+              <td key={j}>{cell}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 // Round ticks from zero up past `top`: 1, 2 or 5 times a power of ten.
 function ticks(top: number, most = 4): number[] {
@@ -87,113 +119,111 @@ export function SeriesChart({ chart, compact }: { chart: Of<"series">; compact?:
   const y = (value: number) => pad.top + (1 - value / yMax) * (height - pad.top - pad.bottom);
   const binWidth = step === "day" ? day : 7 * day;
   const thick = Math.min(24, Math.max(2, (x(first + binWidth) - x(first)) * 0.7));
-  // The fitted line, drawn only where it is above zero.
-  const fit = (() => {
-    if (!series.fit) return null;
-    const { from, to } = series.fit.line;
-    let x1 = Date.parse(from.at);
-    let y1 = from.value;
-    const x2 = Date.parse(to.at);
-    const y2 = to.value;
-    if (y1 < 0 && y2 > 0) {
-      x1 += ((0 - y1) / (y2 - y1)) * (x2 - x1);
-      y1 = 0;
-    }
-    return { x1, y1, x2, y2 };
-  })();
+  const fit = fitLine(series);
   const last = points.at(-1);
   // The value now: the running total as the read was answered.
   const reached = last?.value ?? 0;
+  const values = seriesValues(chart);
+  // A point's tooltip: its row in the table.
+  const tip = (i: number) => values.rows[i]?.join(": ");
   return (
-    <svg class="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={chart.label}>
-      {!compact &&
-        yTicks.map((tick) => (
-          <g key={tick} class="chart-grid">
-            <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} />
-            <text x={pad.left - 6} y={y(tick)} dy="0.32em" text-anchor="end">
-              {number(tick)}
+    <>
+      <svg class="chart" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+        {!compact &&
+          yTicks.map((tick) => (
+            <g key={tick} class="chart-grid">
+              <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} />
+              <text x={pad.left - 6} y={y(tick)} dy="0.32em" text-anchor="end">
+                {number(tick)}
+              </text>
+            </g>
+          ))}
+        <line class="chart-axis" x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} />
+        {dateTicks(first, end, compact ? 3 : 6).map((at) => (
+          <text key={at} class="chart-tick" x={x(at)} y={height - 4} text-anchor="middle">
+            {dateLabel(at)}
+          </text>
+        ))}
+        {running && series.total !== null && (
+          <g class="chart-total">
+            <line x1={pad.left} x2={width - pad.right} y1={y(series.total)} y2={y(series.total)} />
+            <text x={width - pad.right + 4} y={y(series.total)} dy="0.32em">
+              {number(series.total)} in all
             </text>
           </g>
-        ))}
-      <line class="chart-axis" x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} />
-      {dateTicks(first, end, compact ? 3 : 6).map((at) => (
-        <text key={at} class="chart-tick" x={x(at)} y={height - 4} text-anchor="middle">
-          {dateLabel(at)}
-        </text>
-      ))}
-      {running && series.total !== null && (
-        <g class="chart-total">
-          <line x1={pad.left} x2={width - pad.right} y1={y(series.total)} y2={y(series.total)} />
-          <text x={width - pad.right + 4} y={y(series.total)} dy="0.32em">
-            {number(series.total)} in all
-          </text>
+        )}
+        {running ? (
+          <>
+            <polyline
+              class="chart-line"
+              points={points.map((p) => `${x(p.at)},${y(p.value)}`).join(" ")}
+            />
+            {points.map((p, i) => (
+              <circle key={p.at} class="chart-hit" cx={x(p.at)} cy={y(p.value)} r={8}>
+                <title>{tip(i)}</title>
+              </circle>
+            ))}
+            {last && <circle class="chart-dot" cx={x(last.at)} cy={y(last.value)} r={4} />}
+          </>
+        ) : (
+          points.map((p, i) => (
+            <path
+              key={p.at}
+              class="chart-column"
+              d={column(x(p.at + binWidth / 2) - thick / 2, y(p.value), thick, y(0))}
+            >
+              <title>{tip(i)}</title>
+            </path>
+          ))
+        )}
+        {fit && (
+          <line class="chart-fit" x1={x(fit.x1)} y1={y(fit.y1)} x2={x(fit.x2)} y2={y(fit.y2)}>
+            <title>{`Least-squares line, R² ${series.fit?.r2.toFixed(2)}`}</title>
+          </line>
+        )}
+        {forecast && series.total !== null && (
+          <g class="chart-forecast">
+            <rect
+              class="chart-range"
+              x={x(Date.parse(forecast.early))}
+              width={Math.max(
+                x(Date.parse(forecast.late ?? forecast.at)) - x(Date.parse(forecast.early)),
+                2,
+              )}
+              y={y(series.total) - 5}
+              height={10}
+              rx={3}
+            >
+              <title>{forecastRange(forecast)}</title>
+            </rect>
+            <line
+              x1={x(asOf)}
+              y1={y(reached)}
+              x2={x(Date.parse(forecast.at))}
+              y2={y(series.total)}
+            />
+            <circle class="chart-dot" cx={x(Date.parse(forecast.at))} cy={y(series.total)} r={4} />
+            <text x={x(Date.parse(forecast.at))} y={y(series.total) - 10} text-anchor="middle">
+              {dateLabel(Date.parse(forecast.at))}
+            </text>
+          </g>
+        )}
+        <g class="chart-today">
+          <line x1={x(asOf)} x2={x(asOf)} y1={pad.top - 6} y2={y(0)} />
+          {!compact && (
+            <text x={x(asOf)} y={pad.top - 8} text-anchor="middle">
+              today
+            </text>
+          )}
         </g>
-      )}
-      {running ? (
-        <>
-          <polyline
-            class="chart-line"
-            points={points.map((p) => `${x(p.at)},${y(p.value)}`).join(" ")}
-          />
-          {points.map((p) => (
-            <circle key={p.at} class="chart-hit" cx={x(p.at)} cy={y(p.value)} r={8}>
-              <title>{`Week of ${dateLabel(p.at)}: ${number(p.value)}`}</title>
-            </circle>
-          ))}
-          {last && <circle class="chart-dot" cx={x(last.at)} cy={y(last.value)} r={4} />}
-        </>
-      ) : (
-        points.map((p) => (
-          <path
-            key={p.at}
-            class="chart-column"
-            d={column(x(p.at + binWidth / 2) - thick / 2, y(p.value), thick, y(0))}
-          >
-            <title>{`${step === "day" ? "" : "Week of "}${dateLabel(p.at)}: ${number(p.value)}`}</title>
-          </path>
-        ))
-      )}
-      {fit && (
-        <line class="chart-fit" x1={x(fit.x1)} y1={y(fit.y1)} x2={x(fit.x2)} y2={y(fit.y2)}>
-          <title>{`Least-squares line, R² ${series.fit?.r2.toFixed(2)}`}</title>
-        </line>
-      )}
-      {forecast && series.total !== null && (
-        <g class="chart-forecast">
-          <rect
-            class="chart-range"
-            x={x(Date.parse(forecast.early))}
-            width={Math.max(
-              x(Date.parse(forecast.late ?? forecast.at)) - x(Date.parse(forecast.early)),
-              2,
-            )}
-            y={y(series.total) - 5}
-            height={10}
-            rx={3}
-          >
-            <title>{`80% range: ${dateLabel(Date.parse(forecast.early))} to ${forecast.late ? dateLabel(Date.parse(forecast.late)) : "later than six months"}`}</title>
-          </rect>
-          <line x1={x(asOf)} y1={y(reached)} x2={x(Date.parse(forecast.at))} y2={y(series.total)} />
-          <circle class="chart-dot" cx={x(Date.parse(forecast.at))} cy={y(series.total)} r={4} />
-          <text x={x(Date.parse(forecast.at))} y={y(series.total) - 10} text-anchor="middle">
-            {dateLabel(Date.parse(forecast.at))}
-          </text>
-        </g>
-      )}
-      <g class="chart-today">
-        <line x1={x(asOf)} x2={x(asOf)} y1={pad.top - 6} y2={y(0)} />
-        {!compact && (
-          <text x={x(asOf)} y={pad.top - 8} text-anchor="middle">
-            today
+        {last && (
+          <text class="chart-end" x={x(last.at) + 8} y={y(last.value)} dy="0.32em">
+            {running ? number(reached) : ""}
           </text>
         )}
-      </g>
-      {last && (
-        <text class="chart-end" x={x(last.at) + 8} y={y(last.value)} dy="0.32em">
-          {running ? number(reached) : ""}
-        </text>
-      )}
-    </svg>
+      </svg>
+      <Values table={values} />
+    </>
   );
 }
 
@@ -228,17 +258,8 @@ export function TimelineChart({ chart, compact }: { chart: Of<"timeline">; compa
         const end = lane.end ? Date.parse(lane.end) : asOf;
         const due = lane.due ? Date.parse(lane.due) : null;
         const state = lane.end ? "ended" : "open";
-        const what = [
-          lane.earlier ? `started by ${dateLabel(start)}` : `started ${dateLabel(start)}`,
-          lane.end ? `ended ${dateLabel(end)}` : "still going",
-          due === null ? null : `due ${dateLabel(due)}`,
-          lane.late === null ? null : `${lane.late} days late`,
-          lane.count === null ? null : `${lane.ended} of ${lane.count} ended`,
-        ]
-          .filter(Boolean)
-          .join(", ");
         return (
-          <div key={i} class="timeline-row">
+          <div key={i} class="timeline-row" aria-hidden="true">
             <span class="timeline-label">
               <span class="timeline-name">{named(chart, lane.label)}</span>
               {lane.count !== null && (
@@ -254,7 +275,7 @@ export function TimelineChart({ chart, compact }: { chart: Of<"timeline">; compa
                 data-state={state}
                 data-earlier={lane.earlier || undefined}
                 style={{ left: at(start), width: `calc(${at(end)} - ${at(start)})` }}
-                title={what}
+                title={laneText(laneValues(lane))}
               />
               {due !== null && lane.late !== null && (
                 <span
@@ -267,6 +288,7 @@ export function TimelineChart({ chart, compact }: { chart: Of<"timeline">; compa
           </div>
         );
       })}
+      <Values table={timelineValues(chart, lanes)} />
     </div>
   );
 }
@@ -288,62 +310,72 @@ export function SpreadChart({ chart, compact }: { chart: Of<"spread">; compact?:
     { value: spread.median, label: `median ${bound}${number(spread.median)}` },
     { value: spread.p90, label: `p90 ${bound}${number(spread.p90)}` },
   ];
+  const values = spreadValues(chart);
   return (
-    <svg class="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={chart.label}>
-      {!compact &&
-        yTicks.map((tick) => (
-          <g key={tick} class="chart-grid">
-            <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} />
-            <text x={pad.left - 6} y={y(tick)} dy="0.32em" text-anchor="end">
-              {number(tick)}
-            </text>
-          </g>
+    <>
+      <svg class="chart" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+        {!compact &&
+          yTicks.map((tick) => (
+            <g key={tick} class="chart-grid">
+              <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} />
+              <text x={pad.left - 6} y={y(tick)} dy="0.32em" text-anchor="end">
+                {number(tick)}
+              </text>
+            </g>
+          ))}
+        <line class="chart-axis" x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} />
+        {spread.bins.map((bin, i) => {
+          const left = x(bin.from) + 1;
+          const w = Math.max(x(bin.to) - x(bin.from) - 2, 1);
+          const known = bin.count - bin.atLeast;
+          return (
+            <g key={bin.from}>
+              <path class="chart-column" d={column(left, y(bin.count), w, y(0))}>
+                <title>{values.rows[i]?.join(": ")}</title>
+              </path>
+              {bin.atLeast > 0 && (
+                <path class="chart-bound" d={column(left, y(bin.count), w, y(known))} />
+              )}
+            </g>
+          );
+        })}
+        {(compact
+          ? spread.bins.filter((_, i) => i === 0 || i === spread.bins.length - 1)
+          : spread.bins
+        ).map((bin) => (
+          <text
+            key={bin.from}
+            class="chart-tick"
+            x={x(bin.from)}
+            y={height - 4}
+            text-anchor="middle"
+          >
+            {number(bin.from)}
+          </text>
         ))}
-      <line class="chart-axis" x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} />
-      {spread.bins.map((bin) => {
-        const left = x(bin.from) + 1;
-        const w = Math.max(x(bin.to) - x(bin.from) - 2, 1);
-        const known = bin.count - bin.atLeast;
-        return (
-          <g key={bin.from}>
-            <path class="chart-column" d={column(left, y(bin.count), w, y(0))}>
-              <title>{`${number(bin.from)}–${number(bin.to)}: ${bin.count}${bin.atLeast ? `, ${bin.atLeast} of them at least this` : ""}`}</title>
-            </path>
-            {bin.atLeast > 0 && (
-              <path class="chart-bound" d={column(left, y(bin.count), w, y(known))} />
-            )}
-          </g>
-        );
-      })}
-      {(compact
-        ? spread.bins.filter((_, i) => i === 0 || i === spread.bins.length - 1)
-        : spread.bins
-      ).map((bin) => (
-        <text key={bin.from} class="chart-tick" x={x(bin.from)} y={height - 4} text-anchor="middle">
-          {number(bin.from)}
-        </text>
-      ))}
-      {!compact && (
-        <text class="chart-tick" x={x(to)} y={height - 4} text-anchor="middle">
-          {number(to)}
-        </text>
-      )}
-      {marks.map((mark, i) => {
-        // The median's label to its left and the 90th percentile's to its
-        // right, unless that runs off the drawing.
-        const at = x(mark.value);
-        const room = mark.label.length * 7;
-        const left = i === 0 ? at - room > 0 : at + room > width;
-        return (
-          <g key={mark.label} class="chart-mark">
-            <line x1={at} x2={at} y1={pad.top - 4} y2={y(0)} />
-            <text x={at + (left ? -4 : 4)} y={pad.top - 8} text-anchor={left ? "end" : "start"}>
-              {mark.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+        {!compact && (
+          <text class="chart-tick" x={x(to)} y={height - 4} text-anchor="middle">
+            {number(to)}
+          </text>
+        )}
+        {marks.map((mark, i) => {
+          // The median's label to its left and the 90th percentile's to its
+          // right, unless that runs off the drawing.
+          const at = x(mark.value);
+          const room = mark.label.length * 7;
+          const left = i === 0 ? at - room > 0 : at + room > width;
+          return (
+            <g key={mark.label} class="chart-mark">
+              <line x1={at} x2={at} y1={pad.top - 4} y2={y(0)} />
+              <text x={at + (left ? -4 : 4)} y={pad.top - 8} text-anchor={left ? "end" : "start"}>
+                {mark.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <Values table={values} />
+    </>
   );
 }
 

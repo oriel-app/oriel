@@ -4,6 +4,7 @@
 // plans before product names, what installs and where the work goes, what's
 // happening while it does, and a failure that keeps its help on screen.
 import type { ComponentChildren } from "preact";
+import { useId } from "preact/hooks";
 import { ClaudeCodeRow, CodexRow } from "./cli-row.tsx";
 import { BrowserStep, FieldsStep, PickStep, readingName, ReviewStep } from "./connect-steps.tsx";
 import {
@@ -361,6 +362,9 @@ const changesIn = (model: Model) =>
 // A source as a row: its mark, name and what it brings, its state, and the
 // one thing to do next.
 function SourceRow(props: {
+  // Ids the row's name and about take, `<id>-name` and `<id>-about`, for
+  // what's in it to be labelled by them.
+  id?: string;
   mark: string;
   name: string;
   about: string;
@@ -374,8 +378,12 @@ function SourceRow(props: {
         {props.mark}
       </span>
       <div class="provider-main">
-        <span class="provider-name">{props.name}</span>
-        <span class="provider-about">{props.about}</span>
+        <span class="provider-name" id={props.id && `${props.id}-name`}>
+          {props.name}
+        </span>
+        <span class="provider-about" id={props.id && `${props.id}-about`}>
+          {props.about}
+        </span>
         {props.state}
         {props.children}
       </div>
@@ -532,11 +540,13 @@ function YourWork(props: {
   );
 }
 
+// The bar is named by the line over it.
 function ReadingLine(props: { text: string; read: number; total: number | null; noun: string }) {
   const { read, total } = props;
+  const id = useId();
   return (
     <span class="setup-reading">
-      <span class="cli-line" role="status">
+      <span class="cli-line" role="status" id={id}>
         {props.text}:{" "}
         {total !== null ? `${read} of ${plural(total, props.noun)}` : plural(read, props.noun)}
       </span>
@@ -544,6 +554,7 @@ function ReadingLine(props: { text: string; read: number; total: number | null; 
         class="setup-progress"
         max={total ?? undefined}
         value={total !== null ? read : undefined}
+        aria-labelledby={id}
       />
     </span>
   );
@@ -713,6 +724,7 @@ function Reading(props: {
           return (
             <SourceRow
               key={connector.kind}
+              id={`reading-${connector.kind}`}
               mark={offer.mark}
               name={name}
               about={
@@ -736,6 +748,7 @@ function Reading(props: {
                     class="setup-progress"
                     max={reading?.total ?? undefined}
                     value={reading?.total != null ? reading.read : undefined}
+                    aria-labelledby={`reading-${connector.kind}-name reading-${connector.kind}-about`}
                   />
                 ) : null
               }

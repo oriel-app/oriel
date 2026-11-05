@@ -6,7 +6,8 @@
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
 import type { ComponentChildren } from "preact";
-import { atLeast, named, PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
+import { atLeast, named } from "./chart-values.ts";
+import { PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
 import { Chip, Folded, ItemListContext } from "./parts.tsx";
 import type { BlockView, ChipView, MemberView, ReviewTable, SketchView } from "./view.ts";

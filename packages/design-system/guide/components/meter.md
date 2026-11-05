@@ -192,7 +192,7 @@ The app also puts `plan-today`, `plan-window-used` and `plan-note` on the lines 
 </div>
 ```
 
-`.setup-progress` doesn't reset `appearance`, so it's the browser's own bar, tinted by `accent-color`. That's why it degrades well. The app's `<progress>` has no accessible name; these specimens add `aria-labelledby` pointing at the line above it, and a new one should too.
+`.setup-progress` doesn't reset `appearance`, so it's the browser's own bar, tinted by `accent-color`. That's why it degrades well. It's named with `aria-labelledby`: on Your work, by the `role="status"` line above it (`ReadingLine` in `packages/web/src/setup-page.tsx`); on Reading your work, which has no such line, by its row's name and count (`reading-<kind>-name` and `-about`). A new one is named too.
 
 ### Install
 
@@ -252,7 +252,6 @@ Status **drifting**: five bars, each written once, with no shared track, height 
 
 - **Four tracks:** `--todo-soft`, `--line`, `--accent-soft`, and the browser's own. **Three heights:** 0.375rem, 6px and the block's 0.625rem. **Two corners:** `--radius-lg` and `--radius-sm`.
 - **Two indeterminate bars:** the native `<progress>` in the first run, and the hand-made `.cli-bar` on the same page.
-- **One nameless control:** the reading `<progress>` has no accessible name.
 - **Firefox:** the plan meter styles only WebKit's pseudo-elements (no `::-moz-meter-bar`), so Firefox would draw its own. Settings only opens in the desktop app, so this doesn't reach anyone today; don't copy it into a page the review link can reach.
 
 **Until it's consolidated:** for progress, copy `.setup-progress` (`<progress>`, named), with or without a value. For a share of a limit, copy the plan meter's `<meter>` with `low`, `high` and `optimum`. For a group's status, use `StatusBar`. Don't add a new animated bar; if you must, put it in the reduced-motion list by the selector that animates. See [Motion](/foundations/motion) and [the drift report](/drift).

@@ -242,7 +242,6 @@ Status **drifting**.
 - **Back is two buttons.** In the first run it's a `.link-action` in the foot or in the step's actions; Settings' Add a connection says Back as a `.quiet-action` (see [Connect steps](/patterns/connect-steps#drift)).
 - **"Nothing changes in your files."** The lede joins every offered source's `changes` with "or", so with a folder offered it reads "Nothing changes in Jira or your files or Google Sheets until you approve it", while the folder's own row says "Oriel only reads them" (`changesIn` in `packages/web/src/setup-page.tsx`).
 - **Copy says nothing.** The Terminal steps' Copy copies the line and shows no sign it did: its message, `lineCopied`, only copies (`OtherWays` in `packages/web/src/setup-page.tsx`).
-- **A nameless bar.** The reading `<progress>` has no accessible name in the app (`ReadingLine` in `packages/web/src/setup-page.tsx`). The specimen names it with `aria-labelledby` to the line above, as [Meter](/components/meter#reading-a-source) does; a new one should too.
 - The problem line sits under the foot, after the way on, not beside what failed.
 
 Copy the column as it is for a new first-run screen: steps, `h1.setup-title`, `.setup-lede`, the body, and `Foot` with one `.setup-next`.
