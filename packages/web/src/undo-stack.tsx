@@ -7,8 +7,8 @@
 // spring, until dismissed. None runs out while the pointer or focus is on
 // the bead, which opens it as a list, newest first, each with its Undo.
 // ⌘Z or Ctrl+Z undoes the newest that can be undone, and F8 takes the
-// keyboard there. One status region, always there, reads each note out
-// once as it shows, and an alert what failed.
+// keyboard there. The window's one status region (`BeadStatus`) reads each
+// note out once as it shows, and its alert what failed.
 // Every note's model hears one hold, through `onHold`: an Undo lets go of the
 // keyboard's, and a bead that goes, as when a page swaps it for another,
 // lets go of both, since no leave event comes.
@@ -115,16 +115,18 @@ export function UndoStack(props: {
     const onKey = (event: KeyboardEvent) => {
       const inside = wrap.current?.contains(event.target as Node | null) === true;
       if (event.key === "Escape" && inside) {
+        // Only the bead's: the panel or the drawer behind it stays.
+        event.stopPropagation();
         const back = cameFrom.current;
         cameFrom.current = null;
-        if (back?.isConnected) back.focus();
+        if (back?.isConnected && back !== document.body) back.focus();
         else (event.target as HTMLElement).blur();
         return;
       }
       if (event.key !== "F8" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const action = wrap.current?.querySelector<HTMLElement>(
-        ".bead-layer:not([data-gone]) .bead-action:not(:disabled)",
-      );
+      // With no action on its face, the bead itself, which focus opens.
+      const face = wrap.current?.querySelector<HTMLElement>(".bead-layer:not([data-gone])");
+      const action = face?.querySelector<HTMLElement>(".bead-action:not(:disabled)") ?? face;
       if (!action) return;
       event.preventDefault();
       if (!inside && document.activeElement instanceof HTMLElement)
@@ -170,18 +172,20 @@ export function UndoStack(props: {
     hold("focus", false);
   }, [face === null]);
 
-  // Each note read out once, as it shows, or as what it says changes.
-  const heard = useRef(new Map<string, string>());
-  const told = useRef({ n: 0, text: "" });
+  // Each note read out once, as it shows, or as what it says changes, in
+  // the window's one status region; what failed, in its alert.
   const telling = notes.flatMap((note) => {
     const words = note.heard ? `${note.said} ${note.heard}` : note.said;
-    if (heard.current.get(note.key) === words) return [];
-    heard.current.set(note.key, words);
+    if (heard.get(note.key) === words) return [];
+    heard.set(note.key, words);
     return [words];
   });
-  for (const key of heard.current.keys())
-    if (!notes.some((note) => note.key === key)) heard.current.delete(key);
-  if (telling.length > 0) told.current = { n: told.current.n + 1, text: telling.join(" ") };
+  for (const key of heard.keys()) if (!notes.some((note) => note.key === key)) heard.delete(key);
+  const failed = problem?.said ?? "";
+  useEffect(() => {
+    if (telling.length > 0) tell?.({ status: telling.join(" ") });
+  });
+  useEffect(() => tell?.({ alert: failed }), [failed]);
 
   // The bead takes its face's size, measured at its final width, so the
   // words lay out once and only the edges move.
@@ -281,12 +285,6 @@ export function UndoStack(props: {
           </div>
         </div>
       )}
-      <p class="visually-hidden" role="status">
-        <span key={told.current.n}>{told.current.text}</span>
-      </p>
-      <p class="visually-hidden" role="alert">
-        {problem?.said}
-      </p>
     </>
   );
 }
@@ -340,6 +338,39 @@ function noRoom() {
   shell?.style.removeProperty("--bead-room");
 }
 
+// The window's one status region and alert for the bead, there from the
+// start on every page but a review link's, whichever page's bead is on
+// screen (app.tsx); and what each note last said there, so a bead that a
+// page swaps for another's doesn't say it again.
+const heard = new Map<string, string>();
+type Told = { status?: string; alert?: string };
+let tell: ((told: Told) => void) | null = null;
+
+export function BeadStatus() {
+  const [told, setTold] = useState({ n: 0, status: "", alert: "" });
+  useLayoutEffect(() => {
+    tell = (next) =>
+      setTold((was) => ({
+        n: next.status === undefined ? was.n : was.n + 1,
+        status: next.status ?? was.status,
+        alert: next.alert ?? was.alert,
+      }));
+    return () => {
+      tell = null;
+    };
+  }, []);
+  return (
+    <>
+      <p class="visually-hidden bead-status" role="status">
+        <span key={told.n}>{told.status}</span>
+      </p>
+      <p class="visually-hidden" role="alert">
+        {told.alert}
+      </p>
+    </>
+  );
+}
+
 // One face of the bead: its count, then each thing it says, with its mark
 // and its Undo, link or Dismiss. A face it showed before is inert as its
 // words fade, and says when they have.
@@ -357,6 +388,7 @@ function Layer(props: {
     <div
       ref={props.at}
       class="bead-layer"
+      tabIndex={gone ? undefined : -1}
       data-list={face.said.length > 1 || undefined}
       data-gone={gone || undefined}
       inert={gone}

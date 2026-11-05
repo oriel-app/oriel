@@ -24,6 +24,7 @@ import { placeIn } from "./panel.ts";
 import { addUndos } from "./panel-adds.ts";
 import { approvedUndos } from "./approved.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
+import { BeadStatus } from "./undo-stack.tsx";
 import type { Undos } from "./undos.ts";
 import { useProgram } from "./use-program.ts";
 import { OverviewPage } from "./overview-page.tsx";
@@ -169,6 +170,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
               </ItemLinksContext.Provider>
             )}
             <Closing model={model.closing} dispatch={dispatch} />
+            <BeadStatus />
             <Endings
               model={model.ending}
               added={added}
