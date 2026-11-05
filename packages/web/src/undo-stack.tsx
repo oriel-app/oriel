@@ -56,7 +56,10 @@ export function UndoStack(props: {
   const shown = useRef<readonly string[]>([]);
   const said: Said[] = inShowingOrder(shown.current, [
     ...props.notes.map((note) => ({ kind: "note" as const, key: note.key, note })),
-    ...(problem ? [{ kind: "problem" as const, key: problem.key ?? "problem", problem }] : []),
+    // A failure with no note of its own is new when what it says is.
+    ...(problem
+      ? [{ kind: "problem" as const, key: problem.key ?? `problem ${problem.said}`, problem }]
+      : []),
   ]).toReversed();
   shown.current = said.map((each) => each.key).toReversed();
   const notes = said.flatMap((each) => (each.kind === "note" ? [each.note] : [])).toReversed();
@@ -216,8 +219,12 @@ export function UndoStack(props: {
       if (!opened) makeRoom(box, w, h);
     };
     size();
+    // And again as the page under it changes: another page, a page that
+    // loads, or the panel or sidebar moving it.
     const watching = new ResizeObserver(size);
     watching.observe(at);
+    const page = box.closest(".shell")?.querySelector(".shell-main");
+    if (page) watching.observe(page);
     addEventListener("resize", size);
     return () => {
       watching.disconnect();
@@ -318,7 +325,10 @@ function makeRoom(box: HTMLElement, w: number, h: number) {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const top = at.top;
   const bottom = top + Math.max(h, 2 * rem);
-  if (scrollY >= bottom) return;
+  // Once made, the room stays until the bead goes, so the page doesn't
+  // move back and forth as its notes change.
+  const had = parseFloat(shell.style.getPropertyValue("--bead-room")) || 0;
+  if (scrollY >= bottom || bottom - top <= had) return;
   // Where the page's controls would be without the room it has now, as far
   // as it has moved so far.
   const moved = parseFloat(getComputedStyle(main).paddingTop) || 0;
@@ -335,10 +345,7 @@ function makeRoom(box: HTMLElement, w: number, h: number) {
   let covered = false;
   for (let x = at.left - w / 2 + 4; x <= at.left + w / 2 - 4 && !covered; x += 12)
     covered = rows.some((y) => covers(x, y));
-  // Once made, the room stays until the bead goes, so the page doesn't
-  // move back and forth as its notes change.
-  const had = parseFloat(shell.style.getPropertyValue("--bead-room")) || 0;
-  if (!covered || bottom - top <= had) return;
+  if (!covered) return;
   shell.style.setProperty("--bead-room", `${Math.ceil(bottom - top)}px`);
   shell.setAttribute("data-bead-room", "");
 }
