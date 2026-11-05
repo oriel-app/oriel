@@ -58,6 +58,8 @@ test("compare pools rounds with + and takes --trim; aa takes rounds; freeze take
     ["freeze", "oa-144", "--cap", "-3", "--reps", "4"],
     ["freeze", "oa-144", "--cap", "30", "--reps", "0"],
     ["freeze", "oa-144", "--cap", "30", "--reps", "4", "--split", "train"],
+    ["freeze", "oa-144", "--cap", "30", "--reps", "4", "--cases", "a,,b"],
+    ["--climb", "oa-144", "--cases", "a"],
   ])
     assert.deepEqual(parseCommand(args), { error: usage }, args.join(" "));
 });
@@ -225,6 +227,42 @@ test("a case added, removed or edited since the plan froze it stops the round", 
   assert.equal(calls(), 0);
   assert.equal(await run("--climb", "missing"), 1);
   assert.match(lines.join("\n"), /no climb at .*missing\.json; freeze one first/);
+});
+
+test("a climb frozen over some cases runs only those, and a case added later isn't its", async (t) => {
+  const { dir, io, lines, run } = harness(t);
+  assert.deepEqual(
+    parseCommand(["freeze", "some", "--cap", "5", "--reps", "2", "--cases", "revert-train"]),
+    { command: "freeze", climb: "some", cap: 5, reps: 2, cases: ["revert-train"] },
+  );
+  assert.equal(await run("freeze", "none", "--cap", "5", "--reps", "2", "--cases", "nowhere"), 1);
+  assert.deepEqual(lines, ["no case nowhere to freeze"]);
+  assert.equal(
+    await run("freeze", "some", "--cap", "5", "--reps", "2", "--cases", "revert-train"),
+    0,
+  );
+  assert.deepEqual(lines, ["froze 1 cases into climbs/some.json"]);
+  const plan = JSON.parse(readFileSync(new URL("some.json", io.climbs), "utf8"));
+  assert.deepEqual([Object.keys(plan.cases), plan.subset], [["revert-train"], true]);
+  // A case outside the subset, edited or new, doesn't stop its rounds.
+  writeFileSync(
+    new URL("cases/revert-test.json", dir),
+    JSON.stringify({
+      id: "revert-test",
+      split: "test",
+      kind: 2,
+      region: "checkout-epic",
+      prompt: "Something else",
+      expect: [{ grader: "mentions", text: ["Revert"] }],
+    }),
+  );
+  assert.equal(await run("--climb", "some", "--split", "all"), 0, lines.join("\n"));
+  const [entry] = ledger(io, "some");
+  assert.deepEqual([entry?.split, entry?.trials], ["all", 2]);
+  assert.deepEqual(
+    readResults(new URL(`${entry?.round}/`, io.rounds)).map((r) => r.id),
+    ["revert-train", "revert-train"],
+  );
 });
 
 test("a round stopped partway stays booked at its estimate", async (t) => {

@@ -1,0 +1,13 @@
+{
+  "id": "table-weather-stories",
+  "split": "test",
+  "kind": 2,
+  "region": "weather-epic",
+  "prompt": "Show me this workstream's stories in a table with their status and points",
+  "expect": [
+    { "grader": "blocks", "form": "table", "read": ["jira.listStories", "jira.listItems"] },
+    { "grader": "no-refused-block" },
+    { "grader": "no-sketch" },
+    { "grader": "zero-mutations" }
+  ]
+}

@@ -143,6 +143,9 @@ const expectations = {
   // The turn never called sketch(), shown or refused (decision 0033): a
   // chart Oriel can build from a read is a block, never the agent's HTML.
   "no-sketch": object({ grader: literal("no-sketch") }),
+  // Oriel refused none of the turn's show() calls: the agent asked for its
+  // blocks right the first time, without guessing at the spec.
+  "no-refused-block": object({ grader: literal("no-refused-block") }),
   surfaced: object({ grader: literal("surfaced"), item: itemName, text: atLeastOne(text) }),
   mentions: object({ grader: literal("mentions"), text: atLeastOne(text) }),
   // Text the reply never contains, such as disowning Oriel's own line, or

@@ -59,6 +59,7 @@ import {
   gradeMentions,
   gradeQuotes,
   gradeSurfaced,
+  gradeNoRefusedBlock,
   gradeNoSketch,
   gradeZeroMutations,
   gradeDrafts,
@@ -97,6 +98,8 @@ export const systemOutput = object({
   blocks: optional(array(object({ block: builtBlock, answered: unknown }))),
   // How many times the turn called sketch(), shown or refused.
   sketches: optional(number),
+  // How many show() calls Oriel refused.
+  refusedBlocks: optional(number),
   reply: string,
   transcript: array(unknown),
 });
@@ -104,12 +107,13 @@ export const systemOutput = object({
 // never asks for any.
 export type SystemOutput = Omit<
   Infer<typeof systemOutput>,
-  "intents" | "drafts" | "blocks" | "sketches"
+  "intents" | "drafts" | "blocks" | "sketches" | "refusedBlocks"
 > & {
   intents?: Infer<typeof systemOutput>["intents"];
   drafts?: Infer<typeof systemOutput>["drafts"];
   blocks?: Infer<typeof systemOutput>["blocks"];
   sketches?: number;
+  refusedBlocks?: number;
 };
 
 export type SystemUnderTest = (input: SystemInput) => Promise<SystemOutput>;
@@ -391,6 +395,8 @@ async function grade(
     }
     if (expectation.grader === "blocks") grades.push(gradeBlocks(expectation, output.blocks ?? []));
     if (expectation.grader === "no-sketch") grades.push(gradeNoSketch(output.sketches ?? 0));
+    if (expectation.grader === "no-refused-block")
+      grades.push(gradeNoRefusedBlock(output.refusedBlocks ?? 0));
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));

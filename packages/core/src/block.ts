@@ -351,12 +351,32 @@ export function buildBlock(
   const path = spec.from ?? (declared.length === 1 ? (declared[0] ?? "") : "");
   const labels = Object.hasOwn(fields.lists, path) ? fields.lists[path] : undefined;
   const where = path === "" ? "its result" : `its field ${JSON.stringify(path)}`;
-  const lists = Object.keys(fields.lists).map((list) => (list === "" ? "its result" : list));
-  if (!labels)
-    return refuse(
-      `${spec.read} declares no list a block can show in ${where}; name one with \`from\`: ${lists.join(", ")}`,
-    );
-  const named = namedFields(spec);
+  // Which `from` names each list it declares, or none for its result.
+  if (!labels) {
+    const lists = declared.filter((list) => list !== "");
+    const result = Object.hasOwn(fields.lists, "") ? "leave `from` out for its result" : "";
+    const fix = lists.length
+      ? `set \`from\` to one of its lists, ${listed(lists)}${result && `, or ${result}`}`
+      : result;
+    return refuse(`${spec.read} declares no list a block can show in ${where}; ${fix}`);
+  }
+  // A field the read doesn't declare, under which it declares exactly one,
+  // is that one, as `assignee` is a story's `assignee.name`.
+  const resolve = (name: string) => {
+    if (Object.hasOwn(labels, name)) return name;
+    const under = Object.keys(labels).filter((key) => key.startsWith(`${name}.`));
+    return under.length === 1 && under[0] !== undefined ? under[0] : name;
+  };
+  const asked =
+    spec.form === "bars"
+      ? { label: resolve(spec.label), value: resolve(spec.value), columns: [] }
+      : { label: "", value: "", columns: spec.form === "table" ? spec.columns.map(resolve) : [] };
+  const named =
+    spec.form === "bars"
+      ? [...Object.keys(spec.where ?? {}), asked.label, asked.value]
+      : spec.form === "table"
+        ? [...Object.keys(spec.where ?? {}), ...asked.columns]
+        : namedFields(spec);
   const unknown = named.filter((name) => !Object.hasOwn(labels, name));
   if (unknown.length)
     return refuse(
@@ -419,20 +439,20 @@ export function buildBlock(
     const sums = new Map<string, number>();
     let summed = false;
     // Bars holding a value that is only a lower bound, as the read declares.
-    const flag = fields.atLeast?.[spec.value];
+    const flag = fields.atLeast?.[asked.value];
     const bounded = new Set<string>();
     for (const [i, row] of rows.entries()) {
-      const [name, count] = values(row, [spec.label, spec.value]) ?? [];
+      const [name, count] = values(row, [asked.label, asked.value]) ?? [];
       // A row without the field at all, as an item gone from its source, has
       // no bar, nor adds to one; nor does one with no number, as a story
       // with no estimate. One with something else there is the wrong shape.
       if (name === undefined || count === undefined || count === null) continue;
       if (name !== null && typeof name !== "string" && typeof name !== "number")
         return refuse(
-          `row ${i} of ${where} has no text or number in ${JSON.stringify(spec.label)}`,
+          `row ${i} of ${where} has no text or number in ${JSON.stringify(asked.label)}`,
         );
       if (typeof count !== "number" || !Number.isFinite(count))
-        return refuse(`row ${i} of ${where} has no number in ${JSON.stringify(spec.value)}`);
+        return refuse(`row ${i} of ${where} has no number in ${JSON.stringify(asked.value)}`);
       // No label, as a story no one is assigned, is a blank, as in a table.
       const key = name === null ? "—" : String(name);
       summed ||= sums.has(key);
@@ -447,7 +467,7 @@ export function buildBlock(
         ...(bounded.has(name) ? { atLeast: true as const } : {}),
       }))
       .toSorted((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-    const by = `${label(spec.value)} by ${label(spec.label)}`;
+    const by = `${label(asked.value)} by ${label(asked.label)}`;
     return {
       ok: true,
       block: {
@@ -467,17 +487,17 @@ export function buildBlock(
     for (const [i, row] of rows.slice(0, maxRows).entries()) {
       // A field a row lacks, as an item gone from its source lacks its
       // title, is a blank cell.
-      const cells = values(row, spec.columns)?.map((cell) => (cell === undefined ? null : cell));
+      const cells = values(row, asked.columns)?.map((cell) => (cell === undefined ? null : cell));
       if (!cells) return refuse(`row ${i} of ${where} isn't an object with fields`);
       const bad = cells.findIndex((cell) => !isCell(cell));
       if (bad >= 0)
         return refuse(
-          `row ${i} of ${where} has no text, number or yes/no in ${JSON.stringify(spec.columns[bad])}`,
+          `row ${i} of ${where} has no text, number or yes/no in ${JSON.stringify(asked.columns[bad])}`,
         );
       table.push(cells as Cell[]);
     }
     if (!table.length) return refuse(`${where} is empty`);
-    const columns = spec.columns.map(label);
+    const columns = asked.columns.map(label);
     return {
       ok: true,
       block: {

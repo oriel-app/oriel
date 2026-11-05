@@ -109,7 +109,8 @@ test("a block whose read the turn didn't run, or whose rows have the wrong shape
           `await search("weather", 5);
 await show({ read: "search", args: ["weather"], form: "rows" });
 await show({ read: "search", args: ["weather", 5], form: "bars", label: "title", value: "updatedAt" });
-await show({ read: "search", args: ["weather", 5], form: "table", columns: ["id"], from: "nope" });`,
+await show({ read: "search", args: ["weather", 5], form: "table", columns: ["id"], from: "nope" });
+await show({ read: "search", args: ["weather", 5], form: "table", columns: ["nope"], path: "hits", title: "Found" });`,
         ],
       },
       { text: ["Nothing to chart."] },
@@ -119,12 +120,17 @@ await show({ read: "search", args: ["weather", 5], form: "table", columns: ["id"
   const events = await turn({ region: weather });
   assert.deepEqual(blocks(events), []);
   const content = contentOf(model);
-  assert.match(content, /refused a block: no read this turn ran answered search\("weather"\)/);
+  assert.match(
+    content,
+    /refused a block: no read this turn ran answered search\("weather"\)\. This turn ran search\("weather",5\)\. Run that read/,
+  );
   assert.match(content, /refused a block: row 0 of its result has no number in "updatedAt"/);
   assert.match(
     content,
     /refused a block: search declares no list a block can show in its field "nope"/,
   );
+  // Keys no block takes, as guesses at `from` are, are named as ignored.
+  assert.match(content, /show\(\) ignores `path`, `title`\./);
 });
 
 test("a run that fails shows no block, and the agent is told", async () => {

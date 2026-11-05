@@ -15,6 +15,7 @@
   "prompt": "Chart what moved since I looked, by workstream",
   "expect": [
     { "grader": "blocks", "form": "bars", "read": "window.overview" },
+    { "grader": "no-refused-block" },
     { "grader": "zero-mutations" }
   ]
 }

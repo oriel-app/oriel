@@ -1,7 +1,8 @@
 // A climb: a hill-climb's pre-registered plan, as the CLI enforces it. Its
 // file, `climbs/<name>.json`, freezes the cases (each by its content hash,
 // with the group a comparison guards it in), the trials a case each round,
-// and a cap on what its rounds may spend. Its ledger,
+// and a cap on what its rounds may spend. A climb frozen over some of the
+// cases (`subset`) runs only those, and a case added later isn't its. Its ledger,
 // `climbs/<name>.ledger.jsonl`, books each round twice: its estimate as it
 // starts, then what it cost as it ends, so a round stopped partway stays
 // booked at its estimate. Both are committed: the plan
@@ -44,6 +45,7 @@ const climbShape = object({
   cap: positive,
   reps: count,
   cases: record(object({ hash: string, group: text })),
+  subset: optional(literal(true)),
 });
 export type Climb = Infer<typeof climbShape>;
 
@@ -91,34 +93,45 @@ export function loadClimb(
   return { climb: parsed.value, ledger };
 }
 
-// A new climb over the cases as they are now, each in the group of its eval
-// kind until the plan says otherwise. It never overwrites one.
+// A new climb over the cases as they are now, or the ones `plan.cases`
+// names, each in the group of its eval kind until the plan says otherwise.
+// It never overwrites one.
 export function freezeClimb(
   dir: URL,
   climb: string,
-  plan: { cap: number; reps: number },
+  plan: { cap: number; reps: number; cases?: readonly string[] },
   cases: readonly LoadedCase[],
 ): string | null {
   const file = fileOf(dir, climb, ".json");
   if (existsSync(file)) return `${file.pathname} exists; a climb's plan is frozen once written`;
+  const named = plan.cases ? new Set(plan.cases) : null;
+  const unknown = [...(named ?? [])].filter((id) => !cases.some((c) => c.case.id === id));
+  if (unknown.length) return `no case ${unknown.join(", ")} to freeze`;
   mkdirSync(dir, { recursive: true });
   const frozen: Climb = {
     cap: plan.cap,
     reps: plan.reps,
     cases: Object.fromEntries(
-      cases.map((c) => [c.case.id, { hash: caseHash(c), group: evalKinds[c.case.kind] }]),
+      cases
+        .filter((c) => !named || named.has(c.case.id))
+        .map((c) => [c.case.id, { hash: caseHash(c), group: evalKinds[c.case.kind] }]),
     ),
+    subset: named ? true : undefined,
   };
   writeFileSync(file, `${JSON.stringify(frozen, null, 2)}\n`);
   return null;
 }
+
+// The cases a climb's round runs: every case, or a subset's own.
+export const climbCases = (climb: Climb, cases: readonly LoadedCase[]) =>
+  climb.subset ? cases.filter((c) => Object.hasOwn(climb.cases, c.case.id)) : cases;
 
 // What keeps a round from running: a case added, removed or edited since the
 // plan froze it.
 export function unfrozen(climb: Climb, cases: readonly LoadedCase[]): string[] {
   const problems: string[] = [];
   const running = new Set(cases.map((c) => c.case.id));
-  for (const loaded of cases) {
+  for (const loaded of climbCases(climb, cases)) {
     const frozen = climb.cases[loaded.case.id];
     if (!frozen) problems.push(`${loaded.case.id} isn't in the climb's plan`);
     else if (frozen.hash !== caseHash(loaded))

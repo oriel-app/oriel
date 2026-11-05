@@ -10,6 +10,7 @@ import { loadCases } from "./case.ts";
 import { cassetteDir, cassettes } from "./cassette.ts";
 import {
   estimate,
+  climbCases,
   freezeClimb,
   isClimbName,
   loadClimb,
@@ -41,8 +42,8 @@ export const usage = `usage: pnpm evals [--model <id>] [--judge <id>] [--baselin
          a fix must be better beyond noise; with --trim, no worse within the margin
        pnpm evals aa <rounds>
          judges every split of an unchanged agent's trials as if it were a change
-       pnpm evals freeze <climb> --cap <dollars> --reps <trials a case>
-         writes a climb's plan over the cases as they are now
+       pnpm evals freeze <climb> --cap <dollars> --reps <trials a case> [--cases <id,id,...>]
+         writes a climb's plan over the cases as they are now, or those named
        pnpm --filter @oriel/evals evals:ci
          replays the cassettes; fails on any error and on failed deterministic cases
 A round is the ULID naming its directory under .evals/; join rounds of one
@@ -62,7 +63,7 @@ export type Command =
   | { command: "replay"; model: string; judge: string }
   | { command: "compare"; baseline: string; candidate: string; trim?: true }
   | { command: "aa"; rounds: string }
-  | { command: "freeze"; climb: string; cap: number; reps: number };
+  | { command: "freeze"; climb: string; cap: number; reps: number; cases?: string[] };
 
 function parse(args: readonly string[]) {
   try {
@@ -81,6 +82,7 @@ function parse(args: readonly string[]) {
         trim: { type: "boolean" },
         cap: { type: "string" },
         reps: { type: "string" },
+        cases: { type: "string" },
       },
     });
   } catch {
@@ -110,7 +112,7 @@ export function parseCommand(args: readonly string[]): Command | { error: string
     return { error: "the judge model must differ from the model under test" };
   const { climb, split, label, trim, cap, reps } = values;
   const climbFlags = climb ?? split ?? label;
-  const planFlags = cap ?? reps;
+  const planFlags = cap ?? reps ?? values.cases;
   if (
     verb === undefined &&
     trim === undefined &&
@@ -149,16 +151,24 @@ export function parseCommand(args: readonly string[]): Command | { error: string
   if (verb === "aa" && rest.length === 1 && flags === undefined && !trim && isRounds(first))
     return { command: "aa", rounds: first };
   const plan = { cap: dollars(cap), reps: whole(reps) };
+  const cases = values.cases?.split(",").map((id) => id.trim());
   if (
     verb === "freeze" &&
     rest.length === 1 &&
     isClimbName(first) &&
     plan.cap !== null &&
     plan.reps !== null &&
+    (cases === undefined || cases.every((id) => id !== "")) &&
     (values.model ?? values.judge ?? values.baseline ?? values.env ?? climbFlags ?? trim) ===
       undefined
   )
-    return { command: "freeze", climb: first, cap: plan.cap, reps: plan.reps };
+    return {
+      command: "freeze",
+      climb: first,
+      cap: plan.cap,
+      reps: plan.reps,
+      ...(cases ? { cases } : {}),
+    };
   return { error: usage };
 }
 
@@ -243,7 +253,10 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
   if (command.command === "freeze") {
     const refused = freezeClimb(climbs, command.climb, command, runnable);
     if (refused) io.error(refused);
-    else io.log(`froze ${runnable.length} cases into climbs/${command.climb}.json`);
+    else
+      io.log(
+        `froze ${command.cases?.length ?? runnable.length} cases into climbs/${command.climb}.json`,
+      );
     return refused ? 1 : 0;
   }
   const plan =
@@ -253,7 +266,9 @@ export async function main(command: Command, io: Io = repoIo): Promise<number> {
     return 1;
   }
   const split = command.command === "live" ? (command.split ?? (plan ? "train" : "all")) : "all";
-  const cases = runnable.filter((c) => split === "all" || c.case.split === split);
+  const cases = (plan ? climbCases(plan.climb, runnable) : runnable).filter(
+    (c) => split === "all" || c.case.split === split,
+  );
   if (!cases.length) {
     io.log("no cases to run in packages/evals/cases/; add one with the add-eval skill.");
     return 0;

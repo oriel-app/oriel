@@ -166,6 +166,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         : [],
     ),
     sketches,
+    refusedBlocks: events.filter((event) => event.kind === "block.refused").length,
     reply: replyOf(events),
     transcript: events,
   };

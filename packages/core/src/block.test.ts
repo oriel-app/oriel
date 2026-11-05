@@ -8,6 +8,7 @@ import {
   maxBars,
   maxRows,
   readKey,
+  searchFields,
   type ResultFields,
 } from "./block.ts";
 
@@ -104,6 +105,24 @@ test("only declared lists and fields show, and a read that declares none makes n
   );
   assert.equal(list.ok, false);
   assert.match(list.ok ? "" : list.why, /declares no list a block can show in its field "changed"/);
+  // Without `from`, it says which key takes the list, and each list's name.
+  const unnamed = buildBlock(
+    spec({ read: "window.overview", form: "bars", label: "name", value: "moved" }),
+    answered(value, overview),
+  );
+  assert.match(
+    unnamed.ok ? "" : unnamed.why,
+    /in its result; set `from` to one of its lists, "changed\.workstreams"/,
+  );
+  // A read whose result is its one list says to leave `from` out.
+  const extra = buildBlock(
+    spec({ read: "search", from: "hits", form: "rows" }),
+    answered([], searchFields),
+  );
+  assert.deepEqual(extra, {
+    ok: false,
+    why: 'search declares no list a block can show in its field "hits"; leave `from` out for its result',
+  });
   const none = buildBlock(spec({ read: "items.read", form: "rows" }), answered([], null));
   assert.deepEqual(none, { ok: false, why: "items.read declares nothing a block can show" });
 });
@@ -218,4 +237,35 @@ test("bars sum the rows that share a label, through a nested field, and say so",
   );
   assert.ok(table.ok && table.block.form === "table");
   assert.deepEqual(table.block.rows, [["jira:SYN-61", null]]);
+});
+
+test("a field the read doesn't declare, holding exactly one it does, is that one", () => {
+  const stories: ResultFields = {
+    source: "stories",
+    lists: { "": { id: "Item", "assignee.name": "Assignee", points: "Story points" } },
+  };
+  const rows = [
+    { id: "jira:SYN-1", assignee: { name: "Amara" }, points: 3 },
+    { id: "jira:SYN-2", assignee: { name: "Amara" }, points: 2 },
+  ];
+  const built = buildBlock(
+    spec({ read: "jira.listStories", form: "bars", label: "assignee", value: "points" }),
+    answered(rows, stories),
+  );
+  assert.ok(built.ok && built.block.form === "bars");
+  assert.deepEqual(built.block.bars, [{ label: "Amara", value: 5 }]);
+  assert.match(built.block.caption, /Story points by Assignee, summed/);
+  // Under two declared fields, it is still refused, naming them.
+  const two: ResultFields = {
+    source: "stories",
+    lists: { "": { "assignee.name": "Assignee", "assignee.email": "Email", points: "Points" } },
+  };
+  const refused = buildBlock(
+    spec({ read: "jira.listStories", form: "table", columns: ["assignee"] }),
+    answered(rows, two),
+  );
+  assert.match(
+    refused.ok ? "" : refused.why,
+    /"assignee" isn't a field jira\.listStories declares/,
+  );
 });

@@ -1,0 +1,16 @@
+{"round":"01M6K0AX78BXDBF2WFPVDRH9SG","label":"B1: climb show-from's final text","split":"train","trials":60,"usd":3,"estimated":true}
+{"round":"01M6K0AX78BXDBF2WFPVDRH9SG","label":"B1: climb show-from's final text","split":"train","trials":60,"usd":1.3090024}
+{"round":"01M6K0G56Y1N46ZYYVWH6K7VRK","label":"B2: climb show-from's final text","split":"train","trials":60,"usd":1.3090024,"estimated":true}
+{"round":"01M6K0G56Y1N46ZYYVWH6K7VRK","label":"B2: climb show-from's final text","split":"train","trials":60,"usd":1.1665504000000002}
+{"round":"01M6K0MAWRGY9GM5058BAGQKJR","label":"M1: main's agent text","split":"train","trials":60,"usd":1.2377764,"estimated":true}
+{"round":"01M6K0MAWRGY9GM5058BAGQKJR","label":"M1: main's agent text","split":"train","trials":60,"usd":1.9244116}
+{"round":"01M6K0V21MWA6XS4SWGKYNXYNA","label":"F1: main's doc, the type keeps from","split":"train","trials":60,"usd":1.4666548,"estimated":true}
+{"round":"01M6K0V21MWA6XS4SWGKYNXYNA","label":"F1: main's doc, the type keeps from","split":"train","trials":60,"usd":1.3426865999999997}
+{"round":"01M6K10G2QWY2F768B9CGMAGFB","label":"F2': main's doc + 'from and fields are dotted paths'","split":"train","trials":60,"usd":1.4356627499999999,"estimated":true}
+{"round":"01M6K10G2QWY2F768B9CGMAGFB","label":"F2': main's doc + 'from and fields are dotted paths'","split":"train","trials":60,"usd":1.3559431999999998}
+{"round":"01M6K17QRXECEFFWVV6TK9AJAT","label":"F3: F1 + a field resolves to the one declared under it","split":"train","trials":60,"usd":1.4197188399999998,"estimated":true}
+{"round":"01M6K17QRXECEFFWVV6TK9AJAT","label":"F3: F1 + a field resolves to the one declared under it","split":"train","trials":60,"usd":1.242532}
+{"round":"01M6K1CSGYAP794R1EHWRZFBW5","label":"F3t1: F3, test","split":"test","trials":36,"usd":0.83411262,"estimated":true}
+{"round":"01M6K1CSGYAP794R1EHWRZFBW5","label":"F3t1: F3, test","split":"test","trials":36,"usd":0.4827164}
+{"round":"01M6K1ET4NPBBTPYZ3QQZ1E51B","label":"F3t2: F3, test","split":"test","trials":36,"usd":0.8021675090909091,"estimated":true}
+{"round":"01M6K1ET4NPBBTPYZ3QQZ1E51B","label":"F3t2: F3, test","split":"test","trials":36,"usd":0.43270079999999994}
