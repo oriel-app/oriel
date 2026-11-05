@@ -71,6 +71,11 @@ I read train transcripts only. Test runs once per arm, at the end.
    - The final step is `T0a`, `T0b` (main's text) against `Ft1`, `Ft2` (the final state), all on test. `Fall` is dropped: the cassettes come from the full re-record outside the ledger, whose draw of the target also counts toward the done bar (`F2`'s 8 draws and the re-record's 1, so at least 8 of 9).
    - `B1`'s train transcripts, read before F2: all five misses read `history()` and asked for bars with a `label`, `where: { state: "In progress" }` and no `value`, four with a stray `title`; each was refused with "a bars block needs `value`", then showed a correct pivot. One also showed bars from `window.overview()` first. The three passes read `window.overview()`. F2 is the fix the evidence points at, unchanged.
 
+2. **After `F2`: `B2` comes back, as the frozen plan had it.**
+   - `F2` against `B1` alone: the target 3/8 → 8/8, the blocks group 24/24 → 23/24 (p(worse) 0.50), all 27/32 → 31/32, p = 0.077: **revert** by the rule.
+   - The one miss, read from `F2`'s train transcript: `chart-bugs-in-progress` asked for `form: "rows"` with `columns`, `sort` and `caption`; Oriel showed rows and named the three keys as ignored, and the agent answered from it. F2 changes only bars with no `value`. The same miss was seen on #181's branch ("asked for rows, not a table", `show-from-2.md`).
+   - `F2` cost $0.88, not $1.12, and the test step costs less without `Fall`, so the frozen plan's `B2` fits the cap again. `B2` runs the starting state (`68f5a19a`'s core), and `F2` is judged once more, against `B1+B2`, by the same rule. That verdict is final: no more rounds of either arm. Running `B2` after seeing a near miss is optional stopping on the baseline's side; the report says so.
+
 ## Log
 
 | round | state | trials | verdict | cost |
