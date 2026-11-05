@@ -933,6 +933,6 @@ Status **drifting**:
 - **Tooltips of the browser's own.** Every other control's tooltip is Oriel's (`Tooltip` in `packages/web/src/tooltip.tsx`), but a chart's values are in SVG `<title>`s and a timeline bar's `title`: the system's look, a delay of its own, and nothing on keyboard focus or touch. A mark's value can't be reached without a pointer.
 - **A thin name.** An SVG chart's name is only its label ("Done"); the series' points and the spread's bins aren't in the accessibility tree except as `<title>`s.
 - **A fourth styled select.** `.pivot-pick select` styles a native select of its own, beside the three on the [Select](/components/select) page; see [Customizable selects](/drift#d14-customizable-selects).
-- **Split and literal.** `.timeline-count` is written twice, back to back (`.timeline-count` twice in `window.css`). `.timeline-today` is `1px` wide and `.timeline-due` `2px`, where the axes use `--border-thin`. The pivot's wrapper is `<div class="chart-pivot">` with no rule in window.css, so the specimens here leave the class off.
+- **Literal.** `.timeline-today` is `1px` wide and `.timeline-due` `2px`, where the axes use `--border-thin`. The pivot's wrapper is `<div class="chart-pivot">` with no rule in window.css, so the specimens here leave the class off.
 
 Copy the component, not the markup: a new chart is a form in `BlockBody`, built in core, never an SVG drawn in a page.

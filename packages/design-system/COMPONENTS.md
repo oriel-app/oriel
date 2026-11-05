@@ -12,7 +12,7 @@ Tokens, type, space, motion, focus, icons and layout.
 
 - [Colour](guide/foundations/colour.md): Oriel's colour tokens by role, in Graphite and Broadsheet, light and dark. The accent means "your move", five states stay apart, and every pair is checked.
 - [Type](guide/foundations/type.md): System fonts only, a five-step scale from --text-xs to --text-xl, three weights and three leadings. Serif for the thread, panel and page titles; every rem follows the Text size setting.
-- [Space, shape and elevation](guide/foundations/space.md): The space scale, row density per theme, three radii, two border widths, two shadows and the scrim. Plus the z-index values Oriel uses today, with no scale yet.
+- [Space, shape and elevation](guide/foundations/space.md): The space scale, row density per theme, three radii, two border widths, two shadows and the scrim. Plus the layer scale, what stacks over what.
 - [Motion](guide/foundations/motion.md): Two durations and one easing. Quick for a state, move for a place, and a spring for the bead's shape. One pulse for work in progress, and one reduced-motion block that stills every move.
 - [Focus](guide/foundations/focus.md): One focus ring, in the accent, 2px out. Where Oriel overrides it today, the five looks its fields have, and the one field-frame focus proposed.
 - [Icons](guide/foundations/icons.md): A small set of 16px outline icons drawn inline, stroked in the text's colour. Words first; an icon that's the only label needs an aria-label.

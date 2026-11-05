@@ -6,7 +6,7 @@ surveyed: 85a125e9
 
 Where Oriel's window has several versions of one thing, and how to make each one thing once. The counts below are recounted live on the [web page](/drift#the-counts).
 
-**A dated snapshot.** First surveyed on 2026-11-04 at Oriel `5ee7a339`; re-surveyed on 2026-11-05 at `85a125e9`, on `main`, after Noticed (0052), chart blocks (0053), the second look (0054) and the bead (0056). Every `file:line` here is `85a125e9`'s, and a line link opens the file as it was then; D1 alone keeps `5ee7a339`'s lines, untouched while OA-251 works it, so find its places by name. `pnpm check` doesn't check line links, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
+**A dated snapshot.** First surveyed on 2026-11-04 at Oriel `5ee7a339`; re-surveyed on 2026-11-05 at `85a125e9`, on `main`, after Noticed (0052), chart blocks (0053), the second look (0054) and the bead (0056). Every `file:line` here is `85a125e9`'s, and a line link opens the file as it was then; D1, done by OA-251, cites its places by name. `pnpm check` doesn't check line links, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
 
 Each proposal below is written to be pasted into a story: why, where, what differs, the proposed component with its API and classes, a migration, a size, and what to watch for. They're ranked by value for effort. Value is how much drift a person sees, plus bugs fixed, plus what it unblocks. Effort is **S** (under a day: a few files, no component API), **M** (a component and a sweep of its call sites) or **L**.
 
@@ -14,7 +14,7 @@ Each proposal below is written to be pasted into a story: why, where, what diffe
 
 | #   | Proposal                                                                                                          | Value    | Effort | Size                                              | Decided 2026-11-05                    |
 | --- | ----------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------------------------------------------- | ------------------------------------- |
-| 1   | [Clear dead and split CSS, and the reduced-motion miss](#d1-clear-dead-and-split-css-and-the-reduced-motion-miss) | High     | S      | 1 file, ~45 CSS lines removed                     | OA-251: one pulse speed               |
+| 1   | [Clear dead and split CSS, and the reduced-motion miss](#d1-clear-dead-and-split-css-and-the-reduced-motion-miss) | High     | S      | 1 file, ~45 CSS lines removed                     | OA-251: done, and one pulse speed     |
 | 2   | [One disabled look, and one button-kind rule](#d2-one-disabled-look-and-one-button-kind-rule)                     | High     | S      | 2 TSX files, ~25 CSS lines removed, 6 added       | OA-252: one label for Approve         |
 | 3   | [One ChatInput for the four places a person asks](#d3-one-chatinput-for-the-four-places-a-person-asks)            | High     | M      | 5 TSX files, ~70 CSS lines removed, ~45 added     |                                       |
 | 4   | [One focus for fields, and a ring for menu items](#d4-one-focus-for-fields-and-a-ring-for-menu-items)             | Med–High | S      | 0–2 TSX files, ~25 CSS lines removed, 8 added     | OA-253: an inset ring on menu items   |
@@ -28,7 +28,7 @@ Each proposal below is written to be pasted into a story: why, where, what diffe
 | 12  | [One Empty line](#d12-one-empty-line)                                                                             | Medium   | S      | 11 TSX files, ~45 CSS lines removed               |                                       |
 | 13  | [One reveal-on-hover rule](#d13-one-reveal-on-hover-rule)                                                         | Medium   | S      | 5 TSX files, ~35 CSS lines removed, 6 added       |                                       |
 | 14  | [Customizable selects](#d14-customizable-selects)                                                                 | Medium   | S      | 2–3 TSX files, ~40 CSS lines replaced             | “Add to…” stays a select              |
-| 15  | [Layer and spacing tokens](#d15-layer-and-spacing-tokens)                                                         | Low–Med  | S      | 1 file; 11 z-index and ~30 rem literals to tokens | OA-251: a `--layer-*` scale           |
+| 15  | [Layer and spacing tokens](#d15-layer-and-spacing-tokens)                                                         | Low–Med  | S      | 1 file; 11 z-index and ~30 rem literals to tokens | OA-251: the `--layer-*` scale, done   |
 
 Suggested order: 1 and 2 first (no visible change but fixes), then 4 with 3 (focus first, so ChatInput uses the frame), then 5–7, then 8, then 9 with a `Button` component, then 10 and 11, then the rest. Smaller drift that didn't make a story is [at the end](#also-seen).
 
@@ -54,18 +54,20 @@ census
 
 ## D1. Clear dead and split CSS, and the reduced-motion miss
 
+**Done** (OA-251). The dead rules are gone, `.badge` with them; each split rule is one rule; `.bar-menu` keeps its 2rem; and the reduced-motion block stills `.cli-bar::after`. It also moved to the end of `window.css`: the install bar's and the spinner's rules came after it, so they won and kept moving.
+
 **Why.** No visible change, except one fix. It clears ground for every story below, and two of the split rules have already drifted.
 
-**Places and what differs.**
+**Places and what differed.** As it was at `5ee7a339`, by name:
 
-- Dead: `.setup-box` (`window.css:5740`, plus its three rules to `window.css:5761`) and `.section-count` (`window.css:1214`) are never rendered. `.nav-link .badge` (`window.css:611`) styles a `.badge` the app doesn't draw.
+- Dead: `.setup-box` and its three rules, and `.section-count`, were never rendered. `.nav-link .badge` styled a `.badge` the app doesn't draw.
 - Split in two, thousands of lines apart:
-  - `.connect-actions` at `window.css:1518` and `window.css:6089`: the second adds `justify-content` and a `:last-child` margin.
-  - `.connect-problem` at `window.css:1525` and `window.css:6064`: the first is wholly contained in the second.
-  - `.shell` at `window.css:339` and `window.css:4099`: the second sets `--panel` and `--beside`, which the window chat, the selection bar and the undo stack read too.
-  - `.tabs a` gets `text-decoration: none` alone at `window.css:2363`.
-  - `.bar-menu` is sized 1.75rem with the sidebar fold at `window.css:429`, then resized to 2rem at `window.css:1071`.
-- The reduced-motion block stops `.cli-bar`'s animation (`window.css:5639`), but the animation runs on `.cli-bar::after` (`window.css:6003`), so the install bar keeps sliding for a person who asked for less motion.
+  - `.connect-actions`: the second rule added `justify-content` and a `:last-child` margin.
+  - `.connect-problem`: the first rule was wholly contained in the second.
+  - `.shell`: the second rule set `--panel` and `--beside`, which the window chat, the selection bar and the bead read too.
+  - `.tabs a` got `text-decoration: none` on its own, far from the tabs' rule.
+  - `.bar-menu` was sized 1.75rem with the sidebar fold, then resized to 2rem in the narrow bar's rules.
+- The reduced-motion block stopped `.cli-bar`'s animation, but the animation runs on `.cli-bar::after`, so the install bar kept sliding for a person who asked for less motion.
 
 **Proposal.** Delete the dead rules. Merge each split rule into its later home. Move `--panel` and `--beside` to the first `.shell` rule. Make the reduced-motion selector `.cli-bar::after`.
 
@@ -73,7 +75,7 @@ census
 
 **Size.** 1 file, ~45 CSS lines removed.
 
-**Watch for.** `.bar-menu` is focused by class (`packages/web/src/app.tsx:53`): keep the class. Pick the 2rem size or the 1.75rem one on purpose; D9 settles icon-button sizes.
+**Watch for.** `.bar-menu` is focused by class (`App` in `packages/web/src/app.tsx`): keep the class. Pick the 2rem size or the 1.75rem one on purpose; D9 settles icon-button sizes.
 
 **Done when.** The census shows 0 split selectors and 0 dead classes, and `pnpm check` is green.
 
@@ -671,7 +673,9 @@ Seen side by side: [Empty, loading and error](/components/states#empty).
 
 ## D15. Layer and spacing tokens
 
-**Decided 2026-11-05** (OA-251, with D1): a `--layer-*` scale.
+**Layers done** (OA-251): every `z-index` is a `--layer-*` token on `html`, in today's order, with `--layer-raised`, `--layer-float` and `--layer-sheet` added so no two layers share a value they didn't before. See [Space, shape and elevation](/foundations/space). The spacing half is still open.
+
+**Why.** 11 `z-index` literals with no scale (20 and 22 each used twice), and the same small paddings written as rem literals over and over (0.125rem thirteen times).
 
 **Why.** 11 `z-index` literals with no scale (20 and 1 each used twice; the bead's 22 at `window.css:4404` is the top one now), and the same small paddings written as rem literals over and over (0.125rem fourteen times, `.noticed-pinned` the newest).
 
@@ -691,7 +695,7 @@ Smaller drift, worth a line in a story that's nearby:
 - **Approve's label.** The thread says **Approve and apply**; the review link page hard-codes **Approve** (`packages/web/src/other-pages.tsx:350`). **Decided 2026-11-05** (OA-252): one label wherever it does the same thing. See D2.
 - **Destructive confirmation.** Delete asks in a modal with Cancel focused; Disconnect asks inline with Disconnect first ([Confirm dialog](/components/confirm)).
 - **"N more"** has four shapes ([Long lists](/patterns/long-lists)).
-- **The pulse** runs at 1.6s on a state dot (`window.css:846`) and 1.2s on the working dot, Sync now and now the bead's applying dot (`window.css:2812`, `window.css:3919`, `window.css:4665`) ([Motion](/foundations/motion)). **Decided 2026-11-05** (OA-251): one pulse speed.
+- ~~**The pulse** runs at 1.6s on a state dot and 1.2s on the working dot and Sync now~~. Done (OA-251): one `--pulse`, 1.6s ([Motion](/foundations/motion)).
 - **Disclosures**: chevron buttons with the rotation written three times, and `<summary>` with the browser's own triangle (drift research B6).
 - **Link-shaped buttons** in seven looks: `.link-action`, `.overview-more`, `.overview-stat`, `.item-link`, `.line-error .quiet-action`, `.undo-action`, and the bead's `.bead-action` on its ink.
 - **Item rows** drawn three ways; Browse's skips the shared `TypeMark` and `ItemKey` ([List rows](/components/list-row)).

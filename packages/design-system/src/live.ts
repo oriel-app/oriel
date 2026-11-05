@@ -274,7 +274,9 @@ export function census(css = windowCss()): { measure: string; count: number; whe
   const classes = new Set(
     plain.flatMap((r) => [...r.selector.matchAll(/\.([a-z][\w-]*)/g)].map((m) => m[1] ?? "")),
   );
-  const dead = [...classes].filter((c) => !new RegExp(`\\b${c}\\b`).test(src)).map((c) => `.${c}`);
+  // A whole class name: .badge isn't named by provider-badge.
+  const named = (c: string) => new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(src);
+  const dead = [...classes].filter((c) => !named(c)).map((c) => `.${c}`);
   return [
     { measure: "Raw px outside token blocks", count: px.length, where: px },
     { measure: "Raw rem in spacing, not a --space-* token", count: rem.length, where: rem },
