@@ -551,7 +551,8 @@ The app's list is `ul.provider-rows.connection-rows` and the page is `main.page.
       </span>
       <ul class="connection-report" aria-label="What its last sync didn't read">
         <li>
-          Checkout v2 tracker, Stories: rows 14 and 22 share a key, so none of them is an item yet.
+          Checkout v2 tracker, Stories: rows 14 and 22 share a Row ID, so none of them is an item
+          yet.
         </li>
         <li>Checkout v2 tracker, Stories: 3 hidden rows not read.</li>
       </ul>
