@@ -177,12 +177,14 @@ C2 didn't run: C1 was kept.
 
   The target group, injection, is unchanged on test, so its p is 1.
 
-- **Re-recording,** a plain `pnpm evals` on the final text, outside the ledger (round `01M6N192RS9YTX7ZD9GGZF4V8A`): train 30/31, test 15/17, $1.68.
-  - The three runnable `look-*` cases passed their draw; `look-long-crossings` missed as its `failing` mark expects.
-  - `draft-sheets-tracker` missed its golden draft. It is on the brief's known-flaky list, and C1 changes no Sheets text or draft type, so its `failing` mark is back, with a note.
-  - `scope-off-region-question` missed its judge. A judged case doesn't fail `evals:ci`.
+- **Re-recording,** plain `pnpm evals` runs on the final text, outside the ledger:
+  - `01M6N192RS9YTX7ZD9GGZF4V8A`, on `f3524d07`: train 30/31, test 15/17, $1.68. It went stale when #194 (OA-235), which is agent-facing, merged first.
+  - `01M6N1J0XABP9DGEHHQEACEJ5B`, after rebasing onto `1f48ce0b`: train 30/31, test 16/17, $1.37.
+    - `chart-finish-checkout` and `draft-sheets-tracker`, both known flaky, passed. #194's `failing` mark on `chart-finish-checkout` comes off; `evals:ci` fails on an unexpected pass.
+    - The three runnable `look-*` cases passed; `look-long-crossings` missed, as its mark expects.
+    - `chart-in-progress-by-person`, not in the climb, missed: the agent wrote `filter`, which show() refuses, then drew a pivot from `history()` instead of bars from `window.overview()`. A probe of that case alone, 4 trials an arm in a throwaway subset climb: main's agent text 3/4 (the same miss), this branch 4/4, $0.21. It is a flake of main's text, not of the trim. The branch's probe round re-recorded its cassette.
   - `evals:ci` exits 0.
-- **Spend:** $6.75 of the $10 cap, in 8 rounds and 320 trials. The re-recording, $1.68, is outside the cap: $8.43 in all.
+- **Spend:** $6.75 of the $10 cap, in 8 rounds and 320 trials. Outside the cap: $1.68 for the first recording, $1.37 for the recording after #194, and $0.21 for the probe. $10.01 in all.
 - **What the method can't see:**
   - A drop confined to one or two cases, below the margin, can be kept.
   - The `look-*` cases ran once, in the re-recording, not in the climb.
