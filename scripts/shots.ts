@@ -206,6 +206,20 @@ await show({ read: "history", from: "items", form: "spread", value: "daysInState
 await show({ read: "history", from: "items", form: "pivot", rows: "assignee", columns: "state", where: { kind: "story" } });`,
     "Stories by assignee and state. Change the rows or columns to look another way.",
   ],
+  // Bars and a table of history(), whose items Oriel names as it does a
+  // chart's, and whose lower bounds it marks.
+  [
+    /^which epics hold the most points/i,
+    `await history();
+await show({ read: "history", from: "items", form: "bars", label: "epic", value: "estimate", where: { kind: "story" } });`,
+    "Story points by epic.",
+  ],
+  [
+    /^what's been in progress longest/i,
+    `await history();
+await show({ read: "history", from: "items", form: "table", columns: ["id", "epic", "daysInState"], where: { state: "In progress" } });`,
+    "What's in progress, and for how long.",
+  ],
   [
     /^chart/i,
     `await window.overview();
@@ -1744,6 +1758,8 @@ const scenes: Scene[] = [
       ["chart-timeline-stories", "Show checkout on a timeline", "timeline"],
       ["chart-spread", "How long has work been sitting in progress?", "spread"],
       ["chart-pivot", "Who's overloaded?", "pivot"],
+      ["chart-bars", "Which epics hold the most points?", "bars"],
+      ["chart-table", "What's been in progress longest?", "table"],
     ] as const
   ).map(([name, question, form]): Scene => ({
     name,
@@ -1771,7 +1787,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    // Pins (decision 0030) of four chart blocks, as the overview's Pinned
+    // Pins (decision 0030) of five blocks of history(), as the overview's Pinned
     // strip shows them. A thread's block can't be pinned yet (0030's
     // `pin.add`): the blocks are the window chat's, as Oriel built them, put
     // in Noticed's reply, which carries the pins, for the shot.
@@ -1785,6 +1801,7 @@ const scenes: Scene[] = [
         "When will each epic land?",
         "How long has work been sitting in progress?",
         "Who's overloaded?",
+        "Which epics hold the most points?",
       ]) {
         await post("/api/window-chat/messages", { text: question }, historied);
         await historied.app.settled();
@@ -1804,7 +1821,7 @@ const scenes: Scene[] = [
       });
       await page.reload();
       await overviewShown(page);
-      await page.locator(".pinned .answer-block").nth(3).waitFor();
+      await page.locator(".pinned .answer-block").nth(4).waitFor();
     },
   },
   {

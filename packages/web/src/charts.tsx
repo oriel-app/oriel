@@ -13,9 +13,11 @@ import type { BlockView } from "./view.ts";
 
 type Of<F extends ChartBlock["form"]> = Extract<BlockView, { form: F }>;
 
-// A label as the window shows it: an item's name when it is an item's ID.
-const named = (chart: { names?: Readonly<Record<string, string>> }, label: string) =>
-  (chart.names && Object.hasOwn(chart.names, label) ? chart.names[label] : undefined) ?? label;
+// A label as every block shows it: an item's name when it is an item's ID.
+export const named = (block: { names?: Readonly<Record<string, string>> }, label: string) =>
+  (block.names && Object.hasOwn(block.names, label) ? block.names[label] : undefined) ?? label;
+// The mark every block puts before a figure that is only a lower bound.
+export const atLeast = (bound: unknown) => (bound ? "≥ " : "");
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const day = 86_400_000;
@@ -281,7 +283,7 @@ export function SpreadChart({ chart, compact }: { chart: Of<"spread">; compact?:
   const yTicks = ticks(Math.max(...spread.bins.map((bin) => bin.count), 1), compact ? 2 : 4);
   const yMax = yTicks.at(-1) ?? 1;
   const y = (count: number) => pad.top + (1 - count / yMax) * (height - pad.top - pad.bottom);
-  const bound = spread.atLeast ? "≥ " : "";
+  const bound = atLeast(spread.atLeast);
   const marks = [
     { value: spread.median, label: `median ${bound}${number(spread.median)}` },
     { value: spread.p90, label: `p90 ${bound}${number(spread.p90)}` },

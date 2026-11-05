@@ -12,7 +12,7 @@ import {
   type IndexRecord,
   type Instant,
   type ItemId,
-  isItemId,
+  itemLabels,
   isUlid,
   type NextStep,
   parseItemId,
@@ -412,24 +412,21 @@ export function views(deps: ViewDeps) {
   // saying so.
   const blockView = (built: Block, region: ReadonlySet<string>): BlockView => {
     const { spec: _spec, ...block } = built;
-    if (block.form === "timeline" || block.form === "pivot") {
-      // Labels that are items, as each lane of history()'s items is and
-      // each of their epics, by the name the index has for each now
-      // (decision 0053): Oriel's data, never the agent's.
+    if (block.form === "preview") return block;
+    if (block.form !== "rows") {
+      // Labels that are items, in any form, by the name the index has for
+      // each now (decision 0053): Oriel's data, never the agent's.
+      const labels = itemLabels(built);
+      if (!labels.length) return block;
       const { byId } = lookup();
-      const labels =
-        block.form === "timeline"
-          ? block.lanes.map((lane) => lane.label)
-          : Object.values(block.tables).flatMap((table) => [...table.rows, ...table.columns]);
       const names = Object.fromEntries(
-        [...new Set(labels)].flatMap((label) => {
-          const record = isItemId(label) ? byId.get(label) : undefined;
-          return record ? [[label, record.title]] : [];
+        labels.flatMap((id) => {
+          const record = byId.get(id);
+          return record ? [[id, record.title]] : [];
         }),
       );
       return { ...block, names };
     }
-    if (block.form !== "rows") return block;
     const { byId } = lookup();
     const asOf = deps.asOf();
     const items = block.items.map((id) => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type BlockSpec, blockSpec, buildBlock, builtBlock } from "./block.ts";
+import { type BlockSpec, blockSpec, buildBlock, builtBlock, itemLabels } from "./block.ts";
 import type { ChangeLogEntry } from "./change-log.ts";
 import { historyFields, historyOf } from "./history.ts";
 import type { Instant, ItemId } from "./ids.ts";
@@ -274,4 +274,78 @@ test("bars of a number the read says may be a lower bound mark each such bar, an
   assert.equal(bound?.atLeast, true);
   assert.equal(built.block.bars.find((bar) => bar.label === "jira:SYN-3")?.atLeast, undefined);
   assert.match(built.block.caption, /≥ marks a value that is only a lower bound/);
+});
+
+test("a table marks each cell of a number that is only a lower bound, by the same rule as bars, and says so", () => {
+  const columns = ["id", "epic", "daysInState"];
+  const built = buildBlock(spec({ form: "table", columns }), answered);
+  assert.ok(built.ok && built.block.form === "table");
+  // SYN-4 and SYN-6 were never seen moving: in their state since at least
+  // when the log starts.
+  assert.deepEqual(built.block.atLeast, [
+    { row: 3, column: 2 },
+    { row: 4, column: 2 },
+  ]);
+  assert.match(
+    built.block.caption,
+    /Days in its state\. ≥ marks a value that is only a lower bound/,
+  );
+  assert.deepEqual(builtBlock(JSON.parse(JSON.stringify(built.block))), {
+    ok: true,
+    value: built.block,
+  });
+  // A table showing no bounded number has no marks, and no note.
+  const plain = buildBlock(spec({ form: "table", columns: ["id", "estimate"] }), answered);
+  assert.ok(plain.ok && plain.block.form === "table");
+  assert.equal(plain.block.atLeast, undefined);
+  assert.doesNotMatch(plain.block.caption, /≥/);
+});
+
+test("a series or a pivot never sums a number that is only a lower bound, which neither could mark", () => {
+  const series = buildBlock(
+    spec({ form: "series", at: "stateSince", value: "daysInState" }),
+    answered,
+  );
+  assert.ok(!series.ok && /only a lower bound in some rows/.test(series.why));
+  // Even from a read that says every number adds up.
+  const { sums: _sums, ...unsummed } = historyFields;
+  const everything = { ...answered, fields: unsummed };
+  const pivot = buildBlock(spec({ form: "pivot", rows: "state" }), everything);
+  assert.ok(pivot.ok && pivot.block.form === "pivot");
+  assert.deepEqual(
+    pivot.block.measures.map((m) => m.field),
+    ["estimate", "daysSinceUpdate"],
+  );
+  const summed = buildBlock(
+    spec({ form: "pivot", rows: "state", value: "daysInState" }),
+    everything,
+  );
+  assert.ok(!summed.ok && /isn't a number to sum/.test(summed.why));
+});
+
+test("every form's labels that are items are listed in one place, for the window to name", () => {
+  const labels = (input: unknown) => {
+    const built = buildBlock(spec(input), answered);
+    assert.ok(built.ok);
+    return itemLabels(built.block);
+  };
+  assert.deepEqual(labels({ form: "bars", label: "epic", value: "estimate" }), ["jira:SYN-100"]);
+  // A table's Item and Epic, never its assignee's name.
+  assert.deepEqual(labels({ form: "table", columns: ["id", "epic", "assignee"] }), [
+    "jira:SYN-1",
+    "jira:SYN-100",
+    "jira:SYN-2",
+    "jira:SYN-3",
+    "jira:SYN-4",
+    "jira:SYN-6",
+  ]);
+  assert.deepEqual(labels({ form: "timeline", start: "startedAt", end: "doneAt" }).toSorted(), [
+    "jira:SYN-1",
+    "jira:SYN-2",
+    "jira:SYN-3",
+    "jira:SYN-6",
+  ]);
+  assert.deepEqual(labels({ form: "pivot", rows: "epic", columns: "assignee" }), ["jira:SYN-100"]);
+  assert.deepEqual(labels({ form: "spread", value: "daysInState" }), []);
+  assert.deepEqual(labels({ form: "series", at: "doneAt" }), []);
 });
