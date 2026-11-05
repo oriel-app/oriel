@@ -169,7 +169,7 @@ The review page's primary says **Approve**, the thread's **Approve and apply**, 
 - After a rejection: Oriel's note, `OrielNote` in `packages/web/src/thread-page.tsx`; focus to the composer, `perform` in `packages/web/src/effects.ts`.
 - What the agent did directly, with Undo: `ActionLines` in `packages/web/src/thread-page.tsx`.
 - The review link's page: `ReviewPage` in `packages/web/src/other-pages.tsx`; the steps a link can take, `ReviewStep` in `packages/web/src/review.ts`. The held reason: `HeldMessage` in `packages/web/src/thread-page.tsx`.
-- After you approve (Settings › General): "Stay on this thread" or "Go to the next thing that needs you", which moves on and says "You approved “{title}”. Applying…" with **Back** in the [undo stack](/components/undo) (`approvedText` in `packages/web/src/approved.ts`).
+- After you approve (Settings › General): "Stay on this thread" or "Go to the next thing that needs you", which moves on and says "You approved “{title}”. Applying…" with **Back** in [the bead](/components/bead), Applied once the apply is done (`approvedText` in `packages/web/src/approved.ts`).
 
 ### Where Approve is deliberately absent
 

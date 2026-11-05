@@ -12,7 +12,7 @@ A tool someone lives in all day has many small removals: an item out of a workst
 
 ## The pattern
 
-**Do it, and offer Undo.** For anything Oriel can give back, act at once and say what happened in the [undo stack](/components/undo), with **Undo** beside it (decision 0024). ⌘Z (Ctrl+Z) presses the newest Undo when focus isn't in a field.
+**Do it, and offer Undo.** For anything Oriel can give back, act at once and say what happened in [the bead](/components/bead), with **Undo** beside it (decision 0024). ⌘Z (Ctrl+Z) presses the newest Undo when focus isn't in a field, and F8 takes the keyboard to it.
 
 **Ask once, only where Undo can't reach**, or where what goes is bigger than the click suggests. The question names what goes and what stays, and only its confirm is a danger button.
 
@@ -31,37 +31,62 @@ A tool someone lives in all day has many small removals: an item out of a workst
 
 The note says what happened in the past tense, names the thing, and puts **Undo** beside it. An item the index no longer has can't come back, and the note says so instead.
 
-```html specimen id=undo title="Undo notes: removed, deleted, can't come back"
-<div class="ws-stack">
-  <p class="undo">
-    <span>Removed SYN-12</span
-    ><button
-      type="button"
-      class="undo-action"
-      aria-label="Undo removing SYN-12"
-      aria-keyshortcuts="Meta+Z"
-    >
-      Undo
-    </button>
-  </p>
-  <p class="undo">
-    <span>Deleted “Gift cards”, with its 3 threads.</span
-    ><button
-      type="button"
-      class="undo-action"
-      aria-label="Undo: Deleted “Gift cards”, with its 3 threads."
-    >
-      Undo
-    </button>
-  </p>
-  <p class="undo">
-    <span>Removed SYN-9</span
-    ><span class="undo-note">It's no longer in the window, so it can't come back.</span>
-  </p>
+```html specimen id=undo title="An Undo note in the bead: removed, with its key" height=96
+<div class="shell" style="--sidebar: 0rem">
+  <div
+    class="bead-wrap"
+    role="region"
+    aria-label="Notes"
+    aria-keyshortcuts="F8"
+    data-tone="note"
+    data-count="1"
+    data-held
+    style="--w: 203px; --h: 34px"
+  >
+    <div class="bead">
+      <div class="bead-layer" tabindex="-1">
+        <div class="bead-row">
+          <span class="bead-said">Removed SYN-12</span>
+          <button
+            type="button"
+            class="bead-action"
+            aria-label="Undo removing SYN-12"
+            aria-keyshortcuts="Meta+Z"
+          >
+            Undo<kbd>⌘Z</kbd>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 ```
 
-In the app the notes stand in `<div class="undos" role="status">`, fixed over the foot of the page column, newest at the bottom; each stays 8 seconds, longer while the pointer or focus is on it.
+```html specimen id=cannot title="One that can't come back says why" height=96
+<div class="shell" style="--sidebar: 0rem">
+  <div
+    class="bead-wrap"
+    role="region"
+    aria-label="Notes"
+    aria-keyshortcuts="F8"
+    data-tone="note"
+    data-count="1"
+    data-held
+    style="--w: 421px; --h: 32px"
+  >
+    <div class="bead">
+      <div class="bead-layer" tabindex="-1">
+        <div class="bead-row">
+          <span class="bead-said">Removed SYN-9</span>
+          <span class="bead-cannot">It's no longer in the window, so it can't come back.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+In the app the notes show in [the bead](/components/bead), at the top centre of the page column, newest first; each stays 8 seconds, longer while the pointer or focus is on it, and F8 takes the keyboard there.
 
 ### Remove, at once
 
@@ -185,7 +210,7 @@ Disconnecting erases what Oriel read and how it signs in, and there's no Undo. S
 
 ## Where Oriel does it
 
-- The undo stack, ⌘Z included: `UndoStack` in `packages/web/src/undo-stack.tsx`. CSS `.undos`, `.undo`, `.undo-action` and `.undo-note` in `window.css`.
+- The bead, ⌘Z and F8 included: `UndoStack` in `packages/web/src/undo-stack.tsx`. CSS `.bead-wrap`, `.bead-action` and `.bead-cannot` in `window.css`; an Undo beside its change, `.undo-action` in `window.css`.
 - Remove an item: the ×, drawn by `Member` in `packages/web/src/parts.tsx`; its note, `removed` in `packages/web/src/workstream-page.tsx`.
 - Mark done, Reopen, Delete a workstream: the head's buttons, `EndButtons` in `packages/web/src/end-workstream.tsx`; the menu, `endings` in `packages/web/src/end-workstream.tsx`; the words, `endedText` and `deleteWarning` in `packages/web/src/ending.ts`. The page after: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`, "Deleted. Nothing lists it or its threads now, and its items stay in their sources."
 - The question: `Confirm` in `packages/web/src/close-thread.tsx`, a native `<dialog>` opened with `showModal()`. CSS `.confirm` in `window.css`. A thread's menu: `ThreadMenu` in `packages/web/src/close-thread.tsx`.
@@ -196,5 +221,4 @@ Disconnecting erases what Oriel read and how it signs in, and there's no Undo. S
 
 - **Two shapes of question.** Delete is a modal dialog with Cancel first and focused; Disconnect is an inline `role="alertdialog"` with Disconnect first, and nothing moves focus into it (`Disconnect` in `packages/web/src/connections-page.tsx`). Until they're one, copy the modal `Confirm` for a new question.
 - **Mark a thread done has no Undo**, though decision 0024 says it undoes as reopening.
-- **Two failure toasts.** A failed delete from a list shows `.closing-problem` in `window.css`; a workstream's shows in the undo stack.
-- See [Confirm](/components/confirm) and [Undo](/components/undo) for the components themselves.
+- See [Confirm](/components/confirm), [The bead](/components/bead) and [Undo](/components/undo) for the components themselves.

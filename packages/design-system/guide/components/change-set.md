@@ -257,6 +257,8 @@ Each change is an `li.diff-line`, `data-kind` its kind, padded on the right to l
 | revert       | **Revert what was applied** (partly applied), else **Revert** | `.button`                       |
 | remove       | drawn per line: × or **Remove this change**                   | `.remove-line`, `.quiet-action` |
 
+Between the forward steps and Reject, while nobody has decided, **Second look** (`.button`), or **Looking…** and **Look again**: the person's ask for the agent's reading of what else the change could affect. Its card sits between the diff and the steps. See [Second look](/components/second-look).
+
 Then, after the steps:
 
 - **Share review link** (`.quiet-action`), while the set can be approved. Clicked, it becomes the link in a read-only field (`.link-field`, mono, `aria-label="Review link"`) with **Copy**.

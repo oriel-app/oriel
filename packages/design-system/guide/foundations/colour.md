@@ -180,6 +180,9 @@ Derived tokens are set once, on `html`, from a theme's tokens. No theme sets the
 - `--ins` and `--ins-soft`: inserted words are done's colour.
 - `--handed-off` and `--handed-off-soft`: handed off is a way of being finished, so it's drawn as done.
 - `--derived-line`, `--sidebar-bg`, and `--scrim`, the dim under the drawer and the delete question. It's the ink at 32% in light, and the paper at 40% in dark.
+- What [the bead](/components/bead) writes on its ink (decision 0056): `--bead-text`, `--bead-faint`, `--bead-ring`, `--bead-accent`, `--bead-working`, `--bead-done` and `--bead-danger`. In light the bead is the page's text colour, so each state colour is mixed 45% toward `--bg` to read on it; in the dark they're the theme's own, and the ring is `--line-strong`. Oriel's theme check holds each to 4.5:1 on `--bead`.
+
+`--bead`, the ink itself, is the one colour token a theme sets that isn't a surface, a line, a text or a state: its text in light, and in the dark a near black deeper than the page, which no other token is. `--bead-radius` is the bead's shape: 1rem in Graphite, a pill on one line, and 2px in Broadsheet, a printed slip.
 
 ## Type colours, kept muted
 

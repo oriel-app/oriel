@@ -3,7 +3,7 @@ title: Page head
 status: drifting
 group: Layout
 order: 72
-classes: page, page-title, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, quiet-action, workstream-head, workstream-title-row, workstream-title, workstream-actions, head-action, workstream-origin, workstream-done, tabs, done-tabs, view-tabs, nav-count, overview, overview-top, overview-counts, overview-since, overview-stat, tooltip, icon
+classes: page, page-title, thread, thread-head, crumb, thread-title-row, thread-title, state-chip, quiet-action, workstream-head, workstream-title-row, workstream-title, workstream-actions, head-action, workstream-origin, workstream-done, tabs, done-tabs, view-tabs, nav-count, overview, overview-top, overview-counts, overview-since, overview-stat, window-layout, window, window-head, counts, fixture, adding, tooltip, icon
 summary: The first line of every page: what it is, where it sits, its state, and the one or two things to do with it as a whole. A thread's, a workstream's, a titled page's and the overview's.
 ---
 
@@ -17,6 +17,7 @@ The top of a page, on one `--head-row` (2rem) line, `--inset-top` below the wind
 - **The workstream head** (`header.workstream-head`): the workstream's name as a field you rename in place (`input.workstream-title`), then Mark done (or Reopen) and Delete as icon buttons (`.head-action`), and under it a line saying where it came from (`.workstream-origin`).
 - **A page title** (`h1.page-title`): a page that is a place, not a thing: Settings, Done, and the review link's page. Done has its tabs under it.
 - **The overview's top strip** (`.overview-top`): no title. The Overview/Browse [tabs](/components/tabs) and the counts strip, "what changed since the user last looked, in four counts" (`Counts` in `packages/web/src/overview-page.tsx`).
+- **Browse's head** (`.window-head`): no title either. The same view tabs, then Group by, then one count line: how many items in how many clusters, and, on the fixture, a dashed tag saying so.
 
 Titles that name a thing or a page wear the theme's heading face: `--font-heading` at `--text-xl` and `--title-weight` (a serif at 600 in Graphite, regular in Broadsheet).
 
@@ -245,6 +246,48 @@ The app's page is `main.page.workstream-page`; window.css has no rule for `works
 </main>
 ```
 
+### Browse's head
+
+Browse is `main.window` inside `.window-layout`, the page column: one grid column, `--page` wide at most, centred, padded `--inset-top` `--space-6`, with 6rem under the last cluster so the picked-items bar never covers it. Its head is `.window-head`: a wrapping row, `--head-row` tall at least, the tabs at the start and the count line pushed to the end.
+
+```html specimen id=browse-head title="Browse: the view tabs, Group by, and the count line on the fixture"
+<div class="window-layout">
+  <main class="window" aria-busy="false">
+    <div class="window-head">
+      <nav class="tabs view-tabs" aria-label="Window">
+        <a href="/">Overview</a>
+        <a href="/browse?grouping=epic" aria-current="page">Browse</a>
+      </nav>
+      <div class="tabs" role="group" aria-label="Group by">
+        <button type="button" aria-pressed="true">Epic</button>
+        <button type="button" aria-pressed="false">Assignee</button>
+        <button type="button" aria-pressed="false">Stuck</button>
+        <button type="button" aria-pressed="false">Linked</button>
+      </div>
+      <p class="counts">
+        120 items in 9 clusters
+        <span class="fixture" title="Synthetic fixture data, not your index"
+          >Fixture · 2 Nov 2026</span
+        >
+      </p>
+    </div>
+  </main>
+</div>
+```
+
+- `.counts` is `--text-sm` in `--text-faint`: "120 items in 9 clusters", or "14 matches in 3 clusters" while a filter is set (`Counts` in `packages/web/src/window-page.tsx`).
+- `.fixture` is a dashed `--line-strong` tag, `--text-xs`: "Fixture · {day}", the day the fixture was taken, written absolute. It shows only on the synthetic fixture, never on a person's own index.
+
+When the person comes from a workstream's **Add from the window**, one note sits under the filters until they're done, in `--accent-soft` (`.adding`):
+
+```html specimen id=browse-adding title="Adding to a workstream: the note under the filters"
+<main class="window" aria-busy="false">
+  <p class="adding" role="status">
+    Pick items to add to <strong>Checkout v2: phone wallets and saved cards</strong>.
+  </p>
+</main>
+```
+
 ### Narrow (≤760px)
 
 Under 760px the counts take a row of their own under the tabs: a four-column grid, the since-line across all four, each count's number (`--text-lg`) over its words (`.overview-counts` in `window.css`).
@@ -427,7 +470,9 @@ Hover, focus and active are forced here from window.css's own rules.
 - The workstream's name is an `<input aria-label="Workstream name">`. Enter blurs it, and blur saves (`WorkstreamPage` in `packages/web/src/workstream-page.tsx`).
 - A head action has only an icon, so its `aria-label` names the action and the workstream: "Mark done: Checkout v2: phone wallets and saved cards", "Delete Gift cards…". Its tooltip ("Mark done", "Delete…") follows it and describes it (`aria-describedby`), unless it only repeats the name.
 - Mark done in a thread is a plain `<button>`; nothing confirms it, and an Undo follows. Delete asks first; see [Destructive actions](/patterns/destructive-actions).
+- The crumb, the view tabs and Done's tabs are in-app links, `Link` in `packages/web/src/parts.tsx`: a real `href`, so ⌘-click opens a new tab, and a plain click stays in the page.
 - The view tabs and Done's tabs are `<nav>` of links with `aria-current="page"`, not a `tablist`: each is a page with its own address. See [Tabs](/components/tabs).
+- Browse's Group by is a `role="group"` of buttons with `aria-pressed`; its count line is plain text, and the adding note is `role="status"`, so it's read out when Add from the window lands on Browse.
 - The changed count sets `aria-expanded`. The needs-you count sets `aria-controls="needs-you"`; pressing it opens the sidebar if it's folded or a drawer, and moves focus to Needs you.
 
 ## Content
@@ -439,6 +484,7 @@ Hover, focus and active are forced here from window.css's own rules.
 - **Origin**: how it was made, then "· {N} items · v{N}".
 - **Done line**: "Marked done {when}", plus " by the agent", " by an outside tool" and so on when it wasn't the person.
 - **Page titles**: one noun: Settings, Done. Tabs say their view and count it: "Done 12", "Dropped 3".
+- **Browse's count line**: "{N} items in {N} clusters", or "{N} matches" while filtered; the fixture's tag is "Fixture · {day}". The adding note is "Pick items to add to **{workstream}**."
 - **Counts**: a number in `<strong>`, then its words, singular or plural: "1 item changed", "12 items changed", "1 needs you", "2 need you".
 
 ## Where the app uses it
@@ -448,6 +494,7 @@ Hover, focus and active are forced here from window.css's own rules.
 - Workstream head: `WorkstreamPage` in `packages/web/src/workstream-page.tsx`; head actions `EndButtons` in `packages/web/src/end-workstream.tsx`. CSS: `.workstream-head`, `.workstream-title`, `.workstream-origin`, `.workstream-done`, `.workstream-title-row` and `.head-action` in `window.css`.
 - Page titles: Settings, `SettingsPage` in `packages/web/src/settings-page.tsx`; Done and its tabs, `DonePage` in `packages/web/src/other-pages.tsx`. CSS: `.page`, `.page-title`, `.done-tabs` and `.nav-count` in `window.css`.
 - Top strip: `OverviewPage` in `packages/web/src/overview-page.tsx`; `ViewTabs` in `packages/web/src/overview-page.tsx` (Browse uses it too); `Counts` in `packages/web/src/overview-page.tsx`. CSS: `.overview`, `.overview-top`, `.overview-counts`, `.overview-stat`, `button.overview-stat:not(:disabled)`, `.view-tabs` and `.tabs` in `window.css`; narrow, `@media (max-width: 760px)` in `window.css`.
+- Browse's head: `WindowPage` and `Counts` in `packages/web/src/window-page.tsx`. CSS: `.window-layout`, `.window`, `.window-head`, `.counts`, `.fixture` and `.adding` in `window.css`.
 
 ## Drift
 

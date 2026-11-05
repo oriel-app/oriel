@@ -53,6 +53,7 @@ These rules change the ring. Each was written for a reason, but together they gi
 | `.workstream-title:focus` in `window.css`                                              | No ring. The name's border turns `--line-strong` and it fills with `--surface`                         |
 | `.sidebar-search-field:focus-within` and `.filter-search:focus-within` in `window.css` | The frame's border in `--focus`, plus a 1px ring; the input's own outline off. Written twice, the same |
 | `.context-menu-item:is(:hover, :focus-visible)` in `window.css`                        | No ring. A `--surface-hover` fill, the same as hover                                                   |
+| `.bead-action:focus-visible` in `window.css`                                           | The ring 2px **inside**, in `--bead-accent`: the accent wouldn't read on the bead's ink                |
 
 Three more remove the ring on purpose, and should stay that way. A change set, the item panel's title and the sidebar's Needs you take focus from the app (`tabIndex={-1}`) so a screen reader starts there. They aren't controls, and a ring would mark something nobody tabbed to (`.change-set:focus`, `.panel-title:focus` and `.sidebar-needs` in `window.css`).
 
@@ -202,6 +203,13 @@ The drift report also suggests naming the ring's parts on `html`: `--focus-ring:
   </div>
 </div>
 ```
+
+## Keys the whole window owns
+
+Two keys work from anywhere in the window, so no page or component may bind them:
+
+- **F8** takes focus to [the bead](/components/bead#keyboard-and-aria)'s newest action, a text field included, and Escape takes it back to where it was (`UndoStack` in `packages/web/src/undo-stack.tsx`). The bead's wrap says so with `aria-keyshortcuts="F8"`. A keydown handler must let F8 through.
+- **⌘Z** (Ctrl+Z) undoes the bead's newest note, except in a text field, which undoes its own typing.
 
 ## Rules
 

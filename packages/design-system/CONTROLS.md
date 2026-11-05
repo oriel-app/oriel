@@ -1,12 +1,12 @@
 ---
-surveyed: 5ee7a339
+surveyed: 85a125e9
 ---
 
 # Custom form controls in modern CSS
 
 What Oriel could draw with today's CSS instead of today's JavaScript and system controls, tested in the engines Oriel runs in, with a plain verdict for each. Every proposal is a working specimen in the [controls lab](/lab/select), beside what Oriel ships, in every state and both themes; its CSS is in `assets/proposals/`, written only with Oriel's tokens and judged by Oriel's own literal rule in `pnpm check`.
 
-**A dated snapshot.** Tested on 2026-11-04 at Oriel `5ee7a339`, on `main`; by this note main was at `d8080831`, seven commits on. Every `file:line` here is that commit's: a line link opens the file as it was then, and `pnpm check` doesn't check them, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
+**A dated snapshot.** Tested on 2026-11-04 at Oriel `5ee7a339`; re-surveyed on 2026-11-05 at `85a125e9`, on `main`, with no browser re-run: the engines are the same. Every `file:line` here is `85a125e9`'s: a line link opens the file as it was then, and `pnpm check` doesn't check them, so a stale line never fails the build. A story built from this re-reads `main` before it starts, and `pnpm -s ds where <name>` prints where a selector or symbol is today.
 
 ## Which browsers Oriel must support
 
@@ -31,7 +31,7 @@ No Safari run was possible here (the cached WebKit build doesn't speak this play
 | [`popover="hint"`](/lab/popover) for tooltips                        | **Adopt now**            | Safari treats it as `manual`, which is today                                                                                   |
 | [Entry fade with `@starting-style`](/lab/popover)                    | **Adopt now**            | Menus, tooltips and the confirm fade in over `--duration-quick`                                                                |
 | [Switch redraw, and a real locked state](/lab/switch)                | **Adopt now**            | Keep `button[role=switch]`; fix the weak off state and the vanishing switch in forced colours                                  |
-| [`accent-color` on the connect steps' radios](/lab/checkbox-radio)   | **Adopt now**            | One line; they show the browser's blue today                                                                                   |
+| [`accent-color` on the connect steps' radios](/lab/checkbox-radio)   | **Done**                 | #173 set it on `html`, so every checkbox, radio and range takes the accent                                                     |
 | [`text-wrap: balance`](/lab/more) on titles, `pretty` on prose       | **Adopt now**            | Small, safe, Firefox ignores `pretty`                                                                                          |
 | [`scrollbar-gutter: stable`](/lab/more)                              | **Adopt now**            | Sidebar, rail, item panel, window chat: no shift when a list grows a scrollbar                                                 |
 | [`interpolate-size` and `::details-content`](/lab/more)              | **Adopt now, as polish** | A run line opens smoothly in the desktop app; snaps elsewhere, as today                                                        |
@@ -43,12 +43,12 @@ No Safari run was possible here (the cached WebKit build doesn't speak this play
 | [`light-dark()`](/lab/more)                                          | **Doesn't apply**        | It follows `color-scheme`, not Oriel's theme blocks: tested, it took the light branch in Broadsheet dark                       |
 | [`@scope`, `@layer`](/lab/more)                                      | **Not needed**           | One stylesheet with class prefixes already scopes                                                                              |
 | [Nesting](/lab/more)                                                 | **Wait**                 | Oriel's CSS reader (`packages/web/themes.ts`) loses a nested rule's parent; the theme check and this workshop key on selectors |
-| `color-mix()`, `:has()`, container size queries                      | **Keep using**           | Already in window.css: 34, 9 and 3 uses                                                                                        |
+| `color-mix()`, `:has()`, container size queries                      | **Keep using**           | Already in window.css: 47, 9 and 3 uses                                                                                        |
 | `sibling-index()`, container style queries                           | **When needed**          | Baseline in 2026; no use in Oriel yet                                                                                          |
 
 ## Select first
 
-The customizable select is the one most worth doing. Today Oriel has three native selects, each styled on its own, and the list that opens is the operating system's: its font, its colours, its corners, whatever the theme.
+The customizable select is the one most worth doing. Today Oriel has four native selects, each styled on its own (a pivot block's picks, from chart blocks, are the fourth), and the list that opens is the operating system's: its font, its colours, its corners, whatever the theme.
 
 The proposal (`assets/proposals/select.css`, class `.dropdown`) has two layers:
 
@@ -63,20 +63,20 @@ Three traps, each written up in the lab:
 - A base-select sizes to the chosen option, not the widest, so a filter changes width when set. Give filters a min-width.
 - In the fallback, a rich option's text runs together ("Opus 5.5 · Claude Code The largest…"), so the markup keeps a space before each description, and descriptions read after the name.
 
-Keyboard is the native select's: Space or Alt+↓ opens (Enter doesn't, on macOS), arrows move, letters jump, Escape closes. Typing on a closed "Add to…" picks and adds at once, as it does today. That's one reason to **decide whether "Add to…" stays a select or becomes a menu button**: it's a menu wearing a select.
+Keyboard is the native select's: Space or Alt+↓ opens (Enter doesn't, on macOS), arrows move, letters jump, Escape closes. Typing on a closed "Add to…" picks and adds at once, as it does today. **Decided 2026-11-05** (no story): "Add to…" stays a select, and takes the customizable select with the others.
 
-Migration: `packages/web/src/window-page.tsx:126` (filters), `packages/web/src/window-page.tsx:620` ("Add to…") and `packages/web/src/settings-page.tsx:424` (models) take `class="dropdown"`; their three CSS blocks go (`window.css:1638`, `window.css:2191`, `window.css:5426`), and `:has(option[value=""]:checked)` replaces the JS-set `data-set`. No select is on the review link page.
+Migration: `packages/web/src/window-page.tsx:126` (filters), `packages/web/src/window-page.tsx:620` ("Add to…"), `packages/web/src/settings-page.tsx:424` (models) and `packages/web/src/charts.tsx:377` (a pivot's picks) take `class="dropdown"`; their four CSS blocks go (`window.css:1700`, `window.css:2255`, `window.css:6346`, `window.css:3279`), and `:has(option[value=""]:checked)` replaces the JS-set `data-set`. No select is on the review link page.
 
 ## Text fields
 
-- `field-sizing: content` grows a textarea from 2 to 8 lines and then scrolls (measured: 49.7px empty, 162.75px capped). It replaces the JS row count on a held message (`packages/web/src/thread-page.tsx:530`), which today doesn't grow while the person types. Where it's missing (Firefox 142), `rows` and the resize handle hold, so the review page's reason field is safe.
+- `field-sizing: content` grows a textarea from 2 to 8 lines and then scrolls (measured: 49.7px empty, 162.75px capped). It replaces the JS row count on a held message (`packages/web/src/thread-page.tsx:537`), which today doesn't grow while the person types. Where it's missing (Firefox 142), `rows` and the resize handle hold, so the review page's reason field is safe.
 - `:user-invalid` turns a field's border red only after the person has typed and left it: tested false on arrival, false while typing, true after Tab. It sits beside `[aria-invalid]`, which Oriel already sets when a connector names a field.
 - The proposed `Field` ties its hint and its problem to the input with `aria-describedby`. Nothing in Oriel does today.
 - One focus, the frame's border and a 1px ring in `--focus`, the same as the [ChatInput](/components/chat-input) proposal and today's sidebar search.
 
 ## Checkbox and radio
 
-`accent-color` already makes a checked box "your choice made" in every engine, and none of these controls is on the review page. The drawn version (`appearance: none` on the real input, so keyboard and names stay native) works and is better in measurable ways: it follows the text size (16px, 18px at Large, where the browser's stays 13px), its edge clears 3:1 in every theme, and it looks the same in every engine. It costs about 90 lines and a forced-colours fallback. **Wait**, and fix the one gap now: `.choice-row input { accent-color: var(--accent); }` beside `window.css:6124`.
+`accent-color` already makes a checked box "your choice made" in every engine, and none of these controls is on the review page. The drawn version (`appearance: none` on the real input, so keyboard and names stay native) works and is better in measurable ways: it follows the text size (16px, 18px at Large, where the browser's stays 13px), its edge clears 3:1 in every theme, and it looks the same in every engine. It costs about 90 lines and a forced-colours fallback. **Wait.** The one gap, the connect steps' radios in the browser's blue, is closed: #173 set `accent-color` on `html` (`window.css:294`).
 
 Oriel doesn't use the indeterminate state, and shouldn't on Browse's anchor pick: that box picks the epic as an item, not its items.
 
@@ -98,7 +98,7 @@ The context menu opens where the pointer is, and anchor positioning can't anchor
 
 ## What to adopt now, in order
 
-1. The connect steps' `accent-color` (one line).
+1. ~~The connect steps' `accent-color` (one line).~~ Done in #173.
 2. `field-sizing: content` on the held message and the review reason, and `:user-invalid` beside `[aria-invalid]`.
 3. The field frame focus, with [ChatInput](/drift#d3-one-chatinput-for-the-four-places-a-person-asks) and [SearchField](/drift#d5-one-searchfield).
 4. The customizable select, for Browse's filters and the model pickers.
@@ -108,7 +108,7 @@ The context menu opens where the pointer is, and anchor positioning can't anchor
 
 ## Decisions for the maintainer
 
-- Whether "Add to…" stays a select or becomes a menu button.
-- Whether the context menu's keyboard focus gets an inset ring, rather than the fill it shares with hover (drift D4).
+- ~~Whether "Add to…" stays a select or becomes a menu button.~~ **Decided 2026-11-05** (no story): it stays a select.
+- ~~Whether the context menu's keyboard focus gets an inset ring, rather than the fill it shares with hover (drift D4).~~ **Decided 2026-11-05** (OA-253): an inset ring, distinct from hover.
 - One entry fade: the popover lab's (`assets/proposals/popover.css`) and the "more" lab's (`.more-enter` in `assets/proposals/more.css`) both fade a menu in. Keep the popover lab's; the other is there to show `@starting-style` alone.
 - Exit transitions: menus and tooltips leave instantly today, and the proposal keeps that.

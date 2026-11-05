@@ -1,7 +1,7 @@
 ---
 title: Motion
 order: 40
-summary: Two durations and one easing. Quick for a state, move for a place. One pulse for work in progress, and one reduced-motion block that stills every move.
+summary: Two durations and one easing. Quick for a state, move for a place, and a spring for the bead's shape. One pulse for work in progress, and one reduced-motion block that stills every move.
 ---
 
 # Motion
@@ -15,6 +15,7 @@ Oriel moves little. A dense tool read all day shouldn't make people wait for it,
 - `--duration-quick` (120ms): **a state**. Something changes where it is: a chevron turns, a switch flips, a hidden action fades in, a list dims while it reloads.
 - `--duration-move` (180ms): **a place**. Something travels or arrives: the item panel slides in, the window chat arrives, the sidebar folds, the drawer opens, a swiped row slides.
 - `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`): how a move settles, fast then gentle. Use it for anything that arrives.
+- `--duration-morph` (440ms) and `--ease-spring`, a sampled damped spring about 5% over, as a `linear()` easing: **a shape that changes** (decision 0056). Only [the bead](/components/bead) uses them, as it grows from a dot and changes shape between notes.
 
 They're shared: no theme changes them. A rule may not write a duration as a literal, since Oriel's theme check fails it. Keyframe durations (the pulse, the spinner) are the exception today. See [Drift](#drift).
 
@@ -31,6 +32,7 @@ tokens motion
 - **A swipe** (`.swipe-row` in `window.css`) slides a row left to show its actions. While a finger holds it, it follows at once with no transition.
 - **Chevrons** turn 90° when their disclosure opens, at quick speed.
 - **The switch** (`.switch` in `window.css`) slides its knob and fills its track, at quick speed with `--ease-out`.
+- **The bead** (`.bead` in `window.css`) grows from a dot on the spring, and changes shape between notes; its words come in with a 2px blur and go faster than they came. A failure settles with `--ease-out`, not the spring. Going, it shrinks back to the dot and fades. All caught up plays its one flourish once: the mark draws, its panes light, and a glint crosses it, in about 1.6s.
 - **Fades:** a hidden row action appearing, Browse's clusters dimming to 0.55 while a grouping loads, and Needs you's background flashing the accent tint once when the overview's count points at it.
 
 Entries use `@starting-style`: the panel and the chat are drawn at their start (transparent, offset) for their first frame, then transition to rest. There's no script. An engine without `@starting-style` (Safari before 17.5, Firefox before 129) just shows them at rest, which is fine.
@@ -99,6 +101,8 @@ reduced-motion
 
 A new transition or animation that moves something must be added to this block, never to a block of its own. A fade or a colour change may stay.
 
+The bead (decision 0056) is in it: it only fades. It arrives at its size, swaps its words at once, shows its marks drawn and its panes lit, and fades out where it is, with no spring, no glint and no hairline, and the page's move to make room for it is instant.
+
 **A bug in it.** The block sets `animation: none` on `.cli-bar` in `window.css`, but the animation is on `.cli-bar::after`. The element has no animation to stop, so the install bar keeps sliding under reduced motion. The fix is one selector: `.cli-bar::after`.
 
 Two smaller gaps:
@@ -108,7 +112,7 @@ Two smaller gaps:
 
 ## Drift
 
-- **Two pulse speeds.** The state dot pulses at 1.6s (`.state-dot:is([data-waiting="agent"], [data-waiting="apply"])` in `window.css`). The working dot and Sync now pulse at 1.2s (`.working .working-dot` and `.sync-now[aria-busy] .icon` in `window.css`). The keyframes are one, but "the one pulse" runs at two speeds. Copy 1.2s until it's settled. A shared `--pulse` duration on `html` would end it.
+- **Two pulse speeds.** The state dot pulses at 1.6s (`.state-dot:is([data-waiting="agent"], [data-waiting="apply"])` in `window.css`). The working dot, Sync now and the bead's Applying dot pulse at 1.2s (`.working .working-dot`, `.sync-now[aria-busy] .icon` and `.bead-dot` in `window.css`). The keyframes are one, but "the one pulse" runs at two speeds. Copy 1.2s until it's settled. A shared `--pulse` duration on `html` would end it.
 - **Three easings.** The panel, the chat and the switch use `--ease-out`. The sidebar, drawer, swipe and the chevrons inside the sidebar use `ease`. `.chevron`, `.clusters` and `.make-workstream` use the default. Use `--ease-out` for anything new.
 - **Keyframe durations are literals**: 1.6s, 1.2s, 0.9s and 1.8s. They're the only durations outside the tokens.
 

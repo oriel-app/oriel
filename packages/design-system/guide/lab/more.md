@@ -206,7 +206,7 @@ With overlay scrollbars (macOS's default, "show scroll bars when scrolling") the
 
 ### :has()
 
-Used 9 times already, such as a selection bar that moves the undo stack up (`.shell:has(.selection-bar) .undos` in `window.css`) and a draft's option rows that change layout when they hold a textarea (`.draft-changes dd:not(:has(textarea))` in `window.css`). The [select](/lab/select) proposal uses it to make a filter quiet until it's set, with no `data-set` attribute. It's Baseline.
+Used 7 times already, such as a change set's head that makes room for its quiet action (`.change-set-head:has(> .quiet-action)` in `window.css`) and a draft's option rows that change layout when they hold a textarea (`.draft-changes dd:not(:has(textarea))` in `window.css`). The [select](/lab/select) proposal uses it to make a filter quiet until it's set, with no `data-set` attribute. It's Baseline.
 
 **Verdict: keep using it**, where it replaces an attribute set in JS only for styling.
 
