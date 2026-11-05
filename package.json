@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts && pnpm -r --if-present run evals:ci",
-    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell && tsc -p packages/desktop/probe",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && node scripts/check-repo.ts && node packages/design-system/scripts/check.ts && pnpm -r --if-present run evals:ci",
+    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p packages/desktop/shell && tsc -p packages/desktop/probe && tsc -p packages/design-system",
     "lint": "oxlint --deny-warnings && oxfmt --check",
     "format": "oxfmt",
     "github": "node scripts/github.ts",
@@ -26,7 +26,10 @@
     "desktop": "node packages/desktop/src/bundle.ts",
     "desktop:try": "node scripts/desktop-try.ts",
     "desktop:debug-flags": "node scripts/desktop-debug-flags.ts",
-    "sketch-frames": "pnpm --filter @oriel/web build && node scripts/sketch-frames.ts"
+    "sketch-frames": "pnpm --filter @oriel/web build && node scripts/sketch-frames.ts",
+    "design": "node packages/design-system/src/server.ts",
+    "ui-check": "node packages/design-system/scripts/ui-check.ts",
+    "ds": "node packages/design-system/src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

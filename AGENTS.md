@@ -7,6 +7,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 - `pnpm check`: typecheck, lint, unit tests, repo checks. It must be green before you say done; report its output, not "tests pass".
 - `pnpm --filter <pkg> check` while iterating. CI runs everything.
 - `pnpm perf`: the window's open on a 4,000-item world, in Chrome, against its budget. Run it after touching the index, the overview or Browse.
+- `pnpm ui-check` when you touch `packages/web`, and fix the page it names in the same PR.
 - `pnpm desktop:try <scenario>`: the built desktop app, hidden, on a fresh data folder, with its secrets in memory. See `packages/desktop/README.md`.
 
 ## Gotchas
@@ -29,7 +30,7 @@ Spec: `SPEC.md`. Use its glossary (§2) exactly, in code and prose. Decisions: `
 
 ## Hit every surface
 
-A change to items, threads or change sets is checked against: the overview (workstream cards, Not in a workstream yet, the window chat, pins), Browse under each grouping (epic, assignee, stuck, linked), workstream editing and the region-version marker, a cluster open and closed, the item panel, the right rail, the change-set diff, the review link, thread states (Needs you, the Done page), a thread's blocks, an eval fixture and a telemetry event.
+A change to items, threads or change sets is checked against: the overview (workstream cards, Not in a workstream yet, the window chat, pins), Browse under each grouping (epic, assignee, stuck, linked), workstream editing and the region-version marker, a cluster open and closed, the item panel, the right rail, the change-set diff, the review link, thread states (Needs you, the Done page), a thread's blocks, an eval fixture, a telemetry event and its page in packages/design-system.
 
 ## Dependencies
 

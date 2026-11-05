@@ -1,0 +1,108 @@
+/* PROPOSAL: a checkbox and a radio drawn with Oriel's tokens (Controls
+   lab, /lab/checkbox-radio). Not in Oriel yet, and not urgent: today's
+   `accent-color` (window.css:2010, window.css:5580) already gives the accent
+   when picked. What drawing adds: a box that follows the text size, an
+   edge that clears 3:1 in every theme, and one look in every engine.
+
+   The real <input> stays, with `appearance: none`, so its name, its state,
+   Space, the arrow keys in a radio group, a <label>'s click and a form all
+   stay the browser's. Picked is the accent, "your choice made", as the
+   switch says (window.css:5443). Focus is window.css's own :focus-visible
+   ring (window.css:273), so nothing here restates it. */
+
+.checkbox,
+.radio {
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  border: var(--border-thin) solid var(--text-faint);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--duration-quick) var(--ease-out),
+    border-color var(--duration-quick) var(--ease-out);
+}
+
+.radio {
+  border-radius: 50%;
+}
+
+/* The mark, drawn in --on-accent and shown only when picked. */
+.checkbox::before,
+.radio::before {
+  content: "";
+  width: 0.625rem;
+  height: 0.625rem;
+  background: var(--on-accent);
+  transform: scale(0);
+  transition: transform var(--duration-quick) var(--ease-out);
+}
+
+.checkbox::before {
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+
+.radio::before {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+}
+
+.checkbox:hover:not(:disabled),
+.radio:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.checkbox:is(:checked, :indeterminate),
+.radio:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.checkbox:is(:checked, :indeterminate)::before,
+.radio:checked::before {
+  transform: scale(1);
+}
+
+/* Part-picked: a bar, not a tick. Oriel has no control that means "some of
+   these" today; see the lab page before giving one this state. */
+.checkbox:indeterminate::before {
+  height: var(--border-thick);
+  clip-path: none;
+}
+
+.checkbox:disabled,
+.radio:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Wrong, once the person has had a go (:user-invalid), or when the app says
+   so (aria-invalid, as `.input[aria-invalid]` does at window.css:6060). */
+.checkbox:is(:user-invalid, [aria-invalid="true"]),
+.radio:is(:user-invalid, [aria-invalid="true"]) {
+  border-color: var(--danger);
+}
+
+/* Windows' high-contrast colours replace backgrounds, so the drawn tick
+   would vanish: there, the browser draws the control. */
+@media (forced-colors: active) {
+  .checkbox,
+  .radio {
+    appearance: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkbox,
+  .radio,
+  .checkbox::before,
+  .radio::before {
+    transition: none;
+  }
+}

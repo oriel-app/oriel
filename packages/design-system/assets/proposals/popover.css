@@ -1,0 +1,76 @@
+/* PROPOSAL: menus and tooltips placed by CSS anchor positioning (Controls
+   lab, /lab/popover). Not in Oriel yet. Today menu.tsx:48-50 and
+   tooltip.tsx:67-74 measure with getBoundingClientRect and write top and
+   left; these two classes do it in CSS, beside window.css's own look:
+   `class="context-menu popover-menu"`, `class="tooltip popover-tip"`.
+   A context menu opens at the pointer, which isn't an element, so it has
+   no anchor: JS still places it, and it gets only the entry below.
+
+   Each names its anchor: `anchor-name: --<id>` on the control and
+   `position-anchor: --<id>` on the popover, inline, as Preact would write
+   them from useId(). Chromium also finds the anchor by itself when
+   popovertarget, commandfor or interestfor opened it, but Safari and
+   Firefox differ on that, so name it.
+
+   Everything that places is inside @supports. Without anchor positioning
+   (older Safari and Firefox), the JS placement stays, as today. */
+
+@supports (anchor-name: --a) {
+  /* A menu under its button, 4px off, its start edges lined up; above
+     it when there's no room below, and the other way along when there's
+     none across. Insets from anchor(), not position-area and a margin:
+     a context menu has no anchor, and a margin would push it off the
+     pointer's point its JS writes. */
+  .popover-menu {
+    top: calc(anchor(bottom) + var(--space-1));
+    left: anchor(left);
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
+  }
+
+  /* A tooltip centred above its control, and below it when there's no
+     room above (tooltips.ts:11-22): 6px off its control, and kept 8px
+     inside the window's sides, as there. */
+  .popover-tip {
+    margin: calc(var(--space-1) * 1.5) var(--space-2);
+    position-area: block-start;
+    position-try-fallbacks: flip-block;
+  }
+}
+
+/* Arriving: a fade, and a menu drops in by a little. Leaving is at once
+   (no allow-discrete exit), as today. Engines without @starting-style
+   simply show it. */
+.popover-menu:popover-open,
+.popover-tip:popover-open {
+  transition:
+    opacity var(--duration-quick) var(--ease-out),
+    translate var(--duration-quick) var(--ease-out);
+}
+
+@starting-style {
+  .popover-menu:popover-open,
+  .popover-tip:popover-open {
+    opacity: 0;
+  }
+
+  .popover-menu:popover-open {
+    translate: 0 calc(var(--space-1) * -1);
+  }
+}
+
+/* A menu or a tooltip never dims the page: only the confirm does
+   (window.css:3935). */
+.popover-menu::backdrop,
+.popover-tip::backdrop {
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-menu:popover-open,
+  .popover-tip:popover-open {
+    transition: none;
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@oriel/design-system",
+  "private": true,
+  "description": "Oriel's component workshop: its foundations, components, patterns and screens, over Oriel's own window.css.",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.ts",
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts && node scripts/check.ts",
+    "ui-check": "node scripts/ui-check.ts",
+    "ds": "node src/cli.ts",
+    "index": "node scripts/index.ts",
+    "shots": "node scripts/shots.ts"
+  }
+}
