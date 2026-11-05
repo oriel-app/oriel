@@ -3376,13 +3376,22 @@ a.replies:hover {
   text-decoration: line-through;
 }
 
-/* A rejected change set folds to its head: Show or Hide sits at its end. */
+/* A rejected or applied change set folds to its head: Show or Hide sits at
+   its end, and a click anywhere on the head presses it. */
 .change-set-head:has(> .quiet-action) {
+  position: relative;
   justify-content: flex-start;
+  cursor: pointer;
 }
 
 .change-set-head > .quiet-action {
   margin-left: auto;
+}
+
+.change-set-head > .quiet-action::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 
 .change-set[data-folded] .change-set-head {
