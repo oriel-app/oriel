@@ -24,6 +24,7 @@ import {
   type OpenVia,
   type PreviewTable,
   refine,
+  type ReviewEdit,
   type ReviewOf,
   type ReviewTable,
   string,
@@ -31,7 +32,13 @@ import {
   union,
 } from "@oriel/core";
 import { columnIndex, columnLetters } from "./a1.ts";
-import { fieldNames, type FieldName, type TabMapping } from "./mapping.ts";
+import {
+  fieldNames,
+  type FieldName,
+  mappedColumns,
+  type SheetsPicks,
+  type TabMapping,
+} from "./mapping.ts";
 import { googleOf, picksOf } from "./open-connection.ts";
 import { maxTabs } from "./source.ts";
 
@@ -222,7 +229,9 @@ function draw(
   const draft = draftOf(given);
   return tables.map((table) => {
     const tab = draft?.tabs.find((each) => each.at === table.at);
-    if (!tab) return { name: table.name, columns: [], rows: [], lines: ["Not read."] };
+    const at = table.at ?? null;
+    if (!tab)
+      return { name: table.name, at, columns: [], rows: [], lines: ["Not read."], reads: null };
     const headers = table.rows[tab.header - 1] ?? [];
     const feeds = new Map<string, string[]>();
     for (const [field, at] of lettersOf(tab))
@@ -247,10 +256,11 @@ function draw(
       : [];
     return {
       name: table.name,
-      columns: table.columns.map((at, c) => ({
-        at,
+      at,
+      columns: table.columns.map((letter, c) => ({
+        at: letter,
         header: text(headers[c]) || null,
-        feeds: feeds.get(at)?.join(" and ") ?? null,
+        feeds: feeds.get(letter)?.join(" and ") ?? null,
       })),
       rows: body.slice(0, shownRows),
       lines: [
@@ -259,8 +269,148 @@ function draw(
         ...states,
         "Columns that feed nothing are the item's content.",
       ],
+      reads: {
+        header: tab.header,
+        end: tab.end,
+        hidden: tab.hidden,
+        fields: Object.fromEntries(lettersOf(tab)),
+      },
     };
   });
+}
+
+// The draft that reads as the options do now: each mapped tab's headers
+// turned back into the letters above them in the preview. A tab whose key
+// or title header isn't there is left out, and a field whose header isn't
+// is dropped, as the sheet no longer has them.
+function current(
+  options: Readonly<Record<string, unknown>>,
+  tables: readonly PreviewTable[],
+): Record<string, unknown> {
+  const tabs = picksOf(options).spreadsheets.flatMap((pick) =>
+    pick.tabs.flatMap((tab): DraftedTab[] => {
+      const at = `${pick.id}/${tab.sheetId}`;
+      const headers = tables.find((table) => table.at === at)?.rows[tab.header - 1];
+      if (!headers) return [];
+      const drafted: Record<string, unknown> = {
+        at,
+        header: tab.header,
+        end: tab.end,
+        hidden: tab.hidden,
+      };
+      for (const [field, header] of mappedColumns(tab)) {
+        const c = headers.findIndex((cell) => text(cell) === header.trim());
+        if (c >= 0) drafted[field] = columnLetters(c);
+      }
+      if (tab.states && drafted["status"]) drafted["states"] = tab.states;
+      return drafted["key"] && drafted["title"] ? [drafted as DraftedTab] : [];
+    }),
+  );
+  return { tabs };
+}
+
+// The fields a column feeding them can't be taken from, as every tab read
+// needs them.
+const required: readonly FieldName[] = ["key", "title"];
+
+function edit(
+  given: Readonly<Record<string, unknown>>,
+  change: ReviewEdit,
+  tables: readonly PreviewTable[],
+): Record<string, unknown> | { problem: string } {
+  const draft = draftOf(given) ?? { tabs: [] };
+  const table = tables.find((each) => each.at === change.table);
+  if (!table?.at) return { problem: "That tab isn't in what Oriel read from the sheet." };
+  const tab = draft.tabs.find((each) => each.at === change.table);
+  // In the order the preview lists them, as the card draws them.
+  const placed = (tabs: DraftedTab[]) => {
+    const order = (at: string) => tables.findIndex((each) => each.at === at);
+    const next = { tabs: tabs.toSorted((a, b) => order(a.at) - order(b.at)) };
+    return sheetsDraft(next).ok ? next : { problem: "Oriel can't read the tab that way." };
+  };
+  const others = draft.tabs.filter((each) => each !== tab);
+  if ("read" in change) {
+    if (!change.read) return placed(others);
+    if (tab) return placed(draft.tabs);
+    const [guessed] = (guess([table])?.["tabs"] ?? []) as DraftedTab[];
+    if (!guessed)
+      return {
+        problem: `${table.name}: no column has a value in every row, different in each, to name its rows by. Add one, such as an ID, in the sheet.`,
+      };
+    return placed([...draft.tabs, guessed]);
+  }
+  if (!tab) return { problem: `${table.name} isn't read.` };
+  if ("field" in change) {
+    const field = fieldNames.find((name) => name === change.field);
+    if (!field) return { problem: "That isn't a field Oriel reads." };
+    const { column } = change;
+    if (column === null && required.includes(field))
+      return { problem: `Every row needs its ${fieldLabels[field].toLowerCase()}.` };
+    if (column !== null && !table.columns.includes(column))
+      return { problem: `${table.name} has no column ${column} in what Oriel read.` };
+    // A column feeds one field, but a unique name may be key and title.
+    const pair = (a: FieldName, b: FieldName) => required.includes(a) && required.includes(b);
+    const taken = lettersOf(tab).find(
+      ([other, at]) => other !== field && at === column && !pair(field, other),
+    );
+    if (taken && required.includes(taken[0]))
+      return {
+        problem: `Column ${column} gives each row its ${fieldLabels[taken[0]].toLowerCase()}. Give that another column first.`,
+      };
+    const next: Record<string, unknown> = { ...tab };
+    if (taken) delete next[taken[0]];
+    if (column === null) delete next[field];
+    else next[field] = column;
+    // Which values mean which state are a status column's own.
+    if (next["status"] !== tab.status) delete next["states"];
+    return placed([...others, next as DraftedTab]);
+  }
+  if ("header" in change && change.header > table.rows.length)
+    return {
+      problem: `${table.name}: Oriel read its first ${table.rows.length} rows, so the header is one of those.`,
+    };
+  const { table: _, ...set } = change;
+  return placed([...others, { ...tab, ...set }]);
+}
+
+// What new options do to the rows a connection read (decision 0050): a tab
+// no longer read, or with a new key, loses the items it had, which
+// workstreams keep as items Oriel no longer has; one whose table now
+// begins, ends or skips rows elsewhere loses the rows it no longer covers.
+function said(
+  before: Readonly<Record<string, unknown>>,
+  after: Readonly<Record<string, unknown>>,
+  tables: readonly PreviewTable[],
+): string[] {
+  const now: SheetsPicks = picksOf(after);
+  return picksOf(before).spreadsheets.flatMap((pick) =>
+    pick.tabs.flatMap((tab) => {
+      const table = tables.find((each) => each.at === `${pick.id}/${tab.sheetId}`);
+      const name = table?.name ?? "A tab";
+      // The key's column, by where its header is, as the same column under
+      // another header row keeps its rows' keys.
+      const keyAt = (mapping: TabMapping) => {
+        const c = table?.rows[mapping.header - 1]?.findIndex(
+          (cell) => text(cell) === mapping.key.trim(),
+        );
+        return c === undefined || c < 0 ? mapping.key.trim() : c;
+      };
+      const next = now.spreadsheets
+        .find((each) => each.id === pick.id)
+        ?.tabs.find((each) => each.sheetId === tab.sheetId);
+      if (!next)
+        return [
+          `${name} won't be read, so its rows leave the window; workstreams that hold them keep them as items Oriel no longer has.`,
+        ];
+      if (keyAt(next) !== keyAt(tab))
+        return [
+          `A new key makes every row of ${name} a new item; workstreams that hold its rows now keep them as items Oriel no longer has.`,
+        ];
+      if (next.header !== tab.header || next.end !== tab.end || next.hidden !== tab.hidden)
+        return [`Rows of ${name} that its table no longer covers leave the window.`];
+      return [];
+    }),
+  );
 }
 
 export const sheetsReview = {
@@ -272,4 +422,12 @@ export const sheetsReview = {
   settle,
   guess,
   draw,
+  fields: fieldNames.map((name) => ({
+    name,
+    label: fieldLabels[name],
+    required: required.includes(name),
+  })),
+  current,
+  edit,
+  said,
 } satisfies ReviewOf;

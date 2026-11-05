@@ -5,7 +5,7 @@
 // Source text (titles, content) is always text here, never HTML.
 import type { ChartBlock } from "@oriel/core/block-charts";
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
-import type { ReviewTable } from "@oriel/core/connect";
+import type { ReviewField, ReviewTable } from "@oriel/core/connect";
 import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
 import type { PanelBlock } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
@@ -18,6 +18,8 @@ export type {
   ConnectOffer,
   ConnectStep,
   OptionField,
+  ReviewEdit,
+  ReviewField,
   ReviewTable,
 } from "@oriel/core/connect";
 export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
@@ -181,15 +183,44 @@ export type ConnectionsView = {
   picker: boolean;
 };
 
-// What a waiting connection's review step shows (decision 0051): whether it
-// still waits; Oriel's own guess, drawn from its source, with the options it
-// settles into; the agent's draft once its onboarding turn holds one, drawn,
-// and where it is held; and that turn's thread while it runs.
+// What a connection's review step shows (decision 0051): whether it waits
+// for its options; while it does, Oriel's own guess, drawn from its source,
+// with the options it settles into; the agent's draft once its onboarding
+// turn holds one, drawn, and where it is held; and that turn's thread while
+// it runs. Once it reads, `current`: its options as they read now, drawn the
+// same way, for Settings to show and change (OA-232). Each carries its draft
+// in its connector's own form, `given`, which an edit starts from, and what
+// applying it does to the items the connection has, `said`. `fields`: what
+// a column can feed.
 export type OptionsReviewView = {
   waits: boolean;
-  guess: { tables: ReviewTable[]; options: Record<string, unknown> } | null;
-  draft: { thread: string; seq: number; tables: ReviewTable[] } | null;
+  guess: {
+    given: Record<string, unknown>;
+    tables: ReviewTable[];
+    options: Record<string, unknown>;
+    said: string[];
+  } | null;
+  draft: {
+    thread: string;
+    seq: number;
+    given: Record<string, unknown>;
+    tables: ReviewTable[];
+    said: string[];
+  } | null;
   drafting: { thread: string } | null;
+  current: { given: Record<string, unknown>; tables: ReviewTable[] } | null;
+  fields: readonly ReviewField[];
+};
+
+// A review's draft with the person's edits made: in its connector's form,
+// drawn, with the options it settles into, or why it doesn't settle, and
+// what applying it does to the items the connection has.
+export type ReviewRedrawn = {
+  given: Record<string, unknown>;
+  tables: ReviewTable[];
+  options: Record<string, unknown> | null;
+  said: string[];
+  problem: string | null;
 };
 
 // One of a connector's pick step's list, such as a project: what is

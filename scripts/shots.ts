@@ -3278,6 +3278,21 @@ const useProject = async (page: Page) => {
 };
 const continueWithClaude = (page: Page) =>
   page.getByRole("button", { name: "Continue with Claude Code" }).click();
+// Google Sheets connected from Settings, past Google's page, and the agent's
+// draft of its mapping applied there: the connection's row shows its mapping.
+const sheetsMapped = async (page: Page) => {
+  await googleSignsIn(page.context());
+  const add = page.locator("#settings-add-connection ~ .provider-rows .provider-row", {
+    hasText: "Google Sheets",
+  });
+  await add.getByRole("button", { name: "Connect" }).click();
+  const popup = page.waitForEvent("popup");
+  await add.getByRole("link", { name: "Continue to Google" }).click();
+  await (await popup).close();
+  await add.getByText("The agent drafted how Oriel reads them.").waitFor();
+  await add.getByRole("button", { name: "Apply" }).click();
+  await page.locator(".connection-mapping").getByText("How Oriel reads it now.").waitFor();
+};
 // Google Sheets' row in the first run (decision 0051): its consent line, then,
 // past Google's page, its review in the row.
 const toSheets = async (page: Page) => {
@@ -3620,6 +3635,28 @@ scenes.push(
         .getByRole("button", { name: "Connect" })
         .click();
       await page.locator(".path-form").waitFor();
+    },
+  },
+  // Google Sheets connected in Settings and its draft applied (OA-232): its
+  // mapping as it reads now, in its review step; then changed, with what a
+  // new key does said before Apply.
+  {
+    name: "settings-connections-mapping",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, state: setupFinished }),
+    act: sheetsMapped,
+  },
+  {
+    name: "settings-connections-mapping-edit",
+    path: "/settings/connections",
+    make: firstRun({ cli: { signedIn: true }, sheets: true, state: setupFinished }),
+    act: async (page) => {
+      await sheetsMapped(page);
+      const mapping = page.locator(".connection-mapping");
+      await mapping.getByRole("button", { name: "Change" }).click();
+      const tracker = mapping.getByRole("group", { name: /› Tracker$/ });
+      await tracker.getByRole("combobox", { name: "Key" }).selectOption("C");
+      await mapping.locator(".connect-said").waitFor();
     },
   },
 );

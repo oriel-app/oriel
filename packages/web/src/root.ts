@@ -875,6 +875,7 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
     case "onboarded":
     case "reviewed":
     case "reviewApplied":
+    case "reviewRedrawn":
     case "configured":
     case "configureUndone":
     case "connectionChoices":

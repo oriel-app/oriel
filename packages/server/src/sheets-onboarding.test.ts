@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { fixtureGoogle, loadSheetsFixture, scope, standInToken } from "@oriel/sheets";
-import type { OptionsReviewView, ThreadView } from "@oriel/web/view";
+import type { OptionsReviewView, ReviewRedrawn, ThreadView } from "@oriel/web/view";
 import { json, type Script, testApp } from "./testing.ts";
 
 // Made-up values; none is a real client or token.
@@ -291,5 +291,129 @@ test("a connection Google signs out reads as signed out, and signing in again ke
   assert.deepEqual(
     [again.id, again.state, again.options, again.items, again.problem],
     [mapped?.id, "open", mapped?.options, mapped?.items, null],
+  );
+});
+
+test("Settings shows a connection's mapping as it reads now, and a new key, said before it applies, makes every row a new item, with an Undo", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  const review = async () =>
+    json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  const { guess } = await review();
+  await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
+  assert.equal((await it.connection("sheets"))?.state, "open");
+
+  // Read, its review step shows the mapping it reads with, by letter.
+  const shown = await review();
+  assert.deepEqual([shown.waits, shown.guess, shown.draft], [false, null, null]);
+  const at = `${tracker}/1100`;
+  const tab = shown.current?.tables.find((table) => table.at === at);
+  assert.deepEqual(tab?.reads, {
+    header: 1,
+    end: "blank",
+    hidden: false,
+    fields: { key: "C", title: "C" },
+  });
+  assert.deepEqual(
+    shown.fields.filter((field) => field.required).map((field) => field.name),
+    ["key", "title"],
+  );
+
+  // A workstream holds one of its rows.
+  const story = "Keep the fare on a later sailing the same day";
+  const rowOf = () =>
+    it.app
+      .window("epic")
+      .clusters.flatMap((cluster) => cluster.list)
+      .find((row) => row.title === story);
+  const held = rowOf();
+  assert.ok(held);
+  const made = json<{ id: string }>(
+    await it.post("/api/workstreams", { kind: "picked", name: "Rebooking", items: [held.id] }),
+  );
+
+  // Edited a change at a time, each drawn again from the sheet: the
+  // status and owner columns, then a new key, which says what it does.
+  const redraw = async (given: unknown, edit: Record<string, unknown>) => {
+    const reply = await it.post(`/api/connections/${sheets.id}/review`, {
+      given,
+      edit: { table: at, ...edit },
+    });
+    assert.equal(reply.status, 200, String(reply.body));
+    return json<ReviewRedrawn>(reply);
+  };
+  const status = await redraw(shown.current?.given, { field: "status", column: "D" });
+  assert.equal(status.problem, null);
+  assert.deepEqual(status.said, []);
+  const rekeyed = await redraw(status.given, { field: "key", column: "A" });
+  assert.equal(rekeyed.problem, null);
+  assert.equal(rekeyed.said.length, 1);
+  assert.match(rekeyed.said[0] ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  // An edit Oriel can't make is refused, and nothing is kept.
+  const refused = await it.post(`/api/connections/${sheets.id}/review`, {
+    given: status.given,
+    edit: { table: at, field: "title", column: null },
+  });
+  assert.equal(refused.status, 400);
+  assert.deepEqual((await review()).current, shown.current);
+
+  // Applied as the person's own options: the row held is a new item, and
+  // the workstream keeps the old one as an item Oriel no longer has.
+  const set = await it.post(`/api/connections/${sheets.id}/options`, {
+    options: rekeyed.options,
+  });
+  assert.equal(set.status, 200, String(set.body));
+  const now = rowOf();
+  assert.ok(now);
+  assert.notEqual(now.id, held.id);
+  const workstream = json<{ members: { ref: { id: string }; row: unknown }[] }>(
+    await it.get(`/api/workstreams/${made.id}`),
+  );
+  assert.deepEqual(
+    workstream.members.map((member) => [member.ref.id, member.row]),
+    [[held.id, null]],
+  );
+  assert.deepEqual(
+    (await review()).current?.tables.find((table) => table.at === at)?.reads?.fields,
+    { key: "A", title: "C", status: "D" },
+  );
+
+  // Its Undo puts the old mapping back, and the old item with it.
+  const { undo } = json<{ undo: { input: unknown } }>(set);
+  assert.equal((await it.post("/api/actions/source.configure", undo.input)).status, 200);
+  assert.equal(rowOf()?.id, held.id);
+});
+
+test("the agent's draft, edited in the review step, applies as the person edited it", async (t) => {
+  const it = await sheetsApp(t);
+  const sheets = await connected(it);
+  await it.post(`/api/connections/${sheets.id}/draft`);
+  await it.app.settled();
+  const { draft } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
+  assert.ok(draft);
+  const edited = json<ReviewRedrawn>(
+    await it.post(`/api/connections/${sheets.id}/review`, {
+      given: draft.given,
+      edit: { table: `${tracker}/1100`, field: "assignee", column: null },
+    }),
+  );
+  assert.equal(edited.problem, null);
+  // Nothing synced yet goes.
+  assert.deepEqual(edited.said, []);
+  const applied = await it.post(`/api/threads/${draft.thread}/held/${draft.seq}/apply`, {
+    edit: { options: edited.given },
+  });
+  assert.equal(applied.status, 200, String(applied.body));
+  const spreadsheets = (await it.connection("sheets"))?.options["spreadsheets"] as {
+    id: string;
+    tabs: Record<string, unknown>[];
+  }[];
+  const tab = spreadsheets.find((s) => s.id === tracker)?.tabs[0];
+  assert.deepEqual(
+    [tab?.["title"], tab?.["status"], tab?.["assignee"]],
+    ["Story", "Status", undefined],
+  );
+  assert.ok(
+    it.app.telemetry().some((event) => event.name === "draft.applied" && event.data["edited"]),
   );
 });

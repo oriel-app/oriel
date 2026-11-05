@@ -481,3 +481,167 @@ test("a review step asks again while the agent drafts, and applies its draft, or
   assert.equal(done.synced, true);
   assert.deepEqual(formOf(done.model, "sheets"), blankForm);
 });
+
+// A review step's draft edited (OA-232): begun from what it shows, each
+// change drawn again by the server, and applied as the person's own: the
+// agent's draft as edited, or the options the edits settle into.
+const table = (at: string) => ({
+  name: "Tracker",
+  at,
+  columns: [{ at: "A", header: "ID", feeds: "Key and Title" }],
+  rows: [],
+  lines: [],
+  reads: { header: 1, end: "blank" as const, hidden: false, fields: { key: "A", title: "A" } },
+});
+const fields = [{ name: "key", label: "Key", required: true }];
+const redrawn = (given: Record<string, unknown>, said: string[] = []) => ({
+  given,
+  tables: [table("s/1")],
+  options: { spreadsheets: [{ id: "s", tabs: [given] }] },
+  said,
+  problem: null,
+});
+
+test("Settings shows a mapping as it reads now, and a change applies only once edited, beside its option, with an Undo", () => {
+  const settings = {
+    ...loaded(["sheets"]),
+    view: {
+      ...loaded(["sheets"]).view!,
+      connections: [{ ...connectionView(), id, kind: "sheets" }],
+    },
+  };
+  const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
+  const current = { given: { tabs: [] }, tables: [table("s/1")] };
+  const shown = connectionsReplied(
+    settings,
+    replied(tag, true, { waits: false, guess: null, draft: null, drafting: null, current, fields }),
+  );
+  // Nothing to apply, and no edit to make, before Change.
+  assert.deepEqual(
+    updateConnections(shown.model, {
+      type: "reviewApplied",
+      kind: "sheets",
+      connection: id,
+      beside: "spreadsheets",
+    })[1],
+    [],
+  );
+  const edit = { table: "s/1", field: "key", column: "A" };
+  assert.deepEqual(
+    updateConnections(shown.model, { type: "reviewEdited", connection: id, edit })[1],
+    [],
+  );
+  const [editing] = updateConnections(shown.model, { type: "reviewEditClicked", connection: id });
+  assert.deepEqual(
+    updateConnections(editing, {
+      type: "reviewApplied",
+      kind: "sheets",
+      connection: id,
+      beside: "spreadsheets",
+    })[1],
+    [],
+  );
+  const [asking, asked] = updateConnections(editing, {
+    type: "reviewEdited",
+    connection: id,
+    edit,
+  });
+  const redraw = { kind: "reviewRedrawn" as const, connection: id };
+  assert.deepEqual(asked, [
+    post(`/api/connections/${id}/review`, { given: current.given, edit }, redraw),
+  ]);
+  // One change at a time.
+  assert.deepEqual(
+    updateConnections(asking, { type: "reviewEdited", connection: id, edit })[1],
+    [],
+  );
+  // A change refused keeps the draft as it was, and says why.
+  const refused = connectionsReplied(
+    asking,
+    replied(redraw, false, { error: "Every row needs its title." }),
+  ).model;
+  assert.deepEqual(
+    [refused.edits[id]?.redrawn.given, refused.edits[id]?.redrawn.problem],
+    [current.given, "Every row needs its title."],
+  );
+  const said = ["A new key makes every row of Tracker a new item; …"];
+  const drawn = redrawn({ at: "s/1", key: "A" }, said);
+  const ready = connectionsReplied(asking, replied(redraw, true, drawn)).model;
+  assert.deepEqual(ready.edits[id]?.redrawn.said, said);
+  const applied = {
+    kind: "reviewApplied" as const,
+    of: "sheets",
+    connection: id,
+    beside: "spreadsheets",
+  };
+  const [applying, apply] = updateConnections(ready, {
+    type: "reviewApplied",
+    kind: "sheets",
+    connection: id,
+    beside: "spreadsheets",
+  });
+  assert.deepEqual(apply, [
+    post(`/api/connections/${id}/options`, { options: drawn.options }, applied),
+  ]);
+  // In Settings, never the connect steps' form.
+  assert.deepEqual(formOf(applying, "sheets"), formOf(ready, "sheets"));
+  assert.deepEqual(settingOf(applying, id).said, {
+    what: "its mapping",
+    field: "spreadsheets",
+    undo: null,
+  });
+  const undo = { action: "source.configure", input: { connection: id, options: {} } };
+  const done = connectionsReplied(
+    applying,
+    replied(applied, true, { connection: { ...connectionView(), id, kind: "sheets" }, undo }),
+  );
+  assert.equal(done.synced, true);
+  assert.equal(done.model.edits[id], undefined);
+  assert.deepEqual(settingOf(done.model, id).said, {
+    what: "its mapping",
+    field: "spreadsheets",
+    undo,
+  });
+  // Cancel leaves it as it was.
+  assert.equal(
+    updateConnections(ready, { type: "reviewEditCancelled", connection: id })[0].edits[id],
+    undefined,
+  );
+});
+
+test("the agent's draft, edited, applies as the held draft it is, with the person's edit", () => {
+  const steps = updateConnections(loaded(["sheets"]), { type: "opened", kind: "sheets" })[0];
+  const reviewing: ConnectionsModel = {
+    ...steps,
+    forms: { sheets: { ...blankForm, open: true, step: 1, made: id } },
+  };
+  const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
+  const given = { tabs: [{ at: "s/1", key: "A", title: "A" }] };
+  const draft = { thread: "t", seq: 4, given, tables: [table("s/1")], said: [] };
+  const drafted = connectionsReplied(
+    reviewing,
+    replied(tag, true, { waits: true, guess: null, draft, drafting: null, current: null, fields }),
+  ).model;
+  const [editing] = updateConnections(drafted, { type: "reviewEditClicked", connection: id });
+  assert.deepEqual(editing.edits[id]?.held, { thread: "t", seq: 4 });
+  const edited = { tabs: [{ at: "s/1", key: "A", title: "A", hidden: true }] };
+  const ready = connectionsReplied(
+    { ...editing, edits: { [id]: { ...editing.edits[id]!, pending: true } } },
+    replied({ kind: "reviewRedrawn", connection: id }, true, redrawn(edited)),
+  ).model;
+  const applied = { kind: "reviewApplied" as const, of: "sheets", connection: id };
+  const [applying, apply] = updateConnections(ready, {
+    type: "reviewApplied",
+    kind: "sheets",
+    connection: id,
+  });
+  assert.deepEqual(apply, [
+    post("/api/threads/t/held/4/apply", { edit: { options: edited } }, applied),
+  ]);
+  assert.equal(formOf(applying, "sheets").pending, "applying");
+  const done = connectionsReplied(
+    applying,
+    replied(applied, true, { connection: { ...connectionView(), id, kind: "sheets" } }),
+  );
+  assert.deepEqual([formOf(done.model, "sheets"), done.model.edits[id]], [blankForm, undefined]);
+});

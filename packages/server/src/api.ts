@@ -27,6 +27,8 @@ import {
   type OrielReads,
   optional,
   refine,
+  type ReviewEdit,
+  reviewEdit,
   string,
   type TelemetryEvent,
   type Ulid,
@@ -53,6 +55,7 @@ import {
   type PickChoiceView,
   type OptionsReviewView,
   type OverviewView,
+  type ReviewRedrawn,
   type SearchView,
   type StreamEvent,
   type ThreadsView,
@@ -148,6 +151,8 @@ export type ApiDeps = {
   begin(kind: string): Promise<{ url: string; attempt: string } | { problem: string }>;
   // A waiting connection's review step (decision 0051).
   review(id: string, fresh: boolean): Promise<OptionsReviewView>;
+  // A review's draft with one of the person's edits made, drawn again.
+  redraw(id: string, given: unknown, edit: ReviewEdit): Promise<ReviewRedrawn>;
   // The words that start a waiting connection's onboarding turn, or null
   // when no turn should start; and that its turn started in `thread`.
   onboard(id: string): string | null;
@@ -756,6 +761,23 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       // Try again reads the source afresh; the window's own polling doesn't.
       run: async ([id = ""], _request, url) =>
         json(200, await deps.review(id, url.searchParams.get("fresh") === "1")),
+    },
+    {
+      // The review step's draft with one of the person's edits made, such
+      // as another column for the title, drawn again from the source, with
+      // the options it would set and what they do to the items the
+      // connection has. A redraw: nothing is kept, and applying is the
+      // person's own `source.configure`, or the held draft's Apply.
+      method: "POST",
+      path: at("/connections/:id/review"),
+      async run([id = ""], request) {
+        const { given, edit } = await readJson(
+          request,
+          listBody,
+          object({ given: unknown, edit: reviewEdit }),
+        );
+        return json(200, await deps.redraw(id, given, edit));
+      },
     },
     {
       // The onboarding turn of a connection just made (decision 0051): one

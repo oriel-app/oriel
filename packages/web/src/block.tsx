@@ -5,6 +5,7 @@
 // a synced title included, renders as text; its caption says where it came
 // from. One from outside the workstream, as what search() found is (the
 // escape hatch), says so and is read-only.
+import type { ComponentChildren } from "preact";
 import { atLeast, named, PivotChart, SeriesChart, SpreadChart, TimelineChart } from "./charts.tsx";
 import { kindOfItem } from "./item-id.ts";
 import { Chip, ItemListContext } from "./parts.tsx";
@@ -41,58 +42,80 @@ export function BlockFigure({ block, compact }: { block: BlockView; compact?: bo
 // header the source has there and the field it feeds, then its first rows
 // and what it reads and leaves out. Every word in it is the source's or
 // Oriel's, never the drafter's; what isn't read is named in one line.
-export function ReviewTables({ tables }: { tables: readonly ReviewTable[] }) {
-  const read = tables.filter((table) => table.columns.length > 0);
+export function ReviewTables(props: {
+  tables: readonly ReviewTable[];
+  // What the person changes of each table, under it, while they edit
+  // (OA-232); then a table not read shows too, in its place, to read it.
+  controls?: ((table: ReviewTable) => ComponentChildren) | null | false;
+}) {
+  const { tables, controls } = props;
   const unread = tables.filter((table) => table.columns.length === 0);
+  const shown = controls ? tables : tables.filter((table) => table.columns.length > 0);
   return (
     <div class="review-tables">
-      {read.map((table, i) => (
-        <section key={i} class="review-table">
-          <div class="review-scroll">
-            <table class="block-table">
-              <caption>{table.name}</caption>
-              <thead>
-                <tr>
-                  {table.columns.map((column) => (
-                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
-                      {column.at}
-                    </th>
-                  ))}
-                </tr>
-                <tr>
-                  {table.columns.map((column) => (
-                    <th key={column.at} scope="col" data-feeds={column.feeds !== null || undefined}>
-                      {column.header ?? "—"}
-                    </th>
-                  ))}
-                </tr>
-                <tr class="review-feeds">
-                  {table.columns.map((column) => (
-                    <td key={column.at} data-feeds={column.feeds !== null || undefined}>
-                      {column.feeds ?? "Content"}
-                    </td>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {table.rows.map((row, r) => (
-                  <tr key={r}>
-                    {table.columns.map((column, j) => (
-                      <td key={column.at}>{cellText(row[j] ?? null)}</td>
+      {shown.map((table, i) =>
+        table.columns.length === 0 ? (
+          <section key={i} class="review-table">
+            <p class="review-name">{table.name}</p>
+            {controls && controls(table)}
+          </section>
+        ) : (
+          <section key={i} class="review-table">
+            <div class="review-scroll">
+              <table class="block-table">
+                <caption>{table.name}</caption>
+                <thead>
+                  <tr>
+                    {table.columns.map((column) => (
+                      <th
+                        key={column.at}
+                        scope="col"
+                        data-feeds={column.feeds !== null || undefined}
+                      >
+                        {column.at}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul class="review-lines">
-            {table.lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </section>
-      ))}
-      {unread.length > 0 && (
+                  <tr>
+                    {table.columns.map((column) => (
+                      <th
+                        key={column.at}
+                        scope="col"
+                        data-feeds={column.feeds !== null || undefined}
+                      >
+                        {column.header ?? "—"}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr class="review-feeds">
+                    {table.columns.map((column) => (
+                      <td key={column.at} data-feeds={column.feeds !== null || undefined}>
+                        {column.feeds ?? "Content"}
+                      </td>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {table.rows.map((row, r) => (
+                    <tr key={r}>
+                      {table.columns.map((column, j) => (
+                        <td key={column.at}>{cellText(row[j] ?? null)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <ul class="review-lines">
+              {table.lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {controls && controls(table)}
+          </section>
+        ),
+      )}
+      {!controls && unread.length > 0 && (
         <p class="review-unread">Not read: {unread.map((table) => table.name).join(", ")}.</p>
       )}
     </div>

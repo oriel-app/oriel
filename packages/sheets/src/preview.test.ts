@@ -197,3 +197,137 @@ test("a mapped column gone from its header row makes the connection wait for opt
   for await (const page of fits.source.sync(null)) assert.ok(page);
   assert.equal(fits.unfit?.(), null);
 });
+
+// The tracker's first tab mapped as `trackerDraft` says, settled.
+const mappedNow = async (tables: PreviewTable[]) => {
+  const mapped = sheetsReview.settle({ tabs: [trackerDraft] }, tables, picked);
+  assert.ok(!("problem" in mapped));
+  return mapped;
+};
+
+test("a mapping as it reads now is drawn back by letter, the same as the draft it settled from", async () => {
+  const tables = await preview();
+  const current = sheetsReview.current(await mappedNow(tables), tables);
+  assert.deepEqual(current, { tabs: [trackerDraft] });
+  const sheet = sheetsReview.draw(current, tables).find((table) => table.at === trackerDraft.at);
+  assert.deepEqual(sheet?.reads, {
+    header: 1,
+    end: "blank",
+    hidden: false,
+    fields: { key: "A", title: "C", status: "D", assignee: "E", estimate: "F", link: "G" },
+  });
+  // A tab whose title's header is gone isn't drawn as read; a link's is
+  // only dropped.
+  const renamed = tables.map((table) =>
+    table.at === trackerDraft.at
+      ? {
+          ...table,
+          rows: [
+            table.rows[0]!.map((cell) => (cell === "Link" ? "URL" : cell)),
+            ...table.rows.slice(1),
+          ],
+        }
+      : table,
+  );
+  const tabs = (sheetsReview.current(await mappedNow(tables), renamed) as { tabs: object[] }).tabs;
+  assert.equal(Object.hasOwn(tabs[0] ?? {}, "link"), false);
+  const untitled = tables.map((table) =>
+    table.at === trackerDraft.at
+      ? {
+          ...table,
+          rows: [
+            table.rows[0]!.map((cell) => (cell === "Story" ? "Name" : cell)),
+            ...table.rows.slice(1),
+          ],
+        }
+      : table,
+  );
+  assert.deepEqual(sheetsReview.current(await mappedNow(tables), untitled), { tabs: [] });
+});
+
+test("the person edits a draft a change at a time: a field's column, a tab read or not, its rows", async () => {
+  const tables = await preview();
+  const draft = { tabs: [trackerDraft] };
+  const edited = (
+    given: Record<string, unknown>,
+    edit: Parameters<typeof sheetsReview.edit>[1],
+  ) => {
+    const next = sheetsReview.edit(given, edit, tables);
+    assert.ok(!("problem" in next), JSON.stringify(next));
+    assert.ok(sheetsReview.draft(next).ok);
+    return next as { tabs: Record<string, unknown>[] };
+  };
+  const problem = (edit: Parameters<typeof sheetsReview.edit>[1]) => {
+    const next = sheetsReview.edit(draft, edit, tables);
+    assert.ok("problem" in next, JSON.stringify(edit));
+    return String(next.problem);
+  };
+  const at = trackerDraft.at;
+  // A column taken from an optional field leaves that field unmapped.
+  const moved = edited(draft, { table: at, field: "assignee", column: "G" });
+  assert.equal(moved.tabs[0]?.["assignee"], "G");
+  assert.equal(Object.hasOwn(moved.tabs[0] ?? {}, "link"), false);
+  // The status moved drops the states, which were its old column's values.
+  const status = edited(draft, { table: at, field: "status", column: "B" });
+  assert.equal(Object.hasOwn(status.tabs[0] ?? {}, "states"), false);
+  assert.equal(
+    Object.hasOwn(
+      edited(draft, { table: at, field: "status", column: null }).tabs[0] ?? {},
+      "status",
+    ),
+    false,
+  );
+  // A unique name may be key and title both.
+  assert.equal(edited(draft, { table: at, field: "key", column: "C" }).tabs[0]?.["key"], "C");
+  assert.match(problem({ table: at, field: "title", column: null }), /needs its title/);
+  assert.match(problem({ table: at, field: "assignee", column: "A" }), /gives each row its key/);
+  assert.match(problem({ table: at, field: "assignee", column: "ZZ" }), /no column ZZ/);
+  assert.match(problem({ table: at, field: "owner", column: "B" }), /isn't a field/);
+  assert.match(problem({ table: at, header: 31 }), /first \d+ rows/);
+  assert.match(
+    problem({ table: "1NotPickedAtAll000/1100", read: true }),
+    /isn't in what Oriel read/,
+  );
+  const rows = edited(edited(edited(draft, { table: at, header: 2 }), { table: at, end: "grid" }), {
+    table: at,
+    hidden: true,
+  });
+  assert.deepEqual(
+    [rows.tabs[0]?.["header"], rows.tabs[0]?.["end"], rows.tabs[0]?.["hidden"]],
+    [2, "grid", true],
+  );
+  // A tab not read, read, is Oriel's guess at it; left out, it isn't read.
+  const raidAt = `${raid}/4100`;
+  const both = edited(draft, { table: raidAt, read: true });
+  assert.deepEqual(
+    both.tabs.map((tab) => tab.at),
+    [at, raidAt],
+  );
+  assert.deepEqual(
+    edited(both, { table: at, read: false }).tabs.map((tab) => tab.at),
+    [raidAt],
+  );
+});
+
+test("before it applies, a new mapping says which rows it takes from the window", async () => {
+  const tables = await preview();
+  const before = await mappedNow(tables);
+  const said = (tab: Record<string, unknown> | null) => {
+    const after = sheetsReview.settle({ tabs: tab ? [tab] : [] }, tables, before);
+    assert.ok(!("problem" in after));
+    return sheetsReview.said(before, after, tables);
+  };
+  // Another title, status or owner: every item stays.
+  assert.deepEqual(said({ ...trackerDraft, title: "B", assignee: undefined }), []);
+  assert.deepEqual(said(trackerDraft), []);
+  const [rekeyed] = said({ ...trackerDraft, key: "C" });
+  assert.match(rekeyed ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  const [dropped] = said(null);
+  assert.match(dropped ?? "", /› Tracker won't be read, so its rows leave the window/);
+  assert.match(
+    said({ ...trackerDraft, end: "grid" }).join(),
+    /^Rows of .+ › Tracker that its table no longer covers leave the window\.$/,
+  );
+  // Nothing mapped before, nothing goes.
+  assert.deepEqual(sheetsReview.said(picked, before, tables), []);
+});

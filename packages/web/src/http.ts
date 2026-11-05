@@ -89,7 +89,8 @@ export type Tag =
   | { kind: "browserBegun"; of: string }
   | { kind: "onboarded"; of: string; connection: string }
   | { kind: "reviewed"; of: string; connection: string }
-  | { kind: "reviewApplied"; of: string; connection: string }
+  | { kind: "reviewApplied"; of: string; connection: string; beside?: string }
+  | { kind: "reviewRedrawn"; connection: string }
   // In Settings, by a connection's ID: its options set, or that undone; its
   // pick step's list again; and it disconnected.
   | { kind: "configured"; connection: string }

@@ -3,7 +3,9 @@
 // Settings: syncing any of them, or all, on demand; making one through its
 // connector's steps, which the page draws from its declaration, the same way
 // for every connector; and, in Settings, setting one's options and
-// disconnecting it. A sync that fails keeps what the window had, and says why
+// disconnecting it. A connection's review step, its mapping, is the same
+// wherever it shows: the person edits it there, and it applies as their own
+// action (OA-232). A sync that fails keeps what the window had, and says why
 // on its connection until its next sync works. Nothing typed into a
 // connector's steps stays in the page once its connection is made.
 import { type Effect, errorOf, get, post, type Replied } from "./http.ts";
@@ -15,6 +17,8 @@ import type {
   ConnectStep,
   OptionsReviewView,
   PickChoiceView,
+  ReviewEdit,
+  ReviewRedrawn,
 } from "./view.ts";
 
 // One connector's steps as the person goes through them: the step showing,
@@ -46,8 +50,8 @@ export type ConnectForm = {
 // One connection in Settings: its name as typed and not yet set; its pick
 // step's list, once asked for; whether a change is on its way, and what the
 // last one changed, by the option it changed, with its Undo; why it didn't
-// work, or why the options it set don't fit the source; and Disconnect,
-// asked and then answered.
+// work, or why the options it set don't fit the source; why its review step
+// couldn't read the source; and Disconnect, asked and then answered.
 export type ConnectionSetting = {
   name: string | null;
   choices: PickChoiceView[] | null;
@@ -56,7 +60,18 @@ export type ConnectionSetting = {
   pending: boolean;
   said: { what: string; field: string; undo: unknown } | null;
   problem: string | null;
+  unread: string | null;
   disconnect: "asked" | "disconnecting" | null;
+};
+
+// A review step's draft as the person edits it: the agent's held draft it
+// began as, by where it's held, or null for Oriel's guess or the options the
+// connection has; then as the server last drew it with their edits; and
+// whether an edit is on its way.
+export type ReviewEditing = {
+  held: { thread: string; seq: number } | null;
+  redrawn: ReviewRedrawn;
+  pending: boolean;
 };
 
 export type ConnectionsModel = {
@@ -73,6 +88,8 @@ export type ConnectionsModel = {
   // Each waiting connection's review step, by its ID, as the server last
   // drew it (decision 0051).
   reviews: Readonly<Record<string, OptionsReviewView>>;
+  // Each review step the person is editing, by its connection's ID.
+  edits: Readonly<Record<string, ReviewEditing>>;
 };
 
 export type ConnectionsMsg =
@@ -95,7 +112,13 @@ export type ConnectionsMsg =
   // A review step's draft, read again while the agent drafts; and applied:
   // the agent's, held in its thread, or Oriel's guess.
   | { type: "reviewAsked"; kind: string; connection: string; fresh?: true }
-  | { type: "reviewApplied"; kind: string; connection: string }
+  // In Settings, `beside` names the option it sets, where its Undo shows.
+  | { type: "reviewApplied"; kind: string; connection: string; beside?: string }
+  // A review step edited: begun from what it shows, one change made, which
+  // the server draws again, or left as it was.
+  | { type: "reviewEditClicked"; connection: string }
+  | { type: "reviewEdited"; connection: string; edit: ReviewEdit }
+  | { type: "reviewEditCancelled"; connection: string }
   // Back to the step before, which keeps what was typed; into them in
   // Settings, or out of them.
   | { type: "backClicked"; kind: string }
@@ -124,7 +147,15 @@ export type FolderKind = typeof folderStep;
 export const loadConnections: Effect = get("/api/connections", { kind: "connections" });
 
 export function initConnections(): ConnectionsModel {
-  return { view: null, syncing: [], problems: {}, forms: {}, settings: {}, reviews: {} };
+  return {
+    view: null,
+    syncing: [],
+    problems: {},
+    forms: {},
+    settings: {},
+    reviews: {},
+    edits: {},
+  };
 }
 
 export const blankForm: ConnectForm = {
@@ -151,7 +182,38 @@ const blankSetting: ConnectionSetting = {
   pending: false,
   said: null,
   problem: null,
+  unread: null,
   disconnect: null,
+};
+
+// What a connection's review step shows, as its draft in its connector's
+// form: the agent's, else Oriel's guess, else the options it reads with now.
+export const reviewShown = (
+  review: OptionsReviewView,
+): { held: { thread: string; seq: number } | null; given: Record<string, unknown> } | null =>
+  review.draft
+    ? { held: { thread: review.draft.thread, seq: review.draft.seq }, given: review.draft.given }
+    : review.guess
+      ? { held: null, given: review.guess.given }
+      : review.current
+        ? { held: null, given: review.current.given }
+        : null;
+
+// Whether an edited review step may apply now: the agent's draft once it
+// settles; anything else once it settles into options, which it doesn't
+// before a change.
+export const appliesEdited = (editing: ReviewEditing): boolean =>
+  !editing.pending &&
+  editing.redrawn.problem === null &&
+  (editing.held !== null || editing.redrawn.options !== null);
+
+const withEditing = (
+  model: ConnectionsModel,
+  id: string,
+  editing: ReviewEditing | null,
+): ConnectionsModel => {
+  const { [id]: _was, ...edits } = model.edits;
+  return { ...model, edits: editing ? { ...edits, [id]: editing } : edits };
 };
 
 // The open connections, as the sidebar lists them.
@@ -337,18 +399,86 @@ export function updateConnections(
     case "reviewApplied": {
       const form = formOf(model, msg.kind);
       const review = model.reviews[msg.connection];
-      if (form.pending || !review) return [model, []];
-      const tag = { kind: "reviewApplied" as const, of: msg.kind, connection: msg.connection };
-      const applying = { ...form, pending: "applying" as const, problem: null };
-      if (review.draft)
-        return withForm(model, msg.kind, applying, [
-          post(`/api/threads/${review.draft.thread}/held/${review.draft.seq}/apply`, {}, tag),
+      const editing = model.edits[msg.connection];
+      // The connect steps' own review step, or Settings' (OA-232).
+      const connecting = form.made === msg.connection;
+      const setting = settingOf(model, msg.connection);
+      if ((connecting ? form.pending : setting.pending) || !review) return [model, []];
+      const tag = {
+        kind: "reviewApplied" as const,
+        of: msg.kind,
+        connection: msg.connection,
+        ...(msg.beside ? { beside: msg.beside } : {}),
+      };
+      const options = (options: unknown) =>
+        post(`/api/connections/${msg.connection}/options`, { options }, tag);
+      const held = (at: { thread: string; seq: number }, edited?: Record<string, unknown>) =>
+        post(
+          `/api/threads/${at.thread}/held/${at.seq}/apply`,
+          edited ? { edit: { options: edited } } : {},
+          tag,
+        );
+      // Edited, the agent's draft applies as edited, in its own form;
+      // anything else, as the options it settles into.
+      const applying = editing
+        ? appliesEdited(editing)
+          ? editing.held
+            ? held(editing.held, editing.redrawn.given)
+            : options(editing.redrawn.options)
+          : null
+        : review.draft
+          ? held(review.draft)
+          : review.guess
+            ? options(review.guess.options)
+            : null;
+      if (!applying) return [model, []];
+      if (connecting)
+        return withForm(model, msg.kind, { ...form, pending: "applying", problem: null }, [
+          applying,
         ]);
-      if (!review.guess) return [model, []];
-      return withForm(model, msg.kind, applying, [
-        post(`/api/connections/${msg.connection}/options`, { options: review.guess.options }, tag),
-      ]);
+      const said = msg.beside ? { what: "its mapping", field: msg.beside, undo: null } : null;
+      return withSetting(
+        model,
+        msg.connection,
+        { ...setting, pending: true, problem: null, said },
+        [applying],
+      );
     }
+    case "reviewEditClicked": {
+      const review = model.reviews[msg.connection];
+      const shown = review && reviewShown(review);
+      if (!review || !shown || model.edits[msg.connection]) return [model, []];
+      const begun = review.draft ?? review.guess ?? review.current;
+      const redrawn: ReviewRedrawn = {
+        given: shown.given,
+        tables: begun?.tables ?? [],
+        // Nothing to apply until something changes, but a draft or a guess
+        // applies as it is.
+        options: review.guess && !shown.held ? review.guess.options : null,
+        said: review.draft?.said ?? review.guess?.said ?? [],
+        problem: null,
+      };
+      return [
+        withEditing(model, msg.connection, { held: shown.held, redrawn, pending: false }),
+        [],
+      ];
+    }
+    case "reviewEdited": {
+      const editing = model.edits[msg.connection];
+      if (!editing || editing.pending) return [model, []];
+      return [
+        withEditing(model, msg.connection, { ...editing, pending: true }),
+        [
+          post(
+            `/api/connections/${msg.connection}/review`,
+            { given: editing.redrawn.given, edit: msg.edit },
+            { kind: "reviewRedrawn", connection: msg.connection },
+          ),
+        ],
+      ];
+    }
+    case "reviewEditCancelled":
+      return [withEditing(model, msg.connection, null), []];
     case "backClicked": {
       const form = formOf(model, msg.kind);
       return withForm(model, msg.kind, {
@@ -476,20 +606,37 @@ export function connectionsReplied(
       return { model, synced: false, effects: [reviewing(tag.of, tag.connection)] };
     case "reviewed": {
       if (!msg.ok) {
+        // In its connect steps, or Settings' (OA-232).
         const form = formOf(model, tag.of);
+        const problem = errorOf(msg.body);
         return {
-          model: withForm(model, tag.of, { ...form, problem: errorOf(msg.body) })[0],
+          model:
+            form.made === tag.connection
+              ? withForm(model, tag.of, { ...form, problem })[0]
+              : withSetting(model, tag.connection, {
+                  ...settingOf(model, tag.connection),
+                  unread: problem,
+                })[0],
           synced: false,
         };
       }
       const review = msg.body as OptionsReviewView;
       const reviews = { ...model.reviews, [tag.connection]: review };
+      const unread = model.settings[tag.connection]?.unread ?? null;
+      const settings =
+        unread === null
+          ? model.settings
+          : {
+              ...model.settings,
+              [tag.connection]: { ...settingOf(model, tag.connection), unread: null },
+            };
       const form = formOf(model, tag.of);
       // Its options applied elsewhere, as in the window chat: done here too.
       const done = !review.waits && form.made === tag.connection;
       const next = {
         ...model,
         reviews,
+        settings,
         ...(done ? { forms: { ...model.forms, [tag.of]: blankForm } } : {}),
       };
       return {
@@ -512,25 +659,50 @@ export function connectionsReplied(
     }
     case "reviewApplied": {
       const form = formOf(model, tag.of);
-      if (!msg.ok)
-        return {
-          model: withForm(model, tag.of, { ...form, pending: null, problem: errorOf(msg.body) })[0],
-          synced: false,
-        };
-      const body = msg.body as { connection?: ConnectionView; problem?: string };
+      // The connect steps' own review step, or Settings' (OA-232), which
+      // says what it set beside the option, with its Undo, or what went
+      // wrong.
+      const connecting = form.made === tag.connection;
+      const body = (msg.body ?? {}) as {
+        connection?: ConnectionView;
+        problem?: string;
+        undo?: unknown;
+      };
+      const said = (problem: string | null) => {
+        if (connecting) return withForm(model, tag.of, { ...form, pending: null, problem })[0];
+        const setting = settingOf(model, tag.connection);
+        const undo =
+          msg.ok && setting.said && body.undo ? { ...setting.said, undo: body.undo } : null;
+        return withSetting(model, tag.connection, {
+          ...setting,
+          pending: false,
+          said: msg.ok ? undo : null,
+          problem,
+        })[0];
+      };
+      if (!msg.ok) return { model: said(errorOf(msg.body)), synced: false };
       // Applied, but its first sync says what didn't fit: still to review.
+      const applied = withEditing(said(body.problem ?? null), tag.connection, null);
       if (body.problem)
-        return {
-          model: withForm(model, tag.of, { ...form, pending: null, problem: body.problem })[0],
-          synced: true,
-          effects: [reviewing(tag.of, tag.connection)],
-        };
-      const formed = withForm(model, tag.of, blankForm)[0];
+        return { model: applied, synced: true, effects: [reviewing(tag.of, tag.connection)] };
+      const formed = connecting ? withForm(applied, tag.of, blankForm)[0] : applied;
       return {
         model: body.connection
           ? { ...formed, view: withConnection(formed.view, body.connection) }
           : formed,
         synced: true,
+      };
+    }
+    case "reviewRedrawn": {
+      const editing = model.edits[tag.connection];
+      if (!editing) return { model, synced: false };
+      // A change refused keeps the draft as it was, and says why.
+      const redrawn = msg.ok
+        ? (msg.body as ReviewRedrawn)
+        : { ...editing.redrawn, problem: errorOf(msg.body) };
+      return {
+        model: withEditing(model, tag.connection, { ...editing, redrawn, pending: false }),
+        synced: false,
       };
     }
     case "connections":

@@ -3,12 +3,14 @@
 // its state (synced, syncing, a problem, signed out), what its last sync left
 // out, and what a person sets on it: its name in the window, its connector's
 // own options, whether it may propose changes, and how often it syncs. Each
-// applies at once, with an Undo, and the next sync reads with it.
+// applies at once, with an Undo, and the next sync reads with it. A mapping
+// shows in its connector's review step, which the person edits and applies
+// (OA-232).
 // Disconnect asks first. Then Add a connection, which lists every connector
 // and draws its steps.
 import { Fragment } from "preact";
-import { useState } from "preact/hooks";
-import { ConnectSteps } from "./connect-steps.tsx";
+import { useEffect, useState } from "preact/hooks";
+import { ConnectSteps, ReviewStep } from "./connect-steps.tsx";
 import { type ConnectionsModel, type ConnectionsMsg, formOf, settingOf } from "./connections.ts";
 import type { Connectors } from "./connectors.ts";
 import { type Dispatch, plural, useStamp } from "./parts.tsx";
@@ -317,7 +319,15 @@ function Options(props: {
       {beside("name")}
       {connector.options.map((field) => (
         <Fragment key={field.name}>
-          {field.kind === "pick" ? (
+          {field.kind === "mapping" ? (
+            <MappingOption
+              field={field}
+              connection={connection}
+              connector={connector}
+              connections={connections}
+              send={send}
+            />
+          ) : field.kind === "pick" ? (
             <PickOption
               field={field}
               connection={connection}
@@ -355,6 +365,49 @@ function Options(props: {
         }
       />
       {beside("every")}
+    </div>
+  );
+}
+
+// How a connection's tables feed Oriel's fields (OA-232): its connector's
+// review step, the one a connect shows, filled with the mapping it reads
+// with now, or, while it waits for one, the draft or guess to apply. A
+// change is the person's own, applied with an Undo, and the step says
+// before then what it does to the items the connection has.
+function MappingOption(props: {
+  field: Extract<OptionField, { kind: "mapping" }>;
+  connection: ConnectionView;
+  connector: ConnectorView;
+  connections: ConnectionsModel;
+  send(msg: ConnectionsMsg): void;
+}) {
+  const { field, connection, connector, connections, send } = props;
+  const review = connections.reviews[connection.id] ?? null;
+  const setting = settingOf(connections, connection.id);
+  // Drawn again whenever its options change, wherever they were set.
+  const options = JSON.stringify(connection.options);
+  useEffect(() => {
+    send({ type: "reviewAsked", kind: connection.kind, connection: connection.id });
+  }, [connection.id, options]);
+  const step = connector.connect?.steps.find((each) => each.kind === "review");
+  // One just made shows it in its connect steps, below, until it applies.
+  if (step?.kind !== "review" || formOf(connections, connection.kind).made === connection.id)
+    return null;
+  return (
+    <div class="settings-field connection-mapping">
+      <span class="settings-field-name">{field.label}</span>
+      <span class="settings-field-about">{field.about}</span>
+      <ReviewStep
+        connector={connector}
+        step={step}
+        connection={connection.id}
+        review={review}
+        editing={connections.edits[connection.id] ?? null}
+        pending={setting.pending}
+        problem={review === null ? setting.unread : null}
+        send={send}
+        beside={field.name}
+      />
     </div>
   );
 }

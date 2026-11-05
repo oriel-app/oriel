@@ -18,6 +18,7 @@ import {
   type FieldReader,
   noOptionsYet,
   type PreviewTable,
+  type ReviewEdit,
   type ReviewTable,
   type IndexRecord,
   type Instant,
@@ -85,6 +86,7 @@ import type {
   GroupingId,
   OverviewView,
   OptionsReviewView,
+  ReviewRedrawn,
   WindowView,
 } from "@oriel/web/view";
 import type { KeyCheck, Provider, Titler } from "@oriel/agent";
@@ -1090,18 +1092,36 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // The onboarding turns the window chat ran, by the connection each drafts.
   const onboarding = new Map<Ulid, Ulid>();
-  // What a waiting connection's review step shows (decision 0051): Oriel's
-  // guess, drawn and settled, with no model; the agent's draft once its turn
-  // holds one, drawn; and whether that turn still runs.
-  const review = async (id: Ulid, fresh = false): Promise<OptionsReviewView> => {
+  // A connection whose connector drafts its options in its own form, with
+  // how it reviews them.
+  const reviewing = (id: Ulid) => {
     const connection = live(id);
     const declaration = declared(connection.kind);
     const of = declaration.review;
     if (!of || !declaration.preview)
       throw new ActionError("not-found", "it has no options to review");
+    return { connection, of };
+  };
+  // What a connection's review step shows (decision 0051): while it waits,
+  // Oriel's guess, drawn and settled, with no model; the agent's draft once
+  // its turn holds one, drawn; and whether that turn still runs. Once it
+  // reads, its options as they read now, drawn the same way (OA-232).
+  const review = async (id: Ulid, fresh = false): Promise<OptionsReviewView> => {
+    const { connection, of } = reviewing(id);
     const waits = waitingConnections().some((each) => each.connection.id === id);
-    if (!waits) return { waits, guess: null, draft: null, drafting: null };
     const tables = await previewOf(connection, fresh);
+    const { fields } = of;
+    if (!waits) {
+      const given = of.current(connection.options, tables);
+      const current = { given, tables: of.draw(given, tables) };
+      return { waits, guess: null, draft: null, drafting: null, current, fields };
+    }
+    // What applying a draft does to what the connection read before it
+    // waited, such as a tab whose mapped column was renamed.
+    const said = (given: Record<string, unknown>) => {
+      const settled = of.settle(given, tables, connection.options);
+      return "problem" in settled ? [] : of.said(connection.options, settled, tables);
+    };
     const guessed = of.guess(tables);
     const settled = guessed && of.settle(guessed, tables, connection.options);
     const thread = onboarding.get(id) ?? null;
@@ -1120,13 +1140,50 @@ export async function createApp(options: AppOptions): Promise<App> {
       waits,
       guess:
         guessed && settled && !("problem" in settled)
-          ? { tables: of.draw(guessed, tables), options: settled }
+          ? {
+              given: guessed,
+              tables: of.draw(guessed, tables),
+              options: settled,
+              said: of.said(connection.options, settled, tables),
+            }
           : null,
       draft:
         thread && draft && isRecord(options)
-          ? { thread, seq: draft.seq, tables: of.draw(options, tables) }
+          ? {
+              thread,
+              seq: draft.seq,
+              given: options,
+              tables: of.draw(options, tables),
+              said: said(options),
+            }
           : null,
       drafting: thread && conversation.running(thread) ? { thread } : null,
+      current: null,
+      fields,
+    };
+  };
+  // A review's draft with one of the person's edits made, against the
+  // preview the review step drew: drawn again, with the options it settles
+  // into and what they do to what the connection read. It keeps nothing:
+  // applying them is `source.configure`, or the held draft's own Apply.
+  const redraw = async (id: Ulid, given: unknown, edit: ReviewEdit): Promise<ReviewRedrawn> => {
+    const { connection, of } = reviewing(id);
+    const tables = await previewOf(connection);
+    const next = of.edit(isRecord(given) ? given : {}, edit, tables);
+    if ("problem" in next) throw new ActionError("invalid", String(next.problem));
+    const settled = of.settle(next, tables, connection.options);
+    const fits = !("problem" in settled) && declared(connection.kind).options(settled).ok;
+    return {
+      given: next,
+      tables: of.draw(next, tables),
+      options: fits ? settled : null,
+      said: fits ? of.said(connection.options, settled, tables) : [],
+      problem:
+        "problem" in settled
+          ? String(settled.problem)
+          : fits
+            ? null
+            : "Oriel can't read the sheet that way: each column feeds one field.",
     };
   };
   // Whether a model runs the agent now, so it may draft: the scripted agent
@@ -1923,6 +1980,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       folderStep: (kind) => windows.folderStep(kind),
       begin: (kind) => windows.begin(kind),
       review: (id, fresh) => review(id as Ulid, fresh),
+      redraw: (id, given, edit) => redraw(id as Ulid, given, edit),
       // The words that start a waiting connection's onboarding turn, when the
       // agent may draft and none has started for it; null otherwise.
       onboard: (id) => {
