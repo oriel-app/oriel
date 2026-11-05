@@ -110,8 +110,9 @@ export function sheetsWriter(
       let ms: number;
       let headers: Record<string, string>;
       try {
-        ms = requestMs(requestTimeoutMs, limit, source);
         headers = await credential.headers();
+        // Only now: the sign-in may have taken some of the write's time.
+        ms = requestMs(requestTimeoutMs, limit, source);
       } catch (error) {
         const said = error instanceof Error ? error.message : String(error);
         throw new SourceRefused(said, { sent: attempt > 0, cause: error });

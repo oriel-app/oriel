@@ -377,14 +377,17 @@ test("Google refusing the write changed nothing, and says so", async () => {
 });
 
 // A writer whose requests are counted, so a test can stop the write at one
-// before it goes out: by its time running out, or its sign-in failing.
+// before it goes out: by its time running out, its sign-in failing, or its
+// sign-in taking the rest of its time.
 // Google can turn the first post away too, as a 429 does, unprocessed.
 function stoppable(options: { busy?: boolean } = {}) {
   const standIn = fixtureGoogle(fixture);
   let made = 0;
-  let stop: { at: number; how: "time" | "sign-in" } | null = null;
+  type How = "time" | "sign-in" | "slow sign-in";
+  let stop: { at: number; how: How } | null = null;
+  let out = false;
   // Whether the write stops here, once.
-  const stops = (how: "time" | "sign-in") => {
+  const stops = (how: How) => {
     if (stop?.how !== how || made !== stop.at) return false;
     stop = null;
     return true;
@@ -395,6 +398,7 @@ function stoppable(options: { busy?: boolean } = {}) {
       credential: {
         headers: async () => {
           if (stops("sign-in")) throw new Error("Google Sheets needs signing in again");
+          if (stops("slow sign-in")) out = true;
           return { Authorization: `Bearer ${standInToken}` };
         },
       },
@@ -412,7 +416,13 @@ function stoppable(options: { busy?: boolean } = {}) {
     },
     () => {},
   );
-  const limit = { left: () => (stops("time") ? 0 : 60_000) };
+  const limit = {
+    left: () => {
+      if (!out && !stops("time")) return 60_000;
+      out = false;
+      return 0;
+    },
+  };
   const writes = () => standIn.calls.filter((c) => c.method === "POST");
   const keyed = (key: string) =>
     (standIn.spreadsheet(tracker).tabs.find((t) => t.sheetId === 1100)?.rows ?? []).filter(
@@ -423,7 +433,7 @@ function stoppable(options: { busy?: boolean } = {}) {
     limit,
     writes,
     keyed,
-    stopAt: (at: number, how: "time" | "sign-in") => (stop = { at, how }),
+    stopAt: (at: number, how: How) => (stop = { at, how }),
   };
 }
 
@@ -439,6 +449,7 @@ test("a write whose time or sign-in runs out before it goes out sent nothing, an
   for (const [how, said] of [
     ["time", /took longer than Oriel waits on a write/],
     ["sign-in", /needs signing in again/],
+    ["slow sign-in", /took longer than Oriel waits on a write/],
   ] as const) {
     const { writer, limit, writes, keyed, stopAt } = stoppable();
     stopAt(post, how);
