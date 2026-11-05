@@ -3,19 +3,21 @@
 // request carries its version in `_meta`, and the handshake revisions before
 // it, which open with `initialize`, statelessly: no session, so a legacy
 // client gets no notifications. What it serves:
-// - tools: Oriel's reads, and its direct actions for a tool connected to act;
-// - resources: each workstream, and any thread or item by template, with
-//   `subscriptions/listen` telling when a workstream or thread changes, from
-//   the changes every door's call publishes;
+// - tools: Oriel's reads, its direct actions for a tool connected to act,
+//   and Undo of the tool's own calls;
+// - resources: the window's own reads (reads.ts), each the route the
+//   window's page reads, with `subscriptions/listen` telling when one
+//   changes, from everything the window's streams carry;
 // - one prompt, which asks about a workstream through a link to it, never
 //   with its words.
 // Everything read from Oriel goes out marked as data: names, chat, and what
 // sources hold were written by people, and may hold text that looks like an
 // instruction (SPEC §5).
 import { ActionError } from "../actions.ts";
-import { isUlid, type Ulid } from "@oriel/core";
-import type { Outside } from "./door.ts";
+import type { ItemId, Ulid } from "@oriel/core";
+import type { Heard, Outside } from "./door.ts";
 import { type Tool, toolsFor } from "./catalogue.ts";
+import { readOf, windowReads } from "./reads.ts";
 import type { ConnectedTool } from "./tokens.ts";
 
 export const modern = "2026-07-28";
@@ -72,33 +74,35 @@ const asData = (value: unknown) => ({
   structuredContent: { about: dataLine, data: value },
 });
 
-const workstreamUri = (id: string) => `oriel://workstream/${id}`;
-const threadUri = (id: string) => `oriel://thread/${id}`;
-const uriShape = /^oriel:\/\/(workstream|thread|item)\/(.+)$/;
+const workstreamUri = (id: string) => `oriel://workstreams/${id}`;
 
-const templates = [
-  {
-    uriTemplate: "oriel://workstream/{id}",
-    name: "workstream",
-    title: "A workstream",
-    description: "A workstream's items, threads and latest versions, as the window shows them.",
+const templates = windowReads
+  .filter((read) => !read.listed)
+  .map(({ uriTemplate, name, title, description }) => ({
+    uriTemplate,
+    name,
+    title,
+    description,
     mimeType: "application/json",
-  },
-  {
-    uriTemplate: "oriel://thread/{id}",
-    name: "thread",
-    title: "A thread",
-    description: "A thread's state, workstream and change sets.",
-    mimeType: "application/json",
-  },
-  {
-    uriTemplate: "oriel://item/{id}",
-    name: "item",
-    title: "An item",
-    description: "An item in the window, read live from its source.",
-    mimeType: "application/json",
-  },
-];
+  }));
+
+// Whether what the window's streams carried may change what a URI reads: a
+// thread's or a workstream's own page only for its own changes, a diff only
+// for its change set's, and every list, the overview and Browse for any.
+function touches(uri: string, heard: Heard): boolean {
+  const own = /^oriel:\/\/(threads|workstreams|change-sets|items)\/([^/?]+)/.exec(uri);
+  if (!own) return true;
+  const [, kind, id] = own;
+  if (heard === null) return kind === "items";
+  if (kind === "threads")
+    return (
+      ("thread" in heard && heard.thread === id) ||
+      ("deleted" in heard && Array.isArray(heard.deleted) && heard.deleted.includes(id as Ulid))
+    );
+  if (kind === "workstreams") return "workstream" in heard && heard.workstream === id;
+  if (kind === "change-sets") return "changeSet" in heard && heard.changeSet === id;
+  return false;
+}
 
 const prompts = [
   {
@@ -173,47 +177,16 @@ export function mcpServer(deps: McpDeps) {
     }
   }
 
+  // One of the window's reads, as the window's route answers it; null when
+  // no read names the URI, or its route finds nothing.
   async function readResource(uri: string): Promise<unknown | null> {
-    const [, kind, id] = uriShape.exec(uri) ?? [];
-    if (kind === undefined || id === undefined) return null;
-    if (kind === "workstream") {
-      if (!isUlid(id)) return null;
-      const view = await outside.workstream(id);
-      if (!view) return null;
-      return {
-        id,
-        name: view.workstream.name,
-        version: view.workstream.version,
-        done: view.workstream.done !== null,
-        items: view.members.map(({ ref }) => ({ id: ref.id, key: ref.key, title: ref.title })),
-        threads: view.threads.map((thread) => ({
-          id: thread.id,
-          title: thread.title,
-          state: thread.state,
-          link: new URL(`threads/${thread.id}`, deps.window).href,
-        })),
-        versions: view.changes.slice(0, 5).map((change) => ({
-          version: change.version,
-          at: change.at,
-          added: change.added.map((ref) => ref.id),
-          removed: change.removed.map((ref) => ref.id),
-          by: change.cause,
-        })),
-        link: new URL(`workstreams/${id}`, deps.window).href,
-      };
-    }
-    if (kind === "thread") {
-      const thread = (await outside.reads.threads()).find((each) => each.id === id);
-      if (!thread) return null;
-      return {
-        ...thread,
-        changeSets: await outside.reads.changeSets(thread.id),
-        link: new URL(`threads/${thread.id}`, deps.window).href,
-      };
-    }
-    const item = decodeURIComponent(id);
-    if (!outside.indexed(item as never)) return null;
-    return (await outside.reader.read([item as never]))[0] ?? null;
+    const asked = readOf(uri);
+    if (!asked) return null;
+    if (asked.item !== undefined && !outside.indexed(asked.item as ItemId)) return null;
+    const method = asked.read.route.startsWith("POST ") ? "POST" : "GET";
+    const answer = await outside.window(method, asked.path);
+    if (answer.status >= 400) return null;
+    return asked.read.pick ? asked.read.pick(answer.body) : answer.body;
   }
 
   // What a request is answered with, or null for a notification. `said`:
@@ -293,16 +266,27 @@ export function mcpServer(deps: McpDeps) {
       case "resources/list": {
         const workstreams = await outside.reads.workstreams();
         return ok({
-          resources: workstreams
-            .filter((each) => !each.done)
-            .map((each) => ({
-              uri: workstreamUri(each.id),
-              name: each.name,
-              title: each.name,
-              description: `A workstream. ${dataLine}`,
-              mimeType: "application/json",
-              annotations: { audience: ["user", "assistant"] },
-            })),
+          resources: [
+            ...windowReads
+              .filter((read) => read.listed)
+              .map(({ uriTemplate, name, title, description }) => ({
+                uri: uriTemplate,
+                name,
+                title,
+                description,
+                mimeType: "application/json",
+              })),
+            ...workstreams
+              .filter((each) => !each.done)
+              .map((each) => ({
+                uri: workstreamUri(each.id),
+                name: each.name,
+                title: each.name,
+                description: `A workstream. ${dataLine}`,
+                mimeType: "application/json",
+                annotations: { audience: ["user", "assistant"] },
+              })),
+          ],
           ...cached,
         });
       }
@@ -397,26 +381,29 @@ export function mcpServer(deps: McpDeps) {
         },
       }),
     });
-    const updated = (uri: string) => {
-      if (uris.has(uri))
+    // What a stream carried in one turn of the event loop goes out once:
+    // one action is heard as its change and as the workspace moving.
+    let heard: Heard[] = [];
+    const flush = () => {
+      const batch = heard;
+      heard = [];
+      if (listChanged && batch.some((each) => each !== null && "workstream" in each))
         send({
           jsonrpc: "2.0",
-          method: "notifications/resources/updated",
-          params: tagged({ uri }),
+          method: "notifications/resources/list_changed",
+          params: tagged({}),
         });
-    };
-    return outside.watch((changed) => {
-      if ("workstream" in changed) {
-        updated(workstreamUri(changed.workstream));
-        if (listChanged)
+      for (const uri of uris)
+        if (batch.some((each) => touches(uri, each)))
           send({
             jsonrpc: "2.0",
-            method: "notifications/resources/list_changed",
-            params: tagged({}),
+            method: "notifications/resources/updated",
+            params: tagged({ uri }),
           });
-        if ("deleted" in changed) for (const thread of changed.deleted) updated(threadUri(thread));
-      }
-      if ("thread" in changed) updated(threadUri(changed.thread));
+    };
+    return outside.watch((each) => {
+      if (heard.length === 0) setImmediate(flush);
+      heard.push(each);
     });
   }
 

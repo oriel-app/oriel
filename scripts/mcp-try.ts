@@ -6,6 +6,7 @@
 // reads only. It writes a client config for each, with its token, into a
 // temporary folder, for `claude -p --mcp-config <file> --strict-mcp-config`,
 // and logs every request the door answers to stderr: who, what and how.
+// `--mode speak` connects the first tool to speak for the person (OA-75).
 //
 // `--check` runs Oriel's own small client against it instead, prints what
 // each call answered, and stops: it lists the tools, reads, removes an item
@@ -16,25 +17,24 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { instant, ulid } from "../packages/core/src/ids.ts";
 import { serve } from "../packages/server/src/serve.ts";
 import { mcpHandler, type McpRequest, serveMcp } from "../packages/server/src/mcp/http.ts";
 import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
-import { outsideTools } from "../packages/server/src/mcp/tokens.ts";
 
 const { values } = parseArgs({
   options: {
     check: { type: "boolean" },
     port: { type: "string", default: "0" },
     name: { type: "string", default: "Claude Code" },
+    // How the first tool is connected: to act, or to speak for the person too.
+    mode: { type: "string", default: "act" },
   },
 });
 
 const serving = await serve(0);
 const { app } = serving;
-const now = () => instant(new Date());
-const tools = outsideTools({ now, newId: () => ulid(Date.now()) });
-const acting = tools.connect(values.name, "act");
+const tools = app.outside.tools;
+const acting = tools.connect(values.name, values.mode === "speak" ? "speak" : "act");
 const reading = tools.connect("Read-only probe", "read");
 const server = mcpServer({
   outside: app.outside,
@@ -152,7 +152,7 @@ if (values.check) {
     "tools/list, as the tool that reads only",
     readOnly.body.result.tools.map((tool: { name: string }) => tool.name),
   );
-  const uri = `oriel://workstream/${workstream.workstream}`;
+  const uri = `oriel://workstreams/${workstream.workstream}`;
   // A subscription to the workstream, open while the tool acts.
   const heard = Promise.withResolvers<string[]>();
   const stream = await fetch(door.url, {
@@ -205,8 +205,11 @@ if (values.check) {
   );
   tools.revoke(acting.tool.id);
   show("tools/list, once revoked", await call(acting.token, "tools/list"));
-  const page = await app.outside.workstream(workstream.workstream);
-  show("the workstream's latest version, as the window shows it", page?.changes[0]);
+  const page = await app.outside.window("GET", `/api/workstreams/${workstream.workstream}`);
+  show(
+    "the workstream's latest version, as the window shows it",
+    (page.body as { changes: unknown[] }).changes[0],
+  );
   await door.close();
   await serving.close();
 }

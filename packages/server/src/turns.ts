@@ -470,7 +470,9 @@ export function turns(deps: TurnDeps) {
     }
     const first = !earlier.some((m) => m.role === "user");
     const now = deps.now();
-    const said = threads.say(threadId, text, { marker: deps.newId(), message: deps.newId() }, now);
+    const ids = { marker: deps.newId(), message: deps.newId() };
+    // A tool that speaks for the user says so under its words (OA-75).
+    const said = threads.say(threadId, text, ids, now, by.kind === "tool" ? by.name : undefined);
     if (said.move) published(threadId, said.move.seq);
     published(threadId, said.seq);
     const thread = threads.get(threadId, now);
@@ -628,6 +630,16 @@ export function turns(deps: TurnDeps) {
     // user sends them on.
     holdFromTool(threadId: Ulid, name: string, text: string): void {
       hold(threadId, { kind: "tool", name }, text);
+    },
+
+    // An outside tool the user connected to speak for them (OA-75): its words
+    // start a turn, as the user's would, under its name. The turn is the
+    // tool's, so none of the agent's actions apply in it (decision 0024),
+    // and only the user approves what it proposes.
+    sayAsTool(threadId: Ulid, name: string, text: string): { seq: number } {
+      const { seq, at, workspaceId } = start(threadId, text, { kind: "tool", name });
+      deps.emit({ name: "question.asked", at, workspaceId, threadId });
+      return { seq };
     },
 
     // A change set of the thread was rejected. The thread says so and asks

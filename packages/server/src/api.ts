@@ -79,6 +79,7 @@ import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import type { NoticedService } from "./noticed.ts";
 import { changeSetView, type Views } from "./views.ts";
+import type { OutsideTools } from "./mcp/tokens.ts";
 
 export type ApiDeps = {
   workspaceId: Ulid;
@@ -163,6 +164,9 @@ export type ApiDeps = {
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   settings: SettingsService;
+  // The outside tools the person connected, and what each called, with its
+  // Undo (OA-75).
+  tools?: Pick<OutsideTools, "list" | "calls" | "undone">;
   // The desktop app's first run and its commands for the person's CLI.
   setup: Setup;
   log: Log;
@@ -1063,14 +1067,41 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         if (!isInverse(name)) throw new Refused(404, "no such undo");
         const input = await readJson(request, listBody, unknown);
         const at = linePlace(url.searchParams);
+        // One of an outside tool's calls, from the list of them, names it.
+        const called = url.searchParams.get("call");
+        const by = called === null ? undefined : deps.tools?.calls().find((c) => c.id === called);
+        if (called !== null && (!by || by.undone)) throw new Refused(409, "that call was undone");
         const done = at
           ? await deps.undoLine(at, { action: name, input } as Call, user)
-          : await deps.dispatch.untyped(name, input, user);
+          : await deps.dispatch.untyped(
+              name,
+              input,
+              user,
+              by ? { kind: "tool", name: by.tool } : undefined,
+            );
+        if (by) deps.tools?.undone(by.id, "user");
         // What went wrong after it applied, such as a connection's options
         // that don't fit its source (decision 0051), is said too.
         const { problem } = done as { problem?: unknown };
         return json(200, { undo: done.undo, ...(typeof problem === "string" ? { problem } : {}) });
       },
+    },
+    {
+      // The outside tools the person connected, and their calls, newest
+      // first, each with its Undo until it is spent (OA-75). No token.
+      method: "GET",
+      path: at("/outside"),
+      run: async () =>
+        json(200, {
+          tools: (deps.tools?.list() ?? []).map(({ id, name, mode, usedAt, revokedAt }) => ({
+            id,
+            name,
+            mode,
+            usedAt,
+            revokedAt,
+          })),
+          calls: (deps.tools?.calls() ?? []).slice(0, 50),
+        }),
     },
     {
       method: "GET",

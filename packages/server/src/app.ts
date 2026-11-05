@@ -96,6 +96,7 @@ import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
 import { ActionError, blankWorkstreamName, type Changed, dispatcher } from "./actions.ts";
 import type { Outside } from "./mcp/door.ts";
+import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -1597,6 +1598,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // Who hears each change a call publishes, besides the window: the MCP
   // door's subscriptions.
   const watchers = new Set<(changed: Changed) => void>();
+  // The outside tools the person connected (OA-72), and what each called.
+  const connectedTools = outsideTools({ now, newId });
   const dispatch = dispatcher({
     workspaceId,
     workstreams,
@@ -1669,6 +1672,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     drafted,
     settle: settleDraft,
     running: conversation.running,
+    speaks: (name) => connectedTools.speaks(name),
     unsettled: async (threadId) =>
       Promise.all(
         (await sets.ofThread(threadId))
@@ -1973,7 +1977,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     log,
   });
 
-  return {
+  const built: App = {
     workspaceId,
     window,
     setup,
@@ -2085,6 +2089,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         return step.ask;
       },
       onboarded: (id, thread) => void onboarding.set(id as Ulid, thread as Ulid),
+      tools: connectedTools,
       ...(options.pickFolder ? { pickFolder: options.pickFolder } : {}),
       setup,
       log,
@@ -2115,11 +2120,34 @@ export async function createApp(options: AppOptions): Promise<App> {
       reads,
       reader,
       indexed: (id) => records().some((record) => record.id === id),
-      workstream: (id) => viewer.workstream(id),
+      tools: connectedTools,
+      // The window's own route, past the window's guard, which the door
+      // stands in for with its own (mcp/http.ts).
+      window: async (method, path) => {
+        const url = new URL(path, "http://door/");
+        const reply = await built.api(
+          {
+            method,
+            url: url.pathname + url.search,
+            headers: { "content-type": "application/json" },
+            body: async () => "{}",
+          },
+          url,
+        );
+        if (!reply) return { status: 404, body: null };
+        const text = typeof reply.body === "string" ? reply.body : "";
+        return { status: reply.status, body: text ? JSON.parse(text) : null };
+      },
+      // What each of Oriel's actions changed, and every thread that moved in
+      // a turn, as the window's streams hear them.
       watch: (listener) => {
         watchers.add(listener);
+        const unwatch = conversation.watchAny((thread) =>
+          listener(thread === null ? null : { thread }),
+        );
         return () => {
           watchers.delete(listener);
+          unwatch();
         };
       },
     },
@@ -2147,4 +2175,5 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (db.isOpen) db.close();
     },
   };
+  return built;
 }

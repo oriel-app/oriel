@@ -95,7 +95,14 @@ export type ActionDeps = {
   // turn; a message held in it, whoever it is from; and its running turn.
   turns: Pick<
     Turns,
-    "say" | "holdFromTool" | "rejected" | "unrejected" | "stop" | "sendHeld" | "discardHeld"
+    | "say"
+    | "holdFromTool"
+    | "sayAsTool"
+    | "rejected"
+    | "unrejected"
+    | "stop"
+    | "sendHeld"
+    | "discardHeld"
   >;
   changeSets: ChangeSets;
   // Second looks at change sets (decision 0054): one taken when the person
@@ -143,6 +150,10 @@ export type ActionDeps = {
   // settled into the headers above them, read from the source now; it
   // throws why the draft no longer fits. As drafted when absent.
   settle?(draft: Draft): Promise<Record<string, unknown>>;
+  // Whether the outside tool by this name was connected to speak for the
+  // user, so its words start a turn rather than wait (OA-75). None does
+  // when absent.
+  speaks?(name: string): boolean;
   // Whether a turn runs in a thread now.
   running(threadId: Ulid): boolean;
   // A thread's change sets still to apply, pending or approved: whether
@@ -512,7 +523,10 @@ const handlers = {
     // A change set or a sync names a workstream as Oriel does, never over the
     // user's name.
     if (oriel) {
-      userOnly(actor, "gives a workstream's name back to Oriel, by undoing a rename");
+      // An outside tool gives it back only by undoing its own rename: the
+      // door takes `oriel` from no tool's own input (`notTheUsers`).
+      if (actor.kind !== "tool")
+        userOnly(actor, "gives a workstream's name back to Oriel, by undoing a rename");
       deps.workstreams.giveBack(before.id, name.trim());
     } else
       deps.workstreams.rename(
@@ -788,8 +802,14 @@ const handlers = {
   // The turn counts the question, and tells the thread's pages. An outside
   // tool's words wait in the thread for the user, and start no turn: a turn
   // costs the user's model, and its words would steer the agent (OA-73).
+  // One the user connected to speak for them starts a turn, under its own
+  // name, in which no action of the agent's applies (OA-75).
   "thread.say": async ({ thread: id, text }, actor, deps) => {
     const thread = mustThread(deps, id);
+    if (actor.kind === "tool" && deps.speaks?.(actor.name)) {
+      const { seq } = deps.turns.sayAsTool(thread.id, actor.name, text);
+      return { output: { seq }, undo: null, changed: null, events: "counted" };
+    }
     if (actor.kind === "tool") {
       deps.turns.holdFromTool(thread.id, actor.name, text);
       return { output: { held: true }, undo: null, changed: null, events: [] };

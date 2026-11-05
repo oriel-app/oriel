@@ -256,7 +256,17 @@ export function ChatEntryItem(props: {
   const { entry } = props;
   switch (entry.kind) {
     case "user":
-      return <li class="user-message">{entry.text}</li>;
+      // What an outside tool said for the user names it (OA-75).
+      return (
+        <li class="user-message">
+          {entry.by !== undefined && (
+            <p class="held-by">
+              <strong>{entry.by}</strong>, an outside tool, for you:
+            </p>
+          )}
+          {entry.text}
+        </li>
+      );
     case "reply":
       return (
         <li class="reply">

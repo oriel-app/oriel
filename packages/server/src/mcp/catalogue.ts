@@ -68,16 +68,52 @@ const actionTools: Tool[] = (Object.keys(actions) as ActionName[]).flatMap((acti
       },
       acts: true,
       call: async (args, by, outside) => {
-        const { undo: _undo, ...output } = await outside.dispatch.untyped(
-          action,
-          notTheUsers(action, args),
-          actorOf(by),
-        );
-        return output;
+        const input = notTheUsers(action, args);
+        const { undo, ...output } = await outside.dispatch.untyped(action, input, actorOf(by));
+        // Kept, with its Undo, for the window to list and the tool to take back.
+        const call = outside.tools.called(by.name, action, input, undo);
+        return { ...output, call: call.id, undoable: undo !== null };
       },
     },
   ];
 });
+
+// Undo, for any of a tool's own calls that has one: what the call changed
+// goes back, as the person's Undo in the window puts it back. Its own Undo
+// is the call again. The person undoes any tool's calls in the window.
+const undoTool: Tool = {
+  name: "undo",
+  description:
+    "Undoes one of your own earlier calls that changed something, by the `call` it gave back. The user sees the Undo in Oriel's window as yours.",
+  inputSchema: {
+    type: "object",
+    properties: { call: { type: "string", description: "The call's ID, as it gave it back" } },
+    required: ["call"],
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  acts: true,
+  call: async (args, by, outside) => {
+    const made = outside.tools.calls(by.name).find((each) => each.id === args["call"]);
+    if (!made) throw new TypeError("$.call: expected one of your own calls");
+    if (made.undone) throw new TypeError("That call was undone already.");
+    if (!made.undo) throw new TypeError(`${made.action} has no Undo.`);
+    const { undo, ...output } = await outside.dispatch.untyped(
+      made.undo.action,
+      made.undo.input,
+      actorOf(by),
+      actorOf(by),
+    );
+    outside.tools.undone(made.id, "tool");
+    const call = outside.tools.called(by.name, made.undo.action, made.undo.input, undo);
+    return { ...output, call: call.id, undoable: undo !== null };
+  },
+};
 
 // A read's parameters as one object's fields, by name.
 const paramsSchema = (fn: ReadFn): JsonSchema =>
@@ -154,8 +190,9 @@ const itemTools: Tool[] = [
   },
 ];
 
-export const tools: readonly Tool[] = [...readTools, ...itemTools, ...actionTools];
+export const tools: readonly Tool[] = [...readTools, ...itemTools, ...actionTools, undoTool];
 
-// The tools a connected tool may list and call.
+// The tools a connected tool may list and call: a tool that speaks for the
+// person acts as one that acts does; only its words differ (OA-75).
 export const toolsFor = (by: ConnectedTool): readonly Tool[] =>
-  by.mode === "act" ? tools : tools.filter((tool) => !tool.acts);
+  by.mode === "read" ? tools.filter((tool) => !tool.acts) : tools;

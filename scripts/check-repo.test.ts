@@ -7,7 +7,9 @@ import {
   decisionClashes,
   exemptRoutes,
   lockedPackages,
+  parityProblems,
   postRoutes,
+  routesOf,
   problems,
   webNamingSources,
   webSourceNames,
@@ -584,5 +586,49 @@ test("the page names no source outside its tests and the files still listed (dec
     problems({ ...clean, sources: [{ path: chip, text: `kind === "folder"` }] }).some((p) =>
       p.startsWith(`${chip}: names a source`),
     ),
+  );
+});
+
+test("routesOf reads each route, and the actions it dispatches by name", () => {
+  assert.deepEqual(
+    routesOf(`type Route = { method: "GET" | "POST" };[
+      { method: "GET", path: at("/a"), run: () => read() },
+      { method: "POST", path: at("/b"), run: () => deps.dispatch("x.y", {}, user) },
+      { method: "POST", path: at("/c"), run: () => [dispatch("x.y"), dispatch("x.z")] },
+      { method: "POST", path: /^\\/api\\/d$/, run: () => deps.dispatch.untyped(name, input) },
+    ]`),
+    [
+      { route: "GET /a", actions: [] },
+      { route: "POST /b", actions: ["x.y"] },
+      { route: "POST /c", actions: ["x.y", "x.z"] },
+      { route: "POST /^\\/api\\/d$/", actions: [] },
+    ],
+  );
+});
+
+test("every route of the window's is a program's too, or says why not", () => {
+  const routes = [
+    { route: "GET /threads", actions: [] },
+    { route: "POST /threads/:id/done", actions: ["thread.done"] },
+    { route: "GET /settings", actions: [] },
+    { route: "POST /threads", actions: ["workstream.create", "thread.open"] },
+  ];
+  // A read, one action, and the rest each with a line.
+  const table = {
+    "GET /settings": { not: "The person's own." },
+    "POST /threads": { door: "workstream_create thread_open" },
+  };
+  assert.deepEqual(parityProblems(routes, table, ["GET /threads"]), []);
+  const { "GET /settings": _, ...gap } = table;
+  assert.deepEqual(parityProblems(routes, gap, ["GET /threads"]), [
+    "packages/server/src/api.ts: GET /settings has no way in for a program and no reason why not; add a read to packages/server/src/mcp/reads.ts or a line to packages/server/src/mcp/parity.ts (OA-75)",
+  ]);
+  assert.deepEqual(
+    parityProblems(routes, { ...table, "GET /gone": { not: " " } }, ["GET /threads", "GET /x"]),
+    [
+      "packages/server/src/mcp/parity.ts: lists GET /gone, which no route declares",
+      "packages/server/src/mcp/parity.ts: GET /gone says nothing",
+      "packages/server/src/mcp/reads.ts: reads GET /x, which no route declares",
+    ],
   );
 });

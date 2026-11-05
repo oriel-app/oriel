@@ -19,11 +19,13 @@ import {
   nullable,
   number,
   object,
+  optional,
   parseItemId,
   record,
   refine,
   string,
   type Thread,
+  toolName,
   type Ulid,
   union,
   unknown,
@@ -63,7 +65,7 @@ const messageRow = object({
   at: instantValue,
 });
 // Rows written before 0003 hold a user's text as a bare JSON string.
-const userContent = union(object({ text: string }), string);
+const userContent = union(object({ text: string, by: optional(toolName) }), string);
 const markerContent = object({ from: number, to: number });
 // A held message, who it is from, and its text within that sender's limit;
 // or a draft of the agent's, of a draftable action, with what it was
@@ -103,7 +105,8 @@ const wroteRow = object({
 // waits for them (decision 0024). A note is Oriel's own line about what
 // someone did, never the agent's (OA-91).
 export type NewMessage =
-  | { role: "user"; text: string }
+  // `by`: the outside tool that speaks for the user, which said it (OA-75).
+  | { role: "user"; text: string; by?: string }
   | { role: "agent"; event: unknown }
   | { role: "marker"; from: number; to: number }
   | { role: "note"; note: OrielNote }
@@ -402,7 +405,7 @@ export function threadStore(db: DatabaseSync) {
       message.role === "agent"
         ? message.event
         : message.role === "user"
-          ? { text: message.text }
+          ? { text: message.text, ...(message.by === undefined ? {} : { by: message.by }) }
           : message.role === "held"
             ? "draft" in message
               ? { draft: message.draft, over: message.over, outcome: null }
@@ -446,11 +449,13 @@ export function threadStore(db: DatabaseSync) {
     if (role === "user") {
       const user = userContent(content);
       if (!user.ok) throw new Error(`corrupt user message ${seq}`);
+      const by = typeof user.value === "string" ? undefined : user.value.by;
       return {
         seq,
         at: when,
         role,
         text: typeof user.value === "string" ? user.value : user.value.text,
+        ...(by === undefined ? {} : { by }),
       };
     }
     if (role === "held") {
@@ -735,17 +740,20 @@ export function threadStore(db: DatabaseSync) {
     // The person's message. A thread behind its workstream (one that settled, or
     // was dropped, while the workstream changed) first catches up, with a marker,
     // so the message is about the workstream as it is now (decision 0018).
+    // `by`: the outside tool that speaks for the user, when it said it.
     say(
       id: Ulid,
       text: string,
       ids: { marker: Ulid; message: Ulid },
       now: Instant,
+      by?: string,
     ): { move: Move | null; seq: number } {
       return transaction(db, () => {
         const moved = move(id, now, ids.marker);
+        const said = { role: "user" as const, text, ...(by === undefined ? {} : { by }) };
         return {
           move: moved,
-          seq: append(mustLoad(id), { role: "user", text }, ids.message, now),
+          seq: append(mustLoad(id), said, ids.message, now),
         };
       });
     },
