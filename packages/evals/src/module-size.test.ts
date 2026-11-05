@@ -35,7 +35,7 @@ const budgets = {
   // Rose by 150 for sketch(), one line (decision 0033), and show() saying
   // its bars sum by label: 4,668 to 4,829. Rose by about 610 for history()
   // and the chart forms (decision 0053): 5,439. Rose by 15 for show()'s
-  // type naming `from` (climbs show-from and show-from-2): 5,454.
+  // type naming `from` (climbs show-from and show-from-2): 5,448.
   tool: 600,
   base: 5_450,
 };
