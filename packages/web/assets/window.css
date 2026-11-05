@@ -3807,6 +3807,15 @@ a.replies:hover {
   display: none;
 }
 
+/* A change set whose diff is still reading its source: its actions wait
+   for it (OA-257). */
+.change-set-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3);
+}
+
 .review-link {
   display: inline-flex;
   flex: 1 1 14rem;

@@ -38,6 +38,9 @@ export type Tag =
   // A second look asked for (decision 0054): apart from the change set's
   // own requests, since approving never waits on one.
   | { kind: "secondLook"; threadId: string; changeSetId: string }
+  | { kind: "lookDismissed"; threadId: string; changeSetId: string; look: string }
+  // A rejection's Undo, from the bead (OA-258).
+  | { kind: "unrejected"; changeSetId: string }
   | { kind: "held"; threadId: string; seq: number }
   // A draft applied, or that undone, by its place in the thread (decision 0051).
   | { kind: "draftApplied"; threadId: string; seq: number }

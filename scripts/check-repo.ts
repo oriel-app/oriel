@@ -231,7 +231,7 @@ export function actionProblems(declared: Record<string, ActionDeclaration>): str
       found.push(`${at}: ${name} is a person's without a reason (decision 0024)`);
     if (kind.kind === "direct" && kind.inverse === null && blank(kind.why))
       found.push(`${at}: ${name} has no inverse and doesn't say why (decision 0024)`);
-    if (kind.kind === "direct" && kind.inverse !== null && !Object.hasOwn(declared, kind.inverse))
+    if (kind.inverse != null && !Object.hasOwn(declared, kind.inverse))
       found.push(`${at}: ${name}'s inverse ${kind.inverse} isn't an action (decision 0024)`);
     // A draft is for what the agent can't do itself, and never for a
     // person's, such as what holds credentials (decision 0051).

@@ -132,6 +132,8 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
       decision: "approved" | "rejected";
       via: "thread" | "review-link";
     }
+  // The person undid their rejection in the thread (OA-258).
+  | { name: "changeset.unrejected"; changeSetId: Ulid }
   // `sources`: the sources it wrote to, in source order (OA-28).
   | { name: "changeset.applied"; changeSetId: Ulid; threadId: Ulid; sources: SourceKind[] }
   // The rest of a change set that started landing, or may have, was dropped.

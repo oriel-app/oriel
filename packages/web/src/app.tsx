@@ -23,6 +23,7 @@ import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
 import { addUndos } from "./panel-adds.ts";
 import { approvedUndos } from "./approved.ts";
+import { rejectedUndos } from "./rejected.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
 import { BeadStatus } from "./undo-stack.tsx";
 import type { Undos } from "./undos.ts";
@@ -126,9 +127,14 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // on screen: the bead.
   const adds = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
   const approved = approvedUndos(model.approved, (msg) => dispatch({ type: "approved", msg }));
+  const rejected = rejectedUndos(model.rejected, (msg) => dispatch({ type: "rejected", msg }));
   const added = {
-    notes: [...adds.notes, ...approved.notes],
-    problem: adds.problem ?? approved.problem ?? closingProblem(model.closing, dispatch),
+    notes: [...adds.notes, ...approved.notes, ...rejected.notes],
+    problem:
+      adds.problem ??
+      approved.problem ??
+      rejected.problem ??
+      closingProblem(model.closing, dispatch),
   };
   return (
     <SendKeyContext.Provider value={sendKey(model.settings)}>

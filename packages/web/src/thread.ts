@@ -16,6 +16,7 @@ import type {
   ItemRef,
   NoteView,
   RunView,
+  SecondLookView,
   StreamEvent,
   ThreadView,
   UndoView,
@@ -33,9 +34,13 @@ export type ThreadModel = {
   diffs: Readonly<Record<string, DiffView>>;
   // A change set with a request in flight.
   busy: readonly string[];
-  // A change set whose second look was asked for and not yet answered: its
-  // button waits, and Approve and Reject don't (decision 0054).
-  looking: readonly string[];
+  // A change set whose second look was asked for and not yet shown, by the
+  // look it had then, if any, and whether that one was dismissed: its button
+  // says Looking… until the thread shows another look, or that one again
+  // (decision 0054, OA-257). Until then Approve and Reject don't wait.
+  looking: Readonly<Record<string, { id: string; dismissed: boolean } | null>>;
+  // Second looks dismissed from this page, hidden before the server says so.
+  dismissed: readonly string[];
   // A decision sent from this page and not yet answered, by change set. The
   // page and the sidebar show what it will make of the thread (`expected`).
   deciding: Readonly<Record<string, Decision>>;
@@ -95,8 +100,11 @@ export type ThreadMsg =
   | { type: "toReviewClicked"; changeSetId: string }
   // A change set's second look (decision 0054): asked for, first or again
   // once stale or failed; or a change it suggested, added to the change set.
+  // While one shows, the change set offers only what pertains to it: its
+  // suggestions, one or all, and Dismiss (OA-257).
   | { type: "secondLookClicked"; changeSetId: string }
-  | { type: "suggestionAdded"; changeSetId: string; look: string; place: number }
+  | { type: "suggestionAdded"; changeSetId: string; look: string; places: number[] }
+  | { type: "lookDismissed"; changeSetId: string; look: string }
   | { type: "linkClicked"; changeSetId: string }
   | { type: "linkCopied"; changeSetId: string }
   // A held message, from anyone but the user: sent to the agent as it is, edited
@@ -135,7 +143,8 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       syncing: false,
       diffs: {},
       busy: [],
-      looking: [],
+      looking: {},
+      dismissed: [],
       deciding: {},
       unfolded: [],
       editing: {},
@@ -376,11 +385,14 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
     }
     case "secondLookClicked": {
       const { changeSetId } = msg;
-      if (model.looking.includes(changeSetId)) return [model, []];
+      if (changeSetId in model.looking) return [model, []];
+      const look = model.view?.changeSets.find((set) => set.id === changeSetId)?.secondLook;
+      const had = look ? { id: look.id, dismissed: dismissed(model, look) } : null;
       return [
         {
           ...model,
-          looking: [...model.looking, changeSetId],
+          looking: { ...model.looking, [changeSetId]: had },
+          dismissed: model.dismissed.filter((id) => id !== look?.id),
           problems: without(model.problems, changeSetId),
         },
         [
@@ -404,12 +416,31 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
         [
           post(
             `/api/change-sets/${changeSetId}/suggestions`,
-            { look: msg.look, place: msg.place },
+            { look: msg.look, places: msg.places },
             {
               kind: "changeSet",
               threadId: model.id,
               changeSetId,
             },
+          ),
+        ],
+      ];
+    }
+    // Hidden at once; refused, it shows again, with why.
+    case "lookDismissed": {
+      const { changeSetId, look } = msg;
+      if (model.dismissed.includes(look)) return [model, []];
+      return [
+        {
+          ...model,
+          dismissed: [...model.dismissed, look],
+          problems: without(model.problems, changeSetId),
+        },
+        [
+          post(
+            `/api/change-sets/${changeSetId}/second-look/dismiss`,
+            { look },
+            { kind: "lookDismissed", threadId: model.id, changeSetId, look },
           ),
         ],
       ];
@@ -634,7 +665,14 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
       return [
-        { ...model, view: merged, status: "ready", editing, notice: reached(model.notice) },
+        {
+          ...model,
+          view: merged,
+          status: "ready",
+          editing,
+          looking: stillLooking(model.looking, merged),
+          notice: reached(model.notice),
+        },
         [
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
@@ -721,16 +759,28 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
           : [diffOf(tag.changeSetId), refresh(model)],
       ];
     }
-    // The look is running, or was already: the thread's stream says so as it
-    // moves. Refused, it says why.
+    // The look is running, or shows again: the button says Looking… until
+    // the thread shows it, which it asks for now rather than wait on the
+    // stream, whose change reads the diff first. Refused, it says why.
     case "secondLook": {
       if (tag.threadId !== model.id) return [model, []];
-      const looking = model.looking.filter((id) => id !== tag.changeSetId);
-      if (msg.ok) return [{ ...model, looking }, []];
+      if (msg.ok) return [model, [refresh(model)]];
       return [
         {
           ...model,
-          looking,
+          looking: without(model.looking, tag.changeSetId),
+          problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) },
+        },
+        [refresh(model)],
+      ];
+    }
+    // Dismissed, the stream says so; refused, the look shows again, with why.
+    case "lookDismissed": {
+      if (tag.threadId !== model.id || msg.ok) return [model, []];
+      return [
+        {
+          ...model,
+          dismissed: model.dismissed.filter((id) => id !== tag.look),
           problems: { ...model.problems, [tag.changeSetId]: errorOf(msg.body) },
         },
         [refresh(model)],
@@ -852,8 +902,9 @@ export function streamed(model: ThreadModel, event: StreamEvent): [ThreadModel, 
   // ends, which the thread says. Once it has, or anything else changed it,
   // its diff and what it offers have moved: one diff, whose reply reloads
   // the thread.
+  // Only its second look changed: the diff stands, so only the thread loads.
   if (event.type === "change-set")
-    return [model, event.applying ? [refresh(model)] : [diffOf(event.changeSetId)]];
+    return [model, event.applying || event.look ? [refresh(model)] : [diffOf(event.changeSetId)]];
   // The lists' business, not the thread's.
   if (event.type === "threads") return [model, []];
   // Its workstream changed, its name or members, whether or not the thread moved.
@@ -1044,6 +1095,29 @@ export function entriesOf(entries: readonly ChatEntry[]): Entry[] {
     }
   }
   return out;
+}
+
+// Whether the person dismissed a second look, here or anywhere (OA-257).
+const dismissed = (model: ThreadModel, look: SecondLookView): boolean =>
+  look.dismissed || model.dismissed.includes(look.id);
+
+// The second look a change set shows, if any: one nobody dismissed. While
+// it shows, the change set offers only what pertains to it (OA-257).
+export const shownLook = (model: ThreadModel, set: ChangeSetView): SecondLookView | null =>
+  set.secondLook && !dismissed(model, set.secondLook) ? set.secondLook : null;
+
+// The second looks still asked for once the thread shows `view`: each until
+// the thread shows a look other than the one it had, or shows that one again
+// once dismissed; or until it can have none, decided.
+function stillLooking(looking: ThreadModel["looking"], view: ThreadView): ThreadModel["looking"] {
+  return Object.fromEntries(
+    Object.entries(looking).filter(([id, had]) => {
+      const look = view.changeSets.find((set) => set.id === id)?.secondLook;
+      if (look === undefined) return false;
+      if (look === null) return true;
+      return had !== null && look.id === had.id && (look.dismissed || !had.dismissed);
+    }),
+  );
 }
 
 // Whether a change set shows as one line: a rejected one does until the user

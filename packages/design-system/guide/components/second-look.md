@@ -11,7 +11,7 @@ summary: The agent's reading of what else a change set could affect, taken only 
 
 ## What it is
 
-A second look is Oriel's own run on a [change set](/components/change-set) nobody has decided on, taken only when the person presses **Second look** (decision 0054). It reads the diff Oriel computed and what it chooses, and records **findings**: what else the change could make wrong. Its card sits in the change set, between the diff and its steps.
+A second look is Oriel's own run on a [change set](/components/change-set) nobody has decided on, taken only when the person presses **Second look** (decision 0054). It reads the diff Oriel computed and what it chooses, and records **findings**: what else the change could make wrong. Its card sits in the change set, between the diff and its steps. While it shows, the steps are only its own (OA-257).
 
 "The agent's reading of what else the change would make wrong, never a verdict. Nothing here approves, rejects or blocks, and nothing looks like a pass: no tick, no green, no score, and no summary line, since the agent writes none. What Oriel knows for itself (what the look read, which quotes it found word for word, what changed since) is said in Oriel's words; what the agent concluded is captioned as its own." (`packages/web/src/second-look.tsx`)
 
@@ -24,7 +24,7 @@ A finding is one of four kinds, each under its heading, in this order: **Disagre
 
 ## When not to
 
-- Not as a gate. Approve and Reject never wait for it, and nothing it says changes what they do. It never blocks, and never passes.
+- Not as a gate. Approval never waits for it: while it shows, Approve and Reject are out of the way, since beside it they read as accepting or dismissing the look, and **Dismiss**, one click, gives them back. Nothing it says changes what they do. It never blocks, and never passes.
 - Not started by anything but the person: not a capture, a sync or a page view, and not the agent (`changeset.second-look` is closed to the agent and outside tools).
 - Not on the review link's page. A link can be forwarded to anyone, and a look quotes beyond the diff.
 - Not in the done, accent or danger colours, or with a tick or a score: nothing in it may read as a pass or a block.
@@ -33,7 +33,7 @@ A finding is one of four kinds, each under its heading, in this order: **Disagre
 
 The card is `section.second-look`, `data-state` its state, named "Second look": set apart from the diff by a dashed `--line-strong` border on `--surface-sunk`, `--radius`, inset by `--space-3` in the change set. In neutral tones only.
 
-1. **The head** (`.second-look-head`): **Second look** (`h3`, `--text-md`, strong), and, faint, whose it is (`.second-look-by`): "The agent's reading of what else this could affect. Not a review: it can miss things, and it never approves."
+1. **The head** (`.second-look-head`): **Second look** (`h3`, `--text-md`, strong), and, faint, its head line (`.second-look-by`): "Taking a second look. Read carefully before accepting any changes" (OA-257).
 2. **What changed since** (`.second-look-stale`, `role="note"`), when something did: muted, `--text-sm`, behind a thick `--line-strong` rule.
 3. **What it read** (`.second-look-read`, faint), Oriel's count from the runs' records: "It read 3 of 11 items in this workstream, and searched outside it twice. It can't speak for what it didn't read."
 4. **The findings**, by kind (`.second-look-kind`, `data-kind`), each under a muted `h4`. A finding (`li.finding`) is its sentence (`.finding-says`), led by where it bears (`.finding-on`, muted and strong: "On SYN-45:"), then its quotes, each a `.quote-from` with a thick `--line-strong` rule (the [message](/components/message) page's figure, neutral here), captioned "Word for word from" and the item's chip, "· outside this workstream" when it is, or "Word for word from what SYN-45 would write".
@@ -44,8 +44,7 @@ The card is `section.second-look`, `data-state` its state, named "Second look": 
   <header class="second-look-head">
     <h3>Second look</h3>
     <span class="second-look-by"
-      >The agent's reading of what else this could affect. Not a review: it can miss things, and it
-      never approves.</span
+      >Taking a second look. Read carefully before accepting any changes</span
     >
   </header>
   <p class="second-look-read">
@@ -142,7 +141,7 @@ The card is `section.second-look`, `data-state` its state, named "Second look": 
 </section>
 ```
 
-The button that asks for it is a plain `.button` in the change set's footer, between the forward steps and Reject: **Second look**, then **Looking…** while it runs, and **Look again** once the change set or an item it rests on changed, or the last look failed. With a current look there's no button. Its tooltip says what pressing does.
+The button that asks for it is a plain `.button` in the change set's footer, between the forward steps and Reject: **Second look**, then **Looking…**, disabled, from the press until the look shows, and **Look again** once the change set or an item it rests on changed, or the last look failed. With a current look showing there's no button. Its tooltip says what pressing does.
 
 ```html specimen id=button title="The button, between Approve and Reject" height=150
 <footer class="change-set-actions">
@@ -156,24 +155,37 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
 </footer>
 ```
 
+While a look shows, running, ready or failed, the footer holds only what pertains to it (`LookActions`, OA-257): **Look again** when it is stale or failed; **Add its suggestions** (`.button`), every suggestion not yet added, in one edit, or "Add its suggestion" for one, and none when it suggested nothing; and **Dismiss** (`.button`), whose tooltip says it gives back Approve and Reject. No label says "Apply": in Oriel that is writing to a source.
+
+```html specimen id=look-actions title="While a look shows: its suggestions, and Dismiss" height=150
+<footer class="change-set-actions">
+  <button type="button" class="button">Add its 2 suggestions</button>
+  <button type="button" class="button" aria-describedby="tip-dismiss">Dismiss</button>
+  <span id="tip-dismiss" role="tooltip" popover="manual" class="tooltip"
+    >Close the second look to approve or reject the change.</span
+  >
+</footer>
+```
+
+Dismiss is kept with the look (`changeset.dismiss-look`, closed to the agent and outside tools), so a reload doesn't bring it back, and it stops a look that still runs. The button is back beside Approve and Reject: while the dismissed look is current it reads **Second look** and shows that look again, with no model call; once stale or failed, **Look again**.
+
 ## States
 
-```html specimen id=state-running title="Running: Approve and Reject don't wait" state=busy
+```html specimen id=state-running title="Running: Dismiss gives Approve and Reject back" state=busy
 <section class="second-look" data-state="running" aria-label="Second look">
   <header class="second-look-head">
     <h3>Second look</h3>
     <span class="second-look-by"
-      >The agent's reading of what else this could affect. Not a review: it can miss things, and it
-      never approves.</span
+      >Taking a second look. Read carefully before accepting any changes</span
     >
   </header>
   <p class="second-look-note" role="status">
-    Reading what this change touches. Nothing waits for it.
+    Reading what this change touches. Dismiss it to decide without it.
   </p>
 </section>
 ```
 
-```html specimen id=state-running-button title="Looking…: the button, disabled and busy" state=busy
+```html specimen id=state-running-button title="Looking…: the button, disabled and busy, from the press" state=busy
 <footer class="change-set-actions">
   <button type="button" class="button primary">Approve and apply</button>
   <button type="button" class="button" disabled aria-busy="true">Looking…</button>
@@ -186,8 +198,7 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
   <header class="second-look-head">
     <h3>Second look</h3>
     <span class="second-look-by"
-      >The agent's reading of what else this could affect. Not a review: it can miss things, and it
-      never approves.</span
+      >Taking a second look. Read carefully before accepting any changes</span
     >
   </header>
   <p class="second-look-read">
@@ -206,8 +217,7 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
   <header class="second-look-head">
     <h3>Second look</h3>
     <span class="second-look-by"
-      >The agent's reading of what else this could affect. Not a review: it can miss things, and it
-      never approves.</span
+      >Taking a second look. Read carefully before accepting any changes</span
     >
   </header>
   <p class="second-look-stale" role="note">
@@ -333,8 +343,7 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
   <header class="second-look-head">
     <h3>Second look</h3>
     <span class="second-look-by"
-      >The agent's reading of what else this could affect. Not a review: it can miss things, and it
-      never approves.</span
+      >Taking a second look. Read carefully before accepting any changes</span
     >
   </header>
   <p class="second-look-note">It didn't finish: Oriel stopped before it finished.</p>
@@ -352,10 +361,11 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
 </ul>
 ```
 
-- **Running** (`data-state="running"`): "Reading what this change touches. Nothing waits for it.", `role="status"`. The button reads Looking…, disabled and `aria-busy`.
+- **Running** (`data-state="running"`): "Reading what this change touches. Dismiss it to decide without it.", `role="status"`. The button reads Looking…, disabled and `aria-busy`.
 - **Ready** (`data-state="ready"`): what it read, then the findings, or, with none, "It raised nothing from what it read. That isn't a sign the change is right: the diff above is yours to check." (`.second-look-none`, muted).
 - **Stale:** what changed since it looked, above what it read. A look is stored and never regenerated on a view; the person presses Look again.
-- **Failed** (`data-state="failed"`): "It didn't finish", with why when there is one. The button reads Look again.
+- **Failed** (`data-state="failed"`): "It didn't finish", with why when there is one, as "You dismissed it before it finished.". The button reads Look again.
+- **Dismissed:** not shown. The footer has Approve, Second look or Look again, and Reject.
 - **Busy:** while the change set is busy, Add to this change set is disabled.
 - **Hover and focus:** a `.quiet-action`'s and a `.button`'s. The chips in captions are links, with the global ring.
 
@@ -376,8 +386,8 @@ The button that asks for it is a plain `.button` in the change set's footer, bet
 
 ## Where the app uses it
 
-- `SecondLook` in `packages/web/src/second-look.tsx`, placed by `ChangeSet` in `packages/web/src/thread-page.tsx`, between the diff and the steps. The button: `SecondLookButton` in `packages/web/src/thread-page.tsx`.
-- The run, its checks and what it keeps: `packages/server/src/challenger.ts`. Adding a suggestion: `changeset.add-suggestion`, through `ChangeSets.extend`.
+- `SecondLook` in `packages/web/src/second-look.tsx`, placed by `ChangeSet` in `packages/web/src/thread-page.tsx`, between the diff and the steps. The button: `SecondLookButton`; the footer while it shows: `LookActions`, both in `packages/web/src/thread-page.tsx`. What shows: `shownLook` in `packages/web/src/thread.ts`.
+- The run, its checks and what it keeps: `packages/server/src/challenger.ts`. Adding suggestions: `changeset.add-suggestion`, through `ChangeSets.extend`. Dismissing: `changeset.dismiss-look`.
 - CSS: `.second-look`, `.second-look-head`, `.second-look-stale`, `.second-look-kind h4`, `.finding-says`, `.finding-on`, `.second-look .quote-from blockquote`, `.second-look .suggested li` and `.suggested-added` in `window.css`.
 
 Two hooks in the app's markup have no rule in window.css: `class="second-look-button"` on the button and `class="suggested-change"` on a suggestion's sentence. The specimens leave them off.

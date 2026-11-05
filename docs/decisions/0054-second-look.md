@@ -1,6 +1,6 @@
 # 0054 A second look at a change set, when the person asks
 
-Accepted 2026-11-04. Amends 0003, 0024, 0030 and 0032. Changes SPEC §2, §8 and §9. From the challenger spike (branch `challenger`), with one change the maintainer made: a second look runs only on demand.
+Accepted 2026-11-04. Amends 0003, 0024, 0030 and 0032. Changes SPEC §2, §8 and §9. From the challenger spike (branch `challenger`), with one change the maintainer made: a second look runs only on demand. Amended 2026-11-05 (OA-257), from the maintainer's use: while a look shows, the change set offers only what pertains to it, and Dismiss gives Approve and Reject back.
 
 Adds: none
 
@@ -8,8 +8,11 @@ Adds: none
 
 - **A second look** (SPEC §2) is Oriel's own run on a change set nobody has decided on, taken only when the person presses **Second look**. The change-set view has it between Approve and Reject. Nothing starts one by itself: not a capture, a sync or a page view.
   - Pressing it is `changeset.second-look`, a direct action closed to the agent and outside tools: an agent doesn't ask for a look at its own work, and an outside tool's words start no model call. Pressing it again while a look runs, or while the last one is still current, starts nothing more.
-  - While it runs, the button reads **Looking…**, and Approve and Reject stay usable. Approval never waits on it.
+  - ~~While it runs, the button reads **Looking…**, and Approve and Reject stay usable. Approval never waits on it.~~ Amended 2026-11-05 (OA-257): the button reads **Looking…**, disabled, from the press until the look shows, and gives back its label, with why, if the request is refused.
   - Once a look exists, the same button reads **Look again** when the change set, or an item the look rests on, changed since, or when the last look failed. With a current look there is no button.
+  - Amended 2026-11-05 (OA-257): **while a look shows** (running, ready or failed), Approve and Reject read as accepting or dismissing the look, so the change set's actions are only what pertains to it: **Look again** when it is stale or failed; **Add its suggestions**, every suggestion not yet added, in one edit, and none when it suggested nothing; and **Dismiss**. Its share link goes too. Dismiss gives Approve and Reject back. Approval still never waits on a look: Dismiss is always one click, and it stops a look that still runs, since nobody will read what it finds.
+  - **Dismiss persists:** it is `changeset.dismiss-look`, a direct action closed to the agent and outside tools, kept on the look, so a reload or another page doesn't bring it back. **Look again stays reachable:** after Dismiss the button is back beside Approve and Reject. While the dismissed look is current it reads **Second look** and shows that look again, with no model call; once it is stale or failed, **Look again** takes another.
+  - The look's head line says "Taking a second look. Read carefully before accepting any changes".
 - **The run.** An agent with no history, Oriel's fixed ask (`challengeAskText`), and a module of the region's reads and writes, `challenge.diff()`, `challenge.record()` and `search()`. No `workstream`, `thread`, `show` or `sketch`; every other module is byte for byte as it was. It reads the diff Oriel computed (`ChangeSets.look()`, which records no preview, so it never stands for what the person saw), reads what it chooses, and records findings. Its reply is never shown; its turn captures no change set, applies no intent and holds no draft.
   - **Model:** the thread's, as Settings chooses it. The look records the model ID its runs ran on.
   - **It counts.** A look's tokens count toward its thread's per-thread token cap (SPEC §9).
@@ -18,11 +21,11 @@ Adds: none
   - There is no summary field, so nothing can read as an overall verdict.
 - **Coverage is Oriel's, not the agent's**: "It read 3 of 11 items in this workstream, and searched outside it twice", from the runs' records. An empty look says "It raised nothing from what it read. That isn't a sign the change is right."
 - **Never a pass, never a block.** Findings sit between the diff and Approve. Neutral colours only: no done, accent or danger token, no tick, no score. Nothing it says changes what Approve, Reject or the review link do.
-- **A companion's changes** are what the same run wrote: captured, never applied, kept with the look. **Add to this change set** is a person-only action (`changeset.add-suggestion`) that appends them through `ChangeSets.extend`. It checks them as a capture is (catalogue, the region of the change set's run, no new items, the per-change-set cap), and only while nobody has decided and nothing has applied. The hash changes, so the person approves the new diff, and the look says it hasn't read what was added.
+- **A companion's changes** are what the same run wrote: captured, never applied, kept with the look. **Add to this change set** is a person-only action (`changeset.add-suggestion`) that appends them through `ChangeSets.extend`. Amended 2026-11-05 (OA-257): it takes one suggestion or several, so **Add its suggestions** adds every one not yet added in one edit. Neither label says "Apply", which in Oriel means writing to a source (SPEC §2). It checks them as a capture is (catalogue, the region of the change set's run, no new items, the per-change-set cap), and only while nobody has decided and nothing has applied. The hash changes, so the person approves the new diff, and the look says it hasn't read what was added.
 - **Stored, then stale, never regenerated on a view.** A look keeps the change set's hash and each cited item's and target's update time. The card says what changed since ("The change set changed after it looked", "2 items it rests on changed since").
 - **The review link shows no second look.** See Why.
 
-**Amends.** 0003: a person may add a second look's suggested change to a change set nobody has decided on, which they then approve as a new diff. 0024: two actions, `changeset.second-look` (direct, closed to the agent and outside tools) and `changeset.add-suggestion` (person-only). 0030 and 0032: a quote may be checked against what a diff line would write, as well as against an item.
+**Amends.** 0003: a person may add a second look's suggested change to a change set nobody has decided on, which they then approve as a new diff. 0024: two actions, `changeset.second-look` (direct, closed to the agent and outside tools) and `changeset.add-suggestion` (person-only); and, amended 2026-11-05 (OA-257), a third, `changeset.dismiss-look` (direct, closed to the agent and outside tools). 0030 and 0032: a quote may be checked against what a diff line would write, as well as against an item.
 
 **Why.**
 
@@ -47,5 +50,6 @@ Adds: none
 
 - Migration 0024 (`challenges`); `ChangeSets.look` and `ChangeSets.extend`; `TurnInput.challenge`; two actions; telemetry `challenge.made` (counts by kind, ms, tokens), `challenge.failed` (why, in a word) and `challenge.companion-added`, never words or quotes.
 - Eval kind 9 (SPEC §8), deterministic: a `challenge` diff in the case and a `findings` grader. Four cases; reply graders skip kind 9, whose reply is never shown. `look-long-crossings` stays marked failing until reach improves.
+- Amended 2026-11-05 (OA-257): migration 0026 (`challenges.dismissed_at`). A look that starts, ends or is dismissed tells the thread's pages that only the look changed, so they load the thread without reading the diff from its source again, which for a large change set took seconds. While a change set's diff still reads its source, its actions wait for it, behind a loading line. A rejection undone (OA-258) brings its look back as it was.
 - Hit every surface: the change-set diff (the button and the look, in the thread only); review link (deliberately none); thread states (unchanged: a look neither waits on the person nor holds Needs you); telemetry; eval fixture. The overview, Browse, the item panel and the right rail are untouched.
 - Open: reach (references to the diff's targets, or search over text), the next step; a look hasn't run live on the command-line providers; with the scripted dev agent, no look is offered.

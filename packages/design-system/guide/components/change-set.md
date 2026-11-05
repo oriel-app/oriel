@@ -3,7 +3,7 @@ title: Change set
 status: drifting
 group: Thread
 order: 70
-classes: change-set, change-set-head, change-set-status, change-set-count, change-set-actions, change-set-problem, loading, apply-errors, apply-stuck, may-have-landed, read-only-note, review-link, link-field, diff, diff-line, brought, line-head, line-mark, sentence, key, source-link, new-title, new-description, item-value, new-mark, fields, field, edited, side, side-sign, side-text, fold, arrow, remove-line, tooltip, line-error, visually-hidden, review, review-head, mark, review-card, page-title, review-decide, name-field, reason, review-actions, outcome, outcome-stops, stop-reason
+classes: change-set, change-set-head, change-set-status, change-set-count, change-set-actions, change-set-problem, loading, change-set-loading, apply-errors, apply-stuck, may-have-landed, read-only-note, review-link, link-field, diff, diff-line, brought, line-head, line-mark, sentence, key, source-link, new-title, new-description, item-value, new-mark, fields, field, edited, side, side-sign, side-text, fold, arrow, remove-line, tooltip, line-error, visually-hidden, review, review-head, mark, review-card, page-title, review-decide, name-field, reason, review-actions, outcome, outcome-stops, stop-reason
 summary: A write to a source, waiting on a person: its diff, line by line, and the steps it offers. Approve and apply, Reject, Share review link; then applying, applied, stalled, rejected or reverted. And the review link's page.
 ---
 
@@ -257,7 +257,7 @@ Each change is an `li.diff-line`, `data-kind` its kind, padded on the right to l
 | revert       | **Revert what was applied** (partly applied), else **Revert** | `.button`                       |
 | remove       | drawn per line: × or **Remove this change**                   | `.remove-line`, `.quiet-action` |
 
-Between the forward steps and Reject, while nobody has decided, **Second look** (`.button`), or **Looking…** and **Look again**: the person's ask for the agent's reading of what else the change could affect. Its card sits between the diff and the steps. See [Second look](/components/second-look).
+Between the forward steps and Reject, while nobody has decided, **Second look** (`.button`), or **Looking…** and **Look again**: the person's ask for the agent's reading of what else the change could affect. Its card sits between the diff and the steps. While it shows, the steps are only its own: Look again, **Add its suggestions** and **Dismiss**, which gives Approve and Reject back (OA-257). See [Second look](/components/second-look).
 
 Then, after the steps:
 
@@ -358,18 +358,16 @@ Then, after the steps:
 
 Every state the card goes through, in the order a change set lives them. The status words are the app's; so is what each state offers.
 
-```html specimen id=state-loading title="Before the diff: reading current values" state=loading
+```html specimen id=state-loading title="Before the diff: reading its source, with no steps yet" state=loading
 <section class="change-set" data-status="open" aria-busy="false" tabindex="-1">
   <header class="change-set-head">
     <h2>Proposed change</h2>
     <span class="change-set-status" role="status">Awaiting review</span>
   </header>
-  <p class="loading">Reading current values…</p>
-  <footer class="change-set-actions">
-    <button type="button" class="button primary" disabled>Approve and apply</button>
-    <button type="button" class="button" disabled>Reject</button>
-    <button type="button" class="quiet-action">Share review link</button>
-  </footer>
+  <p class="loading change-set-loading" role="status">
+    <span class="spinner" aria-hidden="true"></span>Reading what each change would replace in its
+    source…
+  </p>
 </section>
 ```
 
@@ -781,12 +779,12 @@ Every state the card goes through, in the order a change set lives them. The sta
 
 What each state is, and what it offers:
 
-- **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). Until then the card says "Reading current values…".
+- **Awaiting review** (`open`): Approve and apply, Reject, Share review link, and × on each line that can be left out. Approve and Reject stay **disabled until the diff has loaded**, because approving sends the diff's hash: the person approves exactly what they were shown, and the server refuses a stale one (`updateThread` in `packages/web/src/thread.ts`). Until then the card says "Reading what each change would replace in its source…", with a spinner, and offers no steps at all, Second look and Share review link included: the diff reads each changed item's current values from its source, which takes seconds on a large set (OA-257). A diff that fails says why, and the steps come back, Approve and Reject still disabled.
 - **Applying** (`applying`): once Approve is clicked, the card shows it at once, before the server answers (`expected` in `packages/web/src/thread.ts`): status "Applying…", `aria-busy="true"`, which dims the whole card to 0.7 (`.change-set[aria-busy="true"]` in `window.css`), and no steps (an empty footer hides itself, `.change-set-actions:empty` in `window.css`). There's no spinner: the status and the dimming are the whole signal. The [sidebar](/components/sidebar)'s chip for the thread says "Applying…" too.
 - **Applied** (`applied`): the status turns `--done`; every applied line gets " ✓" after its sentence or title. Revert is offered.
 - **Partly applied** (`partial`) and **Stopped** (`stopped`): the line that failed is tinted `--danger-soft`, says why in `--danger` (`.line-error`, `role="note"`), and offers **Remove this change**. The steps: Try again, Dismiss, Revert what was applied.
 - **Apply stalled**: its source stopped answering mid-apply. Nothing can be done until it answers or Oriel gives up waiting, since a send may yet land (OA-82). `.apply-stuck` (on `--accent-soft`) says so; Dismiss lists what may already be in the source first (`.may-have-landed`, on `--derived-soft`), so the person can check before they let it go.
-- **Rejected** (`rejected`): one click, no confirm. The status is struck through, and the set **folds to its head** with its count and **Show**, so a revised change set below isn't buried (OA-90); a link to it unfolds it. Oriel then adds its own note under it and moves focus to the composer, for what was wrong.
+- **Rejected** (`rejected`): one click, no confirm. The status is struck through, and the set **folds to its head** with its count and **Show**, so a revised change set below isn't buried (OA-90); a link to it unfolds it. Oriel then adds its own note under it and moves focus to the composer, for what was wrong. The [bead](/components/bead) says "You rejected the change in “…”." with **Undo**, which puts it back to awaiting review as it was, its second look too, and Oriel's line "Rejection undone. The change awaits your review." under the first (OA-258). Once the person has said anything to the agent since, the Undo is refused, and the bead says why until dismissed. A rejection on the review link has no Undo.
 - **Reverted:** Revert proposes a new change set, headed **Undo**, nested inside the one it reverts (dashed, inset, `.change-set .change-set` in `window.css`), and reviewed the same way. A revert is never a one-click Undo.
 - **Opened from a link** (`[data-opened]`): when a link or a search result names the set, the page scrolls it under the head row and focuses it (`perform` in `packages/web/src/effects.ts`). The card shows an accent border and ring instead of the focus ring (`.change-set:focus` in `window.css` has no outline).
 - **Problem:** a refusal of a click shows under the footer, `.change-set-problem`, `role="alert"`, on `--danger-soft`, in the server's words; the page then reads the diff again.
@@ -972,7 +970,7 @@ The name field isn't disabled while deciding in the app; only the buttons are. T
 - **Open:** "Review this change", the same diff as the thread (no ×, no Remove this change; [chips](/components/chip) are plain text, as nothing can navigate), what dismissing may leave, then the form. With no step to take: "There's nothing to decide here now. Whoever shared this link can take it from the thread." or "Applying…".
 - **Deciding:** the buttons are disabled; an approval says "Approving and applying…" in the always-present `role="status"` line.
 - **A missing name:** "Type your name first.", checked on click, in `.change-set-problem` with `role="alert"`. The buttons aren't disabled for an empty name, and the field gets no `aria-invalid` (see [Forms](/patterns/forms)).
-- **Decided:** "You approved this change" / "You rejected this change" / "You dismissed the rest of this change", "Thanks, {name}.", and exactly what happened (`.outcome`, danger when partial or stopped), with each stop beside the change it stopped at.
+- **Decided:** "You approved this change" / "You rejected this change" / "You dismissed the rest of this change", "Thanks, {name}.", a rejection's "This link has closed, so the rejection can't be undone here. If you didn't mean it, tell whoever shared the link: they can ask for the change again." (OA-258), and exactly what happened (`.outcome`, danger when partial or stopped), with each stop beside the change it stopped at.
 - **Dead:** "This link no longer works", and the server's reason, such as "This review link has expired, was revoked, or was already used." (`api` in `packages/server/src/api.ts`).
 - **Keyboard:** the decision is a `<form>` whose primary is `type="submit"`, so Enter in the name field approves. Reject and Dismiss are `type="button"`.
 
@@ -990,7 +988,6 @@ Status **drifting**. The card is one component; what drifts is around it:
 
 - **Approve's label.** The thread says **Approve and apply** (`stepLabel` in `packages/web/src/thread.ts`). The review link's page says **Approve**: `ReviewChange` in `packages/web/src/other-pages.tsx` hard-codes it, though approving there applies too ("Approving and applying…"). Approve the rest, Reject and Dismiss match. **Copy the thread's label**: Approve and apply, through `stepLabel`, everywhere a person approves.
 - **The ×** is styled in two places (the rules it shares with `.remove-member` in `window.css`, and its position on `.remove-line` in `window.css`), has no disabled look, and its hover isn't guarded, so a busy card's × still turns red.
-- **"Reading current values…"** is the page's `.loading` line, with page margins (`--space-6`), inside a card.
 - **No Revoke.** Decision 0024 lists revoking review links as a person's action; the web has no control for it. **Copy** gives no confirmation.
 - **The focused card has no ring** (`.change-set:focus` in `window.css`); only `[data-opened]` shows where a link landed.
 - `<span class="stop-change">` on the review page's stops (`Outcome` in `packages/web/src/other-pages.tsx`) has no rules, so the specimen leaves it off.

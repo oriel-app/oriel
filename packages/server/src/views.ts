@@ -486,8 +486,15 @@ export function views(deps: ViewDeps) {
       // The agent alone reads of unknown chips: the answer showed each. A
       // check of the answer's quotes captions them (`ThreadView.quotes`).
       if (message.note.kind === "unknown-chips" || message.note.kind === "quotes") return null;
-      const { kind, changeSet, via } = message.note;
-      return { ...at, kind: "note", note: { kind, changeSetId: changeSet, via } };
+      const { note } = message;
+      return {
+        ...at,
+        kind: "note",
+        note:
+          note.kind === "rejected"
+            ? { kind: note.kind, changeSetId: note.changeSet, via: note.via }
+            : { kind: note.kind, changeSetId: note.changeSet },
+      };
     }
     if (message.role === "marker") {
       const covered = between(workstreamId, message.from, message.to);

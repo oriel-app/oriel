@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import type { Bindings, ItemId, RunResult } from "@oriel/core";
+import type { Bindings, ItemId, RunResult, Ulid } from "@oriel/core";
 import { coverageOf } from "./challenger.ts";
 import type { DiffView, ThreadView } from "@oriel/web/view";
 import { scriptedAgent } from "./scripted-agent.ts";
@@ -258,7 +258,7 @@ test("the person adds a suggested change, which joins the change set for review"
   // Two clicks at once add it once.
   const added = await Promise.all(
     [0, 1].map(() =>
-      app.post(`/api/change-sets/${set.id}/suggestions`, { look: second.id, place: 0 }),
+      app.post(`/api/change-sets/${set.id}/suggestions`, { look: second.id, places: [0] }),
     ),
   );
   assert.deepEqual(added.map((reply) => reply.status).sort(), [200, 404]);
@@ -278,7 +278,7 @@ test("the person adds a suggested change, which joins the change set for review"
     (
       await app.post(`/api/change-sets/${set.id}/suggestions`, {
         look: second.id,
-        place: 0,
+        places: [0],
       })
     ).status,
     404,
@@ -401,4 +401,167 @@ test("a read that lists the region counts every item it lists toward what the lo
     searches: 0,
   });
   assert.deepEqual(coverageOf([ran("items.list")], region).read, region);
+});
+
+test("Dismiss hides a look, and Second look shows it again while current, with no model call", async (t) => {
+  const { app, view, ask } = await setUp(t, recording([finding]));
+  await ask();
+  const set = (await view()).changeSets[0];
+  const shown = set?.secondLook;
+  assert.ok(set && shown);
+  assert.equal(shown.dismissed, false);
+  const dismiss = (look: string) =>
+    app.post(`/api/change-sets/${set.id}/second-look/dismiss`, { look });
+  assert.equal((await dismiss(shown.id)).status, 200);
+  assert.equal((await view()).changeSets[0]?.secondLook?.dismissed, true);
+  // Twice is once; another look's ID is no look of this change set.
+  assert.equal((await dismiss(shown.id)).status, 200);
+  assert.equal((await dismiss("01JBZ00000000000000000000Z")).status, 404);
+  await ask();
+  const again = (await view()).changeSets[0]?.secondLook;
+  assert.deepEqual([again?.id, again?.dismissed], [shown.id, false]);
+  assert.equal(app.app.telemetry().filter((e) => e.name === "challenge.made").length, 1);
+});
+
+test("dismissing a running look stops it, and Look again takes another", async (t) => {
+  // A look that runs until it is stopped.
+  const app = await testApp(t, {
+    slack: { mode: "fixture" },
+    scripts: { propose },
+    plan: () => [{ run: "propose" }],
+    challenger: () => ({
+      async *turn(_input, { signal }) {
+        await new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        );
+        yield { kind: "done", usage: { inputTokens: 0, outputTokens: 0 } };
+      },
+    }),
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Same day only" }),
+  );
+  await app.app.settled();
+  const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  const setId = (await view()).changeSets[0]?.id;
+  assert.ok(setId);
+  await app.post(`/api/change-sets/${setId}/second-look`);
+  const running = (await view()).changeSets[0]?.secondLook;
+  assert.equal(running?.state, "running");
+  await app.post(`/api/change-sets/${setId}/second-look/dismiss`, { look: running?.id });
+  await app.app.settled();
+  const stopped = (await view()).changeSets[0]?.secondLook;
+  assert.deepEqual(
+    [stopped?.state, stopped?.error, stopped?.dismissed],
+    ["failed", "You dismissed it before it finished.", true],
+  );
+  await app.post(`/api/change-sets/${setId}/second-look`);
+  const next = (await view()).changeSets[0]?.secondLook;
+  assert.notEqual(next?.id, running?.id);
+  // Closing the app stops it.
+  assert.deepEqual([next?.state, next?.dismissed], ["running", false]);
+});
+
+test("every suggestion not yet added joins the change set in one edit", async (t) => {
+  const other = { ...companion, changes: [2] };
+  const look = recording(
+    [companion, other],
+    [
+      ["jira.setDescription", ["jira:SYN-29", "Your fare carries over to any later sailing."]],
+      ["jira.setSummary", ["jira:SYN-29", "Compensation: any later sailing"]],
+    ],
+  );
+  const { app, view, ask } = await setUp(t, look);
+  await ask();
+  const set = (await view()).changeSets[0];
+  const second = set?.secondLook;
+  assert.ok(set && second);
+  assert.equal(second.companions.length, 2);
+  const added = await app.post(`/api/change-sets/${set.id}/suggestions`, {
+    look: second.id,
+    places: [0, 1],
+  });
+  assert.equal(added.status, 200);
+  const diff = json<{ lines: unknown[] }>(await app.post(`/api/change-sets/${set.id}/diff`));
+  assert.equal(diff.lines.length, 4);
+  const after = (await view()).changeSets[0]?.secondLook;
+  assert.deepEqual(
+    after?.companions.map((c) => c.added),
+    [true, true],
+  );
+  assert.equal(app.app.telemetry().filter((e) => e.name === "challenge.companion-added").length, 2);
+});
+
+test("a rejection undone brings back the change set's second look, as it was", async (t) => {
+  const { app, view, ask } = await setUp(t, recording([finding]));
+  await ask();
+  const set = (await view()).changeSets[0];
+  const look = set?.secondLook;
+  assert.ok(set && look);
+  const { hash } = json<DiffView>(await app.post(`/api/change-sets/${set.id}/diff`));
+  const rejected = json<{ undo: { action: string; input: unknown } }>(
+    await app.post(`/api/change-sets/${set.id}/reject`, { hash }),
+  );
+  assert.equal((await view()).changeSets[0]?.secondLook, undefined);
+  const { action, input } = rejected.undo;
+  assert.equal((await app.post(`/api/actions/${action}`, input)).status, 200);
+  const back = (await view()).changeSets[0];
+  assert.equal(back?.status, "open");
+  assert.deepEqual([back?.secondLook?.id, back?.secondLook?.stale.diff], [look.id, false]);
+});
+
+test("a look dismissed after it recorded keeps nothing, even when its turn ends as done", async (t) => {
+  const runId = "01JBZ0000000000000000000R1" as Ulid;
+  // As the agent's own loop does: it records, then ends a stopped turn as
+  // done rather than throw.
+  const app = await testApp(t, {
+    slack: { mode: "fixture" },
+    scripts: { propose },
+    plan: () => [{ run: "propose" }],
+    challenger: () => ({
+      async *turn(input, { signal }) {
+        const related = {
+          kind: "related",
+          lines: [1],
+          says: "The story already says who pays the difference.",
+          evidence: [{ id: "jira:SYN-45", quote: "We absorb the difference; we never charge it." }],
+        };
+        await input.challenge?.record(runId, [related]);
+        await new Promise((resolve) => signal.addEventListener("abort", resolve));
+        const result: RunResult = {
+          reads: [],
+          mutations: [],
+          intents: [],
+          drafts: [],
+          transcript: [],
+          outcome: "ok",
+          wallMs: 1,
+          coldStartMs: null,
+        };
+        yield { kind: "run.finished", runId, result };
+        yield { kind: "done", usage: { inputTokens: 1, outputTokens: 1 } };
+      },
+    }),
+  });
+  const { id: workstreamId } = json<{ id: string }>(
+    await app.post("/api/workstreams", { kind: "picked", name: "Fares", items: ["jira:SYN-45"] }),
+  );
+  const { id: threadId } = json<{ id: string }>(
+    await app.post(`/api/workstreams/${workstreamId}/threads`, { text: "Same day only" }),
+  );
+  await app.app.settled();
+  const view = async () => json<ThreadView>(await app.get(`/api/threads/${threadId}`));
+  const setId = (await view()).changeSets[0]?.id;
+  await app.post(`/api/change-sets/${setId}/second-look`);
+  const running = (await view()).changeSets[0]?.secondLook;
+  await app.post(`/api/change-sets/${setId}/second-look/dismiss`, { look: running?.id });
+  await app.app.settled();
+  const stopped = (await view()).changeSets[0]?.secondLook;
+  assert.deepEqual(
+    [stopped?.state, stopped?.findings, stopped?.error],
+    ["failed", [], "You dismissed it before it finished."],
+  );
 });

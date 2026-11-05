@@ -267,13 +267,15 @@ export function threadStore(db: DatabaseSync) {
     order by at desc, handed_off desc limit 1`);
   // A change set still awaiting review or being applied: something in it
   // hasn't applied, and nobody rejected or dismissed it, by its latest
-  // decision. While one does, an apply settles nothing (OA-259).
+  // decision; one undone leaves it undecided (OA-258). While one does, an
+  // apply settles nothing (OA-259).
   const selectAwaiting = db.prepare(`
     select 1 from change_sets c
     where c.thread_id = ?
       and exists (select 1 from mutations m where m.change_set_id = c.id and m.status != 'applied')
       and coalesce((
-        select d.kind from decisions d where d.change_set_id = c.id order by d.seq desc limit 1
+        select iif(d.undone_at is null, d.kind, 'open') from decisions d
+        where d.change_set_id = c.id order by d.seq desc limit 1
       ), 'open') != 'rejected'
     limit 1`);
 

@@ -247,11 +247,10 @@ export type HeldFrom = { kind: "review-link"; by: string; changeSetId: string };
 // One of Oriel's lines in a thread, as the server's OrielNote has them:
 // a change set of the thread was rejected, here or on its review link, and
 // Oriel asks what was wrong with it.
-export type NoteView = {
-  kind: "rejected";
-  changeSetId: string;
-  via: "thread" | "review-link";
-};
+export type NoteView =
+  | { kind: "rejected"; changeSetId: string; via: "thread" | "review-link" }
+  // The user undid their rejection of it (OA-258).
+  | { kind: "unrejected"; changeSetId: string };
 
 // What a working thread waits on: its agent, mid-turn; the user, on a change
 // set offering a step besides a revert, which any applied one offers; its
@@ -710,6 +709,9 @@ export type SecondLookView = {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  // The person dismissed it (OA-257): it shows no more until they press
+  // Second look again.
+  dismissed: boolean;
 };
 
 // An item a field's value names, such as a story's epic: its title as the
@@ -790,7 +792,8 @@ export type StreamEvent =
     }
   // A change set of the thread changed outside this page: it started applying
   // (`applying`), or stopped, or a review link dismissed it.
-  | { type: "change-set"; changeSetId: string; applying: boolean }
+  // `look`: only its second look changed, so its diff stands (OA-257).
+  | { type: "change-set"; changeSetId: string; applying: boolean; look?: true }
   // The thread's workstream changed: its name, its members, or what the index has
   // of them, whether or not the thread moved to the new version.
   | { type: "workstream" }

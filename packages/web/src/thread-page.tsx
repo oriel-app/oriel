@@ -40,6 +40,7 @@ import {
   optionText,
   removable,
   type SetStep,
+  shownLook,
   stepLabel,
   lineKey,
   type ThreadModel,
@@ -54,6 +55,7 @@ import {
   type ItemValue,
   type NoteView,
   type RunView,
+  type SecondLookView,
   type ThreadView,
   holding,
   toReview,
@@ -345,8 +347,9 @@ export function ChatEntryItem(props: {
 }
 
 // One of Oriel's own lines, never the agent's (OA-91): after a rejection,
-// what the user can do next.
+// what the user can do next; once they undid it, that it awaits them again.
 function OrielNote({ note }: { note: NoteView }) {
+  if (note.kind === "unrejected") return <p>Rejection undone. The change awaits your review.</p>;
   return (
     <p>
       {note.via === "thread" ? "Change rejected." : "Change rejected on its review link."} You can
@@ -722,6 +725,10 @@ function ChangeSet(props: {
   const steps = set.nextSteps.flatMap((step) => (step.kind === "remove" ? [] : [step]));
   const dismissing = set.nextSteps.find((step) => step.kind === "dismiss");
   const approvable = set.nextSteps.some((step) => step.kind === "approve");
+  // While a second look shows, Approve and Reject would read as accepting
+  // or dismissing it: the change set offers only what pertains to the look,
+  // and Dismiss, one click, gives them back (OA-257).
+  const look = shownLook(model, set);
   // Approve and apply is the one primary action. Reject is one click: the
   // thread then asks what was wrong, and the message box waits for the
   // answer. Second look sits between them (decision 0054).
@@ -808,7 +815,15 @@ function ChangeSet(props: {
         />
       ) : (
         <>
-          <p class="loading">Reading current values…</p>
+          {/* Its diff reads each changed item's current values from its
+              source, which a large change set takes seconds over: nothing
+              can be done with it meanwhile (OA-257). */}
+          {!problem && (
+            <p class="loading change-set-loading" role="status">
+              <span class="spinner" aria-hidden="true" />
+              Reading what each change would replace in its source…
+            </p>
+          )}
           {set.errors.length > 0 && (
             <ul class="apply-errors">
               {set.errors.map((e) => (
@@ -818,20 +833,14 @@ function ChangeSet(props: {
           )}
         </>
       )}
-      {set.secondLook && (
+      {look && (
         <SecondLook
-          look={set.secondLook}
+          look={look}
           diff={diff}
           view={view}
-          busy={busy}
+          busy={busy || !diff}
           onAdd={(place) =>
-            set.secondLook &&
-            send({
-              type: "suggestionAdded",
-              changeSetId: set.id,
-              look: set.secondLook.id,
-              place,
-            })
+            send({ type: "suggestionAdded", changeSetId: set.id, look: look.id, places: [place] })
           }
         />
       )}
@@ -850,37 +859,42 @@ function ChangeSet(props: {
           ))}
         </ul>
       )}
-      <footer class="change-set-actions">
-        {steps.slice(0, between).map(stepButton)}
-        <SecondLookButton set={set} model={model} send={send} />
-        {steps.slice(between).map(stepButton)}
-        {set.status === "open" && (set.readOnly ?? !view.writable) && (
-          <span class="read-only-note">
-            Live writes aren't configured here, so this can be reviewed and rejected, not approved.
-          </span>
-        )}
-        {approvable &&
-          (link ? (
-            <span class="review-link">
-              <input class="link-field" readOnly value={link} aria-label="Review link" />
+      {!diff && !problem ? null : look ? (
+        <LookActions set={set} look={look} model={model} busy={busy} send={send} />
+      ) : (
+        <footer class="change-set-actions">
+          {steps.slice(0, between).map(stepButton)}
+          <SecondLookButton set={set} model={model} send={send} />
+          {steps.slice(between).map(stepButton)}
+          {set.status === "open" && (set.readOnly ?? !view.writable) && (
+            <span class="read-only-note">
+              Live writes aren't configured here, so this can be reviewed and rejected, not
+              approved.
+            </span>
+          )}
+          {approvable &&
+            (link ? (
+              <span class="review-link">
+                <input class="link-field" readOnly value={link} aria-label="Review link" />
+                <button
+                  type="button"
+                  class="quiet-action"
+                  onClick={() => send({ type: "linkCopied", changeSetId: set.id })}
+                >
+                  Copy
+                </button>
+              </span>
+            ) : (
               <button
                 type="button"
                 class="quiet-action"
-                onClick={() => send({ type: "linkCopied", changeSetId: set.id })}
+                onClick={() => send({ type: "linkClicked", changeSetId: set.id })}
               >
-                Copy
+                Share review link
               </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              class="quiet-action"
-              onClick={() => send({ type: "linkClicked", changeSetId: set.id })}
-            >
-              Share review link
-            </button>
-          ))}
-      </footer>
+            ))}
+        </footer>
+      )}
       {problem && (
         <p class="change-set-problem" role="alert">
           {problem}
@@ -903,9 +917,54 @@ function ChangeSet(props: {
 const isForward = (kind: SetStep): boolean =>
   kind === "approve" || kind === "approve-rest" || kind === "retry";
 
+// While a second look shows, what pertains to it, and nothing that reads as
+// accepting or dismissing it (OA-257): Look again once it went stale or
+// failed; adding every suggestion not yet added, when it made any; and
+// Dismiss, after which Approve and Reject are back.
+function LookActions(props: {
+  set: ChangeSetView;
+  look: SecondLookView;
+  model: ThreadModel;
+  busy: boolean;
+  send: (msg: ThreadMsg) => void;
+}) {
+  const { set, look, model, busy, send } = props;
+  const left =
+    look.state === "ready"
+      ? look.companions.filter((change) => !change.added).map((change) => change.place)
+      : [];
+  return (
+    <footer class="change-set-actions">
+      <SecondLookButton set={set} model={model} send={send} />
+      {left.length > 0 && (
+        <button
+          type="button"
+          class="button"
+          disabled={busy}
+          onClick={() =>
+            send({ type: "suggestionAdded", changeSetId: set.id, look: look.id, places: left })
+          }
+        >
+          {left.length === 1 ? "Add its suggestion" : `Add its ${left.length} suggestions`}
+        </button>
+      )}
+      <Tooltip text="Close the second look to approve or reject the change.">
+        <button
+          type="button"
+          class="button"
+          onClick={() => send({ type: "lookDismissed", changeSetId: set.id, look: look.id })}
+        >
+          Dismiss
+        </button>
+      </Tooltip>
+    </footer>
+  );
+}
+
 // Second look, or Look again once the last went stale or failed (decision
-// 0054): only when the person presses it. While it runs it says so, and
-// nothing else on the change set waits for it.
+// 0054): only when the person presses it. It says Looking… from the press
+// until the look shows. One dismissed while still current shows again, with
+// no model call (OA-257).
 function SecondLookButton(props: {
   set: ChangeSetView;
   model: ThreadModel;
@@ -914,19 +973,23 @@ function SecondLookButton(props: {
   const { set, model, send } = props;
   const look = set.secondLook;
   if (look === undefined) return null;
-  const running = look?.state === "running" || model.looking.includes(set.id);
+  const shown = shownLook(model, set);
+  const running = set.id in model.looking || shown?.state === "running";
   const stale = look !== null && (look.stale.diff || look.stale.items.length > 0);
-  if (!running && look?.state === "ready" && !stale) return null;
+  const current = look?.state === "ready" && !stale;
+  if (!running && current && shown) return null;
   return (
     <Tooltip
       text={
         running
-          ? "Oriel is reading what this change touches. Approve and Reject don't wait for it."
+          ? "Oriel is reading what this change touches."
           : look === null
             ? "Oriel reads what else this change could affect, in a run of its own. It never approves."
-            : look.state === "failed"
-              ? "The last look didn't finish. Take another."
-              : "What it read changed since. Take another look."
+            : current
+              ? "Shows the look you dismissed. Nothing it read has changed since."
+              : look.state === "failed"
+                ? "The last look didn't finish. Take another."
+                : "What it read changed since. Take another look."
       }
     >
       <button
@@ -936,7 +999,7 @@ function SecondLookButton(props: {
         aria-busy={running || undefined}
         onClick={() => send({ type: "secondLookClicked", changeSetId: set.id })}
       >
-        {running ? "Looking…" : look === null ? "Second look" : "Look again"}
+        {running ? "Looking…" : look === null || current ? "Second look" : "Look again"}
       </button>
     </Tooltip>
   );

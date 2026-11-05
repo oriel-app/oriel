@@ -148,6 +148,9 @@ export type Challenge = {
   usage: { inputTokens: number; outputTokens: number };
   startedAt: Instant;
   finishedAt: Instant | null;
+  // When the person dismissed it (OA-257): it no longer shows until they
+  // ask for a look again.
+  dismissedAt: Instant | null;
 };
 
 // What changed since a second look read the change set: its diff, and which

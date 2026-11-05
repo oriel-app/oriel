@@ -23,6 +23,10 @@ test("every direct action open to the agent is a function, with the registry's d
     open,
   );
   assert.ok(!open.includes("held.send"), "a person's action is never the agent's");
+  // Only a person approves or rejects, or takes a rejection back (OA-258).
+  const given = new Set<string>(intentFns.map((fn) => fn.action));
+  for (const action of ["changeset.unreject", "changeset.dismiss-look", "changeset.second-look"])
+    assert.ok(!given.has(action), action);
   for (const fn of intentFns) assert.equal(fn.doc, actions[fn.action].doc);
   const { dts } = own();
   assert.match(

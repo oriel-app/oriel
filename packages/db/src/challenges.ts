@@ -50,6 +50,7 @@ const row = object({
   output_tokens: number,
   started_at: instantText,
   finished_at: nullable(instantText),
+  dismissed_at: nullable(instantText),
 });
 const companion: Validator<CapturedMutation> = object({
   op: string,
@@ -91,6 +92,7 @@ export function challengeStore(db: DatabaseSync) {
       output_tokens = ?5, finished_at = ?6
     where id = ?1 and state = 'running'`);
   const setAdded = db.prepare("update challenges set added = ? where id = ?");
+  const setDismissed = db.prepare("update challenges set dismissed_at = ? where id = ?");
   const selectLatest = db.prepare(
     "select * from challenges where change_set_id = ? order by rowid desc limit 1",
   );
@@ -125,6 +127,7 @@ export function challengeStore(db: DatabaseSync) {
       usage: { inputTokens: r.input_tokens, outputTokens: r.output_tokens },
       startedAt: r.started_at as Instant,
       finishedAt: r.finished_at as Instant | null,
+      dismissedAt: r.dismissed_at as Instant | null,
     };
   };
 
@@ -180,6 +183,12 @@ export function challengeStore(db: DatabaseSync) {
       const look = load(selectOne.get(id));
       if (!look || look.added.includes(place)) return;
       setAdded.run(JSON.stringify([...look.added, place].sort((a, b) => a - b)), id);
+    },
+
+    // The person dismissed the look (OA-257), or, with null, asked to see
+    // it again.
+    dismissed(id: Ulid, at: Instant | null): void {
+      setDismissed.run(at, id);
     },
 
     get: (id: Ulid): Challenge | null => load(selectOne.get(id)),

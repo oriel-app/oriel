@@ -138,6 +138,8 @@ export function noteText(note: AgentNote): string {
           : `Change set ${note.changeSet} was rejected on its review link`;
       return `${what}, so nothing in it will change. Oriel, not you, then told the user in the thread that they can ask you to make changes or close the thread.`;
     }
+    case "unrejected":
+      return `The user undid their rejection of change set ${note.changeSet}, so it awaits their review again, as it was. Oriel, not you, told the user so in the thread.`;
     // Decision 0032: the window drew each as "unknown reference".
     case "unknown-chips": {
       const ids = note.ids.map((id) => `[[${id}]]`).join(", ");

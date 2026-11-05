@@ -60,7 +60,9 @@ export const heldText = (from: HeldSender, text: string): boolean =>
 // as a note from Oriel, never as something it said (OA-91). Each kind is one
 // variant. `rejected`: a change set of the thread was rejected, in the thread
 // or on its review link, and Oriel asks what was wrong with it, naming the
-// change set so two rejections can't be confused (OA-86). `unknown-chips`:
+// change set so two rejections can't be confused (OA-86). `unrejected`: the
+// user undid their rejection of it, so it awaits their review again
+// (OA-258). `unknown-chips`:
 // the agent's last answer named IDs as chips that Oriel couldn't resolve,
 // which the window drew as "unknown reference" (decision 0032); the agent
 // alone reads it. `quotes`: whether each quote from an item in the agent's
@@ -76,6 +78,10 @@ const rejectedNote = object({
   changeSet: refine(string, isUlid, "expected a change set ID"),
   via: union(literal("thread"), literal("review-link")),
 });
+const unrejectedNote = object({
+  kind: literal("unrejected"),
+  changeSet: refine(string, isUlid, "expected a change set ID"),
+});
 const unknownChipsNote = object({
   kind: literal("unknown-chips"),
   ids: refine(
@@ -90,10 +96,11 @@ const quoteCheck = object({
   found: boolean,
 });
 export type QuoteCheck = Infer<typeof quoteCheck>;
-export const agentNote = union(rejectedNote, unknownChipsNote);
+export const agentNote = union(rejectedNote, unrejectedNote, unknownChipsNote);
 export type AgentNote = Infer<typeof agentNote>;
 export const orielNote = union(
   rejectedNote,
+  unrejectedNote,
   unknownChipsNote,
   object({
     kind: literal("quotes"),

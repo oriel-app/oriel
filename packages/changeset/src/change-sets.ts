@@ -1824,6 +1824,34 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
       return mustLoad(id);
     },
 
+    async undoRejection(id) {
+      const set = transaction(db, () => {
+        const current = mustLoad(id);
+        const { decision } = current;
+        const why =
+          decision?.kind !== "rejected"
+            ? "this change set isn't rejected"
+            : decision.via !== "thread"
+              ? `${decision.by} rejected it on its review link, so only they decided it: ask the agent for it again`
+              : current.revertOf !== null
+                ? "a revert's rejection can't be undone: press Revert again instead"
+                : current.mutations.some((m) => m.status !== "pending")
+                  ? "part of it was sent before it was dismissed, so it can't be put back"
+                  : rows.undoDecision(decision.id, at().now)
+                    ? null
+                    : "this rejection was undone already";
+        if (why !== null) refuse({ code: "refused", message: why });
+        return current;
+      });
+      deps.emit({
+        name: "changeset.unrejected",
+        at: deps.now(),
+        workspaceId: set.workspaceId,
+        changeSetId: set.id,
+      });
+      return mustLoad(id);
+    },
+
     async apply(id) {
       const set = mustLoad(id);
       const refusal = applyRefusal(set);

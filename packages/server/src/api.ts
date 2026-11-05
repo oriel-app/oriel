@@ -1392,13 +1392,23 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
       method: "POST",
       path: at("/change-sets/:id/suggestions"),
       async run([id = ""], request) {
-        const { look, place } = await readJson(
+        const { look, places } = await readJson(
           request,
           smallBody,
-          object({ look: unknown, place: unknown }),
+          object({ look: unknown, places: unknown }),
         );
-        const input = checked("changeset.add-suggestion", { changeSet: id, look, place });
+        const input = checked("changeset.add-suggestion", { changeSet: id, look, places });
         await deps.dispatch("changeset.add-suggestion", input, user);
+        return changeSetReply(input.changeSet);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/change-sets/:id/second-look/dismiss"),
+      async run([id = ""], request) {
+        const { look } = await readJson(request, smallBody, object({ look: unknown }));
+        const input = checked("changeset.dismiss-look", { changeSet: id, look });
+        await deps.dispatch("changeset.dismiss-look", input, user);
         return changeSetReply(input.changeSet);
       },
     },
@@ -1422,8 +1432,8 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           object({ hash: unknown, reason: unknown }),
         );
         const input = checked("changeset.reject", { changeSet: id, ...body });
-        const { report, problem } = await deps.dispatch("changeset.reject", input, user);
-        return changeSetReply(input.changeSet, { report, problem });
+        const { report, problem, undo } = await deps.dispatch("changeset.reject", input, user);
+        return changeSetReply(input.changeSet, { report, problem, undo });
       },
     },
     {

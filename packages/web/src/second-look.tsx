@@ -47,13 +47,12 @@ export function SecondLook(props: {
         <header class="second-look-head">
           <h3>Second look</h3>
           <span class="second-look-by">
-            The agent's reading of what else this could affect. Not a review: it can miss things,
-            and it never approves.
+            Taking a second look. Read carefully before accepting any changes
           </span>
         </header>
         {look.state === "running" && (
           <p class="second-look-note" role="status">
-            Reading what this change touches. Nothing waits for it.
+            Reading what this change touches. Dismiss it to decide without it.
           </p>
         )}
         {look.state === "failed" && (

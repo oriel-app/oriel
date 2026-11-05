@@ -225,6 +225,14 @@ export function ReviewPage({ model, dispatch }: { model: ReviewModel; dispatch: 
               agent sees it.
             </p>
           )}
+          {/* The link died with the decision, so there's nowhere to undo it
+              from (OA-258). */}
+          {model.outcome === "rejected" && !model.problem && (
+            <p>
+              This link has closed, so the rejection can't be undone here. If you didn't mean it,
+              tell whoever shared the link: they can ask for the change again.
+            </p>
+          )}
           {model.warnings.length > 0 && (
             <ul class="may-have-landed" role="note">
               {model.warnings.map((warning) => (
