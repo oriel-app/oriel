@@ -53,15 +53,14 @@ export function UndoStack(props: {
   const { problem } = props;
   // What it says, in the order each first showed, what failed among the
   // notes: whatever is newest is the bead's face.
-  const shown = useRef<readonly string[]>([]);
-  const said: Said[] = inShowingOrder(shown.current, [
+  const said: Said[] = inShowingOrder(shown, [
     ...props.notes.map((note) => ({ kind: "note" as const, key: note.key, note })),
     // A failure with no note of its own is new when what it says is.
     ...(problem
       ? [{ kind: "problem" as const, key: problem.key ?? `problem ${problem.said}`, problem }]
       : []),
   ]).toReversed();
-  shown.current = said.map((each) => each.key).toReversed();
+  shown = said.map((each) => each.key).toReversed();
   const notes = said.flatMap((each) => (each.kind === "note" ? [each.note] : [])).toReversed();
   // What holds the bead now, and the latest `onHold`, for letting go after
   // it has gone. Held, it opens; let go, its countdown starts again.
@@ -220,14 +219,24 @@ export function UndoStack(props: {
     };
     size();
     // And again as the page under it changes: another page, a page that
-    // loads, or the panel or sidebar moving it.
+    // loads, at the window's height or not, or the panel or sidebar moving
+    // it. Changes to the page are looked at once a frame.
     const watching = new ResizeObserver(size);
     watching.observe(at);
+    let frame = 0;
+    const changed = new MutationObserver(() => {
+      if (frame === 0) frame = requestAnimationFrame(() => ((frame = 0), size()));
+    });
     const page = box.closest(".shell")?.querySelector(".shell-main");
-    if (page) watching.observe(page);
+    if (page) {
+      watching.observe(page);
+      changed.observe(page, { childList: true, subtree: true });
+    }
     addEventListener("resize", size);
     return () => {
       watching.disconnect();
+      changed.disconnect();
+      cancelAnimationFrame(frame);
       removeEventListener("resize", size);
     };
   }, [face?.key, shape]);
@@ -358,9 +367,11 @@ function noRoom() {
 
 // The window's one status region and alert for the bead, there from the
 // start on every page but a review link's, whichever page's bead is on
-// screen (app.tsx); and what each note last said there, so a bead that a
-// page swaps for another's doesn't say it again.
+// screen (app.tsx); what each note last said there, so a bead that a
+// page swaps for another's doesn't say it again; and the order its notes
+// first showed in, so that bead keeps it.
 const heard = new Map<string, string>();
+let shown: readonly string[] = [];
 type Told = { status?: string; alert?: string };
 let tell: ((told: Told) => void) | null = null;
 

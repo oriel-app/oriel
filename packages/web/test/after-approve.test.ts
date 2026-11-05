@@ -304,6 +304,12 @@ test("an apply that stops, or an approval refused after it was accepted, becomes
     undos(after(moved, refused)).problem?.said,
     "Couldn't apply “Estimate the launch”. Jira couldn't be reached.",
   );
+  // An answer that says nothing about the change set never says Applied.
+  const empty = replied({ kind: "changeSet", threadId: id, changeSetId: setId }, null);
+  assert.equal(
+    undos(after(moved, empty)).problem?.said,
+    "Couldn't apply “Estimate the launch”. It stopped before all of it applied.",
+  );
 });
 
 test("an answer that comes after the note ran out says nothing; the thread is in Needs you as before", () => {
