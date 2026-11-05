@@ -490,7 +490,7 @@ test("a review step asks again while the agent drafts, and applies its draft, or
 const table = (at: string) => ({
   name: "Tracker",
   at,
-  columns: [{ at: "A", header: "ID", feeds: "Key and Title" }],
+  columns: [{ at: "A", header: "ID", feeds: "Row ID and Title" }],
   rows: [],
   lines: [],
   reads: { header: 1, end: "blank" as const, hidden: false, fields: { key: "A", title: "A" } },
@@ -513,7 +513,7 @@ test("Settings edits one table by hand, as it reads now, and a change applies on
     },
   };
   const tag = { kind: "reviewed" as const, of: "sheets", connection: id };
-  const outline = [{ at: "s/1", name: "Tracker", reads: "key and title ID" }];
+  const outline = [{ at: "s/1", name: "Tracker", reads: "Row ID and title: “ID”" }];
   const summed = {
     waits: false,
     guess: null,
@@ -578,13 +578,13 @@ test("Settings edits one table by hand, as it reads now, and a change applies on
   // A change refused keeps the draft as it was, and says why.
   const refused = connectionsReplied(
     asking,
-    replied(redraw, false, { error: "Every row needs its title." }),
+    replied(redraw, false, { error: "Choose a title column." }),
   ).model;
   assert.deepEqual(
     [refused.edits[id]?.redrawn.given, refused.edits[id]?.redrawn.problem],
-    [current.given, "Every row needs its title."],
+    [current.given, "Choose a title column."],
   );
-  const said = ["A new key makes every row of Tracker a new item; …"];
+  const said = ["Changing the row ID column of Tracker makes every row a new item. …"];
   const drawn = redrawn({ at: "s/1", key: "A" }, said);
   const ready = connectionsReplied(asking, replied(redraw, true, drawn)).model;
   assert.deepEqual(ready.edits[id]?.redrawn.said, said);

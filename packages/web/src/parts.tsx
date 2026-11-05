@@ -637,7 +637,7 @@ export function Mark() {
   );
 }
 
-// A long list folded into one line, such as "12 tabs not read", which
+// A long list folded into one line, such as "12 tabs Oriel isn't reading", which
 // opens to its first few, with a search past a few (OA-232): long lists are
 // designed away, not drawn. Each entry's name is matched as text.
 const foldedShown = 8;

@@ -163,7 +163,7 @@ test("Oriel draws a draft from the sheet: each column's letter, its header and t
   const sheet = drawn.find((table) => table.name.endsWith("› Tracker"));
   assert.ok(sheet);
   assert.deepEqual(sheet.columns.slice(0, 4), [
-    { at: "A", header: "ID", feeds: "Key" },
+    { at: "A", header: "ID", feeds: "Row ID" },
     { at: "B", header: "Epic", feeds: null },
     { at: "C", header: "Story", feeds: "Title" },
     { at: "D", header: "Status", feeds: "Status" },
@@ -280,15 +280,15 @@ test("the person edits a draft a change at a time: a field's column, a tab read 
   );
   // A unique name may be key and title both.
   assert.equal(edited(draft, { table: at, field: "key", column: "C" }).tabs[0]?.["key"], "C");
-  assert.match(problem({ table: at, field: "title", column: null }), /needs its title/);
-  assert.match(problem({ table: at, field: "assignee", column: "A" }), /gives each row its key/);
+  assert.match(problem({ table: at, field: "title", column: null }), /^Choose a title column\.$/);
+  assert.match(
+    problem({ table: at, field: "assignee", column: "A" }),
+    /is used for the row ID\. Choose another row ID column first/,
+  );
   assert.match(problem({ table: at, field: "assignee", column: "ZZ" }), /no column ZZ/);
   assert.match(problem({ table: at, field: "owner", column: "B" }), /isn't a field/);
   assert.match(problem({ table: at, header: 31 }), /first \d+ rows/);
-  assert.match(
-    problem({ table: "1NotPickedAtAll000/1100", read: true }),
-    /isn't in what Oriel read/,
-  );
+  assert.match(problem({ table: "1NotPickedAtAll000/1100", read: true }), /can't find that tab/);
   const rows = edited(edited(edited(draft, { table: at, header: 2 }), { table: at, end: "grid" }), {
     table: at,
     hidden: true,
@@ -343,12 +343,18 @@ test("before it applies, a new mapping says which rows it takes from the window"
   assert.deepEqual(said({ ...trackerDraft, title: "B", assignee: undefined }), []);
   assert.deepEqual(said(trackerDraft), []);
   const [rekeyed] = said({ ...trackerDraft, key: "C" });
-  assert.match(rekeyed ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  assert.match(
+    rekeyed ?? "",
+    /^Changing the row ID column of .+ › Tracker makes every row a new item\./,
+  );
   const [dropped] = said(null);
-  assert.match(dropped ?? "", /› Tracker won't be read, so its rows leave the window/);
+  assert.match(
+    dropped ?? "",
+    /^Oriel will stop reading .+ › Tracker, so its rows leave the window\./,
+  );
   assert.match(
     said({ ...trackerDraft, end: "grid" }).join(),
-    /^Rows of .+ › Tracker that its table no longer covers leave the window\.$/,
+    /^Rows Oriel will no longer read from .+ › Tracker leave the window\.$/,
   );
   // Nothing mapped before, nothing goes.
   assert.deepEqual(sheetsReview.said(picked, before, tables), []);
@@ -389,7 +395,7 @@ test("a connection's tables sum up in a line each, by their headers, a key that 
   );
   assert.equal(
     outline.find((entry) => entry.at === trackerDraft.at)?.reads,
-    "key ID · title Story · status Status · assignee Owner · estimate Estimate · link Link",
+    "Row ID: “ID” · Title: “Story” · Status: “Status” · Assignee: “Owner” · Estimate: “Estimate” · Link: “Link”",
   );
   assert.ok(
     outline.filter((entry) => entry.at !== trackerDraft.at).every((entry) => entry.reads === null),
@@ -398,7 +404,7 @@ test("a connection's tables sum up in a line each, by their headers, a key that 
   assert.ok(!("problem" in same));
   assert.match(
     sheetsReview.outline(same, tables).find((entry) => entry.at === trackerDraft.at)?.reads ?? "",
-    /^key and title Story · status/,
+    /^Row ID and title: “Story” · Status/,
   );
   // A mapped tab gone from the sheet is still listed, by its place.
   assert.deepEqual(sheetsReview.outline(mapped, [])[0], {

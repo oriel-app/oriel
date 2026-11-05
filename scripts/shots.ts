@@ -3306,7 +3306,7 @@ const sheetsMapped = async (page: Page) => {
   const popup = page.waitForEvent("popup");
   await add.getByRole("link", { name: "Continue to Google" }).click();
   await (await popup).close();
-  await add.getByText("The agent drafted how Oriel reads them.").waitFor();
+  await add.getByText("Oriel's draft.").waitFor();
   await add.getByRole("button", { name: "Apply" }).click();
   await page.locator(".connection-mapping .mapping-tabs").waitFor();
 };
@@ -3337,7 +3337,7 @@ scenes.push(
       const popup = page.waitForEvent("popup");
       await page.getByRole("link", { name: "Continue to Google" }).click();
       await (await popup).close();
-      await page.getByText("The agent drafted how Oriel reads them.").waitFor();
+      await page.getByText("Oriel's draft.").waitFor();
     },
   },
 );
@@ -3671,7 +3671,7 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true }, sheets: true, sheetsTabs: 40, state: setupFinished }),
     act: async (page) => {
       await sheetsMapped(page);
-      await page.getByRole("button", { name: /more tabs not read/ }).click();
+      await page.getByRole("button", { name: /tabs Oriel isn't reading/ }).click();
       await page.locator(".folded-list li").first().waitFor();
     },
   },
@@ -3684,7 +3684,7 @@ scenes.push(
       const mapping = page.locator(".connection-mapping");
       await mapping.getByRole("button", { name: "Edit by hand" }).first().click();
       const tracker = mapping.getByRole("group", { name: /› Tracker$/ });
-      await tracker.getByRole("combobox", { name: "Key" }).selectOption("C");
+      await tracker.getByRole("combobox", { name: "Row ID" }).selectOption("C");
       await mapping.locator(".connect-said").waitFor();
     },
   },

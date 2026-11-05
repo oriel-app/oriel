@@ -182,7 +182,7 @@ test("its review shows Oriel's guess, then the agent's draft, each drawn from th
     {
       at: "C",
       header: "Story",
-      feeds: "Key and Title",
+      feeds: "Row ID and Title",
     },
   );
 
@@ -196,7 +196,7 @@ test("its review shows Oriel's guess, then the agent's draft, each drawn from th
   assert.equal(drafted.drafting, null);
   const sheet = drafted.draft?.tables.find((table) => table.name.endsWith("› Tracker"));
   assert.deepEqual(sheet?.columns.slice(0, 5), [
-    { at: "A", header: "ID", feeds: "Key" },
+    { at: "A", header: "ID", feeds: "Row ID" },
     { at: "B", header: "Epic", feeds: null },
     { at: "C", header: "Story", feeds: "Title" },
     { at: "D", header: "Status", feeds: "Status" },
@@ -244,7 +244,7 @@ test("its review shows Oriel's guess, then the agent's draft, each drawn from th
   // the onboarding's guess (OA-232).
   const broken = await review();
   assert.equal(broken.guess, null);
-  assert.ok(broken.outline?.some((entry) => entry.reads?.includes("status Status")));
+  assert.ok(broken.outline?.some((entry) => entry.reads?.includes("Status: “Status”")));
 });
 
 test("Oriel's guess applies as the person's own options, with no draft", async (t) => {
@@ -343,7 +343,7 @@ test("Settings sums up a connection's tables, edits one by hand as it reads now,
   );
   assert.deepEqual(
     summed.outline?.find((entry) => entry.at === at),
-    { at, name: "Ferrowick delivery tracker › Tracker", reads: "key and title Story" },
+    { at, name: "Ferrowick delivery tracker › Tracker", reads: "Row ID and title: “Story”" },
   );
   // Every tab of both spreadsheets, read or not.
   const tabs = fixture.spreadsheets
@@ -400,7 +400,10 @@ test("Settings sums up a connection's tables, edits one by hand as it reads now,
   const rekeyed = await redraw(status.given, { field: "key", column: "A" });
   assert.equal(rekeyed.problem, null);
   assert.equal(rekeyed.said.length, 1);
-  assert.match(rekeyed.said[0] ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  assert.match(
+    rekeyed.said[0] ?? "",
+    /^Changing the row ID column of .+ › Tracker makes every row a new item\./,
+  );
   // An edit Oriel can't make is refused, and nothing is kept.
   const refused = await it.post(`/api/connections/${sheets.id}/review`, {
     given: status.given,
@@ -431,7 +434,7 @@ test("Settings sums up a connection's tables, edits one by hand as it reads now,
   );
   assert.equal(
     (await review()).outline?.find((entry) => entry.at === at)?.reads,
-    "key ID · title Story · status Status",
+    "Row ID: “ID” · Title: “Story” · Status: “Status”",
   );
 
   // Its Undo puts the old mapping back, and the old item with it.
@@ -511,7 +514,10 @@ test("Ask Oriel about a tab drafts a change in the window chat, from fixed words
     [at],
   );
   assert.equal(card.said.length, 1);
-  assert.match(card.said[0] ?? "", /^A new key makes every row of .+ › Tracker a new item;/);
+  assert.match(
+    card.said[0] ?? "",
+    /^Changing the row ID column of .+ › Tracker makes every row a new item\./,
+  );
   const applied = await it.post(`/api/threads/${asked.thread}/held/${card.seq}/apply`, {});
   assert.equal(applied.status, 200, String(applied.body));
   const spreadsheets = (await it.connection("sheets"))?.options["spreadsheets"] as {

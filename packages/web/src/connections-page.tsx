@@ -440,7 +440,7 @@ function MappingOption(props: {
             })
           }
         >
-          {entry.reads ? "Edit by hand" : "By hand"}
+          Edit by hand
         </button>
       </span>
       {editing?.only === entry.at && reviewStep}
@@ -466,11 +466,11 @@ function MappingOption(props: {
             </ul>
           )}
           <Folded
-            label={`${read.length > 0 ? `${unread.length} more` : unread.length} ${unread.length === 1 ? "tab" : "tabs"} not read`}
+            label={`${unread.length} ${unread.length === 1 ? "tab" : "tabs"} Oriel isn't reading`}
             entries={unread}
             find="Find a tab"
           >
-            {(entry) => <div class="mapping-row">{tab(entry, "Ask Oriel to read it")}</div>}
+            {(entry) => <div class="mapping-row">{tab(entry, "Ask Oriel to set it up")}</div>}
           </Folded>
         </>
       )}

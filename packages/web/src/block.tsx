@@ -109,7 +109,11 @@ export function ReviewTables(props: {
           </section>
         ))
       ) : controls ? (
-        <Folded label={`${unread.length} tabs not read`} entries={unread} find="Find a tab">
+        <Folded
+          label={`${unread.length} tabs Oriel isn't reading`}
+          entries={unread}
+          find="Find a tab"
+        >
           {(table) => (
             <section class="review-table">
               <p class="review-name">{table.name}</p>

@@ -241,7 +241,7 @@ function guess(tables: readonly PreviewTable[]): Record<string, unknown> | null 
 }
 
 const fieldLabels: Record<FieldName, string> = {
-  key: "Key",
+  key: "Row ID",
   title: "Title",
   status: "Status",
   assignee: "Assignee",
@@ -249,6 +249,8 @@ const fieldLabels: Record<FieldName, string> = {
   link: "Link",
   parent: "Parent",
 };
+// A field's label inside a sentence: "row ID", "title".
+const lower = (field: FieldName) => fieldLabels[field].replace(/^\w/, (c) => c.toLowerCase());
 
 // How many of a tab's rows the card shows under its columns.
 const shownRows = 3;
@@ -270,8 +272,8 @@ function draw(
     const body = bodyOf(table, tab);
     const ends =
       tab.end === "blank"
-        ? "to its first blank row, so what's below it isn't read"
-        : "to the end of the sheet";
+        ? "up to its first blank row"
+        : "to the end of the sheet, skipping blank rows";
     const said = (values: readonly string[], state: string) =>
       values.length === 0
         ? []
@@ -295,10 +297,10 @@ function draw(
       })),
       rows: body.slice(0, shownRows),
       lines: [
-        `Each row from row ${tab.header + 1} is an item, ${ends}.`,
+        `Oriel reads rows from row ${tab.header + 1} ${ends}. Each becomes an item.`,
         ...(tab.hidden ? [] : ["Rows hidden by hand aren't read."]),
         ...states,
-        "Columns that feed nothing are the item's content.",
+        "Other columns become the item's content.",
       ],
       reads: {
         header: tab.header,
@@ -358,7 +360,7 @@ function outline(
         field === "title" && header.trim() === tab.key.trim()
           ? []
           : [
-              `${field === "key" && header.trim() === tab.title.trim() ? "key and title" : field} ${header}`,
+              `${field === "key" && header.trim() === tab.title.trim() ? "Row ID and title" : fieldLabels[field]}: “${header}”`,
             ],
       )
       .join(" · ");
@@ -386,7 +388,7 @@ function edit(
 ): Record<string, unknown> | { problem: string } {
   const draft = draftOf(given) ?? { tabs: [] };
   const table = tables.find((each) => each.at === change.table);
-  if (!table?.at) return { problem: "That tab isn't in what Oriel read from the sheet." };
+  if (!table?.at) return { problem: "Oriel can't find that tab in the sheet." };
   const tab = draft.tabs.find((each) => each.at === change.table);
   // In the order the preview lists them, as the card draws them.
   const placed = (tabs: DraftedTab[]) => {
@@ -421,7 +423,7 @@ function edit(
     if (!field) return { problem: "That isn't a field Oriel reads." };
     const { column } = change;
     if (column === null && required.includes(field))
-      return { problem: `Every row needs its ${fieldLabels[field].toLowerCase()}.` };
+      return { problem: `Choose a ${lower(field)} column.` };
     if (column !== null && !table.columns.includes(column))
       return { problem: `${table.name} has no column ${column} in what Oriel read.` };
     // A column feeds one field, but a unique name may be key and title.
@@ -431,7 +433,7 @@ function edit(
     );
     if (taken && required.includes(taken[0]))
       return {
-        problem: `Column ${column} gives each row its ${fieldLabels[taken[0]].toLowerCase()}. Give that another column first.`,
+        problem: `Column ${column} is used for the ${lower(taken[0])}. Choose another ${lower(taken[0])} column first.`,
       };
     const next: Record<string, unknown> = { ...tab };
     if (taken) delete next[taken[0]];
@@ -476,14 +478,14 @@ function said(
         ?.tabs.find((each) => each.sheetId === tab.sheetId);
       if (!next)
         return [
-          `${name} won't be read, so its rows leave the window; workstreams that hold them keep them as items Oriel no longer has.`,
+          `Oriel will stop reading ${name}, so its rows leave the window. Workstreams that hold them still list them, but Oriel no longer has them.`,
         ];
       if (keyAt(next) !== keyAt(tab))
         return [
-          `A new key makes every row of ${name} a new item; workstreams that hold its rows now keep them as items Oriel no longer has.`,
+          `Changing the row ID column of ${name} makes every row a new item. Workstreams still list the old items, but Oriel no longer has them.`,
         ];
       if (next.header !== tab.header || next.end !== tab.end || next.hidden !== tab.hidden)
-        return [`Rows of ${name} that its table no longer covers leave the window.`];
+        return [`Rows Oriel will no longer read from ${name} leave the window.`];
       return [];
     }),
   );

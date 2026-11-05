@@ -307,7 +307,7 @@ const reviewing = (kind: string, connection: string, fresh = false): Effect =>
   });
 
 // What Settings' Ask Oriel tells a person who has no AI to ask.
-export const noAiToAsk = "Oriel needs your AI to draft this. Edit it by hand instead.";
+export const noAiToAsk = "Set up your AI to ask Oriel, or edit by hand.";
 
 // A connect's tag, with where its review step is, if it has one, which a
 // connection that waits for its options goes on to.

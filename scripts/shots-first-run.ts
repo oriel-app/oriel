@@ -510,7 +510,7 @@ export async function timedSheets(
   // Back in Oriel: the headers read, then the draft, in the row.
   const asked = performance.now();
   await row.locator(".connect-review").waitFor();
-  await row.getByText("The agent drafted how Oriel reads them.").waitFor();
+  await row.getByText("Oriel's draft.").waitFor();
   const draftMs = performance.now() - asked;
   await count("review");
   await row.getByRole("button", { name: "Apply" }).click();

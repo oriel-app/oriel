@@ -52,8 +52,9 @@ export const sheetsDeclaration = {
     {
       kind: "mapping",
       name: "spreadsheets",
-      label: "How it reads each tab",
-      about: "Each row of a tab it reads is an item, and its columns feed the item's fields.",
+      label: "How Oriel reads each tab",
+      about:
+        "Oriel turns each row into an item. Choose which columns give each item its title, status and other fields.",
     },
     { kind: "read-only", name: "readOnly" },
   ],

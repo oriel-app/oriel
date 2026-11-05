@@ -330,13 +330,13 @@ export function ReviewStep(props: {
       </p>
     );
   const whose = editing
-    ? "Your changes, drawn from the sheet."
+    ? "Your draft."
     : review.draft
-      ? "The agent drafted how Oriel reads them."
+      ? "Oriel's draft."
       : review.drafting
-        ? "Oriel's guess, while the agent drafts a better one."
+        ? "A first guess. Oriel is drafting."
         : review.guess
-          ? "Oriel's guess, from the first row and the first column with a value in every row."
+          ? "Oriel's first guess. Check the columns below."
           : "How Oriel reads it now.";
   const drawn = editing?.redrawn.tables ?? shown?.tables ?? [];
   const tables = editing?.only ? drawn.filter((table) => table.at === editing.only) : drawn;
@@ -352,7 +352,7 @@ export function ReviewStep(props: {
     <div class="connect-review" role="group" aria-label={step.label}>
       <p class="connect-note">
         <strong>{whose}</strong>{" "}
-        {editing ? "Nothing changes until you apply them." : review.current ? "" : step.lede}
+        {editing ? "Nothing changes until you apply." : review.current ? "" : step.lede}
       </p>
       {shown ? (
         <ReviewTables
@@ -499,7 +499,7 @@ function TableControls(props: {
             />
           </label>
           <label class="review-field">
-            <span>Where it ends</span>
+            <span>Stop reading</span>
             <select
               class="select"
               value={reads.end}
