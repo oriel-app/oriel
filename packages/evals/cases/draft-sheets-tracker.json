@@ -12,10 +12,6 @@
     }
   },
   "prompt": "Draft how Oriel should read the spreadsheets just picked.",
-  "failing": {
-    "grader": "drafts",
-    "why": "Known flaky (2026-11-05): in OA-241's re-recording (round 01M6N192RS9YTX7ZD9GGZF4V8A) the draft mapped the tracker tab's Parked and Blocked states and its link and parent columns, which the golden leaves out; OA-241 changed no Sheets text or draft type."
-  },
   "expect": [
     {
       "grader": "drafts",
