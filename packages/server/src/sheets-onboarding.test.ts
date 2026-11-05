@@ -474,6 +474,7 @@ test("Ask Oriel about a tab drafts a change in the window chat, from fixed words
   const sheets = await connected(it);
   const { guess } = json<OptionsReviewView>(await it.get(`/api/connections/${sheets.id}/review`));
   await it.post(`/api/connections/${sheets.id}/options`, { options: guess?.options });
+  const guessed = (guess?.given["tabs"] ?? []) as unknown[];
   const at = `${tracker}/1100`;
   // Only one of its own tables, by its place.
   assert.equal((await it.post(`/api/connections/${sheets.id}/draft`, { tab: "x/1" })).status, 400);
@@ -495,7 +496,7 @@ test("Ask Oriel about a tab drafts a change in the window chat, from fixed words
   assert.deepEqual(JSON.parse(run.run.returned ?? "null"), {
     why: "It reads with these options. Draft a change only when the user asks.",
     first: at,
-    tabs: (guess?.given["tabs"] as unknown[]).length,
+    tabs: guessed.length,
   });
   // The card draws only the tab it changes, and says what applying does.
   const card = view.entries.find((entry) => entry.kind === "draft");
@@ -514,7 +515,7 @@ test("Ask Oriel about a tab drafts a change in the window chat, from fixed words
   }[];
   // That tab's key is its ID column now, and every other tab still reads.
   const read = spreadsheets.flatMap((s) => s.tabs);
-  assert.equal(read.length, (guess?.given["tabs"] as unknown[]).length);
+  assert.equal(read.length, guessed.length);
   assert.equal(
     spreadsheets.find((s) => s.id === tracker)?.tabs.find((tab) => tab["sheetId"] === 1100)?.[
       "key"
