@@ -13,6 +13,7 @@ import {
   type ItemId,
   itemId,
   type LoadedFixture,
+  listed,
   type SourceFixture,
   type Ulid,
   ulid,
@@ -129,20 +130,18 @@ async function connect(fixture: FolderFixture, edited: number) {
     });
     const twins = new Set([...diskDependent(fixture)].map(fixtureFileId));
     const prefix = pathToFileURL(`${built.root}/`).href;
-    const records: IndexRecord[] = [];
-    for await (const page of source.sync(null)) {
-      for (const record of page.records) {
-        if (twins.has(record.id)) continue;
-        if (!record.location.startsWith(prefix))
-          throw new Error(`a file outside the fixture's folder: ${record.location}`);
-        records.push({
-          ...record,
-          location: `${fixtureFolderLocation}${record.location.slice(prefix.length)}`,
-        });
-      }
-    }
+    const synced = await listed(source.sync(null));
+    const records: IndexRecord[] = synced.records.flatMap((record) => {
+      if (twins.has(record.id)) return [];
+      if (!record.location.startsWith(prefix))
+        throw new Error(`a file outside the fixture's folder: ${record.location}`);
+      return [
+        { ...record, location: `${fixtureFolderLocation}${record.location.slice(prefix.length)}` },
+      ];
+    });
     return {
       records,
+      texts: new Map([...synced.texts].filter(([id]) => !twins.has(id as ItemId<"folder">))),
       read: (ids: readonly ItemId[]) => source.read(ids as ItemId<"folder">[]),
       context: undefined,
       // Its edits aren't logged: no case asks what they changed.

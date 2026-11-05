@@ -4,6 +4,7 @@ import {
   type IndexRecord,
   type Instant,
   instant,
+  maxSearchText,
   nullable,
   number,
   object,
@@ -26,11 +27,12 @@ function fresh() {
   const index = indexStore(db);
   // One complete sync of the given pages.
   const sync = (
-    pages: { records: IndexRecord<"jira">[]; gone?: string[] }[],
+    pages: { records: IndexRecord<"jira">[]; gone?: string[]; texts?: Record<string, string> }[],
     now: Instant = t1,
   ) => {
     const run = index.beginSync(workspaceId, "jira", attrs, now);
-    for (const p of pages) run.apply({ records: p.records, gone: p.gone ?? [], cursor: "c" });
+    for (const p of pages)
+      run.apply({ records: p.records, gone: p.gone ?? [], cursor: "c", texts: p.texts ?? {} });
     return run.finish("c", now);
   };
   const ids = () => index.records(workspaceId, "jira", attrs).map((r) => r.id);
@@ -375,6 +377,75 @@ test("only the first 8 distinct terms count, after prefixes are stripped", () =>
   assert.equal(index.search(workspaceId, "a b c d e f g h nomatch", 10).length, 1);
   assert.equal(index.search(workspaceId, "jira:a a b c d e f g nomatch", 10).length, 0);
   assert.equal(index.search(workspaceId, "a b c d e f g nomatch", 10).length, 0);
+});
+
+test("search finds an item by its text, after every key and title hit, with an excerpt", () => {
+  const { index, workspaceId, sync } = fresh();
+  const later = instant(new Date(Date.UTC(2026, 9, 30)));
+  sync([
+    {
+      records: [
+        record("1", "SYN-1", "Q3 launch: open questions"),
+        { ...record("2", "SYN-2", "Fare rules"), updatedAt: later },
+        { ...record("3", "SYN-3", "Waitlist"), updatedAt: later },
+      ],
+      texts: {
+        "1": "- Do we waive the fare difference on every route, or only on the long crossings?",
+        "3": "fare ".repeat(1000),
+      },
+    },
+  ]);
+  const found = index.search(workspaceId, "fare", 10);
+  // A title hit first, however often a text repeats the word.
+  assert.deepEqual(
+    found.map((r) => r.id),
+    ["jira:SYN-2", "jira:SYN-3", "jira:SYN-1"],
+  );
+  assert.equal(found[0]?.excerpt, undefined);
+  assert.ok((found[1]?.excerpt ?? "").replace(/^…|…$/g, "").length <= 140);
+  assert.deepEqual(
+    index.search(workspaceId, "long crossings", 10).map((r) => [r.id, r.excerpt]),
+    [["jira:SYN-1", "…on every route, or only on the long crossings?"]],
+  );
+  // A term in the title and one in the text.
+  assert.deepEqual(
+    index.search(workspaceId, "launch waive", 10).map((r) => r.id),
+    ["jira:SYN-1"],
+  );
+});
+
+test("an item keeps its text when a sync gives none, keeps only what search keeps, and loses it when gone", () => {
+  const { index, workspaceId, sync } = fresh();
+  sync([{ records: [record("1", "SYN-1", "One")], texts: { "1": "ferry timetable" } }]);
+  sync([{ records: [{ ...record("1", "SYN-1", "One"), updatedAt: t1 }] }]);
+  assert.deepEqual(
+    index.search(workspaceId, "timetable", 10).map((r) => r.id),
+    ["jira:SYN-1"],
+  );
+  sync([{ records: [record("1", "SYN-1", "One")], texts: { "1": "harbour" } }]);
+  assert.deepEqual(index.search(workspaceId, "timetable", 10), []);
+  sync([{ records: [], gone: ["1"] }]);
+  assert.deepEqual(index.search(workspaceId, "harbour", 10), []);
+  sync([
+    {
+      records: [record("2", "SYN-2", "Two")],
+      texts: { "2": `${"x".repeat(maxSearchText - 6)} quay  beyond` },
+    },
+  ]);
+  assert.equal(index.search(workspaceId, "quay", 10).length, 1);
+  assert.deepEqual(index.search(workspaceId, "beyond", 10), []);
+});
+
+test("a text alone isn't a change: a sync that only gives texts counts nothing", () => {
+  const { index, workspaceId, sync } = fresh();
+  const first = sync([{ records: [record("1", "SYN-1", "One")] }]);
+  const second = sync([{ records: [record("1", "SYN-1", "One")], texts: { "1": "harbour" } }]);
+  assert.equal(second, first);
+  assert.deepEqual(index.source(workspaceId, "jira")?.lastSync, { new: 0, changed: 0, removed: 0 });
+  assert.deepEqual(
+    index.search(workspaceId, "harbour", 10).map((r) => r.id),
+    ["jira:SYN-1"],
+  );
 });
 
 test("only the first 256 characters of a query count", () => {

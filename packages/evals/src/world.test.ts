@@ -87,7 +87,7 @@ test("reads go to each item's own source; a deleted story and a deleted or renam
   assert.match(plan.content.text, /^# Q3 launch: disruption and rebooking/);
 });
 
-test("search reaches both sources, files at a fixed location, never a twin the disk decides", async (t) => {
+test("search reaches both sources by key, title or text, files at a fixed location, never a twin the disk decides", async (t) => {
   const { reader } = await world(t, { region: regionNamed("weather-epic") });
   const launch = await reader.search("launch", 50);
   assert.deepEqual(
@@ -111,9 +111,27 @@ test("search reaches both sources, files at a fixed location, never a twin the d
         location: `${fixtureFolderLocation}plans/q3-launch.md`,
         updatedAt: "2026-09-15T10:30:00.000Z",
       },
+      // A file that says it only in its text comes after every title.
+      {
+        id: fileId("README.md"),
+        title: "README",
+        location: `${fixtureFolderLocation}README.md`,
+        updatedAt: "2026-09-01T08:00:00.000Z",
+        excerpt: "…and checklists. Start with plans/q3-launch.md.",
+      },
     ],
   );
   assert.ok((await reader.search("rebooking", 50)).some((hit) => hit.id === "jira:SYN-45"));
+  // The open question in the body of "Q3 launch: open questions" (OA-242).
+  assert.deepEqual(
+    (await reader.search("long crossings", 50)).map((hit) => [hit.id, hit.excerpt]),
+    [
+      [
+        fileId("plans/q3-launch-notes.md"),
+        "…on every route, or only on the long crossings? - Who signs off the SMS wording, operations or support? - The waitlist may slip. The launch…",
+      ],
+    ],
+  );
   const twins = ["plan", "café".normalize("NFC")];
   for (const query of ["plan", "café".normalize("NFC"), "café".normalize("NFD")]) {
     const titles = (await reader.search(query, 50)).map((hit) => hit.title);

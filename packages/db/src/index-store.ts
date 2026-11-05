@@ -16,7 +16,10 @@ import {
   number,
   object,
   parseItemId,
+  maxSearchText,
   refine,
+  searchFold,
+  searchRecords,
   type SourceKind,
   string,
   type IndexPage,
@@ -53,6 +56,7 @@ const countsRow = object({
   removed_items: nullable(number),
 });
 const versionRow = object({ version: nullable(number) });
+const textRow = object({ item_id: string, text: string });
 const stableIdRow = object({ stable_id: string });
 const referenceRow = object({
   source: string,
@@ -69,57 +73,6 @@ const changeRow = object({
   facets: string,
   gone: union(literal(0), literal(1)),
 });
-
-// Case- and accent-folded: NFKD, then the Combining Diacritical Marks block
-// (U+0300–U+036F) is dropped. So "cafe" finds "Café", Cyrillic "й" folds to
-// "и", and Japanese voicing marks, which sit outside the block, survive.
-const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
-const fold = (text: string) =>
-  text.normalize("NFKD").replace(diacritics, "").toLocaleLowerCase("en");
-
-// The model writes search queries, and synced content can steer it, so search
-// work is bounded.
-const maxQueryChars = 256;
-const maxTerms = 8;
-const maxResults = 50;
-// The connections records are from, by their IDs' prefixes.
-export const prefixesOf = (records: readonly { id: string }[]): Set<string> =>
-  new Set(records.flatMap((record) => parseItemId(record.id)?.prefix ?? []));
-
-// A query as search() takes it: at most 256 characters and 8 distinct
-// terms, folded, with the prefix of a connection in `prefixes` dropped from
-// a term, so a full item ID, such as "jira:syn-12", works as a query. Text
-// that only looks like one, such as "fix:login", stays as written. `whole`
-// is the query as one key.
-export function searchTerms(
-  query: string,
-  prefixes: ReadonlySet<string>,
-): { terms: string[]; whole: string } {
-  const keyOf = (term: string) => {
-    const at = term.indexOf(":");
-    return at > 0 && prefixes.has(term.slice(0, at)) ? term.slice(at + 1) : term;
-  };
-  const bounded = fold(query.slice(0, maxQueryChars));
-  const stripped = bounded.split(/\s+/).map(keyOf).filter(Boolean);
-  return {
-    terms: [...new Set(stripped)].slice(0, maxTerms),
-    whole: keyOf(bounded.trim()),
-  };
-}
-
-// An item's key and title, folded, as search() matches them.
-const searchable = (record: IndexRecord<SourceKind, unknown>) => ({
-  key: fold(parseItemId(record.id)?.key ?? ""),
-  title: fold(record.title),
-});
-
-// Whether every term is in the item's key or title: search()'s match, for
-// Browse's item search too (decision 0027).
-export function matchesSearch(record: IndexRecord<SourceKind, unknown>, terms: readonly string[]) {
-  const { key, title } = searchable(record);
-  const haystack = `${key} ${title}`;
-  return terms.every((term) => haystack.includes(term));
-}
 
 // A record and everything in it, frozen.
 function frozen<T>(value: T): T {
@@ -140,7 +93,7 @@ export type SyncCounts = { new: number; changed: number; removed: number };
 // sync at a time per workspace.
 export function indexStore(db: DatabaseSync) {
   const retireHandle = db.prepare(`
-    update items set gone_at = ?, snapshot = ?
+    update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and item_id = ? and stable_id is not ? and gone_at is null`);
   const upsert = db.prepare(`
     insert into items (workspace_id, source, stable_id, item_id, title, location, updated_at, facets, attrs, snapshot, added_in)
@@ -194,8 +147,19 @@ export function indexStore(db: DatabaseSync) {
       on i.workspace_id = r.workspace_id and i.source = r.to_source
         and i.stable_id = r.to_stable_id and i.gone_at is null
     where r.workspace_id = ? order by r.rowid`);
+  // A record's text, written beside it without making it a change: a sync
+  // that only gives a text the index lacked counts nothing.
+  const keepText = db.prepare(`
+    update items set text = ? where workspace_id = ? and source = ? and stable_id = ?
+      and text is not ?`);
+  const selectTexts = db.prepare(`
+    select item_id, text from items
+    where workspace_id = ? and gone_at is null and text is not null`);
+  const selectText = db.prepare(`
+    select item_id, text from items
+    where workspace_id = ? and item_id = ? and gone_at is null and text is not null`);
   const tombstone = db.prepare(`
-    update items set gone_at = ?, snapshot = ?
+    update items set gone_at = ?, snapshot = ?, text = null
     where workspace_id = ? and source = ? and stable_id = ? and gone_at is null`);
   // The version of a source's last sync that finished and changed something:
   // what its syncs since tagged, a crashed one's too, is theirs to claim.
@@ -307,9 +271,35 @@ export function indexStore(db: DatabaseSync) {
   // them; each gets its own array.
   const read = new Map<string, WeakMap<Validator<unknown>, readonly IndexRecord[]>>();
   const logged = new Map<string, readonly ChangeLogEntry[]>();
+  const folded = new Map<string, ReadonlyMap<string, string>>();
   const written = () => {
     read.clear();
     logged.clear();
+    folded.clear();
+  };
+  // Each live item's text, folded, by its ID: read and folded on the first
+  // search after a write, since a window that never searches needn't hold it.
+  const foldedTexts = (workspaceId: Ulid): ReadonlyMap<string, string> => {
+    const kept = folded.get(workspaceId);
+    if (kept) return kept;
+    const texts = new Map<string, string>();
+    for (const raw of selectTexts.all(workspaceId)) {
+      const row = textRow(raw);
+      if (!row.ok) throw new Error(`corrupt item text: ${JSON.stringify(row.issues)}`);
+      texts.set(row.value.item_id, searchFold(row.value.text));
+    }
+    folded.set(workspaceId, texts);
+    return texts;
+  };
+  const searchTexts = (workspaceId: Ulid) => {
+    const texts = foldedTexts(workspaceId);
+    return {
+      folded: (id: ItemId) => texts.get(id) ?? "",
+      written: (id: ItemId) => {
+        const row = textRow(selectText.get(workspaceId, id));
+        return row.ok ? row.value.text : undefined;
+      },
+    };
   };
   const live = <A>(
     workspaceId: Ulid,
@@ -447,6 +437,10 @@ export function indexStore(db: DatabaseSync) {
                   0,
                 );
             }
+            for (const [stableId, given] of Object.entries(page.texts ?? {})) {
+              const text = given.slice(0, maxSearchText);
+              keepText.run(text, workspaceId, source, stableId, text);
+            }
             for (const r of page.records) {
               const handle = parseItemId(r.id)?.key ?? "";
               resolveWaiting.run(r.stableId, workspaceId, source, handle);
@@ -518,39 +512,28 @@ export function indexStore(db: DatabaseSync) {
       return kept.filter((entry) => entry.seq > after);
     },
 
-    // The escape hatch, across every source. Every term must appear in the
-    // item's key or title; a "jira:" prefix on a term is dropped, so a full
-    // item ID works as a query. An exact key comes first, then titles starting
-    // with the first term, then the most recently updated. At most 256
-    // characters, 8 distinct terms and 50 results.
-    // Only the `sources` given, when given: a source the workspace no longer
-    // reads is left out before ranking, so it can't crowd out the rest.
+    // The escape hatch, across every source, as core's `searchRecords`
+    // finds: by key, title or text, title hits first, a text hit with its
+    // excerpt. Only the `sources` given, when given: a source the workspace
+    // no longer reads is left out before ranking, so it can't crowd out the
+    // rest.
     search(
       workspaceId: Ulid,
       query: string,
       limit: number,
       sources?: readonly SourceKind[],
-    ): IndexRecord<SourceKind, unknown>[] {
-      const all = live(workspaceId, null, unknown);
-      const { terms, whole } = searchTerms(query, prefixesOf(all));
-      const first = terms[0];
-      const count = Math.min(Math.max(Math.trunc(limit) || 0, 1), maxResults);
-      if (!first) return [];
-      return all
-        .filter((record) => {
-          const source = parseItemId(record.id)?.prefix;
-          return !sources || (source !== undefined && sources.includes(source));
-        })
-        .filter((record) => matchesSearch(record, terms))
-        .map((record) => ({ record, ...searchable(record) }))
-        .sort(
-          (a, b) =>
-            Number(b.key === whole) - Number(a.key === whole) ||
-            Number(b.title.startsWith(first)) - Number(a.title.startsWith(first)) ||
-            b.record.updatedAt.localeCompare(a.record.updatedAt),
-        )
-        .slice(0, count)
-        .map(({ record }) => record);
+    ): (IndexRecord<SourceKind, unknown> & { excerpt?: string })[] {
+      const all = live(workspaceId, null, unknown).filter((record) => {
+        const source = parseItemId(record.id)?.prefix;
+        return !sources || (source !== undefined && sources.includes(source));
+      });
+      return searchRecords(all, query, limit, searchTexts(workspaceId));
+    },
+
+    // Each live item's text as search matches it, folded: Browse's item
+    // search reads it (decision 0027).
+    searchText(workspaceId: Ulid): (id: ItemId) => string {
+      return searchTexts(workspaceId).folded;
     },
 
     // For the sync worker's full sweep: whatever the source no longer returns is gone.

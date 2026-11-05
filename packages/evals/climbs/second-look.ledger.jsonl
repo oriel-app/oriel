@@ -8,3 +8,5 @@
 {"round":"01M6KMYNSD5F2MR57643QRVAJ4","label":"on demand (decision 0054)","split":"all","trials":12,"usd":0.6310955999999999}
 {"round":"01M6MR21HHP5GASF2NX4AR0HRK","label":"rebased on charts and Jira comments","split":"all","trials":12,"usd":0.50433565,"estimated":true}
 {"round":"01M6MR21HHP5GASF2NX4AR0HRK","label":"rebased on charts and Jira comments","split":"all","trials":12,"usd":0.6165644}
+{"round":"01M6N5GAJKPYNRVWSKRMZMAACD","label":"search looks through item text (OA-242)","split":"all","trials":12,"usd":0.5267814000000001,"estimated":true}
+{"round":"01M6N5GAJKPYNRVWSKRMZMAACD","label":"search looks through item text (OA-242)","split":"all","trials":12,"usd":0.6742408000000001}

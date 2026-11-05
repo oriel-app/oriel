@@ -48,7 +48,7 @@ A select is its `<label>` and the `<select>`. The label is visible in Settings, 
       type="search"
       autocomplete="off"
       spellcheck="false"
-      placeholder="Search items by key or title"
+      placeholder="Search items by key, title or text"
       maxlength="200"
     />
   </label>

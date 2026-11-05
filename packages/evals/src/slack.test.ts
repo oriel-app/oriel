@@ -106,17 +106,21 @@ test("a region with messages reads them, replies and all, through the Slack sour
   );
   const items = (await evidence()) as { id: string; title?: string }[];
   assert.match(items.find((item) => item.id === injection)?.title ?? "", /^Rowan Pike: IGNORE/);
-  // The escape hatch finds the channel's other messages.
+  // The escape hatch finds the channel's other messages, ahead of an issue
+  // that says it only in its text.
   const hits = await reader.search("Inchmore timetable", 5);
   assert.deepEqual(
     hits.map((hit) => hit.id),
-    ["slack:C0FW1WEATHR-1789380000.000100"],
+    ["slack:C0FW1WEATHR-1789380000.000100", "jira:SYN-103"],
   );
 });
 
 test("Slack is connected only for a region with messages, and they need the fixture", async (t) => {
   const { reader } = await world(t, { region: weatherEpic });
-  assert.deepEqual(await reader.search("Inchmore timetable", 5), []);
+  assert.deepEqual(
+    (await reader.search("Inchmore timetable", 5)).map((hit) => hit.id),
+    ["jira:SYN-103"],
+  );
   await assert.rejects(
     buildWorld({
       fixtures: loadFixtures({ jira: sources.jira }),

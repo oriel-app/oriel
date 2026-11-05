@@ -3,8 +3,13 @@
 // page of a cluster's items.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { instant, type IndexRecord, type ItemId } from "@oriel/core";
+import { byItemId } from "@oriel/sources";
 import type { ClusterPageView, ItemRow, WindowView } from "@oriel/web/view";
 import { json, testApp } from "./testing.ts";
+import { clusterPage, groupings, keepOf } from "./window.ts";
+
+const now = instant(new Date(Date.UTC(2026, 9, 29, 9)));
 
 type App = Awaited<ReturnType<typeof testApp>>;
 
@@ -122,4 +127,48 @@ test("an epic a filter keeps counts among its cluster's matches", async (t) => {
   );
   const sms = json<WindowView>(await app.get("/api/browse?grouping=epic&q=sms"));
   assert.ok(sms.clusters.every(({ anchorMatched }) => anchorMatched === undefined));
+});
+
+test("the search finds items by their text too, and a page shows title hits first", async (t) => {
+  const app = await testApp(t);
+  const keys = async (q: string) =>
+    (await shown(app, `grouping=epic&${new URLSearchParams({ q })}`)).items.map((i) => i.key);
+  // SYN-113's title says "handsets"; SYN-74's description does.
+  assert.deepEqual((await keys("handsets")).toSorted(), ["SYN-113", "SYN-74"]);
+  assert.deepEqual(await keys("older handsets"), ["SYN-74"]);
+});
+
+test("a cluster's page under a search shows its title hits first, each in the cluster's order", () => {
+  const record = (key: string, title: string): IndexRecord => ({
+    id: `jira:${key}` as ItemId,
+    stableId: key,
+    title,
+    location: `https://oriel.atlassian.net/browse/${key}`,
+    updatedAt: now,
+    facets: { state: "todo" },
+    attrs: {},
+  });
+  const records = [
+    record("SYN-1", "Rebooking"),
+    record("SYN-2", "Fare rules"),
+    record("SYN-3", "Receipts"),
+    record("SYN-4", "Fare bands"),
+  ];
+  const texts: Record<string, string> = {
+    "jira:SYN-1": "keep the fare",
+    "jira:SYN-3": "fare waived",
+  };
+  const keep = keepOf(
+    { q: "fare" },
+    () => () => false,
+    new Set(["jira"]),
+    () => (id) => texts[id] ?? "",
+  );
+  const [cluster] = groupings.assignee.group(records, now, byItemId);
+  assert.ok(cluster);
+  const page = clusterPage("assignee", groupings.assignee, records, now, cluster.key, 0, keep);
+  assert.deepEqual(
+    page?.items.map((item) => item.key),
+    ["SYN-2", "SYN-4", "SYN-1", "SYN-3"],
+  );
 });

@@ -428,7 +428,7 @@ async function grade(
           claims: expectation.claims,
           prompt: loaded.case.prompt ?? "",
           region: await evidence(loaded, options),
-          searches: searchesOf(output.transcript),
+          searches: await searchesOf(output.transcript, loaded, options),
           captions: (output.blocks ?? []).map(({ block }) => block.caption),
           reply: output.reply,
           model: options.judgeModel,
@@ -442,10 +442,16 @@ async function grade(
 
 // Every run that searched: its queries and what they found, so the judge can
 // tell reach that searched from reach that didn't, and a search that found
-// nothing from none at all.
-function searchesOf(transcript: readonly unknown[]): unknown[] {
+// nothing from none at all. A hit found by its text has the excerpts search()
+// gave the agent, which the escape hatch's event leaves out (OA-242): the
+// run's queries are searched again in the case's world, which gives the same.
+async function searchesOf(
+  transcript: readonly unknown[],
+  loaded: LoadedCase,
+  options: RoundOptions,
+): Promise<unknown[]> {
   const events = transcript as readonly AgentEvent[];
-  return events.flatMap((event) => {
+  const runs = events.flatMap((event) => {
     if (event.kind !== "run.finished") return [];
     const queries = event.result.reads.filter((r) => r.fn === "search").map((r) => r.args);
     if (!queries.length) return [];
@@ -454,6 +460,26 @@ function searchesOf(transcript: readonly unknown[]): unknown[] {
     );
     return [{ queries, hits }];
   });
+  if (!runs.length) return [];
+  return inWorld(loaded, options, async (world) =>
+    Promise.all(
+      runs.map(async ({ queries, hits }) => {
+        // Every excerpt each item was found with, one per query that found it so.
+        const excerpts = new Map<string, Set<string>>();
+        for (const [query, limit] of queries)
+          for (const hit of await world.reader.search(String(query), Number(limit ?? 20)))
+            if (hit.excerpt !== undefined)
+              excerpts.set(hit.id, (excerpts.get(hit.id) ?? new Set()).add(hit.excerpt));
+        return {
+          queries,
+          hits: hits.map((hit) => {
+            const found = excerpts.get(hit.id);
+            return found ? { ...hit, excerpts: [...found] } : hit;
+          }),
+        };
+      }),
+    ),
+  );
 }
 
 // An item the case names, by ID; loading the case resolved it.

@@ -6,7 +6,8 @@ import type { PreviewTable } from "./block.ts";
 import type { ChangeLogEntry } from "./change-log.ts";
 import type { Instant, ItemId } from "./ids.ts";
 import type { Opened, OpenVia, ToOpen } from "./open.ts";
-import type { IndexRecord, ReadResult } from "./source.ts";
+import { maxSearchText } from "./search.ts";
+import type { IndexRecord, ReadResult, SyncPage } from "./source.ts";
 import type { WorkstreamOrigin } from "./workstream.ts";
 
 export type SourceFixture<C = unknown, R = unknown, W = unknown> = {
@@ -61,8 +62,10 @@ export type LoadedFixture<C = unknown> = {
 };
 
 export type FixtureConnection<C = unknown> = {
-  // The index, as its sync leaves it.
+  // The index, as its sync leaves it: the records, and each one's text as
+  // search keeps it, by item ID.
   records: readonly IndexRecord[];
+  texts: ReadonlyMap<string, string>;
   // Reads its own items; any it doesn't have is gone.
   read: (ids: readonly ItemId[]) => Promise<ReadResult[]>;
   // What its namespace takes, as the composition root would give it.
@@ -73,3 +76,19 @@ export type FixtureConnection<C = unknown> = {
   // Removes anything it made, such as a temporary directory.
   close: () => void;
 };
+
+// A fixture's sync, as the index would keep it: every page's records, and
+// each one's text as search keeps it, by item ID.
+export async function listed<R extends IndexRecord>(
+  pages: AsyncIterable<SyncPage & { records: R[] }>,
+): Promise<{ records: R[]; texts: Map<string, string> }> {
+  const records: R[] = [];
+  const texts = new Map<string, string>();
+  for await (const page of pages)
+    for (const record of page.records) {
+      records.push(record);
+      const text = page.texts?.[record.stableId];
+      if (text !== undefined) texts.set(record.id, text.slice(0, maxSearchText));
+    }
+  return { records, texts };
+}

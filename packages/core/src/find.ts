@@ -52,13 +52,17 @@ export function words(query: string): string[] {
 }
 
 // A field folded character by character, with where each folded unit came
-// from, so a match points back into the text as written.
-function folded(text: string): { text: string; from: number[] } {
+// from, so a match points back into the text as written. The index's search
+// folds its own way (search.ts).
+export function folded(
+  text: string,
+  by: (text: string) => string = fold,
+): { text: string; from: number[] } {
   let out = "";
   const from: number[] = [];
   let at = 0;
   for (const char of text) {
-    const unit = fold(char);
+    const unit = by(char);
     out += unit;
     for (let i = 0; i < unit.length; i++) from.push(at);
     at += char.length;
@@ -81,8 +85,9 @@ function startOf(text: string, word: string): number {
 }
 
 // A field's text around `at`, on one line, cut at spaces, with an ellipsis
-// where it was cut.
-function excerpt(text: string, at: number): string {
+// where it was cut: at most 140 characters of the text, so it never echoes a
+// long one.
+export function excerpt(text: string, at: number): string {
   const line = text.replace(/\s+/g, " ");
   const flat = text.slice(0, at).replace(/\s+/g, " ").length;
   let start = Math.max(0, flat - before);

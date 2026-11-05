@@ -21,10 +21,6 @@
     "at": "2026-10-29T09:00:00.000Z"
   },
   "prompt": "Are we going to finish the checkout epic this month?",
-  "failing": {
-    "grader": "judge",
-    "why": "known flaky (passes about 1 round in 4; a climb story is filed): in round 01M6N0WKS7QDPMR37KVDFXDCBQ the reply framed Oriel's forecast in its own words, which the judge counts as a claim of its own; OA-235 changed only the table's caption, not what the agent sees"
-  },
   "expect": [
     {
       "grader": "blocks",

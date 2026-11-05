@@ -115,6 +115,7 @@ const memo = {
       chips: () => [],
       connect: async () => ({
         records: [memoRecord("M1", "Launch")],
+        texts: new Map(),
         read: async () => [],
         context: undefined,
         changes: () => [],

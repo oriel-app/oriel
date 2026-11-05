@@ -1,11 +1,11 @@
 // A local folder of markdown files as a source (decision 0019): read-only, so
 // it has no op catalogue and no writer. `sync` walks the folder into index
-// records, and `read` walks it again to find each file by its key, then opens
-// it with the checks in `nofollow.ts`.
+// records and reads each file's text, and `read` walks it again to find each
+// file by its key, then opens it with the checks in `nofollow.ts`.
 //
 // No cursor. A folder has no change feed, so the only way to see a deletion
-// is to walk all of it, and every sync does: the walk reads metadata only, and
-// the caps bound it. So every sync is a full listing with a null cursor, and
+// is to walk all of it, and every sync does: the walk reads metadata only, the
+// texts after it at most 32 MB in all, and the caps bound both. So every sync is a full listing with a null cursor, and
 // the sync worker's full sweep marks whatever the index has and the listing
 // lacks as gone: a file deleted, renamed, turned into a link, given a second
 // hard link or pushed past a cap. The index skips records that haven't
@@ -74,7 +74,21 @@ export function folderSource(options: FolderSourceOptions): FolderSource {
         });
       const skipped = Object.entries(scope.skipped).filter(([, count]) => count > 0);
       if (skipped.length) log("folder: skipped files", Object.fromEntries(skipped));
-      yield { records: scope.files.map((file) => recordOf(file, prefix)), gone: [], cursor: null };
+      // Each file's text, for search and the references it makes: a file too
+      // large to read has none, and one that changed or went since the walk
+      // keeps what the index had.
+      const texts: Record<string, string> = {};
+      for (const file of scope.files) {
+        if (file.tooLarge) continue;
+        const opened = await openEntry(file);
+        if (opened.status === "ok") texts[file.key] = opened.content.text;
+      }
+      yield {
+        records: scope.files.map((file) => recordOf(file, prefix)),
+        gone: [],
+        cursor: null,
+        texts,
+      };
     },
 
     // Each ID is looked up in a fresh walk and opened. A file that changed

@@ -13,7 +13,7 @@ import {
   parseItemId,
   type Reader,
   type ReadResult,
-  type SearchHit,
+  type Searched,
   type Shown,
   type SourceKind,
   type Tombstone,
@@ -26,7 +26,7 @@ import {
 export type Host = NamespaceHost &
   Shown & {
     ids: readonly ItemId[];
-    search(query: string, limit: number): Promise<SearchHit[]>;
+    search(query: string, limit: number): Promise<Searched[]>;
     oriel: OrielReads;
     // The overview, in a window chat's module only (decision 0027). Its items
     // count as this run's search() hits.

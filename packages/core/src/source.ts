@@ -79,15 +79,22 @@ export type IndexRecord<K extends SourceKind = SourceKind, A = unknown> = {
 // What `search()` finds: enough to name an item and point at it.
 export type SearchHit = Pick<IndexRecord, "id" | "title" | "location" | "updatedAt">;
 
+// A hit as the agent's search() returns it: one found by its text rather
+// than its key or title carries Oriel's excerpt of the words around the
+// match, capped and from the item (search.ts). Only the run result has it,
+// never the escape hatch's block.
+export type Searched = SearchHit & { excerpt?: string };
+
 export type SyncPage<K extends SourceKind = SourceKind, A = unknown> = {
   records: IndexRecord<K, A>[];
   // Stable IDs the source no longer has.
   gone: string[];
   // Where the next sync resumes; null when the source keeps no cursor.
   cursor: string | null;
-  // Each record's text, by stable ID, for Oriel's sync to find references
-  // in, beside the record and never in it. The index never stores it. A
-  // record with none keeps the references it had.
+  // Each record's text, by stable ID, beside the record and never in it: for
+  // Oriel's sync to find references in, and for search, which the index
+  // keeps the first 8,192 characters of (OA-242). A record with none keeps
+  // the references and text it had.
   texts?: Readonly<Record<string, string>>;
   // Parts of the source this sync lists in full, by the start their stable
   // IDs share, for a source that reads only what moved, such as one
@@ -112,7 +119,7 @@ export type ReadResult<K extends SourceKind = SourceKind, C = unknown> =
 // the index for the escape hatch. The caller binds the workspace.
 export type Reader = {
   read(ids: readonly ItemId[]): Promise<ReadResult[]>;
-  search(query: string, limit: number): Promise<SearchHit[]>;
+  search(query: string, limit: number): Promise<Searched[]>;
 };
 
 // Sits behind the API token so OAuth can replace it without touching adapters.

@@ -11,10 +11,11 @@ import {
   type ItemId,
   itemId,
   type LoadedFixture,
+  listed,
   type SourceFixture,
 } from "@oriel/core";
 import { columnIndex, parseBounds } from "./a1.ts";
-import { rowKey, type SheetsRecord, spreadsheetKey } from "./attrs.ts";
+import { rowKey, spreadsheetKey } from "./attrs.ts";
 import {
   applyChange,
   type FixtureSpreadsheet,
@@ -208,10 +209,10 @@ function loaded(fixture: SheetsFixture): LoadedFixture<SheetsContext> {
         picks: fixturePicks(fixture),
         log: () => {},
       });
-      const records: SheetsRecord[] = [];
-      for await (const page of source.sync(null)) records.push(...page.records);
+      const { records, texts } = await listed(source.sync(null));
       return {
         records,
+        texts,
         read: (ids) => source.read(ids as ItemId<"sheets">[]),
         // The fixture's connection may propose changes.
         context: sheetsContextOf(fixturePicks(fixture)),

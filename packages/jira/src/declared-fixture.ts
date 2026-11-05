@@ -8,6 +8,7 @@ import {
   type ItemId,
   itemId,
   type LoadedFixture,
+  listed,
   type OpenVia,
   parseItemId,
   type ReadResult,
@@ -97,8 +98,13 @@ function loaded(fixture: JiraFixture): LoadedFixture<Estimates> {
       ),
     connect: async (edited) => {
       const snapshot = fixtureSnapshot(fixture, jiraFixtureSite, edited);
+      // Each issue's text as its sync gives it; the records in the fixture's order.
+      const { texts } = await listed(
+        fixtureSource(fixture, { site: jiraFixtureSite, edited }).sync(null),
+      );
       return {
         records: snapshot.records,
+        texts,
         read: async (ids) =>
           ids.map((id): ReadResult => {
             const content = snapshot.content.get(id as ItemId<"jira">);

@@ -2003,6 +2003,16 @@ const scenes: Scene[] = [
     },
   },
   {
+    // SYN-74 says "handsets" only in its description (OA-242).
+    name: "browse-search-text",
+    path: "/browse?grouping=epic&q=handsets",
+    act: async (page) => {
+      await shown(page, "epic");
+      await page.locator('.cluster-toggle[aria-expanded="true"]').first().waitFor();
+      await itemsShown(page);
+    },
+  },
+  {
     name: "browse-search-none",
     path: "/browse?grouping=epic&q=nothing-like-this",
     act: (page) => page.locator(".no-matches").waitFor(),

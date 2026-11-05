@@ -577,7 +577,7 @@ const ran = (runId: string, reads: { fn: string; args: unknown[] }[], hits: unkn
   ...(hits.length ? [{ kind: "search", runId, hits }] : []),
 ];
 
-test("the judge sees each search's queries and hits, a search that found nothing included", async (t) => {
+test("the judge sees each search's queries and hits, a search that found nothing included, a text hit with its excerpts", async (t) => {
   const card = { id: "jira:SYN-99", title: "Save a card for next time" };
   const answered: SystemUnderTest = async () => ({
     mutations: [],
@@ -587,6 +587,14 @@ test("the judge sees each search's queries and hits, a search that found nothing
       ...ran("run-1", [{ fn: "search", args: ["saved card payment"] }], []),
       ...ran("run-2", [{ fn: "items.read", args: [["jira:SYN-45"]] }], []),
       ...ran("run-3", [{ fn: "search", args: ["card"] }], [card]),
+      ...ran(
+        "run-4",
+        [
+          { fn: "search", args: ["processor token", 5] },
+          { fn: "search", args: ["opt-in checkbox"] },
+        ],
+        [card],
+      ),
     ],
   });
   const bodies: { messages: { content: string }[] }[] = [];
@@ -602,6 +610,19 @@ test("the judge sees each search's queries and hits, a search that found nothing
   assert.deepEqual(document.searches, [
     { queries: [["saved card payment"]], hits: [] },
     { queries: [["card"]], hits: [card] },
+    // A text hit, with the excerpt search() gave the agent (OA-242).
+    {
+      queries: [["processor token", 5], ["opt-in checkbox"]],
+      hits: [
+        {
+          ...card,
+          excerpts: [
+            "…on the payment step. We store only the processor's token, never the card number.",
+            "Save a card for next time Opt-in checkbox on the payment step. We store only the processor's token, never the card number.",
+          ],
+        },
+      ],
+    },
   ]);
 });
 

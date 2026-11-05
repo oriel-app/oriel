@@ -88,6 +88,7 @@ const memoFixture: SourceFixture<MemoContext> = {
     about: (id) => ({ memo: id.slice("memo:".length) }),
     connect: async () => ({
       records: (Object.keys(memos) as Key[]).map(record),
+      texts: new Map(),
       read: async (ids) =>
         ids.map((id): ReadResult => {
           const key = id.slice("memo:".length);
@@ -171,7 +172,7 @@ test("a case names a declared connector's items as its fixture does, and runs", 
   assert.equal(read?.status, "ok");
   assert.deepEqual(
     (await world.reader.search("pricing", 5)).map((hit) => hit.id),
-    ["memo:M2"],
+    ["memo:M2", "jira:SYN-7"],
   );
   const { dts } = bindingsFor(world.region, {
     reader: world.reader,
@@ -223,7 +224,10 @@ test("a declared connector is connected only in a case that holds its items", as
   assert.ok(region);
   const world = await buildWorld({ fixtures, region, items: [], edited: {} });
   t.after(() => world.close());
-  assert.deepEqual(await world.reader.search("pricing", 5), []);
+  assert.deepEqual(
+    (await world.reader.search("pricing", 5)).map((hit) => hit.id),
+    ["jira:SYN-7"],
+  );
   assert.equal(world.namespaces["memo"], undefined);
 });
 
