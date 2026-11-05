@@ -1,0 +1,40 @@
+name: ui
+
+# The window's own checks: `pnpm ui-check` (accessibility, links, chrome) and
+# `pnpm shots` (its exit code only). Path-filtered, so it must never be a
+# required check, and it doesn't run on merge_group: path filters don't apply
+# in the merge queue.
+on:
+  pull_request:
+    paths:
+      - "packages/web/**"
+      - "packages/design-system/**"
+      - ".github/workflows/ui.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/web/**"
+      - "packages/design-system/**"
+      - ".github/workflows/ui.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - run: pnpm install --frozen-lockfile
+      - name: ui-check
+        run: pnpm ui-check
+      - name: shots
+        run: pnpm shots
