@@ -10,3 +10,7 @@
 {"round":"01M6N0XK20HRYDZQRK70JTH86A","label":"T0a: main's agent text, test","split":"test","trials":36,"usd":0.6841640000000001}
 {"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.8297651547169811,"estimated":true}
 {"round":"01M6N0ZV9MT1401AKN2CYCZKSY","label":"T0b: main's agent text, test","split":"test","trials":36,"usd":0.6110367999999999}
+{"round":"01M6N12K6ZDVNBBK9GTVPR3HF8","label":"Fa: C1, test","split":"test","trials":36,"usd":0.798014264516129,"estimated":true}
+{"round":"01M6N12K6ZDVNBBK9GTVPR3HF8","label":"Fa: C1, test","split":"test","trials":36,"usd":0.655734}
+{"round":"01M6N14TCN8Y1FYK88DVD7GN31","label":"Fb: C1, test","split":"test","trials":36,"usd":0.779978738028169,"estimated":true}
+{"round":"01M6N14TCN8Y1FYK88DVD7GN31","label":"Fb: C1, test","split":"test","trials":36,"usd":0.5937678000000001}
