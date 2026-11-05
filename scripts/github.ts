@@ -22,6 +22,7 @@ export const usage = `usage: pnpm -s github <operation>
   runs [branch]
   next-decision
   shots-push <branch> <png>...
+  landed
 A title is one line, type(scope): summary (SPEC §10), and a body never is,
 so a title and body given the wrong way round are refused. While CI runs,
 pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.
@@ -32,10 +33,16 @@ shots-push commits the PNGs, at their paths from here, as the images-only
 branch shots/<branch>, from the git checkout you run it in, and prints each
 one's raw URL pinned to that commit. A later push to the same branch adds a
 commit on top, so earlier URLs keep working. It refuses a remote
-shots/<branch> it didn't make.`;
+shots/<branch> it didn't make.
+landed fetches main, then prints a line for each PR merged since this
+branch's base (git merge-base HEAD origin/main), from git alone: the files
+both it and this branch change (overlap); whether it's agent-facing, so
+cassettes made before it no longer replay; a migration number this branch
+adds too; and a generated design-system file both change, with the command
+that writes it again.`;
 
 export type Operation =
-  | { op: "pr-list" | "next-decision" }
+  | { op: "pr-list" | "next-decision" | "landed" }
   | { op: "pr-view" | "pr-enqueue" | "pr-wait"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
   | { op: "pr-edit"; number: number; body: string; title?: string }
@@ -57,7 +64,8 @@ const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") &&
 
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
-  if ((op === "pr-list" || op === "next-decision") && rest.length === 0) return { op };
+  if ((op === "pr-list" || op === "next-decision" || op === "landed") && rest.length === 0)
+    return { op };
   if ((op === "pr-view" || op === "pr-enqueue" || op === "pr-wait") && rest.length === 1) {
     const number = prNumber(rest[0]);
     if (number) return { op, number };
@@ -420,6 +428,143 @@ export async function shotsPush(
   }
 }
 
+// One file a commit or a branch changes: its status letter (A, M, D, R…) and
+// path, and a rename's old path too.
+export type Changed = { status: string; path: string; from?: string };
+export type LandedPr = { sha: string; number: number | null; title: string; files: Changed[] };
+
+// `git diff --name-status` lines, as Changed.
+export function changedFiles(text: string): Changed[] {
+  return text.split("\n").flatMap((line) => {
+    const [status = "", path = "", renamed] = line.split("\t");
+    if (!/^[ACDMRTU]/.test(status) || path === "") return [];
+    return [renamed ? { status: status[0] ?? "", path: renamed, from: path } : { status, path }];
+  });
+}
+
+// What landedLog's git log prints: each commit as a NUL, its SHA and subject
+// on one line, then its --name-status lines. A squash merge's subject ends
+// with its PR number, `(#209)`; a commit pushed straight to main has none.
+export const landedLogFormat = "%x00%H %s";
+export function landedLog(text: string): LandedPr[] {
+  return text
+    .split("\0")
+    .filter((entry) => entry.trim() !== "")
+    .map((entry) => {
+      const [head = "", ...rest] = entry.split("\n");
+      const space = head.indexOf(" ");
+      const sha = head.slice(0, space);
+      const subject = head.slice(space + 1);
+      const number = /\s\(#(\d+)\)$/.exec(subject);
+      return {
+        sha,
+        number: number ? Number(number[1]) : null,
+        title: number ? subject.slice(0, number.index) : subject,
+        files: changedFiles(rest.join("\n")),
+      };
+    });
+}
+
+// A cassette's key hashes its request's method, URL and body
+// (packages/evals/src/cassette.ts): the model, the system prompt, the run
+// tool with the module's .d.ts, and the messages, run results among them, and
+// the judge's request likewise. packages/agent writes the prompt, the tool and
+// the messages, packages/bindings the module and what a run returns, each
+// connector's namespace and declaration its own part of them, and the evals'
+// system under test, world, judge, cases and fixtures fill them in.
+// Main replays green, so a merged PR that moved any key a case reaches also
+// changed tests/cassettes/.
+export function agentFacing(path: string): boolean {
+  const code = (dir: string) =>
+    path.startsWith(dir) && !path.endsWith(".test.ts") && !path.endsWith("/testing.ts");
+  return (
+    path.startsWith("tests/cassettes/") ||
+    code("packages/agent/src/") ||
+    code("packages/bindings/src/") ||
+    /^packages\/[^/]+\/src\/(namespace|declaration)\.ts$/.test(path) ||
+    /^packages\/evals\/src\/(system|world|graders|fixtures)\.ts$/.test(path) ||
+    path.startsWith("packages/evals/cases/") ||
+    path.startsWith("fixtures/") ||
+    path === "packages/core/src/challenge.ts"
+  );
+}
+
+const migrationNumber = (file: Changed) =>
+  file.status === "A" ? (/^packages\/db\/migrations\/(\d+)_/.exec(file.path)?.[1] ?? null) : null;
+
+// The design system's generated files, each with the command that writes it.
+export const generated: Record<string, string> = {
+  "packages/design-system/COMPONENTS.md": "pnpm --filter @oriel/design-system index",
+};
+
+// One line per PR that landed: what in it collides with this branch's own
+// changes (`mine`).
+export function landedReport(base: string, landed: readonly LandedPr[], mine: readonly Changed[]) {
+  if (landed.length === 0) return `nothing landed on main since ${base.slice(0, 7)}`;
+  const paths = (files: readonly Changed[]) =>
+    new Set(files.flatMap((f) => (f.from ? [f.path, f.from] : [f.path])));
+  const own = paths(mine);
+  const ownMigrations = new Set(mine.map(migrationNumber).filter((n) => n !== null));
+  const list = (names: readonly string[]) =>
+    names.length === 0
+      ? "none"
+      : names.length <= 4
+        ? names.join(", ")
+        : `${names.slice(0, 4).join(", ")} and ${names.length - 4} more`;
+  return landed
+    .map((pr) => {
+      const theirs = [...paths(pr.files)];
+      const overlap = theirs.filter((path) => own.has(path));
+      // Re-recorded cassettes count once, as one name.
+      const facing = [
+        ...new Set(
+          theirs
+            .filter(agentFacing)
+            .map((path) => (path.startsWith("tests/cassettes/") ? "tests/cassettes/" : path)),
+        ),
+      ];
+      const clash = pr.files
+        .map(migrationNumber)
+        .filter((n): n is string => n !== null && ownMigrations.has(n));
+      const design = overlap.flatMap((path) => {
+        const command = generated[path];
+        return command ? [`${path} (regenerate: ${command})`] : [];
+      });
+      return [
+        `${pr.number ? `#${pr.number}` : pr.sha.slice(0, 7)} ${pr.title}`,
+        `overlap: ${list(overlap)}`,
+        `agent-facing: ${facing.length > 0 ? `yes (${list(facing)})` : "no"}`,
+        `migration clash: ${list(clash)}`,
+        `design system: ${list(design)}`,
+      ].join(" · ");
+    })
+    .join("\n");
+}
+
+// What landed on main since this branch's base, from git where it runs.
+// Fetch main first: an old origin/main would say nothing landed.
+export async function landed(run: Git): Promise<string> {
+  const base = await run(["merge-base", "HEAD", "origin/main"]);
+  const log = await run([
+    "log",
+    "--first-parent",
+    "--diff-merges=first-parent",
+    "--name-status",
+    "-M",
+    `--format=${landedLogFormat}`,
+    `${base}..origin/main`,
+  ]);
+  // The branch's own changes: committed, staged, unstaged and new.
+  const mine = [
+    ...changedFiles(await run(["diff", "--name-status", "-M", base])),
+    ...(await run(["ls-files", "--others", "--exclude-standard"]))
+      .split("\n")
+      .filter((path) => path !== "")
+      .map((path) => ({ status: "A", path })),
+  ];
+  return landedReport(base, landedLog(log), mine);
+}
+
 export async function run(token: string, operation: Operation): Promise<unknown> {
   const base = `/repos/${repo.owner}/${repo.name}`;
   switch (operation.op) {
@@ -496,7 +641,8 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       return waitFor(reads, Date.now, (ms) => new Promise((done) => setTimeout(done, ms)));
     }
     case "shots-push":
-      throw new Error("shots-push runs git, not the API");
+    case "landed":
+      throw new Error(`${operation.op} runs git, not the API`);
     case "next-decision": {
       const onMain = (await call(token, "GET", `${base}/contents/docs/decisions?ref=main`)) as {
         path: string;
@@ -551,6 +697,19 @@ if (import.meta.main) {
   if (!("error" in operation) && operation.op === "shots-push") {
     try {
       console.log(await shotsPush(git, process.cwd(), operation.branch, operation.pngs));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    process.exit();
+  }
+  if (!("error" in operation) && operation.op === "landed") {
+    try {
+      // Bounded: a fetch that hangs leaves the last origin/main, and says so.
+      await execGit("git", ["fetch", "--quiet", "--no-prune", "origin", "main"], {
+        timeout: 30_000,
+      }).catch(() => console.error("couldn't fetch main; reading origin/main as last fetched"));
+      console.log(await landed(git));
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;

@@ -4,12 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  agentFacing,
   agentToken,
+  changedFiles,
   type Annotation,
   type CheckRun,
   enqueue,
   git,
   headRefusal,
+  landedLog,
+  landedReport,
   leaksSecret,
   nextDecision,
   parse,
@@ -540,4 +544,107 @@ test("shots-push refuses a branch it didn't make, a file that isn't a PNG, and a
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("landed takes no arguments", () => {
+  assert.deepEqual(parse(["landed"]), { op: "landed" });
+  assert.ok("error" in parse(["landed", "main"]));
+  assert.match(usage, /^  landed$/m);
+});
+
+// git log --first-parent --name-status -M --format=%x00%H %s, as printed.
+const [shaA, shaB] = ["a".repeat(40), "b".repeat(40)];
+const log = [
+  `\0${shaA} feat(server,web): undo a rejection (OA-258) (#209)`,
+  "",
+  "M\tpackages/agent/src/prompt.ts",
+  "M\tpackages/server/src/app.ts",
+  "A\tpackages/db/migrations/0027_undone_rejections.sql",
+  "R087\tscripts/old.ts\tscripts/new.ts",
+  `\0${shaB} fix: (#1) isn't the end of this one`,
+  "",
+  "M\tpackages/design-system/COMPONENTS.md",
+  "M\ttests/cassettes/chart/a+b/1.json",
+  "D\ttests/cassettes/chart/a+b/2.json",
+  "",
+].join("\n");
+
+test("landed reads each merged PR's number, title and files from git log", () => {
+  assert.deepEqual(landedLog(log), [
+    {
+      sha: shaA,
+      number: 209,
+      title: "feat(server,web): undo a rejection (OA-258)",
+      files: [
+        { status: "M", path: "packages/agent/src/prompt.ts" },
+        { status: "M", path: "packages/server/src/app.ts" },
+        { status: "A", path: "packages/db/migrations/0027_undone_rejections.sql" },
+        { status: "R", path: "scripts/new.ts", from: "scripts/old.ts" },
+      ],
+    },
+    {
+      sha: shaB,
+      number: null,
+      title: "fix: (#1) isn't the end of this one",
+      files: [
+        { status: "M", path: "packages/design-system/COMPONENTS.md" },
+        { status: "M", path: "tests/cassettes/chart/a+b/1.json" },
+        { status: "D", path: "tests/cassettes/chart/a+b/2.json" },
+      ],
+    },
+  ]);
+  assert.deepEqual(landedLog(""), []);
+  assert.deepEqual(changedFiles("\nwarning: x\nM\t\n"), []);
+});
+
+test("agent-facing is what a cassette's request hash covers, tests aside", () => {
+  for (const path of [
+    "packages/agent/src/prompt.ts",
+    "packages/bindings/src/dts.ts",
+    "packages/jira/src/namespace.ts",
+    "packages/sheets/src/declaration.ts",
+    "packages/evals/src/world.ts",
+    "packages/evals/src/graders.ts",
+    "packages/evals/cases/chart-done-per-week.json",
+    "packages/core/src/challenge.ts",
+    "fixtures/jira/syn.json",
+    "tests/cassettes/x/a+b/k.json",
+  ])
+    assert.ok(agentFacing(path), path);
+  for (const path of [
+    "packages/agent/src/prompt.test.ts",
+    "packages/agent/src/testing.ts",
+    "packages/bindings/src/items.test.ts",
+    "packages/evals/src/cli.ts",
+    "packages/jira/src/namespace.test.ts",
+    "packages/slack/src/fixture.ts",
+    "packages/web/src/app.tsx",
+    "tests/golden/x.json",
+    "scripts/github.ts",
+  ])
+    assert.ok(!agentFacing(path), path);
+});
+
+test("landed names each PR's overlap, agent-facing files, migration clash and design system", () => {
+  const mine = changedFiles(
+    [
+      "M\tpackages/server/src/app.ts",
+      "M\tscripts/old.ts",
+      "M\tpackages/design-system/COMPONENTS.md",
+      "A\tpackages/db/migrations/0027_my_table.sql",
+      "M\tpackages/db/migrations/0026_dismissed_looks.sql",
+    ].join("\n"),
+  );
+  assert.deepEqual(landedReport("c0ffee0123", landedLog(log), mine).split("\n"), [
+    "#209 feat(server,web): undo a rejection (OA-258) · overlap: packages/server/src/app.ts, scripts/old.ts · agent-facing: yes (packages/agent/src/prompt.ts) · migration clash: 0027 · design system: none",
+    "bbbbbbb fix: (#1) isn't the end of this one · overlap: packages/design-system/COMPONENTS.md · agent-facing: yes (tests/cassettes/) · migration clash: none · design system: packages/design-system/COMPONENTS.md (regenerate: pnpm --filter @oriel/design-system index)",
+  ]);
+  // A migration this branch only edits, or none, clashes with nothing.
+  assert.match(landedReport("c0ffee0123", landedLog(log), []), /migration clash: none · design/);
+  assert.equal(landedReport("c0ffee0123", [], mine), "nothing landed on main since c0ffee0");
+  const many = [{ sha: "d".repeat(40), number: 3, title: "fix: x", files: mine }];
+  assert.match(
+    landedReport("c0ffee0123", many, mine),
+    /overlap: packages\/server\/src\/app\.ts, scripts\/old\.ts, packages\/design-system\/COMPONENTS\.md, packages\/db\/migrations\/0027_my_table\.sql and 1 more/,
+  );
 });
