@@ -80,7 +80,7 @@ export const searchFn: Fn = {
   fields: searchFields,
   ...read({
     name: "search",
-    doc: "Anything indexed, in this region or outside it, by key or title words.",
+    doc: "Anything indexed, in this region or outside it, by key, title or text words; title hits first.",
     params: [param("query", "string", string), optionalParam("limit", "number", number)],
     returns: "readonly Found[]",
     run: async ([query, limit], host: Host) => {
@@ -91,6 +91,7 @@ export const searchFn: Fn = {
         title: r.title,
         location: r.location,
         updatedAt: r.updatedAt,
+        ...(r.excerpt === undefined ? {} : { excerpt: r.excerpt }),
       }));
     },
   }),
@@ -109,6 +110,6 @@ export const itemTypes = (docs: readonly string[]) => [
   'type Gone = { id: RegionId; gone: true; reason: "deleted" | "forbidden" | "moved" };',
   "/** An ID that search() found. Writes don't take it. */",
   'type FoundId = string & { __brand: "FoundId" };',
-  "/** A search() result, read-only. */",
-  "type Found = { id: FoundId; title: string; location: string; updatedAt: string };",
+  "/** A search() result, read-only. `excerpt`: where its text matched. */",
+  "type Found = { id: FoundId; title: string; location: string; updatedAt: string; excerpt?: string };",
 ];

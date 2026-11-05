@@ -158,7 +158,7 @@ function Filters({ model, dispatch }: { model: Model; dispatch: Dispatch }) {
           type="search"
           autocomplete="off"
           spellcheck={false}
-          placeholder="Search items by key or title"
+          placeholder="Search items by key, title or text"
           maxLength={200}
           value={model.query}
           onInput={(event) => send({ type: "queryTyped", text: event.currentTarget.value })}

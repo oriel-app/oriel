@@ -148,9 +148,17 @@ export function bindingsFor(
           if (ids.some((id) => !members.has(id))) outsideRegion = true;
           return host.read(ids, view);
         },
+        // The block shows the hits, never an excerpt.
         search: async (query, limit) => {
           const hits = await host.search(query, limit);
-          reached.push(...hits);
+          reached.push(
+            ...hits.map(({ id, title, location, updatedAt }) => ({
+              id,
+              title,
+              location,
+              updatedAt,
+            })),
+          );
           return hits;
         },
         overview: async () => {

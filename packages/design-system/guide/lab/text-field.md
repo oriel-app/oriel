@@ -186,7 +186,7 @@ The sidebar's search and Browse's are the same frame, written twice (`.sidebar-s
       type="search"
       autocomplete="off"
       spellcheck="false"
-      placeholder="Search items by key or title"
+      placeholder="Search items by key, title or text"
       maxlength="200"
     />
   </label>
@@ -220,7 +220,7 @@ The sidebar's search and Browse's are the same frame, written twice (`.sidebar-s
       type="search"
       autocomplete="off"
       spellcheck="false"
-      placeholder="Search items by key or title"
+      placeholder="Search items by key, title or text"
       maxlength="200"
     />
   </label>
@@ -324,7 +324,7 @@ Keep it in To do.</textarea>
     <path d="M10.25 10.25L13.5 13.5" />
   </svg>
   <span class="visually-hidden">Search items</span>
-  <input type="search" placeholder="Search items by key or title" value="wallet" />
+  <input type="search" placeholder="Search items by key, title or text" value="wallet" />
 </label>
 ```
 
@@ -338,7 +338,7 @@ Keep it in To do.</textarea>
   <input
     class="search-field-input"
     type="search"
-    placeholder="Search items by key or title"
+    placeholder="Search items by key, title or text"
     value="wallet"
   />
 </label>

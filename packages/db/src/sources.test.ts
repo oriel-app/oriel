@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Instant, instant, type ItemId, ulid, unknown } from "@oriel/core";
-import { indexStore, searchTerms } from "./index-store.ts";
+import { indexStore } from "./index-store.ts";
 import { loadMigrations, migrate } from "./migrate.ts";
 import { open } from "./open.ts";
 import { ensureWorkspace } from "./workspaces.ts";
@@ -14,6 +14,8 @@ const insert = "insert into sources (workspace_id, kind, cursor, synced_at) valu
 // Migrations before 0020 named the column `kind`: a test of one of them
 // stops before it.
 const beforeConnections = () => loadMigrations().filter((m) => m.version < 20);
+// 0025 starts every cursor over, so each source's next sync gives every text.
+const beforeItemText = () => loadMigrations().filter((m) => m.version < 25);
 
 test("a kind no migration names can sync, and taking any keeps each source's cursor", () => {
   const db = open(":memory:");
@@ -96,17 +98,6 @@ test("search leaves out a source it isn't given before it ranks, so that source 
   );
 });
 
-test("a term drops only the prefix of a connection the index holds, so text like fix:login stays as written", () => {
-  const prefixes = new Set(["jira", "jira.2"]);
-  assert.deepEqual(searchTerms("jira:SYN-12 jira.2:ACME-4", prefixes).terms, ["syn-12", "acme-4"]);
-  assert.deepEqual(searchTerms("fix:login", prefixes), {
-    terms: ["fix:login"],
-    whole: "fix:login",
-  });
-  assert.deepEqual(searchTerms("jira:", prefixes).terms, []);
-  assert.equal(searchTerms("jira:SYN-12", prefixes).whole, "syn-12");
-});
-
 test("connections name each source's column for what it holds, a connection's prefix, and keep every row", () => {
   const db = open(":memory:");
   migrate(db, beforeConnections(), now);
@@ -120,7 +111,7 @@ test("connections name each source's column for what it holds, a connection's pr
     "/Users/pm/notes",
     now,
   );
-  migrate(db, loadMigrations(), now);
+  migrate(db, beforeItemText(), now);
   const rows = (sql: string) =>
     db
       .prepare(sql)
@@ -149,4 +140,17 @@ test("connections name each source's column for what it holds, a connection's pr
     ],
   );
   assert.deepEqual(rows("select name from sqlite_master where name = 'folders'"), []);
+});
+
+test("keeping item text starts every cursor over, keeping each source's last sync, so the next sync is a full one", () => {
+  const db = open(":memory:");
+  migrate(db, beforeItemText(), now);
+  ensureWorkspace(db, { id: workspaceId, name: "test" }, now);
+  db.prepare(
+    "insert into sources (workspace_id, source, cursor, synced_at) values (?, ?, ?, ?)",
+  ).run(workspaceId, "jira", "2026-10-30T09:00:00.000Z", now);
+  migrate(db, loadMigrations(), now);
+  const index = indexStore(db);
+  assert.equal(index.source(workspaceId, "jira")?.cursor, null);
+  assert.equal(index.source(workspaceId, "jira")?.syncedAt, now);
 });

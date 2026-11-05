@@ -419,7 +419,7 @@ Browse is the window's second view: every item in the window, in clusters under 
               type="search"
               autocomplete="off"
               spellcheck="false"
-              placeholder="Search items by key or title"
+              placeholder="Search items by key, title or text"
               maxlength="200"
             />
           </label>

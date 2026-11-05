@@ -20,7 +20,7 @@
   },
   "failing": {
     "grader": "findings",
-    "why": "search() matches keys and titles only, and the open question is in the body of a file titled 'Q3 launch: open questions'; in 3 of 3 trials the look searched for long crossings, fare differences and rebooking policy and never reached it (round 01M6JXGH1TCVFKTBSHVM72BAPE)"
+    "why": "search() reaches item text since OA-242, and the look reached the open question in 2 of 3 trials (round 01M6N5GAJKPYNRVWSKRMZMAACD, before 0 of 3); the recorded trial searched only phrases the file doesn't hold whole, such as 'fare difference waived' and 'short crossings', where every word must match (round 01M6N630QF0TT9ZCFFXCVC655C)"
   },
   "expect": [
     {

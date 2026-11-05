@@ -16,11 +16,11 @@ import type { Log } from "./run.ts";
 import { facets, type IndexRecord, type Source, type SyncPage } from "./source.ts";
 import type { Validator } from "./validate.ts";
 
-// A page as the sync worker hands it to the index: the records, without
-// their texts, and the item IDs each record's text names, by stable ID,
-// for the index to resolve. A record left out of `references` keeps what it
-// had.
-export type IndexPage = Omit<SyncPage, "texts" | "swept" | "held"> & {
+// A page as the sync worker hands it to the index: the records; the item
+// IDs each record's text names, by stable ID, for the index to resolve; and
+// each record's text, for search (OA-242). A record left out of
+// `references` or `texts` keeps what it had.
+export type IndexPage = Omit<SyncPage, "swept" | "held"> & {
   references?: Readonly<Record<string, readonly ItemId[]>>;
 };
 
@@ -125,11 +125,14 @@ export async function syncSource<K extends SourceKind, A>(
       });
       return false;
     });
-    // Each text is read here and goes no further: only the IDs it names do.
-    const texts = page.texts ?? {};
+    // Each text is read here for the IDs it names, and goes to the index for
+    // search.
+    const given = page.texts ?? {};
+    const textOf = (record: IndexRecord<K, A>) =>
+      Object.hasOwn(given, record.stableId) ? given[record.stableId] : undefined;
     const references = Object.fromEntries(
       valid.flatMap((record) => {
-        const text = Object.hasOwn(texts, record.stableId) ? texts[record.stableId] : undefined;
+        const text = textOf(record);
         if (text === undefined) return [];
         const named = recognize(text)
           .filter((id) => id !== record.id)
@@ -137,9 +140,15 @@ export async function syncSource<K extends SourceKind, A>(
         return [[record.stableId, named]];
       }),
     );
+    const texts = Object.fromEntries(
+      valid.flatMap((record) => {
+        const text = textOf(record);
+        return text === undefined ? [] : [[record.stableId, text]];
+      }),
+    );
     swept.push(...(page.swept ?? []));
     held.push(...(page.held ?? []));
-    run.apply({ records: valid, gone: page.gone, cursor: page.cursor, references });
+    run.apply({ records: valid, gone: page.gone, cursor: page.cursor, references, texts });
     records += valid.length;
     gone += page.gone.length;
   };

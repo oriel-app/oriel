@@ -56,6 +56,17 @@ test("each .md file is an item: a hashed ID, its name as title, its file URL and
   assert.deepEqual(folderAttrs(record?.attrs), { ok: true, value: {} });
 });
 
+test("a sync gives each file's text, for search and references, and none for a file too large to read", async (t) => {
+  const folder = tempFolder(t);
+  folder.write("plans/q3 notes.md", "# Q3\n\n- Only on the long crossings?\n", jan);
+  const big = folder.write("export.md", "");
+  truncateSync(big, maxFileBytes + 1);
+  const page = await listing(folder.root);
+  assert.deepEqual(page.texts, {
+    [idOf("plans/q3 notes.md").slice("folder:".length)]: "# Q3\n\n- Only on the long crossings?\n",
+  });
+});
+
 test("dotfiles, dot-directories and node_modules are skipped", async (t) => {
   const folder = tempFolder(t);
   folder.write("keep.md", "kept");

@@ -23,6 +23,9 @@ import {
   type ReadResult,
   type Region,
   type SearchHit,
+  searchFold,
+  searchRecords,
+  searchedOf,
   findThreads,
   noThreads,
   noOptionsYet,
@@ -157,12 +160,9 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   const items: ItemDocs = Object.fromEntries(
     [...fixtures].map(([kind, { declaration }]) => [kind, declaration.itemDoc]),
   );
-  const index: SearchHit[] = records.map((r) => ({
-    id: r.id,
-    title: r.title,
-    location: r.location,
-    updatedAt: r.updatedAt,
-  }));
+  // Each item's text as the index keeps it, as written and folded.
+  const texts = new Map([...connections.values()].flatMap((c) => [...c.texts]));
+  const folded = new Map([...texts].map(([id, text]) => [id, searchFold(text)]));
 
   const reader: Reader = {
     async read(ids) {
@@ -174,14 +174,12 @@ export async function buildWorld(input: WorldInput): Promise<World> {
       const byId = new Map<string, ReadResult>(read.map((r) => [r.id, r]));
       return ids.map((id): ReadResult => byId.get(id) ?? { id, status: "gone", reason: "deleted" });
     },
-    // Every term must appear in the item's ID or title.
+    // As the index searches, by key, title or text, title hits first.
     async search(query, limit) {
-      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      return index
-        .filter((hit) =>
-          terms.every((term) => `${hit.id} ${hit.title}`.toLowerCase().includes(term)),
-        )
-        .slice(0, limit);
+      return searchRecords(records, query, limit, {
+        folded: (id) => folded.get(id) ?? "",
+        written: (id) => texts.get(id),
+      }).map(searchedOf);
     },
   };
 

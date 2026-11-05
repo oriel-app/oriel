@@ -34,11 +34,13 @@ import {
   OptionsUnfit,
   parseItemId,
   prefixOf,
+  prefixesOf,
   type Reader,
   readOnlyOf,
   record,
   type ReadResult,
   type Region,
+  searchedOf,
   settingNames,
   type Shown,
   type Sketch,
@@ -61,7 +63,6 @@ import {
   markSeen,
   migrate,
   open,
-  prefixesOf,
   runStore,
   challengeStore,
   type StoredEvent,
@@ -991,12 +992,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     async search(query, limit) {
       // The connections open or shut now, by their prefixes.
-      return index.search(workspaceId, query, limit, indexed()).map((record) => ({
-        id: record.id,
-        title: record.title,
-        location: record.location,
-        updatedAt: record.updatedAt,
-      }));
+      return index.search(workspaceId, query, limit, indexed()).map(searchedOf);
     },
   };
   const known = (): Known => {
@@ -1886,7 +1882,12 @@ export async function createApp(options: AppOptions): Promise<App> {
             records(),
             asOf ?? now(),
             asOf !== null,
-            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
+            keepOf(
+              filter,
+              () => heldBy(openWorkstreams()),
+              prefixesOf(records()),
+              () => index.searchText(workspaceId),
+            ),
           ),
         page: (grouping, cluster, from, filter) =>
           clusterPage(
@@ -1896,7 +1897,12 @@ export async function createApp(options: AppOptions): Promise<App> {
             asOf ?? now(),
             cluster,
             from,
-            keepOf(filter, () => heldBy(openWorkstreams()), prefixesOf(records())),
+            keepOf(
+              filter,
+              () => heldBy(openWorkstreams()),
+              prefixesOf(records()),
+              () => index.searchText(workspaceId),
+            ),
           ),
       },
       overview,

@@ -404,7 +404,7 @@ Two searches filter what's on the page and never reach the agent: the sidebar's 
       type="search"
       autocomplete="off"
       spellcheck="false"
-      placeholder="Search items by key or title"
+      placeholder="Search items by key, title or text"
       maxlength="200"
     />
   </label>
@@ -419,7 +419,7 @@ Two searches filter what's on the page and never reach the agent: the sidebar's 
       <path d="M10.25 10.25L13.5 13.5" />
     </svg>
     <span class="visually-hidden">Search items</span>
-    <input type="search" value="wallet" placeholder="Search items by key or title" />
+    <input type="search" value="wallet" placeholder="Search items by key, title or text" />
   </label>
 </form>
 ```

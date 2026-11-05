@@ -5,10 +5,10 @@ import {
   type ItemId,
   itemId,
   type LoadedFixture,
+  listed,
   parseItemId,
   type SourceFixture,
 } from "@oriel/core";
-import type { SlackRecord } from "./attrs.ts";
 import { fixtureApi, loadSlackFixture, type SlackFixture } from "./fixture.ts";
 import type { SlackContext } from "./namespace.ts";
 import { openSlack, type SlackWrites } from "./open-connection.ts";
@@ -85,13 +85,13 @@ function loaded(fixture: SlackFixture): LoadedFixture<SlackContext> {
         channels: fixture.picked,
         log: () => {},
       });
-      const records: SlackRecord[] = [];
-      for await (const page of source.sync(null)) records.push(...page.records);
+      const { records, texts } = await listed(source.sync(null));
       // It posts as the fixture's first person, in its picked channels.
       const author = fixture.users[0]?.id;
       if (!author) throw new Error("the Slack fixture has no people");
       return {
         records,
+        texts,
         read: (ids) => source.read(ids as ItemId<"slack">[]),
         context: { channels: fixture.picked, author },
         changes: () => [],

@@ -96,7 +96,7 @@ function fresh() {
 const said =
   "Standup: yesterday I reproduced SYN-54, and SYN-54 again; see C0FW1WEATHR-1788344100.000100";
 
-test("a message naming SYN-54 references it by stable ID, and keeps none of its text", async () => {
+test("a message naming SYN-54 references it by stable ID, and keeps its text only for search", async () => {
   const { db, sync, references } = fresh();
   await sync("jira", [issue("SYN-54", "10054")]);
   await sync("slack", [message("1788344100", "Kick-off"), message("1788444000", said)]);
@@ -105,13 +105,25 @@ test("a message naming SYN-54 references it by stable ID, and keeps none of its 
     { id: "slack:C0FW1WEATHR-1788344100.000100", stableId: "C0FW1WEATHR-1788344100.000100" },
   ]);
   assert.equal(references("slack:C0FW1WEATHR-1788344100.000100"), undefined);
+  // Everything but the items' text column (OA-242).
   const stored = JSON.stringify(
     db
       .prepare("select name from sqlite_master where type = 'table'")
       .all()
-      .flatMap((table) => db.prepare(`select * from ${String(table["name"])}`).all()),
+      .flatMap((table) =>
+        db
+          .prepare(`select * from ${String(table["name"])}`)
+          .all()
+          .map(({ text, ...row }) => (table["name"] === "items" ? row : { text, ...row })),
+      ),
   );
   assert.doesNotMatch(stored, /Standup|reproduced|Kick-off/);
+  assert.match(
+    String(
+      db.prepare("select text from items where item_id like 'slack:%1788444000%'").get()?.["text"],
+    ),
+    /reproduced/,
+  );
 });
 
 test("a message synced before its Jira item references it once that item syncs", async () => {

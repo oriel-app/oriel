@@ -4,9 +4,11 @@ import {
   type Grouping,
   type IndexRecord,
   type Instant,
+  type ItemId,
+  matchOf,
   parseItemId,
+  searchTerms,
 } from "@oriel/core";
-import { matchesSearch, searchTerms } from "@oriel/db";
 import {
   assigneeGrouping,
   assigneeOf,
@@ -35,28 +37,35 @@ export const groupings: Record<GroupingId, Grouping> = {
   linked: linkedGrouping,
 };
 
-// The items a filter keeps (decision 0027): every search term in the key or
-// title, as search() matches; the source; the status category; the assignee;
-// none an open workstream holds (`held`). Null when nothing is filtered.
-export type Keep = (record: IndexRecord) => boolean;
+// The items a filter keeps (decision 0027): every search term in the key,
+// title or text, as search() matches; the source; the status category; the
+// assignee; none an open workstream holds (`held`). A kept item is "title"
+// unless only its text matched, so a page shows title hits first. Null when
+// nothing is filtered. `text` is each item's text as search() matches it.
+export type Keep = (record: IndexRecord) => "title" | "text" | null;
 export function keepOf(
   filter: BrowseFilter,
-  held: () => Keep,
+  held: () => (record: IndexRecord) => boolean,
   prefixes: ReadonlySet<string>,
+  text: () => (id: ItemId) => string,
 ): Keep | null {
   const { terms } = searchTerms(filter.q ?? "", prefixes);
   const { q, source, status, assignee, workstream } = filter;
   if (!q && !source && !status && !assignee && !workstream) return null;
-  // Only a filter that asks reads what the workstreams hold.
+  // Only a filter that asks reads what the workstreams hold, or the texts.
   const holds = workstream ? held() : () => false;
+  const textOf = q ? text() : () => "";
   // A query with no terms, such as "jira:" alone, finds nothing, as with
   // search().
-  return (record) =>
-    (!q || (terms.length > 0 && matchesSearch(record, terms))) &&
-    (!source || parseItemId(record.id)?.kind === source) &&
-    (!status || record.facets.state === status) &&
-    (!assignee || assigneeOf(record)?.id === assignee) &&
-    (!workstream || !holds(record));
+  return (record) => {
+    const kept =
+      (!source || parseItemId(record.id)?.kind === source) &&
+      (!status || record.facets.state === status) &&
+      (!assignee || assigneeOf(record)?.id === assignee) &&
+      (!workstream || !holds(record));
+    if (!kept) return null;
+    return q ? matchOf(record, textOf(record.id), terms) : "title";
+  };
 }
 
 // What the filters can pick from: the sources the index has items from, in
@@ -154,7 +163,7 @@ export function browseView(
   const byId = new Map(records.map((record) => [record.id, record]));
   const kept = (item: string) => {
     const record = byId.get(item as IndexRecord["id"]);
-    return record !== undefined && keep(record);
+    return record !== undefined && keep(record) !== null;
   };
   const shown = clusters.flatMap((cluster, at) => {
     const matched = cluster.itemIds.filter(kept);
@@ -194,10 +203,16 @@ export function clusterPage(
   const cluster = grouping.group(records, now, byItemId).find((each) => each.key === key);
   if (!cluster) return null;
   const known = new Map(records.map((record) => [record.id, record]));
-  const present = cluster.itemIds.filter((item) => {
+  // In the cluster's order, title hits first when a search filters it.
+  const kept = cluster.itemIds.flatMap((item) => {
     const record = known.get(item);
-    return record !== undefined && (!keep || keep(record));
+    const matched = record === undefined ? null : keep ? keep(record) : "title";
+    return matched ? [{ item, matched }] : [];
   });
+  const present = [
+    ...kept.filter((each) => each.matched === "title"),
+    ...kept.filter((each) => each.matched === "text"),
+  ].map((each) => each.item);
   const page = { ...cluster, itemIds: present.slice(from, from + pageSize) };
   const items = clusterItemsOf(now, sources)(page, records);
   return {
