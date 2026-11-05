@@ -651,6 +651,10 @@ export function threadStore(db: DatabaseSync) {
           return { workstreamId: thread.workstream_id, kept: true, workstreamRemoved: false };
         }
         windowChat().forget.run(id);
+        // Its change sets' second looks first; prepared here, since a store
+        // may open on a database migrated only part way, as a migration's
+        // own test does.
+        db.prepare("delete from challenges where thread_id = ?").run(id);
         for (const statement of purge) statement.run(id);
         const empty = selectEmptyWorkstream.get(thread.workstream_id) !== undefined;
         if (empty) for (const statement of dropEmpty) statement.run(thread.workstream_id);

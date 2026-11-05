@@ -3,6 +3,7 @@ export * from "./block.ts";
 export * from "./block-charts.ts";
 export * from "./chart.ts";
 export * from "./history.ts";
+export * from "./challenge.ts";
 export * from "./change-log.ts";
 export * from "./changeset.ts";
 export * from "./connector-view.ts";

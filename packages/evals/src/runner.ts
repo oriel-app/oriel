@@ -9,6 +9,8 @@ import {
   array,
   boolean,
   builtBlock,
+  type Finding,
+  storedFinding,
   type Infer,
   type Instant,
   literal,
@@ -63,6 +65,7 @@ import {
   gradeNoSketch,
   gradeZeroMutations,
   gradeDrafts,
+  gradeFindings,
 } from "./graders.ts";
 import { gradeRefs, resolver, shown } from "./shown.ts";
 import { formatRate, type Rate, wilson } from "./stats.ts";
@@ -100,6 +103,9 @@ export const systemOutput = object({
   sketches: optional(number),
   // How many show() calls Oriel refused.
   refusedBlocks: optional(number),
+  // A second look's: whether Oriel kept what it recorded, and the findings
+  // it kept (kind 9).
+  look: optional(object({ kept: boolean, findings: array(storedFinding) })),
   reply: string,
   transcript: array(unknown),
 });
@@ -107,8 +113,9 @@ export const systemOutput = object({
 // never asks for any.
 export type SystemOutput = Omit<
   Infer<typeof systemOutput>,
-  "intents" | "drafts" | "blocks" | "sketches" | "refusedBlocks"
+  "intents" | "drafts" | "blocks" | "sketches" | "refusedBlocks" | "look"
 > & {
+  look?: { kept: boolean; findings: Finding[] };
   intents?: Infer<typeof systemOutput>["intents"];
   drafts?: Infer<typeof systemOutput>["drafts"];
   blocks?: Infer<typeof systemOutput>["blocks"];
@@ -350,9 +357,11 @@ async function grade(
     ? await inWorld(loaded, options, (world) => checkQuotes([output.reply], world.reader.read))
     : [];
   output = { ...output, reply: seen.text };
-  const refs = gradeRefs(seen);
+  // A second look's reply is never shown (kind 9): only what Oriel kept is.
+  const shownReply = loaded.case.kind !== 9;
+  const refs = shownReply ? gradeRefs(seen) : null;
   if (refs) grades.push(refs);
-  const quotes = gradeQuotes(checked);
+  const quotes = shownReply ? gradeQuotes(checked) : null;
   if (quotes) grades.push(quotes);
   for (const expectation of loaded.case.expect) {
     if (expectation.grader === "exact-diff") {
@@ -400,11 +409,24 @@ async function grade(
     if (expectation.grader === "mentions")
       grades.push(gradeMentions(expectation.text, output.reply));
     if (expectation.grader === "avoids") grades.push(gradeAvoids(expectation.text, output.reply));
+    if (expectation.grader === "findings")
+      grades.push(
+        gradeFindings(
+          {
+            cites: (expectation.cites ?? []).map((cite) => ({
+              ...cite,
+              item: named(loaded, cite.item),
+            })),
+            ...(expectation.atMost === undefined ? {} : { atMost: expectation.atMost }),
+          },
+          output.look ?? null,
+        ),
+      );
     if (expectation.grader === "judge") {
       grades.push(
         await gradeJudge({
           claims: expectation.claims,
-          prompt: loaded.case.prompt,
+          prompt: loaded.case.prompt ?? "",
           region: await evidence(loaded, options),
           searches: searchesOf(output.transcript),
           captions: (output.blocks ?? []).map(({ block }) => block.caption),

@@ -159,6 +159,15 @@ export interface ChangeSets {
   ofThread(threadId: Ulid): Promise<ChangeSet[]>;
   // Reads current values live, so `before` is true at review time.
   diff(id: Ulid): Promise<Diff>;
+  // The same diff, for a reader other than the person (a second look): it
+  // records nothing, so it never stands for what the person saw.
+  look(id: Ulid): Promise<Diff>;
+  // Adds changes to a change set nobody has decided on and nothing of has
+  // applied, as a person adds a second look's suggestion: checked as a
+  // capture is, against the region its run used. Its hash changes, so the
+  // person reviews the new diff before approving.
+  // `max`: the most changes a change set may hold (SPEC §9).
+  extend(id: Ulid, mutations: readonly CapturedMutation[], max: number): Promise<ChangeSet>;
   // What it made or proposes, one line per change, in its diff's own words,
   // read from its rows and `known`, never from a source (`changesOf`).
   changes(set: ChangeSet, known: Known): Promise<ChangeRead[]>;

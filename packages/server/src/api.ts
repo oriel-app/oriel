@@ -1340,6 +1340,32 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
         return changeSetReply(input.changeSet);
       },
     },
+    // A second look, when the person asks; and a change one suggested,
+    // added (decision 0054).
+    {
+      method: "POST",
+      path: at("/change-sets/:id/second-look"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        const input = checked("changeset.second-look", { changeSet: id });
+        await deps.dispatch("changeset.second-look", input, user);
+        return changeSetReply(input.changeSet);
+      },
+    },
+    {
+      method: "POST",
+      path: at("/change-sets/:id/suggestions"),
+      async run([id = ""], request) {
+        const { look, place } = await readJson(
+          request,
+          smallBody,
+          object({ look: unknown, place: unknown }),
+        );
+        const input = checked("changeset.add-suggestion", { changeSet: id, look, place });
+        await deps.dispatch("changeset.add-suggestion", input, user);
+        return changeSetReply(input.changeSet);
+      },
+    },
     {
       method: "POST",
       path: at("/change-sets/:id/approve"),

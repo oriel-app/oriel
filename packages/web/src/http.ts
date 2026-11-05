@@ -35,6 +35,9 @@ export type Tag =
   | { kind: "synced"; threadId: string; statuses: number }
   | { kind: "diff"; changeSetId: string }
   | { kind: "changeSet"; threadId: string; changeSetId: string }
+  // A second look asked for (decision 0054): apart from the change set's
+  // own requests, since approving never waits on one.
+  | { kind: "secondLook"; threadId: string; changeSetId: string }
   | { kind: "held"; threadId: string; seq: number }
   // A draft applied, or that undone, by its place in the thread (decision 0051).
   | { kind: "draftApplied"; threadId: string; seq: number }

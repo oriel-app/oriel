@@ -624,6 +624,41 @@ export type ChangeSetView = {
   revertOf: string | null;
   reverts: string[];
   createdAt: string;
+  // Oriel's latest second look at it, in the thread only, never on a review
+  // link (decision 0054): null while the person hasn't asked for one;
+  // absent once it is decided, or where no model runs the agent.
+  secondLook?: SecondLookView | null;
+};
+
+// A second look: the agent's reading of what else the change set would make
+// wrong, each finding on lines of the diff and resting on quotes Oriel
+// checked word for word; what it read, from its runs' own records; and what
+// changed since. It informs, and never approves or blocks.
+export type SecondLookView = {
+  id: string;
+  state: "running" | "ready" | "failed";
+  findings: {
+    kind: "conflict" | "discussion" | "companion" | "related";
+    lines: number[];
+    says: string;
+    // A quote from an item (`id`), or of what a line of the diff would
+    // write (`line`).
+    evidence: (
+      | { id: string; line: null; quote: string; outside: boolean }
+      | { id: null; line: number; quote: string; outside: false }
+    )[];
+    // A companion's suggested changes, by their place in `companions`.
+    changes: number[];
+  }[];
+  companions: { place: number; sentence: string; added: boolean }[];
+  // The workstream's items it read, of how many, and its searches outside.
+  coverage: { read: string[]; of: number; searches: number } | null;
+  // What changed since it read the change set: its diff, and the items it
+  // rested on that moved.
+  stale: { diff: boolean; items: string[] };
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 };
 
 // An item a field's value names, such as a story's epic: its title as the

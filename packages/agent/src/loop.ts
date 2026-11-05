@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { type Log, object, type Run, type RunLimits, type RunResult, string } from "@oriel/core";
 import type { Agent, AgentDeps, AgentEvent, TurnInput } from "./contract.ts";
 import { turnShown } from "./blocks.ts";
-import { proposal } from "./proposal.ts";
+import { challengeOf, proposal } from "./proposal.ts";
 import { runResultText, runTool, runToolName, systemPrompt, threadMessages } from "./prompt.ts";
 import {
   type Conversation,
@@ -132,7 +132,9 @@ async function* turn(
     const runId = deps.newId();
     // Its bindings, with show() and sketch(), each read they answer noted
     // for blocks.
-    const shown = turnShows.run(runId, (asked) => deps.bindingsFor(region, thread.id, asked));
+    const shown = turnShows.run(runId, (asked) =>
+      deps.bindingsFor(region, thread.id, asked, challengeOf(input, runId)),
+    );
     const { bindings } = shown;
     const startedAt = deps.now();
     const runLog: Log = (message, fields) => log(message, { run_id: runId, ...fields });
@@ -188,11 +190,19 @@ async function* turn(
     };
   }
 
+  // A second look's module, whose `challenge` the runs reach, declares the
+  // same as each run's.
+  const declared = deps.bindingsFor(
+    region,
+    thread.id,
+    undefined,
+    challengeOf(input, thread.id),
+  ).dts;
   let conversation: Conversation | null = null;
   try {
     conversation = deps.provider.converse({
       system: systemPrompt,
-      tools: [runTool(deps.bindingsFor(region, thread.id).dts)],
+      tools: [runTool(declared)],
       messages: threadMessages(input.history, input.text),
       signal,
       log,
@@ -275,6 +285,8 @@ async function* turn(
   }
 
   yield* turnShows.settle();
-  yield* proposed.settle(deps, thread, signal, log);
+  // A second look proposes nothing: the server keeps what its runs captured
+  // as suggestions only.
+  if (!input.challenge) yield* proposed.settle(deps, thread, signal, log);
   yield done();
 }

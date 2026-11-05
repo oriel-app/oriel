@@ -167,6 +167,11 @@ export function stubs(fns: readonly Fn[], spaces: readonly string[]): string {
       "});",
     ]),
     ...fns.filter((fn) => fn.space === null).map((fn) => `const ${fn.name} = ${call(fn)};`),
+    // A parameter this module doesn't declare, as a second look's has no
+    // blocks or sketches, is still handed to the script, as nothing.
+    ...parameters
+      .filter((name) => !fns.some((fn) => fn.space === null && fn.name === name))
+      .map((name) => `const ${name} = undefined;`),
     "",
   ].join("\n");
 }

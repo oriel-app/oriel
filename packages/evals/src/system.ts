@@ -26,7 +26,11 @@ import {
   type Instant,
   type MutationRecord,
   type Answered,
+  type ChallengeHost,
+  challengeAskText,
+  type Finding,
   planned,
+  type Region,
   readKey,
   type Run,
   type Sandbox,
@@ -35,6 +39,8 @@ import {
   ulid,
 } from "@oriel/core";
 import { createSandbox } from "@oriel/sandbox";
+import { checkRecord, keep, written } from "@oriel/server/challenger";
+import { itemNamed } from "./fixtures.ts";
 import type { SystemInput, SystemUnderTest } from "./runner.ts";
 import { buildWorld, caseWorld, type World } from "./world.ts";
 
@@ -101,7 +107,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const deps: AgentDeps = {
     provider: anthropicProvider({ apiKey: transportKey, model: input.model, fetch: input.fetch }),
     sandbox: (options.sandbox ?? processSandbox)(),
-    bindingsFor: (r, threadId, shown) => {
+    bindingsFor: (r, threadId, shown, run) => {
       const bindings = bindingsFor(r, {
         reader: world.reader,
         namespaces: world.namespaces,
@@ -112,6 +118,7 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
         ...(world.overview ? { overview: world.overview } : {}),
         ...(world.waiting ? { waiting: world.waiting } : {}),
         history: world.history,
+        ...(run?.challenge ? { challenge: run.challenge } : {}),
       });
       // What each read answered, so the blocks grader can build each block
       // again from its read.
@@ -134,15 +141,19 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     now: () => input.now,
     newId,
   };
+  // A second look (kind 9): the case's diff, and what each run recorded, as
+  // the server checks it.
+  const look = secondLook(input, region, world);
   const events: AgentEvent[] = [];
   for await (const event of agent(deps).turn(
     {
       thread,
       region,
       history: (input.case.before ?? []).map((said) => ({ ...said, at: input.now })),
-      text: input.case.prompt,
+      text: look ? challengeAskText : (input.case.prompt ?? ""),
       snapshot: 1,
       spent: { inputTokens: 0, outputTokens: 0 },
+      ...(look ? { challenge: look.host } : {}),
     },
     { signal: new AbortController().signal, log: () => {} },
   ))
@@ -151,6 +162,19 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
   const ended = events.find((e) => e.kind === "error" || e.kind === "limit");
   if (ended?.kind === "error") throw new Error(`the agent's turn failed: ${ended.message}`);
   if (ended?.kind === "limit") throw new Error(`the agent hit a limit: ${ended.reason}`);
+  if (look) {
+    const results = new Map(
+      events.flatMap((e) => (e.kind === "run.finished" ? [[e.runId, e.result] as const] : [])),
+    );
+    const kept = keep(results, look.recorded);
+    return {
+      // What a companion would add, as the person would add it.
+      mutations: kept?.companions ?? [],
+      look: { kept: kept !== null, findings: kept?.findings ?? [] },
+      reply: replyOf(events),
+      transcript: events,
+    };
+  }
   return {
     mutations: records.captured(),
     intents: records.applied(),
@@ -170,6 +194,33 @@ async function turn(world: World, input: SystemInput, options: AgentSystemOption
     reply: replyOf(events),
     transcript: events,
   };
+}
+
+// A second look's host over the case's diff, with what each run recorded,
+// checked as the server checks it; null for any other case.
+function secondLook(input: SystemInput, region: Region, world: World) {
+  const challenge = input.case.challenge;
+  if (!challenge) return null;
+  const lines = challenge.lines.map((line, i) => {
+    const named = line.item === null ? null : itemNamed(input.fixtures, line.item);
+    if (named && "problem" in named) throw new Error(named.problem);
+    return { n: i + 1, change: line.change, item: named?.id ?? null, fields: line.fields };
+  });
+  const members = new Set<string>(region.items.map((item) => item.id));
+  const recorded = new Map<Ulid, Finding[]>();
+  const host: ChallengeHost = {
+    diff: async () => lines,
+    record: async (runId, findings) => {
+      const checked = await checkRecord(findings, {
+        lines: lines.map(written),
+        members,
+        read: world.reader.read,
+      });
+      if (checked.findings) recorded.set(runId, checked.findings);
+      return checked.answer;
+    },
+  };
+  return { host, recorded };
 }
 
 // What the user sees: the agent's text, a paragraph break wherever a run

@@ -1,0 +1,30 @@
+{
+  "id": "look-harmless-estimate",
+  "split": "train",
+  "kind": 9,
+  "region": "weather-epic",
+  "challenge": {
+    "lines": [
+      {
+        "change": "Estimate “Cancellation alert sent for a sailing that had already left” (SYN-54) at 2 points.",
+        "item": "jira:SYN-54",
+        "fields": [
+          {
+            "name": "points",
+            "before": null,
+            "after": 2
+          }
+        ]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "grader": "findings",
+      "atMost": 1
+    },
+    {
+      "grader": "zero-mutations"
+    }
+  ]
+}

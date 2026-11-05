@@ -4,6 +4,8 @@ import type {
   ActionLine,
   Bindings,
   Block,
+  ChallengeHost,
+  ChallengeRun,
   ChangeSets,
   Draft,
   Instant,
@@ -42,6 +44,12 @@ export type TurnInput = {
   // `maxTokensPerThread` covers the whole thread. Required: optional would let
   // the cap silently become per-turn.
   spent: { inputTokens: number; outputTokens: number };
+  // A run Oriel started for a second look at a change set (the challenger
+  // spike): each run's module gets `challenge`, and the turn proposes
+  // nothing. What its runs capture are only suggestions, which the server
+  // keeps with what the run recorded; it captures no change set, applies no
+  // intent and holds no draft.
+  challenge?: ChallengeHost;
 };
 
 export type ChatMessage =
@@ -119,7 +127,12 @@ export type AgentDeps = {
   // default to the thread's workstream and the thread. `shown` builds the
   // block a run asks for, from a read its turn ran, and shows the sketch it
   // asks for, and says what it did.
-  bindingsFor: (region: Region, thread: Ulid, shown?: Shown) => Bindings;
+  bindingsFor: (
+    region: Region,
+    thread: Ulid,
+    shown?: Shown,
+    options?: { challenge?: ChallengeRun },
+  ) => Bindings;
   // Captured mutations become a change set.
   changeSets: Pick<ChangeSets, "capture">;
   // Applies a turn's intents as the thread's agent, once its change set, if
