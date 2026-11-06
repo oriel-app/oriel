@@ -5,6 +5,7 @@ import {
   type ChangeLogEntry,
   facetChanges,
   type Instant,
+  issueDeclaredFacets,
   type ItemId,
   itemId,
   type LoadedFixture,
@@ -15,7 +16,7 @@ import {
   type SourceFixture,
   type ToOpen,
 } from "@oriel/core";
-import { jiraAttrs, jiraDeclaredFacets } from "./attrs.ts";
+import { jiraAttrs } from "./attrs.ts";
 import { jiraBoards } from "./boards.ts";
 import { fixtureSnapshot, type JiraFixture, loadJiraFixture } from "./fixture.ts";
 import { fixtureFields, fixtureSource } from "./fixture-source.ts";
@@ -137,7 +138,7 @@ function changes(
   );
   return before.flatMap((was) => {
     const is = after.get(was.stableId);
-    const facets = is ? facetChanges(jiraDeclaredFacets, was, is) : null;
+    const facets = is ? facetChanges(issueDeclaredFacets, was, is) : null;
     if (is && !facets) return [];
     const at = (editedAt.get(was.id) ?? now) as Instant;
     return [

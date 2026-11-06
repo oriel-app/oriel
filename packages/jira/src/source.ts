@@ -9,6 +9,7 @@ import {
   type Infer,
   type Instant,
   isInstant,
+  issueRecord,
   type ItemId,
   itemId,
   type Log,
@@ -30,14 +31,13 @@ import { adfToText, plainDocument } from "./adf.ts";
 import { type JiraBoards, jiraBoards } from "./boards.ts";
 import {
   api,
-  attrsOf,
   call,
-  facetsOf,
   fieldsOf,
   indexFieldNames,
   indexFieldShape,
   issue,
   issueKey,
+  issueOf,
   movesOf,
   numericId,
   projectKey,
@@ -138,15 +138,15 @@ export function jiraSource(options: JiraSourceOptions): JiraSource {
     return {
       ok: true,
       value: {
-        record: {
-          id: itemId("jira", key),
-          stableId: id,
-          title: summary,
-          location: `${site}/browse/${key}`,
-          updatedAt: fields.updated,
-          facets: facetsOf(fields, raw, points.get(projectOf(key))),
-          attrs: attrsOf(fields),
-        },
+        record: issueRecord(
+          {
+            id: itemId("jira", key),
+            stableId: id,
+            title: summary,
+            location: `${site}/browse/${key}`,
+          },
+          issueOf(fields, raw, points.get(projectOf(key))),
+        ),
         text: jiraText({ summary, description: adfToText(fields.description), comments: [] }),
       },
     };

@@ -15,6 +15,7 @@ export * from "./workstream.ts";
 export * from "./grouping.ts";
 export * from "./ids.ts";
 export * from "./intents.ts";
+export * from "./issue.ts";
 export * from "./namespace.ts";
 export * from "./open.ts";
 export * from "./noticed.ts";

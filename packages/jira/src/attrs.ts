@@ -1,16 +1,17 @@
-// What the index keeps per Jira item beyond core's facets, the full content
-// read live, and validators for both. Facets carry the assignee (people), the
-// status category (state), the epic (container), the issue type as a kind
-// and the story points as an estimate, so attrs hold only what is Jira's own
-// words for them, for the window.
+// What the index keeps per Jira item, the full content read live, and
+// validators for both. A Jira issue maps onto core's issues shape (decision
+// 0059), whose facets and attrs every surface reads; what is Jira's own, such
+// as its boards' points field, stays in this package.
 import {
   array,
-  type DeclaredFacets,
-  type DetailsOf,
-  type Facets,
   type IndexRecord,
   type Instant,
   isInstant,
+  issueAttrs,
+  type IssueAttrs,
+  issueColumns,
+  issueDetails,
+  type IssueFields,
   type ItemId,
   literal,
   nullable,
@@ -27,15 +28,9 @@ import {
   type Validator,
 } from "@oriel/core";
 
-// Enough for the window, nothing more.
-export type JiraAttrs = {
-  // The issue type as the site names it; its `kind` facet is the type in
-  // core's words.
-  issueType: string;
-  // The status as Jira names it; its category is the item's `state` facet.
-  status: string;
-  labels: string[];
-};
+// The issues shape's attrs: the issue type and status as the site names
+// them, and the labels.
+export type JiraAttrs = IssueAttrs;
 
 export type JiraRecord = IndexRecord<"jira", JiraAttrs>;
 
@@ -65,11 +60,7 @@ export type JiraContent = {
   text: string;
 };
 
-export const jiraAttrs = object({
-  issueType: string,
-  status: string,
-  labels: array(string),
-}) satisfies Validator<JiraAttrs>;
+export const jiraAttrs: Validator<JiraAttrs> = issueAttrs;
 
 const jiraId = refine(string, isJiraId, "expected a Jira item ID");
 const state = union(literal("todo"), literal("in-progress"), literal("done"));
@@ -107,14 +98,6 @@ export function jiraAttrsOf(record: IndexRecord): JiraAttrs | null {
   return parsed.ok ? parsed.value : null;
 }
 
-// How a Jira item shows in the window beyond core's fields: its issue type,
-// status and labels as the site names them. The composition root passes this
-// to Browse's rows.
-export const jiraDetails: DetailsOf = (record) => {
-  const attrs = jiraAttrsOf(record);
-  return attrs && { type: attrs.issueType, status: attrs.status, labels: [...attrs.labels] };
-};
-
 // An issue's key, such as SYN-12: its project's key and its number.
 export const jiraKeyShape = /^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/;
 
@@ -129,20 +112,9 @@ export const jiraPresentation: Presentation = {
   inSentence: "Jira",
   icon: "ticket",
   keysReadAs: null,
-  columns: ["assignee", "estimate"],
-  details: jiraDetails,
+  columns: issueColumns,
+  details: issueDetails,
 };
-
-// Its facets beyond the common ones, which the change log records: its
-// estimate, in its board's points; null when not estimated yet, or on a board
-// that takes no estimates.
-export const jiraDeclaredFacets = {
-  estimate: {
-    label: "Estimate",
-    of: (record) => record.facets.estimate ?? null,
-    sums: true,
-  },
-} satisfies DeclaredFacets;
 
 // An issue type in core's words. The hierarchy decides where Jira gives one:
 // an epic-level type is an epic whatever the site calls it, and a sub-task
@@ -154,28 +126,35 @@ export function jiraKind(type: { name: string; subtask?: boolean; hierarchyLevel
   return type.name.toLowerCase();
 }
 
-// The facets every Jira item has: its assignee, its status category, its
-// epic by the epic's stable ID, its issue type as a kind and its story points
-// as an estimate. Points are undefined, and the item has no estimate facet,
-// when its project's board takes no estimates: it has none to lack. Remote
-// links aren't among them: Jira's search doesn't return them, and a read per
-// issue on every sync costs too much. They are in the content a read returns.
-export function jiraFacets(item: {
-  category: State;
+// A Jira issue in the issues shape: its type in core's words and the site's,
+// its status and category, its epic as its container by the epic's stable
+// ID, its parent where that isn't its epic, its assignee, its story points
+// as its estimate, its labels and when it last changed. Points are
+// undefined, and the issue has no estimate, when its project's board takes
+// no estimates: it has none to lack. Remote links aren't among them: Jira's
+// search doesn't return them, and a read per issue on every sync costs too
+// much. They are in the content a read returns.
+export function jiraIssueFields(item: {
+  type: { name: string; subtask?: boolean; hierarchyLevel?: number };
+  status: { name: string; category: State };
   epic: { id: ItemId<"jira">; stableId: string } | null;
+  parent: { id: ItemId<"jira">; stableId: string } | null;
   assignee: { accountId: string; name: string } | null;
-  kind: string;
   points: number | null | undefined;
-}): Facets {
-  const facets: Facets = {
-    people: item.assignee
-      ? [{ role: "assignee", id: item.assignee.accountId, name: item.assignee.name }]
-      : [],
-    state: item.category,
+  labels: readonly string[];
+  updatedAt: Instant;
+}): IssueFields {
+  return {
+    kind: jiraKind(item.type),
+    type: item.type.name,
     container: item.epic,
-    kind: item.kind,
+    parent: item.parent,
+    status: item.status,
+    assignee: item.assignee && { id: item.assignee.accountId, name: item.assignee.name },
+    ...(item.points === undefined ? {} : { estimate: item.points }),
+    labels: [...item.labels],
+    updatedAt: item.updatedAt,
   };
-  return item.points === undefined ? facets : { ...facets, estimate: item.points };
 }
 
 // The summary, the description and each comment with its author and time,

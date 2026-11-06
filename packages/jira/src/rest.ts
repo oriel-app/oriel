@@ -3,7 +3,6 @@
 import {
   array,
   boolean,
-  type Facets,
   type Infer,
   type Instant,
   instant,
@@ -22,14 +21,7 @@ import {
   unknown,
   type Validator,
 } from "@oriel/core";
-import {
-  isJiraId,
-  type JiraAttrs,
-  type JiraContent,
-  jiraFacets,
-  jiraKeyShape,
-  jiraKind,
-} from "./attrs.ts";
+import { isJiraId, type JiraContent, jiraIssueFields, jiraKeyShape } from "./attrs.ts";
 import { failure, type JiraRequest, type JiraResponse, type ReadTransport } from "./transport.ts";
 
 export const api = "/rest/api/3";
@@ -115,9 +107,10 @@ const isStandard = (type: Infer<typeof issueType>) =>
 export const epicOf = (fields: Pick<IndexFields, "issuetype" | "parent">): ItemId<"jira"> | null =>
   fields.parent && isStandard(fields.issuetype) ? itemId("jira", fields.parent.key) : null;
 
-// The epic as a container: its handle and its stable ID.
-const containerOf = (fields: Pick<IndexFields, "issuetype" | "parent">) =>
-  fields.parent && isStandard(fields.issuetype)
+// The parent by its handle and stable ID: as the epic, a container, for a
+// standard issue, and as its parent otherwise.
+const parentOf = (fields: Pick<IndexFields, "issuetype" | "parent">, epic: boolean) =>
+  fields.parent && isStandard(fields.issuetype) === epic
     ? { id: itemId("jira", fields.parent.key), stableId: fields.parent.id }
     : null;
 
@@ -142,23 +135,18 @@ const assigneeOf = (fields: IndexFields) =>
     ? { accountId: fields.assignee.accountId, name: fields.assignee.displayName }
     : null;
 
-export function attrsOf(fields: IndexFields): JiraAttrs {
-  return {
-    issueType: fields.issuetype.name,
-    status: fields.status.name,
-    labels: fields.labels ?? [],
-  };
-}
-
-// `field` is the project's points field, undefined when its board takes no
-// estimates.
-export function facetsOf(fields: IndexFields, raw: unknown, field: string | undefined): Facets {
-  return jiraFacets({
-    category: categoryOf(fields),
-    epic: containerOf(fields),
+// The issue in the issues shape. `field` is the project's points field,
+// undefined when its board takes no estimates.
+export function issueOf(fields: IndexFields, raw: unknown, field: string | undefined) {
+  return jiraIssueFields({
+    type: fields.issuetype,
+    status: { name: fields.status.name, category: categoryOf(fields) },
+    epic: parentOf(fields, true),
+    parent: parentOf(fields, false),
     assignee: assigneeOf(fields),
-    kind: jiraKind(fields.issuetype),
     points: field === undefined ? undefined : pointsOf(rawField(raw, field)),
+    labels: fields.labels ?? [],
+    updatedAt: fields.updated,
   });
 }
 

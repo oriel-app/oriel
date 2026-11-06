@@ -1,6 +1,6 @@
 // A Jira issue as the panel beside the page shows it, from a live read: its
 // type, status, assignee and estimate, its description and its comments.
-import type { PanelBlock, PanelOf, PanelProse } from "@oriel/core";
+import { issueFacts, type PanelBlock, type PanelOf, type PanelProse } from "@oriel/core";
 import { adfToProse } from "./adf.ts";
 import { jiraContent } from "./attrs.ts";
 
@@ -14,27 +14,14 @@ export const jiraPanel: PanelOf = (content) => {
   const issue = read.value;
   const prose = proseOf(issue.descriptionDoc);
   const blocks: PanelBlock[] = [
-    {
-      kind: "facts",
-      facts: [
-        { name: "Type", value: issue.issueType },
-        { name: "Status", value: issue.status.name },
-        { name: "Assignee", value: issue.assignee?.name ?? "Unassigned" },
-        // A board that takes no estimates has none to show, or to lack.
-        ...(issue.points === undefined
-          ? []
-          : [
-              {
-                name: "Estimate",
-                value:
-                  issue.points === null
-                    ? "Not estimated yet"
-                    : `${issue.points} ${issue.points === 1 ? "point" : "points"}`,
-              },
-            ]),
-        ...(issue.labels.length > 0 ? [{ name: "Labels", value: issue.labels.join(", ") }] : []),
-      ],
-    },
+    // A board that takes no estimates has none to show, or to lack.
+    issueFacts({
+      type: issue.issueType,
+      status: issue.status,
+      assignee: issue.assignee && { id: issue.assignee.accountId, name: issue.assignee.name },
+      ...(issue.points === undefined ? {} : { estimate: issue.points }),
+      labels: issue.labels,
+    }),
     // Otherwise it is plain text, which stays as written.
     prose.length > 0
       ? { kind: "rich", heading: "Description", prose }

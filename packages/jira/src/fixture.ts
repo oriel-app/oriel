@@ -12,6 +12,7 @@ import {
   type Infer,
   type Issue,
   isInstant,
+  issueRecord,
   type ItemId,
   itemId,
   literal,
@@ -27,9 +28,8 @@ import {
 import {
   isJiraId,
   type JiraContent,
-  jiraFacets,
+  jiraIssueFields,
   jiraKeyShape,
-  jiraKind,
   type JiraRecord,
   jiraText,
 } from "./attrs.ts";
@@ -360,26 +360,23 @@ export function fixtureSnapshot(
         : { id: itemId("jira", issue.epic), stableId: stableIds.get(issue.epic) ?? "" };
     const assignee = () =>
       issue.assignee === null ? null : { accountId: issue.assignee, name: name(issue.assignee) };
-    records.push({
-      id,
-      stableId: issue.id,
-      title: issue.summary,
-      location: `${site}/browse/${issue.key}`,
-      updatedAt: issue.updatedAt,
-      facets: jiraFacets({
-        category: issue.status.category,
-        epic,
-        assignee: assignee(),
-        // The fixture's types carry no hierarchy, so the name decides.
-        kind: jiraKind({ name: issue.issueType }),
-        points: issue.points,
-      }),
-      attrs: {
-        issueType: issue.issueType,
-        status: issue.status.name,
-        labels: [...issue.labels],
-      },
-    });
+    records.push(
+      issueRecord(
+        { id, stableId: issue.id, title: issue.summary, location: `${site}/browse/${issue.key}` },
+        jiraIssueFields({
+          // The fixture's types carry no hierarchy, so the name decides, and
+          // nothing has a parent but its epic.
+          type: { name: issue.issueType },
+          status: issue.status,
+          epic,
+          parent: null,
+          assignee: assignee(),
+          points: issue.points,
+          labels: issue.labels,
+          updatedAt: issue.updatedAt,
+        }),
+      ),
+    );
     const comments = issue.comments.map((c) => ({
       author: name(c.author),
       body: c.body,

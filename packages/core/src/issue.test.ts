@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Facets, IndexRecord, Instant } from "@oriel/core";
-import { jiraOverview } from "./overview.ts";
+import { issueFacets, issueFacts, issueFields, issueOverview } from "./issue.ts";
+import type { Instant } from "./ids.ts";
+import type { Facets, IndexRecord } from "./source.ts";
 
 const now = "2026-10-30T12:00:00.000Z" as Instant;
 const daysAgo = (days: number) =>
@@ -31,7 +32,7 @@ const story = (key: string, epicKey: string | null, state: Facets["state"], upda
   );
 
 const candidates = (records: IndexRecord[], held: string[] = []) =>
-  jiraOverview({ records, changes: [], held: (r) => held.includes(r.id), now });
+  issueOverview({ records, changes: [], held: (r) => held.includes(r.id), now });
 
 test("an epic no workstream holds is a cluster of the epic grouping, weighted by what changed this week", () => {
   const records = [
@@ -78,4 +79,28 @@ test("an item in progress with no update in 14 days has stalled; one updated sin
       detail: "14 days idle",
     },
   ]);
+});
+
+test("a field a tracker doesn't have leaves its facet and its fact out; one it has and is empty doesn't", () => {
+  const bare = { kind: "task", type: "Task", status: { name: "Open", category: "todo" as const } };
+  const issue = { ...bare, updatedAt: now };
+  assert.deepEqual(issueFacets(issue), { state: "todo", kind: "task" });
+  assert.deepEqual(issueFacts(bare).facts, [
+    { name: "Type", value: "Task" },
+    { name: "Status", value: "Open" },
+  ]);
+  const empty = { ...issue, container: null, assignee: null, estimate: null, labels: [] };
+  assert.deepEqual(issueFacets(empty), {
+    people: [],
+    state: "todo",
+    container: null,
+    kind: "task",
+    estimate: null,
+  });
+  assert.deepEqual(issueFacts(empty).facts.slice(2), [
+    { name: "Assignee", value: "Unassigned" },
+    { name: "Estimate", value: "Not estimated yet" },
+  ]);
+  assert.ok(issueFields(empty).ok);
+  assert.ok(!issueFields({ ...issue, status: { name: "Open", category: "open" } }).ok);
 });
