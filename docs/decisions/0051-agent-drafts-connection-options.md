@@ -1,6 +1,6 @@
 # 0051 Oriel helps connect a source: the agent drafts a connection's options, and the person applies them
 
-Accepted 2026-11-03. Amends 0024, 0027, 0030, 0038 and 0041. Follows 0049 and 0050. Changes SPEC §1, §2, §7 and §8.
+Accepted 2026-11-03. Amends 0024, 0027, 0030, 0038 and 0041. Follows 0049 and 0050. Changes SPEC §1, §2, §7 and §8. Amended by 0059: a drafted mapping still applies to a spreadsheet's rows; drafting one for an unknown server is a later decision.
 
 Adds: none
 
