@@ -49,9 +49,13 @@ export const sourcesOf = (diff: DiffView): string =>
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Whether a quoted title in a sentence is the item's, whole or cut short.
-const titled = (quoted: string, title: string | null | undefined): boolean =>
-  !!title && (quoted === title || (quoted.endsWith("…") && title.startsWith(quoted.slice(0, -1))));
+// Whether a quoted title in a sentence is the item's, whole or cut short,
+// its spaces run together as a sentence quotes it.
+function titled(quoted: string, title: string | null | undefined): boolean {
+  const said = title?.replace(/\s+/g, " ").trim();
+  if (!said) return false;
+  return quoted === said || (quoted.endsWith("…") && said.startsWith(quoted.slice(0, -1)));
+}
 
 // A line's sentence around where it names its item, so the item's chip can
 // stand in that place: by its title and key, “Title” (SYN-1), its key

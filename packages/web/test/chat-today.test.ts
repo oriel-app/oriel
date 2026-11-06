@@ -76,6 +76,11 @@ test("a diff line names its item once: its chip stands where the sentence named 
     ["Delete the message ", " from #launch."],
   );
   assert.equal(namedOnce({ sentence: "Post in #launch as Ana.", target: message }), null);
+  const row = { id: "sheets:r7", key: "r7", title: "Vendor\n  contract", url: "https://g/r7" };
+  assert.deepEqual(
+    namedOnce({ sentence: "Delete the row “Vendor contract”, which Oriel added.", target: row }),
+    ["Delete the row ", ", which Oriel added."],
+  );
 });
 
 // A stand-in for the window's observers: each target's last callback, to
