@@ -205,6 +205,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/sheets-mcp: {}
+
   packages/slack:
     dependencies:
       '@oriel/core':

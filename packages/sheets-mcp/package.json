@@ -1,0 +1,11 @@
+{
+  "name": "@oriel/sheets-mcp",
+  "private": true,
+  "bin": {
+    "sheets-mcp": "./src/main.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
+  }
+}
