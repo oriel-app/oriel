@@ -273,6 +273,9 @@ export function turns(deps: TurnDeps) {
   const watchers = new Map<Ulid, Set<(event: ThreadEvent) => void>>();
   // Pages watching the whole workspace: every list, and a workstream's page.
   const anyWatchers = new Set<(threadId: Ulid | null) => void>();
+  // What hears every thread's events, chat entries included: the MCP door's
+  // subscriptions (decision 0058).
+  const everyWatchers = new Set<(threadId: Ulid) => void>();
   // Titles being written, which outlive a stopped turn; closing stops them.
   const titling = new Set<Promise<void>>();
   const closing = new AbortController();
@@ -281,6 +284,7 @@ export function turns(deps: TurnDeps) {
   // workspace; `publish`, both, unless it's an entry in the thread's chat.
   const tell = (threadId: Ulid, event: ThreadEvent) => {
     for (const watcher of watchers.get(threadId) ?? []) watcher(event);
+    for (const watcher of everyWatchers) watcher(threadId);
   };
   const broadcast = (threadId: Ulid | null) => {
     for (const watcher of anyWatchers) watcher(threadId);
@@ -580,6 +584,13 @@ export function turns(deps: TurnDeps) {
     watchAny(listener: (threadId: Ulid | null) => void): () => void {
       anyWatchers.add(listener);
       return () => anyWatchers.delete(listener);
+    },
+
+    // Calls `listener` with a thread's ID for everything any thread's page
+    // hears, each chat entry included, until the returned function is called.
+    watchEvery(listener: (threadId: Ulid) => void): () => void {
+      everyWatchers.add(listener);
+      return () => everyWatchers.delete(listener);
     },
 
     // The user deleted the thread: every page watching it says so, and every

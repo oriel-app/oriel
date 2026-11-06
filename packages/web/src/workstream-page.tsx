@@ -272,10 +272,12 @@ const causes: Record<WorkstreamChangeView["cause"], string> = {
 };
 
 // The workstream's versions, newest first, folded. What an agent did names
-// the thread it did it in.
+// the thread it did it in, and what an outside tool did names the tool,
+// open while it is the latest version, with its Undo (decision 0058).
 function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch }) {
+  const byTool = view.changes[0]?.tool !== undefined;
   return (
-    <details class="history">
+    <details class="history" open={byTool || undefined}>
       <summary>{plural(view.changes.length, "version")}</summary>
       <ol class="changes">
         {view.changes.map((change) => (
@@ -299,8 +301,27 @@ function History({ view, dispatch }: { view: WorkstreamView; dispatch: Dispatch 
                     {change.thread.title ?? "a thread"}
                   </Link>
                 </>
+              ) : change.tool ? (
+                ` · by ${change.tool}, an outside tool`
               ) : (
                 causes[change.cause]
+              )}
+              {change.undo && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    class="quiet-action"
+                    onClick={() =>
+                      dispatch({
+                        type: "workstream",
+                        msg: { type: "toolUndoClicked", version: change.version },
+                      })
+                    }
+                  >
+                    Undo
+                  </button>
+                </>
               )}
             </span>
             <span class="change-at">

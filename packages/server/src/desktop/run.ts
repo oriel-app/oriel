@@ -13,7 +13,7 @@ import type { SetupOptions } from "../setup/setup.ts";
 import { legacySecret, type Secrets } from "../connection.ts";
 import { type Serving, serve } from "../serve.ts";
 import { channel, type Shell } from "./channel.ts";
-import { keepPort, keptPort, portsFrom } from "./port.ts";
+import { doorPorts, keepPort, keptPort, portsFrom } from "./port.ts";
 import { launchCookie } from "./protocol.ts";
 
 export type DesktopOptions = {
@@ -29,6 +29,8 @@ export type DesktopOptions = {
   signals: { once(signal: "SIGTERM" | "SIGINT", listener: () => void): unknown };
   // The port the first launch tries; 0 lets the OS pick, as tests do.
   firstPort: number;
+  // The MCP door's, the same way.
+  firstDoorPort: number;
   // The agent, the titler and, for tests, the sandbox and the clock: as
   // `pnpm dev` builds them.
   app?: Pick<AppOptions, "agent" | "titler" | "sandbox" | "now">;
@@ -123,6 +125,16 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
     },
     {
       launch: { cookie: launchCookie, secret },
+      // The MCP door for outside tools, with its port kept beside the
+      // window's. Once kept, it never moves: a client keeps sending its
+      // token to the port its config names, so a door that moved would leave
+      // it with whoever took the old one (decision 0058).
+      door: {
+        ports: doorPorts(keptPort(data, "mcp-port"), options.firstDoorPort),
+        listening: (at) => {
+          if (keptPort(data, "mcp-port") !== at) keepPort(data, at, "mcp-port");
+        },
+      },
       listening(url) {
         port = Number(new URL(url).port);
         lines.ready(url);
@@ -160,7 +172,10 @@ export async function runDesktop(options: DesktopOptions): Promise<Desktop> {
   }
   const serving = started;
   if (serving.port !== kept) keepPort(data, serving.port);
-  log("desktop: listening", { url: serving.url });
+  log("desktop: listening", {
+    url: serving.url,
+    door: "url" in serving.door ? serving.door.url : serving.door.closed,
+  });
 
   const exited = stop.promise.then(async (why) => {
     log("desktop: quitting", { why });

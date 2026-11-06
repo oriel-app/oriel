@@ -2,8 +2,8 @@
 // its stdin and stdout, and the server on a loopback port the OS picks.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -70,6 +70,7 @@ function start(
     log: (message, fields = {}) => logged.push({ message, fields }),
     signals,
     firstPort,
+    firstDoorPort: 0,
     jiraFetch: site.fetch,
     app: {
       now: () => instant(new Date(t0)),
@@ -109,6 +110,73 @@ test("desktop mode names its URL first, answers only with the cookie, and quits 
   open(join(data, "oriel.db"), { exclusive: true }).close();
   const after = await testApp(t, { db: join(data, "oriel.db") });
   assert.equal((await after.post("/api/review/open", { token })).status, 404);
+});
+
+test("the MCP door listens apart from the window, keeps its port, and a tool the person connects gets in", async (t) => {
+  const data = folder(t);
+  const shell = start(data);
+  const { serving, exited } = await shell.running;
+  assert.ok("url" in serving.door);
+  const { url: door, port } = serving.door;
+  assert.notEqual(port, serving.port);
+  assert.equal(keptPort(data, "mcp-port"), port);
+  // The window's cookie opens nothing at the door, and the door has none of
+  // the window's routes; a tool's token opens nothing of the window's.
+  assert.equal(
+    (await fetch(door, { method: "POST", headers: { cookie }, body: "{}" })).status,
+    401,
+  );
+  assert.equal((await fetch(new URL("/api/outside-tools", door))).status, 404);
+  assert.equal((await send(serving.url, "/api/outside-tools", undefined, false)).status, 403);
+  const added = await send(serving.url, "/api/outside-tools", { name: "Codex", mode: "read" });
+  const { token } = (await added.json()) as { token: string };
+  assert.equal(
+    (await fetch(serving.url, { headers: { authorization: `Bearer ${token}` } })).status,
+    403,
+  );
+  const listed = await fetch(door, {
+    method: "POST",
+    headers: {
+      host: `127.0.0.1:${port}`,
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/list",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
+    }),
+  });
+  assert.equal(listed.status, 200);
+  const tools = (await send(serving.url, "/api/outside-tools")).json();
+  assert.deepEqual(((await tools) as { door: unknown }).door, serving.door);
+  shell.input.end();
+  assert.equal(await exited, 0);
+});
+
+test("a kept door port another program holds leaves the door closed, never moved, and the window up", async (t) => {
+  const data = folder(t);
+  const squatter = createServer();
+  await new Promise<void>((resolve) => squatter.listen(0, "127.0.0.1", resolve));
+  t.after(() => squatter.close());
+  const taken = (squatter.address() as AddressInfo).port;
+  mkdirSync(data, { recursive: true });
+  keepPort(data, taken, "mcp-port");
+  const shell = start(data);
+  const { serving, exited } = await shell.running;
+  assert.deepEqual(serving.door, {
+    closed: "Its port is taken by another program. Quit that program, then restart Oriel.",
+  });
+  assert.equal(keptPort(data, "mcp-port"), taken);
+  const listed = (await (await send(serving.url, "/api/outside-tools")).json()) as {
+    door: unknown;
+  };
+  assert.deepEqual(listed.door, serving.door);
+  shell.input.end();
+  assert.equal(await exited, 0);
 });
 
 test("SIGTERM quits as stdin's end does", async (t) => {
@@ -235,6 +303,7 @@ test("asked to stop while starting, it stops at once, and closes what was starti
     log: () => {},
     signals,
     firstPort: 0,
+    firstDoorPort: 0,
     app: { now: () => instant(new Date(t0)), sandbox: fakeSandbox({}) },
   });
   await asked.promise;
@@ -260,6 +329,7 @@ test("asked to stop before the launch secret, it stops at once", async (t) => {
     log: () => {},
     signals,
     firstPort: 0,
+    firstDoorPort: 0,
   });
   signals.emit("SIGTERM");
   await assert.rejects(running, Stopped);
@@ -277,6 +347,7 @@ test("asked to stop while it looks for a model, it stops at once", async (t) => 
     log: () => {},
     signals,
     firstPort: 0,
+    firstDoorPort: 0,
     model: () => {
       looking.resolve();
       return new Promise(() => {});

@@ -13,7 +13,8 @@
 // both rules, wherever 0003 refuses it. Packages reach each other only
 // through `@oriel/<name>` and its declared exports, never a relative path into
 // another package; a relative path into scripts/ (the fixture tooling) is
-// fine. Oriel's own actions keep their doors in step (decision 0024): an
+// fine. Every route of the window's has a program's way in through the MCP
+// door, or says why not (decision 0058). Oriel's own actions keep their doors in step (decision 0024): an
 // action closed to a door, a person's action, or a direct one with no
 // inverse says why, and an inverse names an action; and every POST route in
 // packages/server changes state only through the dispatcher, apart from the
@@ -27,6 +28,8 @@ import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import { type ActionDeclaration, actions } from "../packages/core/src/actions.ts";
 import { sourceKinds } from "../packages/sources/src/index.ts";
+import { windowRoutes } from "../packages/server/src/mcp/parity.ts";
+import { windowReads } from "../packages/server/src/mcp/reads.ts";
 import { themeProblems } from "./check-themes.ts";
 
 // `name@version` keys from every top-level `packages:` block.
@@ -193,6 +196,9 @@ export const exemptRoutes: Record<string, string> = {
   // OA-232: a mapping redrawn as the person edits it; applying it dispatches.
   "/connections/:id/review":
     "a draft redrawn from the source with the person's edit, which keeps nothing",
+  // Decision 0058: who may use the MCP door is the person's call alone.
+  "/outside-tools": "the person connecting an outside tool, which no agent or tool may do",
+  "/outside-tools/:id/revoke": "the person revoking an outside tool, which no agent or tool may do",
 };
 
 // A file's POST routes, by the path each declares (`at("…")`, or a regex
@@ -211,6 +217,55 @@ export function postRoutes(text: string): { path: string; dispatches: boolean }[
       },
     ];
   });
+}
+
+// Each of a file's routes, as `METHOD /path` (a regex literal as written),
+// and the actions it dispatches by name. A route's code runs to the next
+// route's `method`.
+export function routesOf(text: string): { route: string; actions: string[] }[] {
+  const starts = [...text.matchAll(/\bmethod: "(GET|POST)",/g)];
+  return starts.map((start, i) => {
+    const code = text.slice(start.index, starts[i + 1]?.index ?? text.length);
+    const path = /\bpath: (?:at\("([^"]*)"\)|(\/.*\/)[a-z]*),/.exec(code);
+    const named = [...code.matchAll(/\bdispatch(?:\.untyped)?\(\s*"([a-z.-]+)"/g)];
+    return {
+      route: `${start[1]} ${path?.[1] ?? path?.[2] ?? "(unread path)"}`,
+      actions: [...new Set(named.map((each) => each[1] ?? ""))],
+    };
+  });
+}
+
+// Parity (decision 0058): every route of the window's is something a program can do
+// or read too, or says why not. A route is covered by one of the window's
+// reads (packages/server/src/mcp/reads.ts), by the one action it dispatches,
+// whose declaration makes it a tool or says why not (decision 0024), or by
+// its line in packages/server/src/mcp/parity.ts.
+export function parityProblems(
+  routes: readonly { route: string; actions: readonly string[] }[],
+  table: Readonly<Record<string, { door: string } | { not: string }>>,
+  reads: readonly string[],
+): string[] {
+  const at = "packages/server/src/mcp/parity.ts";
+  const found: string[] = [];
+  const declared = new Set(routes.map((each) => each.route));
+  for (const { route, actions: dispatched } of routes) {
+    const listed = Object.hasOwn(table, route);
+    const read = reads.includes(route);
+    if (listed && read) found.push(`${at}: ${route} is one of the window's reads already`);
+    if (listed || read || dispatched.length === 1) continue;
+    found.push(
+      `packages/server/src/api.ts: ${route} has no way in for a program and no reason why not; add a read to packages/server/src/mcp/reads.ts or a line to ${at} (decision 0058)`,
+    );
+  }
+  for (const [route, way] of Object.entries(table)) {
+    if (!declared.has(route)) found.push(`${at}: lists ${route}, which no route declares`);
+    const said = "door" in way ? way.door : way.not;
+    if (said.trim() === "") found.push(`${at}: ${route} says nothing`);
+  }
+  for (const route of new Set(reads))
+    if (!declared.has(route))
+      found.push(`packages/server/src/mcp/reads.ts: reads ${route}, which no route declares`);
+  return found;
 }
 
 // What an action's declaration leaves unsaid: why a door is closed to it, why
@@ -407,6 +462,11 @@ if (import.meta.main) {
   const found = [
     ...builtTracked,
     ...actionProblems(actions),
+    ...parityProblems(
+      routesOf(readFileSync("packages/server/src/api.ts", "utf8")),
+      windowRoutes,
+      windowReads.map((read) => read.route),
+    ),
     ...themeProblems(readFileSync("packages/web/assets/window.css", "utf8")),
     ...decisionClashes(readdirSync("docs/decisions").filter((f) => f.endsWith(".md"))),
     ...problems({

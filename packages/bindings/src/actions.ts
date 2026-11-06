@@ -31,9 +31,11 @@ const kindOf = (shape: ObjectShape): string | null => {
   return kind?.kind === "literal" && typeof kind.value === "string" ? kind.value : null;
 };
 
-// What of the action's input the agent gives: each alternative it may use,
-// with only the fields it may set.
-function agentShapes(name: ActionName): { kind: string | null; fields: Record<string, Shape> }[] {
+// What of the action's input the agent, or an outside tool, gives: each
+// alternative it may use, with only the fields it may set.
+export function agentShapes(
+  name: ActionName,
+): { kind: string | null; fields: Record<string, Shape> }[] {
   const declared: ActionDeclaration = actions[name];
   const userOnly = declared.userOnly ?? {};
   return alternatives(name).flatMap((shape) => {
@@ -105,18 +107,11 @@ export const actionTypes = [
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// What the host checks a recorded call against, before any of it applies:
-// the action's own declaration, with the agent's workstream and thread where
-// it left them out, and every item a workstream gains within reach.
-export function intended(
-  fn: Pick<IntentFn, "action">,
-  args: readonly unknown[],
-  own: { workstream: Ulid; thread: Ulid | null; reaches(id: ItemId): boolean },
-): Intent {
-  const { action } = fn;
+// An action's input as anyone but the user may give it, the agent or an
+// outside tool: an object, with nothing only the user gives in the window,
+// and nothing its input doesn't have. The declaration checks the rest.
+export function notTheUsers(action: ActionName, given: unknown): Record<string, unknown> {
   const declared: ActionDeclaration = actions[action];
-  if (args.length > 1) throw new TypeError(`expected at most 1 argument, got ${args.length}`);
-  const given = args[0] ?? {};
   if (!isPlainObject(given)) throw new TypeError("$: expected an object");
   const userOnly = declared.userOnly ?? {};
   const kind = typeof given["kind"] === "string" ? given["kind"] : null;
@@ -128,7 +123,21 @@ export function intended(
   const shape = shapes.find((s) => s.kind === kind) ?? (shapes.length === 1 ? shapes[0] : null);
   const stray = shape && Object.keys(given).find((key) => !Object.hasOwn(shape.fields, key));
   if (stray) throw new TypeError(`$.${stray}: not part of ${action}'s input`);
-  const input: Record<string, unknown> = { ...given };
+  return { ...given };
+}
+
+// What the host checks a recorded call against, before any of it applies:
+// the action's own declaration, with the agent's workstream and thread where
+// it left them out, and every item a workstream gains within reach.
+export function intended(
+  fn: Pick<IntentFn, "action">,
+  args: readonly unknown[],
+  own: { workstream: Ulid; thread: Ulid | null; reaches(id: ItemId): boolean },
+): Intent {
+  const { action } = fn;
+  const declared: ActionDeclaration = actions[action];
+  if (args.length > 1) throw new TypeError(`expected at most 1 argument, got ${args.length}`);
+  const input = notTheUsers(action, args[0] ?? {});
   for (const alternative of alternatives(action))
     for (const [key, owned] of Object.entries(ownedFields(alternative))) {
       if (input[key] !== undefined) continue;

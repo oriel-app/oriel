@@ -66,6 +66,7 @@ import {
   open,
   runStore,
   challengeStore,
+  outsideToolStore,
   type StoredEvent,
   telemetryStore,
   threadStore,
@@ -93,7 +94,15 @@ import type { KeyCheck, Provider, Titler } from "@oriel/agent";
 import type { KeyStore } from "./api-key.ts";
 import { defaultTheme } from "@oriel/web/themes";
 import { type Agent, agentEvent, type ServerAgentDeps, type AgentLimits } from "./agent.ts";
-import { ActionError, blankWorkstreamName, dispatcher } from "./actions.ts";
+import {
+  ActionError,
+  blankWorkstreamName,
+  type Changed,
+  dispatcher,
+  liveChangeSet,
+} from "./actions.ts";
+import type { Outside } from "./mcp/door.ts";
+import { outsideTools } from "./mcp/tokens.ts";
 import { api } from "./api.ts";
 import { type LegacyJira, memorySecrets, type Secrets } from "./connection.ts";
 import { connectionsOf } from "./connections.ts";
@@ -130,9 +139,15 @@ export type { SourceMode, SourceModes } from "./modes.ts";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+// The MCP door for outside tools (decision 0058): open where it listens, or
+// closed and why, as when its kept port is taken.
+export type Door = { url: string; port: number } | { closed: string };
+
 export type AppOptions = {
   // A SQLite file, or ":memory:".
   db: string;
+  // Where the MCP door listens, which `serve()` opens; none in a test.
+  door?: Door;
   // Holds SQLite's exclusive lock on the file while the app runs, so no
   // second server can open it (decision 0036).
   exclusive?: boolean;
@@ -225,6 +240,8 @@ export type App = {
   telemetry(): StoredEvent[];
   // Revokes every live review link, and says how many there were.
   revokeReviewLinks(): Promise<number>;
+  // What the MCP door reaches (decision 0058).
+  outside: Outside;
   close(): Promise<void>;
 };
 
@@ -1590,6 +1607,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   // page hears that something did.
   const created = (set: ChangeSet) =>
     set.mutations.flatMap((m) => (m.target === null && m.applied ? [m.applied.item] : []));
+  // Who hears each change a call publishes, besides the window: the MCP
+  // door's subscriptions.
+  const watchers = new Set<(changed: Changed) => void>();
+  // The outside tools the person connected (decision 0058).
+  const connectedTools = outsideTools({ store: outsideToolStore(db), workspaceId, now, newId });
   const dispatch = dispatcher({
     workspaceId,
     workstreams,
@@ -1679,6 +1701,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       return () => clearTimeout(timer);
     },
     publish: (changed) => {
+      for (const listener of watchers) listener(changed);
       if ("changeSet" in changed)
         return conversation.changeSet(changed.thread, changed.changeSet, changed.applying);
       if ("deleted" in changed) {
@@ -1965,7 +1988,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     log,
   });
 
-  return {
+  const built: App = {
     workspaceId,
     window,
     setup,
@@ -1974,6 +1997,7 @@ export async function createApp(options: AppOptions): Promise<App> {
     api: api({
       workspaceId,
       settings,
+      outside: { tools: connectedTools, door: options.door ?? null },
       workstreams,
       threads,
       records,
@@ -2099,6 +2123,55 @@ export async function createApp(options: AppOptions): Promise<App> {
     },
     telemetry: () => telemetry.list(workspaceId),
     revokeReviewLinks: () => sets.revokeAllReviewLinks(workspaceId),
+    outside: {
+      workspaceId,
+      dispatch,
+      reads,
+      reader,
+      indexed: (id) => records().some((record) => record.id === id),
+      tools: connectedTools,
+      // One of the window's own read routes, past the window's guard, which
+      // the door stands in for with its own (mcp/http.ts): a GET only, and
+      // never an event stream, which a door's read would leave open.
+      window: async (path) => {
+        const url = new URL(path, "http://door/");
+        const reply = await built.api(
+          { method: "GET", url: url.pathname + url.search, headers: {} },
+          url,
+        );
+        if (reply?.stream) {
+          await reply.stream[Symbol.asyncIterator]().return?.();
+          return { status: 404, body: null };
+        }
+        if (!reply) return { status: 404, body: null };
+        const text = typeof reply.body === "string" ? reply.body : "";
+        return { status: reply.status, body: text ? JSON.parse(text) : null };
+      },
+      // A change set's diff as the window shows it, rendered from the source
+      // now without keeping it: what the person approves against stays what
+      // they were shown, whatever a program read since (decision 0050).
+      diff: async (id) => {
+        const set = await liveChangeSet({ changeSets: sets, threads, workspaceId, now }, id);
+        if (!set) return null;
+        return viewer.diff(await sets.look(set.id), set, sets.applying(set.id));
+      },
+      // What each of Oriel's actions changed, every thread that moved in a
+      // turn, and each entry in a thread's chat, as the window's streams
+      // hear them.
+      watch: (listener) => {
+        watchers.add(listener);
+        const unwatch = conversation.watchAny((thread) =>
+          listener(thread === null ? null : { thread }),
+        );
+        // A thread's chat entries as they come, as its page hears them.
+        const unwatchChat = conversation.watchEvery((thread) => listener({ thread }));
+        return () => {
+          watchers.delete(listener);
+          unwatch();
+          unwatchChat();
+        };
+      },
+    },
     // Stops every turn, waits for the last sync, and closes the database.
     // Closing twice does nothing more.
     async close() {
@@ -2123,4 +2196,5 @@ export async function createApp(options: AppOptions): Promise<App> {
       if (db.isOpen) db.close();
     },
   };
+  return built;
 }

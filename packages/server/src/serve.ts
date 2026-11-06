@@ -6,11 +6,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assets, dist, entry, vendor } from "@oriel/web/files";
 import { themeNames } from "@oriel/web/themes";
-import { type App, type AppOptions, createApp } from "./app.ts";
+import { type App, type AppOptions, createApp, type Door } from "./app.ts";
 import { handler, type Reply, type Request, type Site } from "./site.ts";
 import { sketchHandler, sketchStyle } from "./sketch-site.ts";
+import { mcpHandler, type McpRequest } from "./mcp/http.ts";
+import { mcpServer } from "./mcp/protocol.ts";
 
-export type Serving = { url: string; port: number; app: App; close(): Promise<void> };
+export type Serving = { url: string; port: number; app: App; door: Door; close(): Promise<void> };
 
 // The web app's files.
 export function webFiles(): Pick<Site, "dist" | "entry" | "assets" | "vendor"> {
@@ -76,11 +78,18 @@ export type ServeOptions = {
   listening?: (url: string) => void;
   // Runs once the app is built, before any request reaches it.
   beforeRequests?: (app: App) => Promise<void>;
+  // The MCP door's ports, tried in order: the one kept, alone, once there
+  // is one; `listening` hears the one it opened on, to keep. Port 0, as by
+  // default, picks a free one.
+  door?: { ports: readonly number[]; listening?: (port: number) => void };
 };
 
 // Answers each request on `server` with the handler `built` resolves to;
 // requests that come before it wait for it.
-function answer(server: Server, built: Promise<(request: Request) => Promise<Reply>>): void {
+function answer(
+  server: Server,
+  built: Promise<(request: Request & McpRequest) => Promise<Reply>>,
+): void {
   server.on("request", (req, res) => {
     const method = req.method ?? "GET";
     built
@@ -113,10 +122,13 @@ const closing = (server: Server) => {
 // picks a free one. The app is built once the port is known, since review
 // links name it. Sketches are served by a second listener, the sketch
 // origin, on a free port of its own, behind the same launch secret, in the
-// person's theme (decisions 0033 and 0034).
+// person's theme (decisions 0033 and 0034). Outside tools reach Oriel
+// through the MCP door, on a third listener of its own, behind their tokens
+// rather than the launch secret (decision 0058). If its port is taken, the
+// door stays closed, and the window opens all the same.
 export async function serve(
   ports: number | readonly number[],
-  options: Omit<AppOptions, "reviewBase" | "sketchBase"> = {
+  options: Omit<AppOptions, "reviewBase" | "sketchBase" | "door"> = {
     db: ":memory:",
     sources: { jira: { mode: "fixture" } },
   },
@@ -124,16 +136,36 @@ export async function serve(
 ): Promise<Serving> {
   const server = createServer();
   const sketches = createServer();
+  const doorServer = createServer();
   const address = await listen(server, typeof ports === "number" ? [ports] : ports);
   const url = `http://127.0.0.1:${address.port}/`;
   const built = Promise.withResolvers<(request: Request) => Promise<Reply>>();
   const sketchBuilt = Promise.withResolvers<(request: Request) => Promise<Reply>>();
+  const doorBuilt = Promise.withResolvers<(request: McpRequest) => Promise<Reply>>();
   // Nobody may be waiting on them when they fail.
   built.promise.catch(() => {});
   sketchBuilt.promise.catch(() => {});
+  doorBuilt.promise.catch(() => {});
   answer(server, built.promise);
   answer(sketches, sketchBuilt.promise);
+  answer(doorServer, doorBuilt.promise);
   serving.listening?.(url);
+  const log = options.log ?? (() => {});
+  // The door listens before the app is built, as the window does, so the
+  // app knows whether it opened. One that can't leaves the window up.
+  const door: Door = await listen(doorServer, serving.door?.ports ?? [0]).then(
+    ({ port }) => ({ url: `http://127.0.0.1:${port}/mcp`, port }),
+    (error: unknown) => {
+      log("door: not open", { error: String(error) });
+      return {
+        closed:
+          (error as NodeJS.ErrnoException).code === "EADDRINUSE"
+            ? "Its port is taken by another program. Quit that program, then restart Oriel."
+            : "It couldn't open. Restart Oriel to try again.",
+      };
+    },
+  );
+  if ("port" in door) serving.door?.listening?.(door.port);
   const files = webFiles();
   let app: App | null = null;
   try {
@@ -145,12 +177,26 @@ export async function serve(
     app = await createApp({
       themes: themeNames(css),
       ...options,
+      door,
       reviewBase: new URL("review/", url),
       sketchBase: new URL("/sketches/", sketchOrigin),
     });
     await serving.beforeRequests?.(app);
     const launch = serving.launch ? { launch: serving.launch } : {};
-    const { setup } = app;
+    const { setup, outside } = app;
+    if ("port" in door)
+      doorBuilt.resolve(
+        mcpHandler({
+          server: mcpServer({ outside, version: "0", clock: Date.now, log }),
+          tools: outside.tools,
+          port: door.port,
+          keepAlive: (beat) => {
+            const timer = setInterval(beat, 25_000);
+            timer.unref();
+            return () => clearInterval(timer);
+          },
+        }),
+      );
     built.resolve(
       handler({
         ...files,
@@ -184,7 +230,12 @@ export async function serve(
   } catch (error) {
     built.reject(error);
     sketchBuilt.reject(error);
-    await Promise.all([closing(server), sketches.listening ? closing(sketches) : null]);
+    doorBuilt.reject(error);
+    await Promise.all([
+      closing(server),
+      sketches.listening ? closing(sketches) : null,
+      doorServer.listening ? closing(doorServer) : null,
+    ]);
     await app?.close();
     throw error;
   }
@@ -193,8 +244,13 @@ export async function serve(
     url,
     port: address.port,
     app: started,
+    door,
     close: async () => {
-      await Promise.all([closing(server), closing(sketches)]);
+      await Promise.all([
+        closing(server),
+        closing(sketches),
+        doorServer.listening ? closing(doorServer) : null,
+      ]);
       await started.close();
     },
   };

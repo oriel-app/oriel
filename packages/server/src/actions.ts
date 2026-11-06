@@ -471,7 +471,10 @@ const handlers = {
     const removed = change?.removed ?? [];
     const back = removed.flatMap((member) => live.get(identity(member)) ?? []);
     return {
-      output: { gone: removed.filter((member) => !live.has(identity(member))).map((m) => m.id) },
+      output: {
+        removed: removed.map((member) => member.id),
+        gone: removed.filter((member) => !live.has(identity(member))).map((m) => m.id),
+      },
       undo: back.length
         ? { action: "workstream.add", input: { workstream: workstream.id, items: back } }
         : null,

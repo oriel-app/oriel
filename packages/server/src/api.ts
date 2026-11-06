@@ -36,6 +36,7 @@ import {
   unknown,
   type Validator,
   startQuestions,
+  toolName,
 } from "@oriel/core";
 import type { WorkstreamStore, Message, ThreadStore } from "@oriel/db";
 import { connectorViews, parseDeclared, sourceKinds, sources } from "@oriel/sources";
@@ -78,6 +79,8 @@ import type { Reply, Request } from "./site.ts";
 import { channel } from "./stream.ts";
 import { NothingHeld, ThreadBusy, ThreadLimit, type Turns } from "./turns.ts";
 import type { NoticedService } from "./noticed.ts";
+import type { OutsideTools } from "./mcp/tokens.ts";
+import type { Door } from "./app.ts";
 import { changeSetView, type Views } from "./views.ts";
 
 export type ApiDeps = {
@@ -163,6 +166,9 @@ export type ApiDeps = {
   // The system's folder picker, on the desktop app only.
   pickFolder?: (prompt: string) => Promise<string | null>;
   settings: SettingsService;
+  // The outside tools the person connects to the MCP door, and where the
+  // door listens (decision 0058).
+  outside: { tools: OutsideTools; door: Door | null };
   // The desktop app's first run and its commands for the person's CLI.
   setup: Setup;
   log: Log;
@@ -643,6 +649,56 @@ export function api(deps: ApiDeps): (request: Request, url: URL) => Promise<Repl
           if (error instanceof SettingsRefused) throw new Refused(409, error.message);
           throw error;
         }
+      },
+    },
+    {
+      // The outside tools the person connected, and where the MCP door
+      // listens, or why it's closed (decision 0058). No token is in it.
+      method: "GET",
+      path: at("/outside-tools"),
+      run: async () =>
+        json(200, {
+          door: deps.outside.door,
+          tools: deps.outside.tools
+            .list()
+            .map(({ id, name, mode, connectedAt, usedAt, revokedAt }) => ({
+              id,
+              name,
+              mode,
+              connectedAt,
+              usedAt,
+              revokedAt,
+            })),
+        }),
+    },
+    {
+      // The person connects an outside tool, by a name they give it, to read
+      // only or to read and act. Its token is in this reply alone.
+      method: "POST",
+      path: at("/outside-tools"),
+      async run(_, request) {
+        const { name, mode } = await readJson(
+          request,
+          smallBody,
+          object({ name: toolName, mode: union(literal("read"), literal("act")) }),
+        );
+        try {
+          const { tool, token } = deps.outside.tools.connect(name, mode);
+          return json(200, { tool: { id: tool.id, name: tool.name, mode: tool.mode }, token });
+        } catch (error) {
+          if (error instanceof RangeError) throw new Refused(409, error.message);
+          throw error;
+        }
+      },
+    },
+    {
+      // Refused from its next request, and its open streams end.
+      method: "POST",
+      path: at("/outside-tools/:id/revoke"),
+      async run([id = ""], request) {
+        await readJson(request, smallBody, emptyBody);
+        if (!deps.outside.tools.revoke(id as Ulid)) throw new Refused(404, "no such tool");
+        return json(200, {});
       },
     },
     {

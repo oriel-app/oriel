@@ -45,6 +45,7 @@ import type {
   ThreadStateId,
   ThreadSummaryView,
   ThreadView,
+  UndoView,
 } from "@oriel/web/view";
 import { chipIds, quoteKey } from "@oriel/web/markdown";
 import { waitingOn, waitsOnUser } from "@oriel/web/view";
@@ -377,7 +378,12 @@ export function views(deps: ViewDeps) {
   const between = (workstreamId: Ulid, from: number, to: number): WorkstreamChange[] =>
     workstreams.changes(workstreamId, from).filter((change) => change.version <= to);
 
-  const changeView = (changes: readonly WorkstreamChange[]): WorkstreamChangeView[] => {
+  // `latest`: the workstream's version now, whose change an outside tool
+  // made the window can undo.
+  const changeView = (
+    changes: readonly WorkstreamChange[],
+    latest: number | null = null,
+  ): WorkstreamChangeView[] => {
     // By identity, so an item that moved since keeps its title.
     const { find } = lookup();
     return changes.map((change) => ({
@@ -389,7 +395,31 @@ export function views(deps: ViewDeps) {
       ...(change.cause.kind === "agent"
         ? { thread: { id: change.cause.threadId, title: title(change.cause.threadId) } }
         : {}),
+      ...(change.cause.kind === "tool"
+        ? {
+            tool: change.cause.name,
+            undo: change.version === latest ? toolUndo(change, find) : null,
+          }
+        : {}),
     }));
+  };
+
+  // What undoes an outside tool's latest change to a workstream (decision
+  // 0058): what it added comes out, or what it took out goes back, if the
+  // index still has it; null for one that did both, or nothing to undo.
+  const toolUndo = (
+    change: WorkstreamChange,
+    find: (member: WorkstreamMember) => IndexRecord | undefined,
+  ): UndoView | null => {
+    const workstream = change.workstreamId;
+    if (change.added.length && change.removed.length) return null;
+    if (change.added.length)
+      return {
+        action: "workstream.remove",
+        input: { workstream, items: change.added.map((m) => m.id) },
+      };
+    const back = change.removed.flatMap((m) => find(m)?.id ?? []);
+    return back.length ? { action: "workstream.add", input: { workstream, items: back } } : null;
   };
 
   // The items of a thread's workstream that the agent or an outside tool
@@ -660,7 +690,7 @@ export function views(deps: ViewDeps) {
       return {
         workstream: workstreamSummary(id),
         members: members(workstreams.region(id, workstream.version)?.items ?? []),
-        changes: changeView(between(id, 0, workstream.version)).toReversed(),
+        changes: changeView(between(id, 0, workstream.version), workstream.version).toReversed(),
         threads: await Promise.all(threads.ofWorkstream(id, deps.now()).map(threadSummary)),
       };
     },

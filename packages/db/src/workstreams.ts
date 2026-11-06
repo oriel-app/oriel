@@ -14,6 +14,7 @@ import {
   isUlid,
   literal,
   holderName,
+  toolName,
   isPrefix,
   nullable,
   number,
@@ -46,7 +47,7 @@ const cause: Validator<WorkstreamChange["cause"]> = union(
   object({ kind: literal("user"), via: ulidValue }),
   object({ kind: literal("user") }),
   object({ kind: literal("agent"), threadId: ulidValue }),
-  object({ kind: literal("tool"), name: string }),
+  object({ kind: literal("tool"), name: toolName }),
   object({ kind: literal("review-link"), by: holderName }),
   object({ kind: literal("change-set"), changeSetId: ulidValue }),
   object({

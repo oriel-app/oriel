@@ -22,9 +22,10 @@ import {
 } from "./validate.ts";
 
 // Who acted, recorded with every call: the user, in the window; the agent in
-// a thread; an outside tool, by the name it gives (until OA-75); whoever
-// holds a review link, by the name they typed; a change set, for what
-// follows its apply; or a source's sync, for what follows it.
+// a thread; an outside tool, by the name the user gave it when they
+// connected it, never what it says of itself (decision 0058); whoever holds
+// a review link, by the name they typed; a change set, for what follows its
+// apply; or a source's sync, for what follows it.
 export type Actor =
   | { kind: "user" }
   | { kind: "agent"; threadId: Ulid }
@@ -110,6 +111,14 @@ const name = refine(
 // What a review link's holder types, and so controls: the name they give,
 // and why they rejected a change set.
 export const holderName = name;
+// What an outside tool is called: the name the user gave it when they
+// connected it, which the window and every record show (decision 0058).
+export const maxToolNameChars = 60;
+export const toolName = refine(
+  string,
+  (text) => text.trim() !== "" && [...text].length <= maxToolNameChars,
+  `expected a name of 1 to ${maxToolNameChars} characters`,
+);
 export const holderReason = refine(
   string,
   (text) => text.trim() !== "" && text.length <= maxReasonChars,
@@ -138,7 +147,13 @@ const secondLook =
 // Opening a thread and saying something in one, which the agent may not yet.
 const unsaid =
   "Text the agent writes must show where it came from before it reaches a thread, or it would read as the user's words (decision 0024).";
-const untold = "Whether an outside tool may say anything waits on its threat model (OA-75).";
+// An outside tool's words in a thread, which OA-73 opens (decision 0058).
+const untold = "An outside tool's words in a thread are held for the user, which OA-73 builds.";
+// An action is offered to outside tools only once their call shows in the
+// window as theirs, with its Undo (decision 0058): so far, a workstream's
+// adds and removes.
+const undoless =
+  "An outside tool's call of it doesn't yet show in the window as the tool's, with Undo (decision 0058).";
 // Deleting a workstream and bringing it back, which only the user may.
 const hides =
   "It has no Undo when no thread ever used the workstream, and otherwise it hides what was said in its threads, which is the user's call (decision 0028).";
@@ -175,6 +190,7 @@ export const actions = {
       window: "It comes with the window chat's first question, which only the user asks.",
     },
     joins: "items",
+    closed: { tool: undoless },
   },
   "workstream.rename": {
     doc: "Names a workstream.",
@@ -183,6 +199,7 @@ export const actions = {
     input: object({ workstream: workstreamId, name, oriel: optional(literal(true)) }),
     class: { kind: "direct", inverse: "workstream.rename" },
     userOnly: { oriel: "Only the user's Undo gives a workstream's name back to Oriel." },
+    closed: { tool: undoless },
   },
   // Marking done marks its open threads done too, and reopening reopens
   // only those (decision 0028). `mark`: only the mark made then, so an Undo
@@ -191,6 +208,7 @@ export const actions = {
     doc: "Marks a workstream done, with its open threads.",
     input: object({ workstream: workstreamId }),
     class: { kind: "direct", inverse: "workstream.reopen" },
+    closed: { tool: undoless },
   },
   "workstream.reopen": {
     doc: "Reopens a done workstream and the threads it closed.",
@@ -200,6 +218,7 @@ export const actions = {
     }),
     class: { kind: "direct", inverse: "workstream.done" },
     userOnly: { mark: "It names the mark an Undo takes off, which only Oriel gives." },
+    closed: { tool: undoless },
   },
   // One no thread ever used goes with its log, and has no Undo: making a
   // workstream undoes as that. One threads use is hidden with them, and
@@ -228,6 +247,7 @@ export const actions = {
     input: object({ thread: threadId, via: closeVia }),
     class: { kind: "direct", inverse: "thread.reopen" },
     userOnly: { via: "It says where in the window the user closed the thread from." },
+    closed: { tool: undoless },
   },
   // Marking done's Undo: a thread marked done works again. One a change set
   // settled, or a hand-off, takes a message instead. `mark`: only the mark
@@ -240,6 +260,7 @@ export const actions = {
     }),
     class: { kind: "direct", inverse: "thread.done" },
     userOnly: { mark: "It names the mark an Undo takes off, which only Oriel gives." },
+    closed: { tool: undoless },
   },
   // New chat in the window chat (decision 0027): the window shows a fresh
   // chat from the next question on. The old one is marked done as the
@@ -290,6 +311,7 @@ export const actions = {
     closed: {
       agent:
         "An intent applies as its turn ends, when its own turn is over, and another thread's turn answers that thread's user.",
+      tool: "Stopping a turn is the user's call about their own turn, which steered words shouldn't make (decision 0058).",
     },
   },
   // Sync now, in a thread's right rail: the thread catches up with its
@@ -306,6 +328,7 @@ export const actions = {
     closed: {
       agent:
         "A turn works in the version it started in, and another thread's version is its user's to move.",
+      tool: "A thread's version is its user's to move, under them (decision 0058).",
     },
   },
   "thread.delete": {

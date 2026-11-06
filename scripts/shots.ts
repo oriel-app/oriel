@@ -58,6 +58,7 @@ import type { SourceMode } from "../packages/server/src/app.ts";
 import { devPlan, scriptedAgent, type Step } from "../packages/server/src/scripted-agent.ts";
 import { models } from "../packages/server/src/model.ts";
 import { type Serving, serve } from "../packages/server/src/serve.ts";
+import { mcpServer, modern } from "../packages/server/src/mcp/protocol.ts";
 import { memorySettings, type Settings } from "../packages/server/src/settings.ts";
 import { memoryUsage } from "../packages/server/src/usage.ts";
 import { memorySecrets } from "../packages/server/src/connection.ts";
@@ -1271,6 +1272,41 @@ const trimmed = await post<{ id: string }>(
   },
   picking,
 );
+// An outside tool, connected to act, takes an item out of a workstream
+// through Oriel's MCP door (decision 0058): the workstream's history names
+// it, open, with its Undo. On a server of its own, so no other scene sees it.
+// Each pass puts the item back first, as the user, and the tool takes it out.
+const tooling = await start(0);
+const tooled = await post<{ id: string }>(
+  "/api/workstreams",
+  {
+    kind: "picked",
+    name: "Checkout polish",
+    items: ["jira:SYN-21", "jira:SYN-23", "jira:SYN-104"],
+  },
+  tooling,
+);
+const toolDoor = mcpServer({ outside: tooling.app.outside, version: "shots", clock: () => 0 });
+const claudeCode = tooling.app.outside.tools.connect("Claude Code", "act").tool;
+const toolRemoves = async (page: Page) => {
+  await post(`/api/workstreams/${tooled.id}/add`, { items: ["jira:SYN-23"] }, tooling);
+  await toolDoor.handle(
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "workstream_remove",
+        arguments: { workstream: tooled.id, items: ["jira:SYN-23"] },
+        _meta: { "io.modelcontextprotocol/protocolVersion": modern },
+      },
+    },
+    claudeCode,
+    modern,
+  );
+  await page.reload();
+  await page.locator(".workstream-page .history[open]").waitFor();
+};
 // What the bead says now, row by row: not a face it showed before, whose
 // words are fading.
 const beadSays = ".bead-layer:not([data-gone]) .bead-row";
@@ -2483,6 +2519,27 @@ const scenes: Scene[] = [
     path: `/workstreams/${trimmed.id}`,
     on: picking,
     act: (page) => trim(page),
+  },
+  {
+    // An outside tool's change, named, with its Undo (decision 0058).
+    name: "workstream-tool",
+    path: `/workstreams/${tooled.id}`,
+    on: tooling,
+    act: toolRemoves,
+  },
+  {
+    // The user's Undo of it: the item is back, as a version of the user's.
+    name: "workstream-tool-undone",
+    path: `/workstreams/${tooled.id}`,
+    on: tooling,
+    act: async (page) => {
+      await toolRemoves(page);
+      await page.locator(".workstream-page .history").getByRole("button", { name: "Undo" }).click();
+      await page
+        .locator(".workstream-page .members")
+        .getByRole("link", { name: "SYN-23" })
+        .waitFor();
+    },
   },
   {
     // The header's endings: Mark done, and Delete…
