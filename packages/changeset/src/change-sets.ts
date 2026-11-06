@@ -20,6 +20,7 @@ import {
   type ItemId,
   isItemId,
   isNewRef,
+  isPrefix,
   kindOf,
   type Issue,
   type Known,
@@ -34,6 +35,7 @@ import {
   object,
   optional,
   parseItemId,
+  refine,
   type RunRef,
   type SourceKind,
   SourceRefused,
@@ -169,6 +171,9 @@ const capturedMutation: Validator<CapturedMutation> = object({
   target: nullable(targetValue),
   ref: nullable(newRefValue),
   args: unknown,
+  into: optional(
+    refine(string, (kind) => isPrefix(kind) && !kind.includes("."), "expected a kind"),
+  ),
 });
 const patchValue: Validator<ChangeSetPatch> = object({
   remove: optional(array(ulidValue)),
@@ -217,8 +222,10 @@ function mint<K extends SourceKind>(request: WriteRequest<K>): Approved<WriteReq
 
 // What a mutation writes to: its kind, whose catalogue checks it, and its
 // connection's prefix, whose writer sends it. Its target's; for a new item,
-// that of the create naming it; for a create, the one kind whose catalogue
-// has the op, through its first connection.
+// that of the create naming it; for a create, the kind it was captured for,
+// through its first connection. One captured before two kinds' catalogues
+// shared an op has none: it is the first kind's, in declared order, whose
+// catalogue has its op, which was the only one then.
 type Owner = { kind: SourceKind; prefix: string };
 
 function ownerOf(specs: Specs, m: Draft, all: readonly Draft[]): Owner | null {
@@ -231,9 +238,10 @@ function ownerOf(specs: Specs, m: Draft, all: readonly Draft[]): Owner | null {
     const create = all.find((c) => c.ref === ref);
     return create && create.target === null ? ownerOf(specs, create, all) : null;
   }
-  const owners = Object.keys(specs).filter((kind) => hasOp(specs, kind, m.op));
-  const [kind] = owners;
-  return owners.length === 1 && kind !== undefined ? { kind, prefix: kind } : null;
+  if (m.into !== undefined)
+    return hasOp(specs, m.into, m.op) ? { kind: m.into, prefix: m.into } : null;
+  const kind = Object.keys(specs).find((each) => hasOp(specs, each, m.op));
+  return kind === undefined ? null : { kind, prefix: kind };
 }
 
 function specFor(specs: Specs, m: Draft, all: readonly Draft[]): (Owner & { spec: OpSpec }) | null {
@@ -303,6 +311,7 @@ function check(specs: Specs, drafts: readonly Draft[]): Checked[] {
       op: m.op,
       target: m.target,
       ref: m.ref,
+      ...(m.into === undefined ? {} : { into: m.into }),
       args: JSON.parse(JSON.stringify(args.value) ?? "null"),
       ...found,
     };
@@ -1630,6 +1639,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
         op: m.op,
         target: m.target,
         ref: m.ref,
+        ...(m.into === undefined ? {} : { into: m.into }),
         args: m.args,
         reverts: m.reverts,
       }),
@@ -1731,6 +1741,7 @@ export function changeSetsOver(deps: EngineDeps): ChangeSets {
             op: m.op,
             target: m.target,
             ref: null,
+            ...(m.into === undefined ? {} : { into: m.into }),
             args: m.args,
             reverts: null,
           }),

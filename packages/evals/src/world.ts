@@ -75,6 +75,8 @@ export type WorldInput = {
   // change log holds eight weeks of past (past-weeks.ts).
   now?: Instant;
   past?: true;
+  // The kinds the case's window hasn't connected (decision 0059).
+  off?: readonly string[];
 };
 
 // A loaded case's world, as `buildWorld` takes it, at the eval clock `now`.
@@ -96,6 +98,7 @@ export function caseWorld(
       ? { window: { workstreams: evalCase.window.workstreams, now: evalCase.window.at ?? now } }
       : {}),
     ...(evalCase.unfit ? { unfit: evalCase.unfit } : {}),
+    ...(evalCase.off ? { off: evalCase.off } : {}),
   };
 }
 
@@ -149,10 +152,31 @@ export async function buildWorld(input: WorldInput): Promise<World> {
   for (const kind of held)
     if (kind === undefined || !fixtures.has(kind))
       throw new Error(`the region holds ${kind ?? "unknown"} items, but no ${kind} fixture`);
+  // A kind connects unless the case's window hasn't connected it; a
+  // stand-in, in every case, while nothing it stands in for does, as the
+  // server opens it (decision 0059).
+  const off = new Set(input.off ?? []);
+  const plain = (kind: string, declaration: SourceDeclaration) =>
+    !off.has(kind) &&
+    !declaration.standIn &&
+    (declaration.fixture.everyCase === true || held.has(kind) || input.window !== undefined);
+  const connects = (kind: string, declaration: SourceDeclaration) =>
+    declaration.standIn
+      ? !off.has(kind) &&
+        !declaration.standIn.for.some((other) => {
+          const found = fixtures.get(other);
+          return found !== undefined && plain(other, found.declaration);
+        })
+      : plain(kind, declaration);
+  for (const kind of held) {
+    const found = kind === undefined ? undefined : fixtures.get(kind);
+    if (kind !== undefined && found && !connects(kind, found.declaration))
+      throw new Error(`the region holds ${kind} items, but the case doesn't connect ${kind}`);
+  }
   const connections = new Map<string, FixtureConnection>();
   try {
     for (const [kind, { loaded, declaration }] of fixtures)
-      if (declaration.fixture.everyCase || held.has(kind) || input.window)
+      if (connects(kind, declaration))
         connections.set(kind, await loaded.connect(input.edited[kind] ?? 0));
   } catch (error) {
     for (const connection of connections.values()) connection.close();

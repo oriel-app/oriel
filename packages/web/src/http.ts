@@ -76,6 +76,9 @@ export type Tag =
   // The panel's item added to the current workstream, or that undone.
   | { kind: "panelAdded"; id: string; workstreamId: string; name: string }
   | { kind: "panelAddUndone"; id: string; workstreamId: string }
+  // A stand-in's item edited in the panel, by its key, or that undone.
+  | { kind: "panelEdited"; id: string; key: string }
+  | { kind: "panelEditUndone"; id: string }
   // A workstream the panel added an item to, loaded again to see whether
   // the add still stands.
   | { kind: "panelAddChecked"; workstreamId: string }

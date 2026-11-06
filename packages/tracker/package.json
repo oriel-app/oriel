@@ -1,0 +1,19 @@
+{
+  "name": "@oriel/tracker",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/memory.ts",
+    "./writer": "./src/writer.ts"
+  },
+  "scripts": {
+    "check": "tsc -p . && oxlint --deny-warnings . && node ../../scripts/run-tests.ts"
+  },
+  "dependencies": {
+    "@oriel/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@oriel/db": "workspace:*"
+  }
+}

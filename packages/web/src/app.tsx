@@ -22,6 +22,7 @@ import type { Effect } from "./http.ts";
 import { currentWorkstream, type Model, type Msg } from "./root.ts";
 import { placeIn } from "./panel.ts";
 import { addUndos } from "./panel-adds.ts";
+import { editUndos } from "./panel-edits.ts";
 import { approvedUndos } from "./approved.ts";
 import { rejectedUndos } from "./rejected.ts";
 import { NewThreadPage, ThreadPage } from "./thread-page.tsx";
@@ -126,12 +127,14 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
   // ended, and a close that failed, as notes in whichever stack of Undos is
   // on screen: the bead.
   const adds = addUndos(model.panelAdds, (msg) => dispatch({ type: "panelAdd", msg }));
+  const edits = editUndos(model.panelEdits, (msg) => dispatch({ type: "panelEdit", msg }));
   const approved = approvedUndos(model.approved, (msg) => dispatch({ type: "approved", msg }));
   const rejected = rejectedUndos(model.rejected, (msg) => dispatch({ type: "rejected", msg }));
   const added = {
-    notes: [...adds.notes, ...approved.notes, ...rejected.notes],
+    notes: [...adds.notes, ...edits.notes, ...approved.notes, ...rejected.notes],
     problem:
       adds.problem ??
+      edits.problem ??
       approved.problem ??
       rejected.problem ??
       closingProblem(model.closing, dispatch),
@@ -171,6 +174,7 @@ export function App({ program }: { program: Program<Model, Msg, Effect> }) {
                   place={placeIn(model.panelList, model.panel.id)}
                   workstream={currentWorkstream(model)}
                   adds={model.panelAdds}
+                  edits={model.panelEdits}
                   dispatch={dispatch}
                 />
               </ItemLinksContext.Provider>

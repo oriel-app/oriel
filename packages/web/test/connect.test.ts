@@ -16,6 +16,7 @@ import {
   offered,
   openOf,
   settingOf,
+  standingIn,
   updateConnections,
 } from "../src/connections.ts";
 import type { Effect, Replied } from "../src/http.ts";
@@ -197,7 +198,34 @@ test("a folder step's typed path connects as what the step gave", () => {
 
 test("the first run offers the connectors that declare it, in their order", () => {
   assert.deepEqual(
-    offered(connectors).map((connector) => connector.kind),
+    offered(connectors, initConnections()).map((connector) => connector.kind),
+    ["jira", "folder"],
+  );
+});
+
+test("the first run offers none a stand-in on stands in for, and the stand-in in their place", () => {
+  const tracker = {
+    ...connectors.jira!,
+    kind: "tracker",
+    connect: null,
+    standIn: { for: ["jira"], offer: connectors.jira!.connect!.offer },
+  };
+  const model: ConnectionsModel = {
+    ...initConnections(),
+    view: { connections: [], connectable: [], refused: {}, picker: false, standingIn: ["tracker"] },
+  };
+  const all = { ...connectors, tracker };
+  assert.deepEqual(
+    offered(all, model).map((connector) => connector.kind),
+    ["folder"],
+  );
+  assert.deepEqual(
+    standingIn(all, model).map((connector) => connector.kind),
+    ["tracker"],
+  );
+  // Off, it stands in for nothing.
+  assert.deepEqual(
+    offered(all, initConnections()).map((connector) => connector.kind),
     ["jira", "folder"],
   );
 });

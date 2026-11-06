@@ -22,6 +22,7 @@ import { folderDeclaration } from "@oriel/folder";
 import { jiraDeclaration } from "@oriel/jira";
 import { sheetsDeclaration } from "@oriel/sheets";
 import { slackDeclaration } from "@oriel/slack";
+import { trackerDeclaration } from "@oriel/tracker";
 
 // Each under its own kind, which a test checks.
 const declared = {
@@ -29,6 +30,7 @@ const declared = {
   folder: folderDeclaration,
   slack: slackDeclaration,
   sheets: sheetsDeclaration,
+  tracker: trackerDeclaration,
 };
 
 // A kind some source declares.
@@ -77,7 +79,7 @@ function each<T>(
 // Its steps and offer are words and step kinds; their server halves stay
 // here.
 export const connectorViews: readonly ConnectorView[] = sourceKinds.map((kind) => {
-  const { name, inSentence, icon, keysReadAs, columns, specs, connect } = sources[kind];
+  const { name, inSentence, icon, keysReadAs, columns, specs, connect, standIn } = sources[kind];
   return {
     kind,
     name,
@@ -88,6 +90,7 @@ export const connectorViews: readonly ConnectorView[] = sourceKinds.map((kind) =
     writable: specs !== undefined,
     connect: connect ? { steps: connect.steps, offer: connect.offer } : null,
     options: sources[kind].optionFields ?? [],
+    standIn: standIn ?? null,
   };
 });
 

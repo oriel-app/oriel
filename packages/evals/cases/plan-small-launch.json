@@ -1,0 +1,17 @@
+{
+  "id": "plan-small-launch",
+  "split": "train",
+  "kind": 2,
+  "window": { "workstreams": [], "at": "2026-11-06T09:00:00.000Z" },
+  "off": ["jira", "folder"],
+  "prompt": "Draft a small launch plan: one epic and a few stories I can edit",
+  "expect": [
+    {
+      "grader": "creates",
+      "kind": "tracker",
+      "epics": 1,
+      "stories": { "atLeast": 2, "atMost": 10 }
+    },
+    { "grader": "avoids", "text": ["connect Jira", "in Jira", "by hand", "manually"] }
+  ]
+}

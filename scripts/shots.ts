@@ -280,6 +280,15 @@ const sheetsFixScript = [
   "return tabs.length;",
 ].join("\n");
 // A PM's change: acceptance criteria drafted for a few of the region's stories.
+// The first run's plan, drafted into the stand-in tracker while no tracker
+// is connected (decision 0059).
+const launchScript = [
+  'const epic = tracker.createEpic({ summary: "Spring launch", description: "Get the new plans in front of customers by April." });',
+  'tracker.createStory({ summary: "Pricing page", description: "Three tiers, with the yearly discount.", points: 3, epic });',
+  'tracker.createStory({ summary: "Launch email", description: "To everyone on the waitlist.", points: 2, epic });',
+  'tracker.createStory({ summary: "Support macros", description: "Answers to the five questions we expect.", points: 1, epic });',
+  "return epic;",
+].join("\n");
 const criteriaScript = [
   'const stories = (await jira.listItems()).filter((item) => !item.gone && item.issueType === "Story").slice(0, 3);',
   'for (const story of stories) jira.setDescription(story.id, "Acceptance criteria: a person can do it end to end, and a failure says why in plain words.");',
@@ -305,6 +314,13 @@ await show({ read: "jira.listStories", form: "bars", label: "assignee.name", val
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
+  if (/^Draft a small launch plan\b/i.test(input.text))
+    return [
+      { run: launchScript },
+      {
+        text: "Here's a small launch: one epic and three stories in Oriel's tracker. Nothing is made until you approve it.",
+      },
+    ];
   if (/^Draft a change to how Oriel reads the tab at\b/.test(input.text))
     return [
       { run: sheetsFixScript },
@@ -552,6 +568,8 @@ const unconnected = (syn = loadJiraFixture()) =>
     db: ":memory:",
     sources: {
       jira: { mode: "window", fetch: memorySite(syn, instant(new Date()), { account }).fetch },
+      // Its overview offers Jira's card, as before decision 0059.
+      tracker: { mode: "off" },
     },
     agent: (deps) => scripted(deps, planning),
   });
@@ -3514,6 +3532,12 @@ const setupFinished = {
   steps: { ai: "done" as const, work: "done" as const },
 };
 const aiDone = { steps: { ai: "done" as const } };
+// The overview's plan question, asked, and its change set approved.
+const approvedPlan = async (page: Page) => {
+  await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
+  await page.getByRole("button", { name: "Approve and apply" }).click();
+  await page.locator('.change-set[data-status="applied"]').waitFor();
+};
 const toJira = async (page: Page, token = jiraAccount.token) => {
   await page
     .locator(".provider-row", { hasText: "Jira" })
@@ -3739,13 +3763,13 @@ scenes.push(
   {
     name: "setup-jira",
     path: "/setup",
-    make: firstRun({ state: aiDone }),
+    make: firstRun({ state: aiDone, standInOff: true }),
     act: (page) => toJira(page),
   },
   {
     name: "setup-jira-refused",
     path: "/setup",
-    make: firstRun({ state: aiDone }),
+    make: firstRun({ state: aiDone, standInOff: true }),
     refused: 400,
     act: async (page) => {
       await toJira(page, "not-the-one");
@@ -3756,13 +3780,13 @@ scenes.push(
   {
     name: "setup-jira-project",
     path: "/setup",
-    make: firstRun({ state: aiDone }),
+    make: firstRun({ state: aiDone, standInOff: true }),
     act: (page) => toProjects(page),
   },
   {
     name: "setup-work-connected",
     path: "/setup",
-    make: firstRun({ state: aiDone }),
+    make: firstRun({ state: aiDone, standInOff: true }),
     act: async (page) => {
       await useProject(page);
       await page.getByRole("button", { name: "Choose a folder" }).click();
@@ -3772,7 +3796,7 @@ scenes.push(
   {
     name: "setup-reading",
     path: "/setup",
-    make: firstRun({ state: aiDone, search: "held" }),
+    make: firstRun({ state: aiDone, search: "held", standInOff: true }),
     act: async (page) => {
       await useProject(page);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -3783,7 +3807,7 @@ scenes.push(
   {
     name: "setup-sync-failed",
     path: "/setup",
-    make: firstRun({ state: aiDone, search: "fails" }),
+    make: firstRun({ state: aiDone, search: "fails", standInOff: true }),
     // Jira's connect answers why it stopped.
     refused: 400,
     act: async (page) => {
@@ -3800,6 +3824,74 @@ scenes.push(
     path: "/setup",
     make: firstRun({ cli: { signedIn: true }, state: aiDone }),
     act: (page) => page.getByRole("heading", { name: "Welcome back" }).waitFor(),
+  },
+  // While no tracker is connected, the first run starts on the stand-in
+  // tracker (decision 0059): Your work with no Jira step, the overview that
+  // asks for a plan, the plan the window chat drafts into it, approved;
+  // then its panel, its form, and Browse by epic with its issues.
+  {
+    name: "first-run-standin-work",
+    path: "/setup",
+    make: firstRun({ cli: { signedIn: true } }),
+    act: async (page) => {
+      await continueWithClaude(page);
+      await page.locator(".provider-row", { hasText: "Epics and stories" }).waitFor();
+    },
+  },
+  {
+    name: "first-run-standin-overview",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    act: (page) =>
+      page.locator(".ask-question", { hasText: "Draft a small launch plan" }).waitFor(),
+  },
+  {
+    name: "first-run-standin-plan",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    window: true,
+    act: async (page) => {
+      await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
+      await page.getByRole("button", { name: "Approve and apply" }).waitFor();
+    },
+  },
+  {
+    name: "first-run-standin-approved",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    window: true,
+    act: approvedPlan,
+  },
+  {
+    name: "panel-standin",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    act: async (page) => {
+      await approvedPlan(page);
+      await page.goto(new URL("/browse?grouping=epic&item=tracker%3AT-2", page.url()).href);
+      await page.locator(".panel-title", { hasText: "Pricing page" }).waitFor();
+    },
+  },
+  {
+    name: "panel-standin-edit",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    act: async (page) => {
+      await approvedPlan(page);
+      await page.goto(new URL("/browse?grouping=epic&item=tracker%3AT-2", page.url()).href);
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await page.locator(".panel-edit").waitFor();
+    },
+  },
+  {
+    name: "browse-standin",
+    path: "/",
+    make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
+    act: async (page) => {
+      await approvedPlan(page);
+      await page.goto(new URL("/browse?grouping=epic", page.url()).href);
+      await page.locator(".cluster", { hasText: "Spring launch" }).first().waitFor();
+    },
   },
   // After it: the overview's one-time line and its first question, the
   // answer to it, a folder alone, no AI, and Settings with the same rows.
@@ -3823,7 +3915,8 @@ scenes.push(
     name: "first-run-folder-only",
     path: "/",
     make: firstRun({ cli: { signedIn: true }, folder: notes, state: setupFinished }),
-    act: (page) => page.locator(".connect-card").waitFor(),
+    // The stand-in tracker beside it, with no Jira card (decision 0059).
+    act: (page) => page.locator(".first-run-line").waitFor(),
   },
   {
     name: "first-run-no-ai",
@@ -4159,9 +4252,9 @@ async function sheetsPath(): Promise<void> {
   }
 }
 
-// The desktop app's onboarding budget (decision 0038): from the first run's
-// first screen on a fresh data folder to an approved change set, through
-// Jira, on each path a person may start on. Claude Code ready, under five
+// The desktop app's onboarding budget (decisions 0038 and 0059): from the
+// first run's first screen on a fresh data folder to an approved change set,
+// on the stand-in tracker, on each path a person may start on. Claude Code ready, under five
 // minutes; signed out, plus one; missing, with Anthropic's installer, plus
 // three. "Token" shows at most once on each path.
 async function firstRunPaths(): Promise<void> {
@@ -4188,8 +4281,8 @@ async function firstRunPaths(): Promise<void> {
       if (ms > budgets[path] * 60_000)
         problems.push(`first run, ${path}: ${minutes} min, over the budget of ${budgets[path]}`);
       const total = tokens.reduce((sum, [, n]) => sum + n, 0);
-      if (total > 1)
-        problems.push(`first run, ${path}: "token" appears ${total} times, over the budget of 1`);
+      if (total > 0)
+        problems.push(`first run, ${path}: "token" appears ${total} times, where it never may`);
       // The setup has finished, and doesn't come back.
       await page.goto(new URL("/setup", serving.url).href);
       if (new URL(page.url()).pathname !== "/")

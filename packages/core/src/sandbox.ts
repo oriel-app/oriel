@@ -1,5 +1,5 @@
 import type { ActionName } from "./actions.ts";
-import type { ItemId } from "./ids.ts";
+import type { ItemId, SourceKind } from "./ids.ts";
 import type { Log, RunOutcome } from "./run.ts";
 import type { SearchHit } from "./source.ts";
 import type { PreviewTable, ResultFields } from "./block.ts";
@@ -52,6 +52,10 @@ export type CapturedMutation = {
   target: ItemId | NewRef | null;
   ref: NewRef | null;
   args: unknown;
+  // A create's kind, the namespace's that captured it, as two kinds'
+  // catalogues may share an op (decision 0059). Absent with a target, which
+  // says it, and on a create from before, whose op only one catalogue has.
+  into?: SourceKind;
 };
 
 // One of Oriel's own actions a run asked for (decision 0024), its input

@@ -114,6 +114,15 @@ const expectations = {
     grader: literal("intents"),
     calls: atLeastOne(object({ action: text, items: optional(atLeastOne(itemName)) })),
   }),
+  // A plan from nothing: the run's mutations are creates into `kind` alone,
+  // `epics` epics and from `stories.atLeast` to `stories.atMost` stories,
+  // each story in an epic the run created, and nothing else.
+  creates: object({
+    grader: literal("creates"),
+    kind: text,
+    epics: whole,
+    stories: object({ atLeast: whole, atMost: whole }),
+  }),
   // The mutations the run captured, in any order: one of each `op` on
   // `item`, whose text arguments hold every one of `text`, ignoring case;
   // and no other, so a note that should be a comment can't also rewrite a
@@ -280,6 +289,10 @@ const evalCaseShape = object({
   // How many of each fixture's source edits are applied before the case
   // runs, by kind, such as `{ "jira": 3 }`. Absent means none.
   edited: optional(record(whole)),
+  // The kinds the case's window hasn't connected, as a fresh first run's has
+  // none: their fixtures don't connect, even ones every case connects, and a
+  // stand-in for them is on (decision 0059). Absent: none.
+  off: optional(atLeastOne(text)),
   // Eight weeks of past in the change log (past-weeks.ts), for history().
   past: optional(literal(true)),
   // Why the case can't run yet, such as a golden diff the maintainer hasn't
@@ -355,6 +368,8 @@ function rules(evalCase: EvalCase): Issue[] {
     found.push({ path: "$.expect", message: "intents and zero mutations contradict" });
   if (graders.includes("writes") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "writes and zero mutations contradict" });
+  if (graders.includes("creates") && graders.includes("zero-mutations"))
+    found.push({ path: "$.expect", message: "creates and zero mutations contradict" });
   if (graders.includes("drafts") && graders.includes("zero-mutations"))
     found.push({ path: "$.expect", message: "drafts and zero mutations contradict" });
   if (graders.includes("drafts") && evalCase.unfit === undefined)
@@ -405,6 +420,7 @@ export const capturedMutation: Validator<CapturedMutation> = object({
   target: nullable(mutationTarget),
   ref: nullable(refine(string, isNewRef, "expected new:N")),
   args: unknown,
+  into: optional(text),
 });
 export const goldenDiff = object({ mutations: array(capturedMutation) });
 
@@ -482,6 +498,9 @@ export function holding(
   evalCase.window?.workstreams.forEach((workstream, i) => {
     if (!regionNamed(fixtures, workstream.region))
       problems.push(`$.window.workstreams[${i}].region: no fixture region by that name`);
+  });
+  (evalCase.off ?? []).forEach((kind, i) => {
+    if (!fixtures.has(kind)) problems.push(`$.off[${i}]: no ${kind} fixture is loaded`);
   });
   for (const [kind, edited] of Object.entries(evalCase.edited ?? {})) {
     const fixture = fixtures.get(kind);

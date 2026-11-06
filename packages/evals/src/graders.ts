@@ -182,6 +182,43 @@ export function gradeExactDiff(
   return { grader: "exact-diff", pass: false, detail: parts.filter(Boolean).join(". ") };
 }
 
+// A plan from nothing (decision 0059's stand-in): every mutation a create
+// into `kind`, `epics` epics and between `stories.atLeast` and
+// `stories.atMost` stories, each in an epic the run created.
+export function gradeCreates(
+  expected: { kind: string; epics: number; stories: { atLeast: number; atMost: number } },
+  actual: readonly CapturedMutation[],
+): Grade {
+  const problems: string[] = [];
+  const epics = actual.filter((m) => m.op === "createEpic");
+  const stories = actual.filter((m) => m.op === "createStory");
+  const others = actual.filter((m) => m.op !== "createEpic" && m.op !== "createStory");
+  if (others.length) problems.push(`not creates: ${others.map(describer(actual)).join("; ")}`);
+  const elsewhere = actual.filter((m) => m.into !== expected.kind);
+  if (elsewhere.length)
+    problems.push(
+      `${elsewhere.length} not into ${expected.kind}: ${elsewhere.map((m) => m.into ?? "unsaid").join(", ")}`,
+    );
+  if (epics.length !== expected.epics)
+    problems.push(`${epics.length} epics, not ${expected.epics}`);
+  const { atLeast, atMost } = expected.stories;
+  if (stories.length < atLeast || stories.length > atMost)
+    problems.push(`${stories.length} stories, not ${atLeast} to ${atMost}`);
+  const made = new Set(epics.flatMap((m) => (m.ref ? [m.ref] : [])));
+  const loose = stories.filter((m) => {
+    const epic = (m.args as { epic?: unknown }).epic;
+    return typeof epic !== "string" || !made.has(epic as never);
+  });
+  if (loose.length) problems.push(`${loose.length} stories in no epic this run made`);
+  return problems.length
+    ? { grader: "creates", pass: false, detail: problems.join(". ") }
+    : {
+        grader: "creates",
+        pass: true,
+        detail: `${epics.length} epics and ${stories.length} stories into ${expected.kind}`,
+      };
+}
+
 // One of each expected write, in any order, and nothing else: each its op on
 // its item, its arguments' text holding every one of `text`, ignoring case.
 export function gradeWrites(

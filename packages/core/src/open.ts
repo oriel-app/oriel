@@ -23,6 +23,38 @@ export type ToOpen = {
   secret: string | null;
 };
 
+// Oriel's own store of a stand-in's items (decision 0059), which the
+// composition root lends the connector that declares a stand-in: their index
+// rows, which are their source of truth, as nothing syncs them, and what each
+// keeps beyond its row.
+export type OwnItems = {
+  // Its live records, as the index has them now.
+  records(): readonly IndexRecord[];
+  // What a live item keeps beyond its row, as its connector wrote it, or null.
+  content(stableId: string): unknown;
+  // Every key its items have had, gone ones too, so none is given twice.
+  keys(): readonly string[];
+  // Lands `records`, each with its text for search and its content, and
+  // takes `gone` away, in one transaction with their change log entries,
+  // once no sync is running: the overview, Browse and search see it at once.
+  // `what` is what the write was, for telemetry, never its words: who made
+  // it, whether it created, edited or deleted the item, and the fields it
+  // set, by name.
+  write(change: {
+    records: readonly IndexRecord[];
+    texts: Readonly<Record<string, string>>;
+    contents: Readonly<Record<string, unknown>>;
+    gone: readonly string[];
+    what: OwnWrite;
+  }): Promise<void>;
+};
+
+export type OwnWrite = {
+  by: "person" | "change-set";
+  change: "created" | "edited" | "deleted";
+  fields: readonly string[];
+};
+
 // What the composition root lends a connector to open a connection with.
 export type OpenVia = {
   // How requests reach the source: the global fetch unless given, as tests
@@ -39,6 +71,9 @@ export type OpenVia = {
   // Keeps the connection's secret anew, as a refreshed token is, for its
   // next start. Absent for a flag's connection, which keeps none.
   keep?(secret: string): Promise<void>;
+  // Oriel's own store of its items, for a stand-in's connection; absent
+  // for any other.
+  own?: OwnItems;
 };
 
 // Why a new connection waits, as one of a connector with a preview does
@@ -91,6 +126,17 @@ export type Opened<C = unknown, R = unknown, W = unknown> = {
   // How its change sets read current values while it has no writer, so they
   // can still be shown.
   fields?: FieldReader;
+  // A person's own edit of one of its items in its panel, applied at once,
+  // for a stand-in (decision 0059): never the agent's, whose writes are
+  // change sets. It sets `values`, by the names its panel's form gives,
+  // which it checks, and gives what they were before, which its Undo sets
+  // back, and what they are now. It throws a RangeError for a field it
+  // doesn't know or a value it can't take, and for an item it doesn't have.
+  // Absent: its items change only through change sets.
+  edit?(
+    id: ItemId,
+    values: Readonly<Record<string, unknown>>,
+  ): Promise<{ before: Record<string, unknown>; after: Record<string, unknown> }>;
   // A fixture frozen as of this instant: the window is built for it, so its
   // "stuck" rules come out the same on every run, and nothing syncs it but
   // the start and a Sync asked for.

@@ -4,10 +4,11 @@
 // written, line by line, or in the blocks its source's side read it into.
 // Nothing here sets HTML.
 import { Fragment } from "preact";
-import { useContext, useEffect, useRef } from "preact/hooks";
+import { useContext, useEffect, useId, useRef } from "preact/hooks";
 import { clickTo } from "./nav.ts";
 import { behind, type CurrentWorkstream, daysOf, type PanelModel, paragraphsOf } from "./panel.ts";
 import { addedText, addOf, type PanelAddMsg, type PanelAdds, undoable } from "./panel-adds.ts";
+import { type EditForm, type PanelEditMsg, type PanelEdits, textOf } from "./panel-edits.ts";
 import type { Connectors } from "./connectors.ts";
 import {
   ConnectorsContext,
@@ -34,6 +35,8 @@ export function ItemPanel(props: {
   workstream: CurrentWorkstream | null;
   // The window's adds, among them any of this item.
   adds: PanelAdds;
+  // A stand-in's item's form, if open, and its saved edits (decision 0059).
+  edits: PanelEdits;
   dispatch: Dispatch;
 }) {
   const { model, place, dispatch } = props;
@@ -132,7 +135,7 @@ export function ItemPanel(props: {
           <h2 id="item-panel-title" class="panel-title" tabIndex={-1} ref={heading}>
             {shown?.title ?? (model.status === "failed" ? "Couldn't read this item" : "Reading…")}
           </h2>
-          {shown && (href || props.workstream) && (
+          {shown && (href || props.workstream || editable(shown)) && (
             <div class="panel-actions">
               {href && (
                 <a
@@ -145,6 +148,24 @@ export function ItemPanel(props: {
                 >
                   Open in {shown.source}
                 </a>
+              )}
+              {editable(shown) && props.edits.form?.item !== shown.id && (
+                <button
+                  type="button"
+                  class="button"
+                  onClick={() =>
+                    dispatch({
+                      type: "panelEdit",
+                      msg: {
+                        type: "editClicked",
+                        item: shown.id,
+                        edit: editable(shown) ?? { fields: [] },
+                      },
+                    })
+                  }
+                >
+                  Edit
+                </button>
               )}
               {props.workstream && (
                 <AddTo
@@ -185,7 +206,15 @@ export function ItemPanel(props: {
             )}
           </p>
         )}
-        {shown && <PanelBody view={shown} />}
+        {shown && props.edits.form?.item === shown.id ? (
+          <EditFields
+            form={props.edits.form}
+            name={keyLabel(shown, connectors)}
+            send={(msg) => dispatch({ type: "panelEdit", msg })}
+          />
+        ) : (
+          shown && <PanelBody view={shown} />
+        )}
       </Fragment>
     </aside>
   );
@@ -270,6 +299,100 @@ function StepIcon({ up }: { up?: boolean }) {
     <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <path d={up ? "M4.5 9.75L8 6.25l3.5 3.5" : "M4.5 6.25L8 9.75l3.5-3.5"} />
     </svg>
+  );
+}
+
+// The form a stand-in's item is edited in, if its read gives one.
+const editable = (view: ItemPanelView) => (view.read.status === "ok" ? view.read.edit : undefined);
+
+// A stand-in's item's form (decision 0059): each field as its source names
+// it, saved at once, with an Undo in the window's stack.
+function EditFields(props: { form: EditForm; name: string; send(msg: PanelEditMsg): void }) {
+  const { form, send } = props;
+  const id = useId();
+  const typed = (name: string) => (text: string) => send({ type: "fieldTyped", name, text });
+  return (
+    <form
+      class="panel-edit"
+      aria-label={`Edit ${props.name}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send({ type: "saveClicked", key: props.name });
+      }}
+    >
+      {form.fields.map((field) => {
+        const value = form.typed[field.name] ?? textOf(field);
+        const input = `${id}-${field.name}`;
+        const changed = (event: Event) =>
+          typed(field.name)((event.currentTarget as HTMLInputElement).value);
+        return (
+          <div class="panel-edit-field" key={field.name}>
+            <label class="panel-edit-label" for={input}>
+              {field.label}
+            </label>
+            {field.kind === "text" ? (
+              <textarea
+                id={input}
+                class="panel-edit-input panel-edit-text"
+                rows={6}
+                value={value}
+                disabled={form.saving}
+                onInput={changed}
+              />
+            ) : field.kind === "choice" ? (
+              <select
+                id={input}
+                class="panel-edit-input"
+                value={value}
+                disabled={form.saving}
+                onChange={changed}
+              >
+                {field.choices.map((choice) => (
+                  <option key={choice} value={choice}>
+                    {choice}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={input}
+                class="panel-edit-input"
+                type="text"
+                inputMode={field.kind === "number" ? "decimal" : "text"}
+                placeholder={
+                  field.kind === "number" || field.kind === "person"
+                    ? field.empty
+                    : field.kind === "list"
+                      ? "Separate them with commas"
+                      : undefined
+                }
+                value={value}
+                disabled={form.saving}
+                onInput={changed}
+              />
+            )}
+          </div>
+        );
+      })}
+      {form.problem !== null && (
+        <p class="panel-problem" role="alert">
+          {form.problem}
+        </p>
+      )}
+      <div class="panel-edit-actions">
+        <button type="submit" class="button primary" disabled={form.saving}>
+          {form.saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          class="button"
+          disabled={form.saving}
+          onClick={() => send({ type: "cancelClicked" })}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

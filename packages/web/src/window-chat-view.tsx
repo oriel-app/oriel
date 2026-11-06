@@ -21,6 +21,9 @@ export function AskBar(props: {
   firstRun?: boolean;
   // No AI is set up, so the bar says so and opens Settings (decision 0038).
   noAi?: boolean;
+  // A stand-in is on, which a plan may be drafted into (decision
+  // 0059).
+  plans?: boolean;
   dispatch: Dispatch;
 }) {
   const { chat, view, ongoing, dispatch } = props;
@@ -46,7 +49,7 @@ export function AskBar(props: {
         </div>
       </section>
     );
-  const questions = view ? questionsFrom(view, props.firstRun === true) : [];
+  const questions = view ? questionsFrom(view, props.firstRun === true, props.plans === true) : [];
   return (
     <section class="ask" aria-label="Ask about your window">
       <ChatInput

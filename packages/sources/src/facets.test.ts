@@ -20,6 +20,7 @@ test("every source declares its facets beyond the common ones, each with a label
         ["estimate", "Estimate"],
         ["status", "Status"],
       ],
+      tracker: [["estimate", "Estimate"]],
     },
   );
 });

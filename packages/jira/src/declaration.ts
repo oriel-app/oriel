@@ -20,12 +20,15 @@ export const jiraDeclaration = {
   facets: issueDeclaredFacets,
   overview: issueOverview,
   // Unconnected, it has nowhere to create a story with no epic, and no
-  // board's estimates to go by.
-  namespace: (records, estimates: Estimates | undefined) =>
-    jiraNamespace(
+  // board's estimates to go by, so a region with no items yet gets none of
+  // its creates: what it can't apply, the agent can't propose.
+  namespace: (records, estimates: Estimates | undefined) => {
+    const spec = jiraNamespace(
       new Map(records.map((record) => [record.id, record.facets.kind])),
       estimates ?? { none: new Set(), home: null },
-    ),
+    );
+    return estimates === undefined ? { ...spec, blank: false } : spec;
+  },
   specs: jiraSpecs,
   // Its item doc and its namespace: the rules on estimates, epics and the
   // ops' arguments.

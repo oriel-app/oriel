@@ -326,6 +326,7 @@ function world({ running = false, applying = false } = {}) {
       applying: () => applying,
     }),
     applied: () => assert.fail("nothing applies here"),
+    edit: () => assert.fail("nothing is edited here"),
     sources: unreached("sources"),
     markSeen: () => assert.fail("the overview isn't left here"),
     drafted: () => null,

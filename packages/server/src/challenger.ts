@@ -458,6 +458,7 @@ export function challenger(deps: ChallengerDeps) {
                 op: m.op,
                 target: m.target,
                 ref: m.ref,
+                ...(m.into === undefined ? {} : { into: m.into }),
                 args: m.args,
                 preview: null,
                 status: "pending",

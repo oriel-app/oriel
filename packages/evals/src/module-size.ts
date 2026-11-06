@@ -42,7 +42,13 @@ export async function moduleSize(
   kind: string,
   { declaration, loaded }: Fixture,
 ): Promise<ModuleSize> {
-  const connection = await loaded.connect(0);
+  // A fixture with no items before its edits, as a fresh stand-in's
+  // (decision 0059), is measured after them.
+  const first = await loaded.connect(0);
+  const connection =
+    first.records.length > 0 || loaded.edits === 0
+      ? first
+      : (first.close(), await loaded.connect(loaded.edits));
   try {
     const namespace = declaration.namespace?.(connection.records, connection.context as never);
     const namespaces: Namespaces = namespace ? { [kind]: namespace } : {};

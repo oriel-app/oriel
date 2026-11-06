@@ -67,8 +67,22 @@ export type PanelProse =
 
 // A source's view of an item: its blocks, and a title when the item's own
 // would only repeat them, as a message's first line repeats the message. Null
-// keeps the item's title.
-export type PanelView = { title: string | null; blocks: PanelBlock[] };
+// keeps the item's title. `edit`: the form a person edits it in, in place,
+// for a stand-in's item (decision 0059).
+export type PanelView = { title: string | null; blocks: PanelBlock[]; edit?: PanelEdit };
+
+// A person's own edit of an item, as a form of fields, each by the name its
+// source's edit takes it under, with the value it has now. A line or text is
+// a string; a choice one of `choices`; a number a number, or null for none
+// when `empty` says what none is; a list strings, one a line.
+export type PanelEdit = { fields: PanelEditField[] };
+export type PanelEditField = { name: string; label: string } & (
+  | { kind: "line" | "text"; value: string }
+  | { kind: "choice"; value: string; choices: string[] }
+  | { kind: "number"; value: number | null; empty: string }
+  | { kind: "person"; value: string | null; empty: string }
+  | { kind: "list"; value: string[] }
+);
 
 // A source's view of an item from what its read returned (`content`, checked
 // by the adapter), or null when the content isn't in a shape it can read.

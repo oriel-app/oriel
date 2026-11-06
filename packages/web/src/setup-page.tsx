@@ -13,6 +13,7 @@ import {
   folderStep,
   formOf,
   offered,
+  standingIn,
   openOf,
   stepOf,
 } from "./connections.ts";
@@ -355,9 +356,12 @@ function OtherWays(props: {
 // Where nothing changes until the person approves it, as each source the
 // first run offers says it, joined with "or".
 const changesIn = (model: Model) =>
-  offered(model.connectors)
-    .map((connector) => connector.connect?.offer.changes)
-    .join(" or ");
+  [
+    ...standingIn(model.connectors, model.connections).map(({ standIn }) => standIn.offer.changes),
+    ...offered(model.connectors, model.connections).map(
+      (connector) => connector.connect?.offer.changes,
+    ),
+  ].join(" or ");
 
 // A source as a row: its mark, name and what it brings, its state, and the
 // one thing to do next.
@@ -391,6 +395,15 @@ function SourceRow(props: {
     </li>
   );
 }
+
+// A stand-in's, which is the person's already (decision 0059).
+const ready = (text: string) => (
+  <span class="provider-status" data-connected>
+    <span class="provider-mark" aria-hidden="true" />
+    <span class="provider-state">Ready</span>
+    <span>· {text}</span>
+  </span>
+);
 
 const connected = (text: string) => (
   <span class="provider-status" data-connected>
@@ -427,7 +440,9 @@ function sourceOf(model: Model, kind: string) {
 type Source = NonNullable<ReturnType<typeof sourceOf>>;
 
 const sources = (model: Model): Source[] =>
-  offered(model.connectors).flatMap((connector) => sourceOf(model, connector.kind) ?? []);
+  offered(model.connectors, model.connections).flatMap(
+    (connector) => sourceOf(model, connector.kind) ?? [],
+  );
 
 function YourWork(props: {
   model: Model;
@@ -440,9 +455,14 @@ function YourWork(props: {
   const sendConnections = (msg: ConnectionsMsg) => dispatch({ type: "connections", msg });
   const reading = setup.view?.firstRun?.reading ?? null;
   const all = sources(model);
-  const anything = all.some(
-    (source) => source.state === "read" || (source.state === "reading" && source.chooses === null),
-  );
+  // A stand-in on is the person's work already (decision 0059).
+  const standing = standingIn(model.connectors, model.connections);
+  const anything =
+    standing.length > 0 ||
+    all.some(
+      (source) =>
+        source.state === "read" || (source.state === "reading" && source.chooses === null),
+    );
   const ai = setup.view?.firstRun?.steps.ai;
   return (
     <>
@@ -455,6 +475,16 @@ function YourWork(props: {
           : `Oriel shows it all in one place and keeps it on this Mac. Only what a question needs goes to your AI. Nothing changes in ${changesIn(model)} until you approve it.`}
       </p>
       <ul class="provider-rows setup-rows">
+        {standing.map(({ kind, standIn: { offer } }) => (
+          <SourceRow
+            key={kind}
+            mark={offer.mark}
+            name={offer.title}
+            about={offer.about}
+            state={ready(offer.ready)}
+            side={null}
+          />
+        ))}
         {all.map((source) => {
           const { connector, offer, form, chooses, open, state, signsIn, reviews } = source;
           const unavailable = model.connections.view?.refused[connector.kind];
@@ -701,6 +731,7 @@ function Reading(props: {
   const { model, dispatch, send, show } = props;
   const reading = model.setup.view?.firstRun?.reading ?? null;
   const all = sources(model).filter((source) => source.state !== null);
+  const standing = standingIn(model.connectors, model.connections);
   const failed = all.filter((source) => source.state === "failed");
   const ready = all.filter((source) => source.state === "read");
   const done = (
@@ -714,6 +745,16 @@ function Reading(props: {
       <h1 class="setup-title">Reading your work</h1>
       <p class="setup-lede">Usually under a minute. Oriel shows your work when it's done.</p>
       <ul class="provider-rows setup-rows">
+        {standing.map(({ kind, standIn: { offer } }) => (
+          <SourceRow
+            key={kind}
+            mark={offer.mark}
+            name={offer.title}
+            about={offer.about}
+            state={done}
+            side={null}
+          />
+        ))}
         {all.map((source) => {
           const { connector, offer, form, open, state, picks } = source;
           // One that picks is named with what it picked; another, by what it

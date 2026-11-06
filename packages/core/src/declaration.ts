@@ -1,6 +1,7 @@
 import type { PreviewTable } from "./block.ts";
 import type { DeclaredFacets } from "./change-log.ts";
 import type { ConnectOf, LiveOf, OptionField, PreviewAsk, ReviewOf } from "./connect.ts";
+import type { StandIn } from "./connector-view.ts";
 import type { Presentation } from "./connector-view.ts";
 import type { SourceFixture } from "./fixture.ts";
 import type { SourceKind } from "./ids.ts";
@@ -79,6 +80,13 @@ export type SourceDeclaration<C = never, R = never, W = never> = Presentation & 
   connect?: ConnectOf;
   // How a flag makes a live connection of it under `pnpm dev`, from `.env`.
   live?: LiveOf;
+  // A stand-in's (decision 0059): the kinds whose connection turns it off,
+  // and how the window offers it while it's on, in place of them, as a
+  // connector's `connect.offer` does. It is on while none of them is
+  // connected, opened over Oriel's own store of its items (`OpenVia.own`),
+  // whose index rows are their source of truth, so nothing syncs it; while
+  // one is, nothing of it shows, and its items stay, for when it's on again.
+  standIn?: StandIn;
   // Its synthetic data, which tests, evals and the server's fixture mode
   // connect to. Its connection gives the context its namespace takes; one
   // with no namespace, anything.

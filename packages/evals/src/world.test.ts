@@ -168,3 +168,42 @@ test("a world with no folder holds no files", async () => {
     /no folder fixture/,
   );
 });
+
+test("with Jira not connected, the stand-in tracker is on, offering the window chat its creates; with Jira, nothing of it", async (t) => {
+  const all = loadFixtures({
+    jira: sources.jira,
+    folder: sources.folder,
+    tracker: sources.tracker,
+  });
+  const at = "2026-11-06T09:00:00.000Z" as const;
+  const fresh = await buildWorld({
+    fixtures: all,
+    region: null,
+    items: [],
+    edited: {},
+    window: { workstreams: [], now: at as never },
+    off: ["jira", "folder"],
+  });
+  t.after(() => fresh.close());
+  assert.deepEqual(Object.keys(fresh.namespaces), ["tracker"]);
+  const { dts } = bindingsFor(fresh.region, { reader: fresh.reader, namespaces: fresh.namespaces });
+  assert.match(dts, /declare const tracker: \{/);
+  assert.match(dts, /createEpic\(epic: /);
+  const jira = await buildWorld({
+    fixtures: all,
+    region: null,
+    items: [],
+    edited: {},
+    window: { workstreams: [], now: at as never },
+  });
+  t.after(() => jira.close());
+  assert.ok(!("tracker" in jira.namespaces));
+  assert.doesNotMatch(
+    bindingsFor(jira.region, { reader: jira.reader, namespaces: jira.namespaces }).dts,
+    /tracker/,
+  );
+  await assert.rejects(
+    buildWorld({ fixtures: all, region: null, items: ["tracker:T-2"], edited: { tracker: 1 } }),
+    /doesn't connect tracker/,
+  );
+});

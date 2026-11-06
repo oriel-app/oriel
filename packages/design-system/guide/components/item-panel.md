@@ -27,7 +27,7 @@ There is one panel. It belongs to the shell (`div.shell[data-panel]`), not to a 
 
 - Not for anything that isn't an item. A thread, a workstream or a change set is a page. The window chat has its own panel-shaped surface (`.window-chat`), which the item panel covers while it is open.
 - Not as a second dialog. It doesn't trap focus and doesn't dim the page. A question that must be answered first is a [confirm](/components/confirm).
-- Not for editing the item. The panel reads; changes to an item go through a change set in a thread.
+- Not for editing the item. The panel reads; changes to an item go through a change set in a thread. A stand-in's item is the one exception, edited in place in its [form](/components/stand-in-panel).
 - Don't nest a list of items in it that opens items in it. A moved item's new key is a link that replaces what the panel shows, which is fine; a list of twenty is Browse's job.
 
 ## Anatomy and variants

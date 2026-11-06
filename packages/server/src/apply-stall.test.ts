@@ -67,6 +67,7 @@ function world() {
     turns: unreached<ActionDeps["turns"]>("turns"),
     changeSets,
     applied: async () => {},
+    edit: () => assert.fail("nothing is edited here"),
     sources: unreached("sources"),
     markSeen: () => assert.fail("the overview isn't left here"),
     drafted: () => null,

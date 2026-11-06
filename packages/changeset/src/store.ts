@@ -19,6 +19,7 @@ import {
   object,
   record,
   refine,
+  type SourceKind,
   string,
   type Ulid,
   union,
@@ -67,6 +68,7 @@ const mutationRow = object({
   op: string,
   target: nullable(targetValue),
   ref: nullable(newRefValue),
+  create_kind: nullable(string),
   args: string,
   preview: nullable(string),
   status: union(literal("pending"), literal("applied"), literal("failed")),
@@ -119,6 +121,7 @@ export type NewMutation = {
   op: string;
   target: ItemId | NewRef | null;
   ref: NewRef | null;
+  into?: SourceKind;
   args: unknown;
   reverts: Ulid | null;
 };
@@ -132,12 +135,12 @@ export function store(db: DatabaseSync) {
     "select id, workspace_id, thread_id, run_id, revert_of, created_at, completed_at from change_sets where id = ?",
   );
   const selectMutations = db.prepare(`
-    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts,
-      version
+    select id, change_set_id, seq, op, target, ref, create_kind, args, preview, status, applied, error,
+      reverts, version
     from mutations where change_set_id = ? order by seq`);
   const selectMutation = db.prepare(`
-    select id, change_set_id, seq, op, target, ref, args, preview, status, applied, error, reverts,
-      version
+    select id, change_set_id, seq, op, target, ref, create_kind, args, preview, status, applied, error,
+      reverts, version
     from mutations where id = ?`);
   const selectLatestDecision = db.prepare(`
     select id, kind, via, by_name, hash, at, undone_at from decisions
@@ -180,8 +183,8 @@ export function store(db: DatabaseSync) {
     insert into change_sets (id, workspace_id, thread_id, run_id, revert_of, created_at)
     values (?, ?, ?, ?, ?, ?)`);
   const insertMutation = db.prepare(`
-    insert into mutations (id, workspace_id, change_set_id, seq, op, target, ref, args, status, reverts)
-    values (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`);
+    insert into mutations (id, workspace_id, change_set_id, seq, op, target, ref, create_kind, args, status, reverts)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`);
   // Every write to a mutation row moves its version on; the conditional ones
   // write only over the version the caller read.
   const updateArgs = db.prepare(`
@@ -253,6 +256,7 @@ export function store(db: DatabaseSync) {
       op: row.op,
       target: row.target,
       ref: row.ref,
+      ...(row.create_kind === null ? {} : { into: row.create_kind }),
       args: JSON.parse(row.args),
       preview:
         row.preview === null ? null : json(record(unknown), row.preview, "mutations.preview"),
@@ -394,6 +398,7 @@ export function store(db: DatabaseSync) {
         m.op,
         m.target,
         m.ref,
+        m.into ?? null,
         JSON.stringify(m.args),
         m.reverts,
       );

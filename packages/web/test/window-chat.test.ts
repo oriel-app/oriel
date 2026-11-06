@@ -113,3 +113,16 @@ test("a window chat waits on the user only for a held message or a change set, n
   assert.equal(waitingOn({ ...answered, windowChat: true }), null);
   assert.equal(waitingOn({ ...answered, windowChat: true, held: true }), "held");
 });
+
+test("with a stand-in on and nothing in the window yet, the one question to start from asks for a plan", () => {
+  const empty = overviewView();
+  assert.deepEqual(questionsFrom(empty, true, true), [
+    {
+      kind: "plan",
+      label: "Draft a small launch plan: one epic and a few stories I can edit",
+      text: "Draft a small launch plan: one epic and a few stories I can edit",
+    },
+  ]);
+  // Off, an empty window offers none.
+  assert.deepEqual(questionsFrom(empty, true), []);
+});
