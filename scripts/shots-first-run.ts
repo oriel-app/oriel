@@ -449,7 +449,7 @@ export async function timedPath(
   await page.waitForURL((at) => at.pathname === "/");
   await page.locator(".first-run-line").waitFor();
   await count("overview");
-  await page.locator(".ask-question", { hasText: "Plan a small launch" }).click();
+  await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
   await page.getByRole("button", { name: "Approve and apply" }).waitFor();
   await count("change set");
   await page.getByRole("button", { name: "Approve and apply" }).click();

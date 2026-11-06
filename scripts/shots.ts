@@ -314,7 +314,7 @@ await show({ read: "jira.listStories", form: "bars", label: "assignee.name", val
 
 const planning = (input: TurnInput): Step[] => {
   if (/^which threads touched\b/i.test(input.text)) return [{ text: linkedReply }];
-  if (/^Plan a small launch\b/i.test(input.text))
+  if (/^Draft a small launch plan\b/i.test(input.text))
     return [
       { run: launchScript },
       {
@@ -3534,7 +3534,7 @@ const setupFinished = {
 const aiDone = { steps: { ai: "done" as const } };
 // The overview's plan question, asked, and its change set approved.
 const approvedPlan = async (page: Page) => {
-  await page.locator(".ask-question", { hasText: "Plan a small launch" }).click();
+  await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
   await page.getByRole("button", { name: "Approve and apply" }).click();
   await page.locator('.change-set[data-status="applied"]').waitFor();
 };
@@ -3842,7 +3842,8 @@ scenes.push(
     name: "first-run-standin-overview",
     path: "/",
     make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
-    act: (page) => page.locator(".ask-question", { hasText: "Plan a small launch" }).waitFor(),
+    act: (page) =>
+      page.locator(".ask-question", { hasText: "Draft a small launch plan" }).waitFor(),
   },
   {
     name: "first-run-standin-plan",
@@ -3850,7 +3851,7 @@ scenes.push(
     make: firstRun({ cli: { signedIn: true }, state: setupFinished }),
     window: true,
     act: async (page) => {
-      await page.locator(".ask-question", { hasText: "Plan a small launch" }).click();
+      await page.locator(".ask-question", { hasText: "Draft a small launch plan" }).click();
       await page.getByRole("button", { name: "Approve and apply" }).waitFor();
     },
   },

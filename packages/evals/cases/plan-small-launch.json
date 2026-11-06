@@ -4,7 +4,7 @@
   "kind": 2,
   "window": { "workstreams": [], "at": "2026-11-06T09:00:00.000Z" },
   "off": ["jira", "folder"],
-  "prompt": "Plan a small launch for me",
+  "prompt": "Draft a small launch plan: one epic and a few stories I can edit",
   "expect": [
     {
       "grader": "creates",

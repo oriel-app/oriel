@@ -40,7 +40,7 @@ async function fresh(t: TestContext, db?: string) {
   const it = await testApp(t, {
     ...(db ? { db } : {}),
     connect: {},
-    plan: (input) => (input.text.startsWith("Plan") ? [{ run: "plan" }] : [{ text: "Hello." }]),
+    plan: (input) => (input.text.startsWith("Draft") ? [{ run: "plan" }] : [{ text: "Hello." }]),
     scripts: { plan },
   });
   const browse = async () =>
@@ -71,7 +71,7 @@ async function fresh(t: TestContext, db?: string) {
 
 test("with no tracker connected, the window chat's plan lands in the stand-in once approved, and every view sees it at once", async (t) => {
   const it = await fresh(t);
-  const view = await it.ask("Plan a small launch for me");
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set", "one change set");
   const { status, diff } = await it.approve(entry.changeSetId);
@@ -113,7 +113,7 @@ test("with no tracker connected, the window chat's plan lands in the stand-in on
 
 test("a person's edit of a stand-in issue applies at once, and its Undo puts back what it replaced", async (t) => {
   const it = await fresh(t);
-  const view = await it.ask("Plan a small launch for me");
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
@@ -152,7 +152,7 @@ test("the stand-in is on only while no tracker is connected, and keeps its issue
   t.after(() => rmSync(top, { recursive: true, force: true }));
   const path = join(top, "window.db");
   const it = await fresh(t, path);
-  const view = await it.ask("Plan a small launch for me");
+  const view = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
   const entry = view.entries.find((each) => each.kind === "change-set");
   assert.ok(entry?.kind === "change-set");
   await it.approve(entry.changeSetId);
@@ -172,7 +172,7 @@ test("the stand-in is on only while no tracker is connected, and keeps its issue
   const read = json<{ read: { status: string } }>(await it.get("/api/items/tracker%3AT-2"));
   assert.notEqual(read.read.status, "ok");
   // A blank region's module offers no tracker creates: what's off, the agent can't propose.
-  const blank = await it.ask("Plan a small launch for me");
+  const blank = await it.ask("Draft a small launch plan: one epic and a few stories I can edit");
   assert.ok(
     !blank.entries.some((each) => each.kind === "change-set"),
     "a fresh window chat's creates have nowhere to go",

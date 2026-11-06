@@ -57,12 +57,13 @@ export const loadWindowChat: Effect = get("/api/window-chat", { kind: "windowCha
 // what was asked (decision 0038). Its name shows only on the button: the
 // message is fixed wording and the row's ID, never its title. With `plans`,
 // a stand-in is on (decision 0059), and while the window holds
-// nothing yet, its one question is a plan for the agent to draft there.
+// nothing yet, its one question asks for a plan to draft there, in words
+// that ask for the draft itself, so one click ends in a change set to
+// approve rather than questions back.
+export const planQuestion = "Draft a small launch plan: one epic and a few stories I can edit";
 export function questionsFrom(view: OverviewView, firstRun = false, plans = false): Question[] {
   if (plans && view.workstreams.length === 0 && view.candidates.total === 0)
-    return [
-      { kind: "plan", label: "Plan a small launch for me", text: "Plan a small launch for me" },
-    ];
+    return [{ kind: "plan", label: planQuestion, text: planQuestion }];
   const headline = (id: string) => view.headlines.find((line) => line.id === id)?.subject;
   const moved = headline("moved");
   const quiet = headline("quiet");
