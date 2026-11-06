@@ -3398,6 +3398,32 @@ a.replies:hover {
   border-bottom: 0;
 }
 
+/* One whose apply ended on screen closes to its head after a beat, then
+   folds there (`landing` in thread.ts, whose closeMs matches). */
+.change-set[data-closing] {
+  interpolate-size: allow-keywords;
+}
+
+.change-set[data-closing] > :not(.change-set-head) {
+  overflow: hidden;
+  animation: change-set-close var(--duration-move) var(--ease-out) forwards;
+}
+
+.change-set[data-closing] .change-set-head {
+  border-bottom-color: transparent;
+  transition: border-color var(--duration-move) var(--ease-out);
+}
+
+@keyframes change-set-close {
+  to {
+    height: 0;
+    margin-block: 0;
+    padding-block: 0;
+    border-width: 0;
+    opacity: 0;
+  }
+}
+
 /* A change set's second look (decision 0054): set apart from the
    diff on a sunk surface, in neutral tones only. It never wears the done,
    accent or danger colours, so nothing in it reads as a pass or a block. */
@@ -7354,6 +7380,14 @@ a.button.primary {
 
   .bead-layer[data-gone] {
     animation-name: bead-fade;
+  }
+
+  .change-set[data-closing] > :not(.change-set-head) {
+    animation: none;
+  }
+
+  .change-set[data-closing] .change-set-head {
+    transition: none;
   }
 
   .bead-mark :is(path, rect) {

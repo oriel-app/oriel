@@ -47,9 +47,14 @@ export type ThreadModel = {
   // Change sets the user showed (false) or folded (true), against what
   // `folded` would make of them.
   folds: Readonly<Record<string, boolean>>;
-  // Change sets this page saw before they were applied: once applied they
-  // stay shown until the page is left, so the person sees what happened.
-  seenUnapplied: readonly string[];
+  // Change sets this page saw waiting on someone. Settled, one stays shown,
+  // unless its apply ends here cleanly: then it folds itself (`landing`).
+  unsettled: readonly string[];
+  // Change sets whose apply this page saw end, applied: shown for a beat so
+  // the person sees it land, then closing as the page folds it.
+  landing: Readonly<Record<string, "beat" | "closing">>;
+  // Change sets that folded themselves here, which the page says once.
+  landed: readonly string[];
   // A held message being edited before it is sent, by its place in the chat;
   // a draft's options, by its place and each option's name (`optionKey`).
   editing: Readonly<Record<string, string>>;
@@ -97,6 +102,9 @@ export type ThreadMsg =
   | { type: "changeSetClicked"; changeSetId: string; step: SetStep }
   // A rejected or applied change set shown in full, or folded again.
   | { type: "foldToggled"; changeSetId: string }
+  // A change set applied while the page watched: its beat is over, or its
+  // closing is, when it folds.
+  | { type: "landed"; changeSetId: string }
   | { type: "lineRemoved"; changeSetId: string; mutationId: string }
   // The pill for a change set to review out of view, clicked: the page
   // goes to the nearest one.
@@ -150,7 +158,9 @@ export function initThread(id: string, changeSet: string | null = null): [Thread
       dismissed: [],
       deciding: {},
       folds: {},
-      seenUnapplied: [],
+      unsettled: [],
+      landing: {},
+      landed: [],
       editing: {},
       applied: {},
       settling: [],
@@ -363,8 +373,17 @@ export function updateThread(model: ThreadModel, msg: ThreadMsg): [ThreadModel, 
       const { changeSetId } = msg;
       const set = expected(model)?.changeSets.find((each) => each.id === changeSetId);
       if (!set) return [model, []];
-      return [{ ...model, folds: { ...model.folds, [changeSetId]: !folded(model, set) } }, []];
+      return [
+        {
+          ...model,
+          folds: { ...model.folds, [changeSetId]: !folded(model, set) },
+          landed: model.landed.filter((id) => id !== changeSetId),
+        },
+        [],
+      ];
     }
+    case "landed":
+      return landed(model, msg.changeSetId);
     case "toReviewClicked":
       return goingTo(model, msg.changeSetId);
     case "lineRemoved": {
@@ -663,31 +682,26 @@ export function threadReplied(model: ThreadModel, msg: Replied): [ThreadModel, E
         lastSeq: Math.max(view.lastSeq, model.view?.lastSeq ?? 0),
       };
       const unseen = view.changeSets.filter((set) => !(set.id in model.diffs));
-      const seenUnapplied = [
-        ...model.seenUnapplied,
-        ...view.changeSets
-          .filter((set) => set.status !== "applied" && !model.seenUnapplied.includes(set.id))
-          .map((set) => set.id),
-      ];
       // An edit of a message another page sent or discarded is dropped.
       const editing = Object.fromEntries(
         Object.entries(model.editing).filter(([seq]) => heldAt(merged.entries, Number(seq))),
       );
+      const [next, beats] = watched({
+        ...model,
+        view: merged,
+        status: "ready",
+        editing,
+        looking: stillLooking(model.looking, merged),
+        notice: reached(model.notice),
+      });
       return [
-        {
-          ...model,
-          view: merged,
-          status: "ready",
-          editing,
-          looking: stillLooking(model.looking, merged),
-          seenUnapplied,
-          notice: reached(model.notice),
-        },
+        next,
         [
           ...(first
             ? [{ type: "subscribe" as const, threadId: model.id, after: view.lastSeq }]
             : []),
           ...unseen.map((set) => diffOf(set.id)),
+          ...beats,
         ],
       ];
     }
@@ -1131,16 +1145,74 @@ function stillLooking(looking: ThreadModel["looking"], view: ThreadView): Thread
 }
 
 // Whether a change set shows as one line, until the user shows it. A rejected
-// one does, so a revised one below isn't buried (OA-90); so does one applied
-// before the page opened, with any Undo of it applied or rejected too, its
-// Revert a click away. Not while the thread's address names it or its Undo.
+// one does, so a revised one below isn't buried (OA-90); so does one applied,
+// with any Undo of it applied or rejected too, its Revert a click away: at
+// once if it was so when the page saw it, else once its apply ends here
+// cleanly and the beat after it is over (`landing`). Not while the thread's
+// address names it or its Undo.
 export function folded(model: ThreadModel, set: ChangeSetView): boolean {
   const chosen = model.folds[set.id];
   if (!foldable(model, set)) return false;
   if (chosen !== undefined) return chosen;
   const named = model.at?.changeSet;
   if (named === set.id || (named !== undefined && set.reverts.includes(named))) return false;
-  return set.status === "rejected" || !model.seenUnapplied.includes(set.id);
+  return set.status === "rejected" || !model.unsettled.includes(set.id);
+}
+
+// How long a change set whose apply ended here shows before it folds, so the
+// person sees it land; and how long it takes to close.
+export const landMs = 1200;
+export const closeMs = 180;
+
+// The thread as loaded: what waits on someone is noted, and a change set
+// noted so that has since settled, applied in full, starts its beat. One
+// that stopped short, stalled or applied with errors stays shown.
+function watched(model: ThreadModel): [ThreadModel, Effect[]] {
+  const sets = model.view?.changeSets ?? [];
+  const waiting = sets.filter((set) => !foldable(model, set)).map((set) => set.id);
+  const beats = sets.filter(
+    (set) =>
+      model.unsettled.includes(set.id) &&
+      !(set.id in model.landing) &&
+      foldable(model, set) &&
+      set.status === "applied" &&
+      set.errors.length === 0 &&
+      !set.stalled,
+  );
+  const unsettled = [...new Set([...model.unsettled, ...waiting])];
+  const landing = { ...model.landing };
+  for (const set of beats) landing[set.id] = "beat";
+  return [{ ...model, unsettled, landing }, beats.map((set) => landedAfter(set.id, landMs))];
+}
+
+const landedAfter = (changeSetId: string, ms: number): Effect => ({
+  type: "after",
+  ms,
+  msg: { type: "thread", msg: { type: "landed", changeSetId } },
+});
+
+// A change set's beat is over: it closes, then folds, and focus left inside
+// it, or dropped as its Approve went, goes to its Show. One that waits on
+// someone again meanwhile, as an Undo of it does, stays; one shown or hidden
+// by hand since keeps that, and neither closes nor takes focus.
+function landed(model: ThreadModel, changeSetId: string): [ThreadModel, Effect[]] {
+  const step = model.landing[changeSetId];
+  const set = expected(model)?.changeSets.find((each) => each.id === changeSetId);
+  if (step === undefined) return [model, []];
+  const landing = without(model.landing, changeSetId);
+  if (!set || !foldable(model, set)) return [{ ...model, landing }, []];
+  const unsettled = model.unsettled.filter((id) => id !== changeSetId);
+  const shows = !folded({ ...model, unsettled }, set);
+  if (changeSetId in model.folds || shows) return [{ ...model, landing, unsettled }, []];
+  if (step === "beat")
+    return [
+      { ...model, landing: { ...landing, [changeSetId]: "closing" } },
+      [landedAfter(changeSetId, closeMs)],
+    ];
+  return [
+    { ...model, landing, unsettled, landed: [...model.landed, changeSetId] },
+    [{ type: "focusFolded", changeSetId }],
+  ];
 }
 
 // A link to a change set on the page shown opens it, and the one it sits in.

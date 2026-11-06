@@ -768,6 +768,13 @@ function ChangeSet(props: {
           set.decision.via === "review-link" &&
           ` by ${set.decision.by} via review link`}
         {reverts.some((revert) => revert.status === "applied") && ", then undone"}
+        {/* Said once, as it folds itself after its apply ended here. */}
+        {shut && model.landed.includes(set.id) && (
+          <span class="visually-hidden">
+            , folded. Show it to see it
+            {set.nextSteps.some((step) => step.kind === "revert") && " or revert it"}.
+          </span>
+        )}
       </span>
       {shut && (
         <span id={`${anchor}-count`} class="change-set-count">
@@ -800,6 +807,7 @@ function ChangeSet(props: {
       class="change-set"
       data-status={set.status}
       data-opened={model.at?.changeSet === set.id || undefined}
+      data-closing={model.landing[set.id] === "closing" || undefined}
       aria-busy={busy}
       tabIndex={-1}
     >

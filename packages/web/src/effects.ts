@@ -112,6 +112,17 @@ export function perform(effect: Effect, dispatch: (msg: Msg) => void): void {
     case "focusComposer":
       document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
       return;
+    case "focusFolded":
+      // Once the page shows it folded, as `focusHeading` waits.
+      requestAnimationFrame(() => {
+        const set = document.getElementById(changeSetAnchor(effect.changeSetId));
+        const active = document.activeElement;
+        if (!set || (active && active !== document.body && !set.contains(active))) return;
+        set.querySelector<HTMLElement>(".change-set-head > .quiet-action")?.focus({
+          preventScroll: true,
+        });
+      });
+      return;
     case "focusHeading":
       // The page renders in a microtask, as `rendered` says. Where it's
       // scrolled stays.
