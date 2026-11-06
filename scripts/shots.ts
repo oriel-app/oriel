@@ -3392,7 +3392,7 @@ const scenes: Scene[] = [
     on: refusing.serving,
     act: async (page) => {
       await page.getByRole("button", { name: "Show the change" }).click();
-      await page.getByRole("button", { name: "Dismiss" }).waitFor();
+      await page.getByRole("radio", { name: "Dismiss" }).waitFor();
     },
   },
   // These last: the sidebar remembers them in the browser, and every
