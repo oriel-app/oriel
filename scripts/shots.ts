@@ -66,6 +66,7 @@ import { connectionsOf } from "../packages/server/src/connections.ts";
 import { indexStore, open as openDb } from "../packages/db/src/index.ts";
 import { fixtureApi, loadSlackFixture } from "../packages/slack/src/fixture.ts";
 import { replayNoticer } from "./noticed/replay.ts";
+import { annotation, onCi } from "./annotations.ts";
 import { loadJiraFixture } from "../packages/jira/src/fixture.ts";
 import { history as pastWeeks, weekAt, weeks } from "./history-world.ts";
 import {
@@ -4013,6 +4014,10 @@ try {
         })().catch(async (error: unknown) => {
           const failed = new URL(`${name}-${scheme}-${width}.stopped.png`, out);
           await page.screenshot({ path: fileURLToPath(failed) }).catch(() => {});
+          if (onCi) {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stdout.write(annotation(`shots: ${name} ${scheme} ${width}`, message));
+          }
           throw error;
         });
         // A full page draws what's fixed or sticky where the window was
@@ -4199,5 +4204,8 @@ async function firstRunPaths(): Promise<void> {
   }
 }
 
-for (const problem of problems) console.error(problem);
+for (const problem of problems) {
+  console.error(problem);
+  if (onCi) process.stdout.write(annotation("shots", problem));
+}
 process.exitCode = problems.length === 0 ? 0 : 1;
