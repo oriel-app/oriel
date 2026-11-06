@@ -32,7 +32,15 @@ export type ConnectorView = {
   connect: { steps: readonly ConnectStep[]; offer: ConnectOffer } | null;
   // Its options, as Settings draws them.
   options: readonly OptionField[];
+  // A stand-in's (decision 0059): the kinds it stands in for, and how the
+  // window offers it while it's on; null for any other.
+  standIn: StandIn | null;
 };
+
+// A stand-in, as its declaration gives it: the kinds whose connection turns
+// it off, and its offer, which the first run and the overview show in their
+// place while it's on.
+export type StandIn = { for: readonly string[]; offer: ConnectOffer };
 
 // What a source's items show in the window beyond core's fields: the
 // source's own words for an item's type and status, and its labels. An
@@ -48,7 +56,10 @@ export type DetailsOf = (record: IndexRecord) => ItemDetails | null;
 // `linked` names the item, by its key, that a link into the source points at
 // when the link isn't the item's location, such as a chat reply's link,
 // which is its message's.
-export type Presentation = Omit<ConnectorView, "kind" | "writable" | "connect" | "options"> & {
+export type Presentation = Omit<
+  ConnectorView,
+  "kind" | "writable" | "connect" | "options" | "standIn"
+> & {
   details: DetailsOf;
   linked?: (link: URL) => string | null;
 };

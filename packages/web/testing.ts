@@ -98,6 +98,7 @@ export const connectorViews: ConnectorView[] = [
       { kind: "pick", name: "project", label: "Project" },
       { kind: "read-only", name: "readOnly" },
     ],
+    standIn: null,
   },
   {
     kind: "folder",
@@ -132,6 +133,7 @@ export const connectorViews: ConnectorView[] = [
       }),
     },
     options: [],
+    standIn: null,
   },
   {
     kind: "slack",
@@ -143,6 +145,7 @@ export const connectorViews: ConnectorView[] = [
     writable: true,
     connect: null,
     options: [],
+    standIn: null,
   },
 ];
 export const connectors: Connectors = Object.fromEntries(

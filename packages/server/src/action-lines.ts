@@ -104,6 +104,10 @@ const words: { [N in ActionName]: Words } = {
   "review-link.create": () => ["Made a review link", "make a review link"],
   "review-link.revoke": () => ["Revoked a review link", "revoke a review link"],
   "source.connect": () => ["Connected a source", "connect a source"],
+  "item.edit": (input) => [
+    `Edited ${keyOf(String(input["item"]))}`,
+    `edit ${keyOf(String(input["item"]))}`,
+  ],
   "source.configure": () => [
     "Set how a connection reads its source",
     "set how a connection reads its source",

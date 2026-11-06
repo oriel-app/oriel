@@ -109,6 +109,7 @@ test("a create is new:N, binds the region's epic, and makes its ref writable", (
     target: null,
     ref: "new:1",
     args: { summary: "A", epic: "jira:SYN-2" },
+    into: "jira",
   });
   assert.equal(bindings.capture("jira.setEstimate", ["new:1", 2], null).target, "new:1");
   assert.throws(

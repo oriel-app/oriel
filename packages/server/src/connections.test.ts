@@ -216,7 +216,11 @@ test("Jira disconnected and connected again comes back under its ID and number, 
     [["jira:SYN-1", false]],
   );
   assert.equal((await again.connect("jira", details)).status, 200);
-  const back = connectionStore(open(path)).list(again.app.workspaceId);
+  // The stand-in tracker's own connection, made while Jira wasn't
+  // connected, stays apart (decision 0059).
+  const back = connectionStore(open(path))
+    .list(again.app.workspaceId)
+    .filter((c) => c.kind === "jira");
   assert.deepEqual(
     back.map((c) => [c.id, c.prefix, c.options, c.disconnectedAt]),
     [[connection.id, "jira", { project: "SYN" }, null]],

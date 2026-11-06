@@ -57,6 +57,7 @@ import {
   initConnections,
   loadConnections,
   offered,
+  standingIn,
   updateConnections,
 } from "./connections.ts";
 import type { Hold } from "./undos.ts";
@@ -83,6 +84,15 @@ import {
   standingAdds,
   updateAdds,
 } from "./panel-adds.ts";
+import {
+  editsLeft,
+  editsReplied,
+  holdEdits,
+  noEdits,
+  type PanelEditMsg,
+  type PanelEdits,
+  updateEdits,
+} from "./panel-edits.ts";
 import {
   initOverview,
   leaving as left,
@@ -206,6 +216,9 @@ export type Model = {
   // panel shows: in flight, or what came of it, with its Undo while that
   // shows.
   panelAdds: PanelAdds;
+  // A stand-in's item's form open in the panel, and the edits saved, with
+  // their Undos while they show (decision 0059).
+  panelEdits: PanelEdits;
   // The sidebar's search over the workspace's threads.
   search: SearchModel;
   // The person's settings: Settings' page, and which key sends a question
@@ -234,6 +247,7 @@ export type Msg =
   | { type: "ending"; msg: EndingMsg }
   | { type: "panel"; msg: PanelMsg }
   | { type: "panelAdd"; msg: PanelAddMsg }
+  | { type: "panelEdit"; msg: PanelEditMsg }
   | { type: "approved"; msg: ApprovedMsg }
   | { type: "rejected"; msg: RejectedMsg }
   // The pointer or keyboard came onto the stack of Undo notes, or left it,
@@ -343,6 +357,7 @@ export function init(route: Route): [Model, Effect[]] {
     panel: null,
     panelList: null,
     panelAdds: noAdds,
+    panelEdits: noEdits,
     search: initSearch(),
     settings: initSettings(),
     setup: initSetup(),
@@ -408,6 +423,7 @@ function enter(model: Model, route: Route): [Model, Effect[]] {
     newThread: null,
     ending: samePage(model.route, route) ? model.ending : leftPage(model.ending),
     panelAdds: samePage(model.route, route) ? model.panelAdds : addsLeft(model.panelAdds),
+    panelEdits: samePage(model.route, route) ? model.panelEdits : editsLeft(model.panelEdits),
     panelList: samePage(model.route, route) ? model.panelList : null,
     approved: arriving(model.approved, route),
   };
@@ -517,8 +533,14 @@ function readingDone(model: Model, effects: Effect[]): [Model, Effect[]] {
   const { setup, connections } = model;
   if (model.route.page !== "setup" || setup.screen !== "reading" || setup.finishing)
     return [model, effects];
-  const states = offered(model.connectors).map(({ kind }) => connectState(connections, kind));
-  const read = states.includes("read");
+  const states = offered(model.connectors, connections).map(({ kind }) =>
+    connectState(connections, kind),
+  );
+  // A stand-in on is read, its items Oriel's own (decision 0059), once
+  // nothing else is still reading.
+  const read =
+    states.includes("read") ||
+    (standingIn(model.connectors, connections).length > 0 && !states.includes("reading"));
   const failed = states.includes("failed");
   if (!read || failed) return [model, effects];
   const [finished, finishing] = updateSetup(setup, { type: "finished" });
@@ -674,6 +696,10 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
       const [panelAdds, effects] = updateAdds(model.panelAdds, msg.msg);
       return [{ ...model, panelAdds }, effects];
     }
+    case "panelEdit": {
+      const [panelEdits, effects] = updateEdits(model.panelEdits, msg.msg);
+      return [{ ...model, panelEdits }, effects];
+    }
     case "undoHeld": {
       const { by, held } = msg;
       const [workstream, removals] = model.workstream
@@ -684,11 +710,12 @@ function updated(model: Model, msg: Msg): [Model, Effect[]] {
         ? updateOverview(model.overview, { type: "undoHeld", by, held })
         : [null, []];
       const [panelAdds, added] = holdAdds(model.panelAdds, by, held);
+      const [panelEdits, edited] = holdEdits(model.panelEdits, by, held);
       const [approved, told] = updateApproved(model.approved, { type: "undoHeld", by, held });
       const [rejected, kept] = updateRejected(model.rejected, { type: "undoHeld", by, held });
       return [
-        { ...model, workstream, ending, overview, panelAdds, approved, rejected },
-        [...removals, ...ended, ...made, ...added, ...told, ...kept],
+        { ...model, workstream, ending, overview, panelAdds, panelEdits, approved, rejected },
+        [...removals, ...ended, ...made, ...added, ...edited, ...told, ...kept],
       ];
     }
     case "approved": {
@@ -881,6 +908,17 @@ function replied(model: Model, msg: Replied): [Model, Effect[]] {
           : [];
       const [panelAdds, counting] = addsReplied(model.panelAdds, msg);
       return [{ ...model, panelAdds }, [...counting, ...changed]];
+    }
+    // The item changed: the panel reads it again, if it's still open, and
+    // the page on screen hears from its stream.
+    case "panelEdited":
+    case "panelEditUndone": {
+      const [panelEdits, counting, reread] = editsReplied(model.panelEdits, msg);
+      const [panel, reading] =
+        reread !== null && model.panel?.id === reread
+          ? updatePanel(model.panel, { type: "readAgainClicked" })
+          : [model.panel, []];
+      return [{ ...model, panelEdits, panel }, [...counting, ...reading]];
     }
     case "markedDone":
     case "deletion":

@@ -262,6 +262,7 @@ test("a sample script typechecks against an epic region's declarations and runs 
       target: null,
       ref: "new:1",
       args: { summary: "Retry boarding scans offline", points: 2, epic: "jira:SYN-2" },
+      into: "jira",
     },
     {
       op: "setDescription",

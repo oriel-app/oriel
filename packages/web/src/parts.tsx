@@ -264,7 +264,7 @@ export function Markdown(props: { text: string; linksTo: Sites; answer?: boolean
 }
 
 // Blocks already read, from markdown or by a source's server side, such as
-// a tracker's rich text, the same way.
+// a source's rich text, the same way.
 export function ProseBlocks({ prose, linksTo }: { prose: readonly Prose[]; linksTo: Sites }) {
   return <>{prose.map((each, i) => block(each, i, linksTo))}</>;
 }

@@ -56,6 +56,7 @@ import {
   gradeExactDiff,
   gradeIntents,
   gradeWrites,
+  gradeCreates,
   gradeJudge,
   gradeAvoids,
   gradeMentions,
@@ -375,6 +376,7 @@ async function grade(
           output.mutations,
         ),
       );
+    if (expectation.grader === "creates") grades.push(gradeCreates(expectation, output.mutations));
     if (expectation.grader === "zero-mutations")
       grades.push(gradeZeroMutations(output.mutations, output.intents ?? [], output.drafts ?? []));
     if (expectation.grader === "drafts")

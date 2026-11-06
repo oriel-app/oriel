@@ -261,6 +261,21 @@ export function indexStore(db: DatabaseSync) {
     "select cursor, synced_at, new_items, changed_items, removed_items from sources where workspace_id = ? and source = ?",
   );
 
+  // A stand-in's own items' content (migration 0030), and every key its
+  // items have had, gone ones too.
+  const selectOwn = db.prepare(
+    "select content from own_items where workspace_id = ? and source = ? and stable_id = ?",
+  );
+  const upsertOwn = db.prepare(`
+    insert into own_items (workspace_id, source, stable_id, content) values (?, ?, ?, ?)
+    on conflict (workspace_id, source, stable_id) do update set content = excluded.content`);
+  const deleteOwn = db.prepare(
+    "delete from own_items where workspace_id = ? and source = ? and stable_id = ?",
+  );
+  const selectKeys = db.prepare(
+    "select item_id from items where workspace_id = ? and source = ? order by item_id",
+  );
+
   // A disconnected connection's items, as decision 0049 has them forgotten.
   // References to them wait again by handle, from now, as one to an item the
   // index never had does.
@@ -453,7 +468,7 @@ export function indexStore(db: DatabaseSync) {
     }
   };
 
-  return {
+  const store = {
     snapshot,
 
     // One source's live records, with attrs checked against that source's shape.
@@ -683,6 +698,39 @@ export function indexStore(db: DatabaseSync) {
       });
     },
 
+    // A stand-in's own items (decision 0059), whose index rows are their
+    // source of truth: nothing syncs them. `write` lands a page and the
+    // content each record keeps beyond its row, as one snapshot version,
+    // in one transaction with its change log, and returns the version the
+    // index is at. Run it between syncs, as a sync is run.
+    own<A>(workspaceId: Ulid, source: SourceKind, attrs: Validator<A>, declared?: DeclaredFacets) {
+      return {
+        write: (
+          page: Omit<IndexPage, "cursor">,
+          contents: Readonly<Record<string, unknown>>,
+          at: Instant,
+        ): number =>
+          transaction(db, () => {
+            const run = store.beginSync(workspaceId, source, attrs, at, declared);
+            run.apply({ ...page, cursor: null });
+            for (const [stableId, content] of Object.entries(contents))
+              upsertOwn.run(workspaceId, source, stableId, JSON.stringify(content));
+            for (const stableId of page.gone) deleteOwn.run(workspaceId, source, stableId);
+            return run.finish(null, at);
+          }),
+        // What a live item keeps beyond its row, or null.
+        content: (stableId: string): unknown => {
+          const raw = selectOwn.get(workspaceId, source, stableId);
+          return raw && typeof raw.content === "string" ? JSON.parse(raw.content) : null;
+        },
+        // Every key its items have had, gone ones too, so none is given twice.
+        keys: (): string[] =>
+          selectKeys
+            .all(workspaceId, source)
+            .map((row) => parseItemId(String(row.item_id))?.key ?? ""),
+      };
+    },
+
     source(
       workspaceId: Ulid,
       source: string,
@@ -699,4 +747,5 @@ export function indexStore(db: DatabaseSync) {
       };
     },
   };
+  return store;
 }

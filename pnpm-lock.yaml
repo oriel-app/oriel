@@ -70,6 +70,9 @@ importers:
       '@oriel/slack':
         specifier: workspace:*
         version: link:../slack
+      '@oriel/tracker':
+        specifier: workspace:*
+        version: link:../tracker
     devDependencies:
       '@oriel/sources':
         specifier: workspace:*
@@ -230,6 +233,19 @@ importers:
       '@oriel/slack':
         specifier: workspace:*
         version: link:../slack
+      '@oriel/tracker':
+        specifier: workspace:*
+        version: link:../tracker
+
+  packages/tracker:
+    dependencies:
+      '@oriel/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@oriel/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/web:
     dependencies:

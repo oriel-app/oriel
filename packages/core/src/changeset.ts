@@ -23,6 +23,8 @@ export type MutationRecord<K extends SourceKind = SourceKind> = {
   target: ItemId<K> | NewRef | null;
   // The temporary name a create gives its item.
   ref: NewRef | null;
+  // A create's kind, where it was captured with one (`CapturedMutation`).
+  into?: K;
   args: unknown;
   // What the diff showed at review time.
   preview: FieldValues | null;

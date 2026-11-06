@@ -113,6 +113,9 @@ export type FirstRunOptions = {
   sheetsTabs?: number;
   // A database to start on, without a data folder.
   db?: string;
+  // The stand-in tracker kept off, so the first run offers Jira's connect
+  // step, as it did before decision 0059 (OA-275 replaces that step).
+  standInOff?: true;
 };
 
 type Start = (
@@ -318,6 +321,7 @@ export async function firstRunServer(
     sources: {
       jira: { mode: "window", fetch: fetchJira },
       ...(options.sheets ? { sheets: { mode: "window" as const, fetch: fetchSheets } } : {}),
+      ...(options.standInOff ? { tracker: { mode: "off" as const } } : {}),
     },
     ...(options.sheets ? { clients: { sheets: sheetsClient } } : {}),
     anywhere: true,
@@ -409,11 +413,12 @@ export async function tokensOn(page: Page): Promise<number> {
   return (text.match(/\btokens?\b/gi) ?? []).length;
 }
 
-// One path of the onboarding budget (decision 0038), as fast as a script
-// clicks: the first run's first screen on a fresh data folder, the AI, Jira
-// and its project, the first sync, the overview's first question, then one
-// question in the workstream it made and one change approved. Returns how
-// long it took, and "token" on each screen.
+// One path of the onboarding budget (decisions 0038 and 0059), as fast as a
+// script clicks: the first run's first screen on a fresh data folder, the
+// AI, Your work, where the stand-in tracker is ready with no tracker to
+// connect, the overview's question to start from, a plan drafted in the
+// window chat, and that change approved. Returns how long it took, and
+// "token" on each screen.
 export async function timedPath(
   page: Page,
   url: string,
@@ -438,38 +443,13 @@ export async function timedPath(
   }
   await page.getByRole("button", { name: "Continue with Claude Code" }).click();
   await page.getByRole("heading", { name: /Connect where your work lives|Welcome back/ }).waitFor();
+  await page.locator(".provider-row", { hasText: "Epics and stories" }).waitFor();
   await count("your work");
-  await page
-    .locator(".provider-row", { hasText: "Jira" })
-    .getByRole("button", { name: "Connect" })
-    .click();
-  await fillJira(page, jiraAccount.token);
-  await count("Jira");
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await page.getByRole("heading", { name: "Which Jira project?" }).waitFor();
-  await count("project");
-  await page.getByRole("button", { name: /^Use / }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  // The overview opens once Jira is read.
   await page.waitForURL((at) => at.pathname === "/");
   await page.locator(".first-run-line").waitFor();
   await count("overview");
-  await page.locator(".ask-question", { hasText: /^Make .* a workstream$/ }).click();
-  await page.locator(".window-chat .reply").first().waitFor();
-  await page.locator(".actions-block").first().waitFor();
-  await count("first answer");
-  // The workstream it made, from the sidebar.
-  await page.locator(".window-chat-close").click();
-  await page
-    .getByRole("navigation", { name: "Workstreams" })
-    .getByRole("link")
-    .filter({ hasNotText: "Window chat" })
-    .first()
-    .click();
-  await page
-    .getByLabel("Ask about this workstream")
-    .fill("Draft acceptance criteria for the stories that have none");
-  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await page.locator(".ask-question", { hasText: "Plan a small launch" }).click();
   await page.getByRole("button", { name: "Approve and apply" }).waitFor();
   await count("change set");
   await page.getByRole("button", { name: "Approve and apply" }).click();

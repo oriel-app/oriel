@@ -209,7 +209,16 @@ export function bindingsFor(
         if (typeof checked.value !== "object" || checked.value === null)
           throw new TypeError("an op's arguments are an object");
         if (ref !== null) created.set(ref, entry.op);
-        return { op: entry.op, target: built.target, ref, args: defined(checked.value) };
+        return {
+          op: entry.op,
+          target: built.target,
+          ref,
+          args: defined(checked.value),
+          // A create writes to its namespace's kind, which a shared op can't say.
+          ...(entry.creates && built.target === null && entry.space !== null
+            ? { into: entry.space }
+            : {}),
+        };
       } catch (error) {
         throw named(fn, error);
       }

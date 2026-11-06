@@ -25,7 +25,10 @@ export type SourceMode =
       secret: string | null;
       fetch?: typeof fetch;
     }
-  | { mode: "window"; fetch?: typeof fetch };
+  | { mode: "window"; fetch?: typeof fetch }
+  // A stand-in kept off whatever is connected (decision 0059), as the shots
+  // of connecting Jira from the overview keep it.
+  | { mode: "off"; fetch?: undefined };
 
 export type SourceModes = Readonly<Partial<Record<SourceKind, SourceMode>>>;
 
@@ -50,7 +53,7 @@ export type Flagged = {
 
 export function flagged(modes: SourceModes): Flagged[] {
   return Object.entries(modes).flatMap(([kind, given]): Flagged[] => {
-    if (!given || given.mode === "window") return [];
+    if (!given || given.mode === "window" || given.mode === "off") return [];
     const send = given.fetch ? { fetch: given.fetch } : {};
     if (given.mode === "live")
       return [

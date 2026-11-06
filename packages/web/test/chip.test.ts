@@ -164,6 +164,7 @@ test("an item's key reads as its connector declares, and as the key where the pa
       writable: true,
       connect: null,
       options: [],
+      standIn: null,
     },
   };
   assert.deepEqual([chipKey(row, sheets), chipLabel(row, sheets)], [null, `Row: ${item.name}`]);

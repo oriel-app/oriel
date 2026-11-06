@@ -69,7 +69,10 @@ export function itemPanels(deps: PanelDeps): ItemPanels {
       return {
         ...base,
         title: title.trim() === "" ? base.title : title,
-        read: shown === null ? { status: "unreadable" } : { status: "ok", blocks: shown.blocks },
+        read:
+          shown === null
+            ? { status: "unreadable" }
+            : { status: "ok", blocks: shown.blocks, ...(shown.edit ? { edit: shown.edit } : {}) },
       };
     },
     stamp(id) {

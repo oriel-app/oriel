@@ -4,7 +4,9 @@
 // who acted, counts the call once in telemetry and publishes once to the
 // window's streams. A direct action's handler gives back the call that
 // undoes it, built from what actually changed. Nothing here reaches a
-// source's writer: writing to a source takes an approved change set.
+// source's writer: writing to a source takes an approved change set. A
+// stand-in's item a person edits in its panel (decision 0059) changes through
+// its connection's own edit, never a writer, and only by the person's hand.
 import {
   type ActionDeclaration,
   type ActionInput,
@@ -106,6 +108,12 @@ export type ActionDeps = {
   // After a change set applied, partly or in full: what it created joins
   // the workstream, and a live index syncs.
   applied(set: ChangeSet): Promise<void>;
+  // A person's edit of a stand-in's item, through its connection (decision
+  // 0059): the values it set, before and after. Any other item is refused.
+  edit(
+    item: ItemId,
+    values: Readonly<Record<string, unknown>>,
+  ): Promise<{ before: Record<string, unknown>; after: Record<string, unknown> }>;
   // Connections (decision 0049): connecting one through its connector's
   // steps, setting its options, the sync the user asks for, and
   // disconnecting it. Each checks what its connector declares, as the
@@ -1075,6 +1083,20 @@ const handlers = {
 
   // Its Undo puts back the options it replaced. Which options changed is
   // counted, never their values.
+  // What the edit was, the stand-in's store counts as it writes.
+  "item.edit": async (input, _actor, deps) => {
+    const { before, after } = await deps.edit(input.item, input.values);
+    return {
+      output: { item: input.item, values: after },
+      undo:
+        Object.keys(before).length > 0
+          ? { action: "item.edit", input: { item: input.item, values: before } }
+          : null,
+      changed: null,
+      events: "counted",
+    };
+  },
+
   "source.configure": async (input, _actor, deps) => {
     const { outcome, changed, replaced } = await deps.sources.configure(input);
     if (!("connection" in outcome) || changed.length === 0)

@@ -248,11 +248,25 @@ export const stepOf = (steps: readonly ConnectStep[], form: ConnectForm): Connec
 export const pickedChoice = (form: ConnectForm): PickChoiceView | null =>
   form.choices?.find((choice) => choice.value === (form.tried ?? form.picked)) ?? null;
 
-// The connectors the first run offers, in their declared order.
-export const offered = (connectors: Connectors): ConnectorView[] =>
-  Object.values(connectors)
+// The connectors the first run offers, in their declared order: none a
+// stand-in on now stands in for (decision 0059).
+export const offered = (connectors: Connectors, model: ConnectionsModel): ConnectorView[] => {
+  const replaced = new Set(standingIn(connectors, model).flatMap(({ standIn }) => standIn.for));
+  return Object.values(connectors)
     .filter((connector) => connector.connect?.offer.firstRun !== undefined)
+    .filter((connector) => !replaced.has(connector.kind))
     .toSorted((a, b) => (a.connect?.offer.firstRun ?? 0) - (b.connect?.offer.firstRun ?? 0));
+};
+
+// The stand-ins on now, each with what it stands in for and its offer.
+export const standingIn = (
+  connectors: Connectors,
+  model: ConnectionsModel,
+): (ConnectorView & { standIn: NonNullable<ConnectorView["standIn"]> })[] =>
+  (model.view?.standingIn ?? []).flatMap((kind) => {
+    const connector = connectors[kind];
+    return connector?.standIn ? [{ ...connector, standIn: connector.standIn }] : [];
+  });
 
 // What a connector's first run row is doing: read, reading, its options
 // under review, failed, or nothing yet. One with a pick step fails in a box

@@ -13,7 +13,8 @@
     "@oriel/db": "workspace:*",
     "@oriel/jira": "workspace:*",
     "@oriel/sheets": "workspace:*",
-    "@oriel/slack": "workspace:*"
+    "@oriel/slack": "workspace:*",
+    "@oriel/tracker": "workspace:*"
   },
   "devDependencies": {
     "@oriel/sources": "workspace:*"

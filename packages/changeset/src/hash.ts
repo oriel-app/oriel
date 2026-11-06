@@ -20,19 +20,25 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-// The hash a person approves: each mutation's seq, op, target, ref and args, in
-// seq order. Status and results are left out, so applying doesn't change it.
+// The hash a person approves: each mutation's seq, op, target, ref and args,
+// and the kind a create writes into where it has one, in seq order. Status and results are
+// left out, so applying doesn't change it.
 export function changeSetHash(
   rows: readonly {
     seq: number;
     op: string;
     target: string | null;
     ref: string | null;
+    into?: string;
     args: unknown;
   }[],
 ): string {
   const content = [...rows]
     .sort((a, b) => a.seq - b.seq)
-    .map((m) => [m.seq, m.op, m.target, m.ref, m.args]);
+    .map((m) =>
+      m.into === undefined
+        ? [m.seq, m.op, m.target, m.ref, m.args]
+        : [m.seq, m.op, m.target, m.ref, m.args, m.into],
+    );
   return sha256(`oriel.changeset.v1\n${canonical(content)}`);
 }

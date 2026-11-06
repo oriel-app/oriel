@@ -52,6 +52,7 @@ test("the window gets how each connector shows, in declared order, with nothing 
       "kind",
       "name",
       "options",
+      "standIn",
       "writable",
     ]);
     assert.deepEqual(

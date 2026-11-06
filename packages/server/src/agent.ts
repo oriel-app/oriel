@@ -23,6 +23,7 @@ import {
   nullable,
   number,
   object,
+  isPrefix,
   optional,
   record,
   refine,
@@ -80,6 +81,10 @@ const capturedMutation = object({
   ),
   ref: nullable(newRef),
   args: unknown,
+  // The kind a create writes into, as its namespace captured it.
+  into: optional(
+    refine(string, (kind) => isPrefix(kind) && !kind.includes("."), "expected a kind"),
+  ),
 });
 // One of Oriel's own actions, as a run recorded it or a line under a reply
 // names it; its input is checked again whenever it is dispatched.

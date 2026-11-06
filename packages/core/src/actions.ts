@@ -491,6 +491,20 @@ export const actions = {
   // A connection's steps, by its connector (decision 0049): what the user
   // gave across them, which the connector's own validator checks, as the
   // composition root supplies it, since core keeps no connector's types.
+  // A person's own edit of a stand-in's item in its panel (decision 0059):
+  // the fields its form gives, by name, which its connection checks. Its
+  // Undo sets back what they were. The agent's writes to a source are change
+  // sets, and only the person approves one: this is the one way a source's
+  // item changes without, and only from the person's own hand.
+  "item.edit": {
+    doc: "Edits a stand-in's item, as its panel's form does.",
+    input: object({ item: itemId, values: record(unknown) }),
+    class: {
+      kind: "person-only",
+      why: "A source's item changes only through a change set the person approves; a stand-in's panel is the person's own hand on it (decision 0059).",
+      inverse: "item.edit",
+    },
+  },
   "source.connect": {
     doc: "Connects a source, which then syncs into the window.",
     input: object({ kind: sourceKind, given: unknown }),

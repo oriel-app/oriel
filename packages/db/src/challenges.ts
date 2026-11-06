@@ -20,6 +20,7 @@ import {
   nullable,
   number,
   object,
+  optional,
   refine,
   storedFinding,
   string,
@@ -63,6 +64,8 @@ const companion: Validator<CapturedMutation> = object({
   ),
   ref: nullable(refine(string, isNewRef, "expected a new:N ref")),
   args: unknown,
+  // The kind a create writes into, as its namespace captured it.
+  into: optional(string),
 });
 const coverage: Validator<Coverage> = object({
   read: array(itemText),

@@ -36,7 +36,7 @@ import type {
   WorkstreamRowView,
 } from "./view.ts";
 import { ConnectCards } from "./connect-steps.tsx";
-import { openConnections } from "./connections.ts";
+import { openConnections, standingIn } from "./connections.ts";
 import { StatusBar } from "./window-page.tsx";
 import { AskBar } from "./window-chat-view.tsx";
 import { NoticedStrip, PinnedStrip } from "./noticed-strip.tsx";
@@ -90,6 +90,7 @@ export function OverviewPage(props: {
         ongoing={props.ongoing}
         firstRun={props.firstRun.questions}
         noAi={props.noAi}
+        plans={standingIn(connectors, connections).length > 0}
         dispatch={dispatch}
       />
       <ConnectCards connections={connections} connectors={connectors} dispatch={dispatch} />
@@ -168,11 +169,18 @@ function FirstRunLine(props: {
   ask: boolean;
   dispatch: Dispatch;
 }) {
-  const open = openConnections(props.connections).flatMap((connection) => {
-    const connector = props.connectors[connection.kind];
-    const offer = connector?.connect?.offer;
-    return offer ? [{ offer, writable: connector.writable }] : [];
-  });
+  const open = [
+    // A stand-in on (decision 0059), as its offer says what it holds.
+    ...standingIn(props.connectors, props.connections).map(({ standIn, writable }) => ({
+      offer: standIn.offer,
+      writable,
+    })),
+    ...openConnections(props.connections).flatMap((connection) => {
+      const connector = props.connectors[connection.kind];
+      const offer = connector?.connect?.offer;
+      return offer ? [{ offer, writable: connector.writable }] : [];
+    }),
+  ];
   const writing = open.filter((each) => each.writable);
   const named = (writing.length > 0 ? writing : open).map((each) => each.offer);
   const what = [...new Set(named.map((offer) => offer.yours))].join(" and ") || "your work";

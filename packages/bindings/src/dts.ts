@@ -40,6 +40,23 @@ function namespace(name: string, fns: readonly Fn[]): string[] {
   ];
 }
 
+// Each type once, as two sources' namespaces may both declare `NewRef`:
+// a second `type X =` line goes, with the doc line above it.
+function once(lines: readonly string[]): string[] {
+  const named = new Set<string>();
+  const kept: string[] = [];
+  for (const line of lines) {
+    const name = /^type (\w+) =/.exec(line)?.[1];
+    if (name === undefined || !named.has(name)) {
+      if (name !== undefined) named.add(name);
+      kept.push(line);
+      continue;
+    }
+    if (kept.at(-1)?.startsWith("/**")) kept.pop();
+  }
+  return kept;
+}
+
 export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting): string {
   // A second look's module has none of Oriel's own namespaces.
   const hasOriel = fns.some((fn) => fn.space === "workstream" || fn.space === "thread");
@@ -47,7 +64,7 @@ export function declarations(scope: Scope, fns: readonly Fn[], waiting?: Waiting
     ...(hasOriel ? header : header.filter((line) => !line.includes("`workstream`"))),
     ...idUnion("RegionId", scope.ids),
     ...itemTypes(scope.docs),
-    ...scope.sources.flatMap(({ spec, scope: own }) => spec.types(own)),
+    ...once(scope.sources.flatMap(({ spec, scope: own }) => spec.types(own))),
     ...(hasOriel ? [...orielTypes, ...historyTypes, ...actionTypes] : []),
     ...(fns.some((fn) => fn.space === "window") ? windowTypes : []),
     ...(fns.some((fn) => fn.space === "challenge") ? challengeTypes : []),

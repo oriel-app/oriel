@@ -33,6 +33,8 @@ import {
   maxItems,
   type Opened,
   type OpenVia,
+  type OwnItems,
+  maxReferences,
   OptionsUnfit,
   parseItemId,
   prefixOf,
@@ -340,7 +342,7 @@ export async function createApp(options: AppOptions): Promise<App> {
   const openVia = (
     kind: SourceKind,
     id: Ulid,
-    how: { kept: boolean; fetch?: typeof fetch | undefined },
+    how: { kept: boolean; fetch?: typeof fetch | undefined; own?: OwnItems },
   ): OpenVia => {
     const client = options.clients?.[kind];
     return {
@@ -350,6 +352,7 @@ export async function createApp(options: AppOptions): Promise<App> {
       ...(how.fetch ? { fetch: how.fetch } : {}),
       ...(client ? { client } : {}),
       ...(how.kept ? { keep: (secret: string) => connections.rekey(id, secret) } : {}),
+      ...(how.own ? { own: how.own } : {}),
     };
   };
   // Opens a connection through its connector's declaration, or its
@@ -358,7 +361,12 @@ export async function createApp(options: AppOptions): Promise<App> {
   const openOne = async (
     kind: SourceKind,
     connection: ToOpen,
-    how: { fixture: boolean; kept: boolean; fetch?: typeof fetch | undefined },
+    how: {
+      fixture: boolean;
+      kept: boolean;
+      fetch?: typeof fetch | undefined;
+      own?: OwnItems;
+    },
   ): Promise<Opened> => {
     const declaration = declared(kind);
     const via = openVia(kind, connection.id, how);
@@ -407,6 +415,8 @@ export async function createApp(options: AppOptions): Promise<App> {
   // (decision 0051): they wait for their options, which opens them again.
   const unfit = new Map<string, string>();
   for (const kind of sourceKinds) {
+    // A stand-in opens below, while what it stands in for isn't connected.
+    if (declared(kind).standIn) continue;
     // A flag's connection is its kind's first, made at every start, and
     // follows what the flag names. One that can't open stops the start.
     const flag = flags.find((each) => each.kind === kind);
@@ -455,6 +465,85 @@ export async function createApp(options: AppOptions): Promise<App> {
       });
     }
   }
+  // The stand-ins (decision 0059): each open while none of the kinds it
+  // stands in for has a connection, a flag's or one the window made, open
+  // or shut, and closed while one has. Closed, nothing of it shows, and its
+  // items stay in the index, for when it's on again. Its one connection is
+  // Oriel's, which the window neither configures nor disconnects.
+  const standingIn = (kind: SourceKind) =>
+    modes[kind]?.mode !== "off" &&
+    !(declared(kind).standIn?.for ?? []).some(
+      (other) => flags.some((flag) => flag.kind === other) || connections.first(other) !== null,
+    );
+  const standIns = async () => {
+    for (const kind of sourceKinds) {
+      if (!declared(kind).standIn) continue;
+      const open = openedOf(kind);
+      if (!standingIn(kind)) {
+        if (!open) continue;
+        byPrefix.delete(open.connection.prefix);
+        open.opened.close?.();
+        continue;
+      }
+      if (open) continue;
+      const connection = connections.flagged(kind, "oriel", {});
+      const opened = await openOne(
+        kind,
+        { ...connection, secret: null },
+        { fixture: false, kept: false, own: ownOf(kind, connection.prefix) },
+      );
+      byPrefix.set(connection.prefix, { connection, opened });
+      ownConnections.add(connection.id);
+    }
+  };
+  // Oriel's own store of a stand-in's items, which its connector writes:
+  // between syncs, as a sync is, with the references its texts name, and
+  // counted, never with its words.
+  const ownConnections = new Set<Ulid>();
+  const ownOf = (kind: SourceKind, prefix: string): OwnItems => {
+    const store = index.own(workspaceId, prefix, unknown, declared(kind).facets);
+    return {
+      records: () => index.records(workspaceId, prefix, unknown),
+      content: store.content,
+      keys: store.keys,
+      write: async ({ records, texts, contents, gone, what }) => {
+        await betweenSyncs(async () => {
+          const named = recognize();
+          const references = Object.fromEntries(
+            Object.entries(texts).map(([stableId, text]) => {
+              const own = records.find((record) => record.stableId === stableId)?.id;
+              return [
+                stableId,
+                named(text)
+                  .filter((id) => id !== own)
+                  .slice(0, maxReferences),
+              ];
+            }),
+          );
+          store.write(
+            { records: [...records], gone: [...gone], texts, references },
+            contents,
+            now(),
+          );
+        });
+        emit({
+          name: "standin.written",
+          at: now(),
+          workspaceId,
+          source: kind,
+          by: what.by,
+          change: what.change,
+          fields: [...what.fields],
+        });
+        try {
+          await follow();
+        } catch (error) {
+          log("following epics failed", { error: String(error) });
+        }
+      },
+    };
+  };
+  await standIns();
   // A fixture is frozen as of its last change, so the window is built for
   // that instant: the "stuck" rules come out the same on every run.
   const asOf = opens().find((each) => each.opened.frozen)?.opened.frozen ?? null;
@@ -529,6 +618,8 @@ export async function createApp(options: AppOptions): Promise<App> {
     } = {},
   ): Promise<boolean> => {
     const declaration = declared(connection.kind);
+    // A stand-in's items are its index rows: nothing syncs it.
+    if (declaration.standIn) return Promise.resolve(false);
     let first = false;
     const run = syncing
       .catch(() => {})
@@ -794,6 +885,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         shut.delete(connection.prefix);
         // Its first sync just worked: what the last one said is past.
         problems.delete(connection.id);
+        await standIns();
         sets.rewire(wiring());
         arm(connection);
         if (first) connected(connection);
@@ -812,6 +904,11 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // One a flag makes is made again at every start, from its flag.
   const unflagged = (connection: Connection, what: string) => {
+    if (ownConnections.has(connection.id))
+      throw new ActionError(
+        "conflict",
+        `Oriel keeps ${declared(connection.kind).inSentence} itself, so the window can't ${what} it.`,
+      );
     if (byFlag.has(connection.id))
       throw new ActionError(
         "conflict",
@@ -983,6 +1080,7 @@ export async function createApp(options: AppOptions): Promise<App> {
         shut.delete(connection.prefix);
         written.delete(connection.prefix);
         open?.opened.close?.();
+        await standIns();
         sets.rewire(wiring());
         return connection;
       }),
@@ -1641,6 +1739,22 @@ export async function createApp(options: AppOptions): Promise<App> {
         }
       : {}),
     applied: (set) => applied(set),
+    // A person's own edit, of a stand-in's item only (decision 0059).
+    edit: async (item, values) => {
+      const prefix = parseItemId(item)?.prefix;
+      const open = prefix === undefined ? undefined : byPrefix.get(prefix);
+      if (!open?.opened.edit)
+        throw new ActionError(
+          "refused",
+          "Only Oriel's own tracker's items are edited in place; any other source's change through a change set.",
+        );
+      try {
+        return await open.opened.edit(item, values);
+      } catch (error) {
+        if (error instanceof RangeError) throw new ActionError("invalid", error.message);
+        throw error;
+      }
+    },
     sources: {
       connect: async ({ kind, given }) => {
         const before = announced;
@@ -1853,8 +1967,10 @@ export async function createApp(options: AppOptions): Promise<App> {
   };
   // Every connection open or shut, in declared order, then by number.
   const kinds: readonly string[] = sourceKinds;
+  // A stand-in isn't one a person connected, so it isn't among them.
   const connectionsView = (): ConnectionView[] =>
     [...opens().map((each) => each.connection), ...shut.values()]
+      .filter((connection) => !ownConnections.has(connection.id))
       .toSorted((a, b) => kinds.indexOf(a.kind) - kinds.indexOf(b.kind) || a.number - b.number)
       .map(connectionView);
 
@@ -2065,6 +2181,11 @@ export async function createApp(options: AppOptions): Promise<App> {
           }),
         ),
         picker: options.pickFolder !== undefined,
+        // The stand-ins on now (decision 0059), which the first run and the
+        // overview offer in place of what they stand in for.
+        standingIn: opens()
+          .filter((each) => declared(each.connection.kind).standIn)
+          .map((each) => each.connection.kind),
       }),
       pick: (kind, given, query) => windows.pick(kind, given, query),
       choices: (id, query) => windows.choices(live(id as Ulid), query),

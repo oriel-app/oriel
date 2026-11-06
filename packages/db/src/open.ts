@@ -29,7 +29,9 @@ export function open(path: string, options: { exclusive?: boolean } = {}): Datab
   return db;
 }
 // Runs `work` in one immediate transaction: everything commits or nothing does.
+// Inside another, it is part of that one, which commits or rolls back all.
 export function transaction<T>(db: DatabaseSync, work: () => T): T {
+  if (db.isTransaction) return work();
   db.exec("begin immediate");
   try {
     const result = work();

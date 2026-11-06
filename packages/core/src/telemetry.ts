@@ -162,6 +162,16 @@ export type TelemetryEvent = { at: Instant; workspaceId: Ulid } & (
   // The user opened an item's panel beside the page, by a plain click on a
   // link to it or at an address with one open.
   | { name: "item.panel-opened"; source: SourceKind }
+  // A stand-in's item (decision 0059) created, edited or deleted, with the
+  // fields set, by name, and by whom: the person in its panel, or a change
+  // set's apply or revert. Never its words.
+  | {
+      name: "standin.written";
+      source: SourceKind;
+      by: "person" | "change-set";
+      change: "created" | "edited" | "deleted";
+      fields: string[];
+    }
   // The user left Oriel for an item's source: from its panel's button, or by
   // a Cmd/Ctrl or middle click on a link to it.
   | { name: "item.source-opened"; source: SourceKind; via: "panel" | "link" }

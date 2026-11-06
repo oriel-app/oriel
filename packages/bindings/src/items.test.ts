@@ -172,6 +172,7 @@ test("a region with no items yet gets Jira's creates alone: an epic, and stories
     target: null,
     ref: "new:1",
     args: { summary: "Kiosk wallets" },
+    into: "jira",
   });
   assert.deepEqual(
     bindings.capture("jira.createStory", [{ summary: "Pay by phone", epic: "new:1" }], "new:2"),
@@ -180,6 +181,7 @@ test("a region with no items yet gets Jira's creates alone: an epic, and stories
       target: null,
       ref: "new:2",
       args: { summary: "Pay by phone", epic: "new:1" },
+      into: "jira",
     },
   );
   // Only an epic made earlier in this run can hold a story.

@@ -5262,6 +5262,43 @@ a.replies:hover {
   flex-basis: 100%;
 }
 
+/* A stand-in's item, edited in its panel (decision 0059). */
+
+.panel-edit {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.panel-edit-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.panel-edit-label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.panel-edit-input {
+  padding: 0.4375rem var(--space-2);
+  border: var(--border-thin) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.panel-edit-text {
+  resize: vertical;
+  line-height: var(--leading-prose);
+}
+
+.panel-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .panel-added {
   display: flex;
   gap: var(--space-2);

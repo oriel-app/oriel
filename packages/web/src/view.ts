@@ -7,7 +7,7 @@ import type { ChartBlock } from "@oriel/core/block-charts";
 import type { ChangeSetState } from "@oriel/core/oriel-reads";
 import type { ReviewField, ReviewOutline, ReviewTable } from "@oriel/core/connect";
 import type { SignalKind, SignalSubject } from "@oriel/core/noticed";
-import type { PanelBlock } from "@oriel/core/panel";
+import type { PanelBlock, PanelEdit } from "@oriel/core/panel";
 import type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
 
 export type { ClusterRow, ItemRow, StatusCategory } from "@oriel/groupings/view";
@@ -23,7 +23,14 @@ export type {
   ReviewOutline,
   ReviewTable,
 } from "@oriel/core/connect";
-export type { PanelBlock, PanelInline, PanelMessage, PanelProse } from "@oriel/core/panel";
+export type {
+  PanelBlock,
+  PanelEdit,
+  PanelEditField,
+  PanelInline,
+  PanelMessage,
+  PanelProse,
+} from "@oriel/core/panel";
 
 export const groupingIds = ["epic", "assignee", "stuck", "linked"] as const;
 export type GroupingId = (typeof groupingIds)[number];
@@ -182,6 +189,8 @@ export type ConnectionsView = {
   connectable: string[];
   refused: Readonly<Record<string, string>>;
   picker: boolean;
+  // The stand-ins on now, by kind (decision 0059).
+  standingIn: string[];
 };
 
 // What a connection's review step shows (decision 0051): whether it waits
@@ -327,7 +336,9 @@ export type ItemPanelView = {
   readAt: string;
   updatedAt: string | null;
   read:
-    | { status: "ok"; blocks: PanelBlock[] }
+    // `edit`: the form a person edits it in, in place, for a stand-in's
+    // item (decision 0059).
+    | { status: "ok"; blocks: PanelBlock[]; edit?: PanelEdit }
     | { status: "moved"; to: ItemRef }
     | { status: "gone"; reason: "deleted" | "forbidden" }
     // The source returned it in a shape its view can't read.
