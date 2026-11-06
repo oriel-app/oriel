@@ -3265,11 +3265,15 @@ const scenes: Scene[] = [
     act: (page) => page.getByRole("button", { name: "Approve and apply" }).waitFor(),
   },
   {
-    // Two change sets awaiting review: the earlier, out of view, gets the pill.
+    // Two change sets awaiting review: the earlier, out of view, gets the
+    // pill. Until the page is at the latest, the later can read as below.
     name: "thread-to-review",
     path: `/threads/${twoToReview}`,
     window: true,
-    act: (page) => page.locator(".to-review-pill").waitFor(),
+    act: async (page) => {
+      await page.getByRole("button", { name: /to review above$/ }).waitFor();
+      await page.getByRole("button", { name: /to review below$/ }).waitFor({ state: "detached" });
+    },
   },
   {
     // The pill clicked: the page goes to the earlier, its heading focused.
@@ -3277,7 +3281,8 @@ const scenes: Scene[] = [
     path: `/threads/${twoToReview}`,
     window: true,
     act: async (page) => {
-      await page.locator(".to-review-pill").click();
+      await page.getByRole("button", { name: /to review below$/ }).waitFor({ state: "detached" });
+      await page.getByRole("button", { name: /to review above$/ }).click();
       // Glided there: its heading near the top of the window, and still, so
       // the shot isn't taken partway through the glide.
       const heading = page.locator(".change-set-head h2:focus");
