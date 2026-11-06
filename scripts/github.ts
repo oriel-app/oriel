@@ -22,20 +22,31 @@ export const usage = `usage: pnpm -s github <operation>
   runs [branch]
   next-decision
   shots-push <branch> <png>...
+  landed
 A title is one line, type(scope): summary (SPEC §10), and a body never is,
 so a title and body given the wrong way round are refused. While CI runs,
 pr-enqueue arms auto-merge instead, and the PR enters the queue when it passes.
-pr-wait returns within 9 minutes with one line: MERGED <sha>; DROPPED, open
-but neither in the merge queue nor armed to enter it; FAILED <check>, then
-the check's annotations; or WAITING. Call it again on WAITING.
+pr-enqueue retries once, 3 seconds on, when GitHub hasn't yet seen a push
+that just landed. pr-view's first fields say whether the PR is in the merge
+queue and whether auto-merge is armed.
+pr-wait returns within 9 minutes with one line: MERGED <sha>; CI PASSED, for
+a PR that wasn't queued or armed at any look, once its head's checks all
+pass; DROPPED, queued or armed at a look and then neither; FAILED <check>,
+then the check's annotations; or WAITING. Call it again on WAITING.
 shots-push commits the PNGs, at their paths from here, as the images-only
 branch shots/<branch>, from the git checkout you run it in, and prints each
 one's raw URL pinned to that commit. A later push to the same branch adds a
 commit on top, so earlier URLs keep working. It refuses a remote
-shots/<branch> it didn't make.`;
+shots/<branch> it didn't make.
+landed fetches main, then prints a line for each PR merged since this
+branch's base (git merge-base HEAD origin/main), from git alone: the files
+both it and this branch change (overlap); whether it's agent-facing, so
+cassettes made before it no longer replay; a migration number this branch
+adds too; and a generated design-system file both change, with the command
+that writes it again.`;
 
 export type Operation =
-  | { op: "pr-list" | "next-decision" }
+  | { op: "pr-list" | "next-decision" | "landed" }
   | { op: "pr-view" | "pr-enqueue" | "pr-wait"; number: number }
   | { op: "pr-create"; branch: string; title: string; body: string }
   | { op: "pr-edit"; number: number; body: string; title?: string }
@@ -57,7 +68,8 @@ const isBody = (text: string) => text.trim() !== "" && !text.startsWith("--") &&
 
 export function parse(args: readonly string[]): Operation | { error: string } {
   const [op, ...rest] = args;
-  if ((op === "pr-list" || op === "next-decision") && rest.length === 0) return { op };
+  if ((op === "pr-list" || op === "next-decision" || op === "landed") && rest.length === 0)
+    return { op };
   if ((op === "pr-view" || op === "pr-enqueue" || op === "pr-wait") && rest.length === 1) {
     const number = prNumber(rest[0]);
     if (number) return { op, number };
@@ -175,6 +187,14 @@ export function waitingOnChecks(errors: GraphqlResult["errors"]): string | null 
     : null;
 }
 
+export type Enqueued = { id: string; number: number; headRefOid: string };
+
+const headMoved = (errors: GraphqlResult["errors"]) =>
+  (errors ?? []).some(({ message = "" }) =>
+    /expected head oid does not match the current head oid/i.test(message),
+  );
+export const headMovedPauseMs = 3_000;
+
 const autoMergeOff = (errors: GraphqlResult["errors"]) =>
   (errors ?? []).some(({ message = "" }) =>
     /auto.?merge (is )?(not allowed|not enabled|disabled)/i.test(message),
@@ -186,20 +206,34 @@ const autoMergeOff = (errors: GraphqlResult["errors"]) =>
 // arming; auto-merge stays armed through later pushes, so the agent pushes
 // nothing more without a fresh go-ahead. This changes when the merge happens,
 // not who decides (decision 0012).
+//
+// Right after a push, GitHub may not yet know the head it just took, and
+// refuses the head it reports. Then the PR is read again 3 seconds on, and
+// the enqueue tried once more on what it reports then.
 export async function enqueue(
   send: Graphql,
-  pr: { id: string; number: number; headRefOid: string },
+  first: Enqueued,
+  pause: (ms: number) => Promise<void>,
+  reread: () => Promise<Enqueued>,
 ): Promise<unknown> {
-  const variables = { id: pr.id, oid: pr.headRefOid };
-  const enqueued = await send(
-    `mutation ($id: ID!, $oid: GitObjectID!) {
-      enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
-        mergeQueueEntry { state position }
-      }
-    }`,
-    variables,
-  );
+  let pr = first;
+  const enqueueOn = (on: Enqueued) =>
+    send(
+      `mutation ($id: ID!, $oid: GitObjectID!) {
+        enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
+          mergeQueueEntry { state position }
+        }
+      }`,
+      { id: on.id, oid: on.headRefOid },
+    );
+  let enqueued = await enqueueOn(pr);
+  if (headMoved(enqueued.errors)) {
+    await pause(headMovedPauseMs);
+    pr = await reread();
+    enqueued = await enqueueOn(pr);
+  }
   if (!enqueued.errors) return enqueued.data;
+  const variables = { id: pr.id, oid: pr.headRefOid };
   const waiting = waitingOnChecks(enqueued.errors);
   if (!waiting) throw graphqlError(enqueued.errors);
   const armed = await send(
@@ -264,6 +298,27 @@ async function pullRequest(token: string, number: number) {
   return pr;
 }
 
+// pr-view's PR, with whether it's in the merge queue and armed to enter it
+// first, as plain fields, before the rest as GitHub gave it.
+export type Viewed = {
+  number: number;
+  title: string;
+  state: string;
+  isInMergeQueue: boolean;
+  autoMergeRequest: unknown;
+};
+export function viewed<T extends Viewed>(pr: T) {
+  const { number, title, state, ...rest } = pr;
+  return {
+    number,
+    title,
+    state,
+    inMergeQueue: pr.isInMergeQueue,
+    autoMergeArmed: Boolean(pr.autoMergeRequest),
+    ...rest,
+  };
+}
+
 // What pr-wait reads of a PR on each look.
 export type Watched = {
   state: "OPEN" | "CLOSED" | "MERGED";
@@ -293,6 +348,9 @@ const failing = (run: CheckRun) =>
   run.status === "completed" &&
   ["failure", "timed_out", "startup_failure", "action_required"].includes(run.conclusion ?? "");
 
+const succeeded = (run: CheckRun) =>
+  run.status === "completed" && ["success", "neutral", "skipped"].includes(run.conclusion ?? "");
+
 export const waitLimitMs = 9 * 60_000;
 const lookEveryMs = 20_000;
 // A PR leaves the queue a moment before GitHub marks it merged, so one
@@ -301,7 +359,8 @@ const dropLooks = 3;
 const dropLookEveryMs = 10_000;
 
 // Looks at a PR until it merges, fails a check, leaves the queue or the
-// time is up, whichever comes first. The checks it reads are its head's and
+// time is up, whichever comes first; one never queued or armed, until its
+// CI passes instead of leaving the queue. The checks it reads are its head's and
 // its merge queue entry's, the last one seen, so a group the queue dropped
 // for a failure still says which check failed.
 export async function waitFor(
@@ -311,13 +370,21 @@ export async function waitFor(
 ): Promise<string> {
   const deadline = clock() + waitLimitMs;
   let queued: string | null = null;
+  // Whether any look found it queued or armed. Until one does, it's waiting
+  // for CI, not for the queue, so it can't be dropped from it.
+  let joined = false;
   let outLooks = 0;
   for (;;) {
     const pr = await reads.pullRequest();
     if (pr.state === "MERGED") return `MERGED ${pr.mergeCommit?.oid ?? "(no merge commit)"}`;
     queued = pr.mergeQueueEntry?.headCommit?.oid ?? queued;
+    const inLine = pr.isInMergeQueue || Boolean(pr.autoMergeRequest);
+    joined ||= inLine;
+    let headRuns: CheckRun[] = [];
     for (const sha of new Set([pr.headRefOid, ...(queued ? [queued] : [])])) {
-      const failed = (await reads.checkRuns(sha)).find(failing);
+      const runs = await reads.checkRuns(sha);
+      if (sha === pr.headRefOid) headRuns = runs;
+      const failed = runs.find(failing);
       if (!failed) continue;
       const notes = (await reads.annotations(failed.id)).map(
         (a) =>
@@ -326,7 +393,8 @@ export async function waitFor(
       return [`FAILED ${failed.name}`, ...notes].join("\n");
     }
     if (pr.state === "CLOSED") return "DROPPED: closed without merging";
-    outLooks = !pr.isInMergeQueue && !pr.autoMergeRequest ? outLooks + 1 : 0;
+    if (!joined && headRuns.length > 0 && headRuns.every(succeeded)) return "CI PASSED";
+    outLooks = joined && !inLine ? outLooks + 1 : 0;
     if (outLooks >= dropLooks)
       return "DROPPED: open, not in the merge queue, and no auto-merge armed";
     const every = outLooks > 0 ? dropLookEveryMs : lookEveryMs;
@@ -420,6 +488,145 @@ export async function shotsPush(
   }
 }
 
+// One file a commit or a branch changes: its status letter (A, M, D, R…) and
+// path, and a rename's old path too.
+export type Changed = { status: string; path: string; from?: string };
+export type LandedPr = { sha: string; number: number | null; title: string; files: Changed[] };
+
+// `git diff --name-status` lines, as Changed.
+export function changedFiles(text: string): Changed[] {
+  return text.split("\n").flatMap((line) => {
+    const [status = "", path = "", renamed] = line.split("\t");
+    if (!/^[ACDMRTU]/.test(status) || path === "") return [];
+    return [renamed ? { status: status[0] ?? "", path: renamed, from: path } : { status, path }];
+  });
+}
+
+// What landedLog's git log prints: each commit as a NUL, its SHA and subject
+// on one line, then its --name-status lines. A squash merge's subject ends
+// with its PR number, `(#209)`; a commit pushed straight to main has none.
+export const landedLogFormat = "%x00%H %s";
+export function landedLog(text: string): LandedPr[] {
+  return text
+    .split("\0")
+    .filter((entry) => entry.trim() !== "")
+    .map((entry) => {
+      const [head = "", ...rest] = entry.split("\n");
+      const space = head.indexOf(" ");
+      const sha = head.slice(0, space);
+      const subject = head.slice(space + 1);
+      const number = /\s\(#(\d+)\)$/.exec(subject);
+      return {
+        sha,
+        number: number ? Number(number[1]) : null,
+        title: number ? subject.slice(0, number.index) : subject,
+        files: changedFiles(rest.join("\n")),
+      };
+    });
+}
+
+// A cassette's key hashes its request's method, URL and body
+// (packages/evals/src/cassette.ts): the model, the system prompt, the run
+// tool with the module's .d.ts, and the messages, run results among them, and
+// the judge's request likewise. packages/agent writes the prompt, the tool and
+// the messages, packages/bindings the module and what a run returns, each
+// connector's namespace and declaration its own part of them, and the evals'
+// system under test, world, judge, cases and fixtures fill them in.
+// Main replays green, so a merged PR that moved any key a case reaches also
+// changed tests/cassettes/.
+export function agentFacing(path: string): boolean {
+  const code = (dir: string) =>
+    path.startsWith(dir) && !path.endsWith(".test.ts") && !path.endsWith("/testing.ts");
+  return (
+    path.startsWith("tests/cassettes/") ||
+    code("packages/agent/src/") ||
+    code("packages/bindings/src/") ||
+    /^packages\/[^/]+\/src\/(namespace|declaration)\.ts$/.test(path) ||
+    /^packages\/evals\/src\/(system|world|graders|fixtures)\.ts$/.test(path) ||
+    path.startsWith("packages/evals/cases/") ||
+    path.startsWith("fixtures/") ||
+    path === "packages/core/src/challenge.ts"
+  );
+}
+
+const migrationNumber = (file: Changed) =>
+  file.status === "A" ? (/^packages\/db\/migrations\/(\d+)_/.exec(file.path)?.[1] ?? null) : null;
+
+// The design system's generated files, each with the command that writes it.
+export const generated: Record<string, string> = {
+  "packages/design-system/COMPONENTS.md": "pnpm --filter @oriel/design-system index",
+};
+
+// One line per PR that landed: what in it collides with this branch's own
+// changes (`mine`).
+export function landedReport(base: string, landed: readonly LandedPr[], mine: readonly Changed[]) {
+  if (landed.length === 0) return `nothing landed on main since ${base.slice(0, 7)}`;
+  const paths = (files: readonly Changed[]) =>
+    new Set(files.flatMap((f) => (f.from ? [f.path, f.from] : [f.path])));
+  const own = paths(mine);
+  const ownMigrations = new Set(mine.map(migrationNumber).filter((n) => n !== null));
+  const list = (names: readonly string[]) =>
+    names.length === 0
+      ? "none"
+      : names.length <= 4
+        ? names.join(", ")
+        : `${names.slice(0, 4).join(", ")} and ${names.length - 4} more`;
+  return landed
+    .map((pr) => {
+      const theirs = [...paths(pr.files)];
+      const overlap = theirs.filter((path) => own.has(path));
+      // Re-recorded cassettes count once, as one name.
+      const facing = [
+        ...new Set(
+          theirs
+            .filter(agentFacing)
+            .map((path) => (path.startsWith("tests/cassettes/") ? "tests/cassettes/" : path)),
+        ),
+      ];
+      const clash = pr.files
+        .map(migrationNumber)
+        .filter((n): n is string => n !== null && ownMigrations.has(n));
+      const design = overlap.flatMap((path) => {
+        const command = generated[path];
+        return command ? [`${path} (regenerate: ${command})`] : [];
+      });
+      return [
+        `${pr.number ? `#${pr.number}` : pr.sha.slice(0, 7)} ${pr.title}`,
+        `overlap: ${list(overlap)}`,
+        `agent-facing: ${facing.length > 0 ? `yes (${list(facing)})` : "no"}`,
+        `migration clash: ${list(clash)}`,
+        `design system: ${list(design)}`,
+      ].join(" · ");
+    })
+    .join("\n");
+}
+
+// What landed on main since this branch's base, from git where it runs.
+// Fetch main first: an old origin/main would say nothing landed.
+export async function landed(run: Git): Promise<string> {
+  const base = await run(["merge-base", "HEAD", "origin/main"]);
+  const log = await run([
+    "log",
+    "--first-parent",
+    "--diff-merges=first-parent",
+    "--name-status",
+    "-M",
+    `--format=${landedLogFormat}`,
+    `${base}..origin/main`,
+  ]);
+  // The branch's own changes: committed, staged, unstaged and new.
+  const mine = [
+    ...changedFiles(await run(["diff", "--name-status", "-M", base])),
+    ...(await run(["ls-files", "--others", "--exclude-standard"]))
+      .split("\n")
+      .filter((path) => path !== "")
+      .map((path) => ({ status: "A", path })),
+  ];
+  return landedReport(base, landedLog(log), mine);
+}
+
+const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
 export async function run(token: string, operation: Operation): Promise<unknown> {
   const base = `/repos/${repo.owner}/${repo.name}`;
   switch (operation.op) {
@@ -436,8 +643,17 @@ export async function run(token: string, operation: Operation): Promise<unknown>
         from: p.head.repo?.full_name ?? "deleted",
       }));
     }
-    case "pr-view":
-      return graphql(token, pullRequestQuery, { ...repo, number: operation.number });
+    case "pr-view": {
+      const data = (await graphql(token, pullRequestQuery, {
+        ...repo,
+        number: operation.number,
+      })) as {
+        repository: { pullRequest: Viewed | null };
+      };
+      const pr = data.repository.pullRequest;
+      if (!pr) throw new Error(`no PR #${operation.number} in ${repo.owner}/${repo.name}`);
+      return viewed(pr);
+    }
     case "pr-create": {
       const created = (await call(token, "POST", `${base}/pulls`, {
         title: operation.title,
@@ -458,13 +674,18 @@ export async function run(token: string, operation: Operation): Promise<unknown>
       return { number: edited.number, url: edited.html_url };
     }
     case "pr-enqueue": {
-      const pr = await pullRequest(token, operation.number);
-      const refusal = headRefusal(pr, "enqueue");
-      if (refusal) throw new Error(refusal);
+      const own = async () => {
+        const pr = await pullRequest(token, operation.number);
+        const refusal = headRefusal(pr, "enqueue");
+        if (refusal) throw new Error(refusal);
+        return pr;
+      };
       return enqueue(
         async (query, variables) =>
           (await call(token, "POST", "/graphql", { query, variables })) as GraphqlResult,
-        pr,
+        await own(),
+        sleep,
+        own,
       );
     }
     case "pr-wait": {
@@ -493,10 +714,11 @@ export async function run(token: string, operation: Operation): Promise<unknown>
             `${base}/check-runs/${id}/annotations?per_page=50`,
           )) as Annotation[],
       };
-      return waitFor(reads, Date.now, (ms) => new Promise((done) => setTimeout(done, ms)));
+      return waitFor(reads, Date.now, sleep);
     }
     case "shots-push":
-      throw new Error("shots-push runs git, not the API");
+    case "landed":
+      throw new Error(`${operation.op} runs git, not the API`);
     case "next-decision": {
       const onMain = (await call(token, "GET", `${base}/contents/docs/decisions?ref=main`)) as {
         path: string;
@@ -551,6 +773,19 @@ if (import.meta.main) {
   if (!("error" in operation) && operation.op === "shots-push") {
     try {
       console.log(await shotsPush(git, process.cwd(), operation.branch, operation.pngs));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    process.exit();
+  }
+  if (!("error" in operation) && operation.op === "landed") {
+    try {
+      // Bounded: a fetch that hangs leaves the last origin/main, and says so.
+      await execGit("git", ["fetch", "--quiet", "--no-prune", "origin", "main"], {
+        timeout: 30_000,
+      }).catch(() => console.error("couldn't fetch main; reading origin/main as last fetched"));
+      console.log(await landed(git));
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
